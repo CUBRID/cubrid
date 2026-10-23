@@ -2496,6 +2496,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
+      /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+       * (as STR_TO_DATE does); its result type is fixed */
       db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value1, &cast_value, &type1);
       if (er_status != NO_ERROR
@@ -3406,6 +3408,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_TIMESTAMPTZ:
       break;
     default:			/* convert to double */
+      /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+       * (as STR_TO_DATE does); its result type is fixed */
       type1 = DB_TYPE_UNKNOWN;
 
       /* try type double */
@@ -4743,6 +4747,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
   d4 = (int) floor (d4);
 
+  /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+   * (as STR_TO_DATE does); its result type is fixed */
   /* find the common type of value1, value2 and value3 and cast them to the common type */
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)

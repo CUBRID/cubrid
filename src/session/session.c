@@ -46,6 +46,7 @@
 #endif /* defined (SA_MODE) */
 #include "lock_free.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
 
@@ -1348,6 +1349,23 @@ db_value_alloc_and_copy (const DB_VALUE * src)
 static void
 update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
 {
+  DB_VALUE *value = db_value_alloc_and_copy (new_value);
+  const DB_TYPE type = var->value != NULL ? DB_VALUE_DOMAIN_TYPE (var->value) : DB_TYPE_NULL;
+  if (value != NULL && DB_IS_NULL (value) && type != DB_TYPE_NULL)
+    {
+      /* CBRD-27583 (D-40): a NULL keeps the variable's type, its value's domain, as a NULL of it */
+      db_value_domain_init (value, type, db_value_precision (var->value), db_value_scale (var->value));
+      if (QSTR_IS_ANY_CHAR_OR_BIT (type))
+	{
+	  value->data.ch.medium.buf = NULL;
+	}
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  db_string_put_cs_and_collation (value, db_get_string_codeset (var->value),
+					  db_get_string_collation (var->value));
+	}
+    }
+
   if (var->value != NULL)
     {
       if (QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (var->value)))
@@ -1358,7 +1376,7 @@ update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
       free_and_init (var->value);
     }
 
-  var->value = db_value_alloc_and_copy (new_value);
+  var->value = value;
 }
 
 /*

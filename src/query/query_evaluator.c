@@ -47,28 +47,28 @@
 #include "string_opfunc.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
-/* What an ALL/SOME term compares its item with in this execution: a constant right side's elements
- * by position (`constant`), else a computed collection's elements by their keys in the item's row of the type pair
- * comparison table (`row`), else `each` for every element; `all` for every value of a list or a right side that is
- * no collection. */
+/* What an ALL/SOME term compares its item with: a collection's elements by `element`, the row's cell of their one key,
+ * else by their keys in the item's row of the type pair comparison table (`row`), else `each` for every element;
+ * `all` for every value of a list or a right side that is no collection. */
 struct EVAL_ELEMENTS
 {
   const DOMAIN_COMPARE *all;
   const DOMAIN_COMPARE *each;
   int row;			/* -1: none */
-  const DOMAIN_ELEMENTS *constant;
+  const DOMAIN_COMPARE *element;	/* NULL: none */
 };
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
 static DB_LOGICAL eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2,
 				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp, const val_descr * vd,
-				      const DOMAIN_COMPARE * compare, const DB_VALUE * unconverted2);
+				      const DOMAIN_COMPARE * compare);
 static DB_LOGICAL eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
 				  const EVAL_ELEMENTS * elements, const val_descr * vd);
 static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
@@ -162,23 +162,19 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  * Planned comparisons
  *
  * A comparison term's resolved comparison holds the comparison tp_value_compare_with_error makes between its sides'
- * values, resolved by the load or, once per execution, by resolve_domains: the converters in the order that function
- * runs them, the type whose cmpval compares, the collation, and its outcome when a conversion fails. The row runs
- * them; it resolves nothing.
+ * values, decided by the unpack from the compiled domains: the converters in the order that function runs them, the
+ * type whose cmpval compares, the collation, and its outcome when a conversion fails. The row runs them; it resolves
+ * nothing.
  */
 
-/* tp_value_compare_with_error on the values (comparison method VALUES): a NULL element, a side the plan leaves
- * variable, a comparison no resolution holds; constant-initialized */
+/* tp_value_compare_with_error on the values (comparison method VALUES): a NULL element, or a side whose domain leaves
+ * its values' type or collation to the data; constant-initialized */
 static constexpr DOMAIN_COMPARE
 eval_values_comparison ()
 {
   DOMAIN_COMPARE compare = DOMAIN_COMPARE ();
   compare.method = DOMAIN_COMPARE_VALUES;
-  /* one assignment each: GCC 8.5 fails with an internal compiler error on a chained one in a constexpr function */
-  compare.value[0] = -1;
-  compare.value[1] = -1;
   compare.codeset_side = -1;
-  compare.compare_index = -1;
   return compare;
 }
 
@@ -196,53 +192,11 @@ eval_keys_comparison (void)
 
 static constexpr DOMAIN_COMPARE eval_Compare_elements = eval_keys_comparison ();
 
-/*
- * eval_resolved_comparison () - the resolution of a resolved comparison in this execution: the load's, or
- *			  resolve_domains' for a comparison resolve_domains resolves
- *   return: comparison method VALUES with its reason where the row compares by value: a late-bind comparison read
- *	     without resolve_domains' state
- */
+/* The comparison a term makes: the unpack's decision, carried by the term itself; none leaves it to the values. */
 static inline const DOMAIN_COMPARE *
-eval_resolved_comparison (const DOMAIN_COMPARE_PLAN * comparison, const val_descr * vd)
+eval_resolved_compare (const COMP_EVAL_TERM * et_comp)
 {
-  const DOMAIN_COMPARE *compare = &comparison->fixed;
-  if (compare->method == DOMAIN_COMPARE_LATE_BIND || compare->method == DOMAIN_COMPARE_LATE_BIND_SESSION)
-    {
-      if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved_domain.compares == NULL)
-	{
-	  /* a term evaluated without resolve_domains' state: the values answer, and the unresolved-domain check
-	   * (execution) stops a pair whose values would resolve a domain. A state with resolutions has its compares */
-	  assert (vd == NULL || vd->xasl_state == NULL);
-	  return &eval_Compare_values;
-	}
-      const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
-      /* a PX worker's own XASL clone loaded the same stream: its comparisons number the leader's resolutions as the
-       * leader's plan does, and it reads them by that number */
-      assert (compare->compare_index >= 0 && compare->compare_index < resolved.n_compare_indexes
-	      && resolved.plan != NULL
-	      && (resolved.copied_from_leader ? resolved.plan->compares[compare->compare_index]->value[0] ==
-		  comparison->value[0]
-		  && resolved.plan->compares[compare->compare_index]->value[1] ==
-		  comparison->value[1] : resolved.plan->compares[compare->compare_index] == comparison));
-      compare = &resolved.compares[compare->compare_index];
-    }
-  return compare;
-}
-
-/*
- * eval_resolved_compare () - the comparison this execution makes for a term
- *   return: its resolved comparison's resolution; a term without one is the load's omission: every load plans its
- *	     terms, a predicate stream's included
- */
-static inline const DOMAIN_COMPARE *
-eval_resolved_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
-{
-  const DOMAIN_COMPARE_PLAN *comparison = et_comp->domain_compare;
-  if (comparison == NULL)
-    {
-      return &eval_Compare_values;
-    }
-  return eval_resolved_comparison (comparison, vd);
+  return et_comp->compare != NULL ? et_comp->compare : &eval_Compare_values;
 }
 
 /* A computed collection's elements against the item's row of the type pair comparison table; an item whose key has no
@@ -257,64 +211,46 @@ eval_element_row (int row, EVAL_ELEMENTS * elements)
     }
 }
 
-/*
- * eval_resolved_elements () - what an ALL/SOME term compares its item with in this execution
- *
- * The load's resolved comparison or table, or the resolved domains: the row reads them and resolves nothing. Where
- * neither holds, the comparisons are tp_value_compare_with_error on the values (comparison method VALUES), and the
- * unresolved-domain check (execution) stops one whose values would resolve a domain.
- */
+/* What an ALL/SOME term compares its item with: the unpack's decision (ALSM_EVAL_TERM.compare, compare_row). */
 static inline void
-eval_resolved_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVAL_ELEMENTS * elements)
+eval_resolved_elements (const ALSM_EVAL_TERM * et_alsm, EVAL_ELEMENTS * elements)
 {
-  const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = et_alsm->domain_compare;
   elements->all = elements->each = &eval_Compare_values;
   elements->row = -1;
-  elements->constant = NULL;
-  if (comparison == NULL)
+  elements->element = et_alsm->compare_each;
+  if (et_alsm->compare != NULL)
     {
-      return;
-    }
-  if (comparison->kind == DOMAIN_ELEMENTS_PAIR)
-    {
-      elements->all = eval_resolved_comparison (&comparison->pair, vd);
+      elements->all = et_alsm->compare;
       if (elements->all->method == DOMAIN_COMPARE_KEYS)
 	{
-	  /* the key pair table (a stream's item) holds for any value the right side has */
+	  /* the key pair table holds for any value the right side has */
 	  elements->each = elements->all;
 	}
       return;
     }
-  if (comparison->kind == DOMAIN_ELEMENTS_ROW)
+  eval_element_row (et_alsm->compare_row, elements);
+}
+
+/* Whether an element compares as the set holds it: set_get_element's copy changes an OID and a value without its data
+ * (setobj_get_element), and nothing else. */
+static bool
+eval_element_as_held (const DB_VALUE * element)
+{
+  const DB_TYPE type = DB_VALUE_TYPE (element);
+  switch (type)
     {
-      eval_element_row (comparison->row, elements);
-      return;
-    }
-  if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved_domain.elements == NULL)
-    {
-      return;
-    }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
-  /* a PX worker's own XASL clone numbers its comparisons as the leader's plan does */
-  assert (comparison->resolved_elements_index >= 0 && comparison->resolved_elements_index < resolved.n_elements
-	  && resolved.plan != NULL && comparison->resolved_elements_index < resolved.plan->n_element_comparisons);
-  assert (resolved.copied_from_leader ? resolved.plan->element_comparisons[comparison->resolved_elements_index]->kind ==
-	  comparison->kind : resolved.plan->element_comparisons[comparison->resolved_elements_index] == comparison);
-  const DOMAIN_ELEMENTS *resolved_domain = &resolved.elements[comparison->resolved_elements_index];
-  switch (resolved_domain->read)
-    {
-    case DOMAIN_READ_POSITIONS:
-      elements->constant = resolved_domain;
-      break;
-    case DOMAIN_READ_ROW:
-      eval_element_row (resolved_domain->row, elements);
-      break;
-    case DOMAIN_READ_PAIR:
-      elements->all = &resolved_domain->compares[0];
-      break;
+    case DB_TYPE_OID:
+      return false;
+    case DB_TYPE_STRING:
+      return db_get_string (element) != NULL;
+    case DB_TYPE_OBJECT:
+      return db_get_object (element) != NULL;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+    case DB_TYPE_ELO:
+      return db_get_elo (element) != NULL;
     default:
-      /* nothing resolved: a NULL constant compares nothing */
-      break;
+      return !TP_IS_SET_TYPE (type) || db_get_set (element) != NULL;
     }
 }
 
@@ -326,25 +262,15 @@ eval_element_compare (int row, const DB_VALUE * element)
   return compare != NULL ? compare : &eval_Compare_values;
 }
 
-/* The value side i compares: the constant resolve_domains converted once, or the row's value. */
-static inline const DB_VALUE *
-eval_compare_side (const DOMAIN_COMPARE * compare, const val_descr * vd, int side, const DB_VALUE * row_value)
-{
-  return compare->value[side] >= 0 ? vd->dbval_ptr + compare->value[side] : row_value;
-}
-
 /*
- * eval_compare_resolved () - a comparison resolved before any row: tp_value_compare_with_error's NULL rule, then the
- *			     comparison method the resolved comparison names, on the row's values and
- *			     resolve_domains' own values of the constant sides
- *   comparison(in): the resolved comparison; a side it names fixed for a scope comes in converted once per scope
+ * eval_compare_resolved () - a comparison decided before any row: tp_value_compare_with_error's NULL rule, then the
+ *			     comparison method the decided comparison names, on the row's values
  */
 static DB_VALUE_COMPARE_RESULT
-eval_compare_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DOMAIN_COMPARE_PLAN * comparison,
-		       const val_descr * vd, const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order,
-		       bool * can_compare)
+eval_compare_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
+		       const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order, bool * can_compare)
 {
-  const DB_VALUE *value[2] = { eval_compare_side (compare, vd, 0, dbval1), eval_compare_side (compare, vd, 1, dbval2) };
+  const DB_VALUE *value[2] = { dbval1, dbval2 };
   if (DB_IS_NULL (value[0]))
     {
       return DB_IS_NULL (value[1]) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
@@ -361,30 +287,12 @@ eval_compare_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
 				   compare->collation);
 
     case DOMAIN_COMPARE_CONVERT:
-      {
-	unsigned char converted = 0;
-	for (int side = 0; comparison != NULL && side < 2; side++)
-	  {
-	    /* a correlated side is converted once per scope (its outer row), not at every inner row */
-	    const DB_VALUE *temporary = comparison->temporaries[side] >= 0 && compare->conv[side] != NULL
-	      ? qexec_execution_temporary (thread_p, vd, comparison->temporaries[side], compare->conv[side],
-					   compare->target[side],
-					   value[side]) : NULL;
-	    if (temporary != NULL)
-	      {
-		value[side] = temporary;
-		converted |= (unsigned char) (1 << side);
-	      }
-	  }
-	return domain_compare_converted (compare, value[0], value[1], total_order, can_compare, converted);
-      }
+      return domain_compare_converted (compare, value[0], value[1], total_order, can_compare);
 
     case DOMAIN_COMPARE_OBJECT:
     case DOMAIN_COMPARE_KEYS:
       /* an object side meets OIDs on the server, and a collection's elements are its data: the key pair table's
-       * comparison of the two values' keys. Neither method converts a constant side once (qexec_resolve_compare
-       * returns before value[] is set), so value[] are the row's values; they are read like DIRECT's */
-      assert (compare->value[0] < 0 && compare->value[1] < 0);
+       * comparison of the two values' keys */
       return domain_compare_by_type_pair (value[0], value[1], 1, total_order, can_compare);
 
     default:
@@ -394,34 +302,6 @@ eval_compare_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
 }
 
 #if !defined (NDEBUG)
-/* One side of a resolved comparison in the debug cross-checks' report: the regu, its domain, and the plan's view of
- * it. */
-static void
-eval_report_resolved_side (const char *name, const REGU_VARIABLE * regu, const DOMAIN_PLAN_ITEM * item,
-			   const val_descr * vd)
-{
-  const TP_DOMAIN *domain = regu != NULL ? qexec_get_node_domain (vd, regu->domain, regu->plan_item) : NULL;
-  const TP_DOMAIN *resolved_domain = NULL;
-  if (item != NULL && item->resolved_index >= 0 && vd != NULL && vd->xasl_state != NULL
-      && item->resolved_index < vd->xasl_state->resolved_domain.n_resolved)
-    {
-      resolved_domain = vd->xasl_state->resolved_domain.domains[item->resolved_index].domain;
-    }
-  const TP_DOMAIN *fixed = item != NULL ? item->fixed.domain : NULL;
-  const int opcode = regu != NULL && (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
-    && regu->value.arithptr != NULL ? (int) regu->value.arithptr->opcode : -1;
-  fprintf (stderr, "planned comparison   %s regu type=%d opcode=%d flags=0x%x domain=%d/%d/%d item slot=%d ref=%d "
-	   "fixed=%d/%d/%d decided=%d/%d/%d\n", name, regu != NULL ? (int) regu->type : -1, opcode,
-	   regu != NULL ? regu->flags : 0,
-	   domain != NULL ? (int) TP_DOMAIN_TYPE (domain) : -1, domain != NULL ? domain->collation_id : -1,
-	   domain != NULL ? (int) domain->collation_flag : -1, item != NULL ? item->resolved_index : -2,
-	   item != NULL ? item->ref : -2, fixed != NULL ? (int) TP_DOMAIN_TYPE (fixed) : -1,
-	   fixed != NULL ? fixed->collation_id : -1, fixed != NULL ? (int) fixed->collation_flag : -1,
-	   resolved_domain != NULL ? (int) TP_DOMAIN_TYPE (resolved_domain) : -1,
-	   resolved_domain != NULL ? resolved_domain->collation_id : -1,
-	   resolved_domain != NULL ? (int) resolved_domain->collation_flag : -1);
-}
-
 /* The debug cross-checks' report of a resolved comparison and its values (optdebug), before they assert. */
 static void
 eval_report_resolved_compare (const char *what, const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1,
@@ -439,28 +319,24 @@ eval_report_resolved_compare (const char *what, const DOMAIN_COMPARE * compare, 
       snprintf (sides[i], sizeof (sides[i]), "type=%d collation=%d codeset=%d", (int) type, collation, codeset);
     }
   fprintf (stderr, "planned comparison %s: kernel=%d first=%d source=%d,%d converted_first=%d "
-	   "collation=%d codeset_side=%d value=%d,%d failed=%d | lhs %s | rhs %s\n", what, (int) compare->method,
+	   "collation=%d codeset_side=%d | lhs %s | rhs %s\n", what, (int) compare->method,
 	   (int) compare->first, (int) compare->source[0], (int) compare->source[1],
-	   (int) compare->converted_first, compare->collation, compare->codeset_side, compare->value[0],
-	   compare->value[1], (int) compare->failed, sides[0], sides[1]);
-  if (et_comp != NULL)
-    {
-      const DOMAIN_COMPARE_PLAN *comparison = et_comp->domain_compare;
-      fprintf (stderr, "planned comparison   site fixed.kernel=%d site=%d constant=%d,%d literal=%d,%d\n",
-	       comparison != NULL ? (int) comparison->fixed.method : -1,
-	       comparison != NULL ? comparison->fixed.compare_index : -2, comparison != NULL
-	       && comparison->constant[0] != NULL, comparison != NULL
-	       && comparison->constant[1] != NULL, comparison != NULL
-	       && comparison->literal[0] != NULL, comparison != NULL && comparison->literal[1] != NULL);
-      eval_report_resolved_side ("lhs", et_comp->lhs, comparison != NULL ? comparison->operand[0] : NULL, vd);
-      eval_report_resolved_side ("rhs", et_comp->rhs, comparison != NULL ? comparison->operand[1] : NULL, vd);
-    }
+	   (int) compare->converted_first, compare->collation, compare->codeset_side, sides[0], sides[1]);
+}
+
+/* the side's value has the type its converters were resolved for: a VARCHAR value bound to a CHAR(n) position keeps
+ * its own type (do_cast_host_variables_to_expected_domain); a CHAR and a VARCHAR source differ only in their string
+ * targets' converters, and a string compared with a string is DIRECT, without a converter */
+static bool
+eval_value_is_source (const DB_VALUE * value, int source)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  return type == (DB_TYPE) source || (TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE ((DB_TYPE) source));
 }
 
 /*
  * eval_assert_resolved_sides () - debug cross-check before the comparison method: a side read from the row has the type
- *				  its converters and cmpval were resolved for (a constant side compares resolve_domains'
- *				  own value)
+ *				  its converters and cmpval were decided for
  */
 static void
 eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
@@ -469,98 +345,87 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
   if (compare->method == DOMAIN_COMPARE_OBJECT || compare->method == DOMAIN_COMPARE_KEYS)
     {
       /* the key pair table reads the values' own keys */
+      if (compare->method == DOMAIN_COMPARE_KEYS && et_comp != NULL)
+	{
+	  /* CBRD-27583 (S3-32, D-82): a filter or function index stream's side has values of its regu domain's type
+	   * (census "stream compare mismatch" 0) */
+	  const REGU_VARIABLE *regu[2] = { et_comp->lhs, et_comp->rhs };
+	  const DB_VALUE *value[2] = { dbval1, dbval2 };
+	  for (int side = 0; side < 2; side++)
+	    {
+	      assert (regu[side] == NULL || regu[side]->domain == NULL || domain_is_variable (regu[side]->domain)
+		      || DB_IS_NULL (value[side])
+		      || eval_value_is_source (value[side], TP_DOMAIN_TYPE (regu[side]->domain)));
+	    }
+	}
       return;
     }
-  const bool lhs = compare->value[0] != -1 || DB_IS_NULL (dbval1)
-    || DB_VALUE_DOMAIN_TYPE (dbval1) == (DB_TYPE) compare->source[0];
-  const bool rhs = compare->value[1] != -1 || DB_IS_NULL (dbval2)
-    || DB_VALUE_DOMAIN_TYPE (dbval2) == (DB_TYPE) compare->source[1];
+  const bool lhs = DB_IS_NULL (dbval1) || eval_value_is_source (dbval1, compare->source[0]);
+  const bool rhs = DB_IS_NULL (dbval2) || eval_value_is_source (dbval2, compare->source[1]);
   if (!lhs || !rhs)
     {
       eval_report_resolved_compare ("side type", compare, dbval1, dbval2, et_comp, vd);
     }
   assert (lhs && rhs);
 }
-
-/*
- * eval_assert_resolved_compare () - debug cross-check after the comparison method: tp_value_compare_with_error on the
- *				    same values gives the resolved comparison's result, comparability and error
- *   asks_comparable(in): the caller asks whether the values compare (tp_value_compare_with_error's contract); false
- *			  for tp_value_compare's, which asks nothing
- */
-static void
-eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
-			      int total_order, DB_VALUE_COMPARE_RESULT result, bool comparable,
-			      const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable)
-{
-  const int error = comparable ? NO_ERROR : er_errid ();
-  bool expected_comparable = true;
-  er_stack_push ();
-  const DB_VALUE_COMPARE_RESULT expected =
-    tp_value_compare_with_error (dbval1, dbval2, 1, total_order, asks_comparable ? &expected_comparable : NULL);
-  const int expected_error = expected_comparable ? NO_ERROR : er_errid ();
-  er_stack_pop ();
-  const bool same = expected == result && expected_comparable == comparable && expected_error == error;
-  if (!same)
-    {
-      eval_report_resolved_compare ("result", compare, dbval1, dbval2, et_comp, vd);
-      fprintf (stderr, "planned comparison result: planned=%d comparable=%d error=%d expected=%d comparable=%d "
-	       "error=%d\n",
-	       (int) result, (int) comparable, error, (int) expected, (int) expected_comparable, expected_error);
-    }
-  assert (same);
-}
 #endif
 
 /*
- * eval_compare_values_resolved () - a comparison of two values resolved before any row outside a predicate term: the
- *				    comparison's resolution in this execution, tp_value_compare_with_error's NULL rule
- *				    and the comparison method it names
- *   return: the result; *can_compare false with tp_value_compare_with_error's error where the values do not compare,
- *	     and at the unresolved-domain check (execution) (ER_QPROC_DOMAIN_UNRESOLVED)
- *   comparison(in): the resolved comparison; NULL is the load's omission
- *   vd(in): value descriptor of the execution (the resolved domains and converted constants)
+ * eval_compare_by_values () - comparison method VALUES, the exception to deciding before the rows: a NULL answers by
+ *			      tp_value_compare_with_error's NULL rule, which decides nothing, and two values by their
+ *			      types
+ */
+static DB_VALUE_COMPARE_RESULT
+eval_compare_by_values (const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  if (DB_IS_NULL (value1))
+    {
+      return DB_IS_NULL (value2) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
+    }
+  if (DB_IS_NULL (value2))
+    {
+      return total_order ? DB_GT : DB_UNK;
+    }
+  return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
+}
+
+/*
+ * eval_compare_values_with () - a comparison of two values decided before any row outside a predicate term:
+ *				tp_value_compare_with_error's NULL rule and the comparison method it names
+ *   return: the result; *can_compare false with tp_value_compare_with_error's error where the values do not compare
+ *   compare(in): the comparison; method VALUES leaves it to the values
  *   can_compare(out): NULL for tp_value_compare's contract, which asks nothing: values that do not compare answer by
  *		       their rank without an error
  */
-DB_VALUE_COMPARE_RESULT
-eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * comparison, const val_descr * vd,
-			      const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+static DB_VALUE_COMPARE_RESULT
+eval_compare_values_with (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
+			  const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
 {
   if (can_compare != NULL)
     {
       *can_compare = true;
     }
-  const DOMAIN_COMPARE *compare = comparison != NULL ? eval_resolved_comparison (comparison, vd) : &eval_Compare_values;
   if (compare->method != DOMAIN_COMPARE_VALUES)
     {
 #if !defined (NDEBUG)
       eval_assert_resolved_sides (compare, value1, value2, NULL, vd);
 #endif
-      const DB_VALUE_COMPARE_RESULT result =
-	eval_compare_resolved (thread_p, compare, comparison, vd, value1, value2, total_order, can_compare);
-#if !defined (NDEBUG)
-      eval_assert_resolved_compare (compare, value1, value2, total_order, result,
-				    can_compare != NULL ? *can_compare : true, NULL, vd, can_compare != NULL);
-#endif
-      return result;
+      return eval_compare_resolved (thread_p, compare, vd, value1, value2, total_order, can_compare);
     }
-  if (domain_value_domains_differ (value1, value2))
-    {
-      /* the unresolved-domain check (execution): no plan holds this comparison, and the values differ in type or
-       * collation, which only a plan resolves */
-#if !defined (NDEBUG)
-      eval_report_resolved_compare ("boundary", compare, value1, value2, NULL, vd);
-#endif
-      (void) domain_unresolved_error ("", -1, DB_VALUE_DOMAIN_TYPE (value2));
-      if (can_compare != NULL)
-	{
-	  *can_compare = false;
-	}
-      return DB_UNK;
-    }
-  /* NULL answers first */
-  return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
+  return eval_compare_by_values (value1, value2, total_order, can_compare);
+}
+
+/*
+ * eval_compare_values_resolved () - eval_compare_values_with over a comparison unpack decided: a merge column pair, a
+ *				    LIMIT, an instnum bound, FIELD, NULLIF, LEAST and GREATEST
+ *   compare(in): the decided comparison; NULL compares by the values (comparison method VALUES)
+ */
+DB_VALUE_COMPARE_RESULT
+eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
+			      const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  return eval_compare_values_with (thread_p, compare != NULL ? compare : &eval_Compare_values, vd, value1, value2,
+				   total_order, can_compare);
 }
 
 /* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the operator functions) */
@@ -574,17 +439,14 @@ STATIC_INLINE DB_LOGICAL eval_rel_result (REL_OP rel_operator, int result, const
  *   dbval1(in): first db_value
  *   dbval2(in): second db_value
  *   rel_operator(in): Relational operator
- *   et_comp(in): compound evaluation term; its resolved comparison's correlated sides are converted once per scope
- *   vd(in): value descriptor of the term's execution (the resolved domains and converted constants)
- *   compare(in): the resolution of an element comparison, or the term's resolution its caller read
- *		  (eval_compare_term); NULL: the term's
- *   unconverted2(in): the right side as the term holds it where dbval2 is resolve_domains' converted copy of it,
- *		       which the debug cross-checks compare (an optdebug build reads it); NULL: dbval2
+ *   et_comp(in): compound evaluation term
+ *   vd(in): value descriptor of the term's execution
+ *   compare(in): the decision of an element comparison, or the term's decision its caller read (eval_compare_term);
+ *		  NULL: the term's
  */
 static DB_LOGICAL
 eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
-		    const COMP_EVAL_TERM * et_comp, const val_descr * vd, const DOMAIN_COMPARE * compare,
-		    const DB_VALUE * unconverted2)
+		    const COMP_EVAL_TERM * et_comp, const val_descr * vd, const DOMAIN_COMPARE * compare)
 {
   int result;
   bool comparable = true;
@@ -610,41 +472,23 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
       {
 	/* R_EQ_TORDER compares in total order; the others compare ordinally, and NULL's still yield UNKNOWN */
 	const int total_order = rel_operator == R_EQ_TORDER;
-	/* the term's resolved comparison, whose correlated sides its scope converts once; an element's resolution has
-	 * none */
-	const DOMAIN_COMPARE_PLAN *comparison = et_comp != NULL ? et_comp->domain_compare : NULL;
 	if (compare == NULL)
 	  {
-	    compare = et_comp != NULL ? eval_resolved_compare (et_comp, vd) : &eval_Compare_values;
+	    compare = et_comp != NULL ? eval_resolved_compare (et_comp) : &eval_Compare_values;
 	  }
 	if (compare->method != DOMAIN_COMPARE_VALUES)
 	  {
-	    /* the comparison the load or resolve_domains resolved; a constant is converted once,
-	     * into a value of its own, and the shared value stays as it is */
+	    /* the comparison the unpack decided */
 #if !defined (NDEBUG)
 	    eval_assert_resolved_sides (compare, dbval1, dbval2, et_comp, vd);
 #endif
-	    result =
-	      eval_compare_resolved (thread_p, compare, comparison, vd, dbval1, dbval2, total_order, &comparable);
-#if !defined (NDEBUG)
-	    eval_assert_resolved_compare (compare, dbval1, unconverted2 != NULL ? unconverted2 : dbval2, total_order,
-					  (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd, true);
-#endif
-	  }
-	else if (domain_value_domains_differ (dbval1, dbval2))
-	  {
-	    /* the unresolved-domain check (execution): no plan holds this comparison, and the values differ in type or
-	     * collation, which only a plan resolves */
-#if !defined (NDEBUG)
-	    eval_report_resolved_compare ("boundary", compare, dbval1, dbval2, et_comp, vd);
-#endif
-	    (void) domain_unresolved_error ("", -1, DB_VALUE_DOMAIN_TYPE (dbval2));
-	    return V_ERROR;
+	    result = eval_compare_resolved (thread_p, compare, vd, dbval1, dbval2, total_order, &comparable);
 	  }
 	else
 	  {
-	    /* NULL answers first */
-	    result = tp_value_compare_with_error (dbval1, dbval2, 1, total_order, &comparable);
+	    /* a term compares as the unpack decided; VALUES here only answers a NULL */
+	    assert (DB_IS_NULL (dbval1) || DB_IS_NULL (dbval2));
+	    result = eval_compare_by_values (dbval1, dbval2, total_order, &comparable);
 	  }
       }
       break;
@@ -730,10 +574,10 @@ eval_rel_result (REL_OP rel_operator, int result, const DB_VALUE * dbval1, const
  * Comparison term leaves
  *
  * A comparison term's resolved comparison names the functions its row runs for its comparison method, one for each
- * relational operator, when the load or resolve_domains resolves it: a resolution of comparison method DIRECT compares
+ * relational operator, when the unpack decides it: a decision of comparison method DIRECT compares
  * its sides by cmpval and reads the result by the operator its function was made for, with no comparison method or
  * operator switch at the row. The row takes the function of its term's operator at the row: qexec_eval_instnum_pred
- * evaluates inst_num () <= n as < first, so the operator is not always the one the load saw. Any other resolution's row
+ * evaluates inst_num () <= n as < first, so the operator is not always the compiled one. Any other decision's row
  * is eval_value_rel_cmp's.
  */
 
@@ -752,8 +596,8 @@ eval_operator_function_direct (const DOMAIN_COMPARE * compare, const val_descr *
 			       DB_VALUE * dbval2)
 {
   const int total_order = rel_operator == R_EQ_TORDER;
-  const DB_VALUE *value1 = eval_compare_side (compare, vd, 0, dbval1);
-  const DB_VALUE *value2 = eval_compare_side (compare, vd, 1, dbval2);
+  const DB_VALUE *value1 = dbval1;
+  const DB_VALUE *value2 = dbval2;
   int result;
   if (DB_IS_NULL (value1))
     {
@@ -796,8 +640,8 @@ eval_direct_operator_functions (void)
 static constexpr EVAL_DIRECT_OPERATOR_FUNCTIONS eval_Direct_operator_functions = eval_direct_operator_functions ();
 /* *INDENT-ON* */
 
-/* domain_compare_set_operator_functions () - declared with DOMAIN_COMPARE (domain_rules.h); the load and
- * resolve_domains call it where they resolve a term's comparison, and the operator functions it names are these */
+/* domain_compare_set_operator_functions () - declared with DOMAIN_COMPARE (domain_rules.h); the unpack calls it where
+ * it decides a term's comparison, and the operator functions it names are these */
 void
 domain_compare_set_operator_functions (DOMAIN_COMPARE * compare)
 {
@@ -814,7 +658,7 @@ static void
 eval_assert_operator_function (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, const val_descr * vd,
 			       const DOMAIN_COMPARE * compare, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_LOGICAL leaf)
 {
-  const DB_LOGICAL result = eval_value_rel_cmp (thread_p, dbval1, dbval2, et_comp->rel_op, et_comp, vd, NULL, NULL);
+  const DB_LOGICAL result = eval_value_rel_cmp (thread_p, dbval1, dbval2, et_comp->rel_op, et_comp, vd, NULL);
   if (result != leaf)
     {
       eval_report_resolved_compare ("leaf", compare, dbval1, dbval2, et_comp, vd);
@@ -838,12 +682,12 @@ STATIC_INLINE DB_LOGICAL
 eval_compare_term (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_descr * vd, DB_VALUE * dbval1,
 		   DB_VALUE * dbval2)
 {
-  const DOMAIN_COMPARE *compare = eval_resolved_compare (et_comp, vd);
+  const DOMAIN_COMPARE *compare = eval_resolved_compare (et_comp);
   const DOMAIN_COMPARE_OPERATOR_FUNCTION leaf =
     compare->operator_functions != NULL ? compare->operator_functions[et_comp->rel_op] : NULL;
   if (leaf == NULL)
     {
-      return eval_value_rel_cmp (thread_p, dbval1, dbval2, et_comp->rel_op, et_comp, vd, compare, NULL);
+      return eval_value_rel_cmp (thread_p, dbval1, dbval2, et_comp->rel_op, et_comp, vd, compare);
     }
   const DB_LOGICAL result = leaf (compare, vd, dbval1, dbval2);
 #if !defined (NDEBUG)
@@ -869,43 +713,43 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
   int i;
   DB_LOGICAL res, t_res;
   DB_VALUE elem_val;
+  COL *col;
 
   PRIM_SET_NULL (&elem_val);
 
   res = V_FALSE;
 
+  if (set_get_setobj (set, &col, 0) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
   const int size = set_size (set);
-  /* a constant's elements: resolve_domains resolved each one and holds its own value of it, by position */
-  assert (elements->constant == NULL || elements->constant->n == size);
   for (i = 0; i < size; i++)
     {
-      DB_VALUE *element = &elem_val;
-      const DOMAIN_COMPARE *compare;
-      const DB_VALUE *unconverted = NULL;
-      if (elements->constant != NULL)
+      DB_VALUE *element = NULL;
+      if (col != NULL && setobj_get_element_ptr (col, i, &element) != NO_ERROR)
 	{
-	  element = &elements->constant->value[i];
-	  compare = &elements->constant->compares[elements->constant->element_compare[i]];
-#if !defined (NDEBUG)
-	  /* the debug cross-checks compare the element as the set holds it */
+	  return V_ERROR;
+	}
+      if (element == NULL || !eval_element_as_held (element))
+	{
+	  /* set_get_element's copy, which swizzles an OID and makes a value without its data NULL */
 	  if (set_get_element (set, i, &elem_val) != NO_ERROR)
 	    {
 	      return V_ERROR;
 	    }
-	  unconverted = &elem_val;
-#endif
+	  element = &elem_val;
 	}
-      else
-	{
-	  if (set_get_element (set, i, &elem_val) != NO_ERROR)
-	    {
-	      return V_ERROR;
-	    }
-	  compare = DB_IS_NULL (&elem_val) ? &eval_Compare_values
-	    : elements->row >= 0 ? eval_element_compare (elements->row, &elem_val) : elements->each;
-	}
+      /* 2-7: elements carry their type - an element's comparison is the cell of the elements' one key, or is looked up
+       * by its value (the item's row, or the two values' keys) */
+      const DOMAIN_COMPARE *compare = DB_IS_NULL (element) ? &eval_Compare_values
+	: elements->element != NULL ? elements->element
+	: elements->row >= 0 ? eval_element_compare (elements->row, element) : elements->each;
+      /* the compiler's claim: the elements' values are of their one key */
+      assert (elements->element == NULL || DB_IS_NULL (element)
+	      || compare == eval_element_compare (elements->row, element));
 
-      t_res = eval_value_rel_cmp (thread_p, item, element, rel_operator, NULL, vd, compare, unconverted);
+      t_res = eval_value_rel_cmp (thread_p, item, element, rel_operator, NULL, vd, compare);
       pr_clear_value (&elem_val);
       if (t_res == V_TRUE)
 	{
@@ -1039,7 +883,7 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
 	  return UNKNOWN_CARD;
 	}
 
-      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL, &eval_Compare_elements, NULL);
+      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL, &eval_Compare_elements);
       pr_clear_value (&elem_val);
 
       if (res == V_ERROR)
@@ -1140,7 +984,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
       else
 	{
 
-	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL, vd, compare, NULL);
+	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL, vd, compare);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
 	    {
 	      pr_clear_value (&list_val);
@@ -1280,7 +1124,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  return UNKNOWN_CARD;
 	}
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL, &eval_Compare_elements, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL, &eval_Compare_elements);
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
@@ -1293,7 +1137,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  continue;
 	}
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL, &eval_Compare_elements);
       pr_clear_value (&list_val);
 
       if (rc == V_ERROR)
@@ -1375,7 +1219,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
 	      continue;
 	    }
 
-	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL, &eval_Compare_elements);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&elem_val);
@@ -1515,7 +1359,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	      goto end;
 	    }
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_elements);
 	  if (rc == V_ERROR)
 	    {
 	      res = V_ERROR;
@@ -1692,7 +1536,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	      goto end;
 	    }
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_elements);
 
 	  if (rc == V_ERROR)
 	    {
@@ -2572,7 +2416,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	      }
 
 	    EVAL_ELEMENTS elements;
-	    eval_resolved_elements (et_alsm, vd, &elements);
+	    eval_resolved_elements (et_alsm, &elements);
 	    if (et_alsm->elemset->type == TYPE_LIST_ID)
 	      {
 		/* rhs value is a list, use list evaluation routines */
@@ -2602,19 +2446,10 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 		      eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op, &elements, vd);
 		  }
 	      }
-	    else if (elements.constant != NULL)
-	      {
-		/* a constant that is no collection: its one element, resolve_domains' own value */
-		assert (elements.constant->n == 1);
-		result =
-		  eval_value_rel_cmp (thread_p, peek_val1, &elements.constant->value[0], et_alsm->rel_op, NULL, vd,
-				      &elements.constant->compares[elements.constant->element_compare[0]], peek_val2);
-	      }
 	    else
 	      {
 		/* other cases, use general evaluation routines */
-		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL, vd, elements.all,
-					     NULL);
+		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL, vd, elements.all);
 	      }
 	  }
 	  break;
@@ -2946,7 +2781,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
 
   /* rhs value is a set, use set evaluation routines */
   EVAL_ELEMENTS elements;
-  eval_resolved_elements (et_alsm, vd, &elements);
+  eval_resolved_elements (et_alsm, &elements);
   if (et_alsm->eq_flag == F_ALL)
     {
       return eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op, &elements, vd);
@@ -3006,7 +2841,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
     }
 
   EVAL_ELEMENTS elements;
-  eval_resolved_elements (et_alsm, vd, &elements);
+  eval_resolved_elements (et_alsm, &elements);
   if (et_alsm->eq_flag == F_ALL)
     {
       return eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd);
@@ -3514,21 +3349,11 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
        * operand types eval_pred () re-discovers per row are fixed in the XASL, so they
        * are resolved once here, on the scan's first row, and kept with the clone
        * (qexec_clear_pred () releases the slot values when the execution ends).  The leaves
-       * and operand steps were resolved for the bound types of the compiling execution:
-       * an execution that binds other types recompiles.  Anything not covered keeps
-       * pr_eval_fnc. */
-      if (pred_root->scan_prog_state == 1
-	  && unlikely (!expr_scan_pred_signature_ok (pred_root->scan_prog, filterp->val_descr,
-						     EXPR_PROG_EXEC_STAMP (filterp->val_descr))))
-	{
-	  expr_scan_pred_free (pred_root->scan_prog);
-	  pred_root->scan_prog = NULL;
-	  pred_root->scan_prog_state = 0;
-	}
+       * and operand steps take the compiled domains, which the XASL fixes for every execution.
+       * Anything not covered keeps pr_eval_fnc. */
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
-	  /* resolve_domains resolved every variable domain before the main block: compile on
-	   * the first row (expr_compile.c, domains in this execution) */
+	  /* compile on the first row (expr_compile.c) */
 	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
 	  pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
 	  pred_root->scan_prog_gen++;

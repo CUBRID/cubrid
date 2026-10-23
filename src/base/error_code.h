@@ -1782,7 +1782,7 @@
 
 #define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
-#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+#define ER_SES_VARIABLE_TYPE_FIXED                  -1384
 
 #define ER_AU_REJECT_LOGIN                          -1385
 

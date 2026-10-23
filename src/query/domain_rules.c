@@ -31,7 +31,10 @@
 #include "language_support.h"
 #include "error_manager.h"
 #include "string_opfunc.h"
+#include "xasl.h"
+#include "query_sum_accumulator.h"
 #include <atomic>
+#include <cfloat>
 #include <cstddef>
 #include <cstring>
 #include <mutex>
@@ -49,6 +52,37 @@ domain_convert_mode (DOMAIN_CTX context)
 {
   return context == DOMAIN_CTX_ASSIGN ? DOMAIN_CONVERT_ASSIGN
     : context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_CONVERT_COMPARE : DOMAIN_CONVERT_OPERAND;
+}
+
+/* The resolver context of a late-binding operator node. */
+DOMAIN_CTX
+domain_late_bind_context (int opcode)
+{
+  switch (opcode)
+    {
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+    case T_DIV:
+    case T_MOD:
+    case T_UNMINUS:
+    case T_ABS:
+    case T_FLOOR:
+    case T_CEIL:
+    case T_ROUND:
+    case T_TRUNC:
+      return DOMAIN_CTX_ARITH;
+    case T_NVL:
+    case T_NVL2:
+    case T_IFNULL:
+    case T_COALESCE:
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      return DOMAIN_CTX_COMMON_VALUE;
+    default:
+      return DOMAIN_CTX_FUNC_ARG;
+    }
 }
 
 static DB_TYPE
@@ -596,7 +630,7 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
       }
 
     default:
-      /* an operator the type rules do not know: resolve_domains must not guess */
+      /* an operator the type rules do not know: the caller must not guess */
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
@@ -632,9 +666,375 @@ domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DO
       result->conv[i] = resolved.conv[i];
       result->operand_domain[i] = resolved.operand_domain[i];
     }
+  result->result = NULL;
 }
 
 const DOMAIN_ARITH domain_arith_double = { DOMAIN_ARITH_NUMBER, DB_TYPE_DOUBLE };
+const DOMAIN_ARITH domain_arith_bigint = { DOMAIN_ARITH_NUMBER, DB_TYPE_BIGINT };
+
+/* CBRD-27583 (D-83): the conversion of a value of type source into target in a mode */
+static DOMAIN_CONVERSION
+domain_conversion (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CONVERT_MODE mode)
+{
+  const DOMAIN_CONVERSION conversion = { source, target, mode };
+  return conversion;
+}
+
+void
+domain_plan_coercion_result (DOMAIN_COERCION_PLAN * plan, const TP_DOMAIN * target)
+{
+  /* tp_value_coerce's (qdata_coerce_result_to_domain); a collection operator makes its value in the target's type */
+  if (target != NULL && !domain_is_variable (target) && plan->arith.type != DB_TYPE_NULL)
+    {
+      plan->result = domain_conversion (plan->arith.kind == DOMAIN_ARITH_COLLECTION ? TP_DOMAIN_TYPE (target)
+					: plan->arith.type, target, DOMAIN_CONVERT_IMPLICIT);
+    }
+}
+
+void
+domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan)
+{
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (opcode, operands, &coercion);
+  *plan = DOMAIN_COERCION_PLAN ();
+  plan->arith = coercion.arith;
+  for (int i = 0; i < 2; i++)
+    {
+      plan->operand_domain[i] = coercion.operand_domain[i];
+      if (coercion.conv[i] != NULL)
+	{
+	  /* an ENUM's name into DOUBLE is a plus over a string, which no plan adds (D-46 casts such an operand) */
+	  assert (coercion.conv[i] != domain_enumeration_name_converter ());
+	  plan->conv[i] = domain_conversion (domain_operand_type (&operands[i]), coercion.operand_domain[i],
+					     DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+}
+
+/*
+ * domain_plan_aggregate_accumulator () - an aggregate's accumulator domains, from its domain and its operand's, which
+ *   XASL generation decided: the ones develop's first non-NULL value gave. A SUM or AVG also gets the operand coercion
+ *   of a value it adds, the conversion of its first value and whether its typed accumulator takes the argument, the
+ *   operand coercion of a DISTINCT list's second value, an AVG its division's and a SUM the conversion of its sum into
+ *   its domain (4.6c); one whose argument is typed NULL sees only NULLs and gets none, and one over a date adds as
+ *   develop did, raising the addition's error at its second value. A STDDEV / VARIANCE gets [1] the conversion of a
+ *   value into DOUBLE and its division's operand coercion, a MEDIAN / PERCENTILE [1] the conversion of its argument's
+ *   type into its domain, which every value takes, a GROUP_CONCAT [1] the cast of a number, date, time or ENUM
+ *   argument into its domain.
+ */
+void
+domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
+				   const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  *plan = DOMAIN_ACCUMULATOR_PLAN ();
+  const bool argument_typed = argument != NULL && !domain_is_variable (argument)
+    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
+  switch (function)
+    {
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+      break;
+
+    case PT_JSON_ARRAYAGG:
+    case PT_JSON_OBJECTAGG:
+      plan->value_dom = &tp_Json_domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_GROUPBY_NUM:
+      plan->value_dom = &tp_Null_domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_COUNT:
+    case PT_COUNT_STAR:
+    case PT_AGG_BIT_AND:
+    case PT_AGG_BIT_OR:
+    case PT_AGG_BIT_XOR:
+      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator */
+      plan->value_dom = &tp_Bigint_domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_MIN:
+    case PT_MAX:
+      plan->value_dom = domain;
+      plan->value2_dom = &tp_Null_domain;
+      /* XASL generation gave MIN / MAX its argument's domain (D-36): a new extreme copies as it is (first_conv none) */
+      assert (!argument_typed || domain_is_variable (domain) || TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (domain));
+      break;
+
+    case PT_GROUP_CONCAT:
+      plan->value_dom = domain;
+      plan->value2_dom = &tp_Null_domain;
+      /* [1] the cast of a number, date, time or ENUM argument into the function's domain (a VARCHAR, the
+       * accumulator's type), which every value takes (qdata_concatenate_dbval, tp_value_cast). A string or bit string
+       * argument concatenates as it is and an argument typed NULL has only NULLs, which add nothing: neither casts;
+       * type checking rejects any other argument type (a host variable is typed by XASL generation) */
+      if (argument_typed && !domain_is_variable (domain)
+	  && (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (argument))
+	      || TP_DOMAIN_TYPE (argument) == DB_TYPE_ENUMERATION))
+	{
+	  plan->operand_coercion.operand_domain[1] = domain;
+	  plan->operand_coercion.conv[1] = domain_conversion (TP_DOMAIN_TYPE (argument), domain, DOMAIN_CONVERT_ASSIGN);
+	}
+      break;
+
+    case PT_STDDEV:
+    case PT_STDDEV_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VARIANCE:
+    case PT_VAR_POP:
+    case PT_VAR_SAMP:
+      plan->value_dom = &tp_Double_domain;
+      plan->value2_dom = &tp_Double_domain;
+      if (argument_typed)
+	{
+	  /* tp_value_coerce's conversion of a value into DOUBLE, none for a DOUBLE */
+	  plan->operand_coercion.operand_domain[1] = &tp_Double_domain;
+	  if (TP_DOMAIN_TYPE (argument) != DB_TYPE_DOUBLE)
+	    {
+	      plan->operand_coercion.conv[1] =
+		domain_conversion (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
+	    }
+	}
+      {
+	/* the sum of the DOUBLEs divided by the count, as an AVG's */
+	const DOMAIN_OPERAND divide[2] = {
+	  {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
+	};
+	domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+	domain_plan_coercion_result (&plan->divide_coercion, &tp_Double_domain);
+      }
+      break;
+
+    case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+      /* a number or a date keeps the accumulator unset, as develop's first value left it */
+      if (!TP_IS_NUMERIC_TYPE (opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (opr_dbtype) && !domain_is_variable (domain)
+	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	{
+	  plan->value_dom = domain;
+	  plan->value2_dom = &tp_Null_domain;
+	}
+      /* each value converts to the function's domain, which its list holds: the converter of the argument's type
+       * (none for the same type) */
+      if (argument_typed && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	{
+	  plan->operand_coercion.operand_domain[1] = domain;
+	  plan->operand_coercion.conv[1] =
+	    domain_conversion (TP_DOMAIN_TYPE (argument), domain, DOMAIN_CONVERT_IMPLICIT);
+	}
+      break;
+
+    case PT_SUM:
+    case PT_AVG:
+      {
+	if (!argument_typed)
+	  {
+	    /* an argument typed NULL sums nothing: the accumulator stays a NULL of the function's domain */
+	    plan->value_dom = domain;
+	    plan->value2_dom = &tp_Null_domain;
+	    /* CBRD-27583 (S3-32): the argument is typed NULL - XASL generation types every other (census "left untyped
+	     * sum" 0) */
+	    assert (argument != NULL && !domain_is_variable (argument));
+	    break;
+	  }
+	const DOMAIN_OPERAND operands[2] = {
+	  {NULL, DB_TYPE_NULL, -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, false}
+	};
+	RESOLVED_DOMAIN resolved;
+	bool needs_late_bind = false;
+	if (domain_resolve (DOMAIN_CTX_AGG, function, &operands[1], 1, domain, &resolved, &needs_late_bind) == NO_ERROR
+	    && !needs_late_bind && resolved.operand_domain[0] != NULL)
+	  {
+	    plan->value_dom = resolved.operand_domain[0];
+	  }
+	else
+	  {
+	    /* a date the addition rejects: the accumulator holds the function's domain, as develop's first value did */
+	    plan->value_dom = domain;
+	  }
+	/* CBRD-27583 (S3-32): a typed argument leaves nothing to a later binding */
+	assert (!needs_late_bind);
+	plan->value2_dom = &tp_Null_domain;
+	const DOMAIN_OPERAND add[2] = {
+	  {plan->value_dom, TP_DOMAIN_TYPE (plan->value_dom), -1, false}, operands[1]
+	};
+	domain_plan_operand_coercion (T_ADD, add, &plan->operand_coercion);
+	domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
+	/* the first value of another type than the sum's domain is converted into it (tp_value_cast_force), and a type
+	 * the typed accumulator takes sums there */
+	if (TP_DOMAIN_TYPE (argument) != TP_DOMAIN_TYPE (plan->value_dom))
+	  {
+	    plan->first_conv = domain_conversion (TP_DOMAIN_TYPE (argument), plan->value_dom, DOMAIN_CONVERT_ASSIGN);
+	  }
+	plan->accumulator_takes = SUM_ACC_IS_AGG_SUPPORTED_TYPE (TP_DOMAIN_TYPE (argument));
+	/* CBRD-27583 (S3-32): XASL generation casts any other argument (D-46; census "unnumbered sum argument" 0) */
+	assert (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) || TP_IS_SET_TYPE (TP_DOMAIN_TYPE (argument)));
+	const DOMAIN_OPERAND pair[2] = { operands[1], operands[1] };
+	domain_plan_operand_coercion (T_ADD, pair, &plan->distinct_coercion);
+	domain_plan_coercion_result (&plan->distinct_coercion, plan->value_dom);
+	if (function == PT_AVG)
+	  {
+	    /* a number divided by DOUBLE converts nothing: a single distinct value held in the argument's type divides
+	     * as the sum in value_dom does */
+	    const DOMAIN_OPERAND divide[2] = { add[0], {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false} };
+	    domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+	    domain_plan_coercion_result (&plan->divide_coercion, &tp_Double_domain);
+	  }
+	else if (domain != plan->value_dom && !domain_is_variable (domain))
+	  {
+	    plan->final_conv = domain_conversion (TP_DOMAIN_TYPE (plan->value_dom), domain, DOMAIN_CONVERT_ASSIGN);
+	  }
+      }
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * domain_plan_analytic_accumulator () - an analytic SUM / AVG's or STDDEV / VARIANCE's accumulator domains, or a
+ *   MEDIAN / PERCENTILE's or NTILE's value conversion, from the function's domain and its argument's, which XASL
+ *   generation decided; the partitions read them and derive nothing
+ *
+ * MEDIAN / PERCENTILE: [1] the conversion of the argument's type into the function's domain, which its value list
+ * holds; none for the same type.
+ * SUM / AVG: the sum has one domain for the partition, the function's - the first value is converted into it
+ * (first_conv) and every addition's result is coerced to it - except a sum kept floating, which keeps the argument's
+ * NUMERIC as it is (value_dom NULL): an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC. Every value is
+ * added with the operand coercion of (sum, argument). An argument type the resident accumulator takes
+ * (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT list's
+ * values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
+ * (the sum's type, DOUBLE).
+ * STDDEV / VARIANCE accumulate in DOUBLE: [1] the conversion of the argument's type into DOUBLE (tp_value_coerce's
+ * implicit mode), which runs at every value that is not a DOUBLE already; NTILE takes its bucket count into DOUBLE
+ * the same way.
+ * MIN / MAX copy a new extreme as it is: XASL generation gave the function its argument's domain (D-36).
+ */
+void
+domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
+				  DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  *plan = DOMAIN_ACCUMULATOR_PLAN ();
+  const bool sum_or_avg = function == PT_SUM || function == PT_AVG;
+  const bool stddev = function == PT_STDDEV || function == PT_STDDEV_POP || function == PT_STDDEV_SAMP
+    || function == PT_VARIANCE || function == PT_VAR_POP || function == PT_VAR_SAMP;
+  const bool argument_typed = argument != NULL && !domain_is_variable (argument)
+    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
+  if (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC)
+    {
+      if (argument_typed && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	{
+	  plan->operand_coercion.operand_domain[1] = domain;
+	  plan->operand_coercion.conv[1] =
+	    domain_conversion (TP_DOMAIN_TYPE (argument), domain, DOMAIN_CONVERT_IMPLICIT);
+	}
+      return;
+    }
+  if (function == PT_MIN || function == PT_MAX)
+    {
+      assert (!argument_typed || domain_is_variable (domain) || TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (domain));
+      return;
+    }
+  if (function == PT_NTILE || stddev)
+    {
+      if (stddev)
+	{
+	  plan->value_dom = &tp_Double_domain;
+	  plan->value2_dom = &tp_Double_domain;
+	}
+      if (argument_typed)
+	{
+	  plan->operand_coercion.operand_domain[1] = &tp_Double_domain;
+	  if (TP_DOMAIN_TYPE (argument) != DB_TYPE_DOUBLE)
+	    {
+	      plan->operand_coercion.conv[1] =
+		domain_conversion (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
+	    }
+	}
+      return;
+    }
+  if (!sum_or_avg || !argument_typed || domain == NULL || domain_is_variable (domain))
+    {
+      /* only NULLs reach a function over an argument typed NULL */
+      return;
+    }
+  const DB_TYPE argument_type = TP_DOMAIN_TYPE (argument);
+  const DB_TYPE function_type = TP_DOMAIN_TYPE (domain);
+  /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value or a
+   * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE (S3-17, D-46) */
+  assert (!TP_IS_CHAR_TYPE (argument_type));
+  const DB_TYPE kept = function == PT_AVG ? argument_type : function_type;
+  const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : domain;
+  plan->value_dom = kept == DB_TYPE_NUMERIC ? NULL : domain;
+  const DOMAIN_OPERAND operands[2] = {
+    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
+  };
+  domain_plan_operand_coercion (T_ADD, operands, &plan->operand_coercion);
+  domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
+  if (plan->value_dom != NULL && argument_type != function_type)
+    {
+      /* the first value into the sum's domain: the operand coercion's conversion where the rule converts the
+       * argument, the type pair's otherwise (a FLOAT into DOUBLE) */
+      plan->first_conv = plan->operand_coercion.conv[1].target != NULL ? plan->operand_coercion.conv[1]
+	: domain_conversion (argument_type, domain, DOMAIN_CONVERT_IMPLICIT);
+    }
+  plan->accumulator_takes = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (argument_type);
+  if (function == PT_AVG)
+    {
+      /* the sum the partition's end divides: the accumulator's typed sum, the added values' domain for a type it does
+       * not take and for a DISTINCT list, whose values are added */
+      const DB_TYPE sum_type = plan->accumulator_takes && option != Q_DISTINCT
+	? sum_acc_analytic_sum_type_for (argument_type) : TP_DOMAIN_TYPE (sum);
+      const DOMAIN_OPERAND divide[2] = {
+	{NULL, sum_type, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
+      };
+      domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+      domain_plan_coercion_result (&plan->divide_coercion, &tp_Double_domain);
+    }
+}
+
+void
+domain_plan_analytic_offset (int function, const TP_DOMAIN * domain, const TP_DOMAIN * offset,
+			     const TP_DOMAIN * default_value, DOMAIN_COERCION_PLAN * plan)
+{
+  *plan = DOMAIN_COERCION_PLAN ();
+  plan->operand_domain[0] = function == PT_NTH_VALUE ? &tp_Double_domain : &tp_Integer_domain;
+  plan->operand_domain[1] = domain;
+  const TP_DOMAIN *const source[2] = { offset, default_value };
+  for (int i = 0; i < 2; i++)
+    {
+      const TP_DOMAIN *target = plan->operand_domain[i];
+      if (source[i] != NULL && !domain_is_variable (source[i]) && TP_DOMAIN_TYPE (source[i]) != DB_TYPE_NULL
+	  && target != NULL && !domain_is_variable (target))
+	{
+	  plan->conv[i] = domain_conversion (TP_DOMAIN_TYPE (source[i]), target, DOMAIN_CONVERT_IMPLICIT);
+	}
+    }
+}
+
+TP_VALUE_CONVERTER
+domain_find_conversion (const DOMAIN_CONVERSION * conversion)
+{
+  return conversion->target == NULL ? NULL
+    : tp_value_find_converter (conversion->source, conversion->target, conversion->mode);
+}
+
+void
+domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERCION * coercion)
+{
+  for (int i = 0; i < 2; i++)
+    {
+      coercion->conv[i] = domain_find_conversion (&plan->conv[i]);
+      coercion->operand_domain[i] = plan->operand_domain[i];
+    }
+  coercion->arith = plan->arith;
+  coercion->result = domain_find_conversion (&plan->result);
+}
 
 /* The cached domain tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id) gives a string (the collation's
  * codeset) or a bit string, found without the transient domain tp_domain_resolve makes and frees; a domain not
@@ -784,7 +1184,7 @@ domain_is_interpolation_type (DB_TYPE type)
  *   (qdata_update_agg_interpolation_func_value_and_domain; the analytic first-execution block)
  *   return: the final domain, or NULL when only a value could tell (a string nobody typed)
  *   domain(in): the domain the function holds before that value (never VARIABLE here)
- *   argument_type(in): the type resolve_domains gave a string value (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
+ *   argument_type(in): the type a string value was compiled with (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
  *
  * A date or time stays; a DOUBLE (MEDIAN, PERCENTILE_CONT) or any number (PERCENTILE_DISC) stays; any other number
  * becomes DOUBLE, and a string becomes the first of DOUBLE, DATETIME, TIME it casts to.
@@ -810,22 +1210,23 @@ domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE argu
 }
 
 /* Whether an aggregate's or an analytic function's domain is late-bound, typed by its argument's value: the operand
- * was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves collation. */
+ * was VARIABLE when compiled (opr_dbtype, not the function's domain), the function domain is missing or VARIABLE, or
+ * it leaves collation. */
 static bool
 domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand)
 {
-  return operand->is_variable_pos || compiled == NULL || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
+  return operand->is_variable_pos || compiled == NULL || TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARIABLE
+    || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
 }
 
 /*
  * domain_resolve_aggregate - an aggregate's function and accumulator domains, as its argument's value types them
  *   compiled(in): consumer = the aggregate's compiled domain (agg_p->domain, set by xasl_generation.c)
- *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when resolve_domains
- *		  resolves it (is_variable_pos: opr_dbtype is VARIABLE); val_type = value type, typed by its value at
- *		  resolve_domains
+ *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain (is_variable_pos:
+ *		  opr_dbtype is VARIABLE); val_type = value type, typed by its value at XASL generation
  *   result(out): domain = the function domain (agg_p->domain after the row-time resolve, which the result is cast
  *		  to); operand_domain[0] / conv[0] = the accumulator domain (value_dom) the argument values are coerced
- *		  to. value2_dom is a per-function constant the load puts in domain_plan_acc.
+ *		  to. value2_dom is a per-function constant (domain_plan_aggregate_accumulator).
  */
 static int
 domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
@@ -853,7 +1254,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
   if ((function == PT_SUM || function == PT_AVG) && TP_IS_DATE_OR_TIME_TYPE (operand_type))
     {
       /* SUM and AVG add their values, and a date or time value does not add (qdata_add_dbval, -454 at the second
-       * value); the compiler rejects a date column, a NULL bind lets one through (nvl (?, d)): resolve_domains raises
+       * value); the compiler rejects a date column, a NULL bind lets one through (nvl (?, d)): the caller raises
        * the row's error before any row. return_null_on_function_errors keeps the row's NULL. */
       int error = domain_arith_reject ();
       if (error != NO_ERROR)
@@ -922,20 +1323,20 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
       if (operand->val_type == DB_TYPE_NULL && operand->domain != NULL
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
-	  /* a string value none of DOUBLE, DATETIME, TIME takes (resolve_domains could not type it): no domain;
-	   * the first value would raise the error; resolve_domains raises it */
+	  /* a string value none of DOUBLE, DATETIME, TIME takes (its compilation could not type it): no domain;
+	   * the first value would raise the error; the caller raises it */
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
       if (!domain_is_interpolation_type (operand_type))
 	{
 	  if (domain_is_interpolation_type (val_type))
 	    {
-	      /* resolve_domains typed the value as DOUBLE, DATETIME or TIME */
+	      /* the compilation typed the value as DOUBLE, DATETIME or TIME */
 	      function_domain = tp_domain_resolve_default (val_type);
 	    }
 	  else if (TP_IS_CHAR_TYPE (val_type))
 	    {
-	      /* a string resolve_domains has no value for (a column, an expression) is a number */
+	      /* a string the compilation has no value for (a column, an expression) is a number */
 	      function_domain = &tp_Double_domain;
 	    }
 	  else
@@ -949,7 +1350,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	   * the first value gives it the default domain of its type */
 	  function_domain = tp_domain_resolve_default (operand_type);
 	}
-      /* then the value takes the function's final type: resolve_domains records that domain */
+      /* then the value takes the function's final type */
       {
 	const TP_DOMAIN *final_domain = domain_interpolation_final (function, function_domain, val_type);
 	if (final_domain != NULL)
@@ -1043,7 +1444,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
     {
       /* an interpolation function is typed as its first execution types it: a function the compiler left variable takes
        * its operand's domain, then a number becomes DOUBLE (PERCENTILE_DISC keeps it) and a string the type
-       * resolve_domains gave its value, or DOUBLE when it has no value */
+       * its value was compiled with, or DOUBLE when it has no value */
       const TP_DOMAIN *start_domain = argument == NULL || TP_DOMAIN_TYPE (argument) == DB_TYPE_VARIABLE
 	? domain_operand_domain (operand) : argument;
       if (start_domain != NULL && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_VARIABLE)
@@ -1051,11 +1452,18 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	  if (!domain_is_interpolation_type (TP_DOMAIN_TYPE (start_domain))
 	      && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_NULL && operand->val_type == DB_TYPE_NULL)
 	    {
-	      /* a value none of DOUBLE, DATETIME, TIME takes (resolve_domains types a string, a BIT, a LOB, a
-	       * collection): the first execution would raise the error; resolve_domains raises it */
+	      /* a value none of DOUBLE, DATETIME, TIME takes (a string, a BIT, a LOB, a collection the compilation
+	       * types): the first execution would raise the error; the caller raises it */
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, start_domain, val_type);
+	  if (final_domain == NULL && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_NULL
+	      && !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (start_domain)))
+	    {
+	      /* a typed value none of DOUBLE, DATETIME, TIME takes (a BIT, a LOB, a collection): as the aggregate's, the
+	       * function is DOUBLE and the conversion of its argument raises the error (spec change 4) */
+	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	    }
 	  argument = final_domain != NULL ? final_domain
 	    : TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (start_domain)) ? tp_domain_resolve_default (DB_TYPE_DOUBLE) :
 	    start_domain;
@@ -1075,7 +1483,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
  * domain_resolve_function - result types of the late-bound functions (pt_is_op_hv_late_bind) and the value copies
  *   return: NO_ERROR, or the error the function raises for this argument type
  *
- * The value-dependent ones take their type from resolve_domains (ADDTIME and STR_TO_DATE in string_opfunc.c); the
+ * The value-dependent ones take their type from their values (ADDTIME and STR_TO_DATE in string_opfunc.c); the
  * others have a fixed result type or the type of the argument they copy. fetch_peek_arith gives no
  * value for a NULL first argument, and for any NULL argument of ADDTIME, STR_TO_DATE, NEW_TIME, FROM_TZ and CONV.
  */
@@ -1133,8 +1541,8 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  /* a value is typed before this (VARCHAR without a zone, DATETIMETZ with one); a string resolve_domains has no
-	   * value for (a column, an expression) is VARCHAR, the manual's "date/time string" row */
+	  /* a value is typed before this (VARCHAR without a zone, DATETIMETZ with one); a string the compilation has
+	   * no value for (a column, an expression) is VARCHAR, the manual's "date/time string" row */
 	  result_type = DB_TYPE_VARCHAR;
 	  break;
 	case DB_TYPE_DATETIME:
@@ -1154,6 +1562,11 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	  result_type = DB_TYPE_TIME;
 	  break;
 	default:
+	  /* db_add_time gives no value under return_null_on_function_errors */
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	    {
+	      goto set_operands;
+	    }
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
       break;
@@ -1271,7 +1684,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       goto copy_operands;
 
     default:
-      /* a function the type rules do not know: resolve_domains must not guess */
+      /* a function the type rules do not know: the caller must not guess */
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
@@ -1291,13 +1704,12 @@ copy_operands:
 
 /*
  * domain_resolve_list_column - a list column: its producer's domain (ALIAS); a set-operation or CTE column
- *   unifies its branches as qfile_unify_types does
+ *   unifies its branches
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES when the branches differ
  *
- * A branch without a value (a NULL bind) takes the other's domain; one domain, or one variable string type, keeps
- * the first branch's. Two different domains are rejected before execution: qfile_unify_types alone raises the error
- * only when both branch lists hold rows and takes the other branch's domain when one is empty, which no resolution
- * before the rows can follow.
+ * A branch without a value (a NULL, a NULL bind) takes the other's domain; one domain, or one variable string type,
+ * keeps the first branch's. Two different domains are rejected before execution, and XASL generation gives a branch
+ * column of NULLs the unified domain, so qfile_unify_types finds the branch lists agree (D-90).
  */
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
@@ -1345,8 +1757,9 @@ domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
 }
 
 /* The converter a comparison runs on a side: the ASSIGN converter (tp_value_coerce's on the pairs a
- * comparison reaches), failing what implicit coercion refuses. */
-static TP_VALUE_CONVERTER
+ * comparison reaches), failing what implicit coercion refuses. The unpack of a comparison term the compiler decided
+ * (stx_build_term_compare) finds the same converter from the term's target. */
+TP_VALUE_CONVERTER
 domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target)
 {
   if (domain_implicit_coercion_refused (source, TP_DOMAIN_TYPE (target)))
@@ -1403,15 +1816,12 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
 
 /*
  * domain_compare_converted () - comparison method CONVERT: tp_value_compare_with_error's coercion with its converters
- *				 resolved - the first side, then the other, then an ENUM's codeset for the string it
+ *				 decided - the first side, then the other, then an ENUM's codeset for the string it
  *				 meets - and cmpval
- *
- * A constant side resolve_domains converted comes in converted; one whose conversion failed gives the failure's
- * outcome at its turn. A correlated side its scope converted comes in converted too (preconverted).
  */
 DB_VALUE_COMPARE_RESULT
 domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
-			  int total_order, bool * can_compare, unsigned char preconverted)
+			  int total_order, bool * can_compare)
 {
   const DB_VALUE *side[2] = { value1, value2 };
   DB_VALUE converted[2], codeset_value;
@@ -1421,12 +1831,7 @@ domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value
   for (int k = 0; k < 2; k++)
     {
       const int s = k == 0 ? compare->first : 1 - compare->first;
-      if (compare->failed & (1 << s))
-	{
-	  result = domain_compare_conversion_failed (compare, k == 1, can_compare);
-	  goto end;
-	}
-      if (compare->conv[s] == NULL || (preconverted & (1 << s)))
+      if (compare->conv[s] == NULL)
 	{
 	  continue;
 	}
@@ -1473,6 +1878,30 @@ end:
   return result;
 }
 
+bool
+domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
+    {
+      return DB_IS_NULL (value1) && DB_IS_NULL (value2);
+    }
+  domain = domain_key_value_domain (domain);
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  const bool is_char = TP_IS_CHAR_TYPE (type);
+  if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL && !TP_IS_SET_TYPE (type) && type != DB_TYPE_VARIABLE
+      && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type
+      && (!is_char || (db_get_string_collation (value1) == domain->collation_id
+		       && db_get_string_collation (value2) == domain->collation_id)))
+    {
+      return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL,
+				   is_char ? domain->collation_id : 0) == DB_EQ;
+    }
+  /* only a collection key compares by its elements' values (S3-32) */
+  assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
+	  && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type);
+  return tp_value_compare (value1, value2, 1, 1) == DB_EQ;
+}
+
 DB_VALUE_COMPARE_RESULT
 domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
 		       int total_order, bool * can_compare)
@@ -1483,7 +1912,7 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
       return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
 				   compare->collation);
     case DOMAIN_COMPARE_CONVERT:
-      return domain_compare_converted (compare, value1, value2, total_order, can_compare, 0);
+      return domain_compare_converted (compare, value1, value2, total_order, can_compare);
     case DOMAIN_COMPARE_RANK:
       /* types that do not compare as they are, without coercion: the answer is their rank */
       if (can_compare != NULL)
@@ -1498,8 +1927,8 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
 #if !defined (NDEBUG)
       if (compare->method != DOMAIN_COMPARE_COLLATIONS)
 	{
-	  fprintf (stderr, "planned comparison kernel: kernel=%d site=%d source=%d,%d values=%d,%d\n",
-		   (int) compare->method, compare->compare_index, (int) compare->source[0], (int) compare->source[1],
+	  fprintf (stderr, "planned comparison kernel: kernel=%d source=%d,%d values=%d,%d\n",
+		   (int) compare->method, (int) compare->source[0], (int) compare->source[1],
 		   (int) DB_VALUE_DOMAIN_TYPE (value1), (int) DB_VALUE_DOMAIN_TYPE (value2));
 	}
 #endif
@@ -1620,12 +2049,6 @@ domain_value_domain (const DB_VALUE * value)
   return domain;
 }
 
-static bool
-domain_compare_key_equal (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs)
-{
-  return lhs->type == rhs->type && lhs->codeset == rhs->codeset && lhs->collation == rhs->collation;
-}
-
 const TP_DOMAIN *
 domain_key_value_domain (const TP_DOMAIN * domain)
 {
@@ -1718,35 +2141,46 @@ domain_copy_one (const TP_DOMAIN * domain)
   return tp_domain_copy (&one, false);
 }
 
-TP_VALUE_CONVERTER
-domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
+/* Whether every value of type source converts into the column's domain without failure, rounding or change of order:
+ * the integers into wider integers, into a NUMERIC holding all their digits and the two shorter ones into DOUBLE, FLOAT
+ * into DOUBLE, DATE and TIMESTAMP into DATETIME, a time zone TIMESTAMP into the DATETIME of its family. */
+static bool
+domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
 {
   const DB_TYPE target = TP_DOMAIN_TYPE (column);
-  /* tp_value_coerce_strict refuses any other target */
-  if (!TP_IS_NUMERIC_TYPE (target) && !TP_IS_DATE_OR_TIME_TYPE (target))
+  const int integer_digits = target == DB_TYPE_NUMERIC ? column->precision - column->scale : 0;
+  switch (source)
     {
-      return NULL;
+    case DB_TYPE_SHORT:
+      return target == DB_TYPE_INTEGER || target == DB_TYPE_BIGINT || target == DB_TYPE_DOUBLE || integer_digits >= 5;
+    case DB_TYPE_INTEGER:
+      return target == DB_TYPE_BIGINT || target == DB_TYPE_DOUBLE || integer_digits >= 10;
+    case DB_TYPE_BIGINT:
+      return integer_digits >= 19;
+    case DB_TYPE_FLOAT:
+      return target == DB_TYPE_DOUBLE;
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIMESTAMP:
+      return target == DB_TYPE_DATETIME;
+    case DB_TYPE_TIMESTAMPTZ:
+      return target == DB_TYPE_DATETIMETZ;
+    case DB_TYPE_TIMESTAMPLTZ:
+      return target == DB_TYPE_DATETIMELTZ;
+    default:
+      return false;
     }
-  return tp_value_find_converter (source, column, DOMAIN_CONVERT_COMPARE);
 }
 
 DOMAIN_KEY_RULE
-domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, TP_VALUE_CONVERTER * strict_conv)
+domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey)
 {
-  *strict_conv = NULL;
-  if (!midxkey)
-    {
-      /* a single-column key takes its value as it is */
-      return DOMAIN_KEY_INDEX;
-    }
   const DB_TYPE type = TP_DOMAIN_TYPE (element);
   const DB_TYPE column_type = TP_DOMAIN_TYPE (column);
   if (type != column_type)
     {
-      *strict_conv = domain_key_strict_converter (type, column);
-      return *strict_conv != NULL ? DOMAIN_KEY_STRICT : DOMAIN_KEY_KEEP;
+      return domain_key_converts_losslessly (type, column) ? DOMAIN_KEY_CONVERT : DOMAIN_KEY_KEEP;
     }
-  if (column_type == DB_TYPE_NUMERIC || column_type == DB_TYPE_CHAR || column_type == DB_TYPE_BIT)
+  if (midxkey && (column_type == DB_TYPE_NUMERIC || column_type == DB_TYPE_CHAR || column_type == DB_TYPE_BIT))
     {
       /* the parameters too: precision and scale, length, collation */
       return tp_domain_match_ignore_order (column, element, TP_EXACT_MATCH) ? DOMAIN_KEY_INDEX : DOMAIN_KEY_KEEP;
@@ -1755,13 +2189,54 @@ domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxk
 }
 
 bool
-domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column)
+domain_key_compare_merges (const DOMAIN_COMPARE * compare, const TP_DOMAIN * index_column)
 {
-  DOMAIN_COMPARE_KEY key[2];
-  domain_compare_key_of (domain, &key[0]);
-  domain_compare_key_of (column, &key[1]);
-  /* a NULL key compares nothing: its values are NULL, which the B-tree and the range build answer first */
-  return key[0].type != DB_TYPE_NULL && !domain_compare_key_equal (&key[0], &key[1]);
+  const DB_TYPE type = TP_DOMAIN_TYPE (index_column);
+  if (compare->method == DOMAIN_COMPARE_VALUES)
+    {
+      /* the values decide their conversion at the row */
+      return true;
+    }
+  if (compare->conv[1] == NULL)
+    {
+      /* the index key compares as it is: a string under the comparison's collation */
+      return TP_IS_CHAR_TYPE (type) && compare->collation != index_column->collation_id;
+    }
+  const DB_TYPE target = TP_DOMAIN_TYPE (compare->target[1]);
+  if (TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (target))
+    {
+      return compare->collation != index_column->collation_id;
+    }
+  if (type == DB_TYPE_NUMERIC && target == DB_TYPE_DOUBLE)
+    {
+      /* a decimal of DBL_DIG digits or fewer is a double of its own, in its order */
+      return index_column->precision > DBL_DIG;
+    }
+  return !domain_key_converts_losslessly (type, compare->target[1]);
+}
+
+void
+domain_compare_mirror (const DOMAIN_COMPARE * compare, DOMAIN_COMPARE * mirrored)
+{
+  *mirrored = *compare;
+  for (int side = 0; side < 2; side++)
+    {
+      mirrored->conv[side] = compare->conv[1 - side];
+      mirrored->target[side] = compare->target[1 - side];
+      mirrored->source[side] = compare->source[1 - side];
+    }
+  const bool converts = compare->conv[0] != NULL || compare->conv[1] != NULL;
+  /* the side converted first stays the same side; with nothing converted, the first value's type */
+  mirrored->first = converts ? (unsigned char) (1 - compare->first) : 0;
+  mirrored->converted_first = converts ? compare->converted_first : mirrored->source[0];
+  mirrored->rank = (signed char) -compare->rank;
+  mirrored->codeset_side = compare->codeset_side >= 0 ? (signed char) (1 - compare->codeset_side) : -1;
+  if (compare->cmp != NULL)
+    {
+      /* cmpval is the first value's type once converted */
+      mirrored->cmp = pr_type_from_id (mirrored->conv[0] != NULL ? TP_DOMAIN_TYPE (mirrored->target[0])
+				       : (DB_TYPE) mirrored->source[0]);
+    }
 }
 
 /* The collation a comparison of two keys compares the strings of type in: theirs when they share it, the common
@@ -1809,9 +2284,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   *result = DOMAIN_COMPARE
   {
   };
-  result->value[0] = result->value[1] = -1;
   result->codeset_side = -1;
-  result->compare_index = -1;
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
   result->method = DOMAIN_COMPARE_DIRECT;
@@ -1987,9 +2460,7 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
   *result = DOMAIN_COMPARE
   {
   };
-  result->value[0] = result->value[1] = -1;
   result->codeset_side = -1;
-  result->compare_index = -1;
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
   result->coercion = 0;
@@ -2047,14 +2518,13 @@ static std::atomic<DOMAIN_TYPE_PAIR_TABLE *> domain_Key_pairs (NULL);
 static std::mutex domain_Key_pairs_mutex;
 /* *INDENT-ON* */
 
-static bool
+bool
 domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
 {
   return a->method == b->method && a->first == b->first && a->source[0] == b->source[0]
-    && a->source[1] == b->source[1] && a->converted_first == b->converted_first && a->failed == b->failed
+    && a->source[1] == b->source[1] && a->converted_first == b->converted_first
     && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
-    && a->value[0] == b->value[0] && a->value[1] == b->value[1] && a->codeset_side == b->codeset_side
-    && a->compare_index == b->compare_index && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
+    && a->codeset_side == b->codeset_side && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
     && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->operator_functions == b->operator_functions;
 }
 
@@ -2212,44 +2682,11 @@ domain_type_pair_table_final (void)
   domain_key_pairs_free (domain_Key_pairs.exchange (NULL));
 }
 
-void
-domain_alias_statement (const char *alias, char *statement, size_t size)
-{
-  /* the alias is the plan cache key: the statement, then '?' and the system parameters it was compiled under
-   * (parser_print_tree), the user and the bind count; a message carries the statement alone */
-  size_t length = 0;
-  if (alias != NULL)
-    {
-      /* a key compiled without the system parameters (a recompiled statement) goes straight to "user=..." */
-      const char *user = strstr (alias, ";bind_var_cnt=");
-      const char *tail = NULL;
-      if (user != NULL)
-	{
-	  for (tail = user; tail > alias && strncmp (tail, "user=", 5) != 0; tail--)
-	    ;
-	}
-      while (alias[length] != '\0' && length < size - 1 && !(alias[length] == '?' && char_isdigit (alias[length + 1]))
-	     && (tail == NULL || alias + length < tail))
-	{
-	  length++;
-	}
-      while (length > 0 && alias[length - 1] == ' ')
-	{
-	  length--;
-	}
-      memcpy (statement, alias, length);
-    }
-  statement[length] = '\0';
-}
-
 int
-domain_unresolved_error (const char *alias, int index, DB_TYPE type)
+domain_unresolved_error (int index, DB_TYPE type)
 {
-  char statement[1024];
   assert (false);
-  domain_alias_statement (alias, statement, sizeof (statement));
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", statement, index,
-	  pr_type_name (type));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", index, pr_type_name (type));
   return ER_QPROC_DOMAIN_UNRESOLVED;
 }
 
@@ -2282,6 +2719,67 @@ domain_key_pair_index_exact (const DOMAIN_TYPE_PAIR_TABLE * pairs, const DOMAIN_
 }
 
 int
+domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided, bool * by_type)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  *by_type = true;
+  for (int side = 0; side < 2 && *by_type; side++)
+    {
+      /* LEAVE takes the value's collation, ENFORCE leaves a non-string value as it is */
+      *by_type = domain[side] != NULL && TP_DOMAIN_TYPE (domain[side]) != DB_TYPE_VARIABLE
+	&& domain[side]->collation_flag == TP_DOMAIN_COLL_NORMAL;
+      if (*by_type)
+	{
+	  /* an OBJECT's values are OIDs on the server */
+	  domain_compare_key_of (domain_key_value_domain (domain[side]), &key[side]);
+	}
+    }
+  if (!*by_type)
+    {
+      *decided = DOMAIN_COMPARE
+      {
+      };
+      decided->method = DOMAIN_COMPARE_VALUES;
+      decided->codeset_side = -1;
+      return NO_ERROR;
+    }
+  return domain_resolve_comparison (&key[0], &key[1], decided);
+}
+
+int
+domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
+			     const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare)
+{
+  const TP_DOMAIN *resolved;
+  const int error = domain_resolve_hash_key (outer, inner, &resolved);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  *coerce = *coerce || TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner) || outer->precision != inner->precision
+    || outer->scale != inner->scale;
+  *common = *coerce ? resolved : NULL;
+
+  const TP_DOMAIN *domain[2] = { outer, inner };
+  DOMAIN_COMPARE_KEY key[2];
+  for (int side = 0; side < 2; side++)
+    {
+      conv_kind[side] = DOMAIN_HASH_KEY_AS_IS;
+      if (*coerce && resolved != domain[side])
+	{
+	  /* tp_value_coerce's: a JSON value converts by its scalar, a string domain whose collation is the values'
+	   * (LEAVE, ENFORCE) takes them as they are - coerced at the row */
+	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON
+	    || TP_DOMAIN_COLLATION_FLAG (resolved) != TP_DOMAIN_COLL_NORMAL ? DOMAIN_HASH_KEY_COERCED
+	    : DOMAIN_HASH_KEY_CONVERTED;
+	}
+      domain_compare_key_of (*coerce ? resolved : domain[side], &key[side]);
+    }
+  domain_resolve_comparison_uncoerced (&key[0], &key[1], compare);
+  return NO_ERROR;
+}
+
+int
 domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
 {
   const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
@@ -2294,6 +2792,123 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
     }
   *result = pairs->pool[pairs->entry[1][row * pairs->n_keys + column]];
   return NO_ERROR;
+}
+
+int
+domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common)
+{
+  const DB_TYPE first_type = TP_DOMAIN_TYPE (first);
+  const DB_TYPE second_type = TP_DOMAIN_TYPE (second);
+  DB_TYPE type = first_type;
+  if (first_type != second_type)
+    {
+      DOMAIN_COMPARE_KEY key[2];
+      domain_compare_key_of (first, &key[0]);
+      domain_compare_key_of (second, &key[1]);
+      DOMAIN_COMPARE compare;
+      if (domain_resolve_comparison (&key[0], &key[1], &compare) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (compare.conv[0] != NULL || compare.conv[1] != NULL)
+	{
+	  type = compare.cmp->get_id ();
+	}
+      else if (tp_more_general_type (first_type, second_type) < 0)
+	{
+	  type = second_type;
+	}
+    }
+  if (type != first_type && type != second_type)
+    {
+      /* a string against a number or a date, which type checking casts before a hash key pair sees it */
+      *common = tp_domain_resolve_default (type);
+      return NO_ERROR;
+    }
+
+  int precision, scale;
+  if (first->precision == second->precision && first->scale == second->scale)
+    {
+      precision = second->precision;
+      scale = second->scale;
+    }
+  else if (first->precision == TP_FLOATING_PRECISION_VALUE || second->precision == TP_FLOATING_PRECISION_VALUE)
+    {
+      precision = TP_FLOATING_PRECISION_VALUE;
+      scale = 0;
+    }
+  else if (type == DB_TYPE_NUMERIC)
+    {
+      if (first->precision == DB_DEFAULT_NUMERIC_PRECISION || second->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+      else
+	{
+	  scale = MAX (first->scale, second->scale);
+	  precision = MAX (first->precision - first->scale, second->precision - second->scale) + scale;
+	  if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      scale = DB_DEFAULT_NUMERIC_SCALE;
+	    }
+	}
+    }
+  else
+    {
+      precision = MAX (first->precision, second->precision);
+      scale = 0;
+    }
+
+  if (type == first_type && precision == first->precision && scale == first->scale)
+    {
+      *common = first;
+      return NO_ERROR;
+    }
+  if (type == second_type && precision == second->precision && scale == second->scale)
+    {
+      *common = second;
+      return NO_ERROR;
+    }
+  TP_DOMAIN *copy = tp_domain_copy (type == first_type ? first : second, false);
+  if (copy == NULL)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  copy->precision = precision;
+  copy->scale = scale;
+  *common = tp_domain_cache (copy);
+  return NO_ERROR;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_compare_in_domain (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion,
+			  int total_order)
+{
+  if (DB_IS_NULL (value1))
+    {
+      return !total_order ? DB_UNK : DB_IS_NULL (value2) ? DB_EQ : DB_LT;
+    }
+  if (DB_IS_NULL (value2))
+    {
+      return total_order ? DB_GT : DB_UNK;
+    }
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT ? DB_TYPE_OID : TP_DOMAIN_TYPE (domain);
+#if !defined (NDEBUG)
+  const DB_VALUE *values[2] = { value1, value2 };
+  for (int i = 0; i < 2; i++)
+    {
+      /* the compiler's claim: the key's values are of its domain */
+      assert (TP_IS_CHAR_TYPE (type) ? TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (values[i]))
+	      && db_get_string_collation (values[i]) == domain->collation_id
+	      : DB_VALUE_DOMAIN_TYPE (values[i]) == type);
+    }
+#endif
+  return pr_type_from_id (type)->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, do_coercion, total_order, NULL,
+					 domain->collation_id);
 }
 
 int
@@ -2390,67 +3005,49 @@ domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, i
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value1, DB_VALUE * value2,
-			   int do_coercion, int total_order, bool * can_compare)
+domain_compare_decided (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
+			bool * can_compare)
 {
-  DOMAIN_COMPARE_KEY key[2];
-  domain_compare_key_of_value (value1, &key[0]);
-  domain_compare_key_of_value (value2, &key[1]);
-  if (domain_compare_key_equal (&key[0], &key[1]))
+  switch (compare->method)
     {
-      /* one type and one collation: nothing to coerce or merge (a kept column of the index column's type with other
-       * parameters, whose precision or length alone differs) */
-      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    case DOMAIN_COMPARE_DIRECT:
+      return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, 1, NULL,
+				   compare->collation);
+    case DOMAIN_COMPARE_CONVERT:
+      /* a converted side's value has the type its converter converts (XASL generation decided from its domain) */
+      assert (compare->conv[0] == NULL || DB_VALUE_DOMAIN_TYPE (value1) == compare->source[0]);
+      assert (compare->conv[1] == NULL || DB_VALUE_DOMAIN_TYPE (value2) == compare->source[1]);
+      return domain_compare_converted (compare, value1, value2, 1, can_compare);
+    case DOMAIN_COMPARE_VALUES:
+    case DOMAIN_COMPARE_OBJECT:
+    case DOMAIN_COMPARE_KEYS:
+      /* CBRD-27583 (S3-32): a key comparison is decided before the rows (census "key compare by value" 0) */
+      assert (false);
+      return tp_value_compare_with_error (value1, value2, 1, 1, can_compare);
+    default:
+      /* RANK, COLLATIONS */
+      return domain_compare_values (compare, value1, value2, 1, can_compare);
     }
-  const DOMAIN_TYPE_PAIR_TABLE *pairs = keys == DOMAIN_SEARCH_KEYS_OTHER ? domain_key_pairs () : NULL;
-  const int index[2] = {
-    pairs != NULL ? domain_key_pair_index (pairs, &key[0]) : -1,
-    pairs != NULL ? domain_key_pair_index (pairs, &key[1]) : -1
-  };
-  if (index[0] >= 0 && index[1] >= 0)
-    {
-      /* the table's keys take their collations' codesets, as the values an index scan compares have them */
-      assert (!TP_TYPE_HAS_COLLATION (key[0].type) || key[0].codeset == lang_get_collation (key[0].collation)->codeset);
-      assert (!TP_TYPE_HAS_COLLATION (key[1].type) || key[1].codeset == lang_get_collation (key[1].collation)->codeset);
-      const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[1][index[0] * pairs->n_keys + index[1]]];
-      if (compare->method == DOMAIN_COMPARE_OBJECT)
-	{
-	  /* an object side: tp_value_compare_with_error, which meets OIDs on the server */
-	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
-	}
-      return domain_compare_values (compare, value1, value2, total_order, can_compare);
-    }
-  if (keys == DOMAIN_SEARCH_KEYS_OTHER && pairs == NULL)
-    {
-      /* no table (no memory at boot and since): tp_value_compare_with_error answers, as for the other comparisons
-       * that read the table (domain_compare_by_type_pair, domain_resolve_comparison) */
-      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
-    }
-  /* the unresolved-domain check (execution): the plan knows whether a column's values take a key other than its own */
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", column,
-	  pr_type_name (key[0].type));
-  if (can_compare != NULL)
-    {
-      *can_compare = false;
-    }
-  return DB_UNK;
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_search_key_compare_own (int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-			       bool * can_compare)
+domain_key_bound_element_compare (const void *context, int column, DB_VALUE * value1, DB_VALUE * value2,
+				  int do_coercion, int total_order, bool * can_compare)
 {
-  return domain_search_key_compare (DOMAIN_SEARCH_KEYS_OWN, column, value1, value2, do_coercion, total_order,
-				    can_compare);
+  assert (total_order == 1);
+  return domain_compare_decided (&((const DOMAIN_COMPARE *) context)[column], value1, value2, can_compare);
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_search_key_compare_other (int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-				 bool * can_compare)
+domain_key_ranges_element_compare (const void *context, int column, DB_VALUE * value1, DB_VALUE * value2,
+				   int do_coercion, int total_order, bool * can_compare)
 {
-  return domain_search_key_compare (DOMAIN_SEARCH_KEYS_OTHER, column, value1, value2, do_coercion, total_order,
-				    can_compare);
+  assert (total_order == 1);
+  const DOMAIN_KEY_RANGES_PAIR *pair = (const DOMAIN_KEY_RANGES_PAIR *) context;
+  const int n = pair->ranges->n_classes[column];
+  const DOMAIN_COMPARE *compare =
+    pair->ranges->tables[column] + pair->classes[0][column] * n + pair->classes[1][column];
+  return domain_compare_decided (compare, value1, value2, can_compare);
 }
 
 int
@@ -2510,6 +3107,154 @@ domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands,
 
   assert (false);
   return ER_FAILED;
+}
+
+int
+domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified)
+{
+  *unified = NULL;
+  if (first == NULL || second == NULL || TP_DOMAIN_TYPE (first) == DB_TYPE_VARIABLE
+      || TP_DOMAIN_TYPE (second) == DB_TYPE_VARIABLE)
+    {
+      return NO_ERROR;
+    }
+  if (TP_DOMAIN_TYPE (first) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (second) == DB_TYPE_OBJECT)
+    {
+      /* objects of two classes are union compatible to type checking (qfile_unify_types checks their lists agree) */
+      return NO_ERROR;
+    }
+  const DOMAIN_OPERAND operands[2] = {
+    {first, TP_DOMAIN_TYPE (first), -1, false}, {second, TP_DOMAIN_TYPE (second), -1, false}
+  };
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  const int error = domain_resolve (DOMAIN_CTX_LIST_COLUMN, 0, operands, 2, NULL, &result, &needs_late_bind);
+  if (error == NO_ERROR && !needs_late_bind)
+    {
+      *unified = result.domain;
+    }
+  return error;
+}
+
+/* the regu writing column pos of the list output writes (hidden columns are not stored) */
+static REGU_VARIABLE *
+domain_output_regu (const OUTPTR_LIST * output, int pos)
+{
+  for (REGU_VARIABLE_LIST col = output != NULL ? output->valptrp : NULL; col != NULL; col = col->next)
+    {
+      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
+	{
+	  return &col->value;
+	}
+    }
+  return NULL;
+}
+
+TP_DOMAIN *
+domain_output_column (const OUTPTR_LIST * output, int pos)
+{
+  const REGU_VARIABLE *column = domain_output_regu (output, pos);
+  return column != NULL ? column->domain : NULL;
+}
+
+REGU_VARIABLE *
+domain_list_column_source (const XASL_NODE * xasl, int *pos, XASL_NODE * branch[2])
+{
+  branch[0] = branch[1] = NULL;
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+  switch (xasl->type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+      branch[0] = xasl->proc.union_.left;
+      branch[1] = xasl->proc.union_.right;
+      return NULL;
+    case CTE_PROC:
+      branch[0] = xasl->proc.cte.non_recursive_part;
+      branch[1] = xasl->proc.cte.recursive_part;
+      return NULL;
+    case MERGELIST_PROC:
+    case HASHJOIN_PROC:
+      {
+	/* a join's list holds each output column from its outer or its inner list, as the join writes its type list
+	 * (qexec_merge_list) */
+	const bool merge = xasl->type == MERGELIST_PROC;
+	const QFILE_LIST_MERGE_INFO *info = merge ? &xasl->proc.mergelist.ls_merge : &xasl->proc.hashjoin.merge_info;
+	if (*pos >= 0 && *pos < info->ls_pos_cnt)
+	  {
+	    branch[0] = info->ls_outer_inner_list[*pos] == QFILE_OUTER_LIST
+	      ? (merge ? xasl->proc.mergelist.outer_xasl : xasl->proc.hashjoin.outer.xasl)
+	      : (merge ? xasl->proc.mergelist.inner_xasl : xasl->proc.hashjoin.inner.xasl);
+	    *pos = info->ls_pos_list[*pos];
+	  }
+	return NULL;
+      }
+    case BUILDLIST_PROC:
+      /* the list holds the analytic or the GROUP BY output when the block has one */
+      if (xasl->proc.buildlist.a_eval_list != NULL && xasl->proc.buildlist.a_outptr_list != NULL)
+	{
+	  return domain_output_regu (xasl->proc.buildlist.a_outptr_list, *pos);
+	}
+      if (xasl->proc.buildlist.groupby_list != NULL && xasl->proc.buildlist.g_outptr_list != NULL)
+	{
+	  return domain_output_regu (xasl->proc.buildlist.g_outptr_list, *pos);
+	}
+      return domain_output_regu (xasl->outptr_list, *pos);
+    default:
+      return domain_output_regu (xasl->outptr_list, *pos);
+    }
+}
+
+TP_DOMAIN *
+domain_list_column_of (const XASL_NODE * xasl, int pos)
+{
+  XASL_NODE *branch[2];
+  const REGU_VARIABLE *column = domain_list_column_source (xasl, &pos, branch);
+  if (column != NULL || branch[0] == NULL)
+    {
+      return column != NULL ? column->domain : NULL;
+    }
+  if (branch[1] == NULL)
+    {
+      /* a join's input, or a CTE without a recursive part */
+      return domain_list_column_of (branch[0], pos);
+    }
+  const TP_DOMAIN *left = domain_list_column_of (branch[0], pos);
+  const TP_DOMAIN *right = domain_list_column_of (branch[1], pos);
+  const TP_DOMAIN *unified;
+  if (left == NULL || right == NULL || domain_unify_list_column (left, right, &unified) != NO_ERROR
+      || (TP_DOMAIN_TYPE (left) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (right) == DB_TYPE_OBJECT))
+    {
+      return NULL;
+    }
+  return unified != NULL ? (TP_DOMAIN *) unified : &tp_Variable_domain;
+}
+
+TP_DOMAIN *
+domain_list_column_compared (const XASL_NODE * xasl, int pos)
+{
+  TP_DOMAIN *domain = domain_list_column_of (xasl, pos);
+  return domain == NULL || domain_is_variable (domain) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
+}
+
+/*
+ * domain_list_column_joined () - CBRD-27583: a join key column's domain as domain_list_column_compared, but a NULL-typed
+ *   column (a NULL bind under arithmetic, D-25) takes the other side's domain: its values match no row, and the pair
+ *   is decided as that domain against itself (hjoin_init_domain_info of develop did this at each execution)
+ */
+TP_DOMAIN *
+domain_list_column_joined (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos)
+{
+  TP_DOMAIN *domain = domain_list_column_of (xasl, pos);
+  if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+    {
+      return domain_list_column_compared (other_xasl, other_pos);
+    }
+  return domain_list_column_compared (xasl, pos);
 }
 
 /* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would. */
@@ -2638,6 +3383,23 @@ domain_classify_str_to_date_format (const DB_VALUE * value)
   return type;
 }
 
+/* Whether the rule takes this operand's type from its value (a value-dependent argument type): an interpolation
+ * argument, the ADDTIME left string, the STR_TO_DATE format. An interpolation argument of a type that is neither a
+ * number nor a date (a string, a BIT, a LOB, a collection) is typed as its first value would be, by the cascade to
+ * DOUBLE, DATETIME and TIME, the aggregate's and the analytic's alike (no row types it; a value that takes none is the
+ * compilation's error). */
+bool
+domain_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
+{
+  if (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC)
+    {
+      return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
+	&& !TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type);
+    }
+  return context == DOMAIN_CTX_FUNC_ARG && ((opcode == T_ADDTIME && arg_index == 0 && TP_IS_CHAR_TYPE (type))
+					    || (opcode == T_STR_TO_DATE && arg_index == 1));
+}
+
 DB_TYPE
 domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value)
 {
@@ -2660,10 +3422,32 @@ domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_V
   return DB_VALUE_DOMAIN_TYPE (value);
 }
 
+/* The name of a session variable's type in its type error: a string's codeset too */
+static const char *
+domain_session_variable_type_name (DB_TYPE type, int codeset, char *buffer, size_t size)
+{
+  if (!TP_IS_CHAR_TYPE (type))
+    {
+      return pr_type_name (type);
+    }
+  snprintf (buffer, size, "%s charset %s", pr_type_name (type), lang_get_codeset_name (codeset));
+  return buffer;
+}
+
+int
+domain_session_variable_type_error (const char *name, DB_TYPE type, int codeset, DB_TYPE other_type, int other_codeset)
+{
+  char type_buffer[128], other_buffer[128];
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_VARIABLE_TYPE_FIXED, 3, name,
+	  domain_session_variable_type_name (type, codeset, type_buffer, sizeof (type_buffer)),
+	  domain_session_variable_type_name (other_type, other_codeset, other_buffer, sizeof (other_buffer)));
+  return ER_SES_VARIABLE_TYPE_FIXED;
+}
+
 /*
  * the character results of compiled nodes whose collation the compiler left to the values (LEAVE) or enforced
  * over an operand it could not type (ENFORCE). Each rule is what the operator gives its value at execution
- * (string_opfunc.c, tp_value_cast_internal); resolve_domains applies it once to the operands' resolved domains, as
+ * (string_opfunc.c, tp_value_cast_internal); XASL generation applies it once to the operands' domains, as
  * tp_domain_resolve_value would read the value.
  */
 
@@ -2867,8 +3651,9 @@ domain_first_character_operand (const DOMAIN_OPERAND * operands, int n_operands)
 
 /* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal. ENFORCE coerces a character source
  * into the value it initialized with the target type and precision, under the target's collation (the domain it
- * then makes from the source gives the converter alone), and leaves any other value as it is; LEAVE makes the
- * target type and precision under a character source's collation, or the target's own for any other source. */
+ * then makes from the source gives the converter alone), and leaves any other value but an ENUM as it is (D-75);
+ * LEAVE makes the target type and precision under a character source's collation, or the target's own for any other
+ * source. */
 static const TP_DOMAIN *
 domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled)
 {
@@ -2876,7 +3661,9 @@ domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled
   const bool char_source = from != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (from));
   if (TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_ENFORCE)
     {
-      if (!char_source)
+      /* CBRD-27583 (D-75): an ENUM takes the cast's string, as type checking declares the node and develop decides
+       * every consumer by it (an ENUM value's domain keeps no elements) */
+      if (!char_source && (from == NULL || TP_DOMAIN_TYPE (from) != DB_TYPE_ENUMERATION))
 	{
 	  return from;
 	}
@@ -2915,8 +3702,8 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
   else if (compiled != NULL && opcode == PT_GROUP_CONCAT)
     {
       /* a reader of a GROUP_CONCAT accumulator: qdata_group_concat_first_value makes the accumulator in its
-       * compiled string type under the function domain's codeset and collation, of its own length; a function the
-       * resolve_domains saw no value for gives no value */
+       * compiled string type under the function domain's codeset and collation, of its own length; a function no
+       * value reached gives no value */
       const TP_DOMAIN *function = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
       if (function == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (function)))
 	{

@@ -33,6 +33,7 @@ struct lc_copy_area;
 struct heap_cache_attrinfo;
 struct recdes;
 struct scan_id_struct;
+struct update_assignment;
 struct val_descr;
 
 namespace cubxasl
@@ -56,6 +57,7 @@ namespace cubquery
     int att_id;			/* index in the class attributes array */
     db_value *constant;		/* constant to be assigned to an attribute or NULL */
     regu_variable_node *regu_right;	/* regu variable for right side of an assignment */
+    const update_assignment *assignment;	/* CBRD-27583 (D-45): the XASL's - its domain and converter */
     update_mvcc_reev_assignment *next;	/* link to the next assignment */
   };
 

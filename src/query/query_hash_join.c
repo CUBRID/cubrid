@@ -38,6 +38,8 @@
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
+#include "domain_rules.h"	/* domain_compare_values */
+#include "object_domain_convert.h"	/* tp_value_find_converter, tp_value_convert */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -788,13 +790,11 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   context->outer.list_id = outer_list_id;
   context->outer.input = &domain_info->outer;
   context->outer.coerce_domains = domain_info->coerce_domains;
-  context->outer.need_coerce_domains = domain_info->need_coerce_domains;
   context->outer.regu_list_pred = proc->outer.regu_list_pred;
 
   context->inner.list_id = inner_list_id;
   context->inner.input = &domain_info->inner;
   context->inner.coerce_domains = domain_info->coerce_domains;
-  context->inner.need_coerce_domains = domain_info->need_coerce_domains;
   context->inner.regu_list_pred = proc->inner.regu_list_pred;
 
   /* Set in hjoin_init_context or hjoin_outer_fill_null_values. */
@@ -955,210 +955,63 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 }
 
 /*
- * hjoin_init_domain_info() -
- *   return: Error code (NO_ERROR if successful, error code otherwise).
+ * hjoin_init_domain_info() - the join columns' domains, common domains, converters and comparisons of this execution:
+ *   decided at unpack from the inputs' compiled column domains (unpack refuses a join it cannot decide)
+ *   return: NO_ERROR
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   domain_info(in/out): Domain information for join columns.
+ *   domain_info(in): Domain information for join columns.
  */
 static int
 hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_DOMAIN_INFO * domain_info)
 {
-  QFILE_LIST_MERGE_INFO *merge_info;
-  QFILE_LIST_ID *outer_list_id, *inner_list_id;
-
-  TP_DOMAIN **outer_domains, **inner_domains, **coerce_domains;
-  int *outer_value_indexes, *inner_value_indexes;
-  int outer_value_index, inner_value_index;
-  int domain_cnt, domain_index;
-  bool need_coerce_domains;
-
-  DB_TYPE outer_type, inner_type, common_type;
-  int outer_precision, inner_precision;
-  int outer_scale, inner_scale;
-  int outer_integral, inner_integral;
-  int common_precision, common_scale;
-
   assert (thread_p != NULL);
   assert (manager != NULL);
-  assert (domain_info != NULL);
-
-  merge_info = manager->merge_info;
-  assert (merge_info != NULL);
-
-  assert (manager->outer != NULL);
-  assert (manager->outer->xasl != NULL);
-  assert (manager->outer->xasl->list_id != NULL);
-  outer_list_id = manager->outer->xasl->list_id;
-
-  assert (manager->inner != NULL);
-  assert (manager->inner->xasl != NULL);
-  assert (manager->inner->xasl->list_id != NULL);
-  inner_list_id = manager->inner->xasl->list_id;
-
-  /* domain_info */
-  domain_cnt = merge_info->ls_column_cnt;
-
-  outer_domains = domain_info->outer.domains;
-  outer_value_indexes = domain_info->outer.value_indexes;
-  assert (outer_domains != NULL);
-  assert (outer_value_indexes != NULL);
-
-  inner_domains = domain_info->inner.domains;
-  inner_value_indexes = domain_info->inner.value_indexes;
-  assert (inner_domains != NULL);
-  assert (inner_value_indexes != NULL);
-
-  coerce_domains = domain_info->coerce_domains;
-  need_coerce_domains = domain_info->need_coerce_domains = false;
-
-  memset (coerce_domains, 0, domain_cnt * sizeof (TP_DOMAIN *));
-
-  /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new.
-   * the key columns' domains are the plan's - the join's lists opened with them (qdata_get_valptr_type_list)
-   * - so the common domain follows from resolutions made before any row. */
-  for (domain_index = 0; domain_index < domain_cnt; domain_index++)
-    {
-      outer_value_index = outer_value_indexes[domain_index];
-      inner_value_index = inner_value_indexes[domain_index];
-
-      outer_domains[domain_index] = outer_list_id->type_list.domp[outer_value_index];
-      inner_domains[domain_index] = inner_list_id->type_list.domp[inner_value_index];
-      assert (outer_domains[domain_index] != NULL);
-      assert (inner_domains[domain_index] != NULL);
-
-      outer_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
-      inner_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
-
-      /* common_type */
-      if (outer_type == inner_type)
-	{
-	  common_type = outer_type;
-	}
-      else
-	{
-	  need_coerce_domains = true;
-
-	  if (outer_type == DB_TYPE_NULL)
-	    {
-	      assert (false);
-	      coerce_domains[domain_index] = inner_domains[domain_index];
-	      continue;
-	    }
-	  else if (inner_type == DB_TYPE_NULL)
-	    {
-	      assert (false);
-	      coerce_domains[domain_index] = outer_domains[domain_index];
-	      continue;
-	    }
-	  else
-	    {
-	      common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;
-	    }
-	}
-
-      /* common_precision, common_scale */
-      outer_precision = outer_domains[domain_index]->precision;
-      outer_scale = outer_domains[domain_index]->scale;
-
-      inner_precision = inner_domains[domain_index]->precision;
-      inner_scale = inner_domains[domain_index]->scale;
-
-      if (outer_precision == inner_precision && outer_scale == inner_scale)
-	{
-	  common_precision = inner_precision;
-	  common_scale = inner_scale;
-	}
-      else
-	{
-	  need_coerce_domains = true;
-
-	  if (outer_precision == TP_FLOATING_PRECISION_VALUE || inner_precision == TP_FLOATING_PRECISION_VALUE)
-	    {
-	      common_precision = TP_FLOATING_PRECISION_VALUE;
-	      common_scale = 0;
-	    }
-	  else if (common_type == DB_TYPE_NUMERIC)
-	    {
-	      if (outer_precision == DB_DEFAULT_NUMERIC_PRECISION || inner_precision == DB_DEFAULT_NUMERIC_PRECISION)
-		{
-		  common_precision = DB_DEFAULT_NUMERIC_PRECISION;
-		  common_scale = DB_DEFAULT_NUMERIC_SCALE;
-		}
-	      else
-		{
-		  common_scale = MAX (outer_scale, inner_scale);
-
-		  outer_integral = outer_precision - outer_scale;
-		  inner_integral = inner_precision - inner_scale;
-
-		  common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		  if (common_precision > DB_MAX_FIXED_NUMERIC_PRECISION)
-		    {
-		      common_precision = DB_DEFAULT_NUMERIC_PRECISION;
-		      common_scale = DB_DEFAULT_NUMERIC_SCALE;
-		    }
-		}
-	    }
-	  else
-	    {
-	      common_precision = MAX (outer_precision, inner_precision);
-	      common_scale = 0;
-	    }
-	}
-
-      /* need_coerce_domains, coerce_domains */
-      if (need_coerce_domains)
-	{
-	  if (common_type == outer_type && common_precision == outer_precision && common_scale == outer_scale)
-	    {
-	      coerce_domains[domain_index] = outer_domains[domain_index];
-	    }
-	  else if (common_type == inner_type && common_precision == inner_precision && common_scale == inner_scale)
-	    {
-	      coerce_domains[domain_index] = inner_domains[domain_index];
-	    }
-	  else
-	    {
-	      coerce_domains[domain_index] =
-		tp_domain_copy ((common_type == outer_type) ? outer_domains[domain_index] : inner_domains[domain_index],
-				false);
-	      if (coerce_domains[domain_index] == NULL)
-		{
-		  assert_release_error (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
-
-	      coerce_domains[domain_index]->precision = common_precision;
-	      coerce_domains[domain_index]->scale = common_scale;
-
-	      coerce_domains[domain_index] = tp_domain_cache (coerce_domains[domain_index]);
-	    }
-	}
-    }				/* for (domain_index < domain_cnt) */
+  assert (domain_info != NULL && domain_info->decided);
+  assert (manager->merge_info != NULL);
+  assert (domain_info->outer.domains != NULL && domain_info->outer.value_indexes != NULL);
+  assert (domain_info->inner.domains != NULL && domain_info->inner.value_indexes != NULL);
 
 #if !defined (NDEBUG)
-  if (!need_coerce_domains)
+  assert (manager->outer != NULL && manager->outer->xasl != NULL && manager->outer->xasl->list_id != NULL);
+  assert (manager->inner != NULL && manager->inner->xasl != NULL && manager->inner->xasl->list_id != NULL);
+  const QFILE_LIST_ID *outer_list_id = manager->outer->xasl->list_id;
+  const QFILE_LIST_ID *inner_list_id = manager->inner->xasl->list_id;
+  for (int domain_index = 0; domain_index < manager->merge_info->ls_column_cnt; domain_index++)
     {
-      for (domain_index = 0; domain_index < domain_cnt; domain_index++)
-	{
-	  assert (coerce_domains[domain_index] == NULL);
-	}
+      const TP_DOMAIN *outer = outer_list_id->type_list.domp[domain_info->outer.value_indexes[domain_index]];
+      const TP_DOMAIN *inner = inner_list_id->type_list.domp[domain_info->inner.value_indexes[domain_index]];
+      /* the lists were opened with the domains unpack read */
+      assert (outer != NULL && inner != NULL);
+      assert (TP_DOMAIN_TYPE (outer) == TP_DOMAIN_TYPE (domain_info->outer.domains[domain_index])
+	      && outer->precision == domain_info->outer.domains[domain_index]->precision
+	      && outer->scale == domain_info->outer.domains[domain_index]->scale);
+      assert (TP_DOMAIN_TYPE (inner) == TP_DOMAIN_TYPE (domain_info->inner.domains[domain_index])
+	      && inner->precision == domain_info->inner.domains[domain_index]->precision
+	      && inner->scale == domain_info->inner.domains[domain_index]->scale);
     }
-#endif /* !NDEBUG */
+#endif
 
-  /* If join predicates compare different types, need_coerce_domains is set to true;
-   * otherwise, it is false.
-   * 
-   * When need_coerce_domains is true, coerce_domains is set to inner_domains,
-   * outer_domains, or a common domain for comparison.
-   *
-   * If either inner_domains or outer_domains matches coerce_domains, 
-   * no coercion is needed. Otherwise, values are coerced to the common domain. */
-  domain_info->need_coerce_domains = need_coerce_domains;
-
-  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
+}
+
+/* A join column value coerced as tp_value_coerce does, where no converter does it (domain_decide_hash_join_key):
+ * a JSON value's scalar, which converts by its own type. */
+static TP_DOMAIN_STATUS
+hjoin_coerce_key (const DB_VALUE * value, DB_VALUE * result, const TP_DOMAIN * domain, date_conversion_error *)
+{
+  return tp_value_coerce (value, result, domain);
+}
+
+/*
+ * hjoin_key_converter () - the converter of one input's join column value into its key's common domain, by the kind
+ *   the compiler decided (domain_decide_hash_join_key); NULL for a value hashed as it is
+ */
+TP_VALUE_CONVERTER
+hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common)
+{
+  return conv_kind == DOMAIN_HASH_KEY_COERCED ? hjoin_coerce_key
+    : conv_kind == DOMAIN_HASH_KEY_CONVERTED ? tp_value_find_converter (source, common, DOMAIN_CONVERT_IMPLICIT) : NULL;
 }
 
 /*
@@ -1454,13 +1307,11 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       current_context->outer.list_id = outer_part_list_id[part_index];
       current_context->outer.input = single_context->outer.input;
       current_context->outer.coerce_domains = single_context->outer.coerce_domains;
-      current_context->outer.need_coerce_domains = single_context->outer.need_coerce_domains;
       current_context->outer.regu_list_pred = single_context->outer.regu_list_pred;
 
       current_context->inner.list_id = inner_part_list_id[part_index];
       current_context->inner.input = single_context->inner.input;
       current_context->inner.coerce_domains = single_context->inner.coerce_domains;
-      current_context->inner.need_coerce_domains = single_context->inner.need_coerce_domains;
       current_context->inner.regu_list_pred = single_context->inner.regu_list_pred;
 
       assert (current_context->build == NULL);
@@ -1935,6 +1786,7 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
     {
     case HASHJOIN_MERGE_COMBINE:
       {
+	/* not chosen (qlist_merge_method is HASHJOIN_MERGE_CONNECT); both lists are this join's, of one type list */
 	new_list_id =
 	  qfile_combine_two_list (thread_p, single_context->list_id, context->list_id,
 				  QFILE_FLAG_ALL | QFILE_FLAG_UNION);
@@ -2771,7 +2623,6 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
     }
 
   hash_scan->curr_hash_key = 0;
-  hash_scan->need_coerce_type = false;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -2906,6 +2757,16 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
   return status;
 }
 
+/* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion). No
+ * key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
+ * (xts_pack_hash_join_keys). */
+static inline DB_VALUE_COMPARE_RESULT
+hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  assert (compare->method != DOMAIN_COMPARE_OBJECT && compare->method != DOMAIN_COMPARE_VALUES);
+  return domain_compare_values (compare, value1, value2, 0, NULL);
+}
+
 /*
  * hjoin_fetch_key() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
@@ -2921,16 +2782,14 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 		 HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next)
 {
   TP_DOMAIN **domains, **coerce_domains;
+  TP_VALUE_CONVERTER *converters;
   int *value_indexes;
-  bool need_coerce_domains;
 
   int value_index, key_index;
   bool value_is_null;
 
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
   DB_VALUE pre_coerce_value;
-
-  DB_VALUE_COMPARE_RESULT compare_result = DB_EQ;
 
   int error = NO_ERROR;
 
@@ -2945,10 +2804,11 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 
   domains = fetch_info->input->domains;
   value_indexes = fetch_info->input->value_indexes;
+  converters = fetch_info->input->converters;
   coerce_domains = fetch_info->coerce_domains;
-  need_coerce_domains = fetch_info->need_coerce_domains;
   assert (domains != NULL);
   assert (value_indexes != NULL);
+  assert (converters != NULL);
   assert (coerce_domains != NULL);
 
   db_make_null (&pre_coerce_value);
@@ -2959,7 +2819,7 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
       value_index = value_indexes[key_index];
       pr_clear_value (key->values[key_index]);
 
-      if (need_coerce_domains && coerce_domains[key_index] != NULL && coerce_domains[key_index] != domains[key_index])
+      if (converters[key_index] != NULL)
 	{
 	  error = qfile_slot_read_column_value (tuple_record, value_index, domains[key_index], &pre_coerce_value, false,
 						&value_is_null);
@@ -2973,8 +2833,8 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	      goto skip_next;
 	    }
 
-	  if (coerce_domains[key_index]->type->id == DB_TYPE_NUMERIC
-	      && pre_coerce_value.domain.general_info.type == DB_TYPE_NUMERIC
+	  if (TP_DOMAIN_TYPE (coerce_domains[key_index]) == DB_TYPE_NUMERIC
+	      && TP_DOMAIN_TYPE (domains[key_index]) == DB_TYPE_NUMERIC
 	      && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
 	      && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
 	      && pre_coerce_value.domain.numeric_info.scale < 0)
@@ -2988,10 +2848,13 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	      pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
 	    }
 
-	  domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
+	  domain_status =
+	    tp_value_convert (converters[key_index], coerce_domains[key_index], &pre_coerce_value,
+			      key->values[key_index]);
 	  if (domain_status != DOMAIN_COMPATIBLE)
 	    {
 	      tp_domain_status_er_set (domain_status, ARG_FILE_LINE, &pre_coerce_value, coerce_domains[key_index]);
+	      pr_clear_value (key->values[key_index]);
 	      pr_clear_value (&pre_coerce_value);
 	      goto error_exit;
 	    }
@@ -3014,14 +2877,12 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	    }
 	}
 
-      if (compare_key != NULL)
+      /* Skip the tuple if any value does not match */
+      if (compare_key != NULL
+	  && hjoin_compare_key (&fetch_info->input->compares[key_index], key->values[key_index],
+				compare_key->values[key_index]) != DB_EQ)
 	{
-	  /* Skip the tuple if any value does not match */
-	  compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
-	  if (compare_result != DB_EQ)
-	    {
-	      goto skip_next;
-	    }
+	  goto skip_next;
 	}
     }
 

@@ -5639,8 +5639,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      return (status);
 	    case DB_TYPE_JSON:
-	      status =
-		tp_value_find_converter (DB_TYPE_JSON, desired_domain, DOMAIN_CONVERT_ASSIGN) (src, dest,
+	      /* into a JSON domain with a schema: the plan's converter, else the one the types give */
+	      status = (found != NULL && found->src_type == DB_TYPE_JSON && found->domain == desired_domain
+			? found->converter : tp_value_find_converter (DB_TYPE_JSON, desired_domain,
+								      DOMAIN_CONVERT_ASSIGN)) (src, dest,
 											       desired_domain,
 											       &conversion_error);
 	      pr_clear_value (&src_replacement);
@@ -5826,9 +5828,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       else
 	{
-	  status = tp_value_find_converter (DB_TYPE_NUMERIC, desired_domain, DOMAIN_CONVERT_ASSIGN) (&number, target,
-												     desired_domain,
-												     &conversion_error);
+	  status = tp_value_numeric_fit_converter ()(&number, target, desired_domain, &conversion_error);
 	}
     }
   else
@@ -5837,13 +5837,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	? DOMAIN_CONVERT_IMPLICIT : DOMAIN_CONVERT_ASSIGN;
       TP_VALUE_CONVERTER converter;
       /* the plan found a converter before any row for the type of the caller's operand and the caller's domain
-       * (tp_value_cast_with_converter, an explicit cast): a value of another type, or a domain this function
-       * selected from a domain list or made for an ENFORCE collation above, looks its converter up */
-      assert (found == NULL || mode == DOMAIN_CONVERT_ASSIGN);
+       * (tp_value_cast_with_converter, tp_value_coerce_with_converter): a value of another type, or a domain this
+       * function selected from a domain list or made for an ENFORCE collation above, looks its converter up */
       if (found != NULL && found->src_type == original_type && found->domain == desired_domain)
 	{
 	  converter = found->converter;
-	  assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
 	}
       else
 	{
@@ -5986,6 +5984,21 @@ tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DO
   const tp_cast_converter found = { src_type, desired_domain, converter };
   return tp_value_cast_internal (src, dest, desired_domain, force ? TP_FORCE_COERCION : TP_EXPLICIT_COERCION, true,
 				 false, converter != NULL ? &found : NULL);
+}
+
+/*
+ * tp_value_coerce_with_converter () - tp_value_coerce with the converter a plan found before any row for values of
+ *   type src_type into desired_domain: the coercion skips its lookup for such a value
+ *   return: as tp_value_coerce
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_IMPLICIT); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_coerce_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+				DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
+  const tp_cast_converter found = { src_type, desired_domain, converter };
+  return tp_value_cast_internal (src, dest, desired_domain, TP_IMPLICIT_COERCION, true, false,
+				 converter != NULL ? &found : NULL);
 }
 
 /*
@@ -7238,6 +7251,20 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
 TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
+  return tp_value_auto_cast_with_precision_check_converter (src, dest, desired_domain, DB_VALUE_TYPE (src), NULL);
+}
+
+/*
+ * tp_value_auto_cast_with_precision_check_converter () - tp_value_auto_cast_with_precision_check with the converter a
+ *   plan found before any row for values of type src_type into desired_domain (tp_value_cast_with_converter)
+ *   return: TP_DOMAIN_STATUS
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALUE * dest,
+						   const TP_DOMAIN * desired_domain, DB_TYPE src_type,
+						   TP_VALUE_CONVERTER converter)
+{
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   static const INT64 max_value[DB_BIGINT_PRECISION] = {
     1LL,
@@ -7311,7 +7338,15 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 
   if (dom_status != DOMAIN_OVERFLOW)
     {
-      dom_status = tp_value_auto_cast (src, dest, desired_domain);
+      /* tp_value_auto_cast with the converter */
+      dom_status = tp_value_cast_with_converter (src, dest, desired_domain, false, src_type, converter);
+      if (dom_status != DOMAIN_COMPATIBLE && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  dom_status = DOMAIN_COMPATIBLE;
+	  pr_clear_value (dest);
+	  db_make_null (dest);
+	  er_clear ();
+	}
     }
 
   return dom_status;
@@ -7333,9 +7368,22 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 TP_DOMAIN_STATUS
 tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
+  return tp_value_auto_cast_with_converter (src, dest, desired_domain, DB_TYPE_NULL, NULL);
+}
+
+/*
+ * tp_value_auto_cast_with_converter () - tp_value_auto_cast with the converter a plan found before any row for values
+ *   of type src_type into desired_domain (tp_value_cast_with_converter)
+ *   return: TP_DOMAIN_STATUS
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+				   DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
   TP_DOMAIN_STATUS status;
 
-  status = tp_value_cast (src, dest, desired_domain, false);
+  status = tp_value_cast_with_converter (src, dest, desired_domain, false, src_type, converter);
   if (status != DOMAIN_COMPATIBLE)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)

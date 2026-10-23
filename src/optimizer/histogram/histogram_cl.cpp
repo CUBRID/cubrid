@@ -2879,11 +2879,14 @@ bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
  * unpeeked-plan flag and the bind fingerprint are about. Auto-parameterized literals
  * (index >= host_var_count; see pt_rewrite_to_auto_param) are constants the compiler
  * already saw -- treating them as bind variables made every catalog-vclass query (whose
- * view spec is full of literals) replan on its first EXECUTE. */
+ * view spec is full of literals) replan on its first EXECUTE. CBRD-27583: a derived position
+ * (pt_assign_host_var_positions: a rule cast, int_col = ? bound with a string) holds the user's
+ * value the client converted, so it moves with the binds as its user position does. */
 static bool
 histogram_is_user_host_var (const PARSER_CONTEXT *parser, const PT_NODE *hv)
 {
-  return hv != NULL && hv->node_type == PT_HOST_VAR && hv->info.host_var.index < parser->host_var_count;
+  return hv != NULL && hv->node_type == PT_HOST_VAR
+	 && (hv->info.host_var.index < parser->host_var_count || pt_is_derived_host_var (parser, hv->info.host_var.index));
 }
 
 /*

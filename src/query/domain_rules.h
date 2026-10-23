@@ -19,10 +19,7 @@
 #ifndef _DOMAIN_RULES_H_
 #define _DOMAIN_RULES_H_
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Belongs only to server or stand-alone modules.
-#endif
-
+/* CBRD-27583: one type rule module for the compiler (cs) and the executor (server, sa). */
 #include "object_domain.h"	/* TP_DOMAIN_STATUS and shared value types, no client API. */
 #include "object_domain_convert.h"
 #include "thread_compat.hpp"
@@ -72,15 +69,17 @@ struct RESOLVED_DOMAIN
 
 struct DOMAIN_OPERAND
 {
-  const TP_DOMAIN *domain;	/* plan domain at load, value domain at resolve_domains */
-  DB_TYPE val_type;		/* resolve_domains only (the type of a value-dependent argument); DB_TYPE_NULL at
-				 * load */
+  const TP_DOMAIN *domain;	/* compiled domain, or the value's domain */
+  DB_TYPE val_type;		/* the type of a value-dependent argument's value; DB_TYPE_NULL otherwise */
   int coll_id;			/* character operands only; -1 otherwise */
   bool is_variable_pos;
 };
 
 /* The converter mode of a resolver context: the mode tp_value_find_converter finds its converters in */
 DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
+
+/* The resolver context of an operator node (OPERATOR_TYPE) whose domain is resolved from its operands' */
+DOMAIN_CTX domain_late_bind_context (int opcode);
 
 /*
  * The single home of the server type rules: the value-type rules execution applied at the row in
@@ -89,13 +88,43 @@ DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
  * domains are cache domains (no caller-owned allocation, no er_set). An operand with val_type == DB_TYPE_NULL whose
  * domain is not fixed sets *needs_late_bind and leaves result untouched. opcode is OPERATOR_TYPE for
  * ARITH/COMPARE/COMMON_VALUE/FUNC_ARG and FUNC_CODE for AGG/ANALYTIC. AGG/ANALYTIC: consumer_domain = the function's
- * compiled domain; operands[0] = the argument (is_variable_pos = resolve_domains resolves it, opr_dbtype VARIABLE);
+ * compiled domain; operands[0] = the argument (is_variable_pos = its value types it, opr_dbtype VARIABLE);
  * result domain = the function domain, operand_domain[0] = accumulator domain. result: domain = result (COMPARE:
  * comparison domain), operand_domain[i] = target of operand i, conv[i] = operand converter in the type rules' mode
  * (always looked up against operand_domain[i]).
  */
 int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		    const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_late_bind);
+
+/*
+ * The domains of the columns of the list files XASL nodes make (principle 1-6), one rule for XASL generation and
+ * for unpack.
+ * domain_unify_list_column () - one column of two set-operation or CTE branches, or of two VALUES rows, unified
+ *   (domain_resolve_list_column): a branch whose column holds only NULLs (DB_TYPE_NULL) takes it at XASL generation,
+ *   and qfile_unify_types checks the lists agree
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES
+ *   unified(out): the column's domain; NULL when a side's domain is not fixed
+ * domain_output_column () - column pos of the list an output list writes (hidden columns are not stored)
+ * domain_list_column_source () - where column pos of the list an XASL node makes comes from: the regu writing it (a
+ *   block's output, its analytic or GROUP BY output when it has one), or the lists it is made of in branch[] (a set
+ *   operation's branches, a recursive CTE's parts, the input a merge or hash join takes it from, at *pos there)
+ *   return: the regu; NULL for a list made of lists or where no column is found (branch[0] NULL)
+ * domain_list_column_of () - column pos of the list an XASL node makes: a block's output column (its analytic or
+ *   GROUP BY output when it has one), the unified column of a set operation's branches or of a recursive CTE's two
+ *   parts, a merge or hash join's column of the input it takes that column from; the variable domain where a side's
+ *   domain is not fixed, NULL where no column is found, the branches do not unify or both are objects
+ */
+struct xasl_node;
+struct valptr_list_node;
+class regu_variable_node;
+int domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified);
+TP_DOMAIN *domain_output_column (const struct valptr_list_node *output, int pos);
+regu_variable_node *domain_list_column_source (const struct xasl_node *xasl, int *pos, struct xasl_node *branch[2]);
+TP_DOMAIN *domain_list_column_of (const struct xasl_node *xasl, int pos);
+/* CBRD-27583: a list column's domain as a comparison reads it - NULL where its values decide (VARIABLE) or are NULL */
+TP_DOMAIN *domain_list_column_compared (const struct xasl_node *xasl, int pos);
+TP_DOMAIN *domain_list_column_joined (const struct xasl_node *xasl, int pos, const struct xasl_node *other_xasl,
+				      int other_pos);
 
 /* The operand coercion of T_ADD, T_SUB, T_MUL or T_DIV: conv[i] converts operand i into operand_domain[i], NULL
  * converts nothing. SUM and AVG keep one for the values they add; an arithmetic node's RESOLVED_DOMAIN holds the same
@@ -105,11 +134,95 @@ struct DOMAIN_OPERAND_COERCION
   TP_VALUE_CONVERTER conv[2];
   const TP_DOMAIN *operand_domain[2];
   DOMAIN_ARITH arith;		/* what the operator makes of the coerced operands */
+  TP_VALUE_CONVERTER result;	/* CBRD-27583 (S3-40b): the converter of the operator's value (arith.type) into the
+				 * domain its holder coerces it to (an accumulator's value_dom, DOUBLE for a division,
+				 * an ORDERBY_NUM bound's domain), found before the rows; NULL: none */
+};
+
+/* CBRD-27583 (D-87): the conversion a partitioned class's pruning puts a predicate's value (an IN list's element)
+ * through before it hashes it or evaluates a partition expression on it: from the value's domain into the domain of
+ * the term's other side (prune_domain), found by the unpack. */
+struct DOMAIN_PRUNE_CONVERSION
+{
+  TP_VALUE_CONVERTER conv;	/* NULL: the value has the type of prune_domain already (no pruning cast in develop); a
+				 * pair that does not convert has the converter that refuses every value: the term does
+				 * not prune */
+  DB_TYPE source;		/* the type of the values conv takes: the value regu's, the list's elements' */
+};
+
+/* CBRD-27583 (D-94): the conversion of an ORDERBY_NUM upper bound into INTEGER (top-N) or of an INST_NUM upper limit
+ * into BIGINT (a parallel scan's limit), from the bound regu's domain, found by the unpack */
+struct DOMAIN_BOUND_CONVERSION
+{
+  TP_VALUE_CONVERTER conv;	/* NULL: the bound has that type already */
+  DB_TYPE source;		/* the bound regu's type */
 };
 
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
  * ARITH rule over operands of these types, and what the operator makes of them (arith), whatever the result domain. */
 void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);
+
+/*
+ * CBRD-27583 (D-83): the plans the compiler decides for the server's arithmetic outside a node - an aggregate's or
+ * analytic function's accumulator, a LEAD / LAG / NTH_VALUE's offset and default, an ORDERBY_NUM upper bound - as the
+ * stream carries them; unpack looks their converters up (domain_find_conversion) and decides nothing.
+ * A conversion names the converter tp_value_find_converter finds for its source type, target and mode; source
+ * DB_TYPE_NULL converts nothing.
+ */
+struct DOMAIN_CONVERSION
+{
+  DB_TYPE source;
+  const TP_DOMAIN *target;
+  DOMAIN_CONVERT_MODE mode;
+};
+
+/* DOMAIN_OPERAND_COERCION with its converters as conversions (conv[i]'s target is operand_domain[i]) */
+struct DOMAIN_COERCION_PLAN
+{
+  DOMAIN_CONVERSION conv[2];
+  const TP_DOMAIN *operand_domain[2];
+  DOMAIN_ARITH arith;
+  DOMAIN_CONVERSION result;
+};
+
+/* A coercion plan's result conversion: the operator's value into target (none for a target not fixed) */
+void domain_plan_coercion_result (DOMAIN_COERCION_PLAN * plan, const TP_DOMAIN * target);
+
+/* The decisions of an accumulator (cubxasl::aggregate_accumulator_domain, whose fields say what each one is) */
+struct DOMAIN_ACCUMULATOR_PLAN
+{
+  const TP_DOMAIN *value_dom;
+  const TP_DOMAIN *value2_dom;
+  DOMAIN_COERCION_PLAN operand_coercion;
+  DOMAIN_COERCION_PLAN distinct_coercion;
+  DOMAIN_COERCION_PLAN divide_coercion;
+  DOMAIN_CONVERSION first_conv;
+  DOMAIN_CONVERSION final_conv;
+  bool accumulator_takes;
+};
+
+/* domain_resolve_operand_coercion's operand coercion as a plan */
+void domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan);
+
+/* The accumulator of an aggregate function (FUNC_CODE function, its domain, the operand's type and its argument's
+ * domain) or of an analytic function (QUERY_OPTIONS option): from the domains XASL generation decided, as the server
+ * reads them (an OBJECT as OID). */
+void domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
+					const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
+void domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain,
+				       const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
+
+/* A LEAD / LAG / NTH_VALUE's conversions of its offset into INTEGER (NTH_VALUE: DOUBLE), conv[0], and of its default
+ * into the function's domain, conv[1], from the domains of their regus in the read list; none for a regu of a domain
+ * decided at the row. */
+void domain_plan_analytic_offset (int function, const TP_DOMAIN * domain, const TP_DOMAIN * offset,
+				  const TP_DOMAIN * default_value, DOMAIN_COERCION_PLAN * plan);
+
+/* The converter a conversion names, looked up; NULL for none */
+TP_VALUE_CONVERTER domain_find_conversion (const DOMAIN_CONVERSION * conversion);
+
+/* A coercion plan's operand coercion, its converters looked up */
+void domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERCION * coercion);
 
 /*
  * domain_arith_rule () - the ARITH rule over two operand types alone: the targets of the operand coercion and what the
@@ -129,21 +242,33 @@ int domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_t
  * finalizations that compute in DOUBLE by construction (STDDEV / VARIANCE, the AVG of a sum, a COUNT merge) read it
  * in place of a resolution; the operator's debug cross-check holds it to the rule at every use. */
 extern const DOMAIN_ARITH domain_arith_double;
+/* The same for two BIGINTs: a BIGINT (a COUNT merge across a class hierarchy, CBRD-27583 S3-40b) */
+extern const DOMAIN_ARITH domain_arith_bigint;
+
+/* Whether an operand of this type at this argument is a value-dependent argument: its val_type is its value's class
+ * (domain_classify_value). */
+bool domain_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type);
 
 /* val_type of a value-dependent argument (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left).
- * resolve_domains only, once, before domain_resolve. DB_TYPE_NULL when the value cannot be typed: the function's own
- * error. */
+ * XASL generation (a bind or a session variable read, CBRD-27583 4.8), once, before domain_resolve.
+ * DB_TYPE_NULL when the value cannot be typed: the function's own error. */
 DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value);
+
+/* CBRD-27583 (D-40): ER_SES_VARIABLE_TYPE_FIXED, a session variable that has a type for the statement meets one of
+ * another type - a value its read finds (the server), an assignment of the statement (the compilation). A string type
+ * names its codeset, which may be all that differs. */
+int domain_session_variable_type_error (const char *name, DB_TYPE type, int codeset, DB_TYPE other_type,
+					int other_codeset);
 
 /*
  * The character result of a node the compiler typed but whose collation it left to the values (LEAVE) or enforced
- * over an operand it could not type (ENFORCE), resolved at resolve_domains from the operands' resolved domains: the
+ * over an operand it could not type (ENFORCE), resolved at XASL generation from the operands' domains: the
  * type, collation and codeset its operator gives the value. A variable string's precision is floating.
  * opcode is OPERATOR_TYPE for an arithmetic node and FUNC_CODE for a function node; compiled is the
  * node's compiled domain.
  * return: NO_ERROR, ER_QSTR_INCOMPATIBLE_COLLATIONS when the operands' collations do not merge (the row raises
  *	   it), or ER_QPROC_DOMAIN_UNRESOLVED when the branch a row picks resolves the value's domain (a
- *	   branch chosen per row whose domains differ): resolve_domains then resolves the branch
+ *	   branch chosen per row whose domains differ): the caller then resolves the branch
  *	   (domain_resolve_branch_pick, domain_resolve_branch_merge).
  */
 int domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
@@ -151,7 +276,7 @@ int domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n
 
 /*
  * A node whose row takes one branch's value, over branches whose string domains differ: domain_resolve_branch_pick () -
- * the branch whose value every row takes: ELT's index resolve_domains read names it (operand 0 is the index, operands
+ * the branch whose value every row takes: ELT's index value names it (operand 0 is the index, operands
  * 1..n the branches); NULL when no branch has the index domain_resolve_branch_merge () - the branches' collations
  * merged as the string operators merge their values' (LANG_RT_COMMON_COLL), with the converters that bring a picked
  * value into the merged domain: conv[0] for a VARCHAR value, conv[1] for a CHAR value
@@ -164,8 +289,8 @@ int domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands
  * its maximum, and an ENUM value keeps no element list. */
 const TP_DOMAIN *domain_as_value_domain (const TP_DOMAIN * domain);
 
-/* One side of a comparison as the load or resolve_domains knows it before any row: the type of its values and, for a
- * string or an ENUM, their codeset and collation (-1 otherwise). */
+/* One side of a comparison as the unpack knows it before any row: the type of its values and, for a string or an
+ * ENUM, their codeset and collation (-1 otherwise). */
 struct DOMAIN_COMPARE_KEY
 {
   DB_TYPE type;
@@ -176,13 +301,9 @@ struct DOMAIN_COMPARE_KEY
 /* The row path of a comparison resolved before any row. */
 enum DOMAIN_COMPARE_METHOD
 {
-  DOMAIN_COMPARE_LATE_BIND,	/* a comparison resolve_domains resolves: this execution's resolution is
-				 * resolved_domain.compares[compare_index] */
-  DOMAIN_COMPARE_LATE_BIND_SESSION,	/* likewise, over a session variable read: resolve_domains resolves it once the
-					 * variable has its type for the statement (qexec_resolve_session_variables) */
-  DOMAIN_COMPARE_VALUES,	/* tp_value_compare_with_error on the values: a NULL side, a side the plan leaves
-				 * variable, a comparison no resolution holds. The unresolved-domain check (execution)
-				 * holds for each: the values may not decide a coercion or a collation there */
+  DOMAIN_COMPARE_VALUES,	/* tp_value_compare_with_error on the values: a NULL side, or a side whose domain leaves
+				 * its values' type or collation to the data (an exception to deciding before the rows:
+				 * the values decide at the row) */
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the resolved collation */
   DOMAIN_COMPARE_CONVERT,	/* the resolved converters in tp_value_compare_with_error's order, then cmpval */
   DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: -1150 (ER_QSTR_INCOMPATIBLE_COLLATIONS)
@@ -209,8 +330,8 @@ typedef DB_LOGICAL (*DOMAIN_COMPARE_OPERATOR_FUNCTION) (const DOMAIN_COMPARE * c
  *   the collation, and the outcome it gives when a conversion fails. The row runs the resolved converters and
  *   cmpval; it resolves nothing. A comparison term's resolved comparison names the operator functions its row runs.
  *
- * A release row of the DIRECT and CONVERT methods does not check that its values have the types resolve_domains
- * resolved: a check per row would cost what the resolution saves. The optdebug cross-checks
+ * A release row of the DIRECT and CONVERT methods does not check that its values have the types the unpack decided
+ * for: a check per row would cost what the decision saves. The optdebug cross-checks
  * (eval_assert_resolved_sides, the key pair table's tp_value_compare_with_error replay) assert it, and the optdebug
  * CTP is what verifies it.
  */
@@ -226,41 +347,33 @@ struct DOMAIN_COMPARE
   TP_VALUE_CONVERTER conv[2];	/* side i's converter at the row, NULL none; tp_value_compare_with_error's order:
 				 * first, then the other */
   const TP_DOMAIN *target[2];	/* the domain side i is converted into */
-  int value[2];			/* resolved_domain.vals index of a constant side resolve_domains converted once; -1: the
-				 * row's value; -2: resolve_domains' own value of a constant's element, the row's
-				 * operand */
   short collation;		/* the collation cmpval compares under (an id below LANG_MAX_COLLATIONS); 0 for a
 				 * non-string */
   unsigned char method;		/* DOMAIN_COMPARE_METHOD */
   unsigned char coercion;	/* the do_coercion tp_value_compare_with_error passes cmpval: 1, or 0 for a comparison
 				 * without coercion (a collection's order) */
-  /* what resolve_domains, the other comparison methods and the outcome of a failed conversion read. Why the outcome
-   * fields: a comparison resolved before any row must give every answer tp_value_compare_with_error gives, errors and
-   * ranks included, and that function makes those at the row from the conversions it made so far. first, source and
+  /* what the other comparison methods and the outcome of a failed conversion read. Why the outcome fields: a
+   * comparison decided before any row must give every answer tp_value_compare_with_error gives, errors and ranks
+   * included, and that function makes those at the row from the conversions it made so far. first, source and
    * converted_first rebuild the two type names its -181 (ER_TP_CANT_COERCE) prints and the rank tp_more_general_type
-   * answers after a failed conversion; failed keeps a constant resolve_domains could not convert failing where the
-   * function fails it; rank is its answer for two types that compare without coercion; codeset_side repeats the
-   * codeset conversion it makes when an ENUM meets a string of another codeset. Dropping one changes an error or a
-   * result of the comparison. */
-  int compare_index;		/* LATE_BIND*: resolved_domain.compares index of this execution's resolution; -1 */
+   * answers after a failed conversion; rank is its answer for two types that compare without coercion; codeset_side
+   * repeats the codeset conversion it makes when an ENUM meets a string of another codeset. Dropping one changes an
+   * error or a result of the comparison. */
   unsigned char first;		/* the side tp_value_compare_with_error converts first */
   unsigned char source[2];	/* DB_TYPE of each side before conversion: the failure outcome names these */
   unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
-  unsigned char failed;		/* bit i: resolve_domains could not convert constant side i - a resolved comparison
-				 * outside a term, which answers by rank at every row (a term's is
-				 * resolve_domains' error) */
   signed char rank;		/* comparison method RANK: DB_LT or DB_GT */
   signed char codeset_side;	/* an ENUM against a string of another codeset: the side brought into the ENUM's
 				 * codeset at the row (tp_value_compare_with_error's tmp_char_conv); -1 none */
 };
-static_assert (sizeof (DOMAIN_COMPARE) == 72, "resolved comparison layout");
+static_assert (sizeof (DOMAIN_COMPARE) == 64, "resolved comparison layout");
 static_assert (offsetof (DOMAIN_COMPARE, coercion) < 64, "a comparison's row fields in its first 64 bytes");
 
 /* The operator functions a resolved comparison names: comparison method DIRECT's, one for each of R_EQ, R_NE, R_LT,
  * R_LE, R_GT, R_GE, R_EQ_TORDER and R_NULLSAFE_EQ (NULL for a set comparison); NULL for any other comparison method,
  * whose rows keep eval_value_rel_cmp. A term's row takes the function of the operator the term has at the row, which is
- * not always the load's (qexec_eval_instnum_pred evaluates inst_num () <= n as < first). The load sets a fixed resolved
- * comparison's, the resolve_domains its resolutions'; the functions are the evaluator's (query_evaluator.c). */
+ * not always the compiled one (qexec_eval_instnum_pred evaluates inst_num () <= n as < first). The unpack sets them on
+ * each comparison it decides; the functions are the evaluator's (query_evaluator.c). */
 void domain_compare_set_operator_functions (DOMAIN_COMPARE * compare);
 
 /* Whether a domain fixes the type and collation of its values: not VARIABLE, and a string or an ENUM whose collation
@@ -287,10 +400,57 @@ void domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * col
  * codeset is not its collation's - gets the comparison computed for it. */
 int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result);
 
+/* CBRD-27583 (D-81): the comparison of a value of each of two domains, decided by the compiler before any row -
+ * by_type false (comparison method VALUES) where a side's domain leaves its values' type or collation to the data. */
+int domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided, bool * by_type);
+
+/* Two comparisons are the same comparison: every field, pointers included. */
+bool domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b);
+
 /* The same comparison without coercion (do_coercion 0): types that compare as they are by the first one's cmpval,
  * any other pair by the types' rank. */
 void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
 					  DOMAIN_COMPARE * result);
+
+/*
+ * domain_resolve_hash_key () - the domain a hash table holds the values of a pair of key columns in, so that the
+ *   values the pair's comparison finds equal hash alike: the type that comparison converts both sides to
+ *   (domain_resolve_comparison; two types it compares as they are, the more general one), with a precision and scale
+ *   that hold both columns' values (a NUMERIC's integral digits and scale, the default NUMERIC past 38 digits:
+ *   CBRD-27575)
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ *   common(out): first or second where it has that type, precision and scale (first for two of one), else a cached
+ *		  domain
+ */
+int domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
+
+/*
+ * domain_decide_hash_join_key () - CBRD-27583 (D-81): a hash join's key column pair, decided by the compiler from the
+ *   two inputs' column domains (unpack's fallback for a list whose column the execution fixes): the domain both
+ *   values are hashed and compared in, each side's conversion into it, and the comparison of the two values then
+ *   (tp_value_compare without coercion)
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ *   coerce(in/out): a key before this one is coerced, and so is every key after it (one hashed record)
+ *   common(out): the domain; NULL for a key compared in its own domains
+ *   conv_kind(out): per side, DOMAIN_HASH_KEY_AS_IS, _CONVERTED (the IMPLICIT converter into common) or _COERCED
+ *		     (tp_value_coerce at the row: a JSON value, a common string domain whose collation is the values')
+ */
+enum
+{
+  DOMAIN_HASH_KEY_AS_IS = 0,
+  DOMAIN_HASH_KEY_CONVERTED = 1,
+  DOMAIN_HASH_KEY_COERCED = 2
+};
+int domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
+				 const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare);
+
+/*
+ * domain_compare_in_domain () - two values of one domain fixed before any row (a GROUP BY or an analytic sort key's),
+ *   compared as tp_value_compare_with_error compares two values of its type: the domain's cmpval under its collation
+ *   (an OBJECT's values are OIDs on the server); a NULL is first and equal to a NULL under total_order, else DB_UNK
+ */
+DB_VALUE_COMPARE_RESULT domain_compare_in_domain (const TP_DOMAIN * domain, const DB_VALUE * value1,
+						  const DB_VALUE * value2, int do_coercion, int total_order);
 
 /*
  * An item's comparisons with the elements of a collection the row computes: one row of the type pair comparison
@@ -315,11 +475,18 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 					       const DB_VALUE * value2, int total_order, bool * can_compare);
 
+/*
+ * domain_key_values_equal () - CBRD-27583 (S3-25): whether two key values of one position of a cache (memoize, the
+ *   subquery cache) are equal, as tp_value_compare's total order answers. Both are values of one regu, so of its
+ *   compiled domain, and compare by that domain type's cmpval in its collation: no comparison is decided.
+ *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
+ */
+bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2);
+
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the comparison method
  * already. */
 DB_VALUE_COMPARE_RESULT domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-						  const DB_VALUE * value2, int total_order, bool * can_compare,
-						  unsigned char preconverted);
+						  const DB_VALUE * value2, int total_order, bool * can_compare);
 
 /*
  * domain_compare_by_type_pair () - tp_value_compare_with_error on two values whose keys only the data knows -
@@ -341,48 +508,16 @@ void domain_type_pair_table_init (void);
 void domain_type_pair_table_final (void);
 
 /*
- * domain_unresolved_error () - the unresolved-domain check (execution): a comparison the plan should have resolved has
- *   no resolution - optdebug stops, release raises ER_QPROC_DOMAIN_UNRESOLVED naming the comparison. Every comparison
- *   raises it through here.
+ * domain_unresolved_error () - the unresolved-domain check (execution): a value meets a domain the compilation should
+ *   have decided for it - optdebug stops, release raises ER_QPROC_DOMAIN_UNRESOLVED
  *   return: ER_QPROC_DOMAIN_UNRESOLVED
- *   alias(in): the statement's alias, or ""
- *   index(in): the plan item's or the comparison's index; -1 unknown
- *   type(in): the type the comparison names
+ *   index(in): the column's index; -1 unknown
+ *   type(in): the type the error names
  */
-int domain_unresolved_error (const char *alias, int index, DB_TYPE type);
-
-/*
- * domain_alias_statement () - the statement of a plan cache key (XASL_NODE.query_alias): the text before the '?' that
- *   opens the system parameters the key carries; for an error message
- *   alias(in): the key, or NULL
- *   statement(out): the statement, cut to size - 1 characters
- */
-void domain_alias_statement (const char *alias, char *statement, size_t size);
+int domain_unresolved_error (int index, DB_TYPE type);
 
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation. */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
-
-/* Whether two values differ in type, or in collation as strings: a comparison of them resolves a coercion or a
- * collation merge from them. A NULL compares with any value as it is. */
-inline bool
-domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
-{
-  if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
-    {
-      return false;
-    }
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
-  if (type != DB_VALUE_DOMAIN_TYPE (value2))
-    {
-      return true;
-    }
-  /* the collation is part of a value's key as domain_compare_key_of_value makes it: a string's or an ENUM's */
-  if (TP_IS_CHAR_TYPE (type))
-    {
-      return db_get_string_collation (value1) != db_get_string_collation (value2);
-    }
-  return type == DB_TYPE_ENUMERATION && db_get_enum_collation (value1) != db_get_enum_collation (value2);
-}
 
 /* The cached domain tp_domain_resolve_value (value, NULL) gives a value, found without the transient domain that
  * function makes and frees: a type without parameters has its built-in domain, a string, a bit string or a
@@ -391,22 +526,19 @@ domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
 const TP_DOMAIN *domain_value_domain (const DB_VALUE * value);
 
 /*
- * How a column of a search key takes its value. A multi-column key follows
- * scan_dbvals_to_midxkey: a value of another type is converted strictly into the index column's domain or else kept
- * under its own domain, a NUMERIC, CHAR or BIT value of the column's type with other parameters is kept, any
- * other value is written under the column's domain; once a column is kept, every column is written under its value's
- * domain. A single-column key takes its value as it is: only the comparisons of a value
- * its index column does not compare as it is are resolved (domain_search_key_compare).
+ * How a column of a search key takes its value, decided by XASL generation from the element's domain and the index
+ * column's (CBRD-27583 4.4). A value of another type that every value of its type converts into without failure,
+ * rounding or change of order is converted into the column's domain (by the element's regu); any other value of
+ * another type, and a NUMERIC, CHAR or BIT value of the column's type with other parameters, is kept under its own
+ * domain, which its index column compares by the comparison XASL generation decides for the two domains
+ * (DOMAIN_KEY_BOUND);
+ * once a column of a multi-column key is kept, every column is written under its value's domain.
  */
 enum DOMAIN_KEY_RULE
 {
   DOMAIN_KEY_INDEX,		/* the value under the index column's domain */
-  DOMAIN_KEY_STRICT,		/* the strict converter brings it into the index column's domain, or else it is kept */
-  DOMAIN_KEY_KEEP,		/* the value under its own domain */
-  DOMAIN_KEY_CONSTANT,		/* a constant: resolve_domains converts or keeps its value once per execution */
-  DOMAIN_KEY_LATE_BIND		/* an element whose domain resolve_domains resolves (a variable POS or node, a session
-				 * variable read): resolve_domains derives its rule from that domain once per
-				 * execution */
+  DOMAIN_KEY_CONVERT,		/* the value converted into the index column's domain */
+  DOMAIN_KEY_KEEP		/* the value under its own domain */
 };
 
 /* The domain of the values an element of this plan domain gives on the server: an OBJECT's are OIDs. */
@@ -427,43 +559,71 @@ TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
 
 /* The converter tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL
  * where it refuses the column's type (only a number or a date and time is a strict target). */
-TP_VALUE_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
+TP_VALUE_CONVERTER domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target);
 
-/* The rule a column of a search key follows for values of an element's domain (DOMAIN_KEY_INDEX, _STRICT or _KEEP),
- * and the strict converter of rule STRICT. */
-DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey,
-				 TP_VALUE_CONVERTER * strict_conv);
+/* The rule a column of a search key follows for values of an element's domain. */
+DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);
 
-/* Whether values of this domain have a key other than an index column's own (a NULL domain or key has none): an index
- * scan whose key column takes such values compares them by the type pair comparison table
- * (DOMAIN_SEARCH_KEYS_OTHER). */
-bool domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column);
-
-/* What an index scan's comparisons of its search key values read (BTID_INT.search_keys). */
-// *INDENT-OFF*
-enum DOMAIN_SEARCH_KEYS : unsigned char
+/*
+ * DOMAIN_KEY_BOUND - CBRD-27583 (D-80): how an index scan's search key bound compares with the index keys, decided
+ *   by XASL generation for each key column from the bound's domain and the index column's (the comparison a predicate
+ *   makes of the two) and streamed: side 0 is the bound's value, side 1 the index key's, whose converter, where the
+ *   comparison has one, brings the index key into the comparison's domain. A column of one domain compares as it is.
+ */
+struct DOMAIN_KEY_BOUND
 {
-  DOMAIN_SEARCH_KEYS_NONE,	/* a B-tree search outside a query plan, whose keys are the index's own: a value that
-				 * does not compare as it is compares by value */
-  DOMAIN_SEARCH_KEYS_OWN,	/* every value has its key column's key and compares with the index as it is */
-  DOMAIN_SEARCH_KEYS_OTHER	/* a key column takes values of a key other than its own (domain_key_differs): their
-				 * comparisons are the type pair comparison table's cells */
+  const DOMAIN_COMPARE *compares;	/* one per key column */
+  const DOMAIN_COMPARE *reversed;	/* the same with the index key first (domain_compare_mirror); unpack only */
+  const DOMAIN_COMPARE *nonleaf_compares;	/* the same against a non-leaf key, whose domain can be the varying
+						 * counterpart of the index's (btree_generate_prefix_domain); compares
+						 * where it is the index's */
+  const unsigned char *classes;	/* per key column, the bound's domain class among its scan's (DOMAIN_KEY_RANGES) */
+  int n_columns;
+  bool merges;			/* a column's index-side conversion can make index keys equal (BIGINT into DOUBLE):
+				 * a search positions at the end of the keys equal to the bound (D-42) */
 };
-// *INDENT-ON*
 
-/* A search key comparison of two values of a key column whose keys differ: the type pair comparison table's cell for
- * the two keys (DOMAIN_SEARCH_KEYS_OTHER); the unresolved-domain check (execution) for a scan whose values all have
- * their columns' keys (DOMAIN_SEARCH_KEYS_OWN), and for a key the table has no row for - every key column's rule is
- * resolved before any row, a constant's included. */
-DB_VALUE_COMPARE_RESULT domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value1,
-						   DB_VALUE * value2, int do_coercion, int total_order,
-						   bool * can_compare);
+/*
+ * DOMAIN_KEY_RANGES - CBRD-27583 (D-80): the comparisons of two search key bounds of one index scan, which the scan
+ *   makes when it opens (ordering, deduplication and merging of its ranges): per key column, one for each ordered
+ *   pair of the classes of its bounds' domains - domains whose comparisons the type rule module decides alike, from
+ *   their type, codeset and collation (n_classes[c] x n_classes[c], row-major), decided by XASL generation.
+ */
+struct DOMAIN_KEY_RANGES
+{
+  const DOMAIN_COMPARE *const *tables;
+  const unsigned char *n_classes;
+  int n_columns;
+};
 
-/* domain_search_key_compare of DOMAIN_SEARCH_KEYS_OWN and of DOMAIN_SEARCH_KEYS_OTHER: pr_midxkey_compare_resolved's
- * element comparisons */
-DB_VALUE_COMPARE_RESULT domain_search_key_compare_own (int column, DB_VALUE * value1, DB_VALUE * value2,
-						       int do_coercion, int total_order, bool * can_compare);
-DB_VALUE_COMPARE_RESULT domain_search_key_compare_other (int column, DB_VALUE * value1, DB_VALUE * value2,
-							 int do_coercion, int total_order, bool * can_compare);
+/* A comparison decided before any row, of any comparison method a key comparison has (domain_compare_values; VALUES,
+ * a side whose domain leaves its values' type to the data, compares the values, as tp_value_compare_with_error does);
+ * NULL values are the caller's. */
+DB_VALUE_COMPARE_RESULT domain_compare_decided (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+						const DB_VALUE * value2, bool * can_compare);
+
+/* Whether a key comparison's conversion of the index side (side 1) can make two index keys of the column equal: a
+ * conversion into another type that is not lossless (a NUMERIC of more than DBL_DIG digits into DOUBLE), strings
+ * compared under another collation (XASL generation, D-42). */
+bool domain_key_compare_merges (const DOMAIN_COMPARE * compare, const TP_DOMAIN * index_column);
+
+/* The comparison of the same two domains in the other order (side 0 and side 1 exchanged): a field exchange, which
+ * gives the type rule module's decision for the exchanged pair of a comparison with coercion (domain_compute_comparison
+ * is symmetric in its coercion, conversion order and collation) */
+void domain_compare_mirror (const DOMAIN_COMPARE * compare, DOMAIN_COMPARE * mirrored);
+
+/* pr_midxkey_compare_resolved's element comparisons of a search key bound (context: its DOMAIN_KEY_BOUND compares,
+ * the bound first) and of two bounds (context: a DOMAIN_KEY_RANGES_PAIR) */
+DB_VALUE_COMPARE_RESULT domain_key_bound_element_compare (const void *context, int column, DB_VALUE * value1,
+							  DB_VALUE * value2, int do_coercion, int total_order,
+							  bool * can_compare);
+struct DOMAIN_KEY_RANGES_PAIR
+{
+  const DOMAIN_KEY_RANGES *ranges;
+  const unsigned char *classes[2];
+};
+DB_VALUE_COMPARE_RESULT domain_key_ranges_element_compare (const void *context, int column, DB_VALUE * value1,
+							   DB_VALUE * value2, int do_coercion, int total_order,
+							   bool * can_compare);
 
 #endif /* _DOMAIN_RULES_H_ */

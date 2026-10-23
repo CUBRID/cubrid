@@ -63,134 +63,61 @@
 static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value);
 static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
-/* An arithmetic node's row: the typed operator inline, the operand coercion out of line */
-STATIC_INLINE int fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
-				      DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
+STATIC_INLINE int fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
   __attribute__ ((ALWAYS_INLINE));
-static int fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
-						const RESOLVED_DOMAIN * plan, DB_VALUE * left, DB_VALUE * right,
-						TP_DOMAIN * domain) __attribute__ ((noinline));
 
 /*
- * fetch_session_read_value () - a session variable read's value in the type resolve_domains gave the variable for the
- *   statement
- *   return: NO_ERROR, or ER_QPROC_SESSION_VARIABLE_TYPE for a value of another type
+ * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
+ *   the read: the type the statement's assignments give the variable, else the type of its value when the statement
+ *   was compiled
+ *   return: NO_ERROR, or ER_SES_VARIABLE_TYPE_FIXED for a value of another type
  *
- * resolve_domains gave every variable the statement reads one type, from its value when the execution started and the
- * values the statement assigns it (qexec_resolve_session_variables), so a value of another type comes from a writer
- * resolve_domains does not see (a stored procedure the statement calls): the statement stops, as it stops at
- * resolve_domains for an assignment of another type. A value is of the variable's type when it has the type's DB type,
- * a string also its codeset and collation, whatever its length. A fixed-length string of a variable the statement
- * assigns converts into the variable-length string resolve_domains gave it, whose longest precision holds it. A read
- * outside an execution with resolved-domain state reads the value as it is.
+ * A value of another type is one the variable held before the statement's first assignment to it, or one a writer the
+ * compilation did not see stored (a SET VARIABLE in a stored procedure the statement calls). A string has one type per
+ * codeset: a value of another collation, or a fixed-length one, converts into the read's domain.
  */
 static int
-fetch_session_read_value (const VAL_DESCR * vd, ARITH_TYPE * arithptr, const DB_VALUE * name)
+fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
 {
   DB_VALUE *value = arithptr->value;
-  const RESOLVED_DOMAIN *resolved_domain = qexec_late_bind_domain (vd, arithptr->plan_item);
-  if (DB_IS_NULL (value) || resolved_domain == NULL)
+  const TP_DOMAIN *type = arithptr->domain;
+  if (DB_IS_NULL (value) || type == NULL || TP_DOMAIN_TYPE (type) == DB_TYPE_VARIABLE)
     {
       return NO_ERROR;
     }
-  const TP_DOMAIN *type = resolved_domain->domain;
   const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (value);
-  const bool same_collation = !TP_IS_CHAR_TYPE (value_type) || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (type))
-    || (db_get_string_codeset (value) == TP_DOMAIN_CODESET (type)
-	&& db_get_string_collation (value) == TP_DOMAIN_COLLATION (type));
-  if (value_type == TP_DOMAIN_TYPE (type) && same_collation)
+  const DB_TYPE read_type = TP_DOMAIN_TYPE (type);
+  if (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (read_type)
+      && db_get_string_codeset (value) == TP_DOMAIN_CODESET (type))
+    {
+      /* D-40: a string of another collation or kind converts into the read's domain */
+      if ((value_type == read_type && db_get_string_collation (value) == TP_DOMAIN_COLLATION (type))
+	  || tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (value_type == read_type)
     {
       return NO_ERROR;
     }
-  const TP_DOMAIN *value_domain = tp_domain_resolve_value (value, NULL);
-  if (value_domain == NULL)
-    {
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
-  if (value_type == DB_TYPE_CHAR && TP_DOMAIN_TYPE (type) == DB_TYPE_VARCHAR
-      && type->precision == DB_MAX_VARCHAR_PRECISION && same_collation
-      && tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
-    {
-      return NO_ERROR;
-    }
-  return qexec_session_variable_type_error (name, type, value_domain);
+  return domain_session_variable_type_error (db_get_string (name), read_type, TP_DOMAIN_CODESET (type), value_type,
+					     TP_IS_CHAR_TYPE (value_type) ? db_get_string_codeset (value) : 0);
+}
+
+/* The comparison k an arithmetic node makes of two values, which the unpack decided for every such node */
+static inline DB_VALUE_COMPARE_RESULT
+fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k, val_descr * vd,
+		     const DB_VALUE * value1, const DB_VALUE * value2, bool * can_compare)
+{
+  const DOMAIN_COMPARE *compares = arith_decided_compares (arithptr);
+  assert (compares != NULL);
+  return eval_compare_values_resolved (thread_p, &compares[k], vd, value1, value2, 0, can_compare);
 }
 
 /*
- * fetch_convert_to_branch_value () - a value a row picked among branches whose collations resolve_domains merged into
- *   one domain (domain_resolve_branch_merge), brought into it by the converter resolve_domains chose for its string
- *   type
- *   return: NO_ERROR, the conversion's error, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution))
- *	     for a value of a type resolve_domains chose no converter for
- */
-static int
-fetch_convert_to_branch_value (const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
-			       const RESOLVED_DOMAIN * resolved_domain, DB_VALUE * value)
-{
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  const TP_VALUE_CONVERTER converter = type == DB_TYPE_VARCHAR ? resolved_domain->conv[0]
-    : type == DB_TYPE_CHAR ? resolved_domain->conv[1] : NULL;
-  if (converter == NULL)
-    {
-      return domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, item), type);
-    }
-  DB_VALUE converted;
-  const TP_DOMAIN_STATUS status = tp_value_convert (converter, resolved_domain->domain, value, &converted);
-  if (status != DOMAIN_COMPATIBLE)
-    {
-      pr_clear_value (&converted);
-      return tp_domain_status_er_set (status, ARG_FILE_LINE, value, resolved_domain->domain);
-    }
-  pr_clear_value (value);
-  *value = converted;
-  return NO_ERROR;
-}
-
-/* The row's test before fetch_convert_to_branch_value, inline: a collation late-binding node's resolution carries
- * converters only for merged branches (a type-dependent node's are its operands'), so any other node costs a flag
- * test. */
-static inline int
-fetch_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item, DB_VALUE * value)
-{
-  if (item == NULL || !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
-    {
-      return NO_ERROR;
-    }
-  const RESOLVED_DOMAIN *resolved_domain = qexec_late_bind_domain (vd, item);
-  if (resolved_domain == NULL || (resolved_domain->conv[0] == NULL && resolved_domain->conv[1] == NULL)
-      || DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  return fetch_convert_to_branch_value (vd, item, resolved_domain, value);
-}
-
-/* the same test for a function result (fetch_peek_dbval_slow's TYPE_FUNC), out of line: that path's one caller
- * outside this file */
-int
-fetch_arith_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item, DB_VALUE * value)
-{
-  return fetch_convert_to_resolved_branch (vd, item, value);
-}
-
-/* The resolved comparison k an arithmetic node makes: its plan item carries them. A stream's
- * FIELD, NULLIF, LEAST or GREATEST has a bare item for them. */
-static inline const DOMAIN_COMPARE_PLAN *
-fetch_arith_compare (const ARITH_TYPE * arithptr, int k)
-{
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  if (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES))
-    {
-      return NULL;
-    }
-  assert (arithptr->opcode == T_FIELD || arithptr->opcode == T_NULLIF || arithptr->opcode == T_LEAST
-	  || arithptr->opcode == T_GREATEST);
-  return item->compares[k];
-}
-
-/*
- * fetch_least_or_greatest () - LEAST or GREATEST of an arithmetic node's two operands, compared as the load or
- *				resolve_domains resolved
+ * fetch_least_or_greatest () - LEAST or GREATEST of an arithmetic node's two operands, compared as the node
+ *				compares them (fetch_arith_compare)
  *   return: NO_ERROR, or ER_FAILED where they do not compare
  */
 static int
@@ -199,120 +126,38 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 {
   bool can_compare = true;
   const DB_VALUE_COMPARE_RESULT cmp_result =
-    eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_left, peek_right, 0,
-				  &can_compare);
+    fetch_arith_compare (thread_p, arithptr, 0, vd, peek_left, peek_right, &can_compare);
   return db_least_or_greatest_by (peek_left, peek_right, cmp_result, can_compare, arithptr->value, least);
 }
 
 /*
- * fetch_arith_binary () - an addition, subtraction, multiplication or division: its operands' operand coercion,
- *   resolved before any row, then the typed operator, which casts nothing (qdata_coerce_arith_operands)
+ * fetch_arith_binary () - an addition, subtraction, multiplication or division: the typed operator the node found at
+ *   unpack over its operands' domains (ARITH_TYPE.decided.arith), which casts nothing
  *   return: NO_ERROR or ER_code
  *
- * The plan is the resolved domain for a node whose type resolve_domains resolves, the load's for any other node - a
- * compiled node, one whose collation alone resolve_domains resolves, a stream's node (domain_plan_operand_coercion). A
- * NULL operand converts nothing, resolved or not: an operator answers a NULL operand before any operand coercion.
- *
- * Inline at every call, with the operator called directly: the operand coercion's frame - its execution temporary
- * arrays, the stack protector they bring, the calls it makes - is fetch_arith_binary_operand_coercion's, which only a
- * plan that converts an operand, or a missing plan, reaches.
+ * XASL generation converts an operand of another type at its regu (pt_decide_operand_coercion), so the node converts
+ * neither operand (stx_build_arith_type asserts it) and the operator is called directly.
  */
 static inline int
-fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
-		    DB_VALUE * right, TP_DOMAIN * domain)
+fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
 {
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  const RESOLVED_DOMAIN *plan = item != NULL ? &item->fixed : NULL;
-  if (item != NULL && (item->flags & DOMAIN_PLAN_LATE_BIND) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
-    {
-      plan = qexec_late_bind_domain (vd, item);
-    }
-  if (plan != NULL && plan->arith.kind == DOMAIN_ARITH_UNRESOLVED)
-    {
-      /* a plan nothing resolved - the load met a variable operand and resolve_domains gave no entry: the
-       * unresolved-domain check (execution), as a missing plan */
-      plan = NULL;
-    }
-  if (plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL)
-    {
-      /* an operand coercion that converts neither operand calls the operator directly, which dispatches on the plan's
-       * value (arith); its optdebug check still holds the plan to the rule over the values (qdata_assert_arith_planned)
-       */
-      return qdata_arith_dbval (arithptr->opcode, &plan->arith, left, right, arithptr->value, domain);
-    }
-  return fetch_arith_binary_operand_coercion (thread_p, vd, arithptr, plan, left, right, domain);
-}
-
-/* fetch_arith_binary's operand coercion: the operands the plan converts, a scope's execution temporary, or the
- * unresolved-domain check (execution) of a node without its plan (out of line) */
-static int
-fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
-				     const RESOLVED_DOMAIN * plan, DB_VALUE * left, DB_VALUE * right,
-				     TP_DOMAIN * domain)
-{
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  if (plan == NULL && left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
-    {
-      /* every node of a loaded tree or stream carries its operand coercion, and resolve_domains resolved every node
-       * whose type it resolves before the main block: the unresolved-domain check (execution) */
-      return qexec_domain_unresolved (vd, item, arithptr->domain);
-    }
-  assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
-  if (plan != NULL && (item->temporaries[0] >= 0 || item->temporaries[1] >= 0) && left != NULL && right != NULL
-      && !DB_IS_NULL (left) && !DB_IS_NULL (right))
-    {
-      /* an operand a scope fixes - a constant for the execution, a correlated value for its
-       * outer row - is converted once per scope */
-      DB_VALUE *const operands[2] = { left, right };
-      const DB_VALUE *temporaries[2] = { NULL, NULL };
-      for (int i = 0; i < 2; i++)
-	{
-	  if (item->temporaries[i] >= 0 && plan->conv[i] != NULL)
-	    {
-	      temporaries[i] =
-		qexec_execution_temporary (thread_p, vd, item->temporaries[i], plan->conv[i], plan->operand_domain[i],
-					   operands[i]);
-	    }
-	}
-      return qdata_coerce_arith_operands (arithptr->opcode, plan->conv, plan->operand_domain, &plan->arith, left,
-					  right, arithptr->value, domain, temporaries);
-    }
-  /* without a plan an operand is NULL (the check above): the operator answers it before any dispatch */
-  return qdata_coerce_arith_operands (arithptr->opcode, plan != NULL ? plan->conv : NULL,
-				      plan != NULL ? plan->operand_domain : NULL, plan != NULL ? &plan->arith : NULL,
-				      left, right, arithptr->value, domain);
+  /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */
+  return qdata_arith_dbval (arithptr->opcode, arith_decided_arith (arithptr), left, right, arithptr->value, domain,
+			    arithptr->result_conv);
 }
 
 /*
- * fetch_cast_operand () - the cast of operand i's value into the node's domain (a CAST; the operand a NVL,
- *   IFNULL, COALESCE or NVL2 row picks), with the converter the load found for the operand's compiled type
- *   (domain_fixed_operand): the cast skips its per-value lookup for a value of that type
+ * fetch_cast_operand () - the cast of operand i's value into domain (a CAST; the operand a NVL, IFNULL, COALESCE,
+ *   NVL2, LEAST, GREATEST or NULLIF row picks) with the converter its node found at unpack when domain is the node's
+ *   (arith_cast_value)
  *   force(in): tp_value_cast_force's coercion, else tp_value_cast's
  */
 static inline TP_DOMAIN_STATUS
-fetch_cast_operand (const val_descr * vd, const ARITH_TYPE * arithptr, int i, const DB_VALUE * value,
-		    DB_VALUE * result, const TP_DOMAIN * domain, bool force)
+fetch_cast_operand (const ARITH_TYPE * arithptr, int i, const DB_VALUE * value, DB_VALUE * result,
+		    const TP_DOMAIN * domain, bool force)
 {
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  const REGU_VARIABLE *operand = i == 0 ? arithptr->leftptr : i == 1 ? arithptr->rightptr : arithptr->thirdptr;
-  if (item != NULL && item->fixed.conv[i] != NULL && item->fixed.operand_domain[i] == domain && operand != NULL
-      && operand->domain != NULL)
-    {
-      return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
-					   item->fixed.conv[i]);
-    }
-  if (item != NULL && (item->flags & DOMAIN_PLAN_LATE_BIND_COERCION) && value != NULL && !DB_IS_NULL (value))
-    {
-      /* an operand the compiler did not type: resolve_domains found the converter from its resolved type
-       * (qexec_resolve_cast_coercion) */
-      const RESOLVED_DOMAIN *resolved = qexec_late_bind_domain (vd, item);
-      if (resolved != NULL && resolved->conv[i] != NULL && resolved->operand_domain[i] == domain)
-	{
-	  return tp_value_cast_with_converter (value, result, domain, force, DB_VALUE_DOMAIN_TYPE (value),
-					       resolved->conv[i]);
-	}
-    }
-  return force ? tp_value_cast_force (value, result, domain, false) : tp_value_cast (value, result, domain, false);
+  return arith_cast_value (arithptr, i, value, result, domain, arithptr->domain,
+			   force ? ARITH_CAST_FORCE : ARITH_CAST_PLAIN);
 }
 
 /*
@@ -540,14 +385,15 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   if (check_empty_string && domain != NULL && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
     {
       /* at here, T_ADD is really T_STRCAT */
-      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+			      arithptr->result_conv, arithptr) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
   else
     {
-      if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+      if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -683,7 +529,7 @@ fetch_op_sub (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -701,7 +547,7 @@ fetch_op_mul (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -719,7 +565,7 @@ fetch_op_div (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1380,8 +1226,7 @@ fetch_op_substring (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       pos = db_get_int (peek_right);
       if (pos < 0)
 	{
-	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, arithptr->leftptr->domain,
-								  arithptr->leftptr->plan_item))))
+	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
 	    {
 	      if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
 		{
@@ -1461,7 +1306,8 @@ fetch_op_octet_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_VarBit_domain, &tp_VarBit_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
@@ -1477,7 +1323,8 @@ fetch_op_octet_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
@@ -1520,7 +1367,8 @@ fetch_op_bit_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       int len = 0;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_VarBit_domain, &tp_VarBit_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
@@ -1537,7 +1385,8 @@ fetch_op_bit_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
@@ -1624,7 +1473,7 @@ fetch_op_hex (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_hex (peek_right, arithptr->value) != NO_ERROR)
+  else if (db_hex (peek_right, arithptr->value, arithptr->conv_type[1], arithptr->conv[1]) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1643,7 +1492,7 @@ fetch_op_ascii (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_ascii (peek_right, arithptr->value) != NO_ERROR)
+  else if (db_ascii (peek_right, arithptr->value, arithptr->conv_type[1], arithptr->conv[1]) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1872,25 +1721,10 @@ fetch_op_space (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_trim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_right
-      && !DB_IS_NULL (peek_right))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_right)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1907,25 +1741,10 @@ fetch_op_trim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_ltrim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_right
-      && !DB_IS_NULL (peek_right))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_right)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1942,25 +1761,10 @@ fetch_op_ltrim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_rtrim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_right
-      && !DB_IS_NULL (peek_right))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_right)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1999,26 +1803,11 @@ fetch_op_from_unixtime (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_lpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_third
-      && !DB_IS_NULL (peek_third))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -2035,26 +1824,11 @@ fetch_op_lpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_rpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_third
-      && !DB_IS_NULL (peek_third))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -2071,26 +1845,11 @@ fetch_op_rpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_replace (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_third
-      && !DB_IS_NULL (peek_third))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
       && (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || (peek_third && DB_IS_NULL (peek_third))))
     {
@@ -2108,25 +1867,11 @@ fetch_op_replace (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_translate (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -2412,6 +2157,9 @@ fetch_op_like_lower_bound (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+      /* CBRD-27583 (D-52, S3-21): the bound is the VARCHAR XASL generation typed the node with, which the function
+       * makes itself (db_get_like_optimization_bounds) and casts nothing into */
+      assert (DB_IS_NULL (arithptr->value) || DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_VARCHAR);
     }
   return NO_ERROR;
 }
@@ -3029,7 +2777,8 @@ fetch_op_to_char (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
+  else if (db_to_char_with_converter (peek_left, peek_right, peek_third, arithptr->value, arith_domain,
+				      arithptr->conv_type[0], arithptr->conv[0]) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -3181,7 +2930,7 @@ fetch_op_to_date (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+      dom_status = arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3222,7 +2971,7 @@ fetch_op_to_time (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+      dom_status = arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3266,7 +3015,8 @@ fetch_op_to_timestamp (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  DB_VALUE tval;
 
 	  db_make_null (&tval);
-	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	  dom_status =
+	    arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3311,7 +3061,8 @@ fetch_op_to_datetime (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  DB_VALUE tval;
 
 	  db_make_null (&tval);
-	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	  dom_status =
+	    arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3462,7 +3213,7 @@ fetch_op_cast (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      dom_status = fetch_cast_operand (vd, arithptr, 1, peek_right, arithptr->value, arith_domain,
+      dom_status = fetch_cast_operand (arithptr, 1, peek_right, arithptr->value, arith_domain,
 				       !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST)
 				       || arithptr->opcode != T_CAST_WRAP);
 
@@ -3516,7 +3267,7 @@ fetch_op_cast_nofail (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   else
     {
       /* the planned converter, as T_CAST takes it (fetch_cast_operand); a cast that fails leaves NULL */
-      if (fetch_cast_operand (vd, arithptr, 1, peek_right, arithptr->value, arith_domain, false) != DOMAIN_COMPATIBLE)
+      if (fetch_cast_operand (arithptr, 1, peek_right, arithptr->value, arith_domain, false) != DOMAIN_COMPATIBLE)
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -3536,6 +3287,7 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   TP_DOMAIN *domain = a->domain;
   TP_DOMAIN_STATUS dom_status;
+  int branch;
 
   /* fetch values */
   switch (eval_pred (thread_p, arithptr->pred, vd, obj_oid))
@@ -3546,6 +3298,7 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+      branch = 1;
       break;
 
     case V_TRUE:
@@ -3553,21 +3306,18 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+      branch = 0;
       break;
 
     default:
       return ER_FAILED;
     }
 
-  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+  dom_status = arith_cast_value (arithptr, branch, peek_left, arithptr->value, domain, arithptr->domain,
+				 ARITH_CAST_AUTO);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
-      return ER_FAILED;
-    }
-  /* branches whose collations resolve_domains merged: the picked value takes the merged domain */
-  if (fetch_convert_to_resolved_branch (vd, arithptr->plan_item, arithptr->value) != NO_ERROR)
-    {
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -3604,7 +3354,7 @@ fetch_op_predicate (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+  dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain, ARITH_CAST_AUTO);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3626,20 +3376,16 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   DB_VALUE *src;
-  TP_DOMAIN *target_domain;
-
-  target_domain = domain;
 
   if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (DB_IS_NULL (peek_left) || target_domain == NULL)
+  if (DB_IS_NULL (peek_left))
     {
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
@@ -3647,26 +3393,11 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
     }
 
-  if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (peek_left) && DB_IS_NULL (peek_right))
-    {
-      /* resolve_domains found no value: every argument is NULL */
-      PRIM_SET_NULL (arithptr->value);
-      return NO_ERROR;
-    }
-  if (target_domain == NULL)
-    {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
-    }
-
   src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
-  dom_status = fetch_cast_operand (vd, arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value,
-				   target_domain, false);
+  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, domain);
       return ER_FAILED;
     }
 
@@ -3687,40 +3418,12 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   DB_VALUE *src;
-  TP_DOMAIN *target_domain;
-
-  target_domain = domain;
 
   if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
     {
-      return ER_FAILED;
-    }
-
-  if (target_domain == NULL)
-    {
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      if (no_value_domain != NULL && DB_IS_NULL (peek_right) && DB_IS_NULL (peek_third))
-	{
-	  /* resolve_domains found no value: both results are NULL */
-	  PRIM_SET_NULL (arithptr->value);
-	  return NO_ERROR;
-	}
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
       return ER_FAILED;
     }
 
@@ -3748,11 +3451,10 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       src = peek_right;
     }
 
-  dom_status = fetch_cast_operand (vd, arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value,
-				   target_domain, false);
+  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, domain);
 
       return ER_FAILED;
     }
@@ -3792,14 +3494,16 @@ fetch_op_concat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 
   if (arithptr->rightptr != NULL)
     {
-      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+			      arithptr->result_conv, arithptr) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
   else
     {
-      dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+      dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain,
+				     ARITH_CAST_AUTO);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3834,7 +3538,8 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
       else if (DB_IS_NULL (peek_left))
 	{
-	  dom_status = tp_value_auto_cast (peek_right, arithptr->value, domain);
+	  dom_status = arith_cast_value (arithptr, 1, peek_right, arithptr->value, domain, arithptr->domain,
+					 ARITH_CAST_AUTO);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, domain);
@@ -3843,7 +3548,8 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
       else if (DB_IS_NULL (peek_right))
 	{
-	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+	  dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain,
+					 ARITH_CAST_AUTO);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3855,11 +3561,13 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  DB_VALUE tmp_val;
 
 	  db_make_null (&tmp_val);
-	  if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, domain) != NO_ERROR)
+	  if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, domain, arith_result_type (arithptr),
+				  arithptr->result_conv, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-	  if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, domain) != NO_ERROR)
+	  if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+				  arithptr->result_conv, NULL) != NO_ERROR)
 	    {
 	      (void) pr_clear_value (&tmp_val);
 	      return ER_FAILED;
@@ -3875,7 +3583,8 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
       else
 	{
-	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+	  dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain,
+					 ARITH_CAST_AUTO);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3908,10 +3617,8 @@ fetch_op_field (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       bool can_compare = false;
       int cmp_res = DB_UNK;
 
-      /* the comparisons the load or resolve_domains resolved */
-      cmp_res =
-	eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_third, peek_left, 0,
-				      &can_compare);
+      /* the node's comparisons (fetch_arith_compare) */
+      cmp_res = fetch_arith_compare (thread_p, arithptr, 0, vd, peek_third, peek_left, &can_compare);
       if (cmp_res == DB_EQ)
 	{
 	  db_make_int (arithptr->value, 1);
@@ -3923,9 +3630,7 @@ fetch_op_field (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
 
 
-      cmp_res =
-	eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 1), vd, peek_third, peek_right, 0,
-				      &can_compare);
+      cmp_res = fetch_arith_compare (thread_p, arithptr, 1, vd, peek_third, peek_right, &can_compare);
       if (cmp_res == DB_EQ)
 	{
 	  db_make_int (arithptr->value, 2);
@@ -3959,9 +3664,7 @@ fetch_op_field (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  bool can_compare = false;
 	  int cmp_res = DB_UNK;
 
-	  cmp_res =
-	    eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 1), vd, peek_third, peek_right,
-					  0, &can_compare);
+	  cmp_res = fetch_arith_compare (thread_p, arithptr, 1, vd, peek_third, peek_right, &can_compare);
 	  if (cmp_res == DB_EQ)
 	    {
 	      /* match */
@@ -4030,7 +3733,8 @@ fetch_op_left (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       DB_VALUE tmp_val, tmp_val2;
 
-      dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
+      dom_status = arith_cast_value (arithptr, 1, peek_right, &tmp_val2, &tp_Integer_domain, &tp_Integer_domain,
+				     ARITH_CAST_AUTO);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Integer_domain);
@@ -4065,8 +3769,7 @@ fetch_op_right (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       DB_VALUE tmp_val, tmp_val2;
 
-      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, arithptr->leftptr->domain,
-							      arithptr->leftptr->plan_item))))
+      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
 	{
 	  if (db_string_bit_length (peek_left, &tmp_val) != NO_ERROR)
 	    {
@@ -4086,7 +3789,8 @@ fetch_op_right (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  return NO_ERROR;
 	}
 
-      dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
+      dom_status = arith_cast_value (arithptr, 1, peek_right, &tmp_val2, &tp_Integer_domain, &tp_Integer_domain,
+				     ARITH_CAST_AUTO);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Integer_domain);
@@ -4231,8 +3935,7 @@ fetch_op_mid (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 
       if (pos < 0)
 	{
-	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, arithptr->leftptr->domain,
-								  arithptr->leftptr->plan_item))))
+	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
 	    {
 	      if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
 		{
@@ -4369,28 +4072,17 @@ fetch_op_nullif (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN *domain = a->domain;
   TP_DOMAIN_STATUS dom_status;
 
-  TP_DOMAIN *target_domain;
   bool can_compare = false;
   int cmp_res = DB_UNK;
 
-  target_domain = domain;
   if (DB_IS_NULL (peek_left))
     {
       PRIM_SET_NULL (arithptr->value);
       return NO_ERROR;
     }
-  else if (target_domain == NULL)
-    {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
-    }
 
-  /* the comparison the load or resolve_domains resolved */
-  cmp_res =
-    eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_left, peek_right, 0,
-				  &can_compare);
+  /* the node's comparison (fetch_arith_compare) */
+  cmp_res = fetch_arith_compare (thread_p, arithptr, 0, vd, peek_left, peek_right, &can_compare);
   if (cmp_res == DB_EQ)
     {
       PRIM_SET_NULL (arithptr->value);
@@ -4401,10 +4093,10 @@ fetch_op_nullif (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      dom_status = tp_value_cast (peek_left, arithptr->value, target_domain, false);
+      dom_status = fetch_cast_operand (arithptr, 0, peek_left, arithptr->value, domain, false);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, target_domain);
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 	  return ER_FAILED;
 	}
     }
@@ -4439,11 +4131,9 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   int error;
-  TP_DOMAIN *target_domain;
 
   error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true);
   if (error != NO_ERROR)
@@ -4451,24 +4141,12 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  target_domain = domain;
-  if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (arithptr->value))
-    {
-      /* resolve_domains found no value */
-      return NO_ERROR;
-    }
-  if (target_domain == NULL)
-    {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
-    }
-
-  dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
+  /* the operand picked: the left's converter for a value of the left's type */
+  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
+				   arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -4485,11 +4163,9 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   int error;
-  TP_DOMAIN *target_domain;
 
   error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false);
   if (error != NO_ERROR)
@@ -4497,24 +4173,12 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  target_domain = domain;
-  if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (arithptr->value))
-    {
-      /* resolve_domains found no value */
-      return NO_ERROR;
-    }
-  if (target_domain == NULL)
-    {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
-    }
-
-  dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
+  /* the operand picked: the left's converter for a value of the left's type */
+  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
+				   arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -4532,12 +4196,13 @@ fetch_op_sys_connect_by_path (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   if (!qdata_evaluate_sys_connect_by_path (thread_p, (void *) arithptr->thirdptr->xasl, arithptr->leftptr,
-					   peek_right, arithptr->value, vd))
+					   peek_right, arithptr->value, vd, arithptr->conv_type[1], arithptr->conv[1]))
     {
       return ER_FAILED;
     }
 
-  dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, domain);
+  dom_status = arith_cast_value (arithptr, 0, arithptr->value, arithptr->value, domain, arithptr->domain,
+				 ARITH_CAST_AUTO);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
@@ -4556,7 +4221,8 @@ fetch_op_strcat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+			  arithptr->result_conv, arithptr) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -4611,14 +4277,13 @@ static int
 fetch_op_evaluate_variable (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
   ARITH_TYPE *arithptr = a->arithptr;
-  val_descr *vd = a->vd;
   DB_VALUE *peek_right = a->peek_right;
 
   if (session_get_variable (thread_p, peek_right, arithptr->value) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  if (fetch_session_read_value (vd, arithptr, peek_right) != NO_ERROR)
+  if (fetch_session_read_value (arithptr, peek_right) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -4914,7 +4579,8 @@ fetch_op_to_enumeration_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *arith_domain = a->arith_domain;
 
-  if (db_value_to_enumeration_value (peek_right, arithptr->value, arith_domain) != NO_ERROR)
+  if (db_value_to_enumeration_value
+      (peek_right, arithptr->value, arith_domain, arithptr->conv_type[1], arithptr->conv[1]) != NO_ERROR)
     {
       return ER_FAILED;
     }

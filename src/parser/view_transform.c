@@ -9299,7 +9299,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node)
 	{
 	  node = mq_rewrite (parser, node);
-	  if (node->node_type == PT_MERGE)
+	  if (node->node_type == PT_MERGE && parser->flag.is_skip_auto_parameterize == 0)
 	    {
 	      mq_auto_param_merge_clauses (parser, node);
 	    }
@@ -9547,7 +9547,34 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
    * unless PT_CLEAR_JMP_ENV is called to clear the environment. */
   PT_SET_JMP_ENV (parser);
 
+  /* CBRD-27583: the session variables' types are the session's at each execution: a plan statement over them is
+   * compiled every time, not cached (SET and DROP VARIABLE keep their own execution). It shares no plan, so it takes
+   * no auto-parameter either: one would make its execution copy and resolve the translated tree again */
+  const bool compiled_every_time = (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_INSERT
+				    || node->node_type == PT_UPDATE || node->node_type == PT_DELETE
+				    || node->node_type == PT_MERGE) && pt_has_session_variable (parser, node);
+  const bool save_skip_auto_parameterize = parser->flag.is_skip_auto_parameterize;
+  if (compiled_every_time)
+    {
+      parser->flag.is_skip_auto_parameterize = 1;
+    }
+
   return_node = mq_translate_helper (parser, node);
+
+  parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
+
+  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
+  pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  parser->session_variable_count = 0;
+  if (return_node != NULL && compiled_every_time)
+    {
+      ((PT_NODE *) return_node)->flag.cannot_prepare = 1;
+      /* CBRD-27583 (4.8): the types its session variable reads take, asked of the session now */
+      if (pt_type_session_variables (parser, (PT_NODE *) return_node) != NO_ERROR)
+	{
+	  return_node = NULL;
+	}
+    }
 
   PT_CLEAR_JMP_ENV (parser);
 

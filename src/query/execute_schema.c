@@ -9732,7 +9732,11 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
+  /* CBRD-27583: the CREATE's translation gave the host variables their positions; its select's terms move into the
+   * INSERT's own compilation (LIMIT ? becomes an INST_NUM () bound), which every execution translates */
+  parser->flag.host_var_derive_later = 1;
   insert_into = mq_translate (parser, insert_into);
+  parser->flag.host_var_derive_later = 0;
   if (!insert_into || pt_has_error (parser))
     {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, insert_into);

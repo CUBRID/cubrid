@@ -77,6 +77,7 @@ TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2
 
 TP_VALUE_CONVERTER tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain,
 					    DOMAIN_CONVERT_MODE mode);
+TP_VALUE_CONVERTER tp_value_numeric_fit_converter (void);
 
 /*
  * tp_value_convert () - run a converter the caller found before its rows
@@ -106,6 +107,9 @@ tp_value_convert (TP_VALUE_CONVERTER converter, const TP_DOMAIN * target, const 
 
 /* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat */
 TP_VALUE_CONVERTER domain_enumeration_name_converter (void);
+
+/* INDEX_PREFIX's prefix of a CHAR -> VARCHAR of its bytes, the column of INDEX_PREFIX (workspace #445) */
+TP_VALUE_CONVERTER domain_char_prefix_converter (void);
 
 /* The IGNORE_TRAILING_SPACE value the first conversion of the process saw: the casts and the converters keep it.
  * Inline: a cast takes the snapshot at every value. */

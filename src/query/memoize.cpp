@@ -18,6 +18,7 @@
 
 #include "memoize.hpp"
 
+#include "domain_rules.h"
 #include "error_code.h"
 #include "memory_alloc.h"
 #include "memory_hash.h"
@@ -176,8 +177,8 @@ namespace memoize
   template <TARGET_TYPE target_type>
   struct key_maker
   {
-    int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl,
-		    std::vector<DB_VALUE *> &key_ptr_src) const noexcept
+    int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl, std::vector<DB_VALUE *> &key_ptr_src,
+		    std::vector<const TP_DOMAIN *> &key_domains) const noexcept
     {
       std::vector<REGU_VARIABLE *> const_regu_var_vector;
       ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
@@ -296,6 +297,8 @@ namespace memoize
       for (auto &regu_var : const_regu_var_vector)
 	{
 	  key_ptr_src.push_back (regu_var->value.dbvalptr);
+	  /* the slot holds the value as its producer wrote it, before this reader's conversion */
+	  key_domains.push_back (regu_produced_domain (regu_var));
 	}
 
       return key_ptr_src.size();
@@ -739,10 +742,10 @@ namespace memoize
   bool key::equal::operator() (const key *k1, const key *k2) const
   {
     size_t sz = k1->m_values.size();
-    assert (sz == k2->m_values.size());
+    assert (sz == k2->m_values.size() && sz == m_domains->size ());
     for (size_t i = 0; i < sz; i++)
       {
-	if (!mht_compare_dbvalues_are_equal (&k1->m_values[i], &k2->m_values[i]))
+	if (!domain_key_values_equal ((*m_domains)[i], &k1->m_values[i], &k2->m_values[i]))
 	  {
 	    return false;
 	  }
@@ -756,6 +759,7 @@ namespace memoize
     VAL_LIST *val_list = xasl->val_list;
     int key_cnt, value_cnt;
     std::vector<DB_VALUE *> key_ptr_src;
+    std::vector<const TP_DOMAIN *> key_domains;
 
     if (!checker (xasl))
       {
@@ -766,11 +770,11 @@ namespace memoize
 
     if (spec->type == TARGET_CLASS)
       {
-	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src);
+	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src, key_domains);
       }
     else if (spec->type == TARGET_LIST)
       {
-	key_cnt = list_key_maker (thread_p, xasl, key_ptr_src);
+	key_cnt = list_key_maker (thread_p, xasl, key_ptr_src, key_domains);
       }
     else
       {
@@ -790,7 +794,7 @@ namespace memoize
 	return NULL;
       }
     storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list, match_only);
-    storage_p->init (key_ptr_src);
+    storage_p->init (key_ptr_src, key_domains);
 
     return storage_p;
   }
@@ -812,7 +816,8 @@ namespace memoize
     , m_hash_sz (0)
     , m_last_key (nullptr)
     , m_keyptr_src ()
-    , m_key_value_map ()
+    , m_key_domains ()
+    , m_key_value_map (0, key::hash (), key::equal {&m_key_domains})
     , m_current_value_list ()
     , disabled (false)
     , insert_stopped (false)
@@ -849,6 +854,7 @@ namespace memoize
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
+    m_key_domains.clear();
     db_change_private_heap (thread_get_thread_entry_info(), heap_id);
   }
 
@@ -866,12 +872,13 @@ namespace memoize
     TSC_ADD_TIMEVAL (m_elapsed_time, tv_diff);
   }
 
-  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src)
+  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains)
   {
     for (auto &dbval : arg_key_ptr_src)
       {
 	m_keyptr_src.push_back (dbval);
       }
+    m_key_domains = key_domains;
   }
 
   result_code storage::get ()

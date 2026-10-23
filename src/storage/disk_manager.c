@@ -3012,7 +3012,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
       goto exit;
     }
 
-  db_make_int (out_values[idx], vhdr->iopagesize);
+  /* CBRD-27583: in the column's declared type (show_meta.c, short), which the output keeps as it comes */
+  db_make_short (out_values[idx], vhdr->iopagesize);
   idx++;
 
   db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));

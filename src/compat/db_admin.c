@@ -1016,6 +1016,8 @@ db_shutdown (void)
   int error = NO_ERROR;
 
   (void) db_end_session ();
+  /* CBRD-27583 (D-91): the kept trees of the prepared names (a kept session id outlives db_end_session) */
+  db_prepared_tree_free_all ();
 
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
@@ -3115,6 +3117,11 @@ db_get_session_id (void)
 void
 db_set_session_id (const SESSION_ID session_id)
 {
+  if (session_id != db_Session_id)
+    {
+      /* CBRD-27583 (D-91): the prepared names of the kept trees were the other server session's */
+      db_prepared_tree_free_all ();
+    }
   db_Session_id = session_id;
 }
 

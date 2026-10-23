@@ -84,6 +84,7 @@ union sq_regu_value
 struct sq_key
 {
   DB_VALUE **dbv_array;
+  TP_DOMAIN **domains;		/* CBRD-27583 (S3-25): the key positions' regu domains (domain_key_values_equal) */
   int n_elements;
 };
 
