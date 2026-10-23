@@ -4079,6 +4079,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   /* Now finish all postpone operations */
   log_recovery_finish_all_postpone (thread_p);
 
+  /* drop the pages that redo re-created for files destroyed later in the log, before they are flushed */
+  pgbuf_rv_discard_unreserved_pages (thread_p);
+
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
 

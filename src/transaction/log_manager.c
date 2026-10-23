@@ -52,6 +52,7 @@
 #include "replication.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
+#include "disk_manager.h"
 #include "porting_inline.hpp"
 #include "query_manager.h"
 #include "message_catalog.h"
@@ -8692,6 +8693,12 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
       assert (error_code == NO_ERROR);
+
+      if (rcvindex == RVDK_UNRESERVE_SECTORS && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+	{
+	  /* recovery finishes the postpone of a destroy (see pgbuf_rv_discard_unreserved_pages) */
+	  disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, log_lsa);
+	}
     }
 
   if (rcv.pgptr != NULL)
