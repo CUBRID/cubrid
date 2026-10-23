@@ -28,6 +28,7 @@
 
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
 static bool qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list);
+static PT_NODE *qo_rewrite_subquery_as_derived (PARSER_CONTEXT * parser, PT_NODE * cnf_node);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
 				       QO_UNNEST_INFO * info);
 
@@ -568,6 +569,41 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
 
 /*
+ * qo_rewrite_subquery_as_derived () - wrap the subquery of a term in a derived table
+ *   return: the wrapping query, or NULL on error
+ *   parser(in):
+ *   cnf_node(in/out): term whose arg2 is an uncorrelated subquery. arg2 is replaced by the wrapping query.
+ *
+ * Note: the old arg2 is freed. The wrapping query is marked as an uncorrelated subquery.
+ */
+static PT_NODE *
+qo_rewrite_subquery_as_derived (PARSER_CONTEXT * parser, PT_NODE * cnf_node)
+{
+  PT_NODE *subquery = cnf_node->info.expr.arg2;
+  PT_NODE *rewritten;
+
+  rewritten = mq_rewrite_query_as_derived (parser, subquery);
+  if (rewritten == NULL)
+    {
+      return NULL;
+    }
+
+  /* move the links of the subquery to the wrapping query first,
+   * so that freeing the subquery below does not free the nodes linked after it */
+  PT_NODE_MOVE_NUMBER_OUTERLINK (rewritten, subquery);
+
+  /* set as uncorrelated subquery */
+  rewritten->info.query.q.select.flavor = PT_USER_SELECT;
+  rewritten->info.query.is_subquery = PT_IS_SUBQUERY;
+  rewritten->info.query.correlation_level = 0;
+
+  parser_free_tree (parser, subquery);
+  cnf_node->info.expr.arg2 = rewritten;
+
+  return rewritten;
+}
+
+/*
  * qo_rewrite_subqueries () - Rewrite uncorrelated subquery to join query
  *   return: PT_NODE *
  *   parser(in):
@@ -707,20 +743,12 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	       * Leaving it out of the join instead would scan its list once per outer row. */
 	      if (op_type != PT_EQ && arg2->info.query.all_distinct != PT_DISTINCT)
 		{
-		  PT_NODE *rewritten = mq_rewrite_query_as_derived (parser, arg2);
-		  if (rewritten == NULL)
+		  arg2 = qo_rewrite_subquery_as_derived (parser, cnf_node);
+		  if (arg2 == NULL)
 		    {
 		      return NULL;
 		    }
-
-		  PT_NODE_MOVE_NUMBER_OUTERLINK (rewritten, arg2);
-		  rewritten->info.query.all_distinct = PT_DISTINCT;
-		  rewritten->info.query.q.select.flavor = PT_USER_SELECT;
-		  rewritten->info.query.is_subquery = PT_IS_SUBQUERY;
-		  rewritten->info.query.correlation_level = 0;
-
-		  parser_free_tree (parser, cnf_node->info.expr.arg2);
-		  cnf_node->info.expr.arg2 = arg2 = rewritten;
+		  arg2->info.query.all_distinct = PT_DISTINCT;
 		}
 
 	      /* make new derived spec and append it to FROM */
@@ -789,29 +817,12 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      if (arg2->node_type == PT_UNION || arg2->node_type == PT_INTERSECTION || arg2->node_type == PT_DIFFERENCE
 		  || pt_has_aggregate (parser, arg2) || arg2->info.query.orderby_for)
 		{
-		  PT_NODE *rewritten = NULL;
-
 		  /* if it is composite query, rewrite to simple query */
-		  rewritten = mq_rewrite_query_as_derived (parser, arg2);
-		  if (rewritten == NULL)
+		  arg2 = qo_rewrite_subquery_as_derived (parser, cnf_node);
+		  if (arg2 == NULL)
 		    {
 		      return NULL;
 		    }
-		  else
-		    {
-		      /* fix list */
-		      PT_NODE_MOVE_NUMBER_OUTERLINK (rewritten, arg2);
-		      arg2 = rewritten;
-		    }
-
-		  /* set as uncorrelated subquery */
-		  arg2->info.query.q.select.flavor = PT_USER_SELECT;
-		  arg2->info.query.is_subquery = PT_IS_SUBQUERY;
-		  arg2->info.query.correlation_level = 0;
-
-		  /* free old composite query */
-		  parser_free_tree (parser, cnf_node->info.expr.arg2);
-		  cnf_node->info.expr.arg2 = arg2;
 		}
 
 	      /* make new derived spec and append it to FROM */
