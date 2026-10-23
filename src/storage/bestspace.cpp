@@ -1294,7 +1294,8 @@ namespace cubstorage
 	    candidates[i].freespace = optimistic_freespace (bestspace_map::CODE_MAX_TIER);
 	  }
 
-	if (spage_max_space_for_new_record (thread_get_thread_entry_info (), page_watcher.pgptr) < needed_size)
+	// consume_size: a new page takes any record that fits, also one whose needed_size no empty page can meet
+	if (spage_max_space_for_new_record (thread_get_thread_entry_info (), page_watcher.pgptr) < consume_size)
 	  {
 	    // heap_alloc_new_pages () links the pages before it latches the first one again, so an inserter may have
 	    // used it meanwhile: install the batch and serve the request from the slots
