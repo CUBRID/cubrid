@@ -145,6 +145,8 @@ extern "C"
   extern PARSER_VARCHAR *pt_print_class_name (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
   extern PARSER_VARCHAR *pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * node);
+  extern PARSER_VARCHAR *pt_print_using_index_clause (PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
+						      const PT_NODE * using_index);
   extern PARSER_VARCHAR *pt_print_bytes_alias (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val);
   extern PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value *val);
@@ -733,6 +735,36 @@ extern "C"
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
+  /* how a remote DML sink sends a value (pt_dblink_dml_classify_value) */
+  typedef enum
+  {
+    PT_DBLINK_VALUE_REJECT,	/* cannot be sent */
+    PT_DBLINK_VALUE_REMOTE_TEXT,	/* printed into the remote statement and computed there */
+    PT_DBLINK_VALUE_LOCAL_BIND,	/* one value computed here, bound to a placeholder */
+    PT_DBLINK_VALUE_MIXED	/* remote text with values computed here bound inside it */
+  } PT_DBLINK_VALUE_CLASS;
+
+  /* what a node is to the DML classifying it. The classifier asks before looking into the node. */
+  typedef enum
+  {
+    PT_DBLINK_LEAF_NONE,	/* neither: looked into, or rejected */
+    PT_DBLINK_LEAF_REMOTE,	/* a column of the remote target, sent as written */
+    PT_DBLINK_LEAF_LOCAL	/* one value computed here and bound */
+  } PT_DBLINK_LEAF_KIND;
+
+  typedef PT_DBLINK_LEAF_KIND (*PT_DBLINK_LEAF_FN) (PT_NODE * node, void *arg);
+
+  extern PT_DBLINK_VALUE_CLASS pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *arg);
+  extern PT_DBLINK_LEAF_KIND pt_dblink_update_set_leaf (PT_NODE * node, void *arg);
+  extern const char *pt_dblink_dml_target_range_name (PT_NODE * spec);
+  typedef void (*PT_DBLINK_MERGE_BIND_FN) (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg);
+  extern int pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn,
+					 void *arg);
+  typedef void (*PT_DBLINK_MERGE_KEY_FN) (PARSER_CONTEXT * parser, PT_NODE * target_col, PT_NODE * source_col,
+					  void *arg);
+  extern int pt_dblink_merge_walk_keys (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_KEY_FN fn, void *arg);
+  extern int pt_dblink_remote_column_types (PARSER_CONTEXT * parser, PT_NODE * server, const char *sql, int num_cols,
+					    PT_TYPE_ENUM * types);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

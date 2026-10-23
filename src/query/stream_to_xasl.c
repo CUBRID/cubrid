@@ -3846,8 +3846,8 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || update_info->num_classes == 0)
     {
-      stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
-      return NULL;
+      /* the remote UPDATE + local subquery sink has no local class, as the DELETE sink does not */
+      update_info->classes = NULL;
     }
   else
     {
@@ -3916,6 +3916,12 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
 	}
     }
 
+  /* remote UPDATE + local subquery sink fields */
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &update_info->sink);
+
+  update_info->remote_set_text = stx_restore_string (thread_p, ptr);
+  ptr = or_unpack_int (ptr, &update_info->remote_num_set_binds);
+
   return ptr;
 
 error:
@@ -3925,7 +3931,8 @@ error:
 
 /*
  * stx_restore_remote_dml_sink () - restore the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
+ *   by the INSERT SELECT, DELETE and UPDATE local-subquery procs and the MERGE local-source proc.
  *   return: advanced ptr
  */
 static char *
@@ -3940,6 +3947,9 @@ stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK
   sink->user = stx_restore_string (thread_p, ptr);
   sink->pwd = stx_restore_string (thread_p, ptr);
   sink->table_name = stx_restore_string (thread_p, ptr);
+  sink->remote_key_col = stx_restore_string (thread_p, ptr);
+  sink->remote_op = stx_restore_string (thread_p, ptr);
+  sink->remote_using_index = stx_restore_string (thread_p, ptr);
 
   return ptr;
 }
@@ -3991,9 +4001,6 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
 
   /* remote DELETE + local subquery sink fields */
   ptr = stx_restore_remote_dml_sink (thread_p, ptr, &delete_info->sink);
-
-  delete_info->remote_key_col = stx_restore_string (thread_p, ptr);
-  delete_info->remote_op = stx_restore_string (thread_p, ptr);
 
   return ptr;
 
@@ -4187,7 +4194,7 @@ error:
 static char *
 stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr, MERGE_PROC_NODE * merge_info)
 {
-  int offset;
+  int offset, i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   int tmp;
 
@@ -4221,6 +4228,77 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr, MERGE_PROC_NODE * merg
 
   ptr = or_unpack_int (ptr, &tmp);
   merge_info->has_delete = (bool) tmp;
+
+  /* remote MERGE + local source sink fields */
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &merge_info->sink);
+
+  merge_info->remote_target_alias = stx_restore_string (thread_p, ptr);
+  merge_info->remote_source_alias = stx_restore_string (thread_p, ptr);
+  merge_info->remote_clause_text = stx_restore_string (thread_p, ptr);
+
+  ptr = or_unpack_int (ptr, &merge_info->remote_num_binds);
+  if (merge_info->remote_num_binds == 0)
+    {
+      merge_info->remote_bind_cast = NULL;
+    }
+  else
+    {
+      merge_info->remote_bind_cast =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * merge_info->remote_num_binds);
+      if (merge_info->remote_bind_cast == NULL)
+	{
+	  goto error;
+	}
+      for (i = 0; i < merge_info->remote_num_binds; i++)
+	{
+	  merge_info->remote_bind_cast[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
+  /* Packing writes the per-column and per-key arrays whenever their count is non-zero. A zero offset with a
+   * count means the stream is not what was packed. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (merge_info->remote_num_binds == 0)
+    {
+      merge_info->remote_bind_char_len = NULL;
+    }
+  else if (offset == 0)
+    {
+      assert (false);
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
+  else
+    {
+      merge_info->remote_bind_char_len =
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], merge_info->remote_num_binds);
+      if (merge_info->remote_bind_char_len == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &merge_info->remote_num_keys);
+  ptr = or_unpack_int (ptr, &offset);
+  if (merge_info->remote_num_keys == 0)
+    {
+      merge_info->remote_key_pos = NULL;
+    }
+  else if (offset == 0)
+    {
+      assert (false);
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
+  else
+    {
+      merge_info->remote_key_pos =
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], merge_info->remote_num_keys);
+      if (merge_info->remote_key_pos == NULL)
+	{
+	  goto error;
+	}
+    }
 
   return ptr;
 

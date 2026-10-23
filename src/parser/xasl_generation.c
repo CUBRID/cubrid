@@ -19821,10 +19821,12 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 
 /*
  * pt_fill_remote_dml_sink () - Fill the common DBLink remote push-sink fields (connection info +
- *   qualified remote table name), shared by the INSERT SELECT and DELETE local-subquery XASL builders.
+ *   qualified remote table name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery XASL
+ *   builders.
  *   parser(in)      : parser context
  *   entity_name(in) : remote target's entity_name PT_NODE (PT_NAME with optional owner resolved)
  *   pdblink(in)     : remote connection info; url/user/pwd already validated non-NULL by the caller
+ *   using_index(in) : the statement's USING INDEX clause, NULL for INSERT SELECT and when absent
  *   sink(out)       : is_remote/url/user/pwd/table_name filled in
  *
  * Note: table_name is left NULL on allocation failure -- the caller detects this the same way it
@@ -19839,8 +19841,10 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
  */
 static void
 pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLINK_INFO * pdblink,
-			 REMOTE_DML_SINK * sink)
+			 PT_NODE * using_index, REMOTE_DML_SINK * sink)
 {
+  PARSER_VARCHAR *hint;
+
   sink->is_remote = true;
   sink->url = (char *) pdblink->url->info.value.data_value.str->bytes;
   sink->user = (char *) pdblink->user->info.value.data_value.str->bytes;
@@ -19853,19 +19857,35 @@ pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLI
       sink->table_name = pt_append_string (parser, sink->table_name, ".");
     }
   sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.original);
+
+  /* The hint names an index on the remote target -- the statement's target is remote, and this side has no
+   * schema to resolve it against -- so it is sent as written rather than translated. A vendor that does not
+   * accept the syntax fails the remote prepare, the same way the text-pushdown path already behaves. */
+  hint = pt_print_using_index_clause (parser, NULL, using_index);
+  sink->remote_using_index = (hint != NULL ? (char *) pt_get_varchar_bytes (hint) : NULL);
+
+  /* remote_key_col / remote_op stay as the freshly allocated node left them, NULL: a statement that sends
+   * no WHERE keeps them so, and the DELETE and UPDATE builders set them when theirs does. */
 }
 
 /*
- * pt_finish_remote_dml_xasl () - Fill the XASL-cache creator OID and copy the aptr's class OID/lock/
- *   tcard list (for locking), shared by the INSERT SELECT and DELETE local-subquery XASL builders.
+ * pt_finish_remote_dml_xasl () - Fill the XASL-cache creator OID and gather the class OID/lock/tcard
+ *   lists (for locking) across the whole xasl->aptr_list chain, shared by the INSERT SELECT, DELETE and
+ *   UPDATE local-subquery XASL builders. The UPDATE sink is the one that carries more than one aptr.
  *   return: true on success, false on allocation failure (caller returns NULL)
  *   xasl(in/out): xasl->creator_oid, class_oid_list/class_locks/tcard_list/n_oid_list/dbval_cnt filled
- *                 in from xasl->aptr_list
+ *                 in from the aptr chain. Expects a freshly allocated node: the OID lists are built from
+ *                 empty, not appended to.
  */
 static bool
 pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 {
   const OID *oid;
+  XASL_NODE *aptr;
+  int n_oids = 0;
+  int i, j;
+
+  assert (xasl->n_oid_list == 0 && xasl->class_oid_list == NULL);
 
   /* XASL cache: OID of the user creating this XASL */
   oid = ws_identifier (db_get_user ());
@@ -19878,28 +19898,56 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
       OID_SET_NULL (&xasl->creator_oid);
     }
 
-  /* copy aptr class OID list (local SELECT/subquery tables) for locking */
-  if (xasl->aptr_list != NULL)
+  /* Collect the aptr class OID lists (local SELECT/subquery tables) for locking. The whole chain
+   * contributes, not just the head: the UPDATE sink carries one aptr per SET scalar subquery on top of
+   * the WHERE value stream, and each reads local tables of its own. dbval_cnt counts the parser's host
+   * variables rather than anything per-aptr, so the chain's maximum is what the plan needs. With a
+   * single aptr -- the INSERT SELECT and DELETE sinks -- this is what copying from the head did. */
+  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
     {
-      XASL_NODE *aptr = xasl->aptr_list;
-
-      xasl->dbval_cnt = aptr->dbval_cnt;
-
-      if (aptr->n_oid_list > 0)
+      n_oids += aptr->n_oid_list;
+      if (aptr->dbval_cnt > xasl->dbval_cnt)
 	{
-	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
-	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
-	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
-	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
-	    {
-	      return false;
-	    }
+	  xasl->dbval_cnt = aptr->dbval_cnt;
+	}
+      XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+    }
 
-	  xasl->n_oid_list = aptr->n_oid_list;
-	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
-	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
-	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
-	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+  if (n_oids > 0)
+    {
+      xasl->class_oid_list = regu_oid_array_alloc (n_oids);
+      xasl->class_locks = regu_int_array_alloc (n_oids);
+      xasl->tcard_list = regu_int_array_alloc (n_oids);
+      if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+	{
+	  return false;
+	}
+
+      /* union, not concatenation: two subqueries reading the same local table would otherwise register it
+       * twice. A repeated class merges its lock the way pt_spec_to_xasl_class_oid_list does when two
+       * specs reach the same class; tcard is a property of the class, so the first entry stands. */
+      for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+	{
+	  for (i = 0; i < aptr->n_oid_list; i++)
+	    {
+	      for (j = 0; j < xasl->n_oid_list; j++)
+		{
+		  if (OID_EQ (&xasl->class_oid_list[j], &aptr->class_oid_list[i]))
+		    {
+		      break;
+		    }
+		}
+	      if (j < xasl->n_oid_list)
+		{
+		  xasl->class_locks[j] = (int) lock_conv ((LOCK) xasl->class_locks[j], (LOCK) aptr->class_locks[i]);
+		  continue;
+		}
+
+	      COPY_OID (&xasl->class_oid_list[xasl->n_oid_list], &aptr->class_oid_list[i]);
+	      xasl->class_locks[xasl->n_oid_list] = aptr->class_locks[i];
+	      xasl->tcard_list[xasl->n_oid_list] = aptr->tcard_list[i];
+	      xasl->n_oid_list++;
+	    }
 	}
     }
 
@@ -20058,7 +20106,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = into_spec->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &insert->sink);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -20157,6 +20205,117 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_dblink_dml_xasl_where () - Translate a sink's WHERE predicate into the three pieces the remote
+ *   statement needs: the key column, the comparison operator as SQL text, and the local subquery whose
+ *   values the sink binds one at a time. The DELETE and UPDATE sink builders ask this of the same shape,
+ *   so they ask it here; stmt is the statement word the messages carry.
+ *   return: true on success, false with the error set
+ *   cond(in)     : the WHERE predicate the parser gate admitted
+ *   key_col(out) : remote target column on the left-hand side
+ *   op_sql(out)  : the operator the remote statement gets
+ *   subq(out)    : the local subquery feeding the values
+ */
+static bool
+pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *stmt, const char **key_col,
+			  const char **op_sql, PT_NODE ** subq)
+{
+  PT_NODE *arg1, *arg2;
+  char errmsg[256];
+
+  assert (cond != NULL && cond->node_type == PT_EXPR);
+
+  *key_col = NULL;
+  *op_sql = NULL;
+  *subq = NULL;
+
+  /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
+   * gate admits one, but rewrites between there and here can append (LIMIT becomes inst_num() <= n). Reject
+   * so a future appender surfaces as an error instead of a silently unenforced condition. */
+  if (cond->next != NULL)
+    {
+      snprintf (errmsg, sizeof (errmsg), "remote %s subquery: only a single WHERE predicate is supported", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* op -> remote WHERE text (fixed set; one remote pred per list-file value; ANY = per-row OR). */
+  switch (cond->info.expr.op)
+    {
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_EQ:
+      *op_sql = "=";
+      break;
+    case PT_LT:
+    case PT_LT_SOME:
+      *op_sql = "<";
+      break;
+    case PT_GT:
+    case PT_GT_SOME:
+      *op_sql = ">";
+      break;
+    case PT_LE:
+    case PT_LE_SOME:
+      *op_sql = "<=";
+      break;
+    case PT_GE:
+    case PT_GE_SOME:
+      *op_sql = ">=";
+      break;
+    case PT_NE:
+    case PT_NE_SOME:
+      *op_sql = "<>";
+      break;
+    default:
+      snprintf (errmsg, sizeof (errmsg), "remote %s subquery: unexpected operator", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* single-column WHERE left-hand side. The parser gate (pt_dblink_dml_pred_lhs_is_column) refuses row values
+   * and expressions first; this stays as a backstop for a rewrite between there and here. */
+  arg1 = cond->info.expr.arg1;
+  if (arg1 != NULL && arg1->node_type == PT_NAME)
+    {
+      *key_col = arg1->info.name.original;
+    }
+  else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
+	   && arg1->info.dot.arg2->node_type == PT_NAME)
+    {
+      /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
+      *key_col = arg1->info.dot.arg2->info.name.original;
+    }
+  if (*key_col == NULL)
+    {
+      snprintf (errmsg, sizeof (errmsg),
+		"remote %s with a local subquery requires a single-column predicate (row / multi-column not supported)",
+		stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* the local subquery feeds the value list */
+  arg2 = cond->info.expr.arg2;
+  if (arg2 == NULL || !PT_IS_QUERY (arg2))
+    {
+      snprintf (errmsg, sizeof (errmsg), "remote %s subquery: WHERE right-hand side is not a subquery", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* single-column subquery (one value bound per row) */
+  if (pt_length_of_select_list (pt_get_select_list (parser, arg2), EXCLUDE_HIDDEN_COLUMNS) != 1)
+    {
+      snprintf (errmsg, sizeof (errmsg), "remote %s local subquery must return a single column", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  *subq = arg2;
+  return true;
+}
+
+/*
  * pt_to_delete_xasl_remote_subquery () - Remote DELETE + local subquery: aptr = local list-file,
  *   DELETE_PROC holds remote conn/table/key/op; runtime binds per-row "DELETE ... WHERE key op ?".
  *
@@ -20172,7 +20331,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
-  PT_NODE *cond, *arg1, *arg2;
+  PT_NODE *cond;
   const char *op_sql = NULL;
   const char *key_col = NULL;
 
@@ -20181,92 +20340,15 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   from = statement->info.delete_.spec;
   cond = statement->info.delete_.search_cond;
 
-  assert (cond != NULL && cond->node_type == PT_EXPR);
-
-  /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
-   * gate admits one, but rewrites between there and here can append (LIMIT becomes inst_num() <= n). Reject
-   * so a future appender surfaces as an error instead of a silently unenforced condition. */
-  if (cond->next != NULL)
+  if (!pt_dblink_dml_xasl_where (parser, cond, "DELETE", &key_col, &op_sql, &aptr_statement))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE subquery: only a single WHERE predicate is supported");
-      return NULL;
-    }
-
-  /* op -> remote WHERE text (fixed set; one remote pred per list-file value; ANY = per-row OR). */
-  switch (cond->info.expr.op)
-    {
-    case PT_IS_IN:
-    case PT_EQ_SOME:
-    case PT_EQ:
-      op_sql = "=";
-      break;
-    case PT_LT:
-    case PT_LT_SOME:
-      op_sql = "<";
-      break;
-    case PT_GT:
-    case PT_GT_SOME:
-      op_sql = ">";
-      break;
-    case PT_LE:
-    case PT_LE_SOME:
-      op_sql = "<=";
-      break;
-    case PT_GE:
-    case PT_GE_SOME:
-      op_sql = ">=";
-      break;
-    case PT_NE:
-    case PT_NE_SOME:
-      op_sql = "<>";
-      break;
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
-      return NULL;
-    }
-
-  /* single-column WHERE left-hand side (reject row / multi-column predicates) */
-  arg1 = cond->info.expr.arg1;
-  if (arg1 != NULL && arg1->node_type == PT_NAME)
-    {
-      key_col = arg1->info.name.original;
-    }
-  else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
-	   && arg1->info.dot.arg2->node_type == PT_NAME)
-    {
-      /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
-      key_col = arg1->info.dot.arg2->info.name.original;
-    }
-  if (key_col == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE with a local subquery requires a single-column predicate (row / multi-column not supported)");
-      return NULL;
-    }
-
-  /* the local subquery feeds the value list */
-  arg2 = cond->info.expr.arg2;
-  if (arg2 == NULL || !PT_IS_QUERY (arg2))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE subquery: WHERE right-hand side is not a subquery");
-      return NULL;
-    }
-
-  /* single-column subquery (one value bound per row) */
-  if (pt_length_of_select_list (pt_get_select_list (parser, arg2), EXCLUDE_HIDDEN_COLUMNS) != 1)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE local subquery must return a single column");
       return NULL;
     }
 
   /* note: a correlated subquery is rejected earlier, in pt_check_with_info's DELETE branch
-   * (pt_dblink_delete_corr_ref), before the stand-alone bind -- so it never reaches this XASL builder. */
+   * (pt_dblink_dml_corr_ref), before the stand-alone bind -- so it never reaches this XASL builder. */
 
   /* build XASL skeleton: aptr (local subquery) + val_list + list scan spec */
-  aptr_statement = arg2;
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
   if (xasl == NULL || pt_has_error (parser))
     {
@@ -20299,12 +20381,237 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = from->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &del->sink);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, statement->info.delete_.using_index, &del->sink);
 
-  del->remote_key_col = pt_append_string (parser, NULL, key_col);
-  del->remote_op = pt_append_string (parser, NULL, op_sql);
+  del->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
+  del->sink.remote_op = pt_append_string (parser, NULL, op_sql);
+  if (del->sink.table_name == NULL || del->sink.remote_key_col == NULL || del->sink.remote_op == NULL
+      || pt_has_error (parser))
+    {
+      return NULL;
+    }
 
-  if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
+  if (!pt_finish_remote_dml_xasl (xasl))
+    {
+      return NULL;
+    }
+
+  return xasl;
+}
+
+/*
+ * pt_to_update_xasl_remote_subquery () - Remote UPDATE + local subquery: build the UPDATE_PROC the sink
+ *   runs. The SET clause the remote receives is deparsed here with a placeholder per bound value, and the
+ *   WHERE key column and operator are carried when the statement has a WHERE.
+ *
+ * return        : XASL node, or NULL on error.
+ * parser (in)   : Parser context.
+ * statement (in): UPDATE parse tree (remote target with PT_DBLINK_TABLE_DML, qstr == NULL; WHERE and SET
+ *                 preserved by the parser gate).
+ *
+ * Note: two orders meet here and they are not the same one.
+ *   The aptr chain is the driving subquery first when the statement has a WHERE, then one single-tuple
+ *   subquery per bound SET value, in SET order -- remote_num_set_binds counts the latter.
+ *   The remote statement binds in its own text order: the SET values first, then the WHERE value, which the
+ *   driving aptr supplies per row. So the chain's head feeds the last placeholder.
+ */
+static XASL_NODE *
+pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl = NULL, *set_aptr = NULL, *chain_tail = NULL;
+  UPDATE_PROC_NODE *upd = NULL;
+  PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
+  PT_NODE *cond, *driving_subq = NULL;
+  PT_DBLINK_INFO *pdblink = NULL;
+  PT_ASSIGNMENTS_HELPER ea;
+  const char *op_sql = NULL, *key_col = NULL;
+  char *set_text = NULL, *piece = NULL;
+  unsigned int save_custom_print;
+  int num_set_binds = 0;
+  PT_DBLINK_VALUE_CLASS set_value_class;
+
+  assert (parser != NULL && statement != NULL);
+
+  from = statement->info.update.spec;
+  cond = statement->info.update.search_cond;
+
+  /* the WHERE, when the statement has one: its key column, operator and driving subquery */
+  if (cond != NULL && !pt_dblink_dml_xasl_where (parser, cond, "UPDATE", &key_col, &op_sql, &driving_subq))
+    {
+      return NULL;
+    }
+
+  server_node = from->info.spec.remote_server_name;
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+
+  pdblink = &server_node->info.dblink_table;
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote UPDATE: connection info (url/user/pwd) not resolved");
+      return NULL;
+    }
+
+  /* One statement goes out per value the driving subquery produces, so a repeated value writes the same
+   * remote row twice -- the count grows past the rows that changed, a SET expression reading the row's own
+   * value is applied twice, and a remote trigger fires twice. De-duplicate the values instead of counting
+   * the repetition: the quantified shapes this sink admits compare equality, where distinct values match
+   * disjoint rows. A scalar comparison is left as written. Its subquery must yield one row, and DISTINCT
+   * would fold repeated values into one and hide the "more than a single tuple" error. DELETE's count comes
+   * out right without this -- the second statement finds the row gone and reports 0 -- and the flag would
+   * only add a sort, so it is set here and not in the shared WHERE translation. */
+  if (driving_subq != NULL && PT_IS_QUERY (driving_subq)
+      && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
+    {
+      driving_subq->info.query.all_distinct = PT_DISTINCT;
+    }
+
+  /* With a WHERE, the driving subquery feeds the list-file the sink scans, and pt_make_aptr_parent_node
+   * builds that scan. Without one the sink sends a single statement, so there is nothing to scan. */
+  xasl = (driving_subq != NULL
+	  ? pt_make_aptr_parent_node (parser, driving_subq, UPDATE_PROC) : regu_xasl_node_alloc (UPDATE_PROC));
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (driving_subq != NULL && driving_subq->info.query.flag.subquery_cached)
+    {
+      if (pt_set_sub_xasl_id (xasl->aptr_list, driving_subq) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  chain_tail = xasl->aptr_list;
+
+  /* One walk of the SET list builds both halves of the contract: the text the remote receives, and the
+   * aptrs whose values fill its placeholders, in the same order. */
+  pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
+  while (pt_get_next_assignment (&ea))
+    {
+      if (ea.is_n_column || ea.lhs == NULL || ea.lhs->node_type != PT_NAME || ea.rhs == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE sink: unsupported SET assignment");
+	  return NULL;
+	}
+
+      if (set_text != NULL)
+	{
+	  set_text = pt_append_string (parser, set_text, ", ");
+	}
+      set_text = pt_append_string (parser, set_text, ea.lhs->info.name.original);
+      set_text = pt_append_string (parser, set_text, " = ");
+
+      set_value_class = pt_dblink_dml_classify_value (ea.rhs, pt_dblink_update_set_leaf, NULL);
+      if (set_value_class == PT_DBLINK_VALUE_LOCAL_BIND)
+	{
+	  set_text = pt_append_string (parser, set_text, "?");
+
+	  /* one placeholder takes one value; hidden columns (an ORDER BY key, say) would make the aptr's
+	   * tuple wider than that, so check the visible width the way the WHERE subquery is checked. */
+	  if (pt_length_of_select_list (pt_get_select_list (parser, ea.rhs), EXCLUDE_HIDDEN_COLUMNS) != 1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		      "remote UPDATE SET subquery must return a single column");
+	      return NULL;
+	    }
+
+	  set_aptr = parser_generate_xasl (parser, ea.rhs);
+	  if (set_aptr == NULL || pt_has_error (parser))
+	    {
+	      return NULL;
+	    }
+	  XASL_CLEAR_FLAG (set_aptr, XASL_TOP_MOST_XASL);
+
+	  /* single-tuple, so the executor rejects a subquery returning more than one row and leaves the
+	   * value NULL when it returns none -- the same contract a scalar subquery has anywhere else. */
+	  set_aptr->is_single_tuple = true;
+	  if (set_aptr->single_tuple == NULL)
+	    {
+	      /* the subquery node, not its select list: that is the one-value list a scalar subquery gets
+	       * anywhere else (pt_make_regu_subquery), so a hidden column does not widen it past the one
+	       * placeholder it feeds. */
+	      set_aptr->single_tuple = pt_make_val_list (parser, ea.rhs);
+	      if (set_aptr->single_tuple == NULL)
+		{
+		  PT_ERRORm (parser, ea.rhs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return NULL;
+		}
+	    }
+
+	  if (ea.rhs->info.query.flag.subquery_cached)
+	    {
+	      if (pt_set_sub_xasl_id (set_aptr, ea.rhs) != NO_ERROR)
+		{
+		  return NULL;
+		}
+	    }
+
+	  set_aptr->next = NULL;
+	  if (chain_tail == NULL)
+	    {
+	      xasl->aptr_list = set_aptr;
+	    }
+	  else
+	    {
+	      chain_tail->next = set_aptr;
+	    }
+	  chain_tail = set_aptr;
+	  num_set_binds++;
+	}
+      else
+	{
+	  /* Re-check the shape rather than trusting the gate blindly: if pt_dblink_update_set_is_inscope and
+	   * this walk ever drift apart, an expression the gate would not have accepted must not be printed
+	   * into the remote statement. */
+	  if (set_value_class != PT_DBLINK_VALUE_REMOTE_TEXT)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		      "remote UPDATE sink: SET value cannot be sent to the remote server as written");
+	      return NULL;
+	    }
+
+	  /* the payload flags are the pushdown text's (pt_convert_dblink_dml_query) -- no server name, no []
+	   * quoting, no host var index -- since this also ships to a remote server as-is. PT_SUPPRESS_RESOLVED
+	   * is this side's own: a SET fragment must not carry the owner prefix name resolution put on. */
+	  save_custom_print = parser->custom_print;
+	  parser->custom_print |=
+	    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+	    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
+	  piece = parser_print_tree (parser, ea.rhs);
+	  parser->custom_print = save_custom_print;
+
+	  if (piece == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE sink: cannot print a SET value");
+	      return NULL;
+	    }
+	  set_text = pt_append_string (parser, set_text, piece);
+	}
+    }
+
+  if (set_text == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE sink: no SET assignment");
+      return NULL;
+    }
+
+  upd = &xasl->proc.update;
+  upd->classes = NULL;
+  upd->num_classes = 0;
+
+  entity_name = from->info.spec.entity_name;
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, statement->info.update.using_index, &upd->sink);
+  if (key_col != NULL)
+    {
+      upd->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
+      upd->sink.remote_op = pt_append_string (parser, NULL, op_sql);
+    }
+  upd->remote_set_text = set_text;
+  upd->remote_num_set_binds = num_set_binds;
+
+  if (upd->sink.table_name == NULL || (key_col != NULL && upd->sink.remote_key_col == NULL) || pt_has_error (parser))
     {
       return NULL;
     }
@@ -22975,6 +23282,24 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	{
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	  return NULL;
+	}
+
+      /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink, so build the
+       * plan the sink runs instead of the pushdown text below, which would ship a statement whose local
+       * subqueries cannot run on the remote server. */
+      if (from->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
+	  && from->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
+	{
+	  XASL_NODE *sink_xasl = pt_to_update_xasl_remote_subquery (parser, statement);
+
+	  if (sink_xasl == NULL && pt_has_error (parser))
+	    {
+	      /* only when the builder left a parse-tree error: with none, this call would discard the
+	       * er_set the builder made and report "Internal error- reporting semantic error" instead. */
+	      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	    }
+
+	  return sink_xasl;
 	}
 
       return pt_to_xasl_for_dblink (parser, from);
@@ -27806,6 +28131,495 @@ error_exit:
   return NULL;
 }
 
+/* Lays out the remote MERGE text as pt_dblink_merge_walk_binds () reports the bound source columns. Each
+ * report is one column of the one-row USING. */
+typedef struct pt_dblink_merge_layout PT_DBLINK_MERGE_LAYOUT;
+struct pt_dblink_merge_layout
+{
+  int count;			/* source columns reported so far */
+  int num_keys;			/* ON keys reported so far */
+  int *key_pos;			/* NULL on the counting pass */
+  bool failed;			/* a renamed column could not be allocated */
+};
+
+/* pt_dblink_merge_walk_binds callback: count the columns and the keys */
+static void
+pt_dblink_merge_count_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_DBLINK_MERGE_LAYOUT *layout = (PT_DBLINK_MERGE_LAYOUT *) arg;
+
+  layout->count++;
+  if (is_key)
+    {
+      layout->num_keys++;
+    }
+}
+
+/* pt_dblink_merge_walk_binds callback over a copy of the clauses. The source column becomes the USING column
+ * that carries it: L.x turns into L.c<n>. The server names the USING columns the same way
+ * (dblink_dml_build_merge_sql). The position of a key is kept too, 0-based, so key k is the USING column
+ * c<key_pos[k] + 1>. */
+static void
+pt_dblink_merge_rename_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_DBLINK_MERGE_LAYOUT *layout = (PT_DBLINK_MERGE_LAYOUT *) arg;
+  char name[32];
+
+  if (is_key)
+    {
+      layout->key_pos[layout->num_keys++] = layout->count;
+    }
+  layout->count++;
+
+  assert (value->node_type == PT_DOT_ && value->info.dot.arg2 != NULL && value->info.dot.arg2->node_type == PT_NAME);
+  snprintf (name, sizeof (name), "c%d", layout->count);
+  value->info.dot.arg2->info.name.original = pt_append_string (parser, NULL, name);
+  if (value->info.dot.arg2->info.name.original == NULL)
+    {
+      /* the column would print as a bare "L." */
+      layout->failed = true;
+    }
+}
+
+/*
+ * pt_dblink_merge_print_clauses () - Print what follows the USING in the remote statement: the ON and the
+ *   WHEN clauses. It follows pt_print_merge (), but puts the ON in parentheses, as Oracle requires them.
+ *   return: the text, or NULL on failure
+ *   merge(in): a copy of the PT_MERGE whose source columns are already renamed
+ */
+static char *
+pt_dblink_merge_print_clauses (PARSER_CONTEXT * parser, PT_NODE * merge)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PARSER_VARCHAR *q = NULL;
+
+  q = pt_append_nulstring (parser, q, "on (");
+  q = pt_append_varchar (parser, q, pt_print_and_list (parser, info->search_cond));
+  q = pt_append_nulstring (parser, q, ")");
+
+  if (info->update.assignment != NULL)
+    {
+      q = pt_append_nulstring (parser, q, " when matched then update set ");
+      q = pt_append_varchar (parser, q, pt_print_bytes_l (parser, info->update.assignment));
+      if (info->update.search_cond != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " where ");
+	  q = pt_append_varchar (parser, q, pt_print_and_list (parser, info->update.search_cond));
+	}
+      if (info->update.has_delete)
+	{
+	  q = pt_append_nulstring (parser, q, " delete where ");
+	  if (info->update.del_search_cond != NULL)
+	    {
+	      q = pt_append_varchar (parser, q, pt_print_and_list (parser, info->update.del_search_cond));
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, "(true)");
+	    }
+	}
+    }
+
+  if (info->insert.value_clauses != NULL)
+    {
+      q = pt_append_nulstring (parser, q, " when not matched then insert ");
+      if (info->insert.attr_list != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, pt_print_bytes_l (parser, info->insert.attr_list));
+	  q = pt_append_nulstring (parser, q, ") ");
+	}
+      q = pt_append_nulstring (parser, q, "values (");
+      q = pt_append_varchar (parser, q, pt_print_bytes_l (parser, info->insert.value_clauses->info.node_list.list));
+      q = pt_append_nulstring (parser, q, ")");
+      if (info->insert.search_cond != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " where ");
+	  q = pt_append_varchar (parser, q, pt_print_and_list (parser, info->insert.search_cond));
+	}
+    }
+
+  return (q != NULL) ? (char *) pt_get_varchar_bytes (q) : NULL;
+}
+
+/*
+ * pt_dblink_merge_bind_cast () - The casts a bound source column gets, from its declared domain. A CUBRID
+ *   remote casts every placeholder to the source column's type. A gateway remote casts only a CHAR one, to
+ *   its length. pr_type_name () spells the type. CHAR and BIT add a precision. The other names need none:
+ *   CAST(? AS numeric) keeps the bound value's scale, and character varying its length. A type that CAST
+ *   does not take keeps a bare "?".
+ *   return: NO_ERROR, or an error code with the parser error set
+ *   col(in): the column of the source SELECT
+ *   cast(out): the CUBRID type name, or NULL for a bare "?"
+ *   char_len(out): the CHAR length, or 0
+ */
+static int
+pt_dblink_merge_bind_cast (PARSER_CONTEXT * parser, PT_NODE * col, char **cast, int *char_len)
+{
+  TP_DOMAIN *dom;
+  DB_TYPE type;
+  const char *name;
+  char buf[64];
+  int ret;
+
+  *cast = NULL;
+  *char_len = 0;
+
+  dom = pt_node_to_db_domain (parser, col, NULL);
+  if (dom == NULL)
+    {
+      /* a NULL or an unknown type has no domain. The bare "?" is what the other sinks send then. */
+      return NO_ERROR;
+    }
+
+  type = TP_DOMAIN_TYPE (dom);
+  name = pr_type_name (type);
+  if (name == NULL || name[0] == '*' || type == DB_TYPE_ENUMERATION || type == DB_TYPE_RESULTSET
+      || type == DB_TYPE_MIDXKEY)
+    {
+      return NO_ERROR;
+    }
+
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      if (dom->precision <= 0)
+	{
+	  return NO_ERROR;
+	}
+      ret = snprintf (buf, sizeof (buf), "%s(%d)", name, dom->precision);
+      if (type == DB_TYPE_CHAR)
+	{
+	  *char_len = dom->precision;
+	}
+    }
+  else
+    {
+      ret = snprintf (buf, sizeof (buf), "%s", name);
+    }
+
+  if (ret < 0 || (size_t) ret >= sizeof (buf))
+    {
+      /* a truncated name would prepare as another type on the remote */
+      return NO_ERROR;
+    }
+
+  *cast = pt_append_string (parser, NULL, buf);
+  if (*cast == NULL)
+    {
+      PT_ERRORm (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return NO_ERROR;
+}
+
+/* The ON keys of a remote MERGE, their target and source columns in key order */
+typedef struct pt_dblink_merge_key_cols PT_DBLINK_MERGE_KEY_COLS;
+struct pt_dblink_merge_key_cols
+{
+  PT_NODE **target_cols;
+  PT_NODE **source_cols;
+  int max;
+  int count;
+};
+
+/* pt_dblink_merge_walk_keys callback: keep the key's two columns */
+static void
+pt_dblink_merge_collect_key (PARSER_CONTEXT * parser, PT_NODE * target_col, PT_NODE * source_col, void *arg)
+{
+  PT_DBLINK_MERGE_KEY_COLS *keys = (PT_DBLINK_MERGE_KEY_COLS *) arg;
+
+  if (keys->count < keys->max)
+    {
+      keys->target_cols[keys->count] = target_col;
+      keys->source_cols[keys->count] = source_col;
+    }
+  keys->count++;
+}
+
+/* The kind of type a key column has. Two values of one kind compare the same way on both sides. */
+static PT_TYPE_ENUM
+pt_dblink_merge_key_kind (PT_TYPE_ENUM type)
+{
+  if (PT_IS_NUMERIC_TYPE (type))
+    {
+      return PT_TYPE_NUMERIC;
+    }
+  if (PT_IS_CHAR_STRING_TYPE (type))
+    {
+      return PT_TYPE_VARCHAR;
+    }
+  if (PT_IS_BIT_STRING_TYPE (type))
+    {
+      return PT_TYPE_VARBIT;
+    }
+  if (PT_IS_DATE_TIME_TYPE (type))
+    {
+      return PT_TYPE_DATETIME;
+    }
+  return type;
+}
+
+/*
+ * pt_dblink_merge_check_key_types () - Reject an ON key whose two sides are of different kinds of type.
+ *   The sink looks for duplicate keys in the source column's type. The remote matches them in the target
+ *   column's type. Within one kind the two agree. Across kinds they need not. '1' and '01' are two strings
+ *   but one INTEGER, so they could update one target row twice. The target is not name-resolved here, so
+ *   the remote is asked for the types of its key columns. The answer holds for the plan. A cached plan does
+ *   not ask again, as with a remote table a SELECT reads.
+ *   return: NO_ERROR, or an error code with the parser error set
+ *   statement(in): the PT_MERGE
+ *   src_query(in): the source SELECT, its columns in USING order
+ *   server(in): the target's PT_DBLINK_TABLE_DML
+ *   merge(in): the MERGE_PROC, its table, target alias and key positions filled in
+ */
+static int
+pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * src_query, PT_NODE * server,
+				 const MERGE_PROC_NODE * merge)
+{
+  PT_DBLINK_MERGE_KEY_COLS keys;
+  PT_TYPE_ENUM *types;
+  PT_NODE *col;
+  PARSER_VARCHAR *sql = NULL;
+  unsigned int save_custom_print;
+  int num_keys = merge->remote_num_keys;
+  int i, j;
+  PT_TYPE_ENUM source_type;
+
+  keys.max = num_keys;
+  keys.count = 0;
+  keys.target_cols = (PT_NODE **) parser_alloc (parser, sizeof (PT_NODE *) * num_keys);
+  keys.source_cols = (PT_NODE **) parser_alloc (parser, sizeof (PT_NODE *) * num_keys);
+  types = (PT_TYPE_ENUM *) parser_alloc (parser, sizeof (PT_TYPE_ENUM) * num_keys);
+  if (keys.target_cols == NULL || keys.source_cols == NULL || types == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  pt_dblink_merge_walk_keys (parser, statement, pt_dblink_merge_collect_key, &keys);
+  if (keys.count != num_keys)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the ON keys do not match the bound key columns");
+      return ER_FAILED;
+    }
+
+  /* a query that selects the target's key columns, written as the clause text writes them */
+  save_custom_print = parser->custom_print;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
+  sql = pt_append_nulstring (parser, sql, "/* DBLINK SELECT */ SELECT ");
+  for (i = 0; i < num_keys; i++)
+    {
+      if (i > 0)
+	{
+	  sql = pt_append_nulstring (parser, sql, ", ");
+	}
+      sql = pt_append_varchar (parser, sql, pt_print_bytes (parser, keys.target_cols[i]));
+    }
+  parser->custom_print = save_custom_print;
+  sql = pt_append_nulstring (parser, sql, " FROM ");
+  sql = pt_append_nulstring (parser, sql, merge->sink.table_name);
+  sql = pt_append_nulstring (parser, sql, " ");
+  sql = pt_append_nulstring (parser, sql, merge->remote_target_alias);
+  if (sql == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (pt_dblink_remote_column_types (parser, server, (const char *) pt_get_varchar_bytes (sql), num_keys, types)
+      != NO_ERROR)
+    {
+      return ER_DBLINK;
+    }
+
+  for (i = 0; i < num_keys; i++)
+    {
+      for (col = pt_get_select_list (parser, src_query), j = 0; col != NULL && j < merge->remote_key_pos[i];
+	   col = col->next, j++)
+	{
+	  ;
+	}
+      if (col == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote MERGE: an ON key is not a column of the source query");
+	  return ER_FAILED;
+	}
+
+      /* a source column of NULLs has no key to match */
+      source_type = col->type_enum;
+      if (types[i] == PT_TYPE_NULL && source_type != PT_TYPE_NULL)
+	{
+	  /* a remote type DBLink does not map, NCHAR for one: its kind is unknown */
+	  PT_ERRORf2 (parser, statement,
+		      "dblink: remote MERGE with a local source does not support the type of the ON key's target "
+		      "column; %s = %s", pt_short_print (parser, keys.target_cols[i]),
+		      pt_short_print (parser, keys.source_cols[i]));
+	  return ER_FAILED;
+	}
+      if (source_type == PT_TYPE_NULL || pt_dblink_merge_key_kind (source_type) == pt_dblink_merge_key_kind (types[i]))
+	{
+	  continue;
+	}
+
+      PT_ERRORf4 (parser, statement,
+		  "dblink: remote MERGE with a local source needs each ON key to compare numbers with numbers, strings "
+		  "with strings, bit strings with bit strings or dates and times with dates and times; %s = %s compares "
+		  "%s with %s", pt_short_print (parser, keys.target_cols[i]),
+		  pt_short_print (parser, keys.source_cols[i]), pt_show_type_enum (types[i]),
+		  pt_show_type_enum (source_type));
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_to_merge_xasl_remote_source () - Remote MERGE with a local source: build the MERGE_PROC the sink runs.
+ *   The aptr is the source SELECT semantic check built. Its columns are the bound source columns. The
+ *   remote statement text follows from the same walk, so the two agree column by column.
+ *   return: XASL node, or NULL on error
+ *   statement(in): PT_MERGE with a remote target (PT_DBLINK_TABLE_DML, qstr == NULL)
+ */
+static XASL_NODE *
+pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl;
+  MERGE_PROC_NODE *merge;
+  PT_NODE *src_query, *copy, *server_node, *col;
+  PT_DBLINK_INFO *pdblink;
+  PT_DBLINK_MERGE_LAYOUT layout;
+  unsigned int save_custom_print;
+  int num_cols, i;
+
+  assert (parser != NULL && statement != NULL);
+
+  src_query = statement->info.merge.remote_src_query;
+  if (src_query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no source query");
+      return NULL;
+    }
+
+  server_node = statement->info.merge.into->info.spec.remote_server_name;
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+  pdblink = &server_node->info.dblink_table;
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote MERGE: connection info (url/user/pwd) not resolved");
+      return NULL;
+    }
+
+  /* The walk must report as many columns as the SELECT has. The two are built at different times, so a
+   * rewrite between them could drift them apart. A drift would bind values to the wrong columns. */
+  memset (&layout, 0, sizeof (layout));
+  pt_dblink_merge_walk_binds (parser, statement, pt_dblink_merge_count_bind, &layout);
+  num_cols = pt_length_of_select_list (pt_get_select_list (parser, src_query), EXCLUDE_HIDDEN_COLUMNS);
+  if (layout.count != num_cols || layout.num_keys == 0)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the source query does not match the bound columns");
+      return NULL;
+    }
+
+  xasl = pt_make_aptr_parent_node (parser, src_query, MERGE_PROC);
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (src_query->info.query.flag.subquery_cached)
+    {
+      if (pt_set_sub_xasl_id (xasl->aptr_list, src_query) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  merge = &xasl->proc.merge;
+  pt_fill_remote_dml_sink (parser, statement->info.merge.into->info.spec.entity_name, pdblink, NULL, &merge->sink);
+  if (merge->sink.table_name == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  merge->remote_target_alias =
+    pt_append_string (parser, NULL, pt_dblink_dml_target_range_name (statement->info.merge.into));
+  merge->remote_source_alias =
+    pt_append_string (parser, NULL, pt_dblink_dml_target_range_name (statement->info.merge.using_clause));
+
+  /* The source columns are renamed in a copy. The statement keeps its own clauses. The bound SELECT is left
+   * out of the copy, as nothing here reads it. */
+  statement->info.merge.remote_src_query = NULL;
+  copy = parser_copy_tree (parser, statement);
+  statement->info.merge.remote_src_query = src_query;
+  if (copy == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  merge->remote_num_binds = num_cols;
+  merge->remote_num_keys = layout.num_keys;
+  merge->remote_key_pos = regu_int_array_alloc (layout.num_keys);
+  regu_array_alloc (&merge->remote_bind_cast, (size_t) num_cols);
+  merge->remote_bind_char_len = regu_int_array_alloc (num_cols);
+  if (merge->remote_key_pos == NULL || merge->remote_bind_cast == NULL || merge->remote_bind_char_len == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  memset (&layout, 0, sizeof (layout));
+  layout.key_pos = merge->remote_key_pos;
+  pt_dblink_merge_walk_binds (parser, copy, pt_dblink_merge_rename_bind, &layout);
+  if (layout.failed)
+    {
+      parser_free_tree (parser, copy);
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  /* the payload flags of the remote UPDATE sink's SET text: the text ships to the remote as it is */
+  save_custom_print = parser->custom_print;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
+  merge->remote_clause_text = pt_dblink_merge_print_clauses (parser, copy);
+  parser->custom_print = save_custom_print;
+
+  parser_free_tree (parser, copy);
+  if (merge->remote_target_alias == NULL || merge->remote_source_alias == NULL || merge->remote_clause_text == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  /* This asks the remote for its key column types, so XASL generation makes one round trip to the remote */
+  if (pt_dblink_merge_check_key_types (parser, statement, src_query, server_node, merge) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  for (col = pt_get_select_list (parser, src_query), i = 0; i < num_cols; col = col->next, i++)
+    {
+      if (pt_dblink_merge_bind_cast (parser, col, &merge->remote_bind_cast[i],
+				     &merge->remote_bind_char_len[i]) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  if (!pt_finish_remote_dml_xasl (xasl))
+    {
+      return NULL;
+    }
+
+  return xasl;
+}
+
 /*
  * pt_to_merge_xasl () - Generate XASL for MERGE statement
  *   return:
@@ -27829,6 +28643,13 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 
   if (statement->info.merge.into && statement->info.merge.into->info.spec.remote_server_name)
     {
+      /* a local source has no remote text (qstr): its rows go through the sink, like the other DML */
+      PT_NODE *remote_spec = statement->info.merge.into->info.spec.remote_server_name;
+
+      if (remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+	{
+	  return pt_to_merge_xasl_remote_source (parser, statement);
+	}
       return pt_to_xasl_for_dblink (parser, statement->info.merge.into);
     }
 
