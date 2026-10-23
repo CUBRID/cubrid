@@ -472,6 +472,68 @@ la_clock_ns (void)
  * worker (statement items) compiling at the same time trip assertions such as parser_pop_hint_node. */
 static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/*
+ * Parallel apply statistics, stored in _db_ha_apply_stat (one row per applier) and _db_ha_apply_worker_stat (one
+ * row per running worker). The counters start from 0 with each applier run. At startup the applier replaces its
+ * rows (la_stat_init_rows), and every time it stores _db_ha_apply_info it updates them in the same transaction
+ * (la_stat_update_rows), so the three tables describe the same moment.
+ */
+
+/* what a worker is doing now; the worker writes its own slot, the coordinator reads it when it stores the rows */
+typedef struct la_worker_live LA_WORKER_LIVE;
+struct la_worker_live
+{
+  bool applying;		/* applying a task with replicated items */
+  LOG_LSA commit_lsa;		/* the task's commit LSA in the master's log */
+  time_t master_commit_time;	/* when the master committed it */
+  struct timeval since;		/* when the worker began it */
+};
+
+/* what a worker has done; added at retire, so only the coordinator touches it */
+typedef struct la_worker_stat LA_WORKER_STAT;
+struct la_worker_stat
+{
+  UINT64 applied_task_count;
+  UINT64 applied_row_count;
+  UINT64 busy_usec;
+  LOG_LSA last_applied_commit_lsa;
+  time_t last_applied_master_commit_time;
+  struct timeval last_applied_time;
+  int last_error_code;
+  time_t last_error_time;
+
+  /* the row as last stored, so that a worker whose row would not change is not updated again */
+  bool stored;
+  UINT64 stored_task_count;
+  bool stored_applying;
+  LOG_LSA stored_applying_lsa;
+};
+
+typedef struct la_apply_stat LA_APPLY_STAT;
+struct la_apply_stat
+{
+  bool enabled;			/* the tables exist and this run's rows were written at startup */
+  bool error_reported;		/* a failed update was put in the error log once; later ones are not */
+  UINT64 commit_read_count;	/* commits with replicated items read from the log */
+  UINT64 dispatch_direct_count;	/* tasks with items handed to a worker as soon as they were read */
+  UINT64 dispatch_parked_count;	/* tasks with items parked first because their dependency was not applied */
+  LA_WORKER_STAT workers[LA_MAX_WORKER_COUNT];
+};
+
+static LA_APPLY_STAT la_Apply_stat;
+static LA_WORKER_LIVE la_Worker_live[LA_MAX_WORKER_COUNT];
+static pthread_mutex_t la_Worker_live_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void la_stat_reset (void);
+static void la_stat_worker_begin (int worker_idx, const LA_TASK * task, const struct timeval *begin);
+static void la_stat_worker_end (int worker_idx);
+static void la_stat_add_result (const LA_RESULT * result);
+static void la_stat_note_error (LA_STATS * stats, int error);
+static void la_stat_make_time (DB_VALUE * value, time_t sec, int msec);
+static int la_stat_init_rows (void);
+static int la_stat_update_rows (void);
+static void la_stat_count_pending (const LA_TASK * task, void *arg);
+
 #if defined (WINDOWS)
 static void la_shutdown_by_signal (void);
 #else /* !WINDOWS */
@@ -647,6 +709,8 @@ static int la_coordinator_drain_ready (void);
 /* run on an apply worker thread; the first two are handed to the workers as callbacks */
 static void la_request_shutdown (void);
 static void la_stats_note_class (LA_STATS * stats, const char *class_name);
+static void la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
+					unsigned long long *worker_applied_item_count, LA_RESULT * result);
 static void la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 				      unsigned long long *worker_applied_item_count, LA_RESULT * result);
 static int la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
@@ -856,6 +920,10 @@ la_coordinator_dispatch_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_sta
     }
   task.seq = dispatch_seq;
 
+  if (sched_status == LA_SCHED_DISPATCHED && task.has_items)
+    {
+      la_Apply_stat.dispatch_direct_count++;
+    }
   la_coordinator_trace_schedule (&task, sched_status, dispatch_seq);
 
   return la_task_queue_push (&task);
@@ -1234,6 +1302,8 @@ la_coordinator_add_result_stats (const LA_RESULT * result)
     {
       la_Info.commit_counter++;
     }
+
+  la_stat_add_result (result);
 }
 
 /*
@@ -1344,19 +1414,48 @@ la_stats_note_class (LA_STATS * stats, const char *class_name)
  * Note:
  *   The transaction is applied, its remaining changes are flushed and it commits on the slave,
  *   in that order; a failed step skips the ones after it and its error goes into result.
- *   Only COMMIT and SYSOP_END are dispatched to workers.
+ *   Only COMMIT and SYSOP_END are dispatched to workers. For the statistics, a task with items is shown
+ *   as the worker's current task while it runs, and the time it took goes into result.
  */
 static void
 la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 			  unsigned long long *worker_applied_item_count, LA_RESULT * result)
 {
-  int total_rows = 0;
+  struct timeval begin;
 
   assert (context != NULL);
   assert (task != NULL);
   assert (result != NULL);
   assert (worker_applied_item_count != NULL);
   assert (task->rectype == LOG_COMMIT || task->rectype == LOG_SYSOP_END);
+
+  gettimeofday (&begin, NULL);
+  if (task->has_items)
+    {
+      la_stat_worker_begin (context->worker_idx, task, &begin);
+    }
+
+  la_apply_worker_apply_task (context, task, trace_level, worker_applied_item_count, result);
+
+  gettimeofday (&result->apply_end_time, NULL);
+  result->busy_usec = (UINT64) (((INT64) result->apply_end_time.tv_sec - (INT64) begin.tv_sec) * 1000000LL
+				+ ((INT64) result->apply_end_time.tv_usec - (INT64) begin.tv_usec));
+  if (task->has_items)
+    {
+      la_stat_worker_end (context->worker_idx);
+    }
+}
+
+/*
+ * la_apply_worker_apply_task() - apply, flush and commit one task; the body of la_apply_worker_run_task
+ *
+ * Note: the arguments are those of la_apply_worker_run_task.
+ */
+static void
+la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
+			    unsigned long long *worker_applied_item_count, LA_RESULT * result)
+{
+  int total_rows = 0;
 
   result->error =
     la_apply_repl_log (context, task->apply, &task->commit_lsa, &total_rows, &result->committed_rep_lsa,
@@ -1603,6 +1702,8 @@ la_coordinator_commit_apply_info (void)
   res = la_update_ha_last_applied_info ();
   if (res > 0)
     {
+      /* a failed statistics update is reported once and does not keep the apply info from being stored */
+      (void) la_stat_update_rows ();
       return db_commit_transaction ();
     }
 
@@ -1618,6 +1719,400 @@ la_coordinator_commit_apply_info (void)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update _db_ha_apply_info");
 
   return NO_ERROR;
+}
+
+/*
+ * la_stat_reset() - start the statistics of an applier run from 0
+ *
+ * Note: called by la_init, before any worker exists.
+ */
+static void
+la_stat_reset (void)
+{
+  memset (&la_Apply_stat, 0, sizeof (la_Apply_stat));
+
+  pthread_mutex_lock (&la_Worker_live_lock);
+  memset (la_Worker_live, 0, sizeof (la_Worker_live));
+  pthread_mutex_unlock (&la_Worker_live_lock);
+}
+
+/*
+ * la_stat_worker_begin() - show a task with items as the worker's current task
+ *   worker_idx(in): the worker
+ *   task(in): the task it begins
+ *   begin(in): when it began
+ */
+static void
+la_stat_worker_begin (int worker_idx, const LA_TASK * task, const struct timeval *begin)
+{
+  assert (worker_idx >= 0 && worker_idx < LA_MAX_WORKER_COUNT);
+
+  pthread_mutex_lock (&la_Worker_live_lock);
+  la_Worker_live[worker_idx].applying = true;
+  LSA_COPY (&la_Worker_live[worker_idx].commit_lsa, &task->commit_lsa);
+  la_Worker_live[worker_idx].master_commit_time = task->log_record_time;
+  la_Worker_live[worker_idx].since = *begin;
+  pthread_mutex_unlock (&la_Worker_live_lock);
+}
+
+/*
+ * la_stat_worker_end() - the worker has no current task any more
+ *   worker_idx(in): the worker
+ */
+static void
+la_stat_worker_end (int worker_idx)
+{
+  assert (worker_idx >= 0 && worker_idx < LA_MAX_WORKER_COUNT);
+
+  pthread_mutex_lock (&la_Worker_live_lock);
+  la_Worker_live[worker_idx].applying = false;
+  pthread_mutex_unlock (&la_Worker_live_lock);
+}
+
+/*
+ * la_stat_add_result() - add a retired task to its worker's statistics
+ *   result(in): result of the retired task
+ *
+ * Note: an empty commit applies nothing and is not counted as the worker's work.
+ */
+static void
+la_stat_add_result (const LA_RESULT * result)
+{
+  LA_WORKER_STAT *worker;
+
+  if (!result->has_items || result->worker_idx < 0 || result->worker_idx >= LA_MAX_WORKER_COUNT)
+    {
+      return;
+    }
+
+  worker = &la_Apply_stat.workers[result->worker_idx];
+  worker->applied_task_count++;
+  worker->applied_row_count += result->stats.insert_counter + result->stats.update_counter
+    + result->stats.delete_counter + result->stats.schema_counter;
+  worker->busy_usec += result->busy_usec;
+  LSA_COPY (&worker->last_applied_commit_lsa, &result->commit_lsa);
+  worker->last_applied_master_commit_time = result->log_record_time;
+  worker->last_applied_time = result->apply_end_time;
+
+  if (result->stats.last_error_code != NO_ERROR)
+    {
+      worker->last_error_code = result->stats.last_error_code;
+      worker->last_error_time = result->stats.last_error_time;
+    }
+}
+
+/*
+ * la_stat_note_error() - count an item that failed to apply and remember it as the last error
+ *   stats(in/out): the transaction's apply statistics
+ *   error(in): the error code
+ */
+static void
+la_stat_note_error (LA_STATS * stats, int error)
+{
+  stats->fail_counter++;
+  stats->last_error_code = error;
+  stats->last_error_time = time (NULL);
+}
+
+/*
+ * la_stat_make_time() - make a datetime value, or NULL for a time that was never set
+ *   value(out): the value
+ *   sec(in): seconds since the epoch; 0 makes NULL
+ *   msec(in): milliseconds
+ */
+static void
+la_stat_make_time (DB_VALUE * value, time_t sec, int msec)
+{
+  DB_DATETIME datetime;
+
+  if (sec == 0)
+    {
+      db_make_null (value);
+      return;
+    }
+
+  db_localdatetime_msec (&sec, msec, &datetime);
+  db_make_datetime (value, &datetime);
+}
+
+static void
+la_stat_count_pending (const LA_TASK * task, void *arg)
+{
+  (*(int *) arg)++;
+}
+
+/*
+ * la_stat_init_rows() - replace this applier's statistics rows with fresh ones
+ *   return: NO_ERROR, or an error code; statistics stay off after an error
+ *
+ * Note:
+ *   Runs on the coordinator connection at startup, before the workers start, and commits. Every worker row of
+ *   this applier is deleted and one is inserted for each worker of this run: rows of workers that no longer
+ *   run would look like workers that never get work. A database made by a version without the tables gets no
+ *   statistics.
+ */
+static int
+la_stat_init_rows (void)
+{
+#define LA_IN_VALUE_COUNT       6
+  DB_VALUE in_value[LA_IN_VALUE_COUNT];
+  char query_buf[LA_QUERY_BUF_SIZE];
+  const char *prefix_name = la_Info.act_log.log_hdr->prefix_name;
+  const char *state;
+  struct timeval now;
+  int res = NO_ERROR;
+  int i, w;
+
+  la_Apply_stat.enabled = false;
+
+  for (i = 0; i < LA_IN_VALUE_COUNT; i++)
+    {
+      db_make_null (&in_value[i]);
+    }
+
+  if (db_find_class (CT_HA_APPLY_STAT_NAME) == NULL || db_find_class (CT_HA_APPLY_WORKER_STAT_NAME) == NULL)
+    {
+      er_clear ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "the parallel apply statistics tables do not exist; applylogdb stores no statistics");
+      return NO_ERROR;
+    }
+
+  gettimeofday (&now, NULL);
+
+  db_make_varchar (&in_value[0], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[1], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
+
+  snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s WHERE db_name = ? AND copied_log_path = ? ;",
+	    CT_HA_APPLY_STAT_NAME);
+  res = la_update_query_execute_with_values (query_buf, 2, &in_value[0], true);
+  if (res >= 0)
+    {
+      snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s WHERE db_name = ? AND copied_log_path = ? ;",
+		CT_HA_APPLY_WORKER_STAT_NAME);
+      res = la_update_query_execute_with_values (query_buf, 2, &in_value[0], true);
+    }
+
+  if (res >= 0)
+    {
+      state = css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state);
+      la_stat_make_time (&in_value[2], la_Info.start_time, 0);
+      la_stat_make_time (&in_value[3], now.tv_sec, (int) (now.tv_usec / 1000));
+      db_make_int (&in_value[4], la_Info.worker_count);
+      db_make_varchar (&in_value[5], 32, state, strlen (state), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+      snprintf (query_buf, sizeof (query_buf),
+		"INSERT INTO %s (db_name, copied_log_path, start_time, last_update_time, worker_count, apply_state, "
+		"commit_read_count, dispatch_direct_count, dispatch_parked_count, inflight_count, pending_count) "
+		"VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0) ;", CT_HA_APPLY_STAT_NAME);
+      res = la_update_query_execute_with_values (query_buf, 6, &in_value[0], true);
+    }
+
+  /* the worker rows take worker_idx where the applier row took worker_count, and no state */
+  snprintf (query_buf, sizeof (query_buf),
+	    "INSERT INTO %s (db_name, copied_log_path, worker_idx, start_time, last_update_time, state, "
+	    "applied_task_count, applied_row_count, busy_usec) VALUES (?, ?, ?, ?, ?, 'idle', 0, 0, 0) ;",
+	    CT_HA_APPLY_WORKER_STAT_NAME);
+  for (w = 0; w < la_Info.worker_count && res >= 0; w++)
+    {
+      db_make_int (&in_value[2], w);
+      la_stat_make_time (&in_value[3], la_Info.start_time, 0);
+      la_stat_make_time (&in_value[4], now.tv_sec, (int) (now.tv_usec / 1000));
+      res = la_update_query_execute_with_values (query_buf, 5, &in_value[0], true);
+    }
+
+  for (i = 0; i < LA_IN_VALUE_COUNT; i++)
+    {
+      db_value_clear (&in_value[i]);
+    }
+
+  if (res < 0)
+    {
+      (void) db_abort_transaction ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "failed to initialize the parallel apply statistics; applylogdb stores no statistics");
+      return res;
+    }
+
+  res = db_commit_transaction ();
+  if (res != NO_ERROR)
+    {
+      return res;
+    }
+
+  la_Apply_stat.enabled = true;
+
+  return NO_ERROR;
+
+#undef LA_IN_VALUE_COUNT
+}
+
+/*
+ * la_stat_update_rows() - update this applier's statistics rows in the current transaction
+ *   return: NO_ERROR, or the first error; the rows keep their last stored values
+ *
+ * Note:
+ *   Called by la_coordinator_commit_apply_info between the _db_ha_apply_info update and the commit. A worker
+ *   row is updated only when it would change: when the worker has retired another task or started or ended
+ *   one since the last store. last_update_time of a worker row is therefore when its values were last
+ *   stored.
+ */
+static int
+la_stat_update_rows (void)
+{
+#define LA_APPLY_VALUE_COUNT    11
+#define LA_WORKER_VALUE_COUNT   18
+  DB_VALUE in_value[LA_WORKER_VALUE_COUNT];
+  char query_buf[LA_QUERY_BUF_SIZE];
+  const char *prefix_name = la_Info.act_log.log_hdr->prefix_name;
+  const char *state;
+  struct timeval now;
+  LA_WORKER_LIVE live;
+  LA_WORKER_STAT *worker;
+  int pending_count = 0;
+  int res = NO_ERROR;
+  int idx, i, w;
+
+  if (!la_Apply_stat.enabled)
+    {
+      return NO_ERROR;
+    }
+
+  gettimeofday (&now, NULL);
+  la_pending_foreach (la_stat_count_pending, &pending_count);
+  state = (la_Info.done_deferred ? "holding done"
+	   : css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state));
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "UPDATE %s SET last_update_time = ?, worker_count = ?, apply_state = ?, done_hold_since = ?, "
+	    "commit_read_count = ?, dispatch_direct_count = ?, dispatch_parked_count = ?, inflight_count = ?, "
+	    "pending_count = ? WHERE db_name = ? AND copied_log_path = ? ;", CT_HA_APPLY_STAT_NAME);
+
+  idx = 0;
+  la_stat_make_time (&in_value[idx++], now.tv_sec, (int) (now.tv_usec / 1000));
+  db_make_int (&in_value[idx++], la_Info.worker_count);
+  db_make_varchar (&in_value[idx++], 32, state, strlen (state), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  la_stat_make_time (&in_value[idx++], la_Info.done_deferred ? la_Info.done_deferred_since : 0, 0);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.commit_read_count);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.dispatch_direct_count);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.dispatch_parked_count);
+  db_make_int (&in_value[idx++], la_inflight_get_count ());
+  db_make_int (&in_value[idx++], pending_count);
+  db_make_varchar (&in_value[idx++], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
+  assert (idx == LA_APPLY_VALUE_COUNT);
+
+  res = la_update_query_execute_with_values (query_buf, idx, &in_value[0], true);
+  for (i = 0; i < idx; i++)
+    {
+      db_value_clear (&in_value[i]);
+    }
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "UPDATE %s SET last_update_time = ?, state = ?, applied_task_count = ?, applied_row_count = ?, "
+	    "busy_usec = ?, applying_commit_lsa_pageid = ?, applying_commit_lsa_offset = ?, "
+	    "applying_master_commit_time = ?, applying_since = ?, last_applied_commit_lsa_pageid = ?, "
+	    "last_applied_commit_lsa_offset = ?, last_applied_master_commit_time = ?, last_applied_time = ?, "
+	    "last_error_code = ?, last_error_time = ? WHERE db_name = ? AND copied_log_path = ? AND worker_idx = ? ;",
+	    CT_HA_APPLY_WORKER_STAT_NAME);
+
+  for (w = 0; w < la_Info.worker_count && res >= 0; w++)
+    {
+      worker = &la_Apply_stat.workers[w];
+
+      pthread_mutex_lock (&la_Worker_live_lock);
+      live = la_Worker_live[w];
+      pthread_mutex_unlock (&la_Worker_live_lock);
+
+      if (worker->stored && worker->stored_task_count == worker->applied_task_count
+	  && worker->stored_applying == live.applying
+	  && (!live.applying || LSA_EQ (&worker->stored_applying_lsa, &live.commit_lsa)))
+	{
+	  continue;
+	}
+
+      idx = 0;
+      la_stat_make_time (&in_value[idx++], now.tv_sec, (int) (now.tv_usec / 1000));
+      db_make_varchar (&in_value[idx++], 16, live.applying ? "applying" : "idle", live.applying ? 8 : 4,
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->applied_task_count);
+      db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->applied_row_count);
+      db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->busy_usec);
+      if (live.applying)
+	{
+	  db_make_bigint (&in_value[idx++], live.commit_lsa.pageid);
+	  db_make_int (&in_value[idx++], live.commit_lsa.offset);
+	  la_stat_make_time (&in_value[idx++], live.master_commit_time, 0);
+	  la_stat_make_time (&in_value[idx++], live.since.tv_sec, (int) (live.since.tv_usec / 1000));
+	}
+      else
+	{
+	  db_make_null (&in_value[idx++]);
+	  db_make_null (&in_value[idx++]);
+	  db_make_null (&in_value[idx++]);
+	  db_make_null (&in_value[idx++]);
+	}
+      if (worker->applied_task_count > 0)
+	{
+	  db_make_bigint (&in_value[idx++], worker->last_applied_commit_lsa.pageid);
+	  db_make_int (&in_value[idx++], worker->last_applied_commit_lsa.offset);
+	}
+      else
+	{
+	  db_make_null (&in_value[idx++]);
+	  db_make_null (&in_value[idx++]);
+	}
+      la_stat_make_time (&in_value[idx++], worker->last_applied_master_commit_time, 0);
+      la_stat_make_time (&in_value[idx++], worker->last_applied_time.tv_sec,
+			 (int) (worker->last_applied_time.tv_usec / 1000));
+      if (worker->last_error_code != NO_ERROR)
+	{
+	  db_make_int (&in_value[idx++], worker->last_error_code);
+	}
+      else
+	{
+	  db_make_null (&in_value[idx++]);
+	}
+      la_stat_make_time (&in_value[idx++], worker->last_error_time, 0);
+      db_make_varchar (&in_value[idx++], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
+      db_make_varchar (&in_value[idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
+      db_make_int (&in_value[idx++], w);
+      assert (idx == LA_WORKER_VALUE_COUNT);
+
+      res = la_update_query_execute_with_values (query_buf, idx, &in_value[0], true);
+      for (i = 0; i < idx; i++)
+	{
+	  db_value_clear (&in_value[i]);
+	}
+
+      if (res >= 0)
+	{
+	  worker->stored = true;
+	  worker->stored_task_count = worker->applied_task_count;
+	  worker->stored_applying = live.applying;
+	  LSA_COPY (&worker->stored_applying_lsa, &live.commit_lsa);
+	}
+    }
+
+  if (res < 0)
+    {
+      if (!la_Apply_stat.error_reported)
+	{
+	  la_Apply_stat.error_reported = true;
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to update the parallel apply statistics; later failures are not reported");
+	}
+      return res;
+    }
+
+  return NO_ERROR;
+
+#undef LA_APPLY_VALUE_COUNT
+#undef LA_WORKER_VALUE_COUNT
 }
 
 static void
@@ -6197,7 +6692,7 @@ la_flush_repl_items (bool immediate, LA_STATS * stats)
 			  server_err_msg);
 		  er_stack_pop ();
 
-		  stats->fail_counter++;
+		  la_stat_note_error (stats, flush_err->error_code);
 		}
 
 	      if (la_restart_on_bulk_flush_error (flush_err->error_code) == true)
@@ -6226,7 +6721,7 @@ la_flush_repl_items (bool immediate, LA_STATS * stats)
 	}
       else if (error != NO_ERROR)
 	{
-	  stats->fail_counter++;
+	  la_stat_note_error (stats, error);
 	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 	  er_stack_push ();
@@ -6346,7 +6841,7 @@ la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error, 
 	  err_id, 4, item->class_name, sb.get_buffer (), error, "internal client error.");
   er_stack_pop ();
 
-  stats->fail_counter++;
+  la_stat_note_error (stats, error);
 }
 
 static int
@@ -7134,7 +7629,7 @@ la_apply_statement_log (LA_ITEM * item, LA_STATS * stats)
 	      error, error_msg);
       er_stack_pop ();
 
-      stats->fail_counter++;
+      la_stat_note_error (stats, error);
     }
   return error;
 }
@@ -7629,6 +8124,10 @@ la_coordinator_submit_task (LA_TASK * task)
     }
 
   error = la_pending_push (task);
+  if (error == NO_ERROR && task->has_items)
+    {
+      la_Apply_stat.dispatch_parked_count++;
+    }
   la_coordinator_trace_schedule (task, LA_SCHED_PARKED, UINT64_MAX);
   return error;
 }
@@ -7837,6 +8336,10 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
   task.apply = la_find_apply_list (lrec->trid);
   task.has_items = (task.apply != NULL && task.apply->head != NULL);
   has_label = la_coordinator_set_commit_dependency (&task);
+  if (task.has_items)
+    {
+      la_Apply_stat.commit_read_count++;
+    }
 
   if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
     {
@@ -8717,6 +9220,7 @@ la_init (const char *log_path, const int max_mem_size)
     }
   /* start_vsize stays 0 here; la_check_mem_size takes it once the workers have started */
   la_Info.start_time = time (NULL);
+  la_stat_reset ();
 
   la_Info.last_time_archive_deleted = la_Info.start_time;
 
@@ -10041,6 +10545,9 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
   (void) heap_get_maxslotted_reclength (la_Info.maxslotted_reclength);
+
+  /* without the statistics rows the applier still runs; it only stores no statistics */
+  (void) la_stat_init_rows ();
 
   er_log_debug (ARG_FILE_LINE, "la_Info.maxslotted_reclength=%d\n", la_Info.maxslotted_reclength);
 
