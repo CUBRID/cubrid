@@ -35,7 +35,6 @@
 
 #include "bestspace.hpp"
 #include "heap_file.h"
-#include "fault_injection.h"
 
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -4056,7 +4055,6 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
     }
 
   /* published: claims use the map now; feedback goes to the pending table until the merge below */
-  (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_LOAD, 0);
   heap_bsmap_absorb_pending (thread_p, hfid, bestspace);
 
   /* the header page holds rows too: measure it while its latch is held. This comes after the merge, which may hold an
@@ -4396,8 +4394,6 @@ heap_bestspace_rv_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   bool recorded;
 #if !defined (NDEBUG)
   OID unkeyed;
-  int fail_mod = 10;
-  bool injected = false;
 #endif
 
   assert (!LOG_ISRESTARTED ());
@@ -4411,27 +4407,11 @@ heap_bestspace_rv_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if !defined (NDEBUG)
   heap_bsmap_oid_unkey (owner, &unkeyed);
   assert (OID_EQ (&unkeyed, &class_oid));
-
-  /* the caller's error survives the injection */
-  er_stack_push ();
-  if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_TABLE_NOMEM, &fail_mod, 0) != NO_ERROR)
-    {
-      cubstorage::bestspace_map::debug_fail_allocations (1);
-      injected = true;
-    }
-  er_stack_pop ();
 #endif
   recorded = cubstorage::bestspace_recovery.record (0, cubstorage::bestspace_map::make_key (vpid->volid, vpid->pageid),
 						    (std::uint32_t) vpid->pageid
 						    % cubstorage::bestspace_map::PAGES_PER_SECTOR, code, owner,
 						    heap_bsmap_lsa_key (pgbuf_get_lsa (pgptr)));
-#if !defined (NDEBUG)
-  if (injected)
-    {
-      /* the arm is global: an allocation of another redo worker must not take it after this call */
-      cubstorage::bestspace_map::debug_fail_allocations (0);
-    }
-#endif
   if (!recorded)
     {
       cubstorage::bestspace_recovery.mark_lost (0, owner);
@@ -4564,10 +4544,6 @@ heap_bsmap_rv_hand_over (THREAD_ENTRY * thread_p, const HFID * hfid,
   std::size_t k;
   int s = 0, error;
   bool recorded;
-#if !defined (NDEBUG)
-  int fail_mod = 10;
-  bool injected;
-#endif
 
   *kept = 0;
   error = file_probe_heap_header (thread_p, &hfid->vfid, PGBUF_UNCONDITIONAL_LATCH, &state, &hdr_vpid);
@@ -4600,23 +4576,7 @@ heap_bsmap_rv_hand_over (THREAD_ENTRY * thread_p, const HFID * hfid,
 	{
 	  continue;		/* not a sector of this file */
 	}
-#if !defined (NDEBUG)
-      injected = false;
-      er_stack_push ();
-      if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_TABLE_NOMEM, &fail_mod, 0) != NO_ERROR)
-	{
-	  cubstorage::bestspace_map::debug_fail_allocations (1);
-	  injected = true;
-	}
-      er_stack_pop ();
-#endif
       recorded = cubstorage::bestspace_pending.record_sector (group, items[k]->key, items[k]->codes, items[k]->mask);
-#if !defined (NDEBUG)
-      if (injected)
-	{
-	  cubstorage::bestspace_map::debug_fail_allocations (0);
-	}
-#endif
       if (!recorded)
 	{
 	  cubstorage::bestspace_pending.mark_lost (group, 0);
@@ -4725,9 +4685,6 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
   OID class_oid;
   HFID hfid;
   HEAP_BSMAP_RV_HEAP found;
-#if !defined (NDEBUG)
-  int exit_mod = 5;
-#endif
 
   er_stack_push ();
 
@@ -4786,11 +4743,6 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
 	  er_log_debug (ARG_FILE_LINE, "heap_bestspace_rv_finish: class %d|%d|%d heap %d|%d (header %d): %zu of %zu "
 			"sectors pending", OID_AS_ARGS (&class_oid), VFID_AS_ARGS (&hfid.vfid), hfid.hpgid, kept,
 			j - i);
-#if !defined (NDEBUG)
-	  er_stack_push ();
-	  (void) FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_EXIT_RECOVERY_END, &exit_mod, 0);
-	  er_stack_pop ();
-#endif
 	}
       if (sorted != NULL)
 	{
@@ -4849,10 +4801,6 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
   // *INDENT-OFF*
   cubstorage::bestspace_sector_table::record_result result;
   // *INDENT-ON*
-#if !defined (NDEBUG)
-  int fail_mod = 10;
-  bool injected = false;
-#endif
 
   if (!LOG_ISRESTARTED ())
     {
@@ -4860,9 +4808,6 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
       heap_bestspace_rv_record (thread_p, pgptr);
       return;
     }
-
-  /* widen the window in which the page is latched while its free space is reported */
-  (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_FEEDBACK, 0);
 
   if (!heap_bestspace_classify_page (thread_p, pgptr, &class_oid, &code))
     {
@@ -4896,24 +4841,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
     }
   if (bestspace != NULL && bestspace->is_absorbed ())
     {
-#if !defined (NDEBUG)
-      /* the caller's error survives the injection */
-      er_stack_push ();
-      if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_SECTOR_NOMEM, &fail_mod, 0) != NO_ERROR)
-	{
-	  cubstorage::bestspace_map::debug_fail_allocations (1);
-	  injected = true;
-	}
-      er_stack_pop ();
-#endif
       (void) bestspace->get_map ()->feedback (vpid->volid, vpid->pageid, code);
-#if !defined (NDEBUG)
-      if (injected)
-	{
-	  /* the arm is global: an allocation of another thread must not take it after this call */
-	  cubstorage::bestspace_map::debug_fail_allocations (0);
-	}
-#endif
       return;
     }
 
@@ -4925,22 +4853,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
   group = heap_bsmap_group_key (&hfid->vfid);
   key = cubstorage::bestspace_map::make_key (vpid->volid, vpid->pageid);
   offset = (std::uint32_t) vpid->pageid % cubstorage::bestspace_map::PAGES_PER_SECTOR;
-#if !defined (NDEBUG)
-  er_stack_push ();
-  if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_TABLE_NOMEM, &fail_mod, 0) != NO_ERROR)
-    {
-      cubstorage::bestspace_map::debug_fail_allocations (1);
-      injected = true;
-    }
-  er_stack_pop ();
-#endif
   result = cubstorage::bestspace_pending.record_if (group, key, offset, code, heap_bsmap_still_unloaded, &check);
-#if !defined (NDEBUG)
-  if (injected)
-    {
-      cubstorage::bestspace_map::debug_fail_allocations (0);
-    }
-#endif
   switch (result)
     {
     case cubstorage::bestspace_sector_table::RECORDED:
@@ -17719,7 +17632,7 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
   VPID vpid, prev_vpid, relink_vpid;
   INT16 slotid;
   std::size_t num_sectors;
-  int k, i, first, error, fail_mod = 10, exit_mod = 20;
+  int k, i, first, error;
   bool was_inline, is_inline, appended, relink;
 
   hdr = heap_bsmap_get_header (thread_p, hdr_watcher->pgptr);
@@ -17757,11 +17670,6 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
       return ER_FAILED;
     }
 
-  if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_MAP_PAGE_ALLOC_FAIL, &fail_mod, 0) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
   /* 1. allocate and chain the page; once committed nothing of it is undone */
   chain.class_oid = hdr->class_oid;
   VPID_SET_NULL (&chain.prev_vpid);
@@ -17783,7 +17691,6 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
       return error;
     }
   log_sysop_commit (thread_p);
-  (void) FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_EXIT_MAP_PAGE, &exit_mod, 0);
 
   /* a slot may still hold this recycled page (see heap_bsmap_drop_removed_page ()): drop it. A shard that reads the
    * slot first rejects a map page anyway (L1_find ()) */
@@ -17835,10 +17742,6 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
 			 HEAP_BESTSPACE_ENTRIES_SLOTID, recdes.length, area);
   pgbuf_set_dirty (thread_p, page_watcher.pgptr, DONT_FREE);
   pgbuf_ordered_unfix (thread_p, &page_watcher);
-  if (was_inline)
-    {
-      (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_PROMOTE, 0);
-    }
 
   /* 3. map page k - 1, full, and its link to this page, in one redo-only record (see the note above) */
   if (k > 0)
@@ -18015,7 +17918,7 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
   const HEAP_BSMAP_PAGE_HDR *phdr;
   PGBUF_WATCHER watcher;
   VPID vpid, next_vpid;
-  int listed, p, i, count, held, error = NO_ERROR, read_fail_mod = 2;
+  int listed, p, i, count, held, error = NO_ERROR;
   bool loaded;
 
   *pages = NULL;
@@ -18039,10 +17942,6 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
   for (p = 0; p < listed && !VPID_ISNULL (&vpid); p++)
     {
       *unread = vpid;
-      if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_MAP_PAGE_READ_FAIL, &read_fail_mod, 0) != NO_ERROR)
-	{
-	  break;
-	}
       held = pgbuf_get_hold_count (thread_p);
       PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
       /* with lock timeout 0 a busy page ends the load early; nearly unreachable, as a writer of a listed map page holds
@@ -18421,7 +18320,7 @@ heap_bsmap_fix_pinned_header (THREAD_ENTRY * thread_p, cubstorage::bestspace_reg
 
 /*
  * heap_bsmap_write_items () - write map entries into a map page or into the heap header's inline entries, and log them
- *   return: NO_ERROR; on an error (fault injection, or a page that is not what the caller checked) nothing is written
+ *   return: NO_ERROR; on an error (a page that is not what the caller checked) nothing is written
  *   pgptr(in): the page, write latched: the heap header, or a map page of the heap (checked by the caller)
  *   items(in): the entries with their indexes (inline slots for the header, entry indexes for a map page), in order
  */
@@ -18429,13 +18328,9 @@ static int
 heap_bsmap_write_items (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, const HEAP_BSMAP_LOG_ITEM * items,
 			int count, bool is_header)
 {
-  int error, fail_mod = 10, exit_mod = 50;
+  int error;
 
   assert (count > 0);
-  if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_CHKPT_WRITE_FAIL, &fail_mod, 0) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
   error = heap_rv_bsmap_entries_apply (thread_p, pgptr, items, count);
   if (error != NO_ERROR)
     {
@@ -18446,7 +18341,6 @@ heap_bsmap_write_items (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgp
   log_append_redo_data2 (thread_p, RVHF_BESTSPACE_MAP_ENTRIES, &hfid->vfid, pgptr,
 			 is_header ? HEAP_HEADER_AND_CHAIN_SLOTID : HEAP_BESTSPACE_ENTRIES_SLOTID,
 			 count * (int) sizeof (HEAP_BSMAP_LOG_ITEM), items);
-  (void) FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_EXIT_CHKPT, &exit_mod, 0);
   return NO_ERROR;
 }
 
@@ -19500,7 +19394,6 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
 	}
       return NO_ERROR;
     }
-  (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_CHKPT, 0);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);

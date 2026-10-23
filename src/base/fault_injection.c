@@ -35,8 +35,6 @@
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #include <assert.h>
-#include <chrono>
-#include <thread>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -47,12 +45,9 @@ static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const cha
 static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
-static int fi_handler_sleep (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 
 /* how long fi_handler_hold stays in place when the caller passes no argument */
 #define FI_HOLD_DEFAULT_SECONDS 3
-/* how long fi_handler_sleep sleeps when the caller passes no argument */
-#define FI_SLEEP_DEFAULT_MSECS 20
 
 static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 
@@ -81,21 +76,7 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, fi_handler_exit, FI_INIT_STATE},
-  {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE},
-  /* BESTSPACE: random failures, sleeps that widen race windows, random exits */
-  {FI_TEST_BESTSPACE_MAP_PAGE_ALLOC_FAIL, fi_handler_random_fail, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_MAP_PAGE_READ_FAIL, fi_handler_random_fail, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_SECTOR_NOMEM, fi_handler_random_fail, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_TABLE_NOMEM, fi_handler_random_fail, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_CHKPT_WRITE_FAIL, fi_handler_random_fail, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_DELAY_CHKPT, fi_handler_sleep, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_DELAY_LOAD, fi_handler_sleep, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_DELAY_CLAIM, fi_handler_sleep, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_DELAY_FEEDBACK, fi_handler_sleep, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_DELAY_PROMOTE, fi_handler_sleep, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_EXIT_CHKPT, fi_handler_random_exit, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_EXIT_RECOVERY_END, fi_handler_random_exit, FI_INIT_STATE},
-  {FI_TEST_BESTSPACE_EXIT_MAP_PAGE, fi_handler_random_exit, FI_INIT_STATE}
+  {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE}
 };
 
 const FI_TEST_CODE fi_Group_none[] = {
@@ -454,18 +435,6 @@ fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, co
       sleep ((unsigned int) seconds);
     }
 
-  return NO_ERROR;
-}
-
-/*
- * fi_handler_sleep () - sleep to widen a race window: *arg milliseconds, FI_SLEEP_DEFAULT_MSECS when arg is NULL
- */
-static int
-fi_handler_sleep (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
-{
-  int msecs = (arg == NULL) ? FI_SLEEP_DEFAULT_MSECS : *((int *) arg);
-
-  std::this_thread::sleep_for (std::chrono::milliseconds (msecs));
   return NO_ERROR;
 }
 

@@ -184,7 +184,7 @@ namespace cubstorage
       static void entry_set_code (bestspace_map_entry &entry, std::size_t offset, std::uint8_t code);
 
 #if !defined (NDEBUG)
-      // the next count internal allocations fail (unit tests, fault injection)
+      // the next count internal allocations fail (unit tests)
       static void debug_fail_allocations (int count);
       // set_resident_code () calls hook (arg) just before its exchange (unit tests). nullptr: none
       static void debug_resident_code_hook (void (*hook) (void *), void *arg);

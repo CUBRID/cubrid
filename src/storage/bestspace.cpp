@@ -26,7 +26,6 @@
 #include "slotted_page.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "fault_injection.h"
 
 #include <mutex>
 #include <utility>
@@ -1146,10 +1145,6 @@ namespace cubstorage
     min_code = code_of (needed_size);
     num_claimed = map->claim (min_code < bestspace_map::CODE_MAX_TIER ? min_code + 1 : bestspace_map::CODE_MAX_TIER,
 			      picked, ALLOC_BATCH_SIZE);
-    if (num_claimed > 0)
-      {
-	(void) FI_TEST (thread_get_thread_entry_info (), FI_TEST_BESTSPACE_DELAY_CLAIM, 0);
-      }
 
     // highest tier first: a page with more room takes more of the rows before the next refill
     for (i = 0; i < num_claimed; i++)
