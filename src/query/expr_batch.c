@@ -1313,6 +1313,30 @@ eb_str_ti (const EB_LEAF * leaf, const DB_VALUE * k)
   return (ti || (leaf->k_type == DB_TYPE_CHAR && DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_CHAR)) ? 1 : 0;
 }
 
+/* the end of the character at p, stepping as intl_char_count () and intl_char_size () step: one byte for ISO88591
+ * and binary, the lead byte's length for UTF-8, the EUC-KR widths; NULL when the string ends inside it (a cut
+ * character is not one of the string's, intl_char_count ()) */
+static inline const char *
+eb_char_end (const char *p, const char *end, INTL_CODESET codeset)
+{
+  int w;
+
+  switch (codeset)
+    {
+    case INTL_CODESET_UTF8:
+      w = intl_Len_utf8_char[(unsigned char) *p];
+      break;
+    case INTL_CODESET_KSC5601_EUC:
+      (void) intl_nextchar_euc ((const unsigned char *) p, &w);
+      break;
+    default:
+      /* INTL_CODESET_ISO88591, INTL_CODESET_RAW_BYTES (eb_load_in_list () admits no other) */
+      w = 1;
+      break;
+    }
+  return (p + w <= end) ? p + w : NULL;
+}
+
 /* an IN leaf's list for this page: each value of the column's kind (an exact integer for an integer column, a
  * string of its codeset and collation for a string one), else the page goes to the row path */
 static int
@@ -1332,6 +1356,12 @@ eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
 	  || db_get_int (leaf->sub_len_v) < 1)
 	{
 	  return eb_fallback (plan, "a SUBSTRING position the batch does not take");
+	}
+      if (col->codeset != INTL_CODESET_UTF8 && col->codeset != INTL_CODESET_KSC5601_EUC
+	  && col->codeset != INTL_CODESET_ISO88591 && col->codeset != INTL_CODESET_RAW_BYTES)
+	{
+	  /* the codesets eb_char_end () walks as the row path's character counting does */
+	  return eb_fallback (plan, "a SUBSTRING codeset the batch does not walk");
 	}
       leaf->sub_start = db_get_int (leaf->sub_start_v);
       leaf->sub_len = db_get_int (leaf->sub_len_v);
@@ -1422,28 +1452,37 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    }
 	  if (got > 0 && leaf->sub_len > 0)
 	    {
-	      /* qstr_substring () on the characters */
-	      int nchars = 0, start = leaf->sub_start, nsub = leaf->sub_len, lead = 0, size = 0;
+	      /* qstr_substring () on the characters, in one walk: the characters before start are skipped, then up
+	       * to sub_len characters are taken, stopping where the string ends (a character the end cuts is not one
+	       * of the string's); a start past the last character, or no character to take, is the empty result,
+	       * which a parameter may make NULL */
+	      const char *p = str, *end = str + len;
+	      int k;
 
-	      intl_char_count ((const unsigned char *) str, len, (INTL_CODESET) col->codeset, &nchars);
-	      if (start > nchars)
+	      for (k = leaf->sub_start - 1; k > 0 && p != NULL && p < end; k--)
 		{
-		  start = 1;
-		  nsub = 0;
+		  p = eb_char_end (p, end, (INTL_CODESET) col->codeset);
 		}
-	      if (start + nsub - 1 > nchars)
+	      if (k > 0 || p == NULL)
 		{
-		  nsub = nchars - start + 1;
-		}
-	      intl_char_size ((unsigned char *) str, start - 1, (INTL_CODESET) col->codeset, &lead);
-	      intl_char_size ((unsigned char *) str + lead, nsub, (INTL_CODESET) col->codeset, &size);
-	      if (size == 0)
-		{
-		  /* an empty result, which a parameter may make NULL */
 		  return eb_fallback (plan, "an empty SUBSTRING");
 		}
-	      str += lead;
-	      len = size;
+	      str = p;
+	      for (k = leaf->sub_len; k > 0 && p < end; k--)
+		{
+		  const char *q = eb_char_end (p, end, (INTL_CODESET) col->codeset);
+
+		  if (q == NULL)
+		    {
+		      break;
+		    }
+		  p = q;
+		}
+	      if (p == str)
+		{
+		  return eb_fallback (plan, "an empty SUBSTRING");
+		}
+	      len = (int) (p - str);
 	    }
 	  for (i = 0; got > 0 && i < leaf->k_n && !hit; i++)
 	    {
