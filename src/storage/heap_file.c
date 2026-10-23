@@ -17855,7 +17855,7 @@ orphan:
  *   hdr_watcher(in): the heap header, write latched by the caller
  *
  * Note: other failures are not reported: the sectors stay unpersisted until the next allocation, the maintenance
- *	 daemon or a load's sector count check.
+ *	 daemon or a load's sector check.
  */
 static int
 heap_bsmap_ensure_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -18019,12 +18019,12 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
  * heap_bsmap_add_missing_sectors () - add the sectors of the heap's file that the map does not have: their allocated
  *				       pages UNVERIFIED, the others NOT_DATA
  *
- * Note: a sector is missing when the map never persisted it or the load ended early. The sector table is read only
- *	 when the file header's sector count is larger than the map's. The caller holds the heap header write latch,
- *	 which keeps out set_resident () and layout changes; add_missing_sector () copes with feedback meanwhile. The
- *	 file header is latched only conditionally: file_destroy () holds it while it fixes every page. A busy file
- *	 header, a read error or out of memory sets needs_retry, for the maintenance daemon.
- *	 Known limit: each sector the file counts as empty but the map keeps hides one missing sector from the count.
+ * Note: a sector is missing when the map never persisted it or the load ended early. Every sector of the file is
+ *	 looked up, as a count would not see a missing sector while the map keeps one that the file has emptied. The
+ *	 caller holds the heap header write latch, which keeps out set_resident () and layout changes;
+ *	 add_missing_sector () copes with feedback meanwhile. The file header is latched only conditionally:
+ *	 file_destroy () holds it while it fixes every page. A busy file header, a read error or out of memory sets
+ *	 needs_retry, for the maintenance daemon.
  */
 static void
 heap_bsmap_add_missing_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::bestspace_map * map)
@@ -18042,8 +18042,7 @@ heap_bsmap_add_missing_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, cubs
   /* the table page fixes must not consume a statement cancel, and what a failure sets is dropped */
   check_interrupt = logtb_set_check_interrupt (thread_p, false);
   er_stack_push ();
-  error = file_probe_heap_sectors (thread_p, &hfid->vfid, &hdr_vpid, (int) map->num_sectors (), &state,
-				   &n_file_sectors, &sectors);
+  error = file_probe_heap_sectors (thread_p, &hfid->vfid, &hdr_vpid, &state, &n_file_sectors, &sectors);
   if (error != NO_ERROR || state == FILE_HEAP_SECTORS_BUSY)
     {
       map->mark_needs_retry ();
@@ -19441,7 +19440,7 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p, bool * busy)
 
 /*
  * Upkeep of the loaded bestspace maps: once a second the maintenance daemon (SERVER_MODE) visits every loaded map and
- * 1. runs the sector count check again (needs_retry); 2. measures UNVERIFIED pages; 3. adds map pages for sectors
+ * 1. runs the sector check again (needs_retry); 2. measures UNVERIFIED pages; 3. adds map pages for sectors
  * added outside the allocation path; 4. frees orphan map pages, from failure hints or by a walk of the chain.
  * Steps 1, 3 and the start of 4 hold the heap header write latch; steps 2 and 4 read a bounded number of pages a
  * round, holding no page while they wait for one. The daemon holds no class lock: its work is background work on the
@@ -19553,7 +19552,7 @@ heap_bsmap_page_in_file (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID 
 
   hdr_vpid.volid = hfid->vfid.volid;
   hdr_vpid.pageid = hfid->hpgid;
-  if (file_probe_heap_sectors (thread_p, &hfid->vfid, &hdr_vpid, -1, &state, &n_file_sectors, &sectors) == NO_ERROR)
+  if (file_probe_heap_sectors (thread_p, &hfid->vfid, &hdr_vpid, &state, &n_file_sectors, &sectors) == NO_ERROR)
     {
       if (state == FILE_HEAP_SECTORS_COLLECTED)
 	{
@@ -19945,8 +19944,8 @@ heap_bsmap_verify_pages (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
     {
       hdr_vpid.volid = pin->hfid.vfid.volid;
       hdr_vpid.pageid = pin->hfid.hpgid;
-      if (file_probe_heap_sectors (thread_p, &pin->hfid.vfid, &hdr_vpid, -1, &state, &n_file_sectors, &sectors)
-	  != NO_ERROR || state != FILE_HEAP_SECTORS_COLLECTED)
+      if (file_probe_heap_sectors (thread_p, &pin->hfid.vfid, &hdr_vpid, &state, &n_file_sectors, &sectors) != NO_ERROR
+	  || state != FILE_HEAP_SECTORS_COLLECTED)
 	{
 	  /* busy, or not this heap's file: the batch waits for a later round */
 	  bestspace->m_verify_cursor = cursor;
@@ -20258,7 +20257,7 @@ heap_bsmap_maintain (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pi
       goto end;
     }
 
-  /* 1. the sector count check again */
+  /* 1. the sector check again */
   if (retry)
     {
       map->clear_needs_retry ();

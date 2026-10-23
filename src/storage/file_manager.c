@@ -12931,22 +12931,21 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 }
 
 /*
- * file_probe_heap_sectors () - the sectors of a heap file with an allocated page, if more than known_sectors
+ * file_probe_heap_sectors () - the sectors of a heap file with an allocated page
  *
  * return              : error code (state is then FILE_HEAP_SECTORS_BUSY)
  * thread_p (in)       : thread entry
  * vfid (in)           : the heap file
  * hdr_vpid (in)       : the heap header page
- * known_sectors (in)  : how many sectors of the file the caller knows
- * state (out)         : FILE_HEAP_SECTORS_BUSY, _GONE, _COVERED or _COLLECTED
- * n_sectors_out (out) : with _COVERED or _COLLECTED, the sectors with an allocated page (file table pages count)
+ * state (out)         : FILE_HEAP_SECTORS_BUSY, _GONE or _COLLECTED
+ * n_sectors_out (out) : with _COLLECTED, the sectors with an allocated page (file table pages count)
  * collector_out (out) : with _COLLECTED, those sectors, file table pages removed; free partsect_ftab (db_private_free)
  *
  * note: the file header is latched conditionally (file_header_fix_conditional ()); under its read latch no one write
  *	 latches a file table page. Empty reserved sectors are not counted: file_perm_expand () reserves many at once.
  */
 int
-file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * hdr_vpid, int known_sectors,
+file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * hdr_vpid,
 			 FILE_HEAP_SECTORS_STATE * state, int *n_sectors_out, FILE_FTAB_COLLECTOR * collector_out)
 {
   VPID vpid_fhead;
@@ -12992,15 +12991,8 @@ file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID 
   else
     {
       *n_sectors_out = fhead->n_sector_total - fhead->n_sector_empty;
-      if (*n_sectors_out <= known_sectors)
-	{
-	  *state = FILE_HEAP_SECTORS_COVERED;
-	}
-      else
-	{
-	  error_code = file_collect_data_sectors (thread_p, page_fhead, true, collector_out);
-	  *state = error_code == NO_ERROR ? FILE_HEAP_SECTORS_COLLECTED : FILE_HEAP_SECTORS_BUSY;
-	}
+      error_code = file_collect_data_sectors (thread_p, page_fhead, true, collector_out);
+      *state = error_code == NO_ERROR ? FILE_HEAP_SECTORS_COLLECTED : FILE_HEAP_SECTORS_BUSY;
     }
   pgbuf_unfix_and_init (thread_p, page_fhead);
   return error_code;

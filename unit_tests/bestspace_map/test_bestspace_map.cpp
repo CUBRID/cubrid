@@ -1058,7 +1058,7 @@ TEST_CASE ("forget_unverified replaces only an UNVERIFIED code of a page that is
 
 TEST_CASE ("add_missing_sector racing a feedback of the same sector keeps the fed-back code", "[bestspace_map]")
 {
-  // a feedback and the sector count check on a published map add the same sectors, in opposite orders
+  // a feedback and the sector check on a published map add the same sectors, in opposite orders
   for (int round = 0; round < 200; round++)
     {
       bestspace_map map;
