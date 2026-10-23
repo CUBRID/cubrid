@@ -43,6 +43,8 @@ struct la_stats
   unsigned long fail_counter;
   unsigned long recovery_skipped_counter;	/* re-applicability errors suppressed inside the recovery range
 						 * (INSERT unique duplicate, DELETE/UPDATE target missing) */
+  int last_error_code;		/* the last error counted in fail_counter, for _db_ha_apply_worker_stat; 0 if none */
+  time_t last_error_time;	/* when it happened */
   int num_unflushed;
   char last_class_name[DB_MAX_IDENTIFIER_LENGTH];	/* last applied class, for logs and the block-class test hook */
   bool multi_class;		/* rows of more than one class were applied; the done trace then names none */
@@ -69,6 +71,11 @@ struct la_result
   int total_rows;		/* items the worker went through, as the serial applier counted them; summed into
 				 * la_Info.total_rows at retire, where a change makes the main loop store the apply info */
 
+  /* statistics only: added to the worker's row of _db_ha_apply_worker_stat at retire */
+  bool has_items;		/* the task applied replicated items; an empty commit is not counted as work */
+  UINT64 busy_usec;		/* time the worker spent applying the task, flushing and committing included */
+  struct timeval apply_end_time;	/* when the worker finished the task */
+
   /* statistics only: summed into la_Info at retire */
   LA_STATS stats;
 
@@ -94,6 +101,7 @@ la_result_init (LA_RESULT *result, const LA_TASK *task, int worker_idx)
   result->commit_lsa = task->commit_lsa;
   LSA_SET_NULL (&result->committed_rep_lsa);
   result->log_record_time = task->log_record_time;
+  result->has_items = task->has_items;
   result->worker_idx = worker_idx;
 }
 
