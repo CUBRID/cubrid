@@ -533,6 +533,8 @@ static void la_stat_make_time (DB_VALUE * value, time_t sec, int msec);
 static int la_stat_init_rows (void);
 static int la_stat_update_rows (void);
 static void la_stat_count_pending (const LA_TASK * task, void *arg);
+static void la_stat_sprint_time (char *buf, int buf_size, DB_VALUE * value);
+static void la_print_parallel_apply_info (const char *log_path, const char *prefix_name, bool verbose);
 
 #if defined (WINDOWS)
 static void la_shutdown_by_signal (void);
@@ -9537,6 +9539,8 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
       printf ("%-30s : %s\n", "Start time", timebuf);
     }
 
+  la_print_parallel_apply_info (log_path, database_name, verbose);
+
   if (check_replica_info)
     {
       replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
@@ -9558,6 +9562,179 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
 check_applied_info_end:
 
   return error;
+}
+
+/*
+ * la_stat_sprint_time() - print a datetime value, or "-" for NULL
+ */
+static void
+la_stat_sprint_time (char *buf, int buf_size, DB_VALUE * value)
+{
+  if (DB_IS_NULL (value))
+    {
+      snprintf (buf, buf_size, "-");
+      return;
+    }
+
+  db_datetime_to_string (buf, buf_size, db_get_datetime (value));
+}
+
+/*
+ * la_print_parallel_apply_info() - print the "Parallel Apply Info" section of applyinfo
+ *   log_path(in): copied log path of the applier
+ *   prefix_name(in): database name of the applier
+ *   verbose(in): applyinfo -v; prints the remaining columns and one line per worker
+ *
+ * Note:
+ *   Reads _db_ha_apply_stat and _db_ha_apply_worker_stat. A database without the tables, or an applier that
+ *   has not stored its statistics, prints that there are none; applyinfo goes on either way.
+ */
+static void
+la_print_parallel_apply_info (const char *log_path, const char *prefix_name, bool verbose)
+{
+#define LA_IN_VALUE_COUNT       2
+#define LA_APPLY_OUT_COUNT      10
+#define LA_WORKER_OUT_COUNT     11
+  DB_VALUE in_value[LA_IN_VALUE_COUNT];
+  DB_VALUE out_value[LA_WORKER_OUT_COUNT];
+  char query_buf[LA_QUERY_BUF_SIZE];
+  char timebuf[256];
+  char lsabuf[64];
+  char lsabuf2[64];
+  DB_QUERY_RESULT *result = NULL;
+  DB_QUERY_ERROR query_error;
+  INT64 direct, parked;
+  int res, pos, i;
+
+  printf ("\n *** Parallel Apply Info. *** \n");
+
+  if (db_find_class (CT_HA_APPLY_STAT_NAME) == NULL || db_find_class (CT_HA_APPLY_WORKER_STAT_NAME) == NULL)
+    {
+      er_clear ();
+      printf ("%s\n", "No statistics: the database has no parallel apply statistics tables.");
+      return;
+    }
+
+  db_make_varchar (&in_value[0], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[1], 4096, log_path, strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT start_time, last_update_time, worker_count, apply_state, done_hold_since, commit_read_count, "
+	    "dispatch_direct_count, dispatch_parked_count, inflight_count, pending_count "
+	    "FROM %s WHERE db_name = ? AND copied_log_path = ? ;", CT_HA_APPLY_STAT_NAME);
+
+  res = db_execute_with_values (query_buf, &result, &query_error, LA_IN_VALUE_COUNT, &in_value[0]);
+  if (res <= 0 || db_query_first_tuple (result) != DB_CURSOR_SUCCESS
+      || db_query_get_tuple_valuelist (result, LA_APPLY_OUT_COUNT, out_value) != NO_ERROR)
+    {
+      if (res >= 0)
+	{
+	  db_query_end (result);
+	}
+      er_clear ();
+      printf ("%s\n", "No statistics: applylogdb has not stored them yet.");
+      return;
+    }
+  db_query_end (result);
+
+  la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[0]);
+  printf ("%-30s : %s\n", "Start time", timebuf);
+  printf ("%-30s : %s\n", "Apply state", DB_IS_NULL (&out_value[3]) ? "-" : db_get_string (&out_value[3]));
+  printf ("%-30s : %d\n", "Worker count", db_get_int (&out_value[2]));
+  printf ("%-30s : %lld\n", "Commits read", (long long) db_get_bigint (&out_value[5]));
+
+  direct = db_get_bigint (&out_value[6]);
+  parked = db_get_bigint (&out_value[7]);
+  printf ("%-30s : %lld\n", "Dispatched directly", (long long) direct);
+  printf ("%-30s : %lld (%.1f%%)\n", "Parked by dependency", (long long) parked,
+	  (direct + parked) > 0 ? (double) parked * 100.0 / (double) (direct + parked) : 0.0);
+  printf ("%-30s : %d / %d\n", "In flight / pending", db_get_int (&out_value[8]), db_get_int (&out_value[9]));
+
+  if (verbose)
+    {
+      la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[4]);
+      printf ("%-30s : %s\n", "Holding DONE since", timebuf);
+      la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[1]);
+      printf ("%-30s : %s\n", "Last update time", timebuf);
+    }
+
+  for (i = 0; i < LA_APPLY_OUT_COUNT; i++)
+    {
+      db_value_clear (&out_value[i]);
+    }
+
+  if (!verbose)
+    {
+      return;
+    }
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT worker_idx, state, applied_task_count, applied_row_count, busy_usec, applying_commit_lsa_pageid, "
+	    "applying_commit_lsa_offset, last_applied_commit_lsa_pageid, last_applied_commit_lsa_offset, "
+	    "last_applied_time, last_error_code "
+	    "FROM %s WHERE db_name = ? AND copied_log_path = ? ORDER BY worker_idx ;", CT_HA_APPLY_WORKER_STAT_NAME);
+
+  res = db_execute_with_values (query_buf, &result, &query_error, LA_IN_VALUE_COUNT, &in_value[0]);
+  if (res < 0)
+    {
+      er_clear ();
+      return;
+    }
+
+  printf ("\n%-6s %-8s %12s %12s %12s %-18s %-18s %-30s %s\n", "Worker", "State", "Tasks", "Rows", "Busy(ms)",
+	  "Applying LSA", "Last applied LSA", "Last applied time", "Last error");
+
+  for (pos = db_query_first_tuple (result); pos == DB_CURSOR_SUCCESS; pos = db_query_next_tuple (result))
+    {
+      if (db_query_get_tuple_valuelist (result, LA_WORKER_OUT_COUNT, out_value) != NO_ERROR)
+	{
+	  break;
+	}
+
+      if (DB_IS_NULL (&out_value[5]))
+	{
+	  snprintf (lsabuf, sizeof (lsabuf), "-");
+	}
+      else
+	{
+	  snprintf (lsabuf, sizeof (lsabuf), "%lld|%d", (long long) db_get_bigint (&out_value[5]),
+		    db_get_int (&out_value[6]));
+	}
+      if (DB_IS_NULL (&out_value[7]))
+	{
+	  snprintf (lsabuf2, sizeof (lsabuf2), "-");
+	}
+      else
+	{
+	  snprintf (lsabuf2, sizeof (lsabuf2), "%lld|%d", (long long) db_get_bigint (&out_value[7]),
+		    db_get_int (&out_value[8]));
+	}
+      la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[9]);
+
+      printf ("%-6d %-8s %12lld %12lld %12lld %-18s %-18s %-30s ", db_get_int (&out_value[0]),
+	      DB_IS_NULL (&out_value[1]) ? "-" : db_get_string (&out_value[1]),
+	      (long long) db_get_bigint (&out_value[2]), (long long) db_get_bigint (&out_value[3]),
+	      (long long) db_get_bigint (&out_value[4]) / 1000, lsabuf, lsabuf2, timebuf);
+      if (DB_IS_NULL (&out_value[10]))
+	{
+	  printf ("-\n");
+	}
+      else
+	{
+	  printf ("%d\n", db_get_int (&out_value[10]));
+	}
+
+      for (i = 0; i < LA_WORKER_OUT_COUNT; i++)
+	{
+	  db_value_clear (&out_value[i]);
+	}
+    }
+
+  db_query_end (result);
+
+#undef LA_IN_VALUE_COUNT
+#undef LA_APPLY_OUT_COUNT
+#undef LA_WORKER_OUT_COUNT
 }
 
 /*
