@@ -44,11 +44,11 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
-static bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
+static bool qo_is_semi_join_on_after (PT_NODE * spec, int location);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_next_oid_pred (PT_NODE * pred);
 
@@ -71,6 +71,9 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 
       /* rewrite outer join to inner join */
       qo_rewrite_outerjoin (parser, *nodep, NULL, &continue_walk);
+
+      /* rewrite semi join on a unique key to inner join, after the outer join rewrite read its ON */
+      qo_rewrite_unique_semi_inner (parser, *nodep);
 
       /* rewrite explicit inner join to implicit inner join */
       qo_rewrite_innerjoin (parser, *nodep, NULL, &continue_walk);
@@ -1270,7 +1273,7 @@ exit_on_error:
  *   Only SM_NORMAL_INDEX is trusted: an invisible index or one that is still being built
  *   online does not guarantee uniqueness yet.
  */
-static bool
+bool
 qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons)
 {
   int i;
@@ -2052,6 +2055,15 @@ qo_modify_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 {
   RESET_LOCATION_INFO *infop = (RESET_LOCATION_INFO *) arg;
 
+  /* PT_LIST_WALK set on a subquery below is still in force when the walk reaches the next conjunct */
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
   if (node->node_type == PT_EXPR && node->info.expr.location == infop->start)
     {
       node->info.expr.location = infop->end;
@@ -2108,6 +2120,53 @@ qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query
 
       spec = spec->next;
     }
+}
+
+/*
+ * qo_insert_spec_location () - make room at 'spec' for a spec the caller is about to link in front of it: move
+ *      the locations of 'spec' and every spec behind it up by one, with the conjuncts stamped with them; the
+ *      counterpart of qo_reset_spec_location ()
+ *   return:
+ *   parser(in):
+ *   spec(in): the first spec that moves, i.e. the one the newcomer goes in front of
+ *   query(in): the SELECT whose WHERE holds the conjuncts stamped with those locations
+ *   on_conds(in): conjuncts stamped the same way but not yet appended to that WHERE
+ *
+ * Note: the specs behind 'spec' move first.  In list order a location would be carried up twice, once with
+ *   its own spec and once more with the next one.
+ */
+void
+qo_insert_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * on_conds)
+{
+  short curr_loc, after_loc;
+  PT_NODE *where;
+  RESET_LOCATION_INFO locate_info;
+
+  if (spec == NULL)
+    {
+      return;
+    }
+
+  qo_insert_spec_location (parser, spec->next, query, on_conds);
+
+  curr_loc = spec->info.spec.location;
+  after_loc = curr_loc + 1;
+
+  if (curr_loc < 0)
+    {
+      /* never numbered: a derived table the rewriter appended */
+      return;
+    }
+
+  /* reset location of spec */
+  spec->info.spec.location = after_loc;
+
+  /* reset location of predicate */
+  locate_info.start = curr_loc;
+  locate_info.end = after_loc;
+  where = query->info.query.q.select.where;
+  (void) parser_walk_tree (parser, where, qo_modify_location, &locate_info, NULL, NULL);
+  (void) parser_walk_tree (parser, on_conds, qo_modify_location, &locate_info, NULL, NULL);
 }
 
 /*
@@ -3599,6 +3658,30 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
+ * qo_is_semi_join_on_after () - is the location that of the ON of a SEMI JOIN after the spec? That ON drops
+ *      the outer rows it rejects as a WHERE term does, while an ANTI JOIN keeps them.  A SEMI JOIN on a unique
+ *      key is still one here: qo_rewrite_unique_semi_inner () turns it INNER only after qo_rewrite_outerjoin ()
+ *   return: bool
+ *   spec(in): the outer joined spec
+ *   location(in): location of a WHERE term
+ */
+static bool
+qo_is_semi_join_on_after (PT_NODE * spec, int location)
+{
+  PT_NODE *ns;
+
+  for (ns = spec->next; ns; ns = ns->next)
+    {
+      if (ns->info.spec.location == location)
+	{
+	  return ns->info.spec.join_type == PT_JOIN_SEMI;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_rewrite_outerjoin () - Rewrite outer join to inner join
  *   return: PT_NODE *
  *   parser(in):
@@ -3646,8 +3729,10 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
 		{
-		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
-		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
+		  if (expr->node_type == PT_EXPR
+		      && (expr->info.expr.location == 0 || qo_is_semi_join_on_after (spec, expr->info.expr.location))
+		      && expr->info.expr.op != PT_IS_NULL && expr->or_next == NULL && expr->info.expr.op != PT_AND
+		      && expr->info.expr.op != PT_OR)
 		    {
 		      info_spec.appears = false;
 		      info.nullable = false;
@@ -3792,7 +3877,7 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	case PT_JOIN_ANTI:
 	  /* semi/anti are reorder barriers. the explicit->implicit rewrite below also resets this segment's
 	   * ON-predicate locations via qo_reset_location(), which would strip the semi/anti ON location that
-	   * query_graph relies on to bind the join term and set outer_dep_set; so the whole segment is frozen. */
+	   * query_graph relies on to bind the join term and set semi_anti_dep_set; so the whole segment is frozen. */
 	  info.found_outerjoin = true;
 	  break;
 	default:
