@@ -1228,6 +1228,7 @@ la_coordinator_add_result_stats (const LA_RESULT * result)
   la_Info.fail_counter += result->stats.fail_counter;
   la_Info.recovery_skipped_counter += result->stats.recovery_skipped_counter;
   la_Info.num_unflushed += result->stats.num_unflushed;
+  la_Info.total_rows += result->total_rows;
 
   if (result->rectype == LOG_COMMIT)
     {
@@ -1360,6 +1361,7 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
   result->error =
     la_apply_repl_log (context, task->apply, &task->commit_lsa, &total_rows, &result->committed_rep_lsa,
 		       &result->stats);
+  result->total_rows = total_rows;
 
   if (trace_level >= 2)
     {

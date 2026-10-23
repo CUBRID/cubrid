@@ -66,6 +66,8 @@ struct la_result
   LOG_LSA commit_lsa;		/* marks this commit applied in the gate; releases transactions that depend on it */
   LOG_LSA committed_rep_lsa;	/* applied log position; advances la_Info.committed_rep_lsa (restart point) */
   time_t log_record_time;
+  int total_rows;		/* items the worker went through, as the serial applier counted them; summed into
+				 * la_Info.total_rows at retire, where a change makes the main loop store the apply info */
 
   /* statistics only: summed into la_Info at retire */
   LA_STATS stats;
