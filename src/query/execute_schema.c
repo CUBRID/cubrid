@@ -112,6 +112,8 @@
   ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
     ((code) == PT_DROP_ATTR_MTHD)        ||                 \
     ((code) == PT_CHANGE_ATTR)           ||                 \
+    ((code) == PT_ADD_SUPCLASS)          ||                 \
+    ((code) == PT_DROP_SUPCLASS)         ||                 \
     ((code) == PT_DROP_CONSTRAINT)       ||                 \
     ((code) == PT_DROP_PRIMARY_CLAUSE)   ||                 \
     ((code) == PT_DROP_INDEX_CLAUSE)                        \
