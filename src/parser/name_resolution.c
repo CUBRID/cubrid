@@ -109,12 +109,6 @@ enum
   DISCARD_NO_MATCH = true
 };
 
-static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
-/* a name in group by/having/order by of a static SQL, not resolved by name binding. it is resolved as an alias or
- * converted to a host variable after the alias resolution. it is compared by its address because etc of a PT_NAME
- * may hold a non-pointer value (e.g. PT_IDX_HINT_FORCE of an index name) */
-static const char *CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL = "name_deferred_for_static_sql";
-
 typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
 struct pt_bind_names_data_type
 {
@@ -3473,7 +3467,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		if (is_pt_name_in_group_having (node))
 		  {
 		    // it may be an alias of the select list. it will be converted after pt_resolve_group_having_alias ()
-		    node->etc = (void *) CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL;
+		    PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
+		    PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL);
 		  }
 		else
 		  {
@@ -9080,17 +9075,12 @@ pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_pare
 static bool
 is_pt_name_in_group_having (PT_NODE * node)
 {
-  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+  if (node == NULL || node->node_type != PT_NAME)
     {
       return false;
     }
 
-  if (strcmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
-    {
-      return true;
-    }
-
-  return false;
+  return PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_IN_GROUP_HAVING);
 }
 
 /*
@@ -9107,7 +9097,7 @@ is_pt_name_deferred_for_static_sql (PT_NODE * node)
       return false;
     }
 
-  return node->etc == (void *) CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL;
+  return PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL);
 }
 
 /*
@@ -9197,7 +9187,7 @@ pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int 
     {
       return node;
     }
-  node->etc = (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_IN_GROUP_HAVING);
+  PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
 
   return node;
 }
