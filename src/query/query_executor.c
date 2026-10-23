@@ -60,6 +60,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "heap_pending_record.hpp"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
@@ -11127,8 +11128,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 		      /* read lob attributes */
 		      scan_code =
-			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-						  NULL_CHN);
+			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache,
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -11946,7 +11947,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  /* read lob attributes */
 		  scan_code =
 		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-					      NULL_CHN);
+					      NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -12302,7 +12303,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info, int op_type, int pruning_type,
 				     PRUNING_CONTEXT * pcontext, int *removed_count)
 {
-  LC_COPYAREA *copyarea = NULL;
+  /* *INDENT-OFF* */
+  heap_pending_record pending;
+  /* *INDENT-ON* */
   RECDES new_recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -12330,15 +12333,17 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
-  if (copyarea == NULL)
+  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, false) != S_SUCCESS)
     {
       goto error_exit;
     }
+  /* *INDENT-OFF* */
+  new_recdes = pending.get_recdes ();
+  /* *INDENT-ON* */
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, index_attr_info, &pending);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -12371,7 +12376,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				&pending);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -12478,14 +12484,6 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -12493,14 +12491,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
     }
 
   return ER_FAILED;
@@ -12533,7 +12523,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   HEAP_CACHE_ATTRINFO * index_attr_info, const HEAP_IDX_ELEMENTS_INFO * idx_info,
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p, int op_type)
 {
-  LC_COPYAREA *copyarea = NULL;
+  /* *INDENT-OFF* */
+  heap_pending_record pending;
+  /* *INDENT-ON* */
   RECDES recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -12567,15 +12559,17 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
-  if (copyarea == NULL)
+  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, true) != S_SUCCESS)
     {
       goto error_exit;
     }
+  /* *INDENT-OFF* */
+  recdes = pending.get_recdes ();
+  /* *INDENT-ON* */
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, index_attr_info, &pending);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -12601,7 +12595,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				&pending);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -12689,14 +12684,6 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -12704,14 +12691,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
     }
 
   return ER_FAILED;
@@ -12778,7 +12757,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
   scan_code =
-    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN,
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);
@@ -14554,7 +14534,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
       /* fetch the object and the class oid */
       scan = locator_get_object (thread_p, &dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
-				 PEEK, NULL_CHN);
+				 PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear
@@ -15244,7 +15224,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED);
+							     LOG_WARNING_IF_DELETED,
+							     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();

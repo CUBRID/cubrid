@@ -1,0 +1,991 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * test_oos_vacuum_server.cpp - SERVER_MODE tests for actual vacuum OOS code paths
+ *
+ * Exercises the real vacuum_heap_oos_delete_within_sysop() -> heap_recdes_get_oos_refs() ->
+ * oos_delete() code path by crafting minimal heap RECDES with OOS inline data
+ * and calling vacuum_heap_oos_delete_within_sysop() directly.
+ *
+ * Also tests heap_recdes_get_oos_refs() and heap_recdes_contains_oos()
+ * directly for OOS OID extraction from crafted heap records.
+ */
+
+#include "heap_oos.hpp"
+#include "object_representation.h"
+#include "xserver_interface.h"
+#include "test_oos_error_log.hpp"
+#include "test_oos_server_common.hpp"
+#include "vacuum_oos.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+using test_oos_error_log::error_log_mentions_since;
+using test_oos_error_log::error_log_size;
+using test_oos_error_log::notification_log_scope;
+
+/* bridge functions */
+int bridge_oos_get_max_chunk_size_within_page ();
+
+// ============================================================================
+// Helper: Build heap RECDES with OOS inline data
+// ============================================================================
+//
+// Heap record binary layout with OOS columns:
+//
+//   [0..3]         rep_and_flags: (OR_RECORD_FLAG_HAS_OOS << 24) | OR_OFFSET_SIZE_4BYTE
+//   [4..7]         CHN: 0  (cache coherence number)
+//   --- header ends (8 bytes) ---
+//   [8..8+4(N+1)-1] VOT: N+1 int32 entries, each = (offset_from_vot_start | flags); entry N is the
+//                  terminator carrying OR_VAR_BIT_LAST_ELEMENT and pointing at the record end
+//   [8+4(N+1)..]   OOS inline stub: per column, OID (8b) + length (8b) + identity stamp (8b)
+//   --- total: 8 + 4(N+1) + 24N bytes ---
+//
+// OR_VAR_OFFSET(obj, i) = header_size + (VOT[i] & ~0x3) = 8 + (4(N+1) + 24i)
+//
+
+static const int HEAP_HDR_SIZE = 8;	/* OR_MVCC_REP_SIZE + OR_CHN_SIZE */
+static const int VOT_ENTRY_SZ = 4;	/* OR_INT_SIZE (4-byte offset mode) */
+static const int OOS_INLINE_SZ = OR_OOS_INLINE_SIZE;	/* OID + length + identity stamp */
+
+/* Builds each stub with the identity stamp its head chunk currently carries, mirroring what the
+ * real insert path records (CBRD-26950). Pass synthetic_oids = true when the OIDs were never
+ * inserted: their stubs get a NULL stamp and storage is not probed. */
+static int
+build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
+			    const std::vector<INT64> &oos_lengths,
+			    RECDES &rec_out, bool synthetic_oids = false)
+{
+  const int n_oos = (int) oos_oids.size ();
+  assert (n_oos > 0);
+  assert ((int) oos_lengths.size () == n_oos);
+
+  const int vot_bytes = (n_oos + 1) * VOT_ENTRY_SZ;	/* one entry per attribute plus the terminator */
+  const int data_bytes = n_oos * OOS_INLINE_SZ;
+  const int total = HEAP_HDR_SIZE + vot_bytes + data_bytes;
+
+  int err = recdes_allocate_data_area (&rec_out, total);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  rec_out.type = REC_HOME;
+  rec_out.length = total;
+  std::memset (rec_out.data, 0, total);
+
+  char *base = rec_out.data;
+
+  /* 1. rep_and_flags: OOS flag + 4-byte offset size */
+  int rep_and_flags = (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
+  OR_PUT_INT (base + OR_REP_OFFSET, rep_and_flags);
+
+  /* 2. CHN = 0 (already zeroed) */
+
+  /* 3. VOT entries — each stores (offset_from_vot_start | flags); the terminator entry after the last
+   * attribute carries OR_VAR_BIT_LAST_ELEMENT and points at the end of the variable area, as the heap
+   * writer lays the table out */
+  char *vot = base + HEAP_HDR_SIZE;
+  for (int i = 0; i < n_oos; i++)
+    {
+      OR_PUT_INT (vot + i * VOT_ENTRY_SZ, OR_SET_VAR_OOS (vot_bytes + i * OOS_INLINE_SZ));
+    }
+  OR_PUT_INT (vot + n_oos * VOT_ENTRY_SZ, OR_SET_VAR_LAST_ELEMENT (vot_bytes + n_oos * OOS_INLINE_SZ));
+
+  /* 4. OOS inline stub: OID (8b) + length (8b) + identity stamp (8b) per column */
+  char *oos_data = vot + vot_bytes;
+  for (int i = 0; i < n_oos; i++)
+    {
+      char *slot = oos_data + i * OOS_INLINE_SZ;
+      OR_PUT_OID (slot, &oos_oids[i]);
+      INT64 len = oos_lengths[i];
+      OR_PUT_BIGINT (slot + OR_OID_SIZE, &len);
+
+      LOG_LSA identity_stamp = NULL_LSA;
+      if (!synthetic_oids)
+	{
+	  int stamp_err = oos_get_identity_stamp (thread_p, oos_oids[i], &identity_stamp);
+	  if (stamp_err != NO_ERROR)
+	    {
+	      recdes_free_data_area (&rec_out);
+	      return stamp_err;
+	    }
+	}
+      INT64 packed_identity_stamp = oos_pack_identity_stamp (identity_stamp);
+      OR_PUT_BIGINT (slot + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
+    }
+
+  return NO_ERROR;
+}
+
+/* Turns stub `index` of a record built by build_heap_recdes_with_oos into a stale OOS reference: same
+ * head OOS OID, a different identity stamp, as a dead row's undo image looks once the slot has begun a
+ * new slot incarnation (CBRD-26950). */
+static void
+make_stub_reference_stale (RECDES &rec, int n_oos, int index)
+{
+  char *stamp_ptr = rec.data + HEAP_HDR_SIZE + (n_oos + 1) * VOT_ENTRY_SZ + index * OOS_INLINE_SZ + OR_OID_SIZE
+		    + OR_BIGINT_SIZE;
+  INT64 packed = 0;
+  OR_GET_BIGINT (stamp_ptr, &packed);
+  const LOG_LSA stored = oos_unpack_identity_stamp (packed);
+  const LOG_LSA stale (stored.pageid + 1, (std::int16_t) stored.offset);
+  packed = oos_pack_identity_stamp (stale);
+  OR_PUT_BIGINT (stamp_ptr, &packed);
+}
+
+/* Undo image as vacuum's forward walk receives it: an INT16 record type followed by the record body. */
+static std::vector<char>
+make_undo_image (const RECDES &rec)
+{
+  std::vector<char> undo (sizeof (INT16) + (std::size_t) rec.length);
+  INT16 type = rec.type;
+  std::memcpy (undo.data (), &type, sizeof (INT16));
+  std::memcpy (undo.data () + sizeof (INT16), rec.data, (std::size_t) rec.length);
+  return undo;
+}
+
+static bool
+chunk_is_present (const OID &oid)
+{
+  LOG_LSA stamp = NULL_LSA;
+  const bool present = (oos_get_identity_stamp (thread_p, oid, &stamp) == NO_ERROR);
+  er_clear ();
+  return present;
+}
+
+// ============================================================================
+// Test fixture: creates and destroys an OOS file per test
+// ============================================================================
+
+class OosVacuumCodePathServer : public ::testing::Test
+{
+  protected:
+    VFID oos_vfid;
+
+    void SetUp () override
+    {
+      int err = oos_create_file (thread_p, oos_vfid);
+      ASSERT_EQ (err, NO_ERROR);
+    }
+
+    void TearDown () override
+    {
+      oos_remove_file (thread_p, oos_vfid);
+    }
+};
+
+// ============================================================================
+// TC-V1: heap_recdes_contains_oos detects OOS flag correctly
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesContainsOos)
+{
+  int err;
+
+  /* Record WITH OOS flag */
+  OID dummy_oid = {1, 2, 3};
+  INT64 dummy_len = 100;
+  RECDES rec {};
+  err = build_heap_recdes_with_oos ({dummy_oid}, {dummy_len}, rec, true /* synthetic_oids */);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  ASSERT_TRUE (heap_recdes_contains_oos (&rec));
+
+  /* Record WITHOUT OOS flag */
+  RECDES plain {};
+  err = recdes_allocate_data_area (&plain, HEAP_HDR_SIZE);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_plain (&plain, recdes_free_data_area);
+  plain.type = REC_HOME;
+  plain.length = HEAP_HDR_SIZE;
+  std::memset (plain.data, 0, HEAP_HDR_SIZE);
+  int no_oos_flags = OR_OFFSET_SIZE_4BYTE;
+  OR_PUT_INT (plain.data + OR_REP_OFFSET, no_oos_flags);
+
+  ASSERT_FALSE (heap_recdes_contains_oos (&plain));
+}
+
+// ============================================================================
+// TC-V2: heap_recdes_get_oos_refs extracts a single chain reference
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsSingle)
+{
+  int err;
+
+  /* Insert a real OOS record to get a valid OID */
+  RECDES oos_rec {};
+  err = test_oos_utils::from_string_into_recdes ("OOS payload for OID extraction test", oos_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+
+  OID oos_oid = OID_INITIALIZER;
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_NE (oos_oid.pageid, NULL_PAGEID);
+
+  /* Build heap RECDES embedding this OOS OID */
+  INT64 oos_len = oos_rec.length;
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos ({oos_oid}, {oos_len}, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  /* Extract chain references via the function vacuum relies on */
+  OOS_REF_VECTOR extracted;
+  err = heap_recdes_get_oos_refs (&heap_rec, extracted);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ ((int) extracted.size (), 1);
+  ASSERT_EQ (extracted[0].head_oid.pageid, oos_oid.pageid);
+  ASSERT_EQ (extracted[0].head_oid.slotid, oos_oid.slotid);
+  ASSERT_EQ (extracted[0].head_oid.volid, oos_oid.volid);
+
+  /* The extracted identity stamp must be the one the head chunk carries (CBRD-26950). */
+  LOG_LSA stored_identity_stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &stored_identity_stamp), NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&extracted[0].identity_stamp, &stored_identity_stamp));
+}
+
+// ============================================================================
+// TC-V3: heap_recdes_get_oos_refs extracts multiple chain references
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsMultiple)
+{
+  int err;
+
+  RECDES oos1 {}, oos2 {};
+  err = test_oos_utils::from_string_into_recdes ("First OOS column data", oos1);
+  ASSERT_EQ (err, NO_ERROR);
+  err = test_oos_utils::from_string_into_recdes ("Second OOS column data", oos2);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&oos1, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&oos2, recdes_free_data_area);
+
+  OID oid1 = OID_INITIALIZER, oid2 = OID_INITIALIZER;
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos1, oid1);
+  ASSERT_EQ (err, NO_ERROR);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos2, oid2);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* Build heap RECDES with 2 OOS columns */
+  std::vector<OID> oids = {oid1, oid2};
+  std::vector<INT64> lens = { (INT64) oos1.length, (INT64) oos2.length};
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos (oids, lens, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  OOS_REF_VECTOR extracted;
+  err = heap_recdes_get_oos_refs (&heap_rec, extracted);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ ((int) extracted.size (), 2);
+  ASSERT_EQ (extracted[0].head_oid.pageid, oid1.pageid);
+  ASSERT_EQ (extracted[0].head_oid.slotid, oid1.slotid);
+  ASSERT_EQ (extracted[0].head_oid.volid, oid1.volid);
+  ASSERT_EQ (extracted[1].head_oid.pageid, oid2.pageid);
+  ASSERT_EQ (extracted[1].head_oid.slotid, oid2.slotid);
+  ASSERT_EQ (extracted[1].head_oid.volid, oid2.volid);
+
+  LOG_LSA stamp1 = NULL_LSA, stamp2 = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid1, &stamp1), NO_ERROR);
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid2, &stamp2), NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&extracted[0].identity_stamp, &stamp1));
+  ASSERT_TRUE (LSA_EQ (&extracted[1].identity_stamp, &stamp2));
+}
+
+// ============================================================================
+// TC-V3b: heap_recdes_get_oos_refs rejects a stub field narrower than one stub
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsRejectsShortFieldBeforeAnotherAttribute)
+{
+  /* Two OOS attributes; then the variable offset table is rewritten so the first field is 16 bytes wide and
+   * the second attribute is an ordinary value that begins where the first stub's identity stamp used to be.
+   * The record is long enough for a 24-byte read, so only the field boundary reveals the corruption
+   * (CBRD-26950). */
+  const OID oid1 = {1, 2, 3};
+  const OID oid2 = {4, 5, 6};
+  RECDES rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oid1, oid2}, {100, 200}, rec, true /* synthetic_oids */), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  const int vot_bytes = 3 * VOT_ENTRY_SZ;
+  OR_PUT_INT (rec.data + HEAP_HDR_SIZE + VOT_ENTRY_SZ, vot_bytes + 16);	/* plain attribute: no OOS flag */
+  const std::string before (rec.data, rec.length);
+
+  OOS_REF_VECTOR extracted;
+  er_clear ();
+  EXPECT_EQ (heap_recdes_get_oos_refs (&rec, extracted), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_TRUE (extracted.empty ());
+  EXPECT_EQ (std::string (rec.data, rec.length), before);
+  er_clear ();
+}
+
+// ============================================================================
+// TC-V3c: heap_recdes_get_oos_refs rejects a stub field that runs past the record end
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsRejectsStubFieldPastRecordEnd)
+{
+  const OID oid1 = {1, 2, 3};
+  RECDES rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oid1}, {100}, rec, true /* synthetic_oids */), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  /* the table still claims a 24-byte field, but the record ends inside it */
+  rec.length -= 1;
+
+  OOS_REF_VECTOR extracted;
+  er_clear ();
+  EXPECT_EQ (heap_recdes_get_oos_refs (&rec, extracted), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_TRUE (extracted.empty ());
+  er_clear ();
+}
+
+// ============================================================================
+// TC-V4: vacuum_heap_oos_delete_within_sysop — single OOS record via actual code path
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
+{
+  int err;
+
+  RECDES oos_rec {};
+  err = test_oos_utils::from_string_into_recdes ("Data to be vacuumed via real code path", oos_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+
+  OID oos_oid = OID_INITIALIZER;
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* Verify readable before vacuum */
+  RECDES check {};
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, check);
+  ASSERT_EQ (err, NO_ERROR);
+  recdes_free_data_area (&check);
+
+  /* Build heap RECDES and invoke the real vacuum code path */
+  INT64 oos_len = oos_rec.length;
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos ({oos_oid}, {oos_len}, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* OOS record must be gone */
+  RECDES after {};
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, after);
+  ASSERT_NE (read_err, NO_ERROR);
+  if (after.data != nullptr)
+    {
+      recdes_free_data_area (&after);
+    }
+}
+
+// ============================================================================
+// TC-V5: vacuum_heap_oos_delete_within_sysop — multiple OOS columns in one heap record
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
+{
+  int err;
+
+  const int N = 3;
+  OID oids[N];
+  RECDES recs[N] = {};
+  const char *payloads[N] = {"Column A OOS data", "Column B OOS data", "Column C OOS data"};
+
+  for (int i = 0; i < N; i++)
+    {
+      err = test_oos_utils::from_string_into_recdes (payloads[i], recs[i]);
+      ASSERT_EQ (err, NO_ERROR);
+      oids[i] = OID_INITIALIZER;
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, recs[i], oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+    }
+
+  /* Build heap RECDES with 3 OOS columns */
+  std::vector<OID> oid_vec (oids, oids + N);
+  std::vector<INT64> len_vec;
+  for (int i = 0; i < N; i++)
+    {
+      len_vec.push_back ((INT64) recs[i].length);
+    }
+
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos (oid_vec, len_vec, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* All 3 OOS records must be gone */
+  for (int i = 0; i < N; i++)
+    {
+      RECDES after {};
+      int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oids[i], after);
+      ASSERT_NE (read_err, NO_ERROR) << "OOS record " << i << " should be deleted by vacuum";
+      if (after.data != nullptr)
+	{
+	  recdes_free_data_area (&after);
+	}
+    }
+
+  for (int i = 0; i < N; i++)
+    {
+      recdes_free_data_area (&recs[i]);
+    }
+}
+
+// ============================================================================
+// TC-V6: vacuum_heap_oos_delete_within_sysop — multi-chunk OOS record
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
+{
+  int err;
+
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+  const int large_size = max_chunk + 100;
+  auto large_data = test_oos_utils::make_repeated_pattern_string (large_size);
+
+  RECDES oos_rec {};
+  err = test_oos_utils::from_string_into_recdes (large_data, oos_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+
+  OID oos_oid = OID_INITIALIZER;
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* Verify readable before vacuum */
+  RECDES check {};
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, check);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (check.length, oos_rec.length);
+  recdes_free_data_area (&check);
+
+  /* Build heap RECDES and vacuum */
+  INT64 oos_len = oos_rec.length;
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos ({oos_oid}, {oos_len}, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* Multi-chunk OOS must be fully gone */
+  RECDES after {};
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, after);
+  ASSERT_NE (read_err, NO_ERROR);
+  if (after.data != nullptr)
+    {
+      recdes_free_data_area (&after);
+    }
+}
+
+// ============================================================================
+// TC-V7: vacuum_heap_oos_delete_within_sysop — 160KB OOS (stress)
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
+{
+  int err;
+
+  const int large_size = 160 * 1024;
+  auto large_data = test_oos_utils::make_repeated_pattern_string (large_size);
+
+  RECDES oos_rec {};
+  err = test_oos_utils::from_string_into_recdes (large_data, oos_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+
+  OID oos_oid = OID_INITIALIZER;
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  INT64 oos_len = oos_rec.length;
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos ({oos_oid}, {oos_len}, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  ASSERT_EQ (err, NO_ERROR);
+
+  RECDES after {};
+  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, after), NO_ERROR);
+  if (after.data != nullptr)
+    {
+      recdes_free_data_area (&after);
+    }
+}
+
+// ============================================================================
+// Helper: get free space on the page containing an OOS OID
+// ============================================================================
+
+static int
+get_free_space_of_oid_page (const OID &oid)
+{
+  VPID vpid = {oid.pageid, oid.volid};
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
+				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      return -1;
+    }
+  test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
+  return spage_get_free_space (thread_p, page_ptr);
+}
+
+// ============================================================================
+// TC-V8: Multi-update vacuum reclaim — free space increases after each pass
+//
+// Simulates N rounds of MVCC UPDATE:
+//   1. Each round inserts a new OOS (new version) and vacuums the old one
+//   2. Tracks free space on the head page before/after each vacuum pass
+//   3. Verifies free space increases after vacuum cleanup
+//   4. Verifies page count stays bounded (old space is reused)
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
+{
+  int err;
+
+  const int N_ROWS = 5;
+  const int UPDATE_ROUNDS = 5;
+  const int oos_size = 4096;
+
+  /* Initial "INSERT": create N OOS records */
+  OID current_oids[N_ROWS];
+  for (int i = 0; i < N_ROWS; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+      RECDES rec {};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      current_oids[i] = OID_INITIALIZER;
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, current_oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      recdes_free_data_area (&rec);
+    }
+
+  int pages_after_insert = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_insert);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_GT (pages_after_insert, 0);
+
+  /* Accumulate reclaim candidates across the whole churn, like vacuum_heap_page does per
+   * heap-page batch. */
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+
+  /* Simulate UPDATE_ROUNDS of UPDATEs with vacuum cleanup */
+  for (int round = 0; round < UPDATE_ROUNDS; round++)
+    {
+      /* Phase 1: vacuum all old OOS records and verify free space increases */
+      for (int i = 0; i < N_ROWS; i++)
+	{
+	  OID old_oid = current_oids[i];
+
+	  int free_before = get_free_space_of_oid_page (old_oid);
+	  ASSERT_GE (free_before, 0);
+
+	  /* Build heap RECDES with old OOS OID and vacuum it */
+	  INT64 oos_len = oos_size + 1;
+	  RECDES heap_rec {};
+	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  recdes_free_data_area (&heap_rec);
+
+	  int free_after = get_free_space_of_oid_page (old_oid);
+	  ASSERT_GE (free_after, 0);
+	  EXPECT_GT (free_after, free_before)
+	      << "Round " << round << ", row " << i
+	      << ": free space must increase after vacuum deletes old OOS";
+
+	  /* Old OOS must be gone */
+	  RECDES stale {};
+	  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, old_oid, stale), NO_ERROR);
+	  if (stale.data != nullptr)
+	    {
+	      recdes_free_data_area (&stale);
+	    }
+	}
+
+      /* Phase 2: insert new OOS versions (reuses freed space) */
+      for (int i = 0; i < N_ROWS; i++)
+	{
+	  auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+	  RECDES rec {};
+	  err = test_oos_utils::from_string_into_recdes (data, rec);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  OID new_oid = OID_INITIALIZER;
+	  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, new_oid);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  /* New OOS must be readable */
+	  RECDES check {};
+	  err = test_oos_utils::oos_read_with_alloc (thread_p, new_oid, check);
+	  ASSERT_EQ (err, NO_ERROR);
+	  recdes_free_data_area (&check);
+
+	  current_oids[i] = new_oid;
+	  recdes_free_data_area (&rec);
+	}
+    }
+
+  /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_FALSE (emptied_pages.empty ());
+  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* After the churn plus the batch reclaim, the file must be back at its initial footprint. */
+  int pages_after_churn = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_churn);
+  ASSERT_EQ (err, NO_ERROR);
+  EXPECT_LE (pages_after_churn, pages_after_insert)
+      << "After " << (N_ROWS * UPDATE_ROUNDS) << " update+vacuum cycles and the batch reclaim, "
+      << "page count should return to the initial footprint (was " << pages_after_insert
+      << ", now " << pages_after_churn << ")";
+
+  /* All current OOS versions must still be readable */
+  for (int i = 0; i < N_ROWS; i++)
+    {
+      RECDES out {};
+      err = test_oos_utils::oos_read_with_alloc (thread_p, current_oids[i], out);
+      ASSERT_EQ (err, NO_ERROR);
+      recdes_free_data_area (&out);
+    }
+}
+
+// ============================================================================
+// TC-V9: Bulk vacuum reclaim — delete all, verify space reused by reinsert
+//
+// Inserts N OOS records, vacuums all via a single heap RECDES containing
+// N OOS OIDs, then reinserts N records and verifies page count stays bounded.
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
+{
+  int err;
+
+  const int N = 10;
+  const int oos_size = 4096;
+
+  /* Insert N OOS records */
+  OID oids[N];
+  for (int i = 0; i < N; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+      RECDES rec {};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      oids[i] = OID_INITIALIZER;
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      recdes_free_data_area (&rec);
+    }
+
+  int pages_after_insert = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_insert);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_GT (pages_after_insert, 0);
+
+  /* Build one heap RECDES with all N OOS OIDs and vacuum them all at once */
+  std::vector<OID> oid_vec (oids, oids + N);
+  std::vector<INT64> len_vec (N, (INT64) (oos_size + 1));
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos (oid_vec, len_vec, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* All N OOS records must be gone */
+  for (int i = 0; i < N; i++)
+    {
+      RECDES after {};
+      int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oids[i], after);
+      ASSERT_NE (read_err, NO_ERROR) << "OOS record " << i << " should be deleted by vacuum";
+      if (after.data != nullptr)
+	{
+	  recdes_free_data_area (&after);
+	}
+    }
+
+  /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_FALSE (emptied_pages.empty ());
+  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
+  ASSERT_EQ (err, NO_ERROR);
+
+  int pages_after_reclaim = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_reclaim);
+  ASSERT_EQ (err, NO_ERROR);
+  EXPECT_LT (pages_after_reclaim, pages_after_insert)
+      << "batch reclaim did not shrink the file (insert=" << pages_after_insert
+      << ", after reclaim=" << pages_after_reclaim << ")";
+  EXPECT_EQ (pages_after_reclaim, 1)
+      << "all data pages were emptied and committed — only the sticky first page should remain";
+
+  /* Reinsert N records — should reuse freed space */
+  OID new_oids[N];
+  for (int i = 0; i < N; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+      RECDES rec {};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      new_oids[i] = OID_INITIALIZER;
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, new_oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      recdes_free_data_area (&rec);
+    }
+
+  int pages_after_reinsert = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_reinsert);
+  ASSERT_EQ (err, NO_ERROR);
+
+  EXPECT_LE (pages_after_reinsert, pages_after_insert)
+      << "After reclaim + reinsert, the file must not exceed its initial footprint "
+      << "(insert=" << pages_after_insert << ", reinsert=" << pages_after_reinsert << ")";
+
+  /* All reinserted records must be readable */
+  for (int i = 0; i < N; i++)
+    {
+      RECDES out {};
+      err = test_oos_utils::oos_read_with_alloc (thread_p, new_oids[i], out);
+      ASSERT_EQ (err, NO_ERROR);
+      ASSERT_EQ (out.length, oos_size + 1);
+      recdes_free_data_area (&out);
+    }
+}
+
+// ============================================================================
+// TC-V10: REMOVE path — a live reference is reclaimed, a stale one is skipped (CBRD-26950)
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkipsStaleOne)
+{
+  RECDES live_chunk {}, stale_chunk {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("dead row's chain, still its own", live_chunk), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("live row's chain in a reused slot", stale_chunk), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&live_chunk, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&stale_chunk, recdes_free_data_area);
+
+  OID live_oid = OID_INITIALIZER, reused_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, live_chunk, live_oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, stale_chunk, reused_oid), NO_ERROR);
+
+  /* The record whose stub names reused_oid with a stale stamp stands for a dead row's image after the
+   * slot was handed to a live row. */
+  RECDES stale_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({reused_oid}, { (INT64) stale_chunk.length}, stale_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d3 (&stale_rec, recdes_free_data_area);
+  make_stub_reference_stale (stale_rec, 1, 0);
+
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  notification_log_scope admit_notifications;
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
+  er_clear ();
+  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
+  EXPECT_TRUE (emptied_pages.empty ());
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the live occupant must survive the stale reference";
+  EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "a vacuum skip is expected and must stay quiet";
+  /* Positive control: the reader must be able to see a notification of that code at all, otherwise the
+   * assertion above would pass even with a broken reader. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, "log reader control",
+	  0, 0, 0, 0, 0, 0, "control", 1);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "the error-log reader itself must work for the assertion above to mean anything";
+  EXPECT_EQ (er_errid (), NO_ERROR);
+
+  RECDES live_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({live_oid}, { (INT64) live_chunk.length}, live_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d4 (&live_rec, recdes_free_data_area);
+  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &live_rec, &emptied_pages), NO_ERROR);
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the live reference must reclaim its chain";
+  EXPECT_TRUE (chunk_is_present (reused_oid));
+}
+
+// ============================================================================
+// Test fixture: a real heap file with its own OOS file, for the paths that resolve the OOS file
+// from the heap (forward walk, eager delete). Mirrors the real-vacuum fixture without DML.
+// ============================================================================
+class OosVacuumHeapSeamServer : public ::testing::Test
+{
+  protected:
+    HFID hfid;
+    VFID oos_vfid;
+    OID class_oid;
+
+    void SetUp () override
+    {
+      HFID_SET_NULL (&hfid);
+      VFID_SET_NULL (&oos_vfid);
+      OID_SET_NULL (&class_oid);
+
+      /* Borrow a real class OID: xheap_create reads the class record for the TDE algorithm. */
+      ASSERT_EQ (xlocator_find_class_oid (thread_p, "db_user", &class_oid, NULL_LOCK), LC_CLASSNAME_EXIST);
+      ASSERT_EQ (xheap_create (thread_p, &hfid, &class_oid, false), NO_ERROR);
+      ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true));
+      ASSERT_FALSE (VFID_ISNULL (&oos_vfid));
+      ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+    }
+
+    void TearDown () override
+    {
+      if (!HFID_IS_NULL (&hfid))
+	{
+	  (void) xheap_destroy (thread_p, &hfid, &class_oid);
+	  (void) xtran_server_commit (thread_p, false);
+	}
+    }
+
+    /* Inserts payload into the heap's OOS file and returns a record whose only stub references it. */
+    void insert_chunk_and_record (const char *payload, OID &oid_out, RECDES &rec_out)
+    {
+      RECDES chunk {};
+      ASSERT_EQ (test_oos_utils::from_string_into_recdes (payload, chunk), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer (&chunk, recdes_free_data_area);
+      oid_out = OID_INITIALIZER;
+      ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, chunk, oid_out), NO_ERROR);
+      ASSERT_EQ (build_heap_recdes_with_oos ({oid_out}, { (INT64) chunk.length}, rec_out), NO_ERROR);
+    }
+};
+
+// ============================================================================
+// TC-V11: forward walk — a live reference is reclaimed, a stale one is skipped (CBRD-26950)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, ForwardWalkReclaimsLiveReferenceAndSkipsStaleOne)
+{
+  OID live_oid, reused_oid;
+  RECDES live_rec {}, stale_rec {};
+  insert_chunk_and_record ("old version's chain, reclaimable", live_oid, live_rec);
+  insert_chunk_and_record ("live row's chain in a reused slot", reused_oid, stale_rec);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&live_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&stale_rec, recdes_free_data_area);
+  make_stub_reference_stale (stale_rec, 1, 0);
+
+  VACUUM_OOS_VFID_MEMO memo;
+  notification_log_scope admit_notifications;
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
+
+  std::vector<char> stale_undo = make_undo_image (stale_rec);
+  er_clear ();
+  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, stale_undo.data (), (int) stale_undo.size (), &hfid.vfid,
+	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the forward walk must skip a stale OOS reference";
+
+  std::vector<char> live_undo = make_undo_image (live_rec);
+  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
+	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the forward walk must reclaim a live reference";
+  EXPECT_TRUE (chunk_is_present (reused_oid));
+
+  /* A block retry replays the already-reclaimed request: still a clean success, and still quiet. */
+  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
+	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "vacuum skips and retries are expected and must stay quiet";
+  /* Positive control, as in TC-V10. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, "log reader control",
+	  0, 0, 0, 0, 0, 0, "control", 1);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "the error-log reader itself must work for the assertion above to mean anything";
+  EXPECT_EQ (er_errid (), NO_ERROR);
+}
+
+// ============================================================================
+// TC-V12: eager path — same no-op contract as vacuum (CBRD-26950)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOne)
+{
+  OID live_oid, reused_oid, kept_oid;
+  RECDES live_rec {}, stale_rec {}, kept_rec {};
+  insert_chunk_and_record ("old image's chain, unreferenced by the new image", live_oid, live_rec);
+  insert_chunk_and_record ("live row's chain in a reused slot", reused_oid, stale_rec);
+  insert_chunk_and_record ("chain the new image still references", kept_oid, kept_rec);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&live_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&stale_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d3 (&kept_rec, recdes_free_data_area);
+  make_stub_reference_stale (stale_rec, 1, 0);
+
+  /* heap_oos_delete_unreferenced reads only the heap file and the row OID from the context. */
+  HEAP_OPERATION_CONTEXT context;
+  std::memset (&context, 0, sizeof (context));
+  context.hfid = hfid;
+  context.oid.volid = hfid.vfid.volid;
+  context.oid.pageid = hfid.hpgid;
+  context.oid.slotid = 1;
+
+  notification_log_scope admit_notifications;
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
+  heap_oos_test_reset_skipped_cleanup_diagnostics ();
+  er_clear ();
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &stale_rec, NULL, "unit test stale"), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "user DML on the eager path must report success cleanly";
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the eager path must skip a stale OOS reference";
+  /* Unlike vacuum, the eager path diagnoses the skip: the row it completes was the chain's only reference. */
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
+  EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
+  EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
+
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &live_rec, NULL, "unit test live"), NO_ERROR);
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the eager path must reclaim a live reference";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "a real reclamation is not diagnosed";
+
+  /* An UPDATE whose post-image still references the chain keeps it, quietly. */
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &kept_rec, &kept_rec, "unit test kept"), NO_ERROR);
+  EXPECT_TRUE (chunk_is_present (kept_oid));
+  EXPECT_TRUE (chunk_is_present (reused_oid));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
+}
+
+int
+main (int argc, char **argv)
+{
+  ::testing::InitGoogleTest (&argc, argv);
+  ::testing::AddGlobalTestEnvironment (new ServerModeEnv ());
+  ::testing::GTEST_FLAG (break_on_failure) = true;
+  return RUN_ALL_TESTS ();
+}

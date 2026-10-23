@@ -54,6 +54,7 @@
 
 #define LC_RECDES_TO_GET_ONEOBJ(copy_area_ptr, oneobj_ptr, recdes_ptr) \
   do { \
+    (recdes_ptr)->type = REC_HOME; \
     (recdes_ptr)->data = (char *) ((copy_area_ptr)->mem + \
                                    (oneobj_ptr)->offset); \
     (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length; \
@@ -66,6 +67,7 @@
 
 #define LC_REPL_RECDES_FOR_ONEOBJ(copy_area_ptr, oneobj_ptr, key_length, recdes_ptr)    \
   do {                                                                                  \
+      (recdes_ptr)->type = REC_HOME;                                                   \
       (recdes_ptr)->data = (char *)((copy_area_ptr)->mem                                \
                                     + (oneobj_ptr)->offset + (key_length));             \
       (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length             \
@@ -74,6 +76,7 @@
 
 #define LC_RECDES_IN_COPYAREA(copy_area_ptr, recdes_ptr) \
   do { \
+    (recdes_ptr)->type = REC_HOME; \
     (recdes_ptr)->data = (copy_area_ptr)->mem; \
     (recdes_ptr)->area_size = \
       (copy_area_ptr)->length - DB_SIZEOF(LC_COPYAREA_MANYOBJS); \
@@ -112,6 +115,7 @@ typedef enum
   LC_FLUSH_INSERT,
   LC_FLUSH_INSERT_PRUNE,
   LC_FLUSH_INSERT_PRUNE_VERIFY,
+  LC_FLUSH_INSERT_OOS,
   LC_FLUSH_DELETE,
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
@@ -119,9 +123,13 @@ typedef enum
   LC_FETCH_VERIFY_CHN
 } LC_COPYAREA_OPERATION;
 
+/* TODO:
+ *    Handle LC_FLUSH_INSERT_OOS in LC_IS_FLUSH_INSERT usage to prevent malfunctions.
+ *    Post-POC, refactor by separating macros or implementing exception handling for OOS call sites.
+ */
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
-   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY)
+   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \
