@@ -400,7 +400,6 @@ extern int heap_classrepr_dump_anyfixed (void);
 extern int heap_manager_initialize (void);
 extern int heap_classrepr_restart_cache (void);
 extern int heap_manager_finalize (void);
-extern int heap_update_all_bestspaces (THREAD_ENTRY * thread_p);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid,
 				int expected_length);
 extern const OID *heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, VFID * ovf_vfid_p);
@@ -537,8 +536,8 @@ extern int heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, con
 
 extern int heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COPYAREA_DESC * prefetch);
 extern DISK_ISVALID heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid);
-extern DISK_ISVALID heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid);
-extern DISK_ISVALID heap_check_all_heaps (THREAD_ENTRY * thread_p);
+extern DISK_ISVALID heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid, bool repair);
+extern DISK_ISVALID heap_check_all_heaps (THREAD_ENTRY * thread_p, bool repair);
 
 extern int heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index);
 extern int heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int chn);
@@ -586,6 +585,10 @@ extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID 
 extern int heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_newpage_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_undoredo_stats (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_bsmap_init (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_bsmap_entries (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_bsmap_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undo_mark_page_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_mark_page_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void heap_rv_dump_statistics (FILE * fp, int ignore_length, void *data);
@@ -683,8 +686,36 @@ extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern INT16 heap_rv_remove_flags_from_offset (INT16 offset);
 
-extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace =
-			       0, PGBUF_WATCHER * header_watcher = NULL);
+extern void heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr);
+extern bool heap_bestspace_classify_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, OID * class_oid,
+					  std::uint8_t * code);
+
+typedef struct heap_bsmap_audit HEAP_BSMAP_AUDIT;
+struct heap_bsmap_audit
+{
+  int pages;			/* data pages walked (the header page included) */
+  int under;			/* the map's tier is lower than the page's: hidden space */
+  int missing;			/* the map does not know the page */
+  int unverified;		/* the map holds UNVERIFIED for the page */
+  int repaired;			/* fed back with repair */
+  int orphans;			/* orphan map pages in the chain: flagged BESTSPACE, not in the header's list */
+  int refused;			/* damaged orphans heap_bsmap_free_orphan () would not take; not in orphans */
+  int freed;			/* orphan map pages freed with repair */
+};
+extern int heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BSMAP_AUDIT * audit);
+extern bool heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex);
+extern void heap_bestspace_rv_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern void heap_bestspace_rv_record_chain (THREAD_ENTRY * thread_p, const VPID * vpid, const char *data, int length,
+					    const LOG_LSA * lsa);
+extern void heap_bestspace_rv_start (void);
+extern void heap_bestspace_rv_finish (THREAD_ENTRY * thread_p);
+extern void heap_bestspace_drop (const VFID * vfid);
+extern void heap_bestspace_quiesce (const VFID * vfid, bool retire);
+extern void heap_bestspace_end_quiesce (const VFID * vfid);
+extern int heap_bestspace_checkpoint (THREAD_ENTRY * thread_p, bool * busy);
+extern int heap_bsmap_free_orphan (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, bool * busy);
+extern void heap_bestspace_daemon_init (void);
+extern void heap_bestspace_daemon_destroy (void);
 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
@@ -715,8 +746,15 @@ extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
 				VPID * new_page_vpid);
+
+// *INDENT-OFF*
+namespace cubstorage
+{
+  class bestspace;
+}
+// *INDENT-ON*
 extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
-				 PGBUF_WATCHER * new_pg_watcher);
+				 PGBUF_WATCHER * new_pg_watcher, cubstorage::bestspace * bestspace);
 
 extern int heap_nonheader_page_capacity ();
 

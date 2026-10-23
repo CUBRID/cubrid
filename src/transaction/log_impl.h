@@ -678,7 +678,10 @@ struct log_global
 {
   TRANTABLE trantable;		/* Transaction table */
   LOG_APPEND_INFO append;	/* The log append info */
-  LOG_PRIOR_LSA_INFO prior_info;
+  /* own cache line: every log record writes prior_info, and every logtb_* lookup reads trantable.all_tdes */
+  // *INDENT-OFF*
+  alignas (64) LOG_PRIOR_LSA_INFO prior_info;
+  // *INDENT-ON*
   LOG_HEADER hdr;		/* The log header */
   LOG_ARCHIVES archive;		/* Current archive information */
   LOG_PAGEID run_nxchkpt_atpageid;

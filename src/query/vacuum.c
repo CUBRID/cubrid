@@ -533,7 +533,6 @@ struct vacuum_heap_helper
 
   int n_bulk_vacuumed;		/* Number of vacuumed objects to be logged in bulk mode. */
   int n_vacuumed;		/* Number of vacuumed objects. */
-  int initial_home_free_space;	/* Free space in home page before vacuum */
 
   /* Performance tracking. */
   PERF_UTIME_TRACKER time_track;
@@ -1619,7 +1618,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.n_vacuumed = 0;
   helper.n_bulk_vacuumed = 0;
   helper.can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
-  helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
 
   /* Fix heap page. */
@@ -1679,8 +1677,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 #endif /* !NDEBUG */
-
-  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page);
 
   if (HFID_IS_NULL (hfid))
     {
@@ -1839,6 +1835,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* Set page dirty. */
 	  pgbuf_set_dirty (thread_p, helper.home_page, DONT_FREE);
 
+	  /* before the removal below: its ordered fixes can release the latch, and a checkpoint can then flush the page
+	   * and write the map */
+	  assert (!HFID_IS_NULL (&helper.hfid));
+	  heap_bestspace_feedback (thread_p, &helper.hfid, helper.home_page);
+
 	  if (spage_number_of_records (helper.home_page) <= 1 && helper.reusable)
 	    {
 	      /* Try to remove page from heap. */
@@ -1864,9 +1865,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
 	  if (helper.home_page != NULL)
 	    {
-	      assert (!HFID_IS_NULL (&helper.hfid));
-	      heap_add_bestpage (thread_p, &helper.hfid, helper.home_page,
-				 helper.can_vacuum == VACUUM_RECORD_REMOVE ? 0 : helper.initial_home_free_space);
 	      pgbuf_unfix_and_init (thread_p, helper.home_page);
 	    }
 	  goto end;
@@ -2254,6 +2252,10 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  return ER_FAILED;
 	}
 
+      /* feed the forward page now: the end of the visit feeds only the home page */
+      assert (!HFID_IS_NULL (&helper->hfid));
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->forward_page);
+
       /* Since forward page was vacuumed, log it immediately. Then unfix forward page. */
       vacuum_log_vacuum_heap_page (thread_p, helper->forward_page, 1, &helper->forward_oid.slotid, &helper->can_vacuum,
 				   helper->reusable, false);
@@ -2416,8 +2418,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
-      /* add candidate page into bestspace candidates */
-      heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2427,6 +2428,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
+
+      /* report the home page now, with the slots logged before the system operation: in SA mode the commit can run a
+       * checkpoint, which flushes this latched page and writes the map */
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
 
       log_sysop_commit (thread_p);
 
@@ -2459,6 +2464,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	}
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
+
+      /* as for REC_RELOCATION above */
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
 
       log_sysop_commit (thread_p);
 
@@ -2567,16 +2575,17 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
  * return	 : Void.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
- * update_best_space_stat (in)	 :
- * unlatch_page (in) :
+ * update_best_space_stat (in)	 : The visit of the page ends here.
+ * unlatch_page (in) : Release the page latch.
+ *
+ * Note: the slots logged here are reported to the bestspace map when the visit ends or the latch is released. A call
+ *	 that keeps the latch comes right before a REC_RELOCATION or REC_BIGONE removal, which reports the page before
+ *	 its system operation commits. The other changes of the home page are reported when they are logged.
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
 				bool unlatch_page)
 {
-  int bestspace_prev_freespace;
-  int i;
-
   assert (helper != NULL);
   assert (helper->home_page != NULL);
 
@@ -2598,20 +2607,10 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
 
   /* Update statistics only for home pages; We assume that fwd pages (from relocated records) are home pages for other
    * OIDs and their statistics are updated in that context */
-  if (update_best_space_stat == true && helper->initial_home_free_space != -1)
+  if (update_best_space_stat == true || unlatch_page == true)
     {
-      bestspace_prev_freespace = helper->initial_home_free_space;
-      for (i = 0; i < helper->n_bulk_vacuumed; i++)
-	{
-	  if (helper->results[i] == VACUUM_RECORD_REMOVE)
-	    {
-	      bestspace_prev_freespace = 0;
-	      break;
-	    }
-	}
-
       assert (!HFID_IS_NULL (&helper->hfid));
-      heap_add_bestpage (thread_p, &helper->hfid, helper->home_page, bestspace_prev_freespace);
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
@@ -6425,10 +6424,13 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
       if (error != NO_ERROR)
 	{
-	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free */
+	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free. The file
+	   * is destroyed anyway (the postpone's error is ignored): stop the bestspace upkeep on this heap for good */
 	  vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES,
 			       "failed to add dropped file %d|%d; its bestspace entry is left behind",
 			       VFID_AS_ARGS (&rcv_data->vfid));
+	  heap_bestspace_quiesce (&rcv_data->vfid, true);
+	  heap_bestspace_end_quiesce (&rcv_data->vfid);
 	  return error;
 	}
 
@@ -6447,6 +6449,8 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       (void) heap_delete_hfid_from_cache (thread_p, class_oid);
     }
+  /* the pending feedback first: without the bestspace, a checkpoint would write it into the dropped heap */
+  heap_bestspace_drop (&rcv_data->vfid);
   cubstorage::bestspaces.destroy (&rcv_data->vfid);
 
   /* Success */

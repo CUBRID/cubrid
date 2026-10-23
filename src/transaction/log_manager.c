@@ -200,6 +200,9 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
+/* the checkpoint at the end of restart recovery did not complete: log_run_deferred_restart_checkpoint () runs it */
+static bool log_Restart_chkpt_deferred = false;
+
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
@@ -1090,6 +1093,55 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
 }
 
 /*
+ * log_run_deferred_restart_checkpoint () - run the checkpoint that restart recovery could not complete
+ *
+ * Note: that checkpoint fails while recovery's bestspace feedback is pending, because nothing is logged before the log
+ *	 restart. The boot runs it before the server registers with the master, so the redo point moves before a crash
+ *	 could redo the same range again. A failure leaves the next checkpoint due at once.
+ */
+void
+log_run_deferred_restart_checkpoint (THREAD_ENTRY * thread_p)
+{
+  struct timeval start, end;
+  INT64 msec;
+  bool done;
+  char text[192];
+
+  if (!log_Restart_chkpt_deferred)
+    {
+      return;
+    }
+  log_Restart_chkpt_deferred = false;
+  assert (LOG_ISRESTARTED ());
+
+  /* a failed checkpoint's error and the line below go to the server error log; the caller's error is kept */
+  er_stack_push ();
+  gettimeofday (&start, NULL);
+  done = (logpb_checkpoint (thread_p) != NULL_PAGEID);
+  gettimeofday (&end, NULL);
+  msec = (end.tv_sec - start.tv_sec) * 1000LL + (end.tv_usec - start.tv_usec) / 1000;
+
+  if (done)
+    {
+      snprintf (text, sizeof (text),
+		"the checkpoint deferred at the end of restart recovery completed during the boot in %lld ms",
+		(long long) msec);
+    }
+  else
+    {
+      /* due at once even when only a paused heap made it fail, which logpb_checkpoint () leaves to the interval */
+      LOG_CS_ENTER (thread_p);
+      log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.load ().pageid;
+      LOG_CS_EXIT (thread_p);
+      snprintf (text, sizeof (text),
+		"the checkpoint deferred at the end of restart recovery failed again during the boot (%lld ms): "
+		"the next checkpoint is due at once", (long long) msec);
+    }
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, text);
+  er_stack_pop ();
+}
+
+/*
  * log_initialize_internal -
  *
  * return:
@@ -1114,6 +1166,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   int i;
   int error_code = NO_ERROR;
   time_t *stopat = (r_args) ? &r_args->stopat : NULL;
+
+  /* an SA mode process can restart a database more than once */
+  log_Restart_chkpt_deferred = false;
 
 #if !defined (NDEBUG)
   /* Make sure that the recovery function array is synchronized.. */
@@ -1425,7 +1480,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * If recovery is not being performed, these daemons will run after completing the log_initialize () */
       BO_ENABLE_FLUSH_DAEMONS ();
 #endif /* SERVER_MODE */
-      log_recovery (thread_p, ismedia_crash, stopat);
+
+      log_Restart_chkpt_deferred = !log_recovery (thread_p, ismedia_crash, stopat);
     }
   else
     {
@@ -7663,6 +7719,12 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
   if (area != NULL)
     {
       free_and_init (area);
+    }
+
+  /* an undone heap change frees or takes space: tell the bestspace map while the page is still latched */
+  if (rcv->pgptr != NULL && heap_bestspace_is_heap_rcvindex (rcvindex))
+    {
+      heap_bestspace_feedback (thread_p, NULL, rcv->pgptr);
     }
 
   if (rcv->pgptr != NULL)

@@ -356,7 +356,13 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
     {"Num_variable_width_attrs", "int"},
     {"Num_shared_attrs", "int"},
     {"Num_class_attrs", "int"},
-    {"Total_size_fixed_width_attrs", "int"}
+    {"Total_size_fixed_width_attrs", "int"},
+    /* the bestspace map, filled only for a client that asks for it. The varchar widths must match
+     * HEAP_CAPACITY_BSMAP_CODES_WIDTH and HEAP_CAPACITY_BSMAP_COUNTERS_WIDTH in heap_file.c */
+    {"Bestspace_map_pages", "int"},
+    {"Bestspace_map_bytes", "bigint"},
+    {"Bestspace_pages_by_code", "varchar(256)"},
+    {"Bestspace_counters", "varchar(512)"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

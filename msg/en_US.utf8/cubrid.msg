@@ -1498,7 +1498,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 Last Error
+1387 Bestspace map of heap file %1$d|%2$d (header page %3$d): %4$d of %5$d pages under-reported, %6$d missing, %7$d unverified%8$s.
+
+1388 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

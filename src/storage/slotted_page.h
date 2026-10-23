@@ -145,6 +145,7 @@ extern int spage_get_record_offset (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PG
 extern int spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int spage_max_space_for_new_record_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void spage_collect_statistics (PAGE_PTR pgptr, int *npages, int *nrecords, int *rec_length);
 extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);

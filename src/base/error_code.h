@@ -1788,7 +1788,9 @@
 
 #define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
-#define ER_LAST_ERROR                               -1387
+#define ER_HEAP_BESTSPACE_MAP_MISMATCH              -1387
+
+#define ER_LAST_ERROR                               -1388
 
 
 /*
