@@ -31,9 +31,7 @@ namespace cubschema
 
   namespace system_metadata_builder
   {
-    MOP create_and_mark_system_class (const std::string_view name);
-    int build_class (const MOP class_mop, const system_metadata_definition &def);
-    int build_vclass (const MOP class_mop, const system_metadata_definition &def);
+    int install_classes (const std::vector<system_metadata_definition> &defs);
     int install_vclasses (const std::vector<system_metadata_definition> &defs);
     int rebuild_vclasses (const std::vector<system_metadata_definition> &defs, const std::string &owner_prefix);
   }

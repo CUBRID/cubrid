@@ -111,8 +111,8 @@ namespace cubschema
     return NO_ERROR;
   }
 
-  MOP
-  system_metadata_builder::create_and_mark_system_class (const std::string_view name)
+  static MOP
+  create_and_mark_system_class (const std::string_view name)
   {
     if (name.empty ())
       {
@@ -145,8 +145,8 @@ namespace cubschema
     return class_mop;
   }
 
-  int
-  system_metadata_builder::build_class (const MOP class_mop, const system_metadata_definition &def)
+  static int
+  build_class (const MOP class_mop, const system_metadata_definition &def)
   {
     int error_code = NO_ERROR;
 
@@ -240,8 +240,8 @@ namespace cubschema
     return error_code;
   }
 
-  int
-  system_metadata_builder::build_vclass (const MOP class_mop, const system_metadata_definition &def)
+  static int
+  build_vclass (const MOP class_mop, const system_metadata_definition &def)
   {
     int error_code = NO_ERROR;
 
@@ -280,28 +280,47 @@ namespace cubschema
     return apply_authorization (class_mop, def.auth);
   }
 
-  int
-  system_metadata_builder::install_vclasses (const std::vector<system_metadata_definition> &defs)
+  static int
+  install_definitions (const std::vector<system_metadata_definition> &defs,
+		       int (*build) (const MOP, const system_metadata_definition &))
   {
+    std::vector<MOP> class_mops (defs.size (), nullptr);
     int error_code = NO_ERROR;
 
-    for (const system_metadata_definition &def : defs)
+    /* create every class before defining any: a definition may refer to a class defined after it */
+    for (size_t i = 0; i < defs.size (); i++)
       {
-	MOP class_mop = create_and_mark_system_class (def.name);
-	if (class_mop == nullptr)
+	class_mops[i] = create_and_mark_system_class (defs[i].name);
+	if (class_mops[i] == nullptr)
 	  {
 	    assert (false);
 	    return er_errid ();
 	  }
+      }
 
-	error_code = build_vclass (class_mop, def);
+    for (size_t i = 0; i < defs.size (); i++)
+      {
+	error_code = build (class_mops[i], defs[i]);
 	if (error_code != NO_ERROR)
 	  {
+	    assert (false);
 	    return error_code;
 	  }
       }
 
     return NO_ERROR;
+  }
+
+  int
+  system_metadata_builder::install_classes (const std::vector<system_metadata_definition> &defs)
+  {
+    return install_definitions (defs, build_class);
+  }
+
+  int
+  system_metadata_builder::install_vclasses (const std::vector<system_metadata_definition> &defs)
+  {
+    return install_definitions (defs, build_vclass);
   }
 
   int
