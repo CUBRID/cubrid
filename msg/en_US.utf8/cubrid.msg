@@ -1500,7 +1500,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1387 The secret of session %1$u does not match.
 
-1388 Last Error
+1388 Cannot end or keep session %1$u because it is not attached to this connection.
+
+1389 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

@@ -814,7 +814,8 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
   if (thread_p->conn_entry == NULL || thread_p->conn_entry->session_p != session_p)
     {
       pthread_mutex_unlock (&session_p->mutex);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_NOT_ATTACHED, 1, id);
+      return ER_SES_SESSION_NOT_ATTACHED;
     }
 #endif
 
