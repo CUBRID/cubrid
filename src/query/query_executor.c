@@ -1257,6 +1257,11 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+	      if (xasl->hj_prehash != NULL)
+		{
+		  /* the key hash of the tuple, for the hash join that builds from this list */
+		  hjoin_prehash_append (thread_p, xasl);
+		}
 	    }
 	  break;
 
@@ -1283,6 +1288,11 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  if ((qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
 	    {
 	      GOTO_EXIT_ON_ERROR;
+	    }
+	  if (xasl->hj_prehash != NULL)
+	    {
+	      /* a tuple written without its hash: the hash join reads this list's keys */
+	      hjoin_prehash_drop (xasl);
 	    }
 	  break;
 
@@ -2345,6 +2355,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
   if (xasl->type == HASHJOIN_PROC)
     {
       hjoin_rtf_release (thread_p, xasl);
+      /* the build input's hashes, when the join did not run to release them */
+      hjoin_prehash_release (thread_p, &xasl->proc.hashjoin.prehash);
     }
   xasl->executed_parallelism = 0;
 
@@ -20434,6 +20446,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	       * the node's rtf_keys is cleared either way, since a cached plan keeps the last execution's */
 	      XASL_NODE *rtf_target = NULL;
 	      XASL_NODE *rtf_first = NULL;
+
+	      if (xptr == xasl)
+		{
+		  /* the join runs in this block's end (qexec_end_mainblock_iterations ()) on this thread, after its
+		   * inputs: the input it builds from takes its tuples' key hashes as it writes them, for the build */
+		  hjoin_prehash_arm (thread_p, xptr);
+		}
 
 	      if (prm_get_bool_value (PRM_ID_HASH_JOIN_RUNTIME_FILTER))
 		{

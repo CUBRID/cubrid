@@ -119,6 +119,12 @@ static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HAS
 static int hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 static int hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan,
 			    QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE_RECORD * tuple_record);
+static HJOIN_PREHASH *hjoin_prehash_for_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+					       HASHJOIN_CONTEXT * context);
+#if !defined (NDEBUG)
+static int hjoin_prehash_check (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * build, HASH_SCAN_KEY * key,
+				bool is_null_row, UINT32 hash_key, HASH_METHOD hash_method);
+#endif /* !NDEBUG */
 
 /* Probe Phase */
 static int hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -735,6 +741,9 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   proc = &xasl->proc.hashjoin;
   assert (xasl->spec_list == NULL);
 
+  /* released by hjoin_clear_manager () whatever this join does with it */
+  manager->prehash = &proc->prehash;
+
   merge_info = &proc->merge_info;
   assert (merge_info->ls_pos_cnt > 0);
   assert (merge_info->ls_pos_list != NULL);
@@ -930,6 +939,14 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   if (manager->type_list.domp != NULL)
     {
       db_private_free_and_init (thread_p, manager->type_list.domp);
+    }
+
+  if (manager->prehash != NULL)
+    {
+      /* the input's hashes are of no use past the build: freed by the thread that armed them, the one running
+       * the join */
+      hjoin_prehash_release (thread_p, manager->prehash);
+      manager->prehash = NULL;
     }
 
 #if defined (SERVER_MODE)
@@ -3104,6 +3121,8 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   HASH_METHOD hash_method;
   HASH_SCAN_KEY *key;
 
+  HJOIN_PREHASH *prehash = NULL;
+
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
@@ -3139,6 +3158,70 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
     }
 
   if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
+    {
+      prehash = hjoin_prehash_for_build (thread_p, manager, context);
+    }
+
+  if (prehash != NULL)
+    {
+      /* HASHJOIN_STATUS_SINGLE, the build input's hashes taken as its tuples were written: the i-th tuple of the
+       * scan is the i-th written, its hash the i-th, or it is one of the NULL-key tuples hjoin_fetch_key () would
+       * have the build skip; the keys are not read */
+      INT64 row = 0, null_index = 0;
+      UINT32 hash_key;
+      bool is_null_row;
+
+      while ((scan_code =
+	      qfile_scan_list_next (thread_p, &build->list_scan_id, &build->tuple_record, PEEK)) == S_SUCCESS)
+	{
+	  assert (row < prehash->cnt);
+
+	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
+	  is_null_row = (null_index < prehash->null_cnt && prehash->null_rows[null_index] == row);
+	  if (is_null_row)
+	    {
+	      null_index++;
+	    }
+	  hash_key = prehash->hashes[row];
+	  row++;
+	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
+
+#if !defined (NDEBUG)
+	  /* the tuple's keys read and hashed as the loop below does: the same skip, the same hash */
+	  error = hjoin_prehash_check (thread_p, build, key, is_null_row, hash_key, hash_method);
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+#endif /* !NDEBUG */
+
+	  if (is_null_row)
+	    {
+	      continue;
+	    }
+
+	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
+	  hash_scan->curr_hash_key = qdata_hash_scan_key_finish (hash_key, hash_method);
+	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
+
+	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
+	  error = hjoin_build_key (thread_p, hash_scan, &build->list_scan_id, &build->tuple_record);
+	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
+
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+	}			/* while (qfile_scan_list_next (list_scan_id)) */
+
+      assert (scan_code != S_END || error != NO_ERROR || (row == prehash->cnt && null_index == prehash->null_cnt));
+
+      if (thread_is_on_trace (thread_p))
+	{
+	  stats->build_prehashed = true;
+	}
+    }
+  else if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
     {
       while ((scan_code =
 	      qfile_scan_list_next (thread_p, &build->list_scan_id, &build->tuple_record, PEEK)) == S_SUCCESS)
@@ -5175,5 +5258,370 @@ hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
   hj->rtf = NULL;
   hj->rtf_target = NULL;
 }
+
+/*
+ * Build input hashes (HJOIN_PREHASH)
+ */
+
+/* the first capacity of the hash array, in tuples; it doubles from there */
+#define HJOIN_PREHASH_INITIAL_CAP (1024)
+
+/* The input's tuples reach its list each through qexec_end_one_iteration (), in the order its scans produce them,
+ * and stay there in that order: nothing groups, sorts, numbers into a top-n or replaces the list afterwards. */
+static bool
+hjoin_prehash_input_ok (XASL_NODE * input)
+{
+  return input->type == BUILDLIST_PROC && IS_XASL_INITIAL_STATUS (input->status) && input->hj_prehash == NULL
+    && input->proc.buildlist.groupby_list == NULL && input->proc.buildlist.a_eval_list == NULL
+    && input->orderby_list == NULL && input->option != Q_DISTINCT && input->topn_items == NULL
+    && input->connect_by_ptr == NULL && input->selected_upd_list == NULL && input->scan_op_type == S_SELECT
+    && !XASL_IS_FLAGED (input, XASL_LINK_TO_REGU_VARIABLE);
+}
+
+/*
+ * hjoin_prehash_arm () - arm the input the join builds from to take its tuples' key hashes as they are written
+ *   return: none (an input that does not qualify is left as it is: the build reads its keys)
+ *   thread_p(in): the thread that runs the join's block, and so its inputs' serial execution and the join
+ *   hashjoin_xasl(in): the join, before its inputs run
+ *
+ * The input is the one the plan builds from: the inner, the outer for a right outer join (hjoin_init_context ()).
+ * An inner join builds from the outer instead when the outer turns out the smaller; that build reads its keys.
+ */
+void
+hjoin_prehash_arm (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
+{
+  HASHJOIN_PROC_NODE *hj = &hashjoin_xasl->proc.hashjoin;
+  HJOIN_PREHASH *ph = &hj->prehash;
+  XASL_NODE *input;
+  const int *key_cols;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  /* an earlier execution of the node that never reached its join */
+  hjoin_prehash_release (thread_p, ph);
+
+  if (hj->merge_info.join_type == JOIN_RIGHT)
+    {
+      input = hj->outer.xasl;
+      key_cols = hj->merge_info.ls_outer_column;
+    }
+  else
+    {
+      input = hj->inner.xasl;
+      key_cols = hj->merge_info.ls_inner_column;
+    }
+  if (input == NULL || key_cols == NULL || hj->merge_info.ls_column_cnt <= 0 || !hjoin_prehash_input_ok (input))
+    {
+      return;
+    }
+
+  ph->input = input;
+  ph->owner = thread_p;
+  ph->key_cols = key_cols;
+  ph->key_cnt = hj->merge_info.ls_column_cnt;
+  ph->valid = true;
+  ph->tfile = NULL;
+  ph->cnt = 0;
+  ph->null_cnt = 0;
+  ph->mem_limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  input->hj_prehash = ph;
+}
+
+/*
+ * hjoin_prehash_release () - free the hashes and disarm the input
+ *   return: none
+ *   thread_p(in): the thread that armed it (the join's, or the node's clear)
+ *   ph(in/out): the join's HJOIN_PREHASH
+ */
+void
+hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph)
+{
+  if (ph->input != NULL)
+    {
+      if (ph->input->hj_prehash == ph)
+	{
+	  ph->input->hj_prehash = NULL;
+	}
+      ph->input = NULL;
+    }
+  if (ph->hashes != NULL)
+    {
+      db_private_free_and_init (thread_p, ph->hashes);
+    }
+  if (ph->null_rows != NULL)
+    {
+      db_private_free_and_init (thread_p, ph->null_rows);
+    }
+  ph->owner = NULL;
+  ph->valid = false;
+  ph->tfile = NULL;
+  ph->cnt = 0;
+  ph->cap = 0;
+  ph->null_cnt = 0;
+  ph->null_cap = 0;
+}
+
+/*
+ * hjoin_prehash_drop () - the input wrote a tuple whose hash it did not take: its hashes no longer stand for its list
+ *   return: none
+ *   input(in): an armed input
+ */
+void
+hjoin_prehash_drop (XASL_NODE * input)
+{
+  assert (input->hj_prehash != NULL);
+  input->hj_prehash->valid = false;
+}
+
+/* an array of elem_size-byte elements, doubled: the new array (*cap updated), or NULL with the hashes dropped past
+ * the hash list scan's memory limit or when there is no memory -- not an error: the build reads the keys.  On NULL
+ * the old array stays as it was, freed by hjoin_prehash_release (). */
+static void *
+hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, INT64 * cap, size_t elem_size)
+{
+  INT64 new_cap = (*cap == 0) ? HJOIN_PREHASH_INITIAL_CAP : *cap * 2;
+  void *new_array;
+
+  if ((UINT64) new_cap * elem_size > ph->mem_limit)
+    {
+      ph->valid = false;
+      return NULL;
+    }
+  if (array == NULL)
+    {
+      new_array = db_private_alloc (thread_p, (size_t) new_cap * elem_size);
+    }
+  else
+    {
+      new_array = db_private_realloc (thread_p, array, (size_t) new_cap * elem_size);
+    }
+  if (new_array == NULL)
+    {
+      er_clear ();
+      ph->valid = false;
+      return NULL;
+    }
+  *cap = new_cap;
+  return new_array;
+}
+
+/*
+ * hjoin_prehash_value_ok () - the value, read back from its column of the list, hashes as it does now
+ *   return: true when mht_get_hash_number () gives the value and the one the build reads back from the list
+ *	     (qfile_slot_read_column_value () with the column's domain, hjoin_fetch_key () without coercion) the same
+ *	     number; false for every other value
+ *   v(in): the value the list's column was written from, after the write
+ *   dom(in): the column's domain in the list
+ *
+ * The list writes the value with its own type (qfile_tuple_put_value ()); the build reads the column back with the
+ * column's domain.  With the two types the same:
+ *   - INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME: fixed-size bits written and read back as they are;
+ *     the hash is of those bits.
+ *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
+ *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
+ *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, a fixed numeric's not
+ *     normalized (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric ()).
+ *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
+ *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
+ *     collation; the hash is of the bytes up to their trailing spaces, by the collation.
+ */
+static bool
+hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
+{
+  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (v);
+
+  if (dom == NULL || type != TP_DOMAIN_TYPE (dom))
+    {
+      return false;
+    }
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_SMALLINT:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+      return true;
+
+    case DB_TYPE_NUMERIC:
+      return dom->precision != DB_DEFAULT_NUMERIC_PRECISION && db_value_precision (v) == dom->precision
+	&& db_value_scale (v) == dom->scale;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      return TP_DOMAIN_COLLATION_FLAG (dom) == TP_DOMAIN_COLL_NORMAL
+	&& db_get_string_collation (v) == TP_DOMAIN_COLLATION (dom);
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * hjoin_prehash_append () - the tuple the input just wrote to its list: its key hash, or its NULL-key mark
+ *   return: none (a tuple it cannot hash drops the input's hashes: the build reads the keys)
+ *   thread_p(in): the thread that wrote the tuple
+ *   input(in): an armed input, its tuple descriptor still holding the values the tuple was written from
+ *
+ * The hash is qdata_hash_scan_key ()'s over the key values in key order (qdata_hash_scan_key_step (), the same
+ * step, with the build's table size UINT_MAX), its file-method step left to the build; a tuple with a NULL key is
+ * marked, as hjoin_fetch_key () has the build skip it.
+ */
+void
+hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
+{
+  HJOIN_PREHASH *ph = input->hj_prehash;
+  QFILE_LIST_ID *list_id = input->list_id;
+  QFILE_TUPLE_DESCRIPTOR *descr;
+  DB_VALUE *v;
+  unsigned int hash_val = 0;
+  int k, col;
+
+  assert (ph != NULL && ph->input == input);
+  if (!ph->valid)
+    {
+      return;
+    }
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p != ph->owner || list_id == NULL)
+    {
+      /* written by another thread (a parallel subquery's worker): the arrays are the owner's */
+      ph->valid = false;
+      return;
+    }
+  if (ph->cnt == 0)
+    {
+      ph->tfile = list_id->tfile_vfid;
+    }
+  else if (ph->tfile != list_id->tfile_vfid)
+    {
+      ph->valid = false;
+      return;
+    }
+  if (ph->cnt == ph->cap)
+    {
+      UINT32 *hashes = (UINT32 *) hjoin_prehash_grow (thread_p, ph, ph->hashes, &ph->cap, sizeof (UINT32));
+
+      if (hashes == NULL)
+	{
+	  return;
+	}
+      ph->hashes = hashes;
+    }
+
+  descr = &list_id->tpl_descr;
+  for (k = 0; k < ph->key_cnt; k++)
+    {
+      col = ph->key_cols[k];
+      if (col < 0 || col >= descr->f_cnt || col >= list_id->type_list.type_cnt)
+	{
+	  ph->valid = false;
+	  return;
+	}
+      v = descr->f_valp[col];
+      if (DB_IS_NULL (v))
+	{
+	  /* the build skips the tuple at its first NULL key */
+	  if (ph->null_cnt == ph->null_cap)
+	    {
+	      INT64 *null_rows = (INT64 *) hjoin_prehash_grow (thread_p, ph, ph->null_rows, &ph->null_cap,
+							       sizeof (INT64));
+
+	      if (null_rows == NULL)
+		{
+		  return;
+		}
+	      ph->null_rows = null_rows;
+	    }
+	  ph->null_rows[ph->null_cnt++] = ph->cnt;
+	  ph->hashes[ph->cnt++] = 0;
+	  return;
+	}
+      if (!hjoin_prehash_value_ok (v, list_id->type_list.domp[col]))
+	{
+	  ph->valid = false;
+	  return;
+	}
+      hash_val = qdata_hash_scan_key_step (hash_val, v, UINT_MAX);
+    }
+  ph->hashes[ph->cnt++] = hash_val;
+}
+
+/*
+ * hjoin_prehash_for_build () - the hashes the single build reads instead of the keys, if they stand for its list
+ *   return: the join's HJOIN_PREHASH, or NULL: the build reads the keys
+ *   thread_p(in): the join's thread
+ *   manager(in), context(in): the single context, its build input chosen (hjoin_init_context ())
+ *
+ * They stand for the list when its input was the one armed and is the one built from, every tuple of the list has
+ * its hash or its NULL mark in write order (as many as the list has tuples, all appended by the thread that armed
+ * them, to this list file), and the build reads every key without coercion (hjoin_fetch_key () reads a key into
+ * the column's own domain unless coerce_domains says otherwise for it) -- the domains the hashes were taken with.
+ */
+static HJOIN_PREHASH *
+hjoin_prehash_for_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
+{
+  HJOIN_PREHASH *ph = manager->prehash;
+  HASHJOIN_FETCH_INFO *build = context->build;
+  QFILE_LIST_ID *list_id = build->list_id;
+  int k;
+
+  if (ph == NULL || !ph->valid || ph->input == NULL || ph->owner != thread_p || context != &manager->single_context
+      || manager->context_cnt != 0)
+    {
+      return NULL;
+    }
+  if (list_id == NULL || list_id != ph->input->list_id || ph->cnt != list_id->tuple_cnt
+      || ph->tfile != list_id->tfile_vfid)
+    {
+      return NULL;
+    }
+  if (ph->key_cnt != manager->key_cnt || ph->key_cols != build->input->value_indexes)
+    {
+      return NULL;
+    }
+  for (k = 0; k < ph->key_cnt; k++)
+    {
+      assert (build->input->domains[k] == list_id->type_list.domp[ph->key_cols[k]]);
+      if (build->need_coerce_domains && build->coerce_domains[k] != NULL
+	  && build->coerce_domains[k] != build->input->domains[k])
+	{
+	  return NULL;
+	}
+    }
+  return ph;
+}
+
+#if !defined (NDEBUG)
+/*
+ * hjoin_prehash_check () - the build's own read and hash of the tuple's keys against what the hashes say
+ *   return: NO_ERROR, or the read's error
+ */
+static int
+hjoin_prehash_check (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * build, HASH_SCAN_KEY * key, bool is_null_row,
+		     UINT32 hash_key, HASH_METHOD hash_method)
+{
+  bool need_skip_next = false;
+  int error;
+
+  error = hjoin_fetch_key (thread_p, build, &build->tuple_record, key, NULL /* compare_key */ , &need_skip_next);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  assert (need_skip_next == is_null_row);
+  assert (is_null_row
+	  || qdata_hash_scan_key (key, UINT_MAX, hash_method) == qdata_hash_scan_key_finish (hash_key, hash_method));
+  return NO_ERROR;
+}
+#endif /* !NDEBUG */
 
 #endif /* SERVER_MODE || SA_MODE */
