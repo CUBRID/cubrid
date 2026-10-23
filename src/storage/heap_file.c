@@ -8356,6 +8356,7 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	}
       rows[n].oid = oid;
       rows[n].recdes = rec;
+      rows[n].hdr_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&mvcc_header)];	/* OR_HEADER_SIZE (rec.data) */
       n++;
       if (n == cap)
 	{

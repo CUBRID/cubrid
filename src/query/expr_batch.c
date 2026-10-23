@@ -3563,7 +3563,8 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
       REPR_ID repid;
       int ix = 0;
 
-      if (recdes->data == NULL || recdes->length < OR_HEADER_SIZE (recdes->data))
+      /* the header's size as the collector read it with the MVCC header (HEAP_PAGE_ROW.hdr_size) */
+      if (recdes->data == NULL || recdes->length < batch->rows[r].hdr_size)
 	{
 	  return eb_fallback (plan, "a record of another representation");
 	}
@@ -3578,7 +3579,8 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	}
       rep = &plan->reprs[ix];
       batch->repr_ix[r] = (unsigned char) ix;
-      heap_rec_layout_init_repr (&batch->layout[r], recdes->data, rep->n_variable, rep->fixed_length);
+      heap_rec_layout_init_repr_hdr (&batch->layout[r], recdes->data, batch->rows[r].hdr_size, rep->n_variable,
+				     rep->fixed_length);
     }
   return NO_ERROR;
 }

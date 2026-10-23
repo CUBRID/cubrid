@@ -437,6 +437,7 @@ struct heap_page_row
 {
   OID oid;
   RECDES recdes;
+  int hdr_size;			/* the record header's bytes, OR_HEADER_SIZE (recdes.data), from the header the collector read */
 };
 extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 					    HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap,
