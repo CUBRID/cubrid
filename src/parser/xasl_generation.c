@@ -9909,8 +9909,17 @@ pt_to_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list, UNBOX un
 
   for (node = node_list; node != NULL; node = node->next)
     {
+      PT_NODE *save_next = node->next;
+
+      /* in this list the node link is the following item, not a conjunctive normal form term;
+       * pt_to_pred_expr (), which pt_to_regu_variable () calls for a PT_TYPE_LOGICAL node, walks
+       * the link and would otherwise fold the following items into this item's predicate */
+      node->next = NULL;
+
       regu_alloc (*tail);
       regu = pt_to_regu_variable (parser, node, unbox);
+
+      node->next = save_next;
 
       if (attr_offsets && value_list && regu)
 	{
