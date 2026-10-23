@@ -3700,7 +3700,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
       heap_scancache_end (thread_p, &scan_cache);
 
-      valid = heap_check_heap_file (thread_p, &hfid);
+      valid = heap_check_heap_file (thread_p, &hfid, repair);
       if (valid == DISK_ERROR)
 	{
 	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
@@ -3843,7 +3843,7 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
     {
       if (isvalid != DISK_ERROR)
 	{
-	  isvalid = heap_check_all_heaps (thread_p);
+	  isvalid = heap_check_all_heaps (thread_p, repair);
 	  if (isvalid != DISK_VALID)
 	    {
 	      error_code = ER_FAILED;

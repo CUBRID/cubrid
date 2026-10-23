@@ -536,8 +536,8 @@ extern int heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, con
 
 extern int heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COPYAREA_DESC * prefetch);
 extern DISK_ISVALID heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid);
-extern DISK_ISVALID heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid);
-extern DISK_ISVALID heap_check_all_heaps (THREAD_ENTRY * thread_p);
+extern DISK_ISVALID heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid, bool repair);
+extern DISK_ISVALID heap_check_all_heaps (THREAD_ENTRY * thread_p, bool repair);
 
 extern int heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index);
 extern int heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int chn);
@@ -698,6 +698,10 @@ struct heap_bsmap_audit
   int missing;			/* the map does not know the page */
   int unverified;		/* the map holds UNVERIFIED for the page */
   int repaired;			/* fed back with repair */
+  int orphans;			/* orphan map pages in the chain: flagged BESTSPACE, not in the header's list */
+  int refused;			/* the same, but heap_bsmap_free_orphan () would not take them: damaged, not counted
+				 * in orphans */
+  int freed;			/* orphan map pages freed with repair */
 };
 extern int heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BSMAP_AUDIT * audit);
 extern bool heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex);

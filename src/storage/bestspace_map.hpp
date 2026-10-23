@@ -101,6 +101,22 @@ namespace cubstorage
 	CNT_VICTIM_MEASURED,	// evicted pages measured in the buffer and written back with release_latched ()
 	CNT_LAST
       };
+      // the name of each counter, in enum order (SHOW HEAP CAPACITY prints them); one per counter, checked below the
+      // class
+      static constexpr const char *COUNTER_NAMES[] =
+      {
+	"feedback",
+	"claimed",
+	"verify_fail",
+	"released",
+	"alloc_batch",
+	"reused",
+	"node_reserved",
+	"node_fallback",
+	"deferred",
+	"disk_verify",
+	"victim_measured"
+      };
 
       bestspace_map ();
       ~bestspace_map ();
@@ -181,8 +197,11 @@ namespace cubstorage
       // the count has not moved and its last pass left no work (heap_file.c). The hot paths' usual changes leave it
       static std::uint64_t work_epoch ();
       static void note_work ();
+      // counts[c]: pages with code c, over every sector (num_sectors () * PAGES_PER_SECTOR in all). Atomic loads only:
+      // writers go on meanwhile, so the counts are a moment's view, not a snapshot
       void count_codes (std::uint64_t counts[16]);
       void count (counter id, std::uint64_t value = 1);
+      // the bytes the map allocated, and the counters. Atomic loads only, no lock
       void get_usage (std::size_t &bytes, std::uint64_t counters[CNT_LAST]);
 
       static std::uint64_t make_key (short volid, std::int32_t pageid);
@@ -248,7 +267,7 @@ namespace cubstorage
       std::atomic<std::uint64_t> m_num_unverified;
       std::atomic<bool> m_needs_retry;
       std::mutex m_grow_mutex;
-      std::size_t m_bytes;		// under m_grow_mutex
+      std::atomic<std::size_t> m_bytes;	// written under m_grow_mutex, read without it (get_usage ())
       std::atomic<std::uint64_t> m_counters[CNT_LAST];
 
       // nodes reserve () allocated for the next sector add; under m_grow_mutex. A sector after the promotion needs at
@@ -319,6 +338,8 @@ namespace cubstorage
       void descend (group &grp, std::size_t g, std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count,
 		    std::size_t &found, std::size_t &budget);
   };
+  static_assert (sizeof (bestspace_map::COUNTER_NAMES) / sizeof (bestspace_map::COUNTER_NAMES[0])
+		 == bestspace_map::CNT_LAST, "COUNTER_NAMES needs one name per counter, in enum order");
 
   // tiers recorded for heaps whose map is not in memory. One entry per (group, sector key) with a mask of the
   // recorded pages.

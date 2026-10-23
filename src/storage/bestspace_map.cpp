@@ -562,7 +562,7 @@ namespace cubstorage
     node = bsmap_alloc<T> ();
     if (node != nullptr)
       {
-	m_bytes += sizeof (T);
+	m_bytes.fetch_add (sizeof (T), std::memory_order_relaxed);
 	if (use_spares)
 	  {
 	    count (CNT_NODE_FALLBACK);
@@ -587,7 +587,7 @@ namespace cubstorage
     node = bsmap_alloc<rnode> ();
     if (node != nullptr)
       {
-	m_bytes += sizeof (rnode);
+	m_bytes.fetch_add (sizeof (rnode), std::memory_order_relaxed);
 	if (use_spares)
 	  {
 	    count (CNT_NODE_FALLBACK);
@@ -721,8 +721,8 @@ namespace cubstorage
 	  rnodes[num_rnodes] = nullptr;
 	  got.rnodes++;
 	}
-      m_bytes += got.mid * sizeof (middir) + got.leaf * sizeof (leafdir) + got.grp * sizeof (group)
-		 + got.rnodes * sizeof (rnode);
+      m_bytes.fetch_add (got.mid * sizeof (middir) + got.leaf * sizeof (leafdir) + got.grp * sizeof (group)
+			 + got.rnodes * sizeof (rnode), std::memory_order_relaxed);
       count (CNT_NODE_RESERVED, got.mid + got.leaf + got.grp + got.rnodes);
       if (complete && m_num_sectors.load (std::memory_order_relaxed) == s)
 	{
@@ -1712,10 +1712,7 @@ namespace cubstorage
   void
   bestspace_map::get_usage (std::size_t &bytes, std::uint64_t counters[CNT_LAST])
   {
-    {
-      std::lock_guard<std::mutex> lock (m_grow_mutex);
-      bytes = m_bytes;
-    }
+    bytes = m_bytes.load (std::memory_order_relaxed);
     for (int i = 0; i < CNT_LAST; i++)
       {
 	counters[i] = m_counters[i].load (std::memory_order_relaxed);
