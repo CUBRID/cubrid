@@ -475,6 +475,11 @@ namespace parallel_scan
 	    {
 	      m_.hgby_results.push_back (context->part_list_id);
 	      context->part_list_id = NULL;
+	      /* a worker that read no rows neither kept nor gave up hashing */
+	      if (context->tuple_count > 0 && context->state > m_.hgby_state)
+		{
+		  m_.hgby_state = context->state;
+		}
 	    }
 	  if (gby_append)
 	    {
@@ -773,8 +778,12 @@ namespace parallel_scan
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return S_ERROR;
 	      }
-	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
-	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
+	    /* trace 'hash: partial' once any worker gave up hashing, 'hash: true' only if all kept it; never moves back
+	     * (see qexec_hash_gby_agg_tuple) */
+	    if (m_.hgby_state > m_.orig_xasl->groupby_stats.groupby_hash)
+	      {
+		m_.orig_xasl->groupby_stats.groupby_hash = m_.hgby_state;
+	      }
 	  }
 
 	if (m_.gby_skip)

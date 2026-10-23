@@ -96,6 +96,7 @@ namespace parallel_scan
       int active_results;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
+      AGGREGATE_HASH_STATE hgby_state = HS_NONE;	/* furthest hash state of the workers that hashed rows */
       /* GROUP BY skip (CBRD-27664): workers aggregate by key record and hand their runs of partial aggregates to the
        * leader, which merges them in key order; no row reaches the worker lists */
       bool gby_skip = false;
