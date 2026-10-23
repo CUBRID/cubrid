@@ -414,7 +414,11 @@ struct expr_batch_plan
   INT64 pages_fallback;
   INT64 rows_by_oid;		/* rows a page skipped (heap_page_collect_visible ()), fetched by OID on the row path */
   const char *fallback_why;	/* the last chunk's cause for the row path */
+  bool gave_up;			/* the rest of the scan goes to the row path (expr_batch_plan_note_page ()) */
 };
+
+/* the batch gives up on a scan once this many pages are in and the row path took more than half of them */
+#define EB_GIVE_UP_MIN_PAGES (32)
 
 /* the build: a few growable arrays, an address map for the program's wired cells, and the
  * vector each program cell was given */
@@ -4986,6 +4990,10 @@ expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan)
   return (plan != NULL) ? plan->fallback_why : NULL;
 }
 
+/* A page in, taken or handed back.  A scan whose pages keep going to the row path pays for the batch's
+ * collection and run on each before the row path walks it again: once EB_GIVE_UP_MIN_PAGES pages are in and more
+ * than half of them went that way, the plan gives up and the pages after them go to the row path without a try
+ * (scan_batch_collect_chunk ()); the trace's last cause says so. */
 void
 expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
 {
@@ -4993,7 +5001,18 @@ expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
     {
       plan->pages++;
       plan->pages_fallback += fallback ? 1 : 0;
+      if (!plan->gave_up && plan->pages >= EB_GIVE_UP_MIN_PAGES && plan->pages_fallback * 2 > plan->pages)
+	{
+	  plan->gave_up = true;
+	  plan->fallback_why = "the batch gave up: the row path took more than half of the first pages";
+	}
     }
+}
+
+bool
+expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan)
+{
+  return plan != NULL && plan->gave_up;
 }
 
 void

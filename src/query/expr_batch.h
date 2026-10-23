@@ -252,8 +252,11 @@ extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * n
 extern const REPR_ID *expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n);
 extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid);
 
-/* trace: pages taken and pages handed back; rows the page skipped and the row path fetched by OID */
+/* trace: pages taken and pages handed back; rows the page skipped and the row path fetched by OID.  Counting
+ * the pages, the plan gives up on the scan when the row path keeps taking them: expr_batch_plan_gave_up () is
+ * true from then on, and the scan's remaining pages go to the row path without a batch try. */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
+extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);

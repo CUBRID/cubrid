@@ -8344,8 +8344,9 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
 /*
  * scan_batch_collect_chunk () - the next rows of the page the scan cache holds, into the batch
  *   return: S_SUCCESS (the batch holds a full chunk -- its rows or its exception list full; the
- *           page may have more), S_END (the batch holds the page's last rows, maybe none), or
- *           S_ERROR
+ *           page may have more), S_END (the batch holds the page's last rows, maybe none),
+ *           S_DOESNT_FIT (the plan gave up: nothing collected, the page is the row path's from its
+ *           first slot, as a chunk the batch handed back), or S_ERROR
  *   scan_id(in/out): the heap scan
  *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here)
  *   slot(in/out): the walk's position in the page, 0 before its first chunk
@@ -8374,12 +8375,17 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
   batch->n_sel = 0;
   hsidp->batch_n_exc = 0;
   hsidp->batch_exc_pos = 0;
+  hsidp->batch_vpid = *vpid;
+  if (expr_batch_plan_gave_up (hsidp->batch_plan))
+    {
+      /* the row path kept taking this scan's pages (expr_batch_plan_note_page ()): this one goes to it untried */
+      return S_DOESNT_FIT;
+    }
   repids = expr_batch_plan_repids (hsidp->batch_plan, &n_repids);
   code =
     heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
 			       &batch->n_rows, repids, n_repids, &unknown_repid, hsidp->batch_exc,
 			       hsidp->batch_exc_cap, &hsidp->batch_n_exc);
-  hsidp->batch_vpid = *vpid;
   if (code == S_ERROR)
     {
       batch->n_rows = 0;
