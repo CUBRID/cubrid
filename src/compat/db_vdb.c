@@ -2853,7 +2853,8 @@ db_swap_compilation (DB_SESSION * a, DB_SESSION * b)
   std::swap (a->stage, b->stage);
   std::swap (a->dimension, b->dimension);
   /* stmt_ndx stays: it is the driver's progress through the statements (the CAS compiles each one just before it
-   * executes it), not the compilation's; a compilation swapped in has every statement compiled already */
+   * executes it), not the compilation's; a compilation swapped in has the statements compiled so far compiled, the
+   * rest compile at their turn (db_compile_signature_text) */
   std::swap (a->include_oid, b->include_oid);
 }
 
@@ -2922,13 +2923,20 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
       typed->parser->flag.set_host_var = 0;
       db_untype_null_host_variables (typed->parser);
     }
+  /* the statements the session has compiled so far (a prefix: the CAS compiles each one just before it executes it);
+   * a later one may read a table an earlier one creates, so it compiles at its turn, in this compilation */
+  int compiled = 0;
+  while (compiled < session->dimension && session->stage[compiled] >= StatementPreparedStage)
+    {
+      compiled++;
+    }
   typed->bind_domains_from = bind_domains_from;
   do
     {
-      /* every statement of the text: db_compile_statement_local compiles the next one, 0 after the last */
+      /* db_compile_statement_local compiles the next statement, 0 after the last */
       err = db_compile_statement_local (typed);
     }
-  while (err > 0);
+  while (err > 0 && typed->stmt_ndx < compiled);
   typed->bind_domains_from = NULL;
   return err < 0 ? err : NO_ERROR;
 }
