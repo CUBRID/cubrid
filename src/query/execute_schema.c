@@ -9971,6 +9971,12 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
       if (!sm_is_replication_class (ref_class_mop))
 	{
 	  DB_CONSTRAINT *pk_c = db_constraint_find_primary_key (db_get_constraints (ref_class_mop));
+	  if (pk_c == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CONSTRAINT, 0);
+	      return ER_SM_INVALID_CONSTRAINT;
+	    }
+
 	  fprintf (fp, "%s(%s) -> %s(%s)\n", sm_get_ch_name (class_obj), tmp_c->name,
 		   sm_get_ch_name (ref_class_mop), pk_c->name);
 	  ret++;

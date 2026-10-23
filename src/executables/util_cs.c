@@ -2943,6 +2943,7 @@ check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAI
 {
   DB_OBJLIST *c;
   int is_vclass;
+  int check_result;
 
   for (c = classes; c != NULL; c = c->next)
     {
@@ -2957,7 +2958,13 @@ check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAI
 	  continue;
 	}
 
-      *violation_count += check_func (c->op, fp);
+      check_result = check_func (c->op, fp);
+      if (check_result < 0)
+	{
+	  return check_result;
+	}
+
+      *violation_count += check_result;
     }
   return NO_ERROR;
 }
