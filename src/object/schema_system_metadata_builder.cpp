@@ -62,7 +62,8 @@ namespace cubschema
 	    error_code = smt_add_class_method (tmpl, name, type);
 	    break;
 	  default:
-	    error_code = ER_FAILED;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    error_code = ER_GENERIC_ERROR;
 	    break;
 	  }
 
@@ -82,7 +83,8 @@ namespace cubschema
     if (auth.owner == nullptr)
       {
 	assert (false);
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
       }
 
     int error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
@@ -112,6 +114,7 @@ namespace cubschema
     if (name.empty ())
       {
 	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	return nullptr;
       }
 
@@ -128,6 +131,7 @@ namespace cubschema
     else
       {
 	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       }
 
     if (class_mop != nullptr)
@@ -196,7 +200,8 @@ namespace cubschema
 	  break;
 
 	  default:
-	    error_code = ER_FAILED;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    error_code = ER_GENERIC_ERROR;
 	    break;
 	  }
 
