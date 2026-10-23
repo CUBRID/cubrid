@@ -292,7 +292,8 @@ jsp_find_stored_procedure (const char *name)
       else
 	{
 	  err = ER_SP_NOT_EXIST;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name);
+	  // checked_name is empty when name cannot be a routine name (e.g. its owner is too long)
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name[0] != '\0' ? checked_name : name);
 	}
     }
 
