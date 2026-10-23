@@ -340,15 +340,14 @@ typedef enum
 
 /* RVHF_BESTSPACE_MAP_LINK */
 #define HEAP_BSMAP_LINK_HEADER 0	/* on the heap header: bsmap_num_pages, bsmap_flags, bsmap_first_vpid */
-#define HEAP_BSMAP_LINK_PREV_PAGE 1	/* on the previous map page: next */
 typedef struct heap_bsmap_link HEAP_BSMAP_LINK;
 struct heap_bsmap_link
 {
-  INT32 target;
+  INT32 target;			/* HEAP_BSMAP_LINK_HEADER */
   INT32 num_pages;
   INT16 flags;
   INT16 pad;
-  VPID vpid;			/* header: first map page (unchanged if NULL); previous page: the new next */
+  VPID vpid;			/* the first map page (unchanged if NULL) */
 };
 
 static int
@@ -360,7 +359,8 @@ heap_bsmap_entries_per_page (void)
     {
       int bytes = spage_max_record_size () - DB_ALIGN (sizeof (HEAP_CHAIN), HEAP_MAX_ALIGN) - SPAGE_SLOT_SIZE;
       per_page = (bytes - (int) sizeof (HEAP_BSMAP_PAGE_HDR)) / (int) sizeof (cubstorage::bestspace_map_entry);
-      assert (per_page >= (int) cubstorage::bestspace_map::FANOUT);	/* a persist-dirty group spans at most 2 pages */
+      /* a persist-dirty group spans at most 2 pages */
+      assert (per_page >= (int) cubstorage::bestspace_map::FANOUT);
     }
   return per_page;
 }
@@ -2926,8 +2926,8 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 
 /*
  * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap: not yet (a new page), or
- *				  no longer (vacuum or compactdb unlinked it, and its file deallocates it when the system
- *				  operation of vacuum or the transaction of compactdb commits).
+ *				  no longer (vacuum or compactdb unlinked it, and its file deallocates it when the
+ *				  system operation of vacuum or the transaction of compactdb commits).
  *
  * return	  : true if page must not be exposed through bestspace
  * page_heap (in) : Heap page
@@ -4275,10 +4275,14 @@ heap_bsmap_lsa_key (const LOG_LSA * lsa)
   return ((std::uint64_t) lsa->pageid << 16) | (std::uint16_t) lsa->offset;
 }
 
+/* a create count no lookup reads: heap_bsmap_still_unloaded () then looks the bestspace up */
+#define HEAP_BSMAP_NO_CREATE_COUNT UINT64_MAX
+
 typedef struct heap_bsmap_loaded_check HEAP_BSMAP_LOADED_CHECK;
 struct heap_bsmap_loaded_check
 {
-  std::uint64_t creates;	/* bestspaces.create_count () read before the writer's lookup missed (UINT64_MAX: none) */
+  /* bestspaces.create_count () read before the writer's lookup missed, or HEAP_BSMAP_NO_CREATE_COUNT */
+  std::uint64_t creates;
   const HFID *hfid;
   // *INDENT-OFF*
   cubstorage::bestspace *found;	/* the bestspace, when the check fails */
@@ -4814,9 +4818,8 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_BESTSPACE_MAP_MISMATCH, 8, 0, 0, 0, 0, 0, 0, 0,
 	      " (restart recovery lost some bestspace feedback)");
     }
-  er_log_debug (ARG_FILE_LINE,
-		"heap_bestspace_rv_finish: %zu entries, %zu heaps, %zu sectors pending, %zu classes gone, %zu not known",
-		n, heaps, total_kept, dropped_classes, unknown_classes);
+  er_log_debug (ARG_FILE_LINE, "heap_bestspace_rv_finish: %zu entries, %zu heaps, %zu sectors pending, "
+		"%zu classes gone, %zu not known", n, heaps, total_kept, dropped_classes, unknown_classes);
 
   cubstorage::bestspace_recovery.clear ();
   er_stack_pop ();
@@ -4918,7 +4921,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
   check.hfid = hfid;
   check.found = NULL;
   /* found but not absorbed: the check must look at the bestspace itself */
-  check.creates = (bestspace == NULL) ? creates : UINT64_MAX;
+  check.creates = (bestspace == NULL) ? creates : HEAP_BSMAP_NO_CREATE_COUNT;
   group = heap_bsmap_group_key (&hfid->vfid);
   key = cubstorage::bestspace_map::make_key (vpid->volid, vpid->pageid);
   offset = (std::uint32_t) vpid->pageid % cubstorage::bestspace_map::PAGES_PER_SECTOR;
@@ -15710,7 +15713,13 @@ heap_check_heap_file_internal (THREAD_ENTRY * thread_p, HFID * hfid, bool repair
 	    }
 	  if (audit_error != NO_ERROR)
 	    {
-	      er_clear ();	/* the audit could not run; the pages themselves checked out */
+	      /* the audit could not run; the pages themselves checked out */
+	      char text[160];
+
+	      snprintf (text, sizeof (text), "the bestspace map of heap %d|%d (header %d) was not checked: error %d",
+			hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, audit_error);
+	      er_clear ();
+	      heap_bsmap_log_text (ER_WARNING_SEVERITY, text);
 	    }
 	  else if (audit.under + audit.missing + audit.unverified + audit.orphans + audit.refused > 0)
 	    {
@@ -17435,18 +17444,18 @@ heap_rv_bsmap_entries_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HEAP
   RECDES recdes;
   int i;
 
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
   if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
     {
       return heap_bsmap_fatal ();
     }
   if (recdes.length == (int) sizeof (HEAP_HDR_STATS))
     {
-      HEAP_HDR_STATS *hdr;
+      HEAP_HDR_STATS *hdr = (HEAP_HDR_STATS *) recdes.data;
 
-      if (heap_bsmap_peek_header (thread_p, pgptr, &hdr) != NO_ERROR)
-	{
-	  return ER_GENERIC_ERROR;
-	}
       for (i = 0; i < count; i++)
 	{
 	  if (items[i].index < 0 || items[i].index >= (int) cubstorage::bestspace_map::INLINE_SECTORS)
@@ -17503,44 +17512,30 @@ heap_rv_bsmap_entries (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * heap_rv_bsmap_link_apply () - apply a map link to the heap header or to the previous map page
+ * heap_rv_bsmap_link_apply () - apply a map link to the heap header
  *   return: NO_ERROR or ER_GENERIC_ERROR (fatal)
  *
- * Note: shared by the redo and heap_bsmap_add_page (), which checks the page first and links only the header: only a
- *	 redo reaches the fatal paths or the previous page target.
+ * Note: shared by the redo and heap_bsmap_add_page (), which checks the page first: only a redo reaches the fatal
+ *	 paths.
  */
 static int
 heap_rv_bsmap_link_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HEAP_BSMAP_LINK * link)
 {
-  if (link->target == HEAP_BSMAP_LINK_HEADER)
-    {
-      HEAP_HDR_STATS *hdr;
+  HEAP_HDR_STATS *hdr;
 
-      if (heap_bsmap_peek_header (thread_p, pgptr, &hdr) != NO_ERROR)
-	{
-	  return ER_GENERIC_ERROR;
-	}
-      hdr->bsmap_num_pages = link->num_pages;
-      hdr->bsmap_flags = link->flags;
-      if (!VPID_ISNULL (&link->vpid))
-	{
-	  hdr->bsmap_first_vpid = link->vpid;
-	}
-    }
-  else if (link->target == HEAP_BSMAP_LINK_PREV_PAGE)
-    {
-      HEAP_BSMAP_PAGE_HDR *phdr;
-
-      if (heap_bsmap_peek_map_page (thread_p, pgptr, &phdr) != NO_ERROR)
-	{
-	  return ER_GENERIC_ERROR;
-	}
-      phdr->next_volid = link->vpid.volid;
-      phdr->next_pageid = link->vpid.pageid;
-    }
-  else
+  if (link->target != HEAP_BSMAP_LINK_HEADER)
     {
       return heap_bsmap_fatal ();
+    }
+  if (heap_bsmap_peek_header (thread_p, pgptr, &hdr) != NO_ERROR)
+    {
+      return ER_GENERIC_ERROR;
+    }
+  hdr->bsmap_num_pages = link->num_pages;
+  hdr->bsmap_flags = link->flags;
+  if (!VPID_ISNULL (&link->vpid))
+    {
+      hdr->bsmap_first_vpid = link->vpid;
     }
 
   pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
@@ -17548,7 +17543,7 @@ heap_rv_bsmap_link_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HEAP_BS
 }
 
 /*
- * heap_rv_bsmap_link () - redo: link a map page from the heap header or from the previous map page
+ * heap_rv_bsmap_link () - redo: link the map pages from the heap header
  *   return: NO_ERROR or ER_GENERIC_ERROR (fatal)
  *   rcv(in): Recovery structure; data is one HEAP_BSMAP_LINK
  */
@@ -17876,7 +17871,14 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
 	{
 	  map->snapshot_sector ((std::size_t) (first + i), entries[i]);
 	}
-      assert (i == per_page);
+      /* the caller adds a page only when the map has more sectors than the pages hold, and the map never shrinks */
+      assert_release (i == per_page);
+      if (i != per_page)
+	{
+	  pgbuf_ordered_unfix (thread_p, &prev_watcher);
+	  error = ER_FAILED;
+	  goto orphan;
+	}
       phdr->count = i;
       phdr->next_volid = vpid.volid;
       phdr->next_pageid = vpid.pageid;
@@ -18085,8 +18087,7 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
 	  /* out of memory: give up, the next access loads again. Otherwise a duplicate key: the load ends here */
 	  if (map->needs_retry () && map->num_sectors () < cubstorage::bestspace_map::MAX_SECTORS)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (cubstorage::bestspace_map));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, map->failed_alloc_bytes ());
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  break;
@@ -18265,7 +18266,7 @@ heap_bsmap_absorb_pending (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorag
 /*
  * heap_bestspace_drop () - forget what the pending table holds for a heap file: its feedback and its lost mark
  *
- * Note: called right after every bestspaces.destroy (); on a reuse, heap_reuse () feeds the emptied pages back after.
+ * Note: called with every bestspaces.destroy (); on a reuse, heap_reuse () feeds the emptied pages back after.
  */
 void
 heap_bestspace_drop (const VFID * vfid)

@@ -587,10 +587,12 @@ TEST_CASE ("an allocation failure is reported and the map stays usable", "[bests
 
   REQUIRE (map.feedback (0, page_of (0, 0), 8));
   REQUIRE (map.feedback (0, page_of (1, 0), 8));
+  REQUIRE (map.failed_alloc_bytes () == 0);
   // the third sector needs the tree: make its first allocation fail
   bestspace_map::debug_fail_allocations (1);
   REQUIRE_FALSE (map.feedback (0, page_of (2, 0), 8));
   REQUIRE (map.needs_retry ());
+  REQUIRE (map.failed_alloc_bytes () > 0);
   REQUIRE (map.num_sectors () == 2);
   REQUIRE (map.is_inline ());
 

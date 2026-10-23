@@ -162,7 +162,8 @@ namespace
     expect.clear ();
     for (std::size_t s = 0; s < sectors; s++)
       {
-	const std::uint64_t key = bestspace_map::make_key (static_cast<short> (s % 3), static_cast<std::int32_t> (s * 64));
+	const std::uint64_t key =
+		bestspace_map::make_key (static_cast<short> (s % 3), static_cast<std::int32_t> (s * 64));
 	std::uint64_t lsa = 100;
 	rv_expect &ex = expect[key];
 
@@ -403,9 +404,11 @@ TEST_CASE ("record_if records only while the check holds", "[bestspace_sector_ta
     return * (bool *) arg;
   };
 
-  REQUIRE (table.record_if (3, bestspace_map::make_key (0, 0), 1, 4, check, &absent) == bestspace_sector_table::RECORDED);
+  REQUIRE (table.record_if (3, bestspace_map::make_key (0, 0), 1, 4, check, &absent)
+	   == bestspace_sector_table::RECORDED);
   absent = false;	// the heap's map was published meanwhile
-  REQUIRE (table.record_if (3, bestspace_map::make_key (0, 0), 2, 4, check, &absent) == bestspace_sector_table::REJECTED);
+  REQUIRE (table.record_if (3, bestspace_map::make_key (0, 0), 2, 4, check, &absent)
+	   == bestspace_sector_table::REJECTED);
   bestspace_sector_table::entry *list = table.take_group (3);
   REQUIRE (list->mask == (1ULL << 1));
   bestspace_sector_table::free_list (list);
@@ -481,7 +484,8 @@ TEST_CASE ("a record_if that succeeds is always in the group the locked take det
 	    started.fetch_add (1);
 	    for (std::size_t s = 0; s < sectors_per_writer; s++)
 	      {
-		std::uint64_t key = bestspace_map::make_key (0, static_cast<std::int32_t> ((w * sectors_per_writer + s) * 64));
+		std::int32_t first_pageid = static_cast<std::int32_t> ((w * sectors_per_writer + s) * 64);
+		std::uint64_t key = bestspace_map::make_key (0, first_pageid);
 		for (std::size_t off = 0; off < 64; off++)
 		  {
 		    switch (table.record_if (group, key, off, 3, check, &absorbed))

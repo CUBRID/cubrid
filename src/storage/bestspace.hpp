@@ -308,8 +308,8 @@ namespace cubstorage
 	  status allocate_mark ();
 	  void allocate_unmark ();
 
-	  std::size_t allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-					     std::uint16_t needed_size);
+	  std::size_t allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
+					     &victims, std::uint16_t needed_size);
 	  status allocate_release_victims (OID *class_oid, HFID *hfid, std::size_t count,
 					   std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
 					   &victims, PGBUF_WATCHER &page_watcher);

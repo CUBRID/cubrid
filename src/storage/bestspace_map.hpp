@@ -163,6 +163,8 @@ namespace cubstorage
       bool is_inline () const;
       std::uint64_t num_unverified () const;
       bool needs_retry () const;
+      // the size of the last node allocation that failed while adding a sector (0: none), for an out-of-memory message
+      std::size_t failed_alloc_bytes () const;
       // a check the map needs could not run now (the maintenance daemon runs it again)
       void mark_needs_retry ();
       void clear_needs_retry ();
@@ -238,6 +240,7 @@ namespace cubstorage
       std::atomic<bool> m_needs_retry;
       std::mutex m_grow_mutex;
       std::atomic<std::size_t> m_bytes;	// written under m_grow_mutex, read without it (get_usage ())
+      std::atomic<std::size_t> m_failed_alloc_bytes;
       std::atomic<std::uint64_t> m_counters[CNT_LAST];
 
       // reserve ()'s nodes for the next sector, under m_grow_mutex: a group, its directories and its key's radix path
@@ -298,8 +301,8 @@ namespace cubstorage
 			 std::size_t max_count, std::size_t &found);
 
       template <typename Node, typename Child>
-      void claim_node (Node &nd, std::size_t base, std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count,
-		       std::size_t &found, std::size_t &budget);
+      void claim_node (Node &nd, std::size_t base, std::uint8_t min_code, bestspace_map_page *out,
+		       std::size_t max_count, std::size_t &found, std::size_t &budget);
       void descend (middir &m, std::size_t base, std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count,
 		    std::size_t &found, std::size_t &budget);
       void descend (leafdir &l, std::size_t base, std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count,

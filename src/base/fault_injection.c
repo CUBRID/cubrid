@@ -51,6 +51,8 @@ static int fi_handler_sleep (THREAD_ENTRY * thread_p, void *arg, const char *cal
 
 /* how long fi_handler_hold stays in place when the caller passes no argument */
 #define FI_HOLD_DEFAULT_SECONDS 3
+/* how long fi_handler_sleep sleeps when the caller passes no argument */
+#define FI_SLEEP_DEFAULT_MSECS 20
 
 static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 
@@ -456,12 +458,12 @@ fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, co
 }
 
 /*
- * fi_handler_sleep () - sleep to widen a race window: *arg milliseconds, 20 ms when arg is NULL
+ * fi_handler_sleep () - sleep to widen a race window: *arg milliseconds, FI_SLEEP_DEFAULT_MSECS when arg is NULL
  */
 static int
 fi_handler_sleep (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
-  int msecs = (arg == NULL) ? 20 : *((int *) arg);
+  int msecs = (arg == NULL) ? FI_SLEEP_DEFAULT_MSECS : *((int *) arg);
 
   std::this_thread::sleep_for (std::chrono::milliseconds (msecs));
   return NO_ERROR;

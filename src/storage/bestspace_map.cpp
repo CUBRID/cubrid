@@ -108,6 +108,7 @@ namespace cubstorage
     , m_needs_retry (false)
     , m_grow_mutex ()
     , m_bytes (sizeof (bestspace_map))
+    , m_failed_alloc_bytes (0)
     , m_reserved_for (std::numeric_limits<std::size_t>::max ())
   {
     std::size_t i;
@@ -319,8 +320,8 @@ namespace cubstorage
       {
 	return nullptr;
       }
-    std::uintptr_t v =
-	    reinterpret_cast<std::uintptr_t> (r->slots[radix_slot (rk, RADIX_LEVELS - 1)].load (std::memory_order_acquire));
+    std::size_t slot = radix_slot (rk, RADIX_LEVELS - 1);
+    std::uintptr_t v = reinterpret_cast<std::uintptr_t> (r->slots[slot].load (std::memory_order_acquire));
     if (v == 0)
       {
 	return nullptr;
@@ -531,8 +532,8 @@ namespace cubstorage
 	  }
 	r = next;
       }
-    r->slots[radix_slot (rk, RADIX_LEVELS - 1)].store (reinterpret_cast<void *> (static_cast<std::uintptr_t> (number + 1)),
-	std::memory_order_release);
+    void *value = reinterpret_cast<void *> (static_cast<std::uintptr_t> (number + 1));
+    r->slots[radix_slot (rk, RADIX_LEVELS - 1)].store (value, std::memory_order_release);
     return true;
   }
 
@@ -558,6 +559,10 @@ namespace cubstorage
 	    count (CNT_NODE_FALLBACK);
 	  }
       }
+    else
+      {
+	m_failed_alloc_bytes.store (sizeof (T), std::memory_order_relaxed);
+      }
     return node;
   }
 
@@ -582,6 +587,10 @@ namespace cubstorage
 	  {
 	    count (CNT_NODE_FALLBACK);
 	  }
+      }
+    else
+      {
+	m_failed_alloc_bytes.store (sizeof (rnode), std::memory_order_relaxed);
       }
     return node;
   }
@@ -1601,6 +1610,12 @@ namespace cubstorage
     return m_needs_retry.load ();
   }
 
+  std::size_t
+  bestspace_map::failed_alloc_bytes () const
+  {
+    return m_failed_alloc_bytes.load (std::memory_order_relaxed);
+  }
+
   void
   bestspace_map::mark_needs_retry ()
   {
@@ -1717,7 +1732,8 @@ namespace cubstorage
   std::size_t
   bestspace_sector_table::bucket_of (const stripe &s, std::uint64_t group, std::uint64_t key)
   {
-    return static_cast<std::size_t> (mix ((group * 0x9E3779B97F4A7C15ULL) ^ key ^ 0x5851F42D4C957F2DULL) % s.num_buckets);
+    std::uint64_t h = mix ((group * 0x9E3779B97F4A7C15ULL) ^ key ^ 0x5851F42D4C957F2DULL);
+    return static_cast<std::size_t> (h % s.num_buckets);
   }
 
   // caller holds s.mutex; out of memory keeps the old array (longer chains, still correct)
@@ -1837,7 +1853,8 @@ namespace cubstorage
 	e->owner_lsa = lsa;
       }
     std::size_t shift = (offset % 16) * 4;
-    e->codes[offset / 16] = (e->codes[offset / 16] & ~ (0xFULL << shift)) | (static_cast<std::uint64_t> (code) << shift);
+    e->codes[offset / 16] = ((e->codes[offset / 16] & ~ (0xFULL << shift))
+			     | (static_cast<std::uint64_t> (code) << shift));
     e->mask |= 1ULL << offset;
     return true;
   }

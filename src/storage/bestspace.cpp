@@ -737,8 +737,8 @@ namespace cubstorage
   // walk the full slots below it. An evicted page keeps its code in the map.
   // Returns how many victims, at the front, were fed back
   std::size_t
-  bestspace::shard::allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-      std::uint16_t needed_size)
+  bestspace::shard::allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
+      &victims, std::uint16_t needed_size)
   {
     constexpr std::size_t NUM_SLOTS = L3_FANOUT * L2_FANOUT;
     std::array<bestspace_map_page, NUM_SLOTS> pages;
@@ -1068,7 +1068,8 @@ namespace cubstorage
 
   void
   bestspace::shard::allocate_install (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-				      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t num_candidates)
+				      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates,
+				      std::size_t num_candidates)
   {
     bestspace_map *map = m_parent.m_map;
     std::size_t i, slot;
@@ -1810,8 +1811,8 @@ namespace cubstorage
 
   bestspace *
   bestspace_registry::create (HFID *hfid, std::size_t shard_count, int num_pages, std::uint64_t recs_num,
-			      std::uint64_t recs_sumlen, std::uint16_t unfill_space, bestspace_map *map, bool map_inline,
-			      VPID *map_pages, std::size_t map_num_pages)
+			      std::uint64_t recs_sumlen, std::uint16_t unfill_space, bestspace_map *map,
+			      bool map_inline, VPID *map_pages, std::size_t map_num_pages)
   {
     // the engine does not use exceptions, and in SERVER_MODE memory_wrapper.hpp turns 'new' into a macro that does not
     // take std::nothrow: malloc and construct in place (destroy_entry () undoes both)
