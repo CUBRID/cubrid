@@ -54,7 +54,8 @@ typedef enum
   QO_SCANMETHOD_INDEX_SCAN,
   QO_SCANMETHOD_INDEX_ORDERBY_SCAN,
   QO_SCANMETHOD_INDEX_GROUPBY_SCAN,
-  QO_SCANMETHOD_INDEX_SCAN_INSPECT
+  QO_SCANMETHOD_INDEX_SCAN_INSPECT,
+  QO_SCANMETHOD_INDEX_ANALYTIC_SCAN
 } QO_SCANMETHOD;
 
 typedef enum
@@ -477,6 +478,7 @@ extern bool qo_is_seq_scan (QO_PLAN *);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);
+extern bool qo_is_iscan_from_analytic (QO_PLAN *);
 extern bool qo_is_interesting_order_scan (QO_PLAN *);
 extern bool qo_is_all_unique_index_columns_are_equi_terms (QO_PLAN * plan);
 extern bool qo_has_sort_limit_subplan (QO_PLAN * plan);
