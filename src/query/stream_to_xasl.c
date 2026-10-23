@@ -4154,6 +4154,8 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
     }
 
   ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  ptr = or_unpack_int (ptr, &insert_info->remote_odku_val_start);
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku_bound);
   if (insert_info->remote_num_odku == 0)
     {
       insert_info->remote_odku_cols = NULL;

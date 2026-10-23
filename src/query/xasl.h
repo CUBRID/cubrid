@@ -441,8 +441,11 @@ struct insert_proc_node
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
-  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL, or NULL for a value bound per row
+				 * from the source row (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
+  int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
+  int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
