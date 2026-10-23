@@ -131,6 +131,10 @@ qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
  *   parser(in):
  *   terms(in): CNF list
  *   name(in): select list column
+ *
+ * Note:
+ *      '? = attr' is not matched. qo_converse_sarg_terms () in qo_rewrite_terms () turns it into
+ *      'attr = ?' before auto-parameterization, so this relies on that order.
  */
 static PT_NODE *
 qo_find_constant_host_var (PARSER_CONTEXT * parser, PT_NODE * terms, PT_NODE * name)
