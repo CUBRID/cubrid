@@ -179,7 +179,7 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
   error = locator_attribute_info_force (thread_p, hfid_p, &oid, &attr_info, NULL, 0,
 					LC_FLUSH_INSERT, SINGLE_ROW_INSERT, &scan, &force_count,
 					true, REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS,
-					NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, false);
+					NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, LOCATOR_LOCK_AT_SELECT);
 
 cleanup:
   if (attr_inited)
@@ -311,7 +311,7 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   error = locator_attribute_info_force (thread_p, hfid_p, &oid, &attr_info, NULL, 0,
 					LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan, &force_count,
 					true, REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS,
-					NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, false);
+					NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, LOCATOR_LOCK_AT_SELECT);
 
 cleanup:
   if (attr_inited)
@@ -373,7 +373,9 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
       goto cleanup;
     }
 
-  error = locator_delete_force (thread_p, hfid_p, &oid, true, SINGLE_ROW_DELETE, &scan, &force_count, NULL, false);
+  error =
+    locator_delete_force (thread_p, hfid_p, &oid, true, SINGLE_ROW_DELETE, &scan, &force_count, NULL,
+			  LOCATOR_LOCK_AT_SELECT);
 
 cleanup:
   if (attr_inited)
