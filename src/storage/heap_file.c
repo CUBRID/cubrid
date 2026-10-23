@@ -4667,7 +4667,7 @@ heap_bsmap_rv_log_unknown (std::uint64_t owner, std::size_t sectors)
   snprintf (text, sizeof (text), "restart recovery could not look up the heap of class %d|%d|%d: the bestspace "
 	    "feedback of %zu sectors is dropped, its map may hide free space until checkdb repairs it",
 	    OID_AS_ARGS (&class_oid), sectors);
-  heap_bsmap_log_text (ER_WARNING_SEVERITY, text);
+  heap_bsmap_log_text (ER_NOTIFICATION_SEVERITY, text);
 }
 
 /*
@@ -4772,7 +4772,7 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
   if (cubstorage::bestspace_recovery.lost_all ())
     {
       /* more lost classes than the table remembers: some maps may hide free space until checkdb repairs them */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_BESTSPACE_MAP_MISMATCH, 8, 0, 0, 0, 0, 0, 0, 0,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_BESTSPACE_MAP_MISMATCH, 8, 0, 0, 0, 0, 0, 0, 0,
 	      " (restart recovery lost some bestspace feedback)");
     }
   er_log_debug (ARG_FILE_LINE, "heap_bestspace_rv_finish: %zu entries, %zu heaps, %zu sectors pending, "
@@ -15322,7 +15322,7 @@ struct heap_bsmap_audit_page
  *   audit(out): what was found
  *
  * Note: resident pages are skipped (their shard holds the value). Concurrent DML can make a page differ for a moment,
- *	 so the caller reports a warning, never a check failure. Orphans are flagged map pages in the chain but not in
+ *	 so the caller reports a notice, never a check failure. Orphans are flagged map pages in the chain but not in
  *	 the header's list (an add that failed). After the walk they are checked against that list under the header
  *	 latch: a load that ended early holds only the first pages, and an add in progress has listed its page by now.
  *	 heap_bsmap_free_orphan () checks each again under the header write latch. The caller's class lock keeps a drop
@@ -15625,7 +15625,7 @@ heap_check_heap_file_internal (THREAD_ENTRY * thread_p, HFID * hfid, bool repair
 	}
       else
 	{
-	  /* the bestspace map against the pages: a difference is only a warning (see heap_bestspace_audit ()) */
+	  /* the bestspace map against the pages: a difference is only a notice (see heap_bestspace_audit ()) */
 	  HEAP_BSMAP_AUDIT audit;
 	  int audit_error;
 
@@ -15643,7 +15643,7 @@ heap_check_heap_file_internal (THREAD_ENTRY * thread_p, HFID * hfid, bool repair
 	      snprintf (text, sizeof (text), "the bestspace map of heap %d|%d (header %d) was not checked: error %d",
 			hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, audit_error);
 	      er_clear ();
-	      heap_bsmap_log_text (ER_WARNING_SEVERITY, text);
+	      heap_bsmap_log_text (ER_NOTIFICATION_SEVERITY, text);
 	    }
 	  else if (audit.under + audit.missing + audit.unverified + audit.orphans + audit.refused > 0)
 	    {
@@ -15667,9 +15667,9 @@ heap_check_heap_file_internal (THREAD_ENTRY * thread_p, HFID * hfid, bool repair
 				   " (repaired: %d pages fed back, %d orphan map pages freed)", audit.repaired,
 				   audit.freed);
 		}
-	      /* the warning goes to the error log; the stack keeps it from becoming the result of the check */
+	      /* the notification goes to the error log; the stack keeps it from becoming the result of the check */
 	      er_stack_push ();
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_BESTSPACE_MAP_MISMATCH, 8, hfid->vfid.volid,
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_BESTSPACE_MAP_MISMATCH, 8, hfid->vfid.volid,
 		      hfid->vfid.fileid, hfid->hpgid, audit.under, audit.pages, audit.missing, audit.unverified, tail);
 	      er_stack_pop ();
 	    }
