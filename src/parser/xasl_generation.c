@@ -8075,7 +8075,13 @@ pt_check_nvl_null_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, c
 	  continue;
 	}
       const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_position_domain (parser, index));
-      assert (with != NULL && regu->domain != NULL && tp_domain_match (regu->domain, with, TP_EXACT_MATCH));
+      /* a system cast of an argument (an ENUM to VARCHAR, CBRD-27482) leaves the node's string precision floating
+       * while the bind's expected domain has the type's default */
+      const bool floating = with != NULL && regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+	&& regu->domain->precision == TP_FLOATING_PRECISION_VALUE
+	&& TP_DOMAIN_TYPE (regu->domain) == TP_DOMAIN_TYPE (with) && regu->domain->collation_id == with->collation_id;
+      assert (with != NULL && regu->domain != NULL
+	      && (floating || tp_domain_match (regu->domain, with, TP_EXACT_MATCH)));
     }
 #endif
 }

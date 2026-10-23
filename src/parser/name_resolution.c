@@ -11452,7 +11452,7 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 	  /* the attributes of cte self references specs can now be computed correctly */
 	  recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
 	}
-      while (--passes > 0 && pt_type_cte_null_self_references (parser, cte_def));
+      while (pt_type_cte_null_self_references (parser, cte_def) && --passes > 0);
 
       if (pt_type_cte_null_columns (parser, cte_def))
 	{
@@ -11494,8 +11494,8 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
 /*
  * pt_type_cte_null_self_references () - type the names of a recursive CTE's self references that were bound NULL-typed
  *					 from the non-recursive part with the types their columns have now
- *   return: true if a name was typed while a column of the CTE is NULL-typed, i.e. unifying the parts again can type
- *	     that column
+ *   return: true if a name was typed: the expressions over it type again, so the parts unify again (a column the name
+ *	     types, and the cast the NULL-typed part's column took from the first unification: CBRD-27668)
  *   parser(in):
  *   cte_def(in): the CTE after its parts were unified and its self references bound
  */
@@ -11503,22 +11503,11 @@ static bool
 pt_type_cte_null_self_references (PARSER_CONTEXT * parser, PT_NODE * cte_def)
 {
   PT_CTE_NULL_REFERENCE_ARG ref_arg = { cte_def, NULL, false };
-  PT_NODE *col;
 
-  /* the names are typed whether or not a column is NULL-typed (CBRD-27668: a NULL-typed name's IS NULL would fold
-   * to true and the recursion never end) */
   (void) parser_walk_tree (parser, cte_def->info.cte.recursive_part, pt_type_cte_null_self_reference_specs, &ref_arg,
 			   NULL, NULL);
 
-  for (col = cte_def->info.cte.as_attr_list; col != NULL; col = col->next)
-    {
-      if (col->type_enum == PT_TYPE_NULL)
-	{
-	  return ref_arg.typed;
-	}
-    }
-
-  return false;
+  return ref_arg.typed;
 }
 
 /*
