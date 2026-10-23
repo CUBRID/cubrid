@@ -241,6 +241,7 @@ struct eb_leaf
   const char *k_str;		/* the constant's bytes for the current page */
   int k_len;
   unsigned char ti;		/* the comparison ignores trailing spaces (eb_str_ti ()) */
+  unsigned char eq_kind;	/* "=", "<>", IN: the equality kernel for the column's collation (eb_str_eq_kind ()) */
   QSTR_LIKE_MATCH_FN like_fn;	/* a LIKE: the matcher for the column's codeset and collation (qstr_like_match_resolve ()) */
   /* "IN (list)": the list's values (their DB_VALUEs, fixed for the execution), loaded a page at a time */
   int k_n;
@@ -1314,6 +1315,126 @@ eb_str_ti (const EB_LEAF * leaf, const DB_VALUE * k)
   return (ti || (leaf->k_type == DB_TYPE_CHAR && DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_CHAR)) ? 1 : 0;
 }
 
+/* The equality kernels of a string leaf ("=", "<>", IN): what the collation's comparison (QSTR_COMPARE ()) returns
+ * zero for, decided on the bytes when the collation is a built-in byte-lockstep one, where that comparison is a
+ * byte or codepoint walk over identity weights:
+ *   - EB_STR_EQ_CLASS, the UTF-8 and ISO88591 kinds (utf8_bin, utf8_en_cs, utf8_ko_cs, iso88591_bin,
+ *     iso88591_en_cs).  Their comparison (lang_fastcmp_byte (), or lang_strmatch_utf8 () comparing) weighs a
+ *     space as zero, the weight of NUL, and every other byte or codepoint as itself, so two strings are equal when
+ *     their bytes agree pairwise or both are in the space class {0x00, 0x20}; a length difference is unequal
+ *     unless the comparison ignores trailing spaces, when the longer one's tail must be of the space class (the
+ *     weights with trailing spaces ignored give 0x20 and 0x00 weight zero and nothing else).  Codepoints compare
+ *     as their bytes do for the well-formed UTF-8 the column stores, which the lockstep LIKE relies on too.
+ *   - EB_STR_EQ_BINARY, the binary kind: lang_fastcmp_binary () takes the bytes as they are and lets a tail of
+ *     NULs, and only NULs, go, whether trailing spaces are ignored or not.
+ * Any other collation, and any collation a locale library loaded, compares through its own function. */
+#define EB_STR_EQ_COLL (0)
+#define EB_STR_EQ_CLASS (1)
+#define EB_STR_EQ_BINARY (2)
+
+static unsigned char
+eb_str_eq_kind (const EB_COL * col)
+{
+  const LANG_COLLATION *lang_coll = lang_get_collation (col->collation);
+
+  if (lang_coll == NULL || !lang_coll->built_in)
+    {
+      return EB_STR_EQ_COLL;
+    }
+  switch (lang_coll->byte_lockstep_kind)
+    {
+    case LANG_LOCKSTEP_UTF8:
+      return (col->codeset == INTL_CODESET_UTF8) ? EB_STR_EQ_CLASS : EB_STR_EQ_COLL;
+    case LANG_LOCKSTEP_SB:
+      return (col->codeset == INTL_CODESET_ISO88591) ? EB_STR_EQ_CLASS : EB_STR_EQ_COLL;
+    case LANG_LOCKSTEP_BINARY:
+      return (col->codeset == INTL_CODESET_BINARY) ? EB_STR_EQ_BINARY : EB_STR_EQ_COLL;
+    default:
+      return EB_STR_EQ_COLL;
+    }
+}
+
+static inline bool
+eb_str_is_space_class (unsigned char c)
+{
+  return c == 0x20 || c == 0x00;
+}
+
+/* EB_STR_EQ_CLASS: pairwise equal bytes, or both of the space class; a longer one's tail of the space class only
+ * when trailing spaces are ignored */
+static inline bool
+eb_str_eq_class (const unsigned char *a, int na, const unsigned char *b, int nb, bool ti)
+{
+  int n = (na < nb) ? na : nb, i;
+  const unsigned char *tail;
+
+  if (memcmp (a, b, (size_t) n) != 0)
+    {
+      for (i = 0; i < n; i++)
+	{
+	  if (a[i] != b[i] && !(eb_str_is_space_class (a[i]) && eb_str_is_space_class (b[i])))
+	    {
+	      return false;
+	    }
+	}
+    }
+  if (na == nb)
+    {
+      return true;
+    }
+  if (!ti)
+    {
+      return false;
+    }
+  tail = (na > nb) ? a + n : b + n;
+  for (i = 0; i < ((na > nb) ? na - nb : nb - na); i++)
+    {
+      if (!eb_str_is_space_class (tail[i]))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/* EB_STR_EQ_BINARY: equal bytes, a longer one's tail of NULs only */
+static inline bool
+eb_str_eq_binary (const unsigned char *a, int na, const unsigned char *b, int nb)
+{
+  int n = (na < nb) ? na : nb, i;
+  const unsigned char *tail;
+
+  if (memcmp (a, b, (size_t) n) != 0)
+    {
+      return false;
+    }
+  tail = (na > nb) ? a + n : b + n;
+  for (i = 0; i < ((na > nb) ? na - nb : nb - na); i++)
+    {
+      if (tail[i] != 0x00)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/* the leaf's equality of a string of the column with a constant of the list or the term */
+static inline bool
+eb_str_equal (const EB_LEAF * leaf, const EB_COL * col, const char *str, int len, const char *k, int k_len)
+{
+  switch (leaf->eq_kind)
+    {
+    case EB_STR_EQ_CLASS:
+      return eb_str_eq_class ((const unsigned char *) str, len, (const unsigned char *) k, k_len, leaf->ti != 0);
+    case EB_STR_EQ_BINARY:
+      return eb_str_eq_binary ((const unsigned char *) str, len, (const unsigned char *) k, k_len);
+    default:
+      return QSTR_COMPARE (col->collation, (const unsigned char *) str, len, (const unsigned char *) k, k_len,
+			   leaf->ti) == 0;
+    }
+}
+
 /* the end of the character at p, stepping as intl_char_count () and intl_char_size () step: one byte for ISO88591
  * and binary, the lead byte's length for UTF-8, the EUC-KR widths; NULL when the string ends inside it (a cut
  * character is not one of the string's, intl_char_count ()) */
@@ -1348,6 +1469,7 @@ eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
 
   leaf->k_has_null = 0;
   leaf->sub_len = 0;
+  leaf->eq_kind = (leaf->etype == EB_STR) ? eb_str_eq_kind (col) : EB_STR_EQ_COLL;
   if (leaf->sub_start_v != NULL)
     {
       /* a start and a length the two SUBSTRING modes agree on (SUBSTR differs below 1) */
@@ -1487,9 +1609,7 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    }
 	  for (i = 0; got > 0 && i < leaf->k_n && !hit; i++)
 	    {
-	      hit = (leaf->k_lens[i] >= 0
-		     && QSTR_COMPARE (col->collation, (const unsigned char *) str, len,
-				      (const unsigned char *) leaf->k_strs[i], leaf->k_lens[i], leaf->ti) == 0);
+	      hit = (leaf->k_lens[i] >= 0 && eb_str_equal (leaf, col, str, len, leaf->k_strs[i], leaf->k_lens[i]));
 	    }
 	}
       else
@@ -1561,10 +1681,9 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
 	}
       else
 	{
-	  int c = QSTR_COMPARE (col->collation, (const unsigned char *) str, len,
-				(const unsigned char *) leaf->k_str, leaf->k_len, leaf->ti);
+	  bool eq = eb_str_equal (leaf, col, str, len, leaf->k_str, leaf->k_len);
 
-	  keep = (leaf->rel_op == R_EQ) ? (c == 0) : (c != 0);
+	  keep = (leaf->rel_op == R_EQ) ? eq : !eq;
 	}
       if (keep)
 	{
@@ -3476,6 +3595,10 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  if (leaf->like)
 	    {
 	      leaf->like_fn = qstr_like_match_resolve ((INTL_CODESET) col->codeset, col->collation);
+	    }
+	  else
+	    {
+	      leaf->eq_kind = eb_str_eq_kind (col);
 	    }
 	  continue;
 	}
