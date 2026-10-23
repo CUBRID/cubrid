@@ -4214,7 +4214,7 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
       return false;
     }
   if (col->domain == NULL
-      || (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR && (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_CHAR || like)))
+      || (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR && TP_DOMAIN_TYPE (col->domain) != DB_TYPE_CHAR))
     {
       return false;
     }
