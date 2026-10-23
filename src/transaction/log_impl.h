@@ -540,6 +540,7 @@ struct log_tdes
 				 * statement. Keeping only part of the keys is not safe, so probe/flush use
 				 * commit-order replication instead. Technical key collection failures are
 				 * returned to the DML path and do not set this flag. */
+  int wset_fallback_reason;	/* WSET_FALLBACK_REASON that set wset_overflow, counted at commit; statistics only */
   LOG_LSA wset_dependency_seq;	/* dependency selected from writeset history, carried by the WSET_LABEL
 				 * record just before this transaction's commit record */
 
