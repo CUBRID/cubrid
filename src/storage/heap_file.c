@@ -11019,8 +11019,9 @@ heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEA
  * A page batch (expr_batch.c) decodes one representation's records without the attribute
  * cache: it compares each record's representation id with the one recorded here and reads
  * the fixed area at location, or the variable area through the offset table at location.
- * Only the types the batch decodes qualify -- the fixed-width numbers and dates, and
- * NUMERIC, which is a variable attribute today (see heap_attrvalue_resolve_plan ()).
+ * Only the types the batch decodes qualify -- the fixed-width numbers and dates, NUMERIC,
+ * which is a variable attribute today (see heap_attrvalue_resolve_plan ()), and VARCHAR and
+ * CHAR, read from the variable area by the batch's string leaves.
  */
 int
 heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out)

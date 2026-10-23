@@ -152,7 +152,7 @@ struct heap_raw_locator
   DB_TYPE type;			/* the attribute's disk type */
   int precision;		/* NUMERIC: the domain's precision and scale */
   int scale;
-  int collation;		/* VARCHAR: the domain's collation and codeset */
+  int collation;		/* VARCHAR, CHAR: the domain's collation and codeset */
   int codeset;
 };
 

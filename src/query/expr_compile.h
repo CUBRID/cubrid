@@ -363,7 +363,7 @@ struct expr_raw_leaf_info
 				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
   const REGU_VARIABLE *col2_regu;	/* instead of a constant, another column of the scan ("a < b"): the right
 					 * operand, col_regu the left; neither k_value nor k_cell is set */
-  bool like;			/* a VARCHAR column LIKE the constant pattern k_value (rel_op unused), ... */
+  bool like;			/* a VARCHAR or CHAR column LIKE the constant pattern k_value (rel_op unused), ... */
   bool negate;			/* ... under a NOT */
   const REGU_VARIABLE *k_set;	/* "column IN (constants)": the set (a TYPE_FUNC of literals and host variables) */
   const DB_VALUE *sub_start;	/* "SUBSTRING (column, start, length) IN (constants)": the two constants */

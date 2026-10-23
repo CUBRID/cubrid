@@ -92,7 +92,7 @@ enum eb_etype
   EB_F64,			/* FLOAT, DOUBLE */
   EB_NUM,			/* NUMERIC: an int128 coefficient */
   EB_N64,			/* NUMERIC column of at most 18 digits: an int64 coefficient */
-  EB_STR			/* VARCHAR: pointed only, read by string leaves from the record */
+  EB_STR			/* VARCHAR, CHAR: pointed only, read by string leaves from the record */
 };
 
 #define EB_IS_NUM(etype) ((etype) == EB_NUM || (etype) == EB_N64)
@@ -198,7 +198,7 @@ struct eb_col
   unsigned char is_fixed;
   unsigned char decoded;	/* this page: decoded already, for the rows selected at that point */
   short scale;			/* NUMERIC: the stored scale must be the domain's */
-  int collation;		/* VARCHAR: the domain's collation and codeset */
+  int collation;		/* VARCHAR, CHAR: the domain's collation and codeset */
   int codeset;
 };
 
@@ -436,7 +436,7 @@ struct eb_build
   int *cell_vec;		/* program cell -> vector, or -1 */
   int n_cell_vec;
   bool *step_needed;		/* the program steps to translate (NULL: all) */
-  bool allow_str;		/* a VARCHAR column may be placed (a string leaf asks; nothing else reads one) */
+  bool allow_str;		/* a VARCHAR or CHAR column may be placed (a string leaf asks; nothing else reads one) */
   int pending_pop[EB_MASK_DEPTH];	/* step index at which a pushed mask pops */
   int n_pending;
 };
@@ -1068,9 +1068,10 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 }
 
 /* ---------------------------------------------------------------------------------------- */
-/* string leaves: a VARCHAR column read from the record, against a string constant */
+/* string leaves: a VARCHAR or CHAR column read from the record, against a string constant */
 
-/* a VARCHAR in the variable area: 1 its bytes, 0 NULL, -1 a long or compressed string (the row path's) */
+/* a VARCHAR or CHAR in the variable area (a CHAR padded to its precision): 1 its bytes, 0 NULL, -1 a long or
+ * compressed string (the row path's) */
 static inline int
 eb_cell_str (const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
 {
