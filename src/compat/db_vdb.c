@@ -3149,15 +3149,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       pt_report_to_ersys (session->parser, PT_SEMANTIC);
       return er_errid ();
     }
-  if (session->stage[stmt_ndx] == StatementPreparedStage && statement->xasl_id == NULL
-      && !session->is_subsession_for_prepared && session->kept_stmt_name == NULL && db_is_plan_statement (statement)
-      && db_has_untyped_host_var (session->parser))
-    {
-      /* CBRD-27583: compiled without values and no execution compiled the plan of its bind type signature
-       * (db_push_values): refused here rather than run without a plan */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS, 0);
-      return ER_UCI_TOO_FEW_HOST_VARS;
-    }
 
   if (db_compiles_at_execution (session, stmt_ndx))
     {
@@ -3182,6 +3173,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
   /* now, we have a statement to execute */
   statement = session->statements[stmt_ndx];
+
+  if (session->stage[stmt_ndx] == StatementPreparedStage && statement->xasl_id == NULL
+      && !session->is_subsession_for_prepared && session->kept_stmt_name == NULL && db_is_plan_statement (statement)
+      && db_has_untyped_host_var (session->parser))
+    {
+      /* CBRD-27583: compiled without values and no execution compiled the plan of its bind type signature
+       * (db_push_values): refused here rather than run without a plan */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS, 0);
+      return ER_UCI_TOO_FEW_HOST_VARS;
+    }
 
   /* if the statement was not compiled and prepared, do it */
   if (session->stage[stmt_ndx] < StatementPreparedStage)
