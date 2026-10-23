@@ -541,8 +541,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	  assert (log_is_in_crash_recovery ());
 	  if (heap_bestspace_is_heap_rcvindex (rcvindex) && log_is_in_crash_recovery ())
 	    {
-	      /* the page reached the disk after this record: the disk copy is its state up to the page LSA, and it may
-	       * be the last one the bestspace map can learn (no later record of the page needs redo) */
+	      /* the disk copy is newer than this record and may be the last state of the page that recovery sees */
 	      heap_bestspace_rv_record (thread_p, rcv.pgptr);
 	    }
 	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
@@ -763,7 +762,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_LSA start_redolsa;	/* Where to start redo phase */
   LOG_LSA end_redo_lsa;		/* Where to stop the redo phase */
   bool did_incom_recovery;
-  bool chkpt_done;		/* the checkpoint at the end completed */
+  bool chkpt_done;
   int tran_index;
   INT64 num_redo_log_records;
   int error_code = NO_ERROR;
@@ -803,7 +802,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
 		stopat != NULL ? *stopat : -1);
 
-  /* the heap pages redo and undo change are measured into an empty table (an SA mode process can restart again) */
+  /* measure the heap pages that redo and undo change into an empty table (an SA mode process can restart again) */
   heap_bestspace_rv_start ();
 
   /* Find the starting LSA for the analysis phase */
@@ -950,9 +949,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   logpb_decache_archive_info (thread_p);
 
   LOG_CS_EXIT (thread_p);
-  /* the heap pages recovery measured go to the pending table of the bestspace maps. This checkpoint cannot log their
-   * writes and fails while they are pending (heap_bestspace_checkpoint ()), so the redo point stays; the boot runs
-   * the checkpoint again once the log is restarted (log_run_deferred_restart_checkpoint ()) and it writes them */
+  /* with measured pages pending this checkpoint fails; the boot reruns it (log_run_deferred_restart_checkpoint ()) */
   heap_bestspace_rv_finish (thread_p);
   chkpt_done = (logpb_checkpoint (thread_p) != NULL_PAGEID);
   LOG_CS_ENTER (thread_p);

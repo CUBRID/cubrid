@@ -213,9 +213,8 @@ struct heap_hdr_stats
   int reserve1;			/* Nothing reserved for future */
   int reserve2;			/* Nothing reserved for future */
 
-  /* the bestspace map (05 5.3). RVHF_STATS logs and restores only the members above (HEAP_HDR_STATS_LOGGED_SIZE):
-   * an undo of RVHF_STATS must not bring back an older map root or older inline entries. These members change only
-   * through the RVHF_BESTSPACE_MAP_* redo records. */
+  /* the bestspace map. RVHF_STATS logs only the members above (HEAP_HDR_STATS_LOGGED_SIZE), so its undo cannot bring
+   * back an older map; these change only through RVHF_BESTSPACE_MAP_* redo records. */
   INT16 bsmap_version;		/* HEAP_BSMAP_VERSION */
   INT16 bsmap_flags;		/* HEAP_BSMAP_FLAG_PAGES: the map is in map pages and bsmap_inline is unused */
   INT32 bsmap_num_pages;	/* map pages linked from bsmap_first_vpid */
@@ -287,22 +286,16 @@ struct heap_chain
   INT32 flags;			/* Flags for heap page. High 2 bits are used for vacuum state. */
 };
 
-/* Header and chain records are told apart by length. */
 static_assert (sizeof (HEAP_HDR_STATS) != sizeof (HEAP_CHAIN), "header and chain records are told apart by length");
 static_assert (HEAP_HDR_STATS_LOGGED_SIZE % 4 == 0, "RVHF_STATS image must stay aligned");
-/* The RVHF_STATS image length is on disk in the log: changing the logged part of the header makes old log records
- * unreadable, so the size is pinned. */
+/* old log records hold RVHF_STATS images of this length, so it is pinned */
 static_assert (HEAP_HDR_STATS_LOGGED_SIZE == 68, "RVHF_STATS logs 68 bytes of the heap header (on-disk log format)");
 
 /*
- * Bestspace map pages (05 5.1). A map page is a heap chain page flagged BESTSPACE whose slot
- * HEAP_BESTSPACE_ENTRIES_SLOTID holds HEAP_BSMAP_PAGE_HDR followed by heap_bsmap_entries_per_page () entries.
- * Entry i of map page k is sector number k * heap_bsmap_entries_per_page () + i of the heap's bestspace_map.
- * The record has its full length from the start; count says how many entries are in use.
- *
- * Slot 1 cannot collide with anything else: slot 0 of a chain page is the HEAP_CHAIN record, and a page flagged
- * BESTSPACE is never a data page (heap_page_is_bestspace () keeps inserts, scans and the map's own verification away
- * from it), so no heap record is ever put in its slot 1. The only flagged pages are map pages.
+ * Bestspace map pages: heap chain pages flagged BESTSPACE. Slot HEAP_BESTSPACE_ENTRIES_SLOTID holds
+ * HEAP_BSMAP_PAGE_HDR and heap_bsmap_entries_per_page () entries, always at full length; count says how many are in
+ * use. Entry i of map page k is sector k * heap_bsmap_entries_per_page () + i of the map. Slot 1 cannot collide with
+ * a heap record: heap_page_is_bestspace () keeps inserts and scans away from flagged pages.
  */
 #define HEAP_BESTSPACE_ENTRIES_SLOTID 1
 #define HEAP_BSMAP_MAGIC 0x50414D42	/* "BMAP" */
@@ -318,8 +311,7 @@ struct heap_bsmap_page_hdr
   VFID owner_vfid;		/* the heap file of the page: checked before every write */
 };
 
-/* RVHF_BESTSPACE_MAP_ENTRIES: an array of items. On a map page index is the entry index; on a heap header page it is
- * the inline slot. */
+/* RVHF_BESTSPACE_MAP_ENTRIES item: index is the entry index on a map page, the inline slot on the header page */
 typedef struct heap_bsmap_log_item HEAP_BSMAP_LOG_ITEM;
 struct heap_bsmap_log_item
 {
@@ -3394,12 +3386,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       pgbuf_ordered_set_dirty_and_free (thread_p, &prev_pg_watcher);
     }
 
-  /* the bestspace: mark the page not in heap while it is latched, with its own log record, as vacuum's page removal
-   * does (heap_remove_page_on_vacuum ()). Without a record on the page itself, restart recovery keeps the page's last
-   * measured tier (the deletes that emptied it) when the map change made here was not written by a checkpoint yet;
-   * the file can then reuse the page, for instance as a file table page, and a claim fixes that page for an insert.
-   * Redo learns the removal from this record even when the page has moved on (heap_bestspace_rv_record_chain ()).
-   * The rollback of a compactdb that does not finish undoes the flag, and the rollback hook measures the page again */
+  /* mark the page not in heap with its own log record, as heap_remove_page_on_vacuum () does: recovery learns the
+   * removal from it even after the file reused the page (heap_bestspace_rv_record_chain ()) */
   copy_recdes.area_size = sizeof (chain);
   copy_recdes.data = (char *) &rm_chain_copy;
   if (spage_get_record (thread_p, rm_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &copy_recdes, COPY) != S_SUCCESS)
@@ -3421,7 +3409,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
 			     sizeof (chain), sizeof (chain), copy_recdes.data, recdes.data);
   pgbuf_set_dirty (thread_p, rm_pg_watcher.pgptr, DONT_FREE);
 
-  /* the page is not data any more (code NOT_DATA); a shard slot that holds the page goes first */
+  /* the page is not data any more; drop it from the shard slots first */
   heap_bsmap_drop_removed_page (hfid, rm_vpid);
   heap_bestspace_feedback (thread_p, hfid, rm_pg_watcher.pgptr);
 
@@ -3441,8 +3429,7 @@ error:
     {
       pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
     }
-  /* the watcher, not addr.pgptr: addr keeps a page the watcher has already unfixed (the previous page, before the next
-   * page is fixed), and an ordered unfix clears the watcher */
+  /* the watcher, not addr.pgptr: addr can still point to a page the watcher has already unfixed */
   if (prev_pg_watcher.pgptr != NULL)
     {
       pgbuf_ordered_unfix (thread_p, &prev_pg_watcher);
@@ -3735,8 +3722,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 			     sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
   pgbuf_set_dirty (thread_p, crt_watcher.pgptr, DONT_FREE);
 
-  /* the page is not data any more (code NOT_DATA); an abort of the system operation undoes the flag through
-   * log_rollback_record, whose bestspace hook measures the page again. A shard slot that holds the page goes first */
+  /* the page is not data any more; drop it from the shard slots first (on abort, the rollback hook measures it) */
   heap_bsmap_drop_removed_page (hfid, &page_vpid);
   heap_bestspace_feedback (thread_p, hfid, crt_watcher.pgptr);
 
@@ -3797,9 +3783,7 @@ error:
 	}
       assert (crt_watcher.pgptr == *page_ptr);
 
-      /* the page stays in the heap and vacuum has just emptied it: tell the bestspace map before the latch is released.
-       * Once the page was unfixed for deallocation this point is not reached: an abort of the system operation undoes
-       * the flag through log_rollback_record, whose bestspace hook measures the page again. */
+      /* the page stays in the heap, emptied by vacuum: report it before the latch is released */
       heap_bestspace_feedback (thread_p, hfid, *page_ptr);
       pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
     }
@@ -3975,11 +3959,9 @@ heap_manager_finalize (void)
  *   hfid(in): the heap
  *   header_watcher(in): the heap header, write latched by the caller
  *
- * Note: the map is read before the bestspace is published (put in the registry) and under the header write latch,
- *	 which every change of the map's layout on disk holds too: no feedback reaches a half loaded map, and no map
- *	 page is added while the list is read. A page that cannot be read ends the load (heap_bsmap_load_pages ()); out
- *	 of memory fails the build instead, and the next access loads again. The sectors of the file that the map on
- *	 disk does not have are added before the map is published (heap_bsmap_add_missing_sectors ()).
+ * Note: the map is read under the header write latch, which every change of the map layout on disk holds, and before
+ *	 the bestspace is published: no feedback reaches a half loaded map. An unreadable page ends the load; out of
+ *	 memory fails the build, and the next access loads again.
  */
 // *INDENT-OFF*
 static cubstorage::bestspace *
@@ -4015,8 +3997,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
       return NULL;
     }
 
-  /* a page fix of the load must not consume a statement cancel (PoC defect #3): the cancel stays pending; and what
-   * an unreadable page sets is dropped, as the load just ends there */
+  /* the load must not consume a statement cancel; an unreadable page just ends it, so its error is dropped */
   check_interrupt = logtb_set_check_interrupt (thread_p, false);
   er_stack_push ();
   map_inline = (header->bsmap_flags & HEAP_BSMAP_FLAG_PAGES) == 0;
@@ -4070,18 +4051,16 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
     }
   if (!VPID_ISNULL (&unread))
     {
-      /* the load ended before the last listed map page: the next map page added leaves the pages from it on out of
-       * the list (heap_bsmap_add_page (), which suspects them again then), and the maintenance daemon frees them */
+      /* the load ended early: the next map page add drops the unread pages from the list, and the daemon frees them */
       bestspace->set_orphan_suspect (unread);
     }
 
-  /* published: claims use the map from now on, and feedback reaches it once the loader has merged what arrived while
-   * the map was not loaded (until then feedback still goes to the pending table) */
+  /* published: claims use the map now; feedback goes to the pending table until the merge below */
   (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_LOAD, 0);
   heap_bsmap_absorb_pending (thread_p, hfid, bestspace);
 
-  /* the header page holds rows too: measure it while its latch is held (PoC defect #12). After the merge, which could
-   * hold an older code of it: feedback for this page needs the latch held here, so nothing newer can be pending */
+  /* the header page holds rows too: measure it while its latch is held. This comes after the merge, which may hold an
+   * older code of it; with the latch held here, no newer code of the page can be pending */
   heap_bsmap_feed_latched (thread_p, bestspace->get_map (), header_watcher->pgptr);
   return bestspace;
 }
@@ -4232,14 +4211,9 @@ heap_bestspace_classify_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, OID * cla
  * heap_bestspace_hfid_of_class () - the heap of a class read from a heap page (slot 0)
  *   return: NO_ERROR, or ER_FAILED when the class has no heap or the page's file cannot be told from its class
  *
- * Note: the root OID is refused. Three heaps keep a NULL class OID in their pages, which
- *       heap_get_class_oid_from_page () reads as the root class: the root class heap (class objects), the database
- *       parameter heap (boot_Db_parm->hfid, rewritten by every volume extension: boot_dbparm_save_volume ()) and the
- *       TDE key heap (boot_Db_parm->tde_keyinfo_hfid), all created by boot_create_all_volumes (). A page of the
- *       parameter or key heap fed to the root heap's map would let a claim of an INSERT of a class object, which
- *       checks only PAGE_HEAP, NOT_IN_HEAP and the class, put the class object into a file the root heap does not
- *       own. A caller that holds such a page without its heap id skips it; the root heap loses at most the space of
- *       that page until its next feedback with a heap id.
+ * Note: the root OID is refused. The root class, database parameter and TDE key heaps all keep a NULL class OID in
+ *       their pages, which reads as the root class; a parameter or key heap page fed to the root heap's map would let
+ *       a class object insert go into a file the root heap does not own. Callers skip such a page (space only).
  */
 static int
 heap_bestspace_hfid_of_class (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid)
@@ -4263,9 +4237,7 @@ heap_bestspace_hfid_of_class (THREAD_ENTRY * thread_p, const OID * class_oid, HF
   return NO_ERROR;
 }
 
-/*
- * heap_bsmap_group_key () - the pending table group of a heap file; never 0
- */
+/* the pending table group of a heap file; never 0 */
 // *INDENT-OFF*
 static std::uint64_t
 // *INDENT-ON*
@@ -4274,9 +4246,7 @@ heap_bsmap_group_key (const VFID * vfid)
   return ((std::uint64_t) ((std::uint16_t) vfid->volid + 1) << 32) | (std::uint32_t) vfid->fileid;
 }
 
-/*
- * heap_bsmap_oid_key () - the recovery table owner of a class; never 0 (no class lives in page 0 of a volume)
- */
+/* the recovery table owner of a class; never 0 (no class lives in page 0 of a volume) */
 // *INDENT-OFF*
 static std::uint64_t
 // *INDENT-ON*
@@ -4286,9 +4256,7 @@ heap_bsmap_oid_key (const OID * oid)
     | (std::uint16_t) oid->slotid;
 }
 
-/*
- * heap_bsmap_oid_unkey () - the class of a recovery table owner (heap_bsmap_oid_key ())
- */
+/* the class of a recovery table owner (heap_bsmap_oid_key ()) */
 static void
 heap_bsmap_oid_unkey (std::uint64_t key, OID * oid)
 {
@@ -4297,9 +4265,7 @@ heap_bsmap_oid_unkey (std::uint64_t key, OID * oid)
   oid->slotid = (short) (key & 0xFFFF);
 }
 
-/*
- * heap_bsmap_lsa_key () - a log address as a number in log order (the recovery table compares owners by it)
- */
+/* a log address as a number in log order (the recovery table compares owners by it) */
 // *INDENT-OFF*
 static std::uint64_t
 // *INDENT-ON*
@@ -4319,24 +4285,10 @@ struct heap_bsmap_loaded_check
   // *INDENT-ON*
 };
 
-/* heaps this thread found unloaded, with the create count read before the miss: while the count is the same, no
- * bestspace was published since, so the heap is still unloaded (heap_bestspace_feedback ()). Vacuum workers feed the
- * pages of a few large heaps in a row: each miss would walk the whole registry list under its mutex.
- *
- * Note: why an entry can be trusted.
- *   - An entry is used only while create_count () still returns the count stored with it, which was read before the
- *     lookup that missed. create () is the only way into the registry list, and it bumps the count in the same hold
- *     of the registry mutex as the insert, which the lookup also takes. So while the count is unchanged, no create ()
- *     has completed since the miss, and a create () still holding the mutex has not returned its bestspace to a
- *     loader yet. destroy () only removes, so it cannot make an unloaded heap loaded.
- *   - A heap file that is dropped and reused under the same HFID (heap_create_internal ()) gets a new bestspace from
- *     create () at its first load, so the count changes and every entry, for that heap or any other, falls back to
- *     the lookup. Until that load the heap is unloaded, which is what the entry says.
- *   - The entry only skips the first lookup, and a skipped lookup routes the feedback to the pending table, never to
- *     a map. The Task 10 rule (a bestspace published but not absorbed takes its feedback in the pending table) is
- *     decided by heap_bsmap_still_unloaded () under the stripe lock: it trusts the count only when it is unchanged
- *     (then no loader can have absorbed, see there), and otherwise looks the heap up and checks is_absorbed () as
- *     before. A bestspace found but not absorbed yet always takes that full check (check.creates = UINT64_MAX). */
+/* heaps this thread found unloaded, with the create count read before the miss: spares vacuum workers a registry walk
+ * per page. An entry holds while create_count () is unchanged: every publish, a reused HFID's too, goes through
+ * create (), which bumps the count in the same registry mutex hold as the insert. A skipped lookup only routes
+ * feedback to the pending table, where heap_bsmap_still_unloaded () decides under the stripe lock. */
 #define HEAP_BSMAP_UNLOADED_CACHE 8
 typedef struct heap_bsmap_unloaded_cache HEAP_BSMAP_UNLOADED_CACHE_T;
 struct heap_bsmap_unloaded_cache
@@ -4352,28 +4304,12 @@ static thread_local HEAP_BSMAP_UNLOADED_CACHE_T heap_bsmap_unloaded_cache;
  * heap_bsmap_still_unloaded () - the record_if () check of the pending table, run under the stripe lock of the heap's
  *				   group: true while the heap's map is not published, or published but not absorbed
  *
- * Note: no feedback is lost or applied twice, and none is overwritten by an older code of the same page.
- *   The loader (heap_build_bestspace) publishes the bestspace in the registry, then, under this stripe lock, takes the
- *   group, merges it into the map and sets the bestspace absorbed (heap_bsmap_absorb_pending). A writer holds the
- *   latch of the page it reports, so the feedbacks of one page come one after another. Each one is either
- *   - recorded here: its check ran before the loader's locked section (the stripe lock orders the two), so the
- *     loader's take_group () detaches the entry and merges it, once;
- *   - REJECTED here: its check ran after the loader's locked section, so it finds the bestspace absorbed (the registry
- *     mutex and the stripe lock order the publication and set_absorbed () before the check) and the writer feeds the
- *     map, after the merge;
- *   - or fed to the map without this check (heap_bestspace_feedback), when the writer already sees it absorbed: the
- *     acquire load orders that after the merge too.
- *   A bestspace published and not yet absorbed still takes its feedback here, so the merge never runs after a newer
- *   code of the same page was fed to the map. NO_MEMORY marks the group lost under the same lock (record_if), and
- *   the loader reads the mark in its locked section, so the lost mark cannot slip in after the loader looked.
- *
- *   check.found after the stripe lock is released: the writer feeds it the way a writer that found the bestspace
- *   loaded feeds its map. A bestspace is destroyed only where no other thread can be changing a page of its heap:
- *   the drop of the heap file (vacuum_rv_notify_dropped_file, run by the commit of a drop or the rollback of a
- *   creation: that transaction holds its lock on the class, and vacuum workers are waited for until they have seen
- *   the drop) and the reuse of a dropped heap file
- *   (heap_create_internal: the old class is gone, the new one is not visible yet). The caller's page latch does not
- *   pin the bestspace by itself; this protocol does, for both paths alike.
+ * Note: no feedback is lost, applied twice or overwritten by an older code of the same page. The loader publishes the
+ *   bestspace, then under this stripe lock merges the group and sets it absorbed; the page latch orders the feedbacks
+ *   of one page. A feedback checked before that section is merged once; one checked after it, or that skips the check
+ *   (acquire load of absorbed), goes to the map after the merge. NO_MEMORY marks the group lost under the same lock.
+ *   check.found is used after the lock is released: a bestspace is destroyed only by the drop or reuse of its heap
+ *   file, when no other thread can change a page of the heap.
  */
 static bool
 heap_bsmap_still_unloaded (void *arg)
@@ -4382,10 +4318,8 @@ heap_bsmap_still_unloaded (void *arg)
 
   if (cubstorage::bestspaces.create_count () == check->creates)
     {
-      /* a lookup of the heap missed after this count was read (now, or earlier by this thread, see
-       * heap_bsmap_unloaded_cache), and nothing was published since: no bestspace of the heap is absorbed. A loader
-       * absorbs only after create () has counted its bestspace, and only under this stripe lock, so an absorb that
-       * finished before the lock was ours shows here as a changed count */
+      /* the lookup missed after this count was read. An absorb follows create ()'s count bump and runs under this
+       * stripe lock, so one that finished before the lock was ours shows as a changed count */
       check->found = NULL;
       return true;
     }
@@ -4439,38 +4373,14 @@ heap_bsmap_remember_unloaded (const HFID * hfid, std::uint64_t creates)
 
 /*
  * heap_bestspace_rv_record () - restart recovery: remember the final free space tier of a latched heap page
- *   pgptr(in): a page that redo has just changed, that redo skips because its disk copy is already newer than the
- *		record, that undo has just compensated, or that a runtime path changed during recovery (postpones, the
- *		abort of a system operation: heap_bestspace_feedback ())
+ *   pgptr(in): a page that redo changed or skipped, that undo compensated, or that a runtime path changed
  *
- * Note: why "a sector follows the owner (class) with the largest page LSA" gives the final tier of every page.
- *   - Each call records one page state: the class in slot 0 and the page LSA, both read from the latched page after
- *     the change. That LSA is the LSA of the log record that produced the state: the redo record (redo has set it),
- *     the compensation record of an undo, the record a runtime path has just appended, or, when redo skips, the
- *     LSA of the newer copy that is on disk. The skipped record's own LSA would pair that newer state, which may
- *     already belong to another owner, with an older address. Records appended during recovery (compensations,
- *     postponed and aborted operations) follow the end of the log, so they come after every redo of the page.
- *   - One page: its states reach the table in LSA order. Parallel redo gives all records of a page to one worker,
- *     in log order (a skipped record and the next ones up to the disk LSA all record the disk state). Undo,
- *     postpones and aborts run after redo has finished, in one thread. The table keeps the last code it gets for a
- *     page of the same owner, so that code is the page's final state.
- *   - One sector: the workers deliver the pages of a sector in any order. A sector changes heap only when its file
- *     is destroyed: no page of the file changes after that, and another file can reserve the sector only after
- *     it. heap_reuse () hands a dropped file to a new class under the header latch and stamps the new class into
- *     every page, the header first. Either way, every state of the old owner has a smaller LSA than every state of
- *     the new one. The table resets a sector when another owner arrives with a larger LSA, and drops a state of
- *     another owner with a smaller LSA, so the final owner of a sector keeps exactly its own states in any order.
- *   - The owner does not always name one heap file:
- *     - the root class heap, the database parameter heap and the TDE key heap keep a NULL class OID in their pages,
- *       which reads as the root class (heap_bestspace_hfid_of_class ()), so their states share one owner;
- *     - TRUNCATE gives the class a new heap file under the same class OID, so the states of the old file's sectors in
- *       the redo range stay under the owner of the new file.
- *     A map takes any sector it is given: its feedback and merge add an unknown sector, and the checkpoint writer of
- *     an unloaded heap adds one to the inline slots or the last map page. A claim checks only PAGE_HEAP, NOT_IN_HEAP
- *     and the class, so a page of another file in a heap's map can take an insert into a file the heap does not own.
- *     The resolution at the end of restart recovery therefore keeps only the sectors that belong to the resolved
- *     heap's file when it hands the entries to a pending group (heap_bsmap_rv_hand_over ()).
- *   Out of memory marks the class lost: its heap is verified whole after recovery.
+ * Note: a sector follows the owner (class) with the largest page LSA, which gives every page its final tier. The LSA
+ *   is read from the page after the change, so a skipped record records the disk state with that state's LSA. A
+ *   page's states arrive in LSA order (parallel redo gives a page to one worker; undo, postpones and aborts follow
+ *   redo in one thread). A sector changes owner only when its file is destroyed or reused (heap_reuse () stamps every
+ *   page), so the old owner's states all have smaller LSAs. One owner can cover several files (the root class heaps,
+ *   TRUNCATE): heap_bsmap_rv_hand_over () filters by file. Out of memory marks the class lost.
  */
 void
 heap_bestspace_rv_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
@@ -4532,26 +4442,10 @@ heap_bestspace_rv_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *   length(in): its length
  *   lsa(in): the LSA of the record
  *
- * Note: vacuum (heap_remove_page_on_vacuum ()) and compactdb (heap_vpid_remove ()) mark a page not in the heap with an
- *	 RVHF_CHAIN record before its file deallocates it. heap_bestspace_rv_record () learns the removal from the page
- *	 only when redo applies that record. When the page reached the disk after the record (deallocated, or handed out
- *	 again as a file table page, which logs no heap record), redo skips the record or cannot fix the page, and no
- *	 later heap record of the page tells the table: the map keeps the tier it had at its last checkpoint, and a
- *	 claim then fixes a page that is not a heap page. This records NOT_DATA under the class in the image, at the
- *	 record's LSA. The state is the one the record made, so the owner and the LSA pair as for any other state:
- *	 - another class holds the page now (its file was destroyed and the sector reserved again, or heap_reuse ()
- *	   stamped a new class into it): the later owner logged every state of the page after the removal, with a
- *	   larger LSA, and the table drops a state of another owner with a smaller LSA, in any order;
- *	 - the same class holds the page as a data page again (its file handed it out again, or the removal was rolled
- *	   back): a heap record of the page after this one made it data again (RVHF_NEWPAGE, the compensation of this
- *	   record, RVHF_UPDATE_PAGE_IN_HEAP_FLAG), and redo, which gives the records of a page to the table in log
- *	   order, records the page's state for it after this;
- *	 - a removal that recovery rolls back: undo runs after redo and records the restored page with the larger LSA
- *	   of its compensation record, whose image has no flag.
- *	 A page that is not linked yet also carries the flag: the append postpone of a bulk load links it
- *	 (heap_add_chain_links ()) before the mark postpone clears the flag, and it is not data at that LSA either.
- *	 A chain without the flag, or a heap header record (another length), records nothing here.
- *	 Out of memory marks the class lost, as heap_bestspace_rv_record () does.
+ * Note: if the page reached the disk after the record (deallocated, or reused as a file table page), redo skips the
+ *	 record and heap_bestspace_rv_record () never sees the removal. Recording the image's state at the record's LSA
+ *	 is safe: any later state of the page, of another class or of this one, has a larger LSA. Out of memory marks
+ *	 the class lost.
  */
 void
 heap_bestspace_rv_record_chain (THREAD_ENTRY * thread_p, const VPID * vpid, const char *data, int length,
@@ -4589,11 +4483,8 @@ heap_bestspace_rv_record_chain (THREAD_ENTRY * thread_p, const VPID * vpid, cons
 }
 
 /*
- * heap_bestspace_rv_start () - start of restart recovery: the recovery table is empty
- *
- * Note: an SA mode process can restart a database more than once. heap_bestspace_rv_finish () of the previous restart
- *	 emptied the table, and a restart recovery that fails does not come back here: its errors are fatal. The clear
- *	 only frees what a release build would otherwise carry over.
+ * heap_bestspace_rv_start () - start of restart recovery: the recovery table is empty (an SA mode process can restart
+ *				 more than once; the previous heap_bestspace_rv_finish () emptied it)
  */
 void
 heap_bestspace_rv_start (void)
@@ -4637,10 +4528,7 @@ heap_bsmap_file_sector_cmp (const void *a, const void *b)
   return x < y ? -1 : (x > y ? 1 : 0);
 }
 
-/*
- * heap_bsmap_log_text () - one line of free text in the server error log (ER_EMERGENCY_ERROR's message is the text),
- *			     with the caller's error kept
- */
+/* write one line of text to the server error log, keeping the caller's error */
 static void
 heap_bsmap_log_text (int severity, const char *text)
 {
@@ -4657,23 +4545,9 @@ heap_bsmap_log_text (int severity, const char *text)
  *   n(in): their number
  *   kept(out): entries moved to the pending group (an entry that could not be recorded marks the group lost instead)
  *
- * Note: why the file's sectors decide, not the class.
- *   A recovery table entry names the class read from its pages, and a class does not always name one heap file:
- *   TRUNCATE gives the class a new file under the same class OID (the states of the old file's sectors in the redo
- *   range stay under the class), and the root class heap, the database parameter heap and the TDE key heap all read as
- *   the root class. A map takes any sector it is given (the checkpoint writer of an unloaded heap adds one to the inline
- *   slots or the last map page, a load adds it on merge), and a claim checks only PAGE_HEAP, NOT_IN_HEAP and the class,
- *   so a sector of another file in a heap's map could take an insert into a file the heap does not own.
- *   - The file must be a live heap file whose header page is the one the catalog names (file_probe_heap_header ()).
- *     A file that is gone has no map to give the entries to. A probe that fails, or a file whose header page is
- *     another one, cannot be told apart from a damaged heap: the heap's group is marked lost, so its map is verified
- *     whole.
- *   - Its sector table is read once (file_get_all_data_sectors (): the file header and the table pages, read latched,
- *     while no other page is held; nothing else runs at the end of recovery), sorted, and walked with the entries.
- *     For a heap of 1M pages (15,625 sectors) that is the file header plus 8 (full sectors) to 16 (partial sectors)
- *     table pages of 16 KB, a 250 KB array and its sort.
- *   - A file whose sectors cannot be read gets its group marked lost: its next load or checkpoint write marks every
- *     page of its map unverified, and no sector is added that way.
+ * Note: the file's sectors decide, not the class: a class can cover several files (TRUNCATE, the root class heaps),
+ *	 and a sector of another file in the map could take an insert into a file the heap does not own. A heap whose
+ *	 header page or sectors cannot be confirmed gets its group marked lost, so its map is verified whole.
  */
 static void
 heap_bsmap_rv_hand_over (THREAD_ENTRY * thread_p, const HFID * hfid,
@@ -4763,11 +4637,9 @@ typedef enum
  * heap_bsmap_rv_heap_of () - restart recovery: the heap of a recovery table owner (a class)
  *   return: FOUND (hfid is set), GONE (dropped, or created by a transaction recovery rolled back) or ERROR
  *
- * Note: the root class owner stands for the root class heap, the database parameter heap and the TDE key heap
- *	 (heap_bestspace_hfid_of_class () refuses it); it resolves to the root class heap, and the sector filter of
- *	 heap_bsmap_rv_hand_over () drops the sectors of the other two (space only).
- *	 A class that is gone is told by its slot in the root class heap first, without an error (the class lookup
- *	 would log an unknown object error for it); an unknown page is gone too. Any other error is an error.
+ * Note: the root class owner resolves to the root class heap; heap_bsmap_rv_hand_over () drops the sectors of the
+ *	 parameter and key heaps. A class that is gone is detected through its slot in the root class heap first, which
+ *	 logs no error.
  */
 static HEAP_BSMAP_RV_HEAP
 heap_bsmap_rv_heap_of (THREAD_ENTRY * thread_p, std::uint64_t owner, HFID * hfid)
@@ -4815,10 +4687,7 @@ heap_bsmap_rv_heap_of (THREAD_ENTRY * thread_p, std::uint64_t owner, HFID * hfid
   return HEAP_BSMAP_RV_HEAP_FOUND;
 }
 
-/*
- * heap_bsmap_rv_log_unknown () - restart recovery: the heap of a class could not be looked up (an error), so what
- *				   recovery measured of its pages is dropped: one line in the server error log
- */
+/* restart recovery: log that a class's heap lookup failed and its feedback is dropped */
 static void
 heap_bsmap_rv_log_unknown (std::uint64_t owner, std::size_t sectors)
 {
@@ -4833,22 +4702,13 @@ heap_bsmap_rv_log_unknown (std::uint64_t owner, std::size_t sectors)
 }
 
 /*
- * heap_bestspace_rv_finish () - end of restart recovery, before its checkpoint (05 6.5): resolve each class of the
- *				  recovery table to its heap and move the entries of the heap's sectors to its pending
- *				  group, then empty the recovery table
+ * heap_bestspace_rv_finish () - end of restart recovery, before its checkpoint: hand the recovery table entries to
+ *				  the pending groups of their heaps
  *
- * Note: the catalog is consistent here: undo and the 2PC loose ends are over, and the class lookups read the root
- *	 class heap without a lock (nothing else runs yet). A class that cannot be found was dropped, or its creation
- *	 was rolled back: its file went, and its entries go too.
- *	 A class whose lookup fails with an error has no known heap: its entries are dropped and one line says so.
- *	 The checkpoint at the end of recovery cannot write the groups (heap_bestspace_checkpoint () fails while they are
- *	 pending, so the redo point stays where the crash left it); the first checkpoint after the restart writes them,
- *	 which the boot runs before the server is up (log_run_deferred_restart_checkpoint ()), and a load before it
- *	 absorbs its heap's group. A crash in between redoes the same range and builds the same entries again.
- *	 Except after media recovery (restoredb, SA mode): a point-in-time restore resets the log and moves chkpt_lsa to
- *	 the reset point (log_recovery_resetlog ()), and a full one redoes from the oldest checkpoint of the volume
- *	 headers, which the next crash recovery does not use. A restoredb killed after its recovery and before its boot
- *	 writes the groups loses them: space only, until the pages are fed again.
+ * Note: undo is over and nothing else runs yet, so the catalog is consistent and the lookups need no lock.
+ *	 heap_bestspace_checkpoint () fails while groups are pending, so the redo point stays put until the first
+ *	 checkpoint after the restart writes them; a crash before that rebuilds the same entries. Media recovery does
+ *	 not replay its range again, so a restoredb killed before that checkpoint loses the groups (space only).
  */
 void
 heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
@@ -4964,15 +4824,11 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
 
 /*
  * heap_bestspace_feedback () - record the free space of a heap page the caller has changed, before it releases the
- *				 page latch (05 6.2: the checkpoint relies on this order)
+ *				 page latch (the checkpoint relies on this order)
  *   hfid(in): the page's heap, or NULL to find it from the page's class (rollback)
  *
- * Note: never loads a bestspace (05 4.2 rule 3): feedback for a heap whose map is not loaded (or not absorbed yet)
- *       goes to the pending table, which the loader merges (heap_bsmap_still_unloaded () has the argument).
- *       During restart recovery the page goes to the recovery table instead (heap_bestspace_rv_record ()): recovery
- *       runs postpones and the aborts of system operations through runtime code, which comes here (the abort through
- *       the rollback hook of log_rollback_record ()). That path looks up no class and no registry while the page
- *       being recovered is latched.
+ * Note: never loads a bestspace: until the map is absorbed, feedback goes to the pending table (see
+ *       heap_bsmap_still_unloaded ()). During restart recovery it goes to the recovery table, with no lookup.
  */
 void
 heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr)
@@ -4997,8 +4853,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
 
   if (!LOG_ISRESTARTED ())
     {
-      /* restart recovery: postpones and system operation aborts reach here through runtime code. Same table as the
-       * redo and undo hooks (no checkpoint runs during recovery, so the delay below has no window to widen) */
+      /* restart recovery: postpones and system operation aborts get here through runtime code */
       heap_bestspace_rv_record (thread_p, pgptr);
       return;
     }
@@ -5014,8 +4869,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
 
   if (hfid == NULL)
     {
-      /* the rollback hook: the heap comes from the page's class. A page that reads as the root class may belong to
-       * the root, database parameter or TDE key heap, so it is skipped (heap_bestspace_hfid_of_class ()) */
+      /* the rollback hook: find the heap from the page's class (see heap_bestspace_hfid_of_class ()) */
       if (heap_bestspace_hfid_of_class (thread_p, &class_oid, &found_hfid) != NO_ERROR)
 	{
 	  return;
@@ -5023,8 +4877,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
       hfid = &found_hfid;
     }
 
-  /* read before the lookup: if the lookup misses, the pending table's check compares it instead of walking the
-   * registry again (heap_bsmap_still_unloaded ()) */
+  /* read before the lookup: on a miss, heap_bsmap_still_unloaded () compares it instead of walking the registry */
   creates = cubstorage::bestspaces.create_count ();
   if (heap_bsmap_known_unloaded (hfid, creates))
     {
@@ -5064,7 +4917,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
   /* not loaded (or not absorbed yet): the pending table, unless the loader absorbs before the stripe lock is ours */
   check.hfid = hfid;
   check.found = NULL;
-  /* found but not absorbed yet: the check must look at the bestspace itself */
+  /* found but not absorbed: the check must look at the bestspace itself */
   check.creates = (bestspace == NULL) ? creates : UINT64_MAX;
   group = heap_bsmap_group_key (&hfid->vfid);
   key = cubstorage::bestspace_map::make_key (vpid->volid, vpid->pageid);
@@ -5090,11 +4943,11 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
     case cubstorage::bestspace_sector_table::RECORDED:
       break;
     case cubstorage::bestspace_sector_table::REJECTED:
-      /* the loader has absorbed the group meanwhile: the map is the destination now */
+      /* the loader has absorbed the group meanwhile */
       (void) check.found->get_map ()->feedback (vpid->volid, vpid->pageid, code);
       break;
     case cubstorage::bestspace_sector_table::NO_MEMORY:
-      /* record_if () marked the group lost: the loader (or the checkpoint) makes every page of the heap unverified */
+      /* record_if () marked the group lost: the heap's pages become unverified */
       break;
     }
 }
@@ -5104,28 +4957,11 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
  *   hfid(in): the heap
  *   vpid(in): the page, write latched by the caller
  *
- * Note: a slot is a hint a removal does not otherwise visit. Left there, it keeps the free space of the page's life
- *	 in the heap, and the map keeps the page resident. Once the file hands the page out again, the allocation sets
- *	 it resident in a second slot. The map has one resident and one dirty bit for the page: when the page is fed
- *	 back while both slots hold it, the first release uses up the dirty bit and keeps the fed-back code, and the
- *	 second writes its stale free space over it. A page that ends empty and is not removed (vacuum status unknown)
- *	 gets no more feedback and is never claimed again with such a low code: lost space, persisted by the checkpoint.
- *
- *	 The slots are scanned at every removal, not only for a page the map has resident: a slot may still hold a page
- *	 whose bit a residual race below has cleared. The scan is shards x 64 slot loads (512 at the default shard
- *	 count, 1,792 at the largest, 28), small next to the removal's own system operation and file_dealloc ().
- *
- *	 Vacuum's removal (heap_remove_page_on_vacuum ()) and compactdb's (heap_vpid_remove ()): the page is marked not
- *	 in the heap with a log record of its own, and its NOT_DATA feedback follows. A slot dropped here held the page's
- *	 resident bit, so no claim could take the page meanwhile, and nothing sets the bit again before the page is
- *	 handed out: forget () clears it. If the removal aborts, the rollback hook measures the page, which is then
- *	 claimable.
- *
- *	 A claim that holds the page without a slot yet keeps its bit and installs the page after this:
- *	 heap_alloc_new_pages () drops that slot when the file hands the page out again. A claim that installs it only
- *	 after that drop leaves two holders all the same; that takes the removal, the deallocation and a new allocation
- *	 within one allocate () call of the claimer, and costs space only. The bestspace needs no pin:
- *	 heap_bestspace_feedback () has why, for the same callers.
+ * Note: a stale slot would keep the page resident with its old free space; once the page is reallocated, the second
+ *	 holder's release would overwrite the fed-back code (lost space). The slots are scanned at every removal, as a
+ *	 residual race may have cleared the resident bit; a dropped slot held that bit, so no claim took the page. A
+ *	 claim that installs the page only after this drop leaves two holders too, but only within one allocate () call
+ *	 (space only). No pin is needed: see heap_bsmap_still_unloaded ().
  */
 static void
 heap_bsmap_drop_removed_page (const HFID * hfid, const VPID * vpid)
@@ -5154,12 +4990,10 @@ heap_bsmap_drop_removed_page (const HFID * hfid, const VPID * vpid)
 
 /*
  * heap_bestspace_is_heap_rcvindex () - whether a recovery index changes a heap data page (space or membership)
- *   return: true for the heap family of 05 appendix A (overflow file records excluded)
+ *   return: true for the heap records (overflow file records excluded)
  *
- * Note: the runtime rollback hook (log_rollback_record) and the restart recovery hooks (redo applied and skipped,
- *       undo) use it. The list is wide on purpose: an index missing here is a map error. Records without a page
- *       (the postpones RVHF_MARK_PAGES_IN_HEAP and RVHF_APPEND_PAGES_TO_HEAP) are covered by the page records their
- *       execution logs and by heap_bestspace_feedback ().
+ * Note: the list is wide on purpose: a missing index is a map error. The page-less postpones (RVHF_MARK_PAGES_IN_HEAP,
+ *       RVHF_APPEND_PAGES_TO_HEAP) are covered by the page records they log and by heap_bestspace_feedback ().
  */
 bool
 heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex)
@@ -5186,7 +5020,7 @@ heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex)
     case RVHF_MVCC_REDISTRIBUTE:
     case RVHF_MARK_DELETED:
     case RVHF_UPDATE_PAGE_IN_HEAP_FLAG:
-    case RVHF_BESTSPACE_MAP_ENTRIES:	/* map pages are class E, the header is measured as data */
+    case RVHF_BESTSPACE_MAP_ENTRIES:	/* map pages are NOT_DATA; the header page is measured as data */
     case RVHF_BESTSPACE_MAP_INIT:
     case RVHF_BESTSPACE_MAP_LINK:
     case RVVAC_HEAP_RECORD_VACUUM:
@@ -5357,7 +5191,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   heap_hdr.num_recs = 0;
   heap_hdr.recs_sumlen = 0;
 
-  /* the bestspace map area: inline, empty (the map is loaded from here, see 05 5.3) */
+  /* the bestspace map area: inline and empty */
   heap_hdr.bsmap_version = HEAP_BSMAP_VERSION;
   heap_hdr.bsmap_flags = 0;	/* inline: no map page until a third sector */
   heap_hdr.bsmap_num_pages = 0;
@@ -6323,8 +6157,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	}
     }
 
-  /* update the estimates of the in-memory bestspace if it is resident. its shards and map no longer hold the removed
-   * pages: heap_vpid_remove () dropped each from the shard slots and fed it back as NOT_DATA */
+  /* update the estimates of the resident bestspace (heap_vpid_remove () already took the pages out of it) */
   bestspace = heap_find_bestspace (thread_p, NULL, (HFID *) hfid, NULL);
   if (bestspace)
     {
@@ -15555,36 +15388,18 @@ struct heap_bsmap_audit_page
 };
 
 /*
- * heap_bestspace_audit () - compare the bestspace map of a heap with every data page of its chain (05 7.4)
+ * heap_bestspace_audit () - compare the bestspace map of a heap with every data page of its chain
  *   return: error code
  *   hfid(in): the heap
- *   repair(in): feed the measured code back for every page found under, missing or unverified, and free the orphan
- *		 map pages
+ *   repair(in): feed back every page found under, missing or unverified, and free the orphan map pages
  *   audit(out): what was found
  *
- * The map is loaded (or built) the usual way if it is not in memory. The pages are walked with a read latch on one
- * page at a time (the previous page stays latched while the next is fixed, as the chain check does); the header
- * latch is held only to learn the class. Resident pages are skipped: their shard holds the value. Online, concurrent
- * DML can make a page differ for a moment, so the caller reports a warning, never a check failure.
- * An interrupt is not masked: checkdb is a user command and a cancel must stop the walk (and the frees after it).
- *
- * Repair writes what DML and vacuum write: heap_bestspace_feedback () with the page latched, which the checkpoint
- * persists like any other feedback. Without repair the audit writes nothing to the map beyond what loading it does (a
- * map that is not in memory is loaded the usual way, which merges the pending feedback and may add sectors).
- *
- * Orphan map pages (a map page add that failed, or whose server crashed, after the page was allocated and linked
- * into the chain and before the header listed it; the maintenance daemon frees those its own run made): a page of the
- * chain flagged BESTSPACE that the layout in memory does not have is collected, at most HEAP_BSMAP_AUDIT_MAX_ORPHANS,
- * with what heap_bsmap_free_orphan () checks of it while it is latched in the walk: its kind (its record names this
- * heap, or it has none) and the links between it and its neighbors. After the walk, with no page latched, the pages
- * the header's list has are dropped from them under the header read latch: a load that ended early holds only the
- * first listed pages in memory, and a page whose add was in progress during the walk is listed by now (the add holds
- * the header write latch). A page with no record must also be an allocated page of the heap's file. What remains is
- * counted in orphans, or in refused when heap_bsmap_free_orphan () would not take it (a damaged map page: repair
- * cannot free it, so it is reported apart and the orphan count clears after a repair). Repair frees the orphans with
- * heap_bsmap_free_orphan (), as the daemon does: each between begin_work () and end_work (), which a thread that
- * latches the whole file waits for. It checks the page again under the header write latch, so a page the daemon
- * freed meanwhile is not freed again. The caller's lock on the class keeps a drop away.
+ * Note: resident pages are skipped (their shard holds the value). Concurrent DML can make a page differ for a moment,
+ *	 so the caller reports a warning, never a check failure. Orphans are flagged map pages in the chain but not in
+ *	 the header's list (an add that failed). After the walk they are checked against that list under the header
+ *	 latch: a load that ended early holds only the first pages, and an add in progress has listed its page by now.
+ *	 heap_bsmap_free_orphan () checks each again under the header write latch. The caller's class lock keeps a drop
+ *	 away.
  */
 int
 heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BSMAP_AUDIT * audit)
@@ -15746,8 +15561,7 @@ heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BS
 
   if (error == NO_ERROR && num_orphans > 0)
     {
-      /* no page is latched now. A fix failure here only leaves the orphans uncounted: it is not the audit's error;
-       * a cancel is looked at between the frees */
+      /* a fix failure here only leaves the orphans uncounted, not an audit error; a cancel is checked between frees */
       check_interrupt = logtb_set_check_interrupt (thread_p, false);
       er_stack_push ();
 
@@ -15786,8 +15600,7 @@ heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BS
 	  audit->orphans = num_orphans;
 	}
 
-      /* the daemon's way (heap_bsmap_daemon_free ()), page by page. Where the daemon tries a busy page again the next
-       * round, this tries it again a few times now; a page that is no orphan any more (the daemon freed it) is left */
+      /* as heap_bsmap_daemon_free () does, but a busy page is tried again a few times now, not the next round */
       if (repair && audit->orphans > 0 && cubstorage::bestspaces.pin (hfid, pin))
 	{
 	  for (i = 0, quiesced = false; i < audit->orphans && !quiesced && !interrupted; i++)
@@ -15885,8 +15698,7 @@ heap_check_heap_file_internal (THREAD_ENTRY * thread_p, HFID * hfid, bool repair
 	}
       else
 	{
-	  /* the bestspace map against the pages (05 7.4). A difference is a warning, never a failed check: online, DML
-	   * can make a page differ for a moment. A cancel still ends the check. */
+	  /* the bestspace map against the pages: a difference is only a warning (see heap_bestspace_audit ()) */
 	  HEAP_BSMAP_AUDIT audit;
 	  int audit_error;
 
@@ -15939,11 +15751,9 @@ heap_check_heap_file_internal (THREAD_ENTRY * thread_p, HFID * hfid, bool repair
 }
 
 /*
- * heap_bsmap_repair_checkpoint () - a repair changed the map: ask for a checkpoint now, without waiting for it
- *
- * Note: the codes repair feeds back change no page, so only a checkpoint writes them (a freed orphan map page is
- *	 logged). A crash before the next one would lose the repair; the request narrows that to the checkpoint's own
- *	 time. SA mode writes the maps when it shuts down.
+ * heap_bsmap_repair_checkpoint () - a repair changed the map: ask for a checkpoint now, without waiting for it.
+ *				      The repaired codes change no page, so only a checkpoint (or the SA mode
+ *				      shutdown) writes them.
  */
 static void
 heap_bsmap_repair_checkpoint (void)
@@ -15970,8 +15780,7 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid, bool repair)
 /*
  * heap_check_all_heaps () - Validate all pages of all known heap files
  *   return: DISK_INVALID, DISK_VALID, DISK_ERROR
- *   repair(in): repair the bestspace maps (heap_bestspace_audit ()); one checkpoint is asked for at the end if that
- *		 changed anything
+ *   repair(in): repair the bestspace maps (heap_bestspace_audit ())
  *
  * Note: Verify that all pages of all heap files are valid. That is,
  * that they are valid from the point of view of the file manager.
@@ -17387,12 +17196,9 @@ heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * heap_rv_undoredo_pagehdr () - Recover the chain record of a heap page
+ * heap_rv_undoredo_pagehdr () - Recover the chain record of a heap page (RVHF_CHAIN)
  *   return: int
  *   rcv(in): Recovery structure
- *
- * Note: Recover the update of the chain header of a heap page (RVHF_CHAIN). The heap header has its own function,
- * heap_rv_undoredo_stats ().
  */
 int
 heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
@@ -17431,9 +17237,8 @@ heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   return: int
  *   rcv(in): Recovery structure
  *
- * Note: RVHF_STATS logs only the members before the bestspace map area (HEAP_HDR_STATS_LOGGED_SIZE). Both undo and
- *       redo copy just that part into the header record and keep the map area, which changes only through the
- *       RVHF_BESTSPACE_MAP_* redo records: an undo must not bring back an older map root or older inline entries.
+ * Note: only the part before the map area is logged. The map area changes only by RVHF_BESTSPACE_MAP_* redo records,
+ *       so an undo must not bring back an older map root or inline entries.
  */
 int
 heap_rv_undoredo_stats (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
@@ -17452,7 +17257,6 @@ heap_rv_undoredo_stats (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_GENERIC_ERROR;
     }
 
-  /* the bestspace map part of the header is not in RVHF_STATS: keep it */
   memcpy (recdes.data, rcv->data, HEAP_HDR_STATS_LOGGED_SIZE);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -17472,12 +17276,7 @@ heap_bsmap_fatal (void)
 
 /*
  * heap_bsmap_get_map_page_hdr () - point at the entries record header of a well-formed map page
- *   return: the header inside the page, or NULL (no error of its own) when the page is not a well-formed map page
- *   pgptr(in): page
- *
- * Note: the identity of a map page, shared by the redo (which treats NULL as fatal) and the runtime writers (which
- *       give up): a chain record flagged BESTSPACE, an entries record of the full length, the magic, an owner file and
- *       an entry count in range. A runtime writer also compares the owner with its heap.
+ *   return: the header, or NULL (no error set): fatal for a redo, a runtime writer gives up
  */
 static HEAP_BSMAP_PAGE_HDR *
 heap_bsmap_get_map_page_hdr (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
@@ -17507,8 +17306,7 @@ heap_bsmap_get_map_page_hdr (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
 /*
  * heap_bsmap_get_header () - point at the header of a heap header page
- *   return: the header inside the page, or NULL (no error of its own) when the page is not a heap header page
- *   pgptr(in): page
+ *   return: the header, or NULL (no error set) when the page is not a heap header page
  */
 static HEAP_HDR_STATS *
 heap_bsmap_get_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
@@ -17524,14 +17322,10 @@ heap_bsmap_get_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 }
 
 /*
- * heap_bsmap_peek_map_page () - check the identity of a map page and point at its entries record
+ * heap_bsmap_peek_map_page () - check the identity of a map page and point at its entries record (phdr)
  *   return: NO_ERROR, or ER_GENERIC_ERROR (fatal) when the page is not a map page
- *   pgptr(in): page
- *   phdr(out): the map page header inside the page
  *
- * Note: redo is applied in log order on the page as it was at the record's LSA (recovery does not skip records of
- *       deallocated pages and skips by page LSA only), so the page must be the map page the record was written for.
- *       The log item carries no file id, so the identity is heap_bsmap_get_map_page_hdr ()'s.
+ * Note: recovery skips a record by page LSA only, so the page must be the map page the record was written for.
  */
 static int
 heap_bsmap_peek_map_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, HEAP_BSMAP_PAGE_HDR ** phdr)
@@ -17567,15 +17361,11 @@ heap_bsmap_peek_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, HEAP_HDR_STATS 
 }
 
 /*
- * heap_rv_bsmap_init_apply () - put a whole entries record into a map page
+ * heap_rv_bsmap_init_apply () - put a whole entries record (HEAP_BSMAP_PAGE_HDR and the entries) into a map page
  *   return: NO_ERROR or ER_GENERIC_ERROR (fatal)
- *   pgptr(in): the page
- *   data(in): the entries record (HEAP_BSMAP_PAGE_HDR and the entries)
- *   length(in): its length
  *
- * Note: the redo and the writer that completes the previous map page (heap_bsmap_add_page) share this code. The
- *	 writer applies only an image it built, to a page that passed heap_bsmap_get_map_page_hdr (), so the fatal paths
- *	 are reached only by a redo on a page that is not what the record was written for.
+ * Note: shared by the redo and heap_bsmap_add_page (), which checks the page first: only a redo reaches the fatal
+ *	 paths.
  */
 static int
 heap_rv_bsmap_init_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *data, int length)
@@ -17621,12 +17411,9 @@ heap_rv_bsmap_init_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *d
 }
 
 /*
- * heap_rv_bsmap_init () - redo: the whole entries record of a map page (RVHF_BESTSPACE_MAP_INIT): a new map page, or
- *			    the previous map page completed and linked to a new one
+ * heap_rv_bsmap_init () - redo of RVHF_BESTSPACE_MAP_INIT: the whole entries record of a map page
  *   return: NO_ERROR or ER_GENERIC_ERROR (fatal)
- *   rcv(in): Recovery structure; data is the whole entries record (HEAP_BSMAP_PAGE_HDR and the entries)
- *
- * Note: the page must already be a chain page flagged BESTSPACE (its creation is logged before this record).
+ *   rcv(in): Recovery structure
  */
 int
 heap_rv_bsmap_init (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
@@ -17637,14 +17424,10 @@ heap_rv_bsmap_init (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 /*
  * heap_rv_bsmap_entries_apply () - put map entries into a map page, or inline entries into a heap header
  *   return: NO_ERROR or ER_GENERIC_ERROR (fatal)
- *   pgptr(in): the page
  *   items(in): the entries and where they go (entry index of the map page, or inline slot)
- *   count(in): how many
  *
- * Note: the redo and the checkpoint writers (heap_bsmap_write_items ()) share this code. A writer applies entries only
- *	 to a page that passed heap_bsmap_get_header () or heap_bsmap_get_map_page_hdr () and is its heap's, at indexes
- *	 in range, so the fatal paths are reached only by a redo on a page that is not what the record was written for.
- *	 An entry at or past a map page's count raises the count: entries are only ever added at the end.
+ * Note: shared by the redo and heap_bsmap_write_items (), whose callers check the page: only a redo reaches the fatal
+ *	 paths. Entries are only added at the end, so an index at or past the count raises it.
  */
 static int
 heap_rv_bsmap_entries_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HEAP_BSMAP_LOG_ITEM * items, int count)
@@ -17722,14 +17505,9 @@ heap_rv_bsmap_entries (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 /*
  * heap_rv_bsmap_link_apply () - apply a map link to the heap header or to the previous map page
  *   return: NO_ERROR or ER_GENERIC_ERROR (fatal)
- *   pgptr(in): the page the link is for
- *   link(in): the link
  *
- * Note: the redo and the writer (heap_bsmap_add_page) share this code. The writer applies a link only to a page that
- *       passed heap_bsmap_get_header () or heap_bsmap_get_map_page_hdr (), the checks behind the fatal paths here, and
- *       only with a known target, so the fatal paths are reached only by a redo on a page that is not what the record
- *       was written for. The writer now links only the header: the previous map page gets its link inside a whole
- *       entries record (heap_rv_bsmap_init_apply ()), so the previous page target is only redone.
+ * Note: shared by the redo and heap_bsmap_add_page (), which checks the page first and links only the header: only a
+ *	 redo reaches the fatal paths or the previous page target.
  */
 static int
 heap_rv_bsmap_link_apply (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HEAP_BSMAP_LINK * link)
@@ -17785,14 +17563,9 @@ heap_rv_bsmap_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * heap_bsmap_is_own_map_page () - is the page a map page of this heap?
- *   return: true if it is
- *   pgptr(in): the page (latched)
- *   hfid(in): the heap
+ * heap_bsmap_is_own_map_page () - is the latched page a map page of this heap?
  *
- * Note: a runtime writer checks this before it writes into a map page (05 5.1): a heap page that passes every check
- *	 the redo makes (heap_bsmap_get_map_page_hdr ()), owned by this heap. A page that fails is not written, so a
- *	 damaged page makes the writer give up instead of reaching a fatal path.
+ * Note: a runtime writer checks this first, so a damaged page makes it give up instead of reaching a fatal path.
  */
 static bool
 heap_bsmap_is_own_map_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid)
@@ -17810,10 +17583,6 @@ heap_bsmap_is_own_map_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID 
 /*
  * heap_bsmap_fix_own_map_page () - fix a map page of this heap
  *   return: error code; ER_FAILED (no error set) when the page is not this heap's map page
- *   hfid(in): the heap
- *   vpid(in): the map page
- *   latch(in): latch mode
- *   watcher(out): the page, fixed on success
  */
 static int
 heap_bsmap_fix_own_map_page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, PGBUF_LATCH_MODE latch,
@@ -17837,13 +17606,10 @@ heap_bsmap_fix_own_map_page (THREAD_ENTRY * thread_p, const HFID * hfid, const V
 
 /*
  * heap_bsmap_append_to_chain () - link a freshly allocated page after the last page of the heap
- *   return: error code
- *   hfid(in): the heap
  *   hdr_watcher(in): the heap header, write latched
- *   vpid(in): the new page
  *
- * Note: the caller has a system operation open. The links are logged like heap_alloc_new_pages () logs them, but the
- *	 header's num_pages does not change: a map page is not a data page.
+ * Note: the caller has a system operation open. Logged like heap_alloc_new_pages (), but num_pages does not change: a
+ *	 map page is not a data page.
  */
 static int
 heap_bsmap_append_to_chain (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher, const VPID * vpid)
@@ -17908,7 +17674,6 @@ heap_bsmap_append_to_chain (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WA
       assert (!hdr_watcher->page_was_unfixed);
     }
 
-  /* the ordered fixes above keep the header (it ranks first), but take its record again rather than rely on that */
   hdr = heap_get_header_stats_ptr (thread_p, hdr_watcher->pgptr);
   if (hdr == NULL)
     {
@@ -17917,7 +17682,6 @@ heap_bsmap_append_to_chain (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WA
   hdr_prev = *hdr;
   if (is_header_last)
     {
-      /* the header is the last page: its next_vpid goes with the RVHF_STATS image below */
       hdr->next_vpid = *vpid;
     }
   hdr->last_vpid = *vpid;
@@ -17933,23 +17697,12 @@ heap_bsmap_append_to_chain (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WA
 /*
  * heap_bsmap_add_page () - add one map page at the end of the heap's map
  *   return: error code (the caller drops it)
- *   hfid(in): the heap
  *   hdr_watcher(in): the heap header, write latched by the caller
- *   bestspace(in): the heap's bestspace; its layout gets the page
  *
- * 05 5.1: the page is allocated already flagged BESTSPACE in its own system operation (a nested top action), which
- * commits before anything else is written, so an outer abort keeps it and no inserter ever takes it. The entries
- * records and the header link are redo-only. A failure in between leaves an orphan map page (flagged, in the chain,
- * not in the map's list) that scans skip and the maintenance daemon frees (C4).
- *
- * The first map page is the promotion of an inline map: it gets every sector the map has so far (the two inline ones
- * included) and the header link turns the inline entries off. For map page k > 0, map page k - 1 is rewritten whole:
- * full, and linked to page k.
- *
- * k is the number of pages of the layout in memory: the pages heap_build_bestspace () read, and the ones added since.
- * When the load ended early (heap_bsmap_load_pages ()) the header lists more pages than that; the links below put the
- * new page after the last page read and set the header's count to k + 1, which leaves the unread pages out of the list
- * (orphans for the maintenance daemon). With k = 0 there that is a first page again, under the PAGES flag.
+ * Note: the page is allocated flagged BESTSPACE in its own committed system operation and the records after it are
+ *	 redo-only, so an abort keeps it and no inserter takes it; a failure in between leaves an orphan for the
+ *	 maintenance daemon. Page k - 1 is rewritten full with its link to page k, so a linked map page is always full;
+ *	 after a load that ended early, the unread listed pages drop out of the list.
  */
 static int
 heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -17974,20 +17727,17 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
   int k, i, first, error, fail_mod = 10, exit_mod = 20;
   bool was_inline, is_inline, appended, relink;
 
-  /* the header link below is applied with the redo's code: check the page the way it does, without the fatal */
   hdr = heap_bsmap_get_header (thread_p, hdr_watcher->pgptr);
   if (hdr == NULL)
     {
       return ER_FAILED;
     }
-  /* the layout was read from this header and changes only with it, under its write latch: the same form, and at most
-   * the pages the header lists (fewer after a load that ended early) */
+  /* the layout changes only under this latch: the same form, and at most the pages the header lists */
   was_inline = bestspace->map_is_inline ();
   k = (int) bestspace->map_num_pages ();
   assert (was_inline == ((hdr->bsmap_flags & HEAP_BSMAP_FLAG_PAGES) == 0));
   assert (k <= hdr->bsmap_num_pages);
-  /* the load ended early: the header link below leaves the pages after page k - 1 out of the list. The first of them is
-   * the header's first map page, or the one page k - 1 links to (read in step 3) */
+  /* a load that ended early: the first unlisted page (the header's first map page, or page k - 1's link, step 3) */
   relink = k < hdr->bsmap_num_pages;
   relink_vpid = hdr->bsmap_first_vpid;
 
@@ -17997,7 +17747,6 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
 	{
 	  return ER_FAILED;
 	}
-      /* the page the link goes to must still be this heap's map page (05 5.1) */
       error = heap_bsmap_fix_own_map_page (thread_p, hfid, &prev_vpid, PGBUF_LATCH_READ, &prev_watcher);
       if (error != NO_ERROR)
 	{
@@ -18007,8 +17756,7 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
       assert (!hdr_watcher->page_was_unfixed);
     }
 
-  /* the layout gets the page once it is linked, and that must not fail then: a page linked on disk but left out of
-   * the layout would look like an orphan to the maintenance daemon. Out of memory refuses here, before anything */
+  /* reserve now: a page linked on disk but missing from the layout would look like an orphan */
   if (!bestspace->map_reserve_page_slot ())
     {
       return ER_FAILED;
@@ -18042,16 +17790,14 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
   log_sysop_commit (thread_p);
   (void) FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_EXIT_MAP_PAGE, &exit_mod, 0);
 
-  /* a recycled page that a slot still holds (a claim installed it after the page's removal: see
-   * heap_bsmap_drop_removed_page ()) is a map page now, empty until its record goes in below: drop the slot. A shard
-   * that reads the slot first rejects the page anyway (a map page is never a data page: L1_find () in bestspace.cpp) */
+  /* a slot may still hold this recycled page (see heap_bsmap_drop_removed_page ()): drop it. A shard that reads the
+   * slot first rejects a map page anyway (L1_find ()) */
   if (bestspace->drop_from_slots (vpid))
     {
       map->forget (vpid.volid, vpid.pageid);
     }
 
-  /* 2. the entries record: sectors k * per_page .. of the map as they are now. A sector that changes or arrives
-   * later is persist-dirty and the checkpoint writes it once the layout below has the page */
+  /* 2. the entries record; a sector that changes later is persist-dirty, for the checkpoint */
   memset (area, 0, heap_bsmap_page_record_length ());
   phdr = (HEAP_BSMAP_PAGE_HDR *) area;
   phdr->magic = HEAP_BSMAP_MAGIC;
@@ -18099,10 +17845,7 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
       (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_PROMOTE, 0);
     }
 
-  /* 3. map page k - 1, in one redo-only record: every sector it holds and the link to this page. The map has them all
-   * (it has more than k * per_page sectors), so at any redo point a map page that links to another one is full and the
-   * load reads on through it (heap_bsmap_load_pages ()). After a load that ended early this also replaces the page's
-   * old link to a page that is no longer listed. Like the new page's record, the snapshot leaves persist-dirty alone */
+  /* 3. map page k - 1, full, and its link to this page, in one redo-only record (see the note above) */
   if (k > 0)
     {
       error = heap_bsmap_fix_own_map_page (thread_p, hfid, &prev_vpid, PGBUF_LATCH_WRITE, &prev_watcher);
@@ -18122,7 +17865,6 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
 	}
       relink_vpid.volid = phdr->next_volid;
       relink_vpid.pageid = phdr->next_pageid;
-      /* the image keeps what identifies the page: magic, version, owner */
       memcpy (area, phdr, heap_bsmap_page_record_length ());
       phdr = (HEAP_BSMAP_PAGE_HDR *) area;
       // *INDENT-OFF*
@@ -18184,8 +17926,7 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
       bestspace->set_orphan_suspect (relink_vpid);
     }
 
-  /* 5. the layout in memory: from now on the checkpoint writes these sectors into the page. The slot was reserved
-   * above, so this cannot fail */
+  /* 5. the layout in memory; the slot was reserved above, so this cannot fail */
   appended = bestspace->map_append_page (vpid);
   assert (appended);
   if (appended)
@@ -18195,8 +17936,7 @@ heap_bsmap_add_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER *
   error = ER_FAILED;
 
 orphan:
-  /* the page is in the chain and flagged BESTSPACE (its system operation committed), and the map's list does not have
-   * it (unless only the layout failed): the maintenance daemon frees it */
+  /* an orphan: in the chain, flagged BESTSPACE, not listed; the maintenance daemon frees it */
   bestspace->set_orphan_suspect (vpid);
   return error;
 }
@@ -18204,17 +17944,10 @@ orphan:
 /*
  * heap_bsmap_ensure_capacity () - add map pages until every sector of the in-memory map has a place on disk
  *   return: NO_ERROR, or the error of a page fix that cost the caller a page it held (the caller must give up)
- *   hfid(in): the heap
  *   hdr_watcher(in): the heap header, write latched by the caller
- *   bestspace(in): the heap's bestspace
  *
- * Note: any other failure leaves the extra sectors unpersisted and is not reported: the pages the caller allocated
- *	 are in the heap already. The next allocation or the maintenance daemon tries again, and a load after a crash
- *	 finds the sectors by the sector count check (C4).
- *
- *	 The page fixes of heap_bsmap_add_page () are ordered fixes: to keep the latch order they may release other
- *	 pages of this thread and fix them again, and a failure can leave one of them unfixed (an update that relocates
- *	 its record holds the home page here). The caller cannot go on with that page, so that one error is returned.
+ * Note: other failures are not reported: the sectors stay unpersisted until the next allocation, the maintenance
+ *	 daemon or a load's sector count check.
  */
 static int
 heap_bsmap_ensure_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -18229,8 +17962,7 @@ heap_bsmap_ensure_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WA
       return NO_ERROR;
     }
 
-  /* an internal page fix must not consume a statement cancel (PoC defect #3): the cancel stays pending; and the
-   * caller's error, if any, survives whatever the attempts set */
+  /* keep a statement cancel pending, and the caller's error */
   held = pgbuf_get_hold_count (thread_p);
   check_interrupt = logtb_set_check_interrupt (thread_p, false);
   er_stack_push ();
@@ -18260,23 +17992,13 @@ heap_bsmap_ensure_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WA
 
 /*
  * heap_bsmap_load_pages () - read the map pages of a heap into its map
- *   return: NO_ERROR, or an error the caller gives up on: out of memory (the next access loads again, where ending
- *	     the load early would leave the pages after it orphaned for good), or a page fix that cost the caller a page
- *	     it held
- *   hfid(in): the heap
+ *   return: NO_ERROR; an error (out of memory, or a fix that cost the caller a page) makes the caller give up
  *   hdr_watcher(in): the heap header, write latched by the caller
- *   map(in): the map, empty and not published yet
  *   pages(out): the map pages read, in order (malloc'd; NULL when none): the layout of the bestspace
- *   num_pages(out): how many pages were read
  *   unread(out): the first listed page not read (null when the load read the whole list)
  *
- * Note: heap_build_bestspace () calls it with interrupt checks off and the error stack pushed.
- *
- *	 A page that cannot be read or does not look right ends the load there: the sectors after it get new numbers
- *	 when they come back (feedback, allocation, the sector count check of C4), and the next map page added links
- *	 after the last page read, which leaves the unread ones as orphans for the maintenance daemon. Entry i of map
- *	 page p is sector p * per_page + i, so a page with fewer entries than it holds is the last one read
- *	 (heap_bsmap_add_page () fills a map page in the same record that links it to the next one).
+ * Note: a bad or unreadable page ends the load, and the next map page added orphans the unread pages. Entry i of map
+ *	 page p is sector p * per_page + i, and a page that is not full is the last one.
  */
 static int
 heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -18314,7 +18036,6 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
 
   for (p = 0; p < listed && !VPID_ISNULL (&vpid); p++)
     {
-      /* this page, until it is recorded below */
       *unread = vpid;
       if (FI_TEST_ARG (thread_p, FI_TEST_BESTSPACE_MAP_PAGE_READ_FAIL, &read_fail_mod, 0) != NO_ERROR)
 	{
@@ -18322,22 +18043,18 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
 	}
       held = pgbuf_get_hold_count (thread_p);
       PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-      /* a transaction that does not wait (lock timeout 0) fails this fix at once if a writer holds the page, and the
-       * load ends early. That is close to unreachable: a writer of a listed map page holds this header's latch
-       * (heap_bsmap_add_page ()) or works on a heap whose map is loaded already. And it costs one partial load: the
-       * pages after this one are orphaned by the next map page added */
+      /* with lock timeout 0 a busy page ends the load early; nearly unreachable, as a writer of a listed map page holds
+       * this header's latch or works on a loaded map */
       error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, &watcher);
       if (error != NO_ERROR)
 	{
-	  /* deallocated (ER_PB_BAD_PAGEID) or unreadable. To keep the latch order the fix may have released other pages
-	   * of this thread, and a failure can leave one of them unfixed: the caller cannot go on then */
+	  /* deallocated or unreadable; an error only if the fix cost the caller a page */
 	  if (pgbuf_get_hold_count (thread_p) >= held)
 	    {
 	      error = NO_ERROR;
 	    }
 	  break;
 	}
-      /* the header is rank 0 of the heap's group: fixing a page of the heap never releases it */
       assert (!hdr_watcher->page_was_unfixed);
 
       phdr = NULL;
@@ -18376,7 +18093,6 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
 	}
 
       (*pages)[(*num_pages)++] = vpid;
-      /* the next one, if the list goes on */
       VPID_SET_NULL (unread);
       if (p + 1 < listed)
 	{
@@ -18399,42 +18115,13 @@ heap_bsmap_load_pages (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
 /*
  * heap_bsmap_add_missing_sectors () - add the sectors of the heap's file that the map does not have: their allocated
  *				       pages UNVERIFIED, the others NOT_DATA
- *   hfid(in): the heap
- *   map(in): the heap's map, not published
  *
- * Note: a sector of the file can be missing from the map loaded from disk: the map never persisted it (its map page
- *	 could not be added before the shutdown or the crash; the checkpoint writes only the sectors the map pages
- *	 have room for), or the load ended early. Cheap first: the file header's count of sectors with an allocated
- *	 page. The file's sector table is read only when that count is larger than the map's. The maintenance daemon
- *	 measures the UNVERIFIED pages, and a page that is not a data page there (a map page) becomes NOT_DATA. Once
- *	 the sectors reach the disk, the counts are equal again and the next load does not list them. They reach it
- *	 when the map has room for them: two inline entries, or the map pages the allocation path adds; a sector added
- *	 here, outside that path, may need a map page the maintenance daemon adds (heap_bsmap_ensure_capacity ()).
- *	 Until then every load lists it again.
- *
- *	 The caller holds the heap header write latched: the loader (the map is not published yet), on the new home
- *	 path of an update with the record's home and forward pages too; or the maintenance daemon, which runs the check
- *	 again on a published map. The header latch keeps out set_resident () (an allocation holds it too) and changes
- *	 of the map's layout; a sector that feedback adds meanwhile is found by add_missing_sector () and keeps its
- *	 codes (the fill is written inside the add, under the map's mutex), and is not added twice. The file header
- *	 is latched only conditionally (file_probe_heap_sectors ()): file_destroy () holds it write latched while it
- *	 fixes every page of the file, so waiting for it here could deadlock with a destroy. A busy file header or a
- *	 read error skips the check and marks the map needs_retry, and so does a sector the map could not add (out of
- *	 memory sets it in the map): the maintenance daemon runs the check again. While the flag is set, a sector that
- *	 set_resident () adds has its other pages UNVERIFIED, not NOT_DATA: an allocation into a sector the map lacks
- *	 leaves the rows already there to the daemon's measurement. A file that is no longer this heap's (GONE: the file
- *	 id names no heap file with this header page) is skipped without a retry; under the heap header latch that is
- *	 only a stale heap id, since a destroy of this heap's own file cannot get past the header page, and its map goes
- *	 away with it.
- *
- *	 Known limit: the file counts a sector as empty once none of its pages is allocated, while the map keeps every
- *	 sector it has: after vacuum deallocated all its pages, after an allocation rolled back (RVFL_ALLOC's logical
- *	 undo) or after the file's table pages in it were freed. Each such sector hides one missing sector from the
- *	 count, so nothing is listed while the missing sectors are no more than those, and needs_retry is not set. That
- *	 is the only way a missing sector escapes: every other sector of the map is a sector of the file with an
- *	 allocated page. The pages of a hidden sector come back only as feedback reaches them, and checkdb reports them
- *	 (missing). An allocation into a hidden sector adds it through set_resident () with the other pages NOT_DATA,
- *	 so its pages with rows show as under-reported (under) instead, and the daemon does not visit them.
+ * Note: a sector is missing when the map never persisted it or the load ended early. The sector table is read only
+ *	 when the file header's sector count is larger than the map's. The caller holds the heap header write latch,
+ *	 which keeps out set_resident () and layout changes; add_missing_sector () copes with feedback meanwhile. The
+ *	 file header is latched only conditionally: file_destroy () holds it while it fixes every page. A busy file
+ *	 header, a read error or out of memory sets needs_retry, for the maintenance daemon.
+ *	 Known limit: each sector the file counts as empty but the map keeps hides one missing sector from the count.
  */
 static void
 heap_bsmap_add_missing_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::bestspace_map * map)
@@ -18482,11 +18169,8 @@ heap_bsmap_add_missing_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, cubs
 
 /*
  * heap_bsmap_feed_latched () - put the free space of a page the caller holds latched into the map it is loading
- *   map(in): the map
- *   pgptr(in): the page
  *
- * Note: a sector read from disk is not persist-dirty, as it is what the disk has. feedback () marks the sector dirty
- *	 for every write, so a page whose code is the one read is left alone.
+ * Note: a page whose code is the one read is skipped, since feedback () marks the sector persist-dirty.
  */
 static void
 heap_bsmap_feed_latched (THREAD_ENTRY * thread_p, cubstorage::bestspace_map * map, PAGE_PTR pgptr)
@@ -18518,13 +18202,9 @@ struct heap_bsmap_absorb_arg
 };
 
 /*
- * heap_bsmap_merge_pending_locked () - merge a heap's pending group into its loaded map; run under the stripe lock of
- *					 the group, as a take_group () callback (the loader's absorb, the checkpoint)
- *   absorb(in): the heap's group and bestspace
- *   list(in): the group's entries, detached (may be null)
+ * heap_bsmap_merge_pending_locked () - merge a heap's pending group into its loaded map (a take_group () callback)
  *
- * Note: a lost mark makes every page unverified before the merge: the recorded codes are newer than anything lost for
- *	 the same page (a record into an existing entry never fails), so they stay exact.
+ * Note: a lost mark makes every page unverified first; the recorded codes are newer than anything lost, so they stay.
  */
 // *INDENT-OFF*
 static void
@@ -18535,7 +18215,6 @@ heap_bsmap_merge_pending_locked (HEAP_BSMAP_ABSORB_ARG * absorb, cubstorage::bes
 
   if (cubstorage::bestspace_pending.is_lost (absorb->group, 0))
     {
-      /* some feedback for this heap could not be kept: every page has to be verified again */
       map->mark_all_unverified ();
       cubstorage::bestspace_pending.clear_lost (absorb->group, 0);
     }
@@ -18551,8 +18230,6 @@ heap_bsmap_merge_pending_locked (HEAP_BSMAP_ABSORB_ARG * absorb, cubstorage::bes
 
 /*
  * heap_bsmap_absorb_locked () - take_group () callback of the loader, run under the stripe lock of the heap's group
- *   list(in): the group's entries, detached (may be null)
- *   arg(in): HEAP_BSMAP_ABSORB_ARG
  */
 // *INDENT-OFF*
 static void
@@ -18566,15 +18243,10 @@ heap_bsmap_absorb_locked (cubstorage::bestspace_sector_table::entry * list, void
 // *INDENT-ON*
 
 /*
- * heap_bsmap_absorb_pending () - after the bestspace is published, merge what the heap's feedback left in the pending
- *				   table while its map was not loaded, and let feedback reach the map
- *   hfid(in): the heap
- *   bestspace(in): its bestspace, just published
+ * heap_bsmap_absorb_pending () - merge the pending feedback into the just published map, then let feedback reach it
  *
- * Note: the merge, the lost mark and set_absorbed () are done under the stripe lock of the group, which a writer
- *	 takes to record into the pending table (heap_bsmap_still_unloaded () has the argument). The registry mutex is
- *	 not held here (create () released it). No page latch is taken: the loader can hold the header and, on the new
- *	 home path, the caller's home and forward pages.
+ * Note: done under the group's stripe lock, which a writer takes to record into the pending table (see
+ *	 heap_bsmap_still_unloaded ()). No registry mutex or page latch is taken: the loader may hold pages.
  */
 static void
 heap_bsmap_absorb_pending (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::bestspace * bestspace)
@@ -18592,10 +18264,8 @@ heap_bsmap_absorb_pending (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorag
 
 /*
  * heap_bestspace_drop () - forget what the pending table holds for a heap file: its feedback and its lost mark
- *   vfid(in): the heap file, whose bestspace was just destroyed
  *
- * Note: called right after every bestspaces.destroy (): the file is dropped, or it is about to be reused, and then
- *	 the pages heap_reuse () empties are fed back after this, for the new class's first load.
+ * Note: called right after every bestspaces.destroy (); on a reuse, heap_reuse () feeds the emptied pages back after.
  */
 void
 heap_bestspace_drop (const VFID * vfid)
@@ -18611,24 +18281,14 @@ heap_bestspace_drop (const VFID * vfid)
 }
 
 /*
- * heap_bestspace_quiesce () - keep the bestspace upkeep (the maintenance daemon, the checkpoint's writer) away from a
- *			       heap file that the caller is about to latch whole, file header first
- *   vfid(in): the heap file
- *   retire(in): the file's bestspaces now in the registry refuse the upkeep for good, and its pending feedback is
- *		 forgotten: the file is about to be destroyed, while the bestspaces cannot be freed
+ * heap_bestspace_quiesce () - keep the bestspace upkeep away from a heap file the caller is about to latch whole
+ *   retire(in): the file is about to be destroyed: its bestspaces refuse the upkeep for good, and its pending
+ *		 feedback is forgotten
  *
- * Note: the upkeep holds no lock on the class. With the heap header write latched it waits for pages of the heap, and
- *	 the daemon for the file header (a map page allocated or freed). file_destroy () and file_apply_tde_algorithm ()
- *	 latch the file header, then every page of the file: the two could wait for each other, and page latches have
- *	 no deadlock detection. This returns once the upkeep in progress on the file has ended, and until
- *	 heap_bestspace_end_quiesce () no new one starts (bestspace_registry::quiesce ()). The caller latches no page of
- *	 the heap: the upkeep it waits for may wait for that page. A drop does not need it: its bestspaces.destroy ()
- *	 waits the same way, and the dropped bestspace refuses the upkeep.
- *
- *	 Only the upkeep stops. Feedback (DML, vacuum) goes on into the loaded map, or into the pending table; the
- *	 checkpoint writes neither for the file meanwhile and fails if it has something to write, so its redo point
- *	 stays, and the next checkpoint after the end writes it. The map stays loaded (a TDE apply changes no page's
- *	 free space).
+ * Note: the upkeep holds no class lock and waits for heap pages and the file header under the heap header latch, so
+ *	 it could deadlock with file_destroy () or file_apply_tde_algorithm (), which latch the file header and then
+ *	 every page. Returns once the upkeep in progress has ended; none starts until heap_bestspace_end_quiesce (). The
+ *	 caller must hold no page of the heap. The checkpoint fails meanwhile if it has something to write for the file.
  */
 void
 heap_bestspace_quiesce (const VFID * vfid, bool retire)
@@ -18650,14 +18310,7 @@ heap_bestspace_end_quiesce (const VFID * vfid)
 }
 
 /*
- * heap_bsmap_finalize_tables () - the heap manager goes down: forget every bestspace and the pending table
- *
- * Note: an SA mode process can restart a database (or another one): a map or a pending entry of this run must not be
- *	 found by the next one. The shutdown has written the maps (xboot_shutdown_server ()) and log_final () has
- *	 stopped the checkpoint daemon; vacuum and the workers are stopped, so nothing records feedback or pins a
- *	 bestspace any more. Each bestspace goes through destroy (), like a dropped heap's: a node still pinned would be
- *	 freed by its last unpin, and the generation bump makes every thread's registry cache miss. What feedback is
- *	 still pending was not written by the shutdown (it failed, or came after it): it is lost with the process anyway.
+ * heap_bsmap_finalize_tables () - forget every bestspace and the pending table (SA mode may restart a database)
  */
 static void
 heap_bsmap_finalize_tables (void)
@@ -18683,25 +18336,11 @@ heap_bsmap_finalize_tables (void)
 }
 
 /*
- * Checkpoint and shutdown writes of the bestspace maps (05 6.3 step 5)
- *
- * a. The pending table: every group is applied under the header write latch of its heap, which a load also needs.
- *    A heap loaded since its feedback was recorded gets the group merged into its map (step b writes it); for a heap
- *    that is not loaded the group is detached and written into the heap header or the map pages while the latch is
- *    still held. Writers keep recording into the group meanwhile, for the next checkpoint.
- * b. Every loaded map, pinned in the registry: the persist-dirty sectors that have a place on disk.
- *
- * Both write the way the load reads (heap_build_bestspace (), heap_bsmap_load_pages ()): the inline entries in use
- * from the first, the listed map pages up to the first one that is not full, each checked like the load checks it.
- * An entry is written at its number or right after the ones in use, never past a gap, and a count is never lowered.
- * No map page is created here (05 5.1): what has no place stays persist-dirty or pending, until the allocation path
- * adds the page. The redo of every write is RVHF_BESTSPACE_MAP_ENTRIES, logged after the flush of the checkpoint, so it
- * is inside the range the checkpoint's recovery redoes.
- *
- * The writer holds no lock on the class. From a heap's header latch to its release, while it waits for map pages, it
- * is background work on the file (bestspace_registry::begin_work ()): a thread that latches the whole file under its
- * file header (the drop's file_destroy (), a TDE apply) waits for that to end first, and the writer skips the heap
- * while it does (the drop's bestspaces.destroy (), heap_bestspace_quiesce ()).
+ * Checkpoint and shutdown writes of the bestspace maps: a. the pending table, each group under its heap's header write
+ * latch (merged into the map if the heap is loaded by now, else written to disk); b. the persist-dirty sectors of
+ * every loaded map. Both write only where the load reads and never create a map page: what has no place stays
+ * persist-dirty or pending. The redo records are logged after the checkpoint's flush, inside the range its recovery
+ * redoes. The writer holds no class lock: its work is background work on the file (bestspace_registry::begin_work ()).
  */
 
 // *INDENT-OFF*
@@ -18709,16 +18348,11 @@ typedef cubstorage::bestspace_sector_table::entry HEAP_BSMAP_PENDING;
 // *INDENT-ON*
 
 /*
- * heap_bsmap_fix_header () - write latch the header page of a heap the checkpoint holds no lock on: the heap may have
- *			       been destroyed, and the page given to another file
+ * heap_bsmap_fix_header () - write latch the header page of a heap the caller holds no lock on (it may be gone)
  *   return: NO_ERROR, with watcher->pgptr NULL when the page is not a heap header any more; or an error
- *   hfid(in): the heap
- *   watcher(out): the header, fixed with the header rank of the heap's group
  *
- * Note: the sector of the page is checked first (pgbuf_fix_if_not_deallocated ()): the file destroy unreserves the
- *	 sectors, and a fix of a page in a sector that is not reserved asserts under page validation. Then a plain fix
- *	 and the watcher: an ordered fix asserts that the page is a heap page. The caller holds no page (the checkpoint
- *	 daemon, the shutdown; in SA mode no other thread can hold a latch).
+ * Note: not an ordered fix, which asserts on a page that is not a heap page; and the sector is checked first, as a fix
+ *	 in an unreserved sector asserts. The caller holds no page.
  */
 static int
 heap_bsmap_fix_header (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * watcher)
@@ -18746,19 +18380,12 @@ heap_bsmap_fix_header (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER
 }
 
 /*
- * heap_bsmap_fix_pinned_header () - write latch the header page of a pinned heap and check that it is still the
- *				      header of that heap's file
- *   return: NO_ERROR, with watcher->pgptr NULL when it is not (or that cannot be told now: *busy); or the error of the
- *	     header fix
- *   pin(in): the heap and its bestspace, pinned
- *   watcher(out): the header, write latched, as heap_bsmap_fix_header () fixes it
+ * heap_bsmap_fix_pinned_header () - write latch the header page of a pinned heap if it still heads that heap's file
+ *   return: NO_ERROR, with watcher->pgptr NULL when it is not or cannot be told now (*busy); or an error
  *   busy(out): the file header could not be read without waiting, and the bestspace is not dropped
  *
- * Note: a bestspace can outlive its file when the drop could not notify vacuum (vacuum_rv_notify_dropped_file ()
- *	 leaves it behind, retired: begin_work () refuses it), and the page may be another heap's header by now: the map
- *	 would be written into that heap's inline slots, or a map page added to a file that is not the map's. So the
- *	 file header is read with the heap header latched, without waiting (heap_bsmap_apply_group () has why). Once it
- *	 names this page as its heap header, the file cannot be destroyed or reused while the latch is held.
+ * Note: a bestspace can outlive its file, and the page may be another heap's header by now. Once the file header, read
+ *	 without waiting under the heap header latch, names this page, the file cannot go away while the latch is held.
  */
 static int
 heap_bsmap_fix_pinned_header (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin,
@@ -18772,7 +18399,6 @@ heap_bsmap_fix_pinned_header (THREAD_ENTRY * thread_p, cubstorage::bestspace_reg
   error = heap_bsmap_fix_header (thread_p, &pin->hfid, watcher);
   if (error != NO_ERROR || watcher->pgptr == NULL)
     {
-      /* or a heap destroyed since it was pinned */
       return error;
     }
   if (!cubstorage::bestspaces.is_dropped (*pin))
@@ -18785,24 +18411,18 @@ heap_bsmap_fix_pinned_header (THREAD_ENTRY * thread_p, cubstorage::bestspace_reg
 	  assert (pin->entry->is_absorbed ());
 	  return NO_ERROR;
 	}
-      /* UNKNOWN: a destroy or a mark-delete that has dropped the bestspace meanwhile, or a file header latched by
-       * someone else now. Otherwise the file is gone, or its header page is another: a bestspace left behind */
+      /* UNKNOWN: busy, unless dropped meanwhile. Otherwise a bestspace left behind */
       *busy = state == FILE_HEAP_HEADER_UNKNOWN && !cubstorage::bestspaces.is_dropped (*pin);
     }
-  /* dropped, and maybe reused, since it was pinned */
   pgbuf_ordered_unfix (thread_p, watcher);
   return NO_ERROR;
 }
 
 /*
  * heap_bsmap_write_items () - write map entries into a map page or into the heap header's inline entries, and log them
- *   return: NO_ERROR; ER_FAILED from fault injection, or the error of heap_rv_bsmap_entries_apply () (a page that is
- *	     not what the caller checked): nothing is written then
- *   hfid(in): the heap
+ *   return: NO_ERROR; on an error (fault injection, or a page that is not what the caller checked) nothing is written
  *   pgptr(in): the page, write latched: the heap header, or a map page of the heap (checked by the caller)
  *   items(in): the entries with their indexes (inline slots for the header, entry indexes for a map page), in order
- *   count(in): how many (> 0)
- *   is_header(in): pgptr is the heap header (the record slot logged with the entries)
  */
 static int
 heap_bsmap_write_items (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, const HEAP_BSMAP_LOG_ITEM * items,
@@ -18927,15 +18547,9 @@ heap_bsmap_key_cmp (const void *a, const void *b)
 }
 
 /*
- * heap_bsmap_page_duplicate () - where the load stops in a map page for a key it has read already: the first entry
- *				   whose key is 0, an earlier entry's of the page, or a key of the pages before
- *				   (load_sector () refuses it, and heap_bsmap_load_pages () ends there)
+ * heap_bsmap_page_duplicate () - where the load stops in a map page: an entry whose key is 0 or was read before
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
- *   entries(in): the page's entries
- *   count(in): how many are in use
- *   pairs(in): room for count pairs
  *   seen(in/out): the sorted keys of the pages before (malloc'd); this page's are added when it has no duplicate
- *   num_seen(in/out): how many
  *   dup(out): the index of the first entry the load does not read, or count
  */
 static int
@@ -18965,7 +18579,6 @@ heap_bsmap_page_duplicate (const cubstorage::bestspace_map_entry * entries, int 
     }
   if (*dup < count || count == 0)
     {
-      /* the walk ends at this page */
       return NO_ERROR;
     }
 
@@ -18999,8 +18612,7 @@ heap_bsmap_page_duplicate (const cubstorage::bestspace_map_entry * entries, int 
  * heap_bsmap_pending_restore () - put taken entries back into the pending table, for the next checkpoint
  *   lost(in): the group was marked lost when it was taken: mark it again
  *
- * Note: a page recorded again since the take keeps the newer code (restore_sector ()). An entry with no memory to go
- *	 back to marks the group lost, which the next apply or load turns into a verification of every page.
+ * Note: a page recorded again since the take keeps the newer code; an entry with no memory marks the group lost.
  */
 static void
 heap_bsmap_pending_restore (std::uint64_t group, HEAP_BSMAP_PENDING ** items, std::size_t n, bool lost)
@@ -19020,18 +18632,11 @@ heap_bsmap_pending_restore (std::uint64_t group, HEAP_BSMAP_PENDING ** items, st
 }
 
 /*
- * heap_bsmap_write_unloaded () - write the pending entries of a heap whose map is not loaded into the heap header
- *				   (inline entries) or its map pages
+ * heap_bsmap_write_unloaded () - write the pending entries of an unloaded heap into its header or its map pages
  *   return: error code (the caller puts every entry back)
- *   hfid(in): the heap
  *   hdr_watcher(in): its header, write latched: no load runs, and the layout on disk does not change
  *   items(in): the entries taken from the group (sorted by key here); on success the ones written are set to NULL
- *   n(in): how many
  *   lost(in): the group was marked lost: every page becomes unverified, except what the entries record
- *
- * Note: an entry whose sector is on disk is merged into it. A sector new to the disk goes into the inline slot after
- *	 the used ones, or at the end of the last map page when that page has room; an entry with no place on disk is
- *	 left to the caller, for the pending table (when the map is loaded the allocation path gives it a map page).
  */
 static int
 heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -19074,7 +18679,6 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
       bool touched[cubstorage::bestspace_map::INLINE_SECTORS] = { false };
       int used = heap_bsmap_inline_used (hdr);
 
-      /* the slots the load reads: a new sector goes into the next one */
       for (s = 0; s < used; s++)
 	{
 	  inline_items[s].entry = hdr->bsmap_inline[s];
@@ -19105,7 +18709,6 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
 	  touched[s] = true;
 	  placed[k] = true;
 	}
-      /* compact the touched slots, in slot order */
       for (s = 0, nlog = 0; s < used; s++)
 	{
 	  if (touched[s])
@@ -19155,7 +18758,6 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
 		}
 	      break;
 	    }
-	  /* the header is rank 0 of the heap's group: fixing a page of the heap never releases it */
 	  assert (!hdr_watcher->page_was_unfixed);
 	  phdr = NULL;
 	  if (heap_bsmap_is_own_map_page (thread_p, watcher.pgptr, hfid))
@@ -19174,9 +18776,8 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
 	  count = phdr->count;
 	  next_vpid.volid = phdr->next_volid;
 	  next_vpid.pageid = phdr->next_pageid;
-	  /* only the last page read may be partly used: the load stops after it */
+	  /* the load stops after a page that is not full, and at a key it has read already */
 	  is_last = count < per_page;
-	  /* and at a key it has read already: nothing from there on is read */
 	  error = heap_bsmap_page_duplicate (entries, count, pairs, &seen, &num_seen, &dup);
 	  if (error != NO_ERROR)
 	    {
@@ -19309,22 +18910,12 @@ heap_bsmap_take_loaded_locked (HEAP_BSMAP_PENDING * list, void *arg)
 }
 
 /*
- * heap_bsmap_apply_group () - 05 6.3 step 5a for one group of the pending table
- *   return: error code: the checkpoint fails, and the group is back in the table. A heap that no longer exists is
- *	     skipped (NO_ERROR)
- *   group(in): the group: the key of a heap file
+ * heap_bsmap_apply_group () - checkpoint step a for one group of the pending table
+ *   return: error code: the checkpoint fails, and the group is back in the table
  *
- * Note: the heap is found from its file: the file header names the header page. Between that and the latch on the
- *	 header page the file may be destroyed (the pages are deallocated, then the fix fails) and the page given to
- *	 another file, so the file header is read again with the header latched; a file being destroyed latches its
- *	 file header and waits for the pages, so that read does not wait. A heap is destroyed only after its group was
- *	 dropped (vacuum_rv_notify_dropped_file () runs before the file destroy), and while the header latch is held its
- *	 file cannot be destroyed or reused, so what is taken from the group under the latch is this heap's.
- *
- *	 From the header latch on, the writer holds no lock on the class and waits for map pages: it is background work
- *	 on the file (bestspace_registry::begin_work ()), which the drop's destroy () and the quiesce () before a TDE
- *	 apply wait for. A quiesced file is skipped; like a file header that cannot be checked, a group that has
- *	 something then fails the checkpoint.
+ * Note: the file header is read again under the header latch, without waiting (a destroy latches it, then waits for
+ *	 the pages). Once it names this page the file cannot go away, and a heap's group is dropped before its file is
+ *	 destroyed, so what is taken from the group is this heap's.
  */
 static int
 heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
@@ -19349,8 +18940,7 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
   vfid.fileid = (FILEID) (group & 0xFFFFFFFFULL);
   PGBUF_INIT_WATCHER (&hdr_watcher, PGBUF_ORDERED_HEAP_HDR, PGBUF_ORDERED_NULL_HFID);
 
-  /* emptied since it was listed: nearly always a dropped file's group, whose file header the probe below would wait
-   * for until the whole file is destroyed */
+  /* emptied since it was listed: usually a dropped file, whose file header the probe would wait for */
   if (!cubstorage::bestspace_pending.has_group (group))
     {
       return NO_ERROR;
@@ -19379,7 +18969,6 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
   hfid.hpgid = hdr_vpid.pageid;
   if (!cubstorage::bestspaces.begin_work (&vfid, work))
     {
-      /* quiesced: the whole file is about to be latched */
       if (cubstorage::bestspace_pending.has_group (group))
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_apply_group: file %d|%d is quiesced, its pending group stays",
@@ -19392,15 +18981,12 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
   error = heap_bsmap_fix_header (thread_p, &hfid, &hdr_watcher);
   if (error != NO_ERROR || hdr_watcher.pgptr == NULL)
     {
-      /* or destroyed meanwhile */
       goto end;
     }
   (void) file_probe_heap_header (thread_p, &vfid, PGBUF_CONDITIONAL_LATCH, &state, &check_vpid);
   if (state == FILE_HEAP_HEADER_UNKNOWN)
     {
-      /* the file header is latched by someone that does not hold this heap's header: a destroy, a mark-delete or a
-       * creation. The group is normally empty then; if it is not, it cannot be written now and the checkpoint fails,
-       * so that its redo point (which recovery would measure these pages from) stays */
+      /* a destroy, a mark-delete or a creation holds the file header: a group with anything fails the checkpoint */
       if (cubstorage::bestspace_pending.has_group (group))
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_apply_group: file %d|%d cannot be checked, its pending group stays",
@@ -19417,9 +19003,7 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
 
   if (cubstorage::bestspaces.pin (&hfid, pin))
     {
-      /* loaded since the feedback was recorded: the loader publishes and absorbs under the header latch held here, so
-       * it has absorbed. Merged under the stripe lock (a writer feeds the map, not the group, from the absorb on), and
-       * the merged sectors are persist-dirty: step 5b writes them in this checkpoint. A dropped one is the destroyer's */
+      /* loaded since, so absorbed under this latch: merge under the stripe lock (a dropped one is the destroyer's) */
       if (!cubstorage::bestspaces.is_dropped (pin))
 	{
 	  assert (pin.entry->is_absorbed ());
@@ -19431,8 +19015,7 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
       goto end;
     }
 
-  /* not loaded, and no load starts while the header latch is held. What writers record from here on stays in the
-   * group, for the next checkpoint */
+  /* not loaded, and no load starts under this latch; what writers record from now on is for the next checkpoint */
   take.group = group;
   take.lost = false;
   list = cubstorage::bestspace_pending.take_group (group, heap_bsmap_take_unloaded_locked, &take);
@@ -19475,7 +19058,6 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
     }
   else
     {
-      /* no array: put the list back as it is */
       for (e = list; e != NULL; e = e->next)
 	{
 	  if (!cubstorage::bestspace_pending.restore_sector (group, e->key, e->codes, e->mask))
@@ -19515,8 +19097,7 @@ end:
 }
 
 /*
- * heap_bsmap_apply_pending () - 05 6.3 step 5a: every group of the pending table, one at a time under its heap's header
- *				  latch (the groups are listed, not detached: a group is taken only under the latch)
+ * heap_bsmap_apply_pending () - checkpoint step a: each group of the pending table, taken under its heap's header latch
  *   return: error code (the checkpoint fails)
  */
 static int
@@ -19547,18 +19128,12 @@ heap_bsmap_apply_pending (THREAD_ENTRY * thread_p)
 
 /*
  * heap_bsmap_write_loaded_page () - write the persist-dirty sectors of one map page of a loaded map
- *   return: error code; *stop when the page is not the one the layout says (nothing is written, the caller writes no
- *	     later page either)
- *   hdr_watcher(in): the heap header, write latched
- *   vpid(in): map page of the layout
- *   first(in): its first sector
+ *   return: error code; *stop when the page is not the one the layout says (nothing more is written)
  *   end(in): one past the last sector to look at (at most first + entries per page)
  *   taken(in/out): persist-dirty bits taken, by group: the ones written are cleared
- *   items(in): room for a page of log items
  *
- * Note: an entry at or past the page's count is written with every one before it from the count on, dirty or not, so
- *	 the page's entries stay in use from the first. The snapshots are taken under the page latch: of two writers of
- *	 the page (this one and heap_bsmap_add_page (), which both hold the header latch anyway) the later has the newer.
+ * Note: entries from the page's count on are written along with a dirty one after them, so the entries in use have no
+ *	 gap. The snapshots are taken under the page latch, so the later of two writers writes the newer codes.
  */
 static int
 heap_bsmap_write_loaded_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -19650,7 +19225,6 @@ heap_bsmap_write_loaded_page (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_
  * heap_bsmap_write_loaded_inline () - write the persist-dirty sectors of a loaded map whose layout is inline
  *   return: error code; *stop when an inline entry in use is not the map's sector (nothing is written)
  *   limit(in): the sectors that have a place (at most INLINE_SECTORS)
- *   taken(in/out): see heap_bsmap_write_loaded_page ()
  */
 static int
 heap_bsmap_write_loaded_inline (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher,
@@ -19705,24 +19279,13 @@ heap_bsmap_write_loaded_inline (THREAD_ENTRY * thread_p, const HFID * hfid, PGBU
 }
 
 /*
- * heap_bsmap_write_loaded () - 05 6.3 step 5b for one loaded map: publish what its shard slots know, then write its
- *				 persist-dirty sectors that have a place on disk, under the heap's header write latch
- *   return: error code (the checkpoint fails; the bits not written are set again). A heap dropped since its map was
- *	     pinned is skipped
- *   pin(in): the pinned bestspace
+ * heap_bsmap_write_loaded () - checkpoint step b for one loaded map: publish what its shard slots know, then write
+ *				 its persist-dirty sectors that have a place on disk under the heap's header write latch
+ *   return: error code (the checkpoint fails; the bits not written are set again)
  *
- * Note: no change is lost. Every change of a sector's codes sets its persist-dirty bit after the code (publish ()).
- *	 The bits are taken (exchanged with 0) before the codes are read, and the codes are read under the latch of the
- *	 page they are written into: a change whose bit was taken is in what is written, and a change after the take
- *	 sets the bit again for the next checkpoint. Bits taken and not written are put back (or-ed), which keeps the
- *	 ones set again meanwhile. The header latch keeps the layout fixed (a map page is added under it) and orders
- *	 this against the heap's drop or reuse, which marks the pinned bestspace dropped before the file goes away.
- *
- *	 The writer holds no lock on the class and waits for map pages under the header latch: it is background work on
- *	 the heap (bestspace_registry::begin_work ()), which the drop's destroy () and the quiesce () before a TDE apply
- *	 wait for. A retired bestspace is skipped like a dropped one. One whose file is quiesced (a TDE apply, which
- *	 keeps the map) cannot be written now: like a busy file header, its bits stay and the checkpoint fails, which
- *	 keeps its redo point.
+ * Note: no change is lost: a change sets the persist-dirty bit after the code, and the bits are taken before the
+ *	 codes are read under the page latch, so a later change sets its bit again. The header latch keeps the layout
+ *	 fixed and orders this against a drop or reuse. A quiesced file fails the checkpoint.
  */
 static int
 heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin)
@@ -19744,10 +19307,8 @@ heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
   int error = NO_ERROR;
   bool is_inline, stop = false, busy, quiesced;
 
-  /* the codes the shard slots keep go into the map first, so that the write below carries them: a page keeps the code
-   * it had when it became resident while a slot fills it, and the slots are not restored after a restart (05 4.1).
-   * Before the header latch, which allocation takes after the shard's allocating mark that the publish takes
-   * (bestspace::publish_slot_codes ()). A dropped bestspace is left alone */
+  /* the slots' codes first: the slots are not restored after a restart. Before the header latch, as allocation takes
+   * it after the shard mark the publish takes (bestspace::publish_slot_codes ()) */
   if (!cubstorage::bestspaces.is_dropped (*pin))
     {
       (void) pin->entry->publish_slot_codes ();
@@ -19760,29 +19321,24 @@ heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
     {
       if (quiesced)
 	{
-	  /* the whole file is latched (a TDE apply): the bits stay for the next checkpoint, this one fails */
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_write_loaded: file %d|%d is quiesced, its map stays dirty",
 			VFID_AS_ARGS (&pin->hfid.vfid));
 	  return ER_FAILED;
 	}
-      /* dropped or retired */
       return NO_ERROR;
     }
 
   er_stack_push ();
-  /* still this heap's header, as in step 5a? */
   error = heap_bsmap_fix_pinned_header (thread_p, pin, &hdr_watcher, &busy);
   if (error != NO_ERROR || hdr_watcher.pgptr == NULL)
     {
       if (busy)
 	{
-	  /* the bits cannot be written now and the checkpoint fails, which keeps its redo point */
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_write_loaded: file %d|%d cannot be checked, its map stays dirty",
 			VFID_AS_ARGS (&pin->hfid.vfid));
 	  error = ER_FAILED;
 	}
-      /* otherwise a heap destroyed, or dropped and maybe reused, since it was pinned, or a bestspace left behind:
-       * nothing is written for it */
+      /* otherwise gone, or a bestspace left behind: nothing to write */
       goto end;
     }
   hdr = heap_bsmap_get_header (thread_p, hdr_watcher.pgptr);
@@ -19845,7 +19401,6 @@ heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
     }
 
 end:
-  /* what was taken and not written goes back */
   for (g = 0; g < num_groups; g++)
     {
       if (taken[g] != 0)
@@ -19904,15 +19459,11 @@ heap_bsmap_pending_any (void)
 }
 
 /*
- * heap_bestspace_checkpoint () - write the bestspace maps (05 6.3 step 5): a. the pending table, b. the loaded maps.
- *				   logpb_checkpoint () calls it after the page flush; the shutdown calls it once more,
- *				   because log_final () does not checkpoint a clean shutdown
- *   return: error code: the checkpoint fails, so the previous one stays valid. The checkpoint at the end of restart
- *	     recovery writes nothing and fails while the pending table holds anything (see below)
+ * heap_bestspace_checkpoint () - write the bestspace maps: a. the pending table, b. the loaded maps
+ *   return: error code: the checkpoint fails, so the previous one stays valid
  *
- * Note: no heap is left half written: an error leaves what was not written persist-dirty or pending. The records are
- *	 the system transaction's (a transaction's own thread runs the checkpoint in SA mode), and the page fixes do
- *	 not consume a statement cancel.
+ * Note: logpb_checkpoint () calls it after the page flush; the shutdown calls it too, as log_final () does not
+ *	 checkpoint a clean shutdown. An error leaves what was not written persist-dirty or pending.
  */
 int
 heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
@@ -19930,14 +19481,9 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
     }
   if (!LOG_ISRESTARTED ())
     {
-      /* the checkpoint at the end of restart recovery. heap_bestspace_rv_finish () has just moved what recovery
-       * measured to the pending table, and nothing loads a map before the log is restarted. The groups cannot be
-       * written here: the write would not be logged (log_append_redo_crumbs () skips a record of a transaction that is
-       * not active, and none is before LOG_RESTARTED), yet the page would be flushed. So this checkpoint fails while
-       * anything is pending: the redo point stays where the crash left it, a crash before the next checkpoint redoes
-       * the same range and measures the same pages again, and the first checkpoint after the restart, which the boot
-       * runs before the server is up (log_run_deferred_restart_checkpoint ()), writes the groups with their redo
-       * records (a load before it absorbs its heap's group) */
+      /* the end of restart recovery: a write now would not be logged (no transaction is active before LOG_RESTARTED)
+       * but would be flushed. So this checkpoint fails while anything is pending, which keeps the redo point; the
+       * first checkpoint after the restart (log_run_deferred_restart_checkpoint ()) writes the groups */
       assert (cubstorage::bestspaces.empty ());
       if (heap_bsmap_pending_any ())
 	{
@@ -19988,21 +19534,12 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
 }
 
 /*
- * Upkeep of the loaded bestspace maps (05 7.3)
- *
- * heap_bsmap_free_orphan () frees a map page that the heap's list of map pages does not have; checkdb's repair uses
- * it too. The maintenance daemon (SERVER_MODE) visits every loaded map once a second and, for one that needs it:
- * 1. runs the sector count check again (needs_retry: the check could not run at load, or a sector could not be added);
- * 2. measures UNVERIFIED pages under a conditional read latch and feeds them back;
- * 3. adds map pages when the map has more sectors than they hold (sectors added outside the allocation path);
- * 4. frees the orphan map pages a failure in this run left: from the hint the failure gave (the page, or the first of
- *    the pages a relink left out of the list, linked to the others), or by a walk of the chain without one.
- * Steps 1, 3 and the start of 4 run under the heap header write latch, which allocation, a map page add and the
- * checkpoint's writer hold too (05 2.2 rule 3: header first, then map pages). Steps 2 and 4 read at most
- * HEAP_BSMAP_DAEMON_BUDGET pages a round over all heaps (and HEAP_BSMAP_FOLLOW_SPARE more for hinted orphans), and
- * hold no page while they wait for one. The daemon holds no lock on the class: what it does under the header latch,
- * and each orphan free, is background work on the file (bestspace_registry::begin_work ()), which a thread that
- * latches the whole file waits for first (the drop's bestspaces.destroy (), heap_bestspace_quiesce ()).
+ * Upkeep of the loaded bestspace maps: once a second the maintenance daemon (SERVER_MODE) visits every loaded map and
+ * 1. runs the sector count check again (needs_retry); 2. measures UNVERIFIED pages; 3. adds map pages for sectors
+ * added outside the allocation path; 4. frees orphan map pages, from failure hints or by a walk of the chain.
+ * Steps 1, 3 and the start of 4 hold the heap header write latch; steps 2 and 4 read a bounded number of pages a
+ * round, holding no page while they wait for one. The daemon holds no class lock: its work is background work on the
+ * file (bestspace_registry::begin_work ()), which whole-file latchers wait for.
  */
 
 /*
@@ -20028,17 +19565,10 @@ heap_bsmap_in_layout (cubstorage::bestspace * bestspace, const VPID * vpid)
 /*
  * heap_bsmap_is_listed () - is the page in the heap's list of map pages as its header has it
  *   return: true if it is, or if the list cannot be read to the end (a listed page is unreadable or not right)
- *   hfid(in): the heap
  *   hdr_watcher(in): the heap header, latched (write latched to free the page; checkdb's audit reads)
- *   vpid(in): the page
- *   bestspace(in): the heap's loaded bestspace, or NULL
- *   reads(in/out): the list pages read are added
  *
- * Note: the list is what the next load reads: from bsmap_first_vpid, bsmap_num_pages pages through each page's next
- *	 link. It changes only under the header write latch (heap_bsmap_add_page ()). The layout in memory has these
- *	 pages or the first of them (a load that ended early), so a page that is not listed is not in the layout either;
- *	 and a layout with as many pages as the list, from the same first page, is the list: then no page is read. The
- *	 layout changes only under the header latch too.
+ * Note: the list and the layout change only under the header write latch. The layout is the list or its first pages,
+ *	 so a layout as long as the list, from the same first page, is the list and no page is read.
  */
 static bool
 heap_bsmap_is_listed (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * hdr_watcher, const VPID * vpid,
@@ -20058,7 +19588,6 @@ heap_bsmap_is_listed (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER 
     }
   if ((hdr->bsmap_flags & HEAP_BSMAP_FLAG_PAGES) == 0)
     {
-      /* inline: no map page is listed */
       return false;
     }
   num_pages = hdr->bsmap_num_pages;
@@ -20084,7 +19613,6 @@ heap_bsmap_is_listed (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER 
 	{
 	  return true;
 	}
-      /* the header ranks first in the ordered fixes of the heap's pages: never released by them */
       assert (!hdr_watcher->page_was_unfixed);
       readable = heap_bsmap_is_own_map_page (thread_p, watcher.pgptr, hfid);
       if (readable)
@@ -20104,13 +19632,9 @@ heap_bsmap_is_listed (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER 
 
 /*
  * heap_bsmap_page_in_file () - is the page an allocated page of the heap's file
- *   return: HEAP_BSMAP_IN_FILE, HEAP_BSMAP_NOT_IN_FILE, or HEAP_BSMAP_IN_FILE_BUSY
- *   hfid(in): the heap
- *   vpid(in): the page
- *   reads(in/out): the pages read are added (the file header, and about as many table pages as the sectors need)
  *
- * Note: the file header is latched only conditionally (file_probe_heap_sectors ()), so the caller may hold pages of
- *	 the heap. Only a sector with an allocated page is listed; a file table page is not in its sector's bitmap.
+ * Note: the file header is latched only conditionally, so the caller may hold pages of the heap. A file table page
+ *	 is not in its sector's bitmap.
  */
 static HEAP_BSMAP_IN_FILE_STATE
 heap_bsmap_page_in_file (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, int *reads)
@@ -20154,10 +19678,8 @@ heap_bsmap_page_in_file (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID 
 
 /*
  * heap_bsmap_orphan_kind () - is a latched page a map page of the heap, by its record or as a page that never got one
- *   pgptr(in): the page, latched
  *
- * Note: a page with no record is one whose map page add stopped, or whose server crashed, between the allocation and
- *	 the record (heap_bsmap_add_page ()). Nothing on it names the heap.
+ * Note: a page with no record is one whose add stopped, or whose server crashed, before the record went in.
  */
 static HEAP_BSMAP_ORPHAN_KIND
 heap_bsmap_orphan_kind (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid)
@@ -20174,42 +19696,19 @@ heap_bsmap_orphan_kind (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hf
 }
 
 /*
- * heap_bsmap_free_orphan () - free an orphan map page of a heap (05 5.1): flagged BESTSPACE, in the heap's chain, not
- *			       in its list of map pages
- *   return: NO_ERROR if the page was freed; ER_FAILED (no error set) if not: the page is not an orphan of the heap
- *	     (gone, not its map page, listed), or it cannot be freed now (*busy)
- *   hfid(in): the heap
- *   vpid(in): the page
- *   busy(out): may be NULL; true when it may be freed later: a scanner is about to read it, someone waits for it, a
- *		fix or the file header cannot be had now (also: whether a page with no record is the file's)
+ * heap_bsmap_free_orphan () - free an orphan map page: flagged BESTSPACE, in the heap's chain, not in its map list
+ *   return: NO_ERROR if the page was freed; ER_FAILED (no error set) if it is no orphan of the heap, or *busy
+ *   busy(out): may be NULL; true when it may be freed later (a scanner or a waiter on the page, or a busy latch)
  *
- * Note: as heap_remove_page_on_vacuum () removes an empty page: the header first, write latched, then the previous
- *	 page, the page and the next page; in one system operation the chain links around the page (RVHF_CHAIN), the
- *	 header's last page when it was the last one, or its next page when it was the first (RVHF_STATS), then the
- *	 page is deallocated (a postpone of the operation). The three pages are write latched in VPID order, the order
- *	 pgbuf_ordered_fix () keeps, so none of them is released and fixed again on the way.
- *
- *	 Everything is checked again under the header latch, which every change of the heap's chain and of its list of
- *	 map pages holds (allocation, vacuum's page removal, a map page add): the header is still the file's heap
- *	 header, the page is a map page with this heap's record (magic, owner VFID; heap_bsmap_is_own_map_page ()), the
- *	 header's list does not have it (heap_bsmap_is_listed ()), and its links agree with its neighbors'. A page
- *	 flagged BESTSPACE that never got its record (its add stopped, or the server crashed, between the allocation
- *	 and the record) is taken when it is an allocated page of the heap's file (heap_bsmap_page_in_file ()): under
- *	 the header latch no add is in progress, so it is an orphan too. Like vacuum, it gives up when a scanner is
- *	 about to fix the page (pgbuf_has_prevent_dealloc ()) or someone waits for it.
- *
- *	 A scan reaches the next page while it still holds the current one, or marks the next page so that it is not
- *	 deallocated before the scan fixes it (OLD_PAGE_PREVENT_DEALLOC): the previous page is write latched here before
- *	 its link changes, so a scan that read the old link holds or has marked the page, and the page is not freed.
- *	 Vacuum never removes a map page: it removes a page only after vacuuming its records (MVCC ones, which a map
- *	 page never has), and a map page with its record has two records.
- *
- *	 The caller holds no page latch, and keeps every thread that latches the whole file away meanwhile:
- *	 file_dealloc () waits for the file header with the heap header and the neighbor pages latched, while
- *	 file_destroy () and file_apply_tde_algorithm () latch the file header before they fix every page of the file.
- *	 A lock on the class does it (a drop or a TDE apply keeps every other lock on the class out), or, for the
- *	 maintenance daemon, which holds none, bestspace_registry::begin_work (): the drop's bestspaces.destroy () and
- *	 the quiesce () before the other whole-file latchers (heap_bestspace_quiesce ()) wait for its end_work ().
+ * Note: removes the page as heap_remove_page_on_vacuum () does: the header, then the previous page, the page and the
+ *	 next page, write latched in VPID order; one system operation relinks the chain and the header and
+ *	 deallocates the page.
+ *	 Everything is checked again under the header latch, which every change of the chain and of the map-page list
+ *	 holds. A flagged page without a record is an orphan only if the file still owns it (no add is in progress).
+ *	 Like vacuum, it gives up if a scanner is about to fix the page or someone waits for it; the previous page is
+ *	 latched before its link changes, so a scan that read the old link already holds or has marked the page.
+ *	 The caller holds no page latch and keeps whole-file latchers (drop, TDE apply) away with a class lock or, for
+ *	 the daemon, bestspace_registry::begin_work ().
  */
 int
 heap_bsmap_free_orphan (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, bool * busy)
@@ -20222,7 +19721,6 @@ heap_bsmap_free_orphan (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID *
 /*
  * heap_bsmap_free_orphan_internal () - heap_bsmap_free_orphan (), with the heap's loaded bestspace and the pages read
  *   bestspace(in): the heap's loaded bestspace (its layout tells listed pages without reading the list), or NULL
- *   reads(in/out): the pages read are added
  */
 static int
 heap_bsmap_free_orphan_internal (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid,
@@ -20281,8 +19779,7 @@ heap_bsmap_free_orphan_internal (THREAD_ENTRY * thread_p, const HFID * hfid, con
       goto end;
     }
 
-  /* the page: a map page of this heap, and its links. A plain fix first: the page may have been freed and given to
-   * another file since the caller saw it, and an ordered fix asserts on a page that is not a heap page */
+  /* a plain fix: the page may be another file's by now, and an ordered fix asserts on a non-heap page */
   (*reads)++;
   if (pgbuf_fix_if_not_deallocated (thread_p, vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &pgptr) != NO_ERROR)
     {
@@ -20311,8 +19808,7 @@ heap_bsmap_free_orphan_internal (THREAD_ENTRY * thread_p, const HFID * hfid, con
 	}
     }
 
-  /* write latch the previous page (unless it is the header), the page and the next page (if any), in VPID order; the
-   * chain cannot change meanwhile: its changes hold the header latch */
+  /* in VPID order; the chain cannot change meanwhile, as its changes hold the header latch */
   prev_is_header = VPID_EQ (&prev_vpid, &hdr_vpid);
   n = 0;
   if (!prev_is_header)
@@ -20390,7 +19886,6 @@ heap_bsmap_free_orphan_internal (THREAD_ENTRY * thread_p, const HFID * hfid, con
     }
   if (pgbuf_has_prevent_dealloc (page_watcher.pgptr) || pgbuf_has_any_waiters (page_watcher.pgptr))
     {
-      /* a scanner is about to read it */
       was_busy = true;
       goto end;
     }
@@ -20496,21 +19991,11 @@ end:
 /*
  * heap_bsmap_verify_pages () - step 2: measure a batch of UNVERIFIED pages of a heap and feed them back
  *   return: the pages taken from the map (0: none left that is not resident, or the batch waits for a later round)
- *   pin(in): the heap and its bestspace, pinned
  *   class_oid(in): the heap's class (the root class for the root, database parameter and TDE key heaps)
- *   budget(in): at most this many pages
- *   used(in/out): the pages read are added
  *
- * Note: a page is fixed with a conditional read latch and skipped when the latch is busy (the next round takes it
- *	 again). Feedback under the latch is ordered with every change of the page, which holds it write latched. A page
- *	 that turns out not to be the heap's becomes NOT_DATA: deallocated (or its sector reserved by no file), not a
- *	 heap page, or a page of another class. Without a latch that keeps it so (a deallocated page may be allocated
- *	 meanwhile) only an UNVERIFIED code is replaced (forget_unverified ()).
- *
- *	 The root, database parameter and TDE key heaps all read as the root class, so the class cannot tell their
- *	 pages apart: for these heaps the page's sector must also be one of the heap's file (file_probe_heap_sectors (),
- *	 with the file header latched without waiting). The sectors are read after the batch is taken: a page in the
- *	 batch is in a sector the map had, and the map gets a sector of the file only after the file reserved it.
+ * Note: feedback under the page latch is ordered with every change of the page. Without a latch a page may be
+ *	 allocated meanwhile, so one that is not the heap's goes only through forget_unverified (). The root class heaps
+ *	 also check the page's sector; the map gets a sector only after the file reserved it.
  */
 // *INDENT-OFF*
 static std::size_t
@@ -20539,7 +20024,6 @@ heap_bsmap_verify_pages (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
   count = map->next_unverified (bestspace->m_verify_cursor, pages, max_count);
   if (count == 0 && cursor > 0)
     {
-      /* the end of the map: from the first page again */
       cursor = bestspace->m_verify_cursor = 0;
       count = map->next_unverified (bestspace->m_verify_cursor, pages, max_count);
     }
@@ -20640,13 +20124,8 @@ typedef enum
 
 /*
  * heap_bsmap_daemon_free () - free an orphan map page for the daemon (between begin_work () and end_work ())
- *   return: HEAP_BSMAP_FREED, HEAP_BSMAP_FREE_LATER or HEAP_BSMAP_FREE_NOT_ORPHAN
- *   reads(in/out): the pages read are added
  *
- * Note: a page that could not be freed for now (a scanner about to read it, a busy latch, a heap quiesced) is
- *	 suspected again for the next round, however often: in a heap scanned all the time that can take a few rounds.
- *	 A page that is not an orphan of the heap is left alone; a page still listed (a load ended before it) is hinted
- *	 again by the map page add that leaves it out of the list.
+ * Note: a listed page is left alone: the map page add that unlists it hints it again.
  */
 static HEAP_BSMAP_FREE_RESULT
 heap_bsmap_daemon_free (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin, const VPID * vpid,
@@ -20678,17 +20157,9 @@ heap_bsmap_daemon_free (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry:
 }
 
 /*
- * heap_bsmap_follow_orphans () - step 4: look at the hinted map pages and the map pages they link to, and free the
- *				   orphans
- *   return: the pages read
- *   pin(in): the heap and its bestspace, pinned
- *   budget(in): at most about this many pages
+ * heap_bsmap_follow_orphans () - step 4: free the hinted orphan map pages and the ones they link to
  *
- * Note: a hint is the first page of the orphans one failure left: the page a map page add left out of the list, or the
- *	 first of the listed pages a relink left out (they link to the next ones, the way the list did). A page is
- *	 followed while it is a map page of the heap that the layout does not have; heap_bsmap_free_orphan () checks it
- *	 again under the latches, against the header's list. The links may be stale (a page freed and allocated again),
- *	 so the pages looked at after a take are bounded.
+ * Note: heap_bsmap_free_orphan () checks each page again; the links may be stale, so the pages followed are bounded.
  */
 static int
 heap_bsmap_follow_orphans (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin, int budget)
@@ -20747,17 +20218,10 @@ heap_bsmap_follow_orphans (THREAD_ENTRY * thread_p, cubstorage::bestspace_regist
 }
 
 /*
- * heap_bsmap_walk_orphans () - step 4 without hints: go on along the chain of a heap from where the walk stopped, and
- *				 free the orphan map pages on the way
- *   return: the pages read
- *   pin(in): the heap and its bestspace, pinned
- *   budget(in): at most about this many pages
+ * heap_bsmap_walk_orphans () - step 4 without hints: walk on along the heap's chain and free the orphan map pages
  *
- * Note: only when a suspicion came without a hint, or with more hints than a bestspace keeps (ORPHAN_HINTS): it reads
- *	 the whole chain. No page is held between two pages, nor between two rounds: the next page must still link back
- *	 to the page the walk visited before it. When it does not (vacuum removed one of them, or the heap is gone), the
- *	 walk starts again from the header in a later round. A page is a candidate when it is flagged BESTSPACE and the
- *	 layout does not have it; heap_bsmap_free_orphan () checks again under the latches, against the header's list.
+ * Note: no page is held between two steps: the next page must still link back to the previous one, else the walk
+ *	 starts again in a later round.
  */
 static int
 heap_bsmap_walk_orphans (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin, int budget)
@@ -20813,7 +20277,6 @@ heap_bsmap_walk_orphans (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
 
 /*
  * heap_bsmap_work_left () - the heap has upkeep to do (a look without a latch)
- *   per_page(in): heap_bsmap_entries_per_page ()
  */
 static bool
 heap_bsmap_work_left (cubstorage::bestspace * bestspace, std::size_t per_page)
@@ -20828,26 +20291,13 @@ heap_bsmap_work_left (cubstorage::bestspace * bestspace, std::size_t per_page)
 }
 
 /*
- * heap_bsmap_maintain () - one round of upkeep for one loaded heap (05 7.3)
+ * heap_bsmap_maintain () - one round of upkeep for one loaded heap (steps 1-4 of the upkeep comment above)
  *   return: the pages read
- *   pin(in): the heap and its bestspace, pinned
  *   budget(in): what is left of the round's budget (steps 2 and the walk read pages only while it is positive)
  *   spare(in/out): what is left of the round's allowance for hinted orphans past the budget
  *
- * Note: a heap with nothing to do costs a few atomic loads and the layout mutex. Otherwise its header is write
- *	 latched first (heap_bsmap_fix_pinned_header (): still this heap's), and under it
- *	 1. needs_retry: the flag is cleared and the sector count check runs again (heap_bsmap_add_missing_sectors ()).
- *	    set_resident () fills a new sector by the flag (bestspace_map.cpp), and an allocation holds this latch too:
- *	    no sector is added between the clear and the check. The check sets the flag again if it cannot run;
- *	 3. more sectors than the map pages hold: map pages are added the way the allocation path adds them
- *	    (heap_bsmap_ensure_capacity ()), in system operations of the daemon's system worker;
- *	 4. suspected orphans: their hints are taken. A hint may name a page that is still listed (a load ended before
- *	    it, and no map page was added since): heap_bsmap_free_orphan () leaves it, and the add that leaves it out of
- *	    the list hints it again.
- *	 All of it between begin_work () and end_work (): the work holds no lock on the class (bestspace.hpp has why).
- *	 The latch is released before steps 2 and 4 read pages: the hinted orphans first (a few map pages, freed before
- *	 a shutdown loses the hints; when other heaps used the budget up, HEAP_BSMAP_FOLLOW_PAGES a round from the
- *	 round's spare), then the UNVERIFIED pages, then a walk of the chain if one is due.
+ * Note: step 1 clears needs_retry before the check; an allocation holds the header latch too, so no sector is added
+ *	 in between. Hinted orphans are read first, as a shutdown loses the hints.
  */
 static int
 heap_bsmap_maintain (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin, int budget, int *spare)
@@ -20881,11 +20331,8 @@ heap_bsmap_maintain (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pi
       /* map pages and orphans need system operations, which the system transaction itself may not run */
       thread_p->claim_system_worker ();
     }
-  /* steps 1, 3 and the start of 4 hold the header and may wait for the file header: a drop, or a quiesce before a
-   * TDE apply, waits for them to end before the file is latched whole (begin_work ()) */
   if (!cubstorage::bestspaces.begin_work (*pin, work))
     {
-      /* dropped since it was pinned, retired, or quiesced */
       return 0;
     }
   check_interrupt = logtb_set_check_interrupt (thread_p, false);
@@ -20938,7 +20385,6 @@ heap_bsmap_maintain (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pi
       hdr = heap_bsmap_get_header (thread_p, hdr_watcher.pgptr);
       if (walk && hdr == NULL)
 	{
-	  /* not readable now: later */
 	  VPID_SET_NULL (&null_vpid);
 	  bestspace->set_orphan_suspect (null_vpid);
 	}
@@ -20953,8 +20399,7 @@ heap_bsmap_maintain (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pi
   pgbuf_ordered_unfix (thread_p, &hdr_watcher);
   cubstorage::bestspaces.end_work (work);
 
-  /* 4. the hinted orphans first: a few map pages, freed before a shutdown loses the hints. When other heaps' UNVERIFIED
-   * pages used the budget up, the round's spare still lets each heap read a few */
+  /* 4. the hinted orphans first; the round's spare lets a heap read a few past the budget */
   if (bestspace->m_orphan_num_follow > 0)
     {
       allowance = MAX (budget - used, MIN (HEAP_BSMAP_FOLLOW_PAGES, *spare));
@@ -20965,8 +20410,7 @@ heap_bsmap_maintain (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pi
 	}
       used += n;
     }
-  /* 2. UNVERIFIED pages, batch after batch while the budget lasts: every batch reads a page per page it takes, so this
-   * ends; a page the batch skips (busy) is taken again once the cursor comes round */
+  /* 2. UNVERIFIED pages while the budget lasts; each batch reads a page per page it takes, so this ends */
   while (map->num_unverified () > 0 && budget - used > 0)
     {
       if (heap_bsmap_verify_pages (thread_p, pin, &class_oid, budget - used, &used) == 0)
@@ -21003,8 +20447,8 @@ class heap_bestspace_daemon_context_manager : public cubthread::daemon_entry_man
 };
 static heap_bestspace_daemon_context_manager *heap_Bestspace_daemon_context_manager = NULL;
 
-/* one round: every loaded map, pinned (05 2.2 rule 4: no registry mutex while pages are read). A round is skipped
- * while no map has had new work (bestspace_map::work_epoch ()) since a pass that left none */
+/* one round: every loaded map, pinned (no registry mutex while pages are read). A round is skipped while no map has
+ * had new work (bestspace_map::work_epoch ()) since a pass that left none */
 class heap_bestspace_daemon_task : public cubthread::entry_task
 {
   public:
@@ -21043,8 +20487,7 @@ class heap_bestspace_daemon_task : public cubthread::entry_task
 	    {
 	      i = (m_round + k) % num_pins;
 	      budget -= heap_bsmap_maintain (&thread_ref, &pins[i], budget, &spare);
-	      /* a heap the daemon may not work on (dropped, retired, quiesced) does not keep it looking: the end of a
-	       * quiesce moves the epoch */
+	      /* a heap the daemon may not work on does not keep it looking: the end of a quiesce moves the epoch */
 	      left = left || (heap_bsmap_work_left (pins[i].entry, per_page)
 			      && cubstorage::bestspaces.may_work (pins[i]));
 	    }
@@ -21070,10 +20513,7 @@ REGISTER_DAEMON (heap_bestspace_daemon);
 /*
  * heap_bestspace_daemon_init () - start the bestspace maintenance daemon (SERVER_MODE; nothing in SA_MODE)
  *
- * Note: boot_restart_server () calls it after vacuum_boot (), when restart recovery is done; a round does nothing
- *	 until the server is up. In SA_MODE nothing needs it: UNVERIFIED pages, unpersisted sectors and needs_retry are
- *	 written as they are, or found again by the next load, and the server's daemon handles them; an orphan made in
- *	 SA_MODE is left to checkdb's repair.
+ * Note: called after restart recovery. In SA_MODE the leftovers wait for the server's daemon, orphans for checkdb.
  */
 void
 heap_bestspace_daemon_init (void)
@@ -21091,8 +20531,7 @@ heap_bestspace_daemon_init (void)
 								    heap_Bestspace_daemon_context_manager);
   if (heap_Bestspace_daemon == NULL)
     {
-      /* no thread entry left (REGISTER_DAEMON reserved one): the maps work without the daemon, unverified pages stay
-       * unverified until the next run */
+      /* no thread entry left: the maps work without the daemon */
       assert (false);
       delete task;
       delete heap_Bestspace_daemon_context_manager;
@@ -21104,9 +20543,8 @@ heap_bestspace_daemon_init (void)
 /*
  * heap_bestspace_daemon_destroy () - stop the bestspace maintenance daemon (SERVER_MODE; nothing in SA_MODE)
  *
- * Note: the shutdown calls it before it writes the maps (heap_bestspace_checkpoint ()) and before log_final (), which
- *	 destroys the system transactions: the daemon's system worker is retired with it. The daemon stops between two
- *	 rounds, so no system operation of it is left open.
+ * Note: called before the shutdown writes the maps and before log_final () retires its system worker. It stops
+ *	 between rounds, so none of its system operations is left open.
  */
 void
 heap_bestspace_daemon_destroy (void)
@@ -23716,19 +23154,16 @@ cleanup:
   return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
 }
 
-/* the bestspace map columns at the end of 'show (all) heap capacity' (show_meta.c): Bestspace_map_pages,
- * Bestspace_map_bytes, Bestspace_pages_by_code and Bestspace_counters */
+/* the bestspace map columns, the last ones of 'show (all) heap capacity' (show_meta.c) */
 #define HEAP_CAPACITY_BSMAP_COLUMNS 4
-/* the varchar widths of Bestspace_pages_by_code and Bestspace_counters in metadata_of_heap_capacity () (show_meta.c):
- * change both places together */
+/* the varchar widths of Bestspace_pages_by_code and Bestspace_counters in show_meta.c: change both together */
 #define HEAP_CAPACITY_BSMAP_CODES_WIDTH 256
 #define HEAP_CAPACITY_BSMAP_COUNTERS_WIDTH 512
 /* the digits of the largest count (UINT64_MAX) */
 #define HEAP_CAPACITY_BSMAP_COUNT_DIGITS 20
 
 // *INDENT-OFF*
-/* the longest Bestspace_counters: "name:n" for every counter, n with HEAP_CAPACITY_BSMAP_COUNT_DIGITS, one space
- * between */
+/* the longest Bestspace_counters: "name:n" for every counter, one space between */
 static constexpr std::size_t
 heap_capacity_bsmap_counters_max_length ()
 {
@@ -23757,15 +23192,10 @@ static_assert ((cubstorage::bestspace_map::CODE_MAX_TIER + 3) * (2 + HEAP_CAPACI
 /*
  * heap_capacity_bsmap_columns () - the bestspace map columns of 'show (all) heap capacity'
  *   return: NO_ERROR, or ER_code
- *   thread_p(in):
- *   hfid(in): the heap
  *   out_values(out): Bestspace_map_pages, Bestspace_map_bytes, Bestspace_pages_by_code and Bestspace_counters
  *
- * Note: SHOW never loads a map: the registry is only looked up (bestspaces.pin ()), and a map that is not in memory
- *	 gives NULL in the last three columns. Bestspace_map_pages comes from the header, which is unfixed before the
- *	 map is looked up: no page latch is held with a map lock. The map is read with atomic loads only (get_usage (),
- *	 count_codes ()) while inserts, the maintenance daemon and the checkpoint change it, so the numbers are a
- *	 moment's view and not one snapshot. The pin keeps the map from being freed while it is read.
+ * Note: SHOW never loads a map (NULL in the last three columns when it is not in memory) and holds no page latch with
+ *	 a map lock. The map is read with atomic loads, so the numbers are not one snapshot.
  */
 static int
 heap_capacity_bsmap_columns (THREAD_ENTRY * thread_p, const HFID * hfid, DB_VALUE ** out_values)
@@ -23810,7 +23240,6 @@ heap_capacity_bsmap_columns (THREAD_ENTRY * thread_p, const HFID * hfid, DB_VALU
 
   if (!cubstorage::bestspaces.pin (hfid, pin))
     {
-      /* not loaded */
       db_make_null (out_values[1]);
       db_make_null (out_values[2]);
       db_make_null (out_values[3]);
@@ -23994,9 +23423,8 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   db_make_int (out_values[idx], repr->fixed_length);
   idx++;
 
-  /* The bestspace map columns are the last ones, and they are missing when the request comes from a client
-   * which does not know them yet; such a client gets the columns it asked for.  The column count comes from
-   * the XASL the client built, so it is checked and not only asserted. */
+  /* a client that does not know the bestspace map columns (the last ones) does not ask for them; the count comes
+   * from the client's XASL, so it is checked, not only asserted */
   if (out_cnt >= idx + HEAP_CAPACITY_BSMAP_COLUMNS)
     {
       error = heap_capacity_bsmap_columns (thread_p, hfid_p, &out_values[idx]);
@@ -28326,10 +27754,8 @@ exit:
  *   recdes_p(in): record descriptor of updated record
  *   returns: error code or NO_ERROR
  *
- * Note: a rewrite that frees space (a smaller record, or a home record replaced by a forwarding record) is fed back
- *	 to the bestspace map while the page is latched, as a deletion is. Nothing else reports it: vacuum feeds only
- *	 the home pages it visits, and a non-MVCC update is never vacuumed. A rewrite that takes space is not fed: the
- *	 map then over-reports, which a claim's check corrects.
+ * Note: a rewrite that frees space is fed to the bestspace map under the page latch, as a deletion is: vacuum never
+ *	 reports a non-MVCC update. A rewrite that takes space is not fed; a claim's check corrects the over-report.
  */
 static int
 heap_update_physical (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR page_p, short slot_id, RECDES * recdes_p)
@@ -31695,12 +31121,9 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
 
       for (i = 0; i < npages; i++)
 	{
-	  /* a page the map has resident was handed out before it left the heap, and something still holds it: a claim
-	   * that installed the page in a slot after its removal (heap_bsmap_drop_removed_page () dropped the slots that
-	   * held it then). That holder keeps the free space of the page's life before: drop it, or two slots hold the
-	   * page. No claim takes the page in between: the removals left it NOT_DATA, or it is resident, until
-	   * set_resident (). A claim that installs the page only after this drop still leaves two holders: that takes
-	   * a stall within one allocate () call of the claimer, and costs space only */
+	  /* a resident page is still held by a claim that installed it after its removal (see
+	   * heap_bsmap_drop_removed_page ()) and keeps its old free space: drop it, or two slots hold the page. A claim
+	   * that installs it only after this drop costs space only */
 	  if (map->peek (new_page_vpids[i].volid, new_page_vpids[i].pageid, old_code, resident) && resident)
 	    {
 	      bestspace->drop_from_slots (new_page_vpids[i]);
@@ -31725,8 +31148,7 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
     }
   if (error_code != NO_ERROR)
     {
-      /* the pages stay in the heap but never reach the caller's shard: hand them back to the map, or they would stay
-       * resident there and never be claimed */
+      /* the pages never reach the caller's shard: hand them back, or they stay resident and are never claimed */
       if (map != NULL)
 	{
 	  for (i = 0; i < npages; i++)

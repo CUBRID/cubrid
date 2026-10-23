@@ -150,9 +150,8 @@ namespace
     std::uint8_t codes[64] = {};
   };
 
-  // the states of each page in log order (one list per page). Sector s belongs to class 0xA, then to 0xB when
-  // s % 3 > 0, then to 0xC when s % 3 == 2: each later owner gets the sector after the earlier owner's file is
-  // destroyed, so all of its LSAs are larger. A redo skip records the disk state of a page again with the same LSA
+  // each page's states in log order. Sector s belongs to 0xA, then to 0xB if s % 3 > 0, then to 0xC if s % 3 == 2;
+  // a later owner comes after the earlier file was destroyed (larger LSAs). A redo skip repeats a state and its LSA
   void
   rv_make_states (std::mt19937_64 &rng, std::size_t sectors, std::vector<std::vector<rv_state>> &pages,
 		  std::map<std::uint64_t, rv_expect> &expect)
@@ -325,10 +324,10 @@ TEST_CASE ("recovery: a late state of an earlier owner never takes the sector ba
 
   // a worker records a page of the new owner first
   REQUIRE (table.record (0, key, 5, 9, 0xB, 300));
-  // pages of the old owner that other workers redo later: dropped
+  // pages of the old owner that other workers redo later
   REQUIRE (table.record (0, key, 1, 4, 0xA, 120));
   REQUIRE (table.record (0, key, 5, 2, 0xA, 250));
-  // another page of the new owner with a smaller LSA, then its redo skip (same disk state, same LSA): kept
+  // another page of the new owner with a smaller LSA, then its redo skip (same state, same LSA)
   REQUIRE (table.record (0, key, 7, 3, 0xB, 280));
   REQUIRE (table.record (0, key, 7, 3, 0xB, 280));
 
@@ -438,15 +437,14 @@ TEST_CASE ("take_group runs the locked callback with the detached list", "[bests
   REQUIRE (length (list) == 2);
   bestspace_sector_table::free_list (list);
 
-  // an empty group still runs it (the loader marks its map absorbed there)
   list = table.take_group (7, locked, &state);
   REQUIRE (list == nullptr);
   REQUIRE (state.calls == 2);
   REQUIRE (state.entries == 2);
 }
 
-// the pending table protocol: writers record while the check holds; the loader detaches the group and flips the check
-// in the locked callback. No record may be left in the table after that, and none may be both taken and rejected
+// the pending table protocol: writers record while the check holds; the loader takes the group and flips the check
+// in the locked callback
 TEST_CASE ("a record_if that succeeds is always in the group the locked take detached", "[bestspace_sector_table]")
 {
   const std::uint64_t group = 0x1000000AULL;
@@ -542,8 +540,7 @@ TEST_CASE ("record_sector merges the masked pages of a sector", "[bestspace_sect
   bestspace_sector_table::free_list (list);
 }
 
-// the checkpoint takes a group, cannot write some of it and puts it back: a page a writer recorded again meanwhile keeps
-// the writer's (newer) code, the other pages get the taken codes back
+// the checkpoint takes a group, cannot write some of it and puts it back
 TEST_CASE ("restore_sector keeps pages recorded after the take", "[bestspace_sector_table]")
 {
   bestspace_sector_table table;
@@ -704,7 +701,6 @@ TEST_CASE ("clear empties the entries and every lost mark, and the table records
   REQUIRE (list == nullptr);
   REQUIRE (table.restore_sector (7, bestspace_map::make_key (1, 0), codes, 0x1));
 
-  // as constructed: records, takes and lost marks work again
   REQUIRE (table.record (0, bestspace_map::make_key (0, 64), 3, 4, 0xC, 200));
   table.mark_lost (0, 0xC);
   REQUIRE (table.size () == 2);
@@ -781,7 +777,7 @@ TEST_CASE ("recovery: a state that cannot be recorded leaves its class lost", "[
   bestspace_map::debug_fail_allocations (1);
   // a sector already in the table needs no allocation
   REQUIRE (table.record (0, first, 1, 4, 0xA, 110));
-  // a new sector does: heap_bestspace_rv_record () marks the class lost, once however often it fails
+  // a new sector does; the caller (heap_bestspace_rv_record ()) marks the class lost, here twice
   REQUIRE_FALSE (table.record (0, second, 0, 5, 0xB, 120));
   table.mark_lost (0, 0xB);
   table.mark_lost (0, 0xB);

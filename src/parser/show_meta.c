@@ -357,9 +357,8 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
     {"Num_shared_attrs", "int"},
     {"Num_class_attrs", "int"},
     {"Total_size_fixed_width_attrs", "int"},
-    /* the bestspace map. The two varchar widths are HEAP_CAPACITY_BSMAP_CODES_WIDTH and
-     * HEAP_CAPACITY_BSMAP_COUNTERS_WIDTH in heap_file.c, which checks them against the longest values: change both
-     * places together. heap_capacity_next_scan () fills these columns only for a client that asks for them */
+    /* the bestspace map, filled only for a client that asks for it. The varchar widths must match
+     * HEAP_CAPACITY_BSMAP_CODES_WIDTH and HEAP_CAPACITY_BSMAP_COUNTERS_WIDTH in heap_file.c */
     {"Bestspace_map_pages", "int"},
     {"Bestspace_map_bytes", "bigint"},
     {"Bestspace_pages_by_code", "varchar(256)"},

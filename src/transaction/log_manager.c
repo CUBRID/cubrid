@@ -1093,16 +1093,11 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
 }
 
 /*
- * log_run_deferred_restart_checkpoint () - run the checkpoint that restart recovery could not complete, before the
- *					     boot ends (boot_restart_server ())
+ * log_run_deferred_restart_checkpoint () - run the checkpoint that restart recovery could not complete
  *
- * Note: the checkpoint at the end of restart recovery fails while the bestspace feedback recovery measured waits to be
- *	 written, because nothing is logged before the log is restarted (heap_bestspace_checkpoint ()), and the redo
- *	 point stays where the crash left it. The boot calls this once the log is restarted and vacuum is booted, before
- *	 the server registers with the master (in SA mode, before the boot returns): the checkpoint writes the maps with
- *	 logging and moves the redo point, as the recovery-end checkpoint does when nothing is pending, so a crash right
- *	 after the restart does not redo the same range again. A failure leaves the next checkpoint due at once, as any
- *	 failed checkpoint does: the checkpoint daemon runs it when the server is up (in SA mode, the next commit).
+ * Note: that checkpoint fails while recovery's bestspace feedback is pending, because nothing is logged before the log
+ *	 restart. The boot runs it before the server registers with the master, so the redo point moves before a crash
+ *	 could redo the same range again. A failure leaves the next checkpoint due at once.
  */
 void
 log_run_deferred_restart_checkpoint (THREAD_ENTRY * thread_p)
@@ -1482,9 +1477,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       BO_ENABLE_FLUSH_DAEMONS ();
 #endif /* SERVER_MODE */
 
-      /* the checkpoint at the end of recovery fails, for one, while the bestspace feedback recovery measured waits to
-       * be written (heap_bestspace_checkpoint ()): the redo point stays where the crash left it until the boot runs
-       * the checkpoint again (log_run_deferred_restart_checkpoint ()) */
       log_Restart_chkpt_deferred = !log_recovery (thread_p, ismedia_crash, stopat);
     }
   else

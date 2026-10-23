@@ -699,8 +699,7 @@ struct heap_bsmap_audit
   int unverified;		/* the map holds UNVERIFIED for the page */
   int repaired;			/* fed back with repair */
   int orphans;			/* orphan map pages in the chain: flagged BESTSPACE, not in the header's list */
-  int refused;			/* the same, but heap_bsmap_free_orphan () would not take them: damaged, not counted
-				 * in orphans */
+  int refused;			/* damaged orphans heap_bsmap_free_orphan () would not take; not in orphans */
   int freed;			/* orphan map pages freed with repair */
 };
 extern int heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BSMAP_AUDIT * audit);

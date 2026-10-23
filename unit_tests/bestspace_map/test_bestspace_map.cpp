@@ -115,9 +115,7 @@ TEST_CASE ("feedback then claim hands out pages at or above the tier", "[bestspa
   std::set<std::int32_t> got = { out[0].pageid, out[1].pageid };
   REQUIRE (got == std::set<std::int32_t> { page_of (0, 9), page_of (1, 0) });
 
-  // claimed pages are resident and not handed out again
   REQUIRE (map.claim (5, out, 4) == 0);
-  // the tier-2 page is still there for a small request
   REQUIRE (map.claim (1, out, 4) == 1);
   REQUIRE (out[0].pageid == page_of (0, 3));
 }
@@ -130,15 +128,12 @@ TEST_CASE ("release keeps a code fed back while resident, measured or not", "[be
   REQUIRE (map.feedback (0, 10, 7));
   REQUIRE (map.claim (1, out, 1) == 1);
 
-  // vacuum frees space while the page sits in a shard
   REQUIRE (map.feedback (0, 10, 8));
-  // the shard evicts it with its older, smaller value: the fed-back code wins
   map.release (0, 10, 3, false);
   REQUIRE (code_of (map, 0, 10) == 8);
 
   REQUIRE (map.claim (1, out, 1) == 1);
   REQUIRE (map.feedback (0, 10, 8));
-  // a value measured before the feedback must not hide the space it reported: the fed-back code wins again
   map.release (0, 10, 2, true);
   REQUIRE (code_of (map, 0, 10) == 8);
 }
@@ -152,7 +147,7 @@ TEST_CASE ("release writes the caller's code when nothing was fed back while res
   std::uint8_t code;
   bool resident;
 
-  // three sectors: claims go through the hint tree, so a released page must get its hint bits back
+  // three sectors: claims go through the hint tree
   REQUIRE (map.feedback (0, page_of (1, 0), bestspace_map::CODE_NONE));
   REQUIRE (map.feedback (0, page_of (2, 0), bestspace_map::CODE_NONE));
   REQUIRE (map.feedback (0, page, bestspace_map::CODE_NONE));
@@ -160,7 +155,7 @@ TEST_CASE ("release writes the caller's code when nothing was fed back while res
 
   for (bool measured : measured_values)
     {
-      // a feedback before the claim does not count: the claim takes the page clean
+      // a feedback before the claim does not count
       REQUIRE (map.feedback (0, page, 6));
       REQUIRE (map.claim (1, out, 4) == 1);
       REQUIRE (out[0].pageid == page);
@@ -168,12 +163,10 @@ TEST_CASE ("release writes the caller's code when nothing was fed back while res
       REQUIRE (map.peek (0, page, code, resident));
       REQUIRE (code == 3);
       REQUIRE_FALSE (resident);
-      // and it can be claimed again at its new tier only
       REQUIRE (map.claim (4, out, 4) == 0);
       REQUIRE (map.claim (3, out, 4) == 1);
       REQUIRE (out[0].pageid == page);
 
-      // a feedback while resident wins, and the release consumes it: the next stay starts clean again
       REQUIRE (map.feedback (0, page, 7));
       map.release (0, page, 2, measured);
       REQUIRE (code_of (map, 0, page) == 7);
@@ -182,7 +175,6 @@ TEST_CASE ("release writes the caller's code when nothing was fed back while res
       REQUIRE (code_of (map, 0, page) == 2);
     }
 
-  // set_resident also starts a clean stay
   REQUIRE (map.feedback (0, page_of (0, 9), 8));
   REQUIRE (map.set_resident (0, page_of (0, 9), 8));
   map.release (0, page_of (0, 9), 1, false);
@@ -198,7 +190,7 @@ TEST_CASE ("release_latched writes its code over a code fed back while resident"
   std::uint8_t code;
   bool resident;
 
-  // three sectors: claims go through the hint tree, so a released page must get its hint bits back
+  // three sectors: claims go through the hint tree
   REQUIRE (map.feedback (0, page_of (1, 0), bestspace_map::CODE_NONE));
   REQUIRE (map.feedback (0, page_of (2, 0), bestspace_map::CODE_NONE));
   REQUIRE (map.feedback (0, page, 6));
@@ -210,21 +202,17 @@ TEST_CASE ("release_latched writes its code over a code fed back while resident"
   slots[0] = { 0, page, 1 };
   REQUIRE (map.resident_dirty_above (slots, 1) == 1);
 
-  // measured under the latch: the measurement wins, and the page is neither resident nor dirty any more
   map.release_latched (0, page, 1);
   REQUIRE (map.peek (0, page, code, resident));
   REQUIRE (code == 1);
   REQUIRE_FALSE (resident);
   REQUIRE (map.resident_dirty_above (slots, 1) == 0);
-  // claimable at its measured tier only
   REQUIRE (map.claim (2, out, 4) == 0);
   REQUIRE (map.claim (1, out, 4) == 1);
   REQUIRE (out[0].pageid == page);
-  // the stay that claim starts is clean: a release with nothing fed back writes its own code
   map.release (0, page, 3, false);
   REQUIRE (code_of (map, 0, page) == 3);
 
-  // without a feedback it is a plain write; a page that is not data any more is never handed out again
   REQUIRE (map.claim (3, out, 4) == 1);
   map.release_latched (0, page, 7);
   REQUIRE (code_of (map, 0, page) == 7);
@@ -276,8 +264,7 @@ TEST_CASE ("a feedback that races with the release of the page never loses space
   REQUIRE (map.feedback (0, page, bestspace_map::CODE_NONE));
   REQUIRE_FALSE (map.is_inline ());
 
-  // Catch2 assertions are not thread-safe, and one that fails would leave the feeder running: while it runs, the
-  // test thread only counts, and checks after the join
+  // Catch2 assertions are not thread-safe: while the feeder runs, the test thread only counts
   std::thread feeder ([&map, &go, &done, &fed_back, page, total] ()
   {
     for (int i = 0; i < total; i++)
@@ -296,7 +283,6 @@ TEST_CASE ("a feedback that races with the release of the page never loses space
 	  std::uint8_t code = 0;
 	  bool resident = false;
 
-	  // the page waits in the map with the claim-time code, and a shard claims it
 	  if (!map.feedback (0, page, sc.claimed) || map.claim (1, out, 1) != 1 || out[0].pageid != page)
 	    {
 	      unclaimable++;
@@ -341,8 +327,7 @@ TEST_CASE ("a feedback that races with a claim is kept when the page is released
   REQUIRE (map.feedback (0, page, bestspace_map::CODE_NONE));
   REQUIRE_FALSE (map.is_inline ());
 
-  // Catch2 assertions are not thread-safe: the threads only claim and feed back, the test thread checks after the
-  // joins
+  // Catch2 assertions are not thread-safe: the test thread checks after the joins
   std::thread claimer ([&map, &go, &claim_done, &handed_out, page, rounds] ()
   {
     for (int i = 0; i < rounds; i++)
@@ -442,11 +427,9 @@ TEST_CASE ("unverified pages are never claimed and are listed for verification",
   REQUIRE (n == 63);
   REQUIRE (cursor == 64);
 
-  // verifying a page removes it from the count
   REQUIRE (map.feedback (0, page_of (0, 7), 4));
   REQUIRE (map.num_unverified () == 62);
 
-  // a sector first seen by the allocation path is a new sector: no unverified page
   REQUIRE (map.set_resident (0, page_of (1, 0), 8));
   REQUIRE (map.num_unverified () == 62);
   REQUIRE (code_of (map, 0, page_of (1, 1)) == bestspace_map::CODE_NOT_DATA);
@@ -472,7 +455,6 @@ TEST_CASE ("a third sector promotes the inline map and keeps every code", "[best
 	  REQUIRE (code_of (map, 0, page_of (s, off)) == 1 + (s + off) % 8);
 	}
     }
-  // pages of the inline sectors are reachable through the tree after the promotion
   page_set pages = drain (map, 1);
   REQUIRE (pages.size () == 3 * 8);
 }
@@ -531,7 +513,6 @@ TEST_CASE ("a claim stops after CLAIM_VISIT_LIMIT stale sectors and the next cla
     }
   REQUIRE (n == 1);
   REQUIRE (out[0].pageid == page_of (stale, 0));
-  // each claim visits at most CLAIM_VISIT_LIMIT empty sectors
   REQUIRE (claims >= static_cast<int> (stale / bestspace_map::CLAIM_VISIT_LIMIT));
   REQUIRE (claims <= static_cast<int> (stale / bestspace_map::CLAIM_VISIT_LIMIT) + 2);
 }
@@ -698,7 +679,6 @@ TEST_CASE ("snapshot and load round trip without dirtying the loaded map", "[bes
 	  REQUIRE (ea.codes[w] == eb.codes[w]);
 	}
     }
-  // loaded hint bits work: the same claimable pages
   REQUIRE (drain (a, 1) == drain (b, 1));
 }
 
@@ -754,7 +734,7 @@ TEST_CASE ("add_missing_sector marks allocated pages unverified and leaves known
   REQUIRE (code_of (map, 0, page_of (1, 2)) == bestspace_map::CODE_NOT_DATA);
   REQUIRE ((map.take_persist_dirty (0) & 0x2) != 0);
 
-  // a sector of file table pages only: no allocated data page, it is counted and every page is NOT_DATA
+  // a sector of file table pages only: no allocated data page
   std::uint64_t unverified = map.num_unverified ();
   REQUIRE (map.add_missing_sector (0, page_of (2, 0), 0));
   REQUIRE (map.num_sectors () == 3);
@@ -819,7 +799,6 @@ TEST_CASE ("reserve lets set_resident add the next sectors without allocating", 
 {
   bestspace_map map;
 
-  // an inline map reserves nothing
   std::size_t inline_bytes = bytes_of (map);
   map.reserve ();
   REQUIRE (map.set_resident (0, page_of (0, 1), 8));
@@ -829,7 +808,6 @@ TEST_CASE ("reserve lets set_resident add the next sectors without allocating", 
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) == 0);
   REQUIRE (bytes_of (map) == inline_bytes);
 
-  // nor for the promotion: the third sector allocates the tree itself, once
   map.reserve ();
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) == 0);
   REQUIRE (bytes_of (map) == inline_bytes);
@@ -838,20 +816,18 @@ TEST_CASE ("reserve lets set_resident add the next sectors without allocating", 
   std::uint64_t promotion = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
   REQUIRE (promotion > 0);
 
-  // every following sector, across group (64 sectors) and radix block (64 sectids) boundaries, finds its nodes reserved
+  // across group (64 sectors) and radix block (64 sectids) boundaries
   for (std::int32_t s = 3; s < 300; s++)
     {
       map.reserve ();
       std::size_t before = bytes_of (map);
       REQUIRE (map.set_resident (0, page_of (s, 1), 8));
-      // the nodes were counted when reserve () allocated them
       REQUIRE (bytes_of (map) == before);
     }
   REQUIRE (map.num_sectors () == 300);
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == promotion);
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) > 0);
 
-  // a reserve () that is already filled for the next sector allocates nothing more
   map.reserve ();
   std::uint64_t reserved = counter_of (map, bestspace_map::CNT_NODE_RESERVED);
   map.reserve ();
@@ -876,7 +852,6 @@ TEST_CASE ("a sector the reserve did not predict still gets its nodes", "[bestsp
       map.reserve ();
       REQUIRE (map.set_resident (0, page_of (s, 0), 8));
     }
-  // only the promotion allocated under set_resident
   std::uint64_t promotion = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
   REQUIRE (promotion > 0);
 
@@ -885,7 +860,6 @@ TEST_CASE ("a sector the reserve did not predict still gets its nodes", "[bestsp
   REQUIRE (map.set_resident (5, page_of (1000, 3), 7));
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) > promotion);
   REQUIRE (code_of (map, 5, page_of (1000, 3)) == 7);
-  // a sector added without set_resident () does not take the reserve
   std::uint64_t fallback = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
   map.reserve ();
   REQUIRE (map.feedback (9, page_of (77, 0), 4));
@@ -906,8 +880,7 @@ TEST_CASE ("a reserve cut short by allocation failures falls back to allocating 
     }
   std::uint64_t fallback = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
 
-  // sector 64 starts group 1 and radix block 1. The spare radix node is already in the reserve; the group cannot be
-  // allocated, so set_resident allocates it itself
+  // sector 64 starts group 1 and radix block 1: the spare radix node is reserved already, the group allocation fails
   bestspace_map::debug_fail_allocations (1000);
   std::uint64_t reserved = counter_of (map, bestspace_map::CNT_NODE_RESERVED);
   map.reserve ();
@@ -917,7 +890,7 @@ TEST_CASE ("a reserve cut short by allocation failures falls back to allocating 
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == fallback + 1);
   fallback = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
 
-  // sector 128: the first allocation of the reserve (the group) fails; the next reserve () tops the reserve up
+  // sector 128: the reserve's first allocation (the group) fails
   for (std::int32_t s = 65; s < 128; s++)
     {
       map.reserve ();
@@ -930,7 +903,7 @@ TEST_CASE ("a reserve cut short by allocation failures falls back to allocating 
   REQUIRE (map.set_resident (0, page_of (128, 0), 8));
   REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == fallback);
 
-  // no reserve for sector 192 and no memory: set_resident fails, asks for a retry, and the map stays usable
+  // no reserve for sector 192 and no memory
   for (std::int32_t s = 129; s < 192; s++)
     {
       map.reserve ();
@@ -1010,12 +983,10 @@ TEST_CASE ("resident_dirty_above reports resident pages fed back with more room 
   pages[6] = { 0, page_of (0, 3), 1 };
   REQUIRE (map.resident_dirty_above (pages, 7) == (1ULL << 0));
 
-  // released: not resident any more, and the fed-back code is kept
   map.release (0, page_of (0, 1), 1, false);
   REQUIRE (map.resident_dirty_above (pages, 7) == 0);
   REQUIRE (code_of (map, 0, page_of (0, 1)) == 8);
 
-  // a claim makes the page resident with a clean slate; a later feedback marks it again
   REQUIRE (map.claim (8, out, 4) == 2);
   REQUIRE (map.resident_dirty_above (pages, 7) == 0);
   REQUIRE (map.feedback (0, page_of (1, 5), 3));
@@ -1040,10 +1011,9 @@ TEST_CASE ("set_resident fills a new sector UNVERIFIED while needs_retry is set"
   REQUIRE (code_of (map, 0, page_of (0, 0)) == bestspace_map::CODE_UNVERIFIED);
   REQUIRE (code_of (map, 0, page_of (0, 63)) == bestspace_map::CODE_UNVERIFIED);
   REQUIRE (map.num_unverified () == 63);
-  // the daemon's scan lists them, not the resident page
   REQUIRE (map.next_unverified (cursor, out, 64) == 63);
 
-  // the check ran (the daemon cleared the flag): a sector first seen here is new again
+  // the daemon ran the check and cleared the flag
   map.clear_needs_retry ();
   REQUIRE (map.set_resident (0, page_of (1, 0), 5));
   REQUIRE (code_of (map, 0, page_of (1, 1)) == bestspace_map::CODE_NOT_DATA);
@@ -1086,8 +1056,7 @@ TEST_CASE ("forget_unverified replaces only an UNVERIFIED code of a page that is
 
 TEST_CASE ("add_missing_sector racing a feedback of the same sector keeps the fed-back code", "[bestspace_map]")
 {
-  // A sector added by a feedback while the sector count check runs on a published map: whichever adds the sector
-  // first, the fed-back page ends with its code and the sector is there once
+  // a feedback and the sector count check on a published map add the same sectors, in opposite orders
   for (int round = 0; round < 200; round++)
     {
       bestspace_map map;
@@ -1145,7 +1114,6 @@ TEST_CASE ("work_epoch moves on what may give the maintenance daemon work, not o
   REQUIRE (map.set_resident (0, page_of (0, 0), 5));	// a new sector
   REQUIRE (map.feedback (0, page_of (0, 1), 3));
 
-  // a plain feedback, a claim and a release of known pages leave it alone
   e = bestspace_map::work_epoch ();
   REQUIRE (map.feedback (0, page_of (0, 1), 6));
   REQUIRE (map.claim (1, out, 4) > 0);
@@ -1155,11 +1123,9 @@ TEST_CASE ("work_epoch moves on what may give the maintenance daemon work, not o
   // a new sector
   REQUIRE (map.feedback (0, page_of (1, 0), 3));
   REQUIRE (bestspace_map::work_epoch () != e);
-  // a page made UNVERIFIED
   e = bestspace_map::work_epoch ();
   map.mark_all_unverified ();
   REQUIRE (bestspace_map::work_epoch () != e);
-  // needs_retry
   e = bestspace_map::work_epoch ();
   map.mark_needs_retry ();
   REQUIRE (bestspace_map::work_epoch () != e);
@@ -1182,29 +1148,23 @@ TEST_CASE ("set_resident_code writes a slot's code for a resident, clean page on
   (void) map.take_persist_dirty (0);
   REQUIRE_FALSE (map.any_persist_dirty ());
 
-  // the checkpoint writes what the slot knows: the code changes and the sector is marked for the write, the page stays
-  // resident and is not handed out
   REQUIRE (map.set_resident_code (0, page, 2));
   REQUIRE (map.peek (0, page, code, resident));
   REQUIRE (code == 2);
   REQUIRE (resident);
   REQUIRE (map.take_persist_dirty (0) == (1ULL << 2));
   REQUIRE (map.claim (1, out, 4) == 0);
-  // the same code again changes nothing and marks nothing
   REQUIRE_FALSE (map.set_resident_code (0, page, 2));
   REQUIRE_FALSE (map.any_persist_dirty ());
 
-  // dirty: the fed-back code stays, as release () keeps it
   REQUIRE (map.feedback (0, page, 6));
   REQUIRE_FALSE (map.set_resident_code (0, page, 1));
   REQUIRE (code_of (map, 0, page) == 6);
-  // not resident: no-op
   map.release (0, page, 1, false);
   REQUIRE (code_of (map, 0, page) == 6);
   REQUIRE_FALSE (map.set_resident_code (0, page, 3));
   REQUIRE (code_of (map, 0, page) == 6);
 
-  // a clean stay that starts with a claim takes the slot's code, and the release that ends it writes its own
   REQUIRE (map.claim (6, out, 4) == 1);
   REQUIRE (map.set_resident_code (0, page, 4));
   REQUIRE (code_of (map, 0, page) == 4);
@@ -1213,7 +1173,6 @@ TEST_CASE ("set_resident_code writes a slot's code for a resident, clean page on
   REQUIRE (map.claim (4, out, 4) == 0);
   REQUIRE (map.claim (3, out, 4) == 1);
 
-  // codes that are not tiers stay: UNVERIFIED (a lost feedback), and no tier is written as a code
   REQUIRE (map.set_resident (0, page_of (2, 7), 8));
   map.mark_all_unverified ();
   REQUIRE_FALSE (map.set_resident_code (0, page_of (2, 7), 3));
@@ -1221,7 +1180,6 @@ TEST_CASE ("set_resident_code writes a slot's code for a resident, clean page on
   REQUIRE (map.set_resident (0, page_of (2, 9), 8));
   REQUIRE_FALSE (map.set_resident_code (0, page_of (2, 9), bestspace_map::CODE_NOT_DATA));
   REQUIRE (code_of (map, 0, page_of (2, 9)) == 8);
-  // a sector the map does not know is not added
   REQUIRE_FALSE (map.set_resident_code (0, page_of (9, 0), 3));
   REQUIRE_FALSE (map.peek (0, page_of (9, 0), code, resident));
 
@@ -1267,13 +1225,12 @@ TEST_CASE ("set_resident_code keeps a code fed back between its check and its ex
   // the page sits in a slot at code 3, clean; the slot has filled it down to tier 1
   REQUIRE (map.set_resident (0, page, 3));
 
-  // vacuum feeds back 3, the code the map holds, after the publish has read it and checked the bits: the word does not
-  // change, so the exchange succeeds, and the fed code goes back
+  // vacuum feeds back 3, the code the map holds, after set_resident_code () has read it and checked the bits: the word
+  // does not change, so the exchange succeeds, and the fed code goes back
   bestspace_map::debug_resident_code_hook (feed_in_between, &f);
   REQUIRE_FALSE (map.set_resident_code (0, page, 1));
   bestspace_map::debug_resident_code_hook (nullptr, nullptr);
   REQUIRE (code_of (map, 0, page) == 3);
-  // still dirty with a code above the slot's: the next refill evicts it first, and its release keeps the fed code
   slots[0] = { 0, page, 1 };
   REQUIRE (map.resident_dirty_above (slots, 1) == 1);
   map.release (0, page, 1, false);
@@ -1289,7 +1246,7 @@ TEST_CASE ("set_resident_code keeps a code fed back between its check and its ex
   map.release (0, page, 1, false);
   REQUIRE (code_of (map, 0, page) == 5);
 
-  // raising: a feedback of the code read in between is replaced by the higher one, an over-estimate (as in release ())
+  // raising: a feedback of the code read in between is replaced, an over-estimate (as in release ())
   REQUIRE (map.claim (5, out, 4) == 1);
   bestspace_map::debug_resident_code_hook (feed_in_between, &f);
   REQUIRE (map.set_resident_code (0, page, 6));

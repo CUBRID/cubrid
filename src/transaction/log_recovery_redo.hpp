@@ -607,8 +607,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
       assert (rcv.pgptr == nullptr);
       if (log_data.rcvindex == RVHF_CHAIN && !LOG_ISRESTARTED ())
 	{
-	  // the page is deallocated, or its disk copy is newer than this record: it may no longer show a removal from
-	  // its heap that the record logged. The bestspace recovery table learns it from the record's own image
+	  // the page (deallocated, or newer than this record) may not show this chain change: use the record image
 	  rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
 	  rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
 	  if (log_rv_get_log_rec_redo_data<T> (thread_p, redo_context, record_info, rcv) != NO_ERROR)
@@ -683,7 +682,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
 	  heap_bestspace_rv_record (thread_p, rcv.pgptr);
 	  if (log_data.rcvindex == RVHF_CHAIN)
 	    {
-	      // the same rule as for a skipped record; here the page has just taken the image, so both agree
+	      // as for a skipped record above
 	      heap_bestspace_rv_record_chain (thread_p, &rcv_vpid, rcv.data, rcv.length, &record_info.m_start_lsa);
 	    }
 	}

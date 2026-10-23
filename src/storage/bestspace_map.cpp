@@ -44,12 +44,10 @@ namespace cubstorage
 
 #if !defined (NDEBUG)
     std::atomic<int> bsmap_failing_allocations (0);
-    // bestspace_map::debug_resident_code_hook ()
     void (*bsmap_resident_code_hook) (void *) = nullptr;
     void *bsmap_resident_code_hook_arg = nullptr;
 #endif
 
-    // bestspace_map::work_epoch ()
     std::atomic<std::uint64_t> bsmap_work_epoch (0);
 
     // a value-initialized object, or nullptr when out of memory: the engine does not use exceptions, and in
@@ -177,8 +175,6 @@ namespace cubstorage
   }
 #endif
 
-  // ------------------------------------------------------------------ keys and codes
-
   std::uint64_t
   bestspace_map::make_key (short volid, std::int32_t pageid)
   {
@@ -245,8 +241,6 @@ namespace cubstorage
     rec.dirty.store (0, std::memory_order_relaxed);
     rec.version.store (0, std::memory_order_relaxed);
   }
-
-  // ------------------------------------------------------------------ structure
 
   bestspace_map::group *
   bestspace_map::group_ptr (std::size_t g)
@@ -344,10 +338,8 @@ namespace cubstorage
     return get_or_add (volid, pageid, n, fills, use_spares, added);
   }
 
-  // A new sector is published only after its codes are written: its key goes into the radix index (or the inline keys,
-  // under the count) with a release store, and find () reads it with an acquire load. So a thread that finds the sector
-  // reads these codes or later ones, and of two threads adding the same sector one adds it (under the mutex) and the
-  // other finds it, with added false.
+  // A new sector's codes are written before its key is published (release store; find () acquires), so whoever finds
+  // the sector sees them. Of two threads adding it, one adds it under the mutex and the other finds it.
   bestspace_map::record *
   bestspace_map::get_or_add (short volid, std::int32_t pageid, std::size_t &n, const std::uint64_t fills[4],
 			     bool use_spares, bool &added)
@@ -418,7 +410,6 @@ namespace cubstorage
 
     for (int w = 0; w < 4; w++)
       {
-	// a nibble with all four bits set is CODE_UNVERIFIED
 	unverified += bit64_count_ones (fills[w] & (fills[w] >> 1) & (fills[w] >> 2) & (fills[w] >> 3)
 					& 0x1111111111111111ULL);
       }
@@ -434,14 +425,13 @@ namespace cubstorage
     return rec;
   }
 
-  // caller holds m_grow_mutex: the inline sectors are in use and another sector is coming. The inline records stay
-  // where they are; the tree and the radix index are built aside and published, then the inline pages are published
-  // again so the tree gets their hint bits.
+  // caller holds m_grow_mutex. The inline records stay in place; the tree and radix index are built aside and
+  // published, then the inline pages are published again to set their hint bits.
   bool
   bestspace_map::promote (bool use_spares)
   {
     std::atomic<rnode *> radix (nullptr);
-    // reserve () keeps nothing for the promotion (see the class comment): its nodes are allocated here
+    // reserve () keeps no nodes for the promotion
     rootdir *no_spare = nullptr;
     rootdir *root = alloc_node (no_spare, use_spares);
     std::size_t s, off;
@@ -596,10 +586,8 @@ namespace cubstorage
     return node;
   }
 
-  // caller holds m_grow_mutex: the nodes adding sector number s needs, if its key is the one after the last sector's
-  // (the file manager hands a growing file the next sectors of a volume). The group and its directories depend only
-  // on s; the radix nodes depend on the key, so one spare radix node is kept anyway for a key in the next block.
-  // Nothing is counted for an inline record, for the promotion (see the class comment) or past MAX_SECTORS
+  // caller holds m_grow_mutex: the nodes sector s needs if its key follows the last sector's, and at least one radix
+  // node for a key in the next block. None for an inline record, the promotion or past MAX_SECTORS
   void
   bestspace_map::count_needs (std::size_t s, node_counts &need)
   {
@@ -653,7 +641,6 @@ namespace cubstorage
 	return;
       }
 
-    // what the next sector add needs and the reserve does not hold yet
     {
       std::lock_guard<std::mutex> lock (m_grow_mutex);
 
@@ -691,7 +678,7 @@ namespace cubstorage
 	num_rnodes++;
       }
 
-    // keep what the count above asked for; a concurrent reserve () may have filled the same slots meanwhile
+    // a concurrent reserve () may have filled the same slots meanwhile
     {
       std::lock_guard<std::mutex> lock (m_grow_mutex);
 
@@ -730,7 +717,6 @@ namespace cubstorage
 	}
     }
 
-    // nodes a concurrent reserve () made unnecessary
     bsmap_free (mid);
     bsmap_free (leaf);
     bsmap_free (grp);
@@ -790,8 +776,6 @@ namespace cubstorage
       }
     bsmap_free (root);
   }
-
-  // ------------------------------------------------------------------ codes and hints
 
   void
   bestspace_map::set_code (record *rec, std::size_t n, std::size_t off, std::uint8_t code)
@@ -862,11 +846,8 @@ namespace cubstorage
     set_above (3, g, 1U << t);
   }
 
-  // A hint bit of each tier in 'tiers' (bit t: tier t + 1) was set in the word of a node: depth 1 middir, 2 leafdir,
-  // 3 group, and index is the node's number at that depth. Set the bits above the node, bottom-up. A prune one level
-  // up clears its bit when it finds the word empty, and a claim that clears a bit and then puts it back (see prune ()
-  // and descend ()) leaves the word empty for a moment, so putting a bit back must set the bits above it again like
-  // publish () does, or the hint of a page is lost for good.
+  // Set the hint bits of 'tiers' (bit t: tier t + 1) above node 'index' at 'depth' (1 middir, 2 leafdir, 3 group),
+  // bottom-up. A claim that puts a bit back calls this too (see the class comment).
   void
   bestspace_map::set_above (std::size_t depth, std::size_t index, std::uint32_t tiers)
   {
@@ -916,8 +897,7 @@ namespace cubstorage
   }
 
   // after a child yielded nothing for tiers >= min_code: clear its bit where the child has no hint, then re-check the
-  // child so a concurrent bottom-up setter is never lost. Returns the tiers (bit t: tier t + 1) whose bit was put
-  // back: the word of the parent has a bit again, so the caller sets the bits above it (set_above ()).
+  // child so a concurrent setter is not lost. Returns the tiers put back, for set_above ().
   std::uint32_t
   bestspace_map::prune (hint &parent, hint &child, std::size_t i, std::uint8_t min_code)
   {
@@ -938,8 +918,6 @@ namespace cubstorage
     return put_back;
   }
 
-  // ------------------------------------------------------------------ updates
-
   bool
   bestspace_map::feedback (short volid, std::int32_t pageid, std::uint8_t code)
   {
@@ -950,23 +928,18 @@ namespace cubstorage
 	return false;
       }
     std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
-    // dirty first: a release that clears it after this point keeps this code instead of writing its older one
+    // dirty before the write: a release that clears it afterwards keeps this code
     rec->dirty.fetch_or (1ULL << off);
     set_code (rec, n, off, code);
-    // and dirty again after the write: a claim clears the bit before it reads the code, so a claim that cleared the
-    // first mark and read the code before this write holds the older code; the bit set now makes its release keep
-    // this one
+    // and after it: a claim that cleared the first mark may hold the older code, and its release must keep this one
     rec->dirty.fetch_or (1ULL << off);
     count (CNT_FEEDBACK);
     return true;
   }
 
-  // A sector seen first here is new to the heap (the file just reserved it), and its other pages are not allocated:
-  // NOT_DATA. Unless the map knows it may lack sectors of the file (needs_retry (): the sector count check could not
-  // run, or a sector could not be added): then the sector may be one the file had already, with rows on its other
-  // pages, and NOT_DATA would hide them for good (the check adds only sectors the map does not have). They are
-  // UNVERIFIED instead, and the maintenance daemon measures them. The daemon clears the flag and runs the check under
-  // the heap header write latch, which an allocation (the caller) holds too, so no sector is added in between.
+  // A sector seen first here is new to the heap, so its other pages are NOT_DATA. While needs_retry () is set it may be
+  // an old sector the map missed, whose rows NOT_DATA would hide for good, so they are UNVERIFIED. The caller holds
+  // the heap header latch, under which the daemon clears the flag and runs its check: no sector is added in between.
   bool
   bestspace_map::set_resident (short volid, std::int32_t pageid, std::uint8_t code)
   {
@@ -984,12 +957,8 @@ namespace cubstorage
     return true;
   }
 
-  // A code fed back while the page was resident wins over the caller's, measured or not. release () cannot tell which
-  // is newer: the caller's value may predate the feedback (a measurement taken before the page latch was released,
-  // a slot's value from its last fix), and then writing it would hide space the feedback reported; or the feedback may
-  // predate it (a slot measures its page again at every fix and may go on filling it after a feedback), and then the
-  // fed-back code over-estimates, which a claim's check corrects at the cost of that check. A caller that still holds
-  // the page latch knows its value is the newer one: it uses release_latched ().
+  // A code fed back while the page was resident wins: either may be newer, and an older caller's code would hide the
+  // reported space, while an older feedback only over-estimates (a claim's check corrects it).
   void
   bestspace_map::release (short volid, std::int32_t pageid, std::uint8_t code, bool measured)
   {
@@ -1002,8 +971,7 @@ namespace cubstorage
     std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
     std::size_t word = off / 16, shift = (off % 16) * 4;
     std::uint64_t bit = 1ULL << off;
-    // read the code before the dirty bit is cleared: a feedback that sets dirty after the clear writes its code after
-    // this read, so the exchange below sees a different code and leaves it
+    // read the code before clearing dirty: a later feedback also writes later, so the exchange below leaves its code
     std::uint64_t expected = rec->codes[word].load (), desired;
     std::uint8_t seen = static_cast<std::uint8_t> ((expected >> shift) & 0xF);
     bool dirty = (rec->dirty.fetch_and (~bit) & bit) != 0;
@@ -1012,7 +980,6 @@ namespace cubstorage
     rec->resident.fetch_and (~bit);
     if (!dirty)
       {
-	// no feedback while resident: write the caller's code, unless a feedback changed the code since it was read
 	while (static_cast<std::uint8_t> ((expected >> shift) & 0xF) == seen)
 	  {
 	    desired = (expected & ~ (0xFULL << shift)) | (static_cast<std::uint64_t> (code) << shift);
@@ -1023,12 +990,9 @@ namespace cubstorage
 	      }
 	  }
 
-	// a feedback that set dirty after the clear and wrote the same code as the one read above is invisible to the
-	// exchange, which then replaced the fed-back code. The caller's code is lower here, so that would hide the space
-	// the feedback reported: put the code read above back. If the feedback reported the caller's code instead,
-	// this over-estimates, which a claim corrects; if it has not written yet, its code still wins. One rare
-	// three-way race remains: a claim that takes the page between the exchange and this check reads the lowered
-	// code and clears the dirty bit, so the code is not put back and stays low until the page's next feedback.
+	// a feedback after the clear that wrote the code read above is invisible to the exchange, and the caller's code
+	// is lower: put the read code back. A claim between the exchange and this check can still take the lowered
+	// code and clear dirty; the code then stays low until the page's next feedback.
 	if (replaced && code < seen && seen <= CODE_MAX_TIER && (rec->dirty.load () & bit) != 0)
 	  {
 	    expected = rec->codes[word].load ();
@@ -1047,15 +1011,13 @@ namespace cubstorage
       {
 	count_unverified_change (seen, code);
       }
-    // the page is not resident any more: publish the code it keeps (a feedback that changed it marked the sector)
+    // a feedback that changed the code has marked the sector already
     publish (rec, n, off, replaced);
     count (CNT_RELEASED);
   }
 
-  // The caller measured the page under the latch it still holds, and feedback is given under that latch: no feedback is
-  // newer than this code, so it goes in over a fed-back one. The code is written while the page is still resident (a
-  // claim cannot take it, so publish () sets no hint bit yet), then the page stops being dirty and resident, and
-  // publish () sets the hint bits of its tier.
+  // No feedback is newer than the caller's code (both need the page latch), so it replaces a fed-back one. It is
+  // written while the page is still resident, so no claim takes the page before the last publish ().
   void
   bestspace_map::release_latched (short volid, std::int32_t pageid, std::uint8_t code)
   {
@@ -1091,10 +1053,8 @@ namespace cubstorage
     set_code (rec, n, off, CODE_NOT_DATA);
   }
 
-  // Without the page latch the page may be allocated meanwhile: set_resident () marks it resident before it writes its
-  // code, and a feedback writes its code under the latch. So the exchange happens only while the code is still
-  // UNVERIFIED: a code written before it stays, and one written after it replaces NOT_DATA. A page seen resident is
-  // left alone.
+  // Without the page latch the page may be allocated meanwhile: only a non-resident, still UNVERIFIED code is replaced,
+  // and a later write replaces NOT_DATA (set_resident () marks the page resident before its write).
   bool
   bestspace_map::forget_unverified (short volid, std::int32_t pageid)
   {
@@ -1127,17 +1087,10 @@ namespace cubstorage
     return true;
   }
 
-  // The slot's value is written over the code the page got when it became resident (the capacity tier for a new page,
-  // the claimed tier for a claimed one), which no one corrects while the page stays in the slot. The code is exchanged
-  // only if it is still the one read with the page resident and clean. A feedback (dirty first, then its code) or a
-  // forget that writes another code meanwhile either comes before the exchange and makes it fail, or after it and
-  // replaces it. A feedback of the very code read here leaves the word as it was (set_code ()), so the exchange does
-  // not see it and replaces the fed-back code: as in release (), the dirty bit it set is looked at after the exchange,
-  // and the code read here goes back while the code is still this one, when this one is lower (a lower code would
-  // hide the space the feedback reported; a higher one over-estimates, which a claim corrects). A release that read
-  // the code before the exchange and writes after it finds the code changed and leaves this one; the caller rules
-  // that out for its own slots (bestspace::publish_slot_codes () holds the shard's allocating mark, so no refill
-  // evicts them meanwhile). The page stays resident: no claim takes it, and publish () sets no hint bit for it.
+  // Only the code read with the page resident and clean is exchanged, so a code written meanwhile wins. A feedback of
+  // that same code is invisible to the exchange but sets dirty first, so a lower code is put back (as in release ()).
+  // A racing release would lose its code; the caller rules that out (bestspace::publish_slot_codes () holds the
+  // shard's allocating mark, so no refill evicts its slots).
   bool
   bestspace_map::set_resident_code (short volid, std::int32_t pageid, std::uint8_t code)
   {
@@ -1176,7 +1129,7 @@ namespace cubstorage
       }
     if (code < seen && (rec->dirty.load () & bit) != 0)
       {
-	// a feedback came after the check: put the code read above back, unless the feedback has written another
+	// a feedback of the same code came in between: put it back
 	expected = rec->codes[word].load ();
 	while (static_cast<std::uint8_t> ((expected >> shift) & 0xF) == code)
 	  {
@@ -1191,8 +1144,6 @@ namespace cubstorage
     publish (rec, n, off, true);
     return code != seen;
   }
-
-  // ------------------------------------------------------------------ search
 
   std::size_t
   bestspace_map::claim (std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count)
@@ -1297,8 +1248,7 @@ namespace cubstorage
     claim_node<leafdir, group> (l, base, min_code, out, max_count, found, budget);
   }
 
-  // group level: g is the group number. A sector that yields nothing costs one unit of the budget, so a run of stale
-  // hint bits is cleaned up across several claims instead of in one.
+  // g: group number. A sector yielding nothing costs one budget unit, so stale bits are cleaned over several claims.
   void
   bestspace_map::descend (group &grp, std::size_t g, std::uint8_t min_code, bestspace_map_page *out,
 			  std::size_t max_count, std::size_t &found, std::size_t &budget)
@@ -1417,8 +1367,6 @@ namespace cubstorage
       }
     return result;
   }
-
-  // ------------------------------------------------------------------ persistence
 
   std::size_t
   bestspace_map::num_sectors () const
@@ -1560,9 +1508,7 @@ namespace cubstorage
     return true;
   }
 
-  // The codes go into the add itself (get_or_add () writes them before it publishes the sector), so a sector another
-  // thread adds first, a feedback on a published map, is found and keeps its codes: no fed-back code is overwritten by
-  // the fill, and the sector is not added twice.
+  // get_or_add () writes the fill before it publishes the sector, so a sector another thread adds first keeps its codes
   bool
   bestspace_map::add_missing_sector (short volid, std::int32_t first_pageid, std::uint64_t allocated)
   {
@@ -1637,8 +1583,6 @@ namespace cubstorage
       }
   }
 
-  // ------------------------------------------------------------------ state
-
   bool
   bestspace_map::is_inline () const
   {
@@ -1670,8 +1614,7 @@ namespace cubstorage
     m_needs_retry.store (false);
   }
 
-  // the change is made before the bump, and the daemon reads the count before it looks at the maps: a daemon that sees
-  // the count it saw last also sees every change made before (seq_cst), and a later bump makes it look next round
+  // changes precede their bump, and the daemon reads the count before the maps (seq_cst): no change is missed
   std::uint64_t
   bestspace_map::work_epoch ()
   {
@@ -1763,8 +1706,7 @@ namespace cubstorage
     return v;
   }
 
-  // the entries of a group share a stripe, so take_group () visits one stripe; the recovery table (group 0) spreads
-  // over the stripes by sector key
+  // a group's entries share a stripe (take_group () visits one); the recovery table (group 0) spreads by sector key
   std::size_t
   bestspace_sector_table::stripe_of (std::uint64_t group, std::uint64_t key)
   {
@@ -1834,7 +1776,6 @@ namespace cubstorage
       }
     if (!record_locked (s, group, key, offset, code, 0, 0))
       {
-	// marked under the stripe lock: a loader takes the group, then reads the mark, under the same lock
 	mark_lost (group, 0);
 	return NO_MEMORY;
       }

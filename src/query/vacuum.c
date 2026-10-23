@@ -2249,8 +2249,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  return ER_FAILED;
 	}
 
-      /* tell the bestspace map the freed space of the forward page while it is latched: the end of the visit feeds
-       * only the home page, and the forward page's own home records may never be vacuumed again */
+      /* feed the forward page now: the end of the visit feeds only the home page */
       assert (!HFID_IS_NULL (&helper->hfid));
       heap_bestspace_feedback (thread_p, &helper->hfid, helper->forward_page);
 
@@ -2416,7 +2415,6 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
-      /* tell the bestspace map the freed space of the forward page while it is latched */
       heap_bestspace_feedback (thread_p, &helper->hfid, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
@@ -2570,11 +2568,8 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
  * update_best_space_stat (in)	 : The visit of the page ends here.
  * unlatch_page (in) : Release the page latch.
  *
- * Note: A page the visit changed tells the bestspace map its free space before every release of its latch: at the end
- *	 of the visit and at each unlatch in the middle of it. A flush that keeps the latch does not, because the page
- *	 changes on and a later release feeds it. n_vacuumed also counts the records whose removal earlier flushes or
- *	 the REC_RELOCATION and REC_BIGONE removals already logged, so a page counts as changed even when no slot waits
- *	 to be logged any more.
+ * Note: A changed page feeds the bestspace map before each release of its latch. n_vacuumed also counts removals
+ *	 logged earlier (by flushes, or for REC_RELOCATION and REC_BIGONE), so such a page still counts as changed.
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
@@ -6428,8 +6423,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       if (error != NO_ERROR)
 	{
 	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free. The file
-	   * is destroyed all the same (the postpone's error is not looked at), so the bestspace upkeep, which holds no
-	   * lock on the class, ends what it does on the heap now and leaves the bestspace alone for good */
+	   * is destroyed anyway (the postpone's error is ignored): stop the bestspace upkeep on this heap for good */
 	  vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES,
 			       "failed to add dropped file %d|%d; its bestspace entry is left behind",
 			       VFID_AS_ARGS (&rcv_data->vfid));

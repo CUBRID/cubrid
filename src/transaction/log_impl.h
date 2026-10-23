@@ -678,9 +678,7 @@ struct log_global
 {
   TRANTABLE trantable;		/* Transaction table */
   LOG_APPEND_INFO append;	/* The log append info */
-  /* every log record of every transaction writes prior_info (prior_lsa_next_record_internal ()), and every logtb_*
-   * lookup reads trantable.all_tdes (LOG_FIND_TDES). Without the alignment, where the two share a cache line depends on
-   * where the linker happens to place log_Gl: at 32 mod 64, all_tdes, append and prior_lsa share one line */
+  /* own cache line: every log record writes prior_info, and every logtb_* lookup reads trantable.all_tdes */
   // *INDENT-OFF*
   alignas (64) LOG_PRIOR_LSA_INFO prior_info;
   // *INDENT-ON*

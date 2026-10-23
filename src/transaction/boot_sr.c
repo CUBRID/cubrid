@@ -2450,9 +2450,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* the bestspace maintenance daemon: its rounds start once the server is up (SERVER_MODE only) */
   heap_bestspace_daemon_init ();
 
-  /* the checkpoint restart recovery could not complete (the bestspace maps it measured are written with logging, so
-   * after the log is restarted): run it now, before the server registers with the master or an SA mode boot returns,
-   * so that the redo point moves before anything else runs, as it does when recovery's checkpoint completes */
   log_run_deferred_restart_checkpoint (thread_p);
 
   /*
@@ -3097,8 +3094,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   logtb_set_to_system_tran_index (thread_p);
   log_abort_all_active_transaction (thread_p);
   vacuum_stop_workers (thread_p);
-  /* before the maps are written below (heap_bestspace_checkpoint ()), so that they do not change after it; and its
-   * system worker must be retired before log_final () destroys the system transactions */
+  /* before the maps are written below, so they stay unchanged, and before log_final () */
   heap_bestspace_daemon_destroy ();
 
   /* before removing temp vols */
@@ -3121,11 +3117,8 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   serial_flush_cache_pool (thread_p);
 #endif /* SA_MODE */
 
-  /* log_final does not checkpoint a clean shutdown (it flushes every page and moves chkpt_lsa to the end of the log),
-   * so write the bestspace maps here, after the last change of a heap page: the active transactions are aborted, the
-   * vacuum workers stopped and the serial cache written back to _db_serial. The vacuum master is still up, as logging
-   * requires; log_final flushes the map pages. A failure leaves the maps as the last checkpoint wrote them, which
-   * costs space only */
+  /* log_final () runs no checkpoint, so write the bestspace maps here: after the last heap change and while the vacuum
+   * master is up, as logging needs. A failure costs only space */
   error_code = heap_bestspace_checkpoint (thread_p);
   if (error_code != NO_ERROR)
     {

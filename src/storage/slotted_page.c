@@ -960,8 +960,7 @@ spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 }
 
 /*
- * spage_max_space_for_new_record_without_saving () - Find the maximum free space for a new insertion once no
- *						       transaction holds saved space in the page
+ * spage_max_space_for_new_record_without_saving () - Find the maximum free space for a new insertion
  *   return: Maximum free length for an insertion, counting the space saved for rollbacks as free
  *   page_p(in): Pointer to slotted page
  */
@@ -979,8 +978,7 @@ spage_max_space_for_new_record_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR
 }
 
 /*
- * spage_max_space_for_new_record_internal () - The maximum free space for a new insertion when total_saved bytes of
- *						 the free space are saved
+ * spage_max_space_for_new_record_internal () - The maximum free space for a new insertion
  *   return: Maximum free length for an insertion
  *   page_header_p(in): Pointer to header of slotted page
  *   total_saved(in): the saved space to subtract

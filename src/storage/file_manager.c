@@ -5800,16 +5800,14 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
 }
 
 /*
- * file_header_fix_conditional () - read latch a file header page at once or not at all, for a caller that may hold a
- *				    page of the file (file_destroy () latches the file header before every page of the
- *				    file, so waiting for it could deadlock)
+ * file_header_fix_conditional () - read latch a file header page only if that needs no wait: file_destroy () latches
+ *				    the file header before every page of the file, which the caller may hold
  *
- * return          : error code (the sector check failed)
+ * return          : error code
  * thread_p (in)   : thread entry
  * vpid_fhead (in) : the file header page
  * page_out (out)  : the page read latched, or NULL
- * busy (out)      : with a NULL page, true when the page could not be latched at once (or read now); false when it is
- *		     deallocated or its sector is not reserved
+ * busy (out)      : with a NULL page, true if the latch would wait; false if the page is deallocated
  */
 static int
 file_header_fix_conditional (THREAD_ENTRY * thread_p, const VPID * vpid_fhead, PAGE_PTR * page_out, bool * busy)
@@ -5821,8 +5819,7 @@ file_header_fix_conditional (THREAD_ENTRY * thread_p, const VPID * vpid_fhead, P
   *page_out = NULL;
   *busy = false;
 
-  /* the sector first, as pgbuf_fix_if_not_deallocated () does: a fix in a sector that is not reserved asserts under
-   * page validation. The sector table pages are never latched by someone waiting for a heap page */
+  /* check the sector first (a fix in an unreserved sector asserts); sector table holders never wait for heap pages */
   isvalid = disk_is_page_sector_reserved (thread_p, vpid_fhead->volid, vpid_fhead->pageid);
   if (isvalid == DISK_INVALID)
     {
@@ -5838,7 +5835,6 @@ file_header_fix_conditional (THREAD_ENTRY * thread_p, const VPID * vpid_fhead, P
   *page_out = pgbuf_fix (thread_p, vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
   deallocated = *page_out == NULL && er_errid () == ER_PB_BAD_PAGEID;
   er_stack_pop ();
-  /* latched by someone else, or not readable now */
   *busy = *page_out == NULL && !deallocated;
   return NO_ERROR;
 }
@@ -5861,20 +5857,14 @@ file_header_is_perm_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VF
 }
 
 /*
- * file_probe_heap_header () - the header page (sticky first page) of a heap file, for a caller that holds neither a
- *			       lock nor a page of the file: it may have been destroyed, and its file header page reused
+ * file_probe_heap_header () - the header page of a heap file that may have been destroyed (and its pages reused)
  *
- * return              : error code (the file header page could not be read)
+ * return              : error code
  * thread_p (in)       : thread entry
  * vfid (in)           : file identifier
- * latch_condition (in): PGBUF_CONDITIONAL_LATCH for a caller that holds a page of the heap: file_destroy () latches the
- *			 file header before every page of the file, so waiting here could deadlock; a file header that
- *			 cannot be latched at once gives FILE_HEAP_HEADER_UNKNOWN
- * state (out)         : FILE_HEAP_HEADER_FOUND (vpid_out is set), FILE_HEAP_HEADER_GONE or FILE_HEAP_HEADER_UNKNOWN
+ * latch_condition (in): PGBUF_CONDITIONAL_LATCH if the caller holds a page of the heap (file_header_fix_conditional ())
+ * state (out)         : FILE_HEAP_HEADER_FOUND (vpid_out is set), _GONE or _UNKNOWN
  * vpid_out (out)      : the heap header page
- *
- * note: unlike file_get_sticky_first_page (), nothing about the page is assumed: a deallocated page, a page of another
- *	 type or of another file says the file is gone.
  */
 int
 file_probe_heap_header (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION latch_condition,
@@ -5917,7 +5907,6 @@ file_probe_heap_header (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_
     }
   if (page_fhead == NULL)
     {
-      /* deallocated */
       return NO_ERROR;
     }
 
@@ -11981,7 +11970,7 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 
 	  if (is_heap)
 	    {
-	      /* the bestspace upkeep holds no lock on the class: away while file_destroy () latches every page */
+	      /* the bestspace upkeep holds no class lock: keep it away while file_destroy () latches every page */
 	      heap_bestspace_quiesce (target_vfid, true);
 	    }
 	  error_code = file_destroy (thread_p, target_vfid, false);
@@ -12645,10 +12634,8 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
     }
   if (prev_tde_algo != tde_algo)
     {
-      /* the bestspace upkeep (the maintenance daemon, the checkpoint's writer) holds no lock on the class, and with the
-       * heap header latched it waits for heap pages or the file header: keep it away while every page is latched
-       * under the file header, and let it go on afterwards, also after an error. The map stays loaded: the pages are
-       * encrypted from now on, their free space does not change */
+      /* the bestspace upkeep holds no class lock and may wait for heap pages with the heap header latched: keep it
+       * away while every page is latched. The map stays loaded: encryption does not change free space */
       heap_bestspace_quiesce (&hfid.vfid, false);
       error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
       heap_bestspace_end_quiesce (&hfid.vfid);
@@ -12784,8 +12771,7 @@ file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *ite
 }
 
 /*
- * file_extdata_collect_nonempty_sectors_part () - collect FILE_PARTIAL_SECTOR from partial table, leaving out the
- *						   sectors with no page allocated
+ * file_extdata_collect_nonempty_sectors_part () - collect FILE_PARTIAL_SECTOR that has a page allocated
  *
  * return        : NO_ERROR
  * thread_p (in) : thread entry
@@ -12802,7 +12788,6 @@ file_extdata_collect_nonempty_sectors_part (THREAD_ENTRY * thread_p, const void 
 
   if (partsect->page_bitmap == FILE_EMPTY_PAGE_BITMAP)
     {
-      /* reserved, nothing allocated yet */
       return NO_ERROR;
     }
   return file_extdata_collect_data_sectors_part (thread_p, item, index_unused, stop, args);
@@ -12814,8 +12799,7 @@ file_extdata_collect_nonempty_sectors_part (THREAD_ENTRY * thread_p, const void 
  * return        : NO_ERROR or error code
  * thread_p (in) : thread entry
  * page_fhead (in) : file header page, latched by the caller (and still latched on return)
- * nonempty_only (in) : leave out the partial sectors with no page allocated. A sector that holds file table pages
- *			only is kept, with an empty bitmap
+ * nonempty_only (in) : leave out the sectors with no page allocated (a file table page counts as allocated)
  * collector_out(out): the sectors, file table pages removed from their bitmaps
  */
 static int
@@ -12947,33 +12931,19 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 }
 
 /*
- * file_probe_heap_sectors () - the sectors of a heap file that have an allocated page, for a caller that holds a page
- *				 of the heap and knows known_sectors of them: only when the file has more are they
- *				 listed
+ * file_probe_heap_sectors () - the sectors of a heap file with an allocated page, if more than known_sectors
  *
- * return              : NO_ERROR, or the error of reading a file table page or of an allocation (state is then
- *			 FILE_HEAP_SECTORS_BUSY and nothing is collected)
+ * return              : error code (state is then FILE_HEAP_SECTORS_BUSY)
  * thread_p (in)       : thread entry
  * vfid (in)           : the heap file
- * hdr_vpid (in)       : the heap header page (the file's sticky first page)
+ * hdr_vpid (in)       : the heap header page
  * known_sectors (in)  : how many sectors of the file the caller knows
  * state (out)         : FILE_HEAP_SECTORS_BUSY, _GONE, _COVERED or _COLLECTED
- * n_sectors_out (out) : with _COVERED or _COLLECTED, the file's sectors that have an allocated page (a user page or a
- *			 file table page)
- * collector_out (out) : with _COLLECTED, those sectors with the file table pages removed from their bitmaps (a sector
- *			 of table pages only has an empty bitmap). The caller frees partsect_ftab (db_private_free)
+ * n_sectors_out (out) : with _COVERED or _COLLECTED, the sectors with an allocated page (file table pages count)
+ * collector_out (out) : with _COLLECTED, those sectors, file table pages removed; free partsect_ftab (db_private_free)
  *
- * note: the file header is latched conditionally, as file_probe_heap_header () does: file_destroy () write latches it
- *	 before it fixes every page of the file, and file_apply_tde_algorithm () too, so a caller holding a page of the
- *	 heap that waited here could wait for a thread that waits for that page. While the header stays read latched,
- *	 the file table pages are read with plain read fixes. Those cannot wait: a table page is write latched only by a
- *	 thread that holds the file header write latched (allocation, deallocation, destroy), which nobody can hold now,
- *	 so nobody holds a table page write latched or waits for one either.
- *
- *	 The count is n_sector_total - n_sector_empty, not n_sector_total (file_get_num_data_sectors ()): a file
- *	 reserves sectors before it uses them (file_perm_expand () reserves, with the default tablespace, 1% of the file
- *	 at once, up to 1024 sectors), and a caller that knows the sectors where pages were allocated would see more
- *	 sectors almost every time.
+ * note: the file header is latched conditionally (file_header_fix_conditional ()); under its read latch no one write
+ *	 latches a file table page. Empty reserved sectors are not counted: file_perm_expand () reserves many at once.
  */
 int
 file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * hdr_vpid, int known_sectors,
@@ -13000,7 +12970,6 @@ file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID 
     }
   if (page_fhead == NULL)
     {
-      /* latched by someone else; or deallocated: gone */
       *state = busy ? FILE_HEAP_SECTORS_BUSY : FILE_HEAP_SECTORS_GONE;
       return NO_ERROR;
     }

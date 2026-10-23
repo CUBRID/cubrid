@@ -19,26 +19,13 @@
 //
 // bestspace_map.hpp - free space tier of every page of a heap file
 //
-// One record per disk sector (64 pages), numbered densely in the order the map first sees each sector. The first
-// INLINE_SECTORS records live in the map object itself. When a third sector arrives the map builds a hint tree
-// (root -> mid -> leafdir -> group, 64 children each) and a radix index from sector key to number. Every tree node
-// keeps one 64-bit word per tier whose bit i says "child i may hold a claimable page of this tier". Writers only set
-// hint bits (bottom-up); a claim clears a bit after it found nothing below it and re-checks the child, so a bit can
-// be stale-on but never stale-off. That holds only because every put-back of a bit (the re-check found the child
-// changed) also sets the bits above it again, bottom-up (set_above ()): while the bit was off, a claim one level up
-// may have found the parent's word empty and cleared the parent's bit. Records and nodes never move and are freed
-// only with the map, so lock-free readers never see freed memory. Adding a sector takes a per-map mutex; everything
-// else is atomic.
-//
-// A heap allocation registers its new pages (set_resident ()) while it holds the heap header latch. The nodes a new
-// sector needs are allocated before that, by reserve (), so the latch is not held across malloc; a sector that
-// needs more than the reserve holds allocates the rest under the latch. The reserve holds at most one group (with
-// the directories a new group may need) and the radix nodes of the next key, and nothing for an inline map: the
-// one-time promotion to the tree allocates under the latch, so a heap that stops growing inside its second sector
-// keeps no spare nodes.
-//
-// bestspace_sector_table holds tiers for heaps whose map is not in memory: feedback that arrives before the map is
-// loaded (pending table) and tiers measured by restart recovery (recovery table).
+// One record per disk sector (64 pages), numbered in the order the map first sees each sector. The first
+// INLINE_SECTORS records live in the map object; a third sector adds a hint tree (root -> mid -> leafdir -> group,
+// 64 children each) and a radix index from sector key to number. Bit i of a node's word for a tier means "child i
+// may hold a claimable page of this tier". Writers only set bits, bottom-up; a claim clears a bit only after it found
+// nothing below, and a bit it puts back sets the bits above again (set_above ()), because a claim one level up may
+// have cleared them meanwhile. So a bit can be stale-on but never stale-off. Records and nodes are freed only with
+// the map, so lock-free readers never see freed memory. Adding a sector takes a per-map mutex; the rest is atomic.
 //
 
 #ifndef _BESTSPACE_MAP_HPP_
@@ -93,16 +80,13 @@ namespace cubstorage
 	CNT_REUSED,
 	CNT_NODE_RESERVED,	// nodes allocated by reserve ()
 	CNT_NODE_FALLBACK,	// nodes set_resident () allocated because the reserve did not hold them
-	// claimed pages a refill's first pass did not check (not in the buffer, or latched by another thread). The
-	// one a refill then checks with a disk fix is counted here and in CNT_DISK_VERIFY:
-	// unchecked = DEFERRED - DISK_VERIFY
+	// claimed pages a refill's first pass skipped (not buffered, or latched); unchecked = DEFERRED - DISK_VERIFY
 	CNT_DEFERRED,
 	CNT_DISK_VERIFY,	// claimed pages a refill checked with a fix that may read the disk (one per refill)
 	CNT_VICTIM_MEASURED,	// evicted pages measured in the buffer and written back with release_latched ()
 	CNT_LAST
       };
-      // the name of each counter, in enum order (SHOW HEAP CAPACITY prints them); one per counter, checked below the
-      // class
+      // names for SHOW HEAP CAPACITY, in enum order (checked below the class)
       static constexpr const char *COUNTER_NAMES[] =
       {
 	"feedback",
@@ -130,39 +114,31 @@ namespace cubstorage
       // ---- updates. false: the sector could not be added (out of memory or MAX_SECTORS); needs_retry () is set.
       // free space measured under the page latch (vacuum, delete, rollback, statistics, recovery)
       bool feedback (short volid, std::int32_t pageid, std::uint8_t code);
-      // a page enters a shard L1 slot; a sector seen first here is a new sector of the heap (other pages NOT_DATA), or,
-      // while needs_retry () is set, a sector the map may be missing (other pages UNVERIFIED)
+      // a page enters a shard L1 slot. A new sector's other pages are NOT_DATA, or UNVERIFIED while needs_retry () is
+      // set (the map may have missed the sector)
       bool set_resident (short volid, std::int32_t pageid, std::uint8_t code);
-      // a page leaves its L1 slot with the caller's code, but a code fed back while it was resident (or while it is
-      // being released) wins. measured: the caller fixed the page to get the code; it does not override a fed-back code
+      // a page leaves its L1 slot with the caller's code (measured: read under a fix), unless a code was fed back while
+      // it was resident or is being released: that one wins
       void release (short volid, std::int32_t pageid, std::uint8_t code, bool measured);
-      // a page leaves its L1 slot with a code the caller measured under the page latch it still holds. A feedback is
-      // given under that latch too, so none is newer than this code: it replaces a code fed back while the page was
-      // resident (release () keeps that one). The page is neither resident nor dirty afterwards
+      // a page leaves its L1 slot with a code measured under the page latch the caller still holds. It wins over a
+      // fed-back code (feedback needs that latch too); the page ends neither resident nor dirty
       void release_latched (short volid, std::int32_t pageid, std::uint8_t code);
       // the page left the heap
       void forget (short volid, std::int32_t pageid);
-      // the page was found gone without a latch that keeps it so (the maintenance daemon): NOT_DATA only while it is
-      // still UNVERIFIED and not resident. false: left as it is
+      // the daemon found the page gone without its latch: NOT_DATA (true) only if still UNVERIFIED and not resident
       bool forget_unverified (short volid, std::int32_t pageid);
-      // the code a shard slot keeps for its page, written into the map while the page stays resident, so that the
-      // image a checkpoint writes carries it (heap_file.c). No-op unless the page is resident and not dirty (a dirty
-      // page's fed-back code is what release () keeps), or when its code is not a tier (NOT_DATA, UNVERIFIED). Marks
-      // the sector persist-dirty when the code changes. A feedback or forget that writes the page's code meanwhile
-      // is not hidden by it (a feedback of the code it replaces may come back over-estimated, as in release ()).
-      // true: the code changed
+      // write a slot's code for its resident, clean page so the checkpoint image carries it (heap_file.c); no-op
+      // otherwise or if a code is not a tier. Marks the sector persist-dirty. true: the code changed
       bool set_resident_code (short volid, std::int32_t pageid, std::uint8_t code);
-      // allocate, outside any page latch, the nodes set_resident () needs if the next sector it adds follows the last
-      // sector of the map on the same volume. Best effort: an allocation failure leaves the reserve short
+      // allocate, before the heap header latch, the nodes set_resident () needs if the next sector follows the last one
+      // on the same volume. Best effort: set_resident () allocates what is missing, and the promotion, under the latch
       void reserve ();
 
       // ---- search
       // up to max_count non-resident pages with min_code <= code <= CODE_MAX_TIER; they become resident
       std::size_t claim (std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count);
       bool peek (short volid, std::int32_t pageid, std::uint8_t &code, bool &resident);
-      // bit i: pages[i] is resident, its free space was fed back since it became resident, and the fed-back code is
-      // above pages[i].code (the caller's idea of the page). count <= 64. A page the map does not know, or with a
-      // negative pageid, is not set
+      // bit i: pages[i] is resident and was fed back since, with a code above pages[i].code (count <= 64)
       std::uint64_t resident_dirty_above (const bestspace_map_page *pages, std::size_t count);
 
       // ---- persistence
@@ -170,15 +146,13 @@ namespace cubstorage
       std::size_t num_groups () const;	// persist-dirty words: group g covers sectors [g * 64, g * 64 + 64)
       std::uint64_t take_persist_dirty (std::size_t group);
       void put_back_persist_dirty (std::size_t group, std::uint64_t bits);
-      // whether some sector is persist-dirty now (a change right after this sets its bit for the next look)
       bool any_persist_dirty ();
       void snapshot_sector (std::size_t number, bestspace_map_entry &out);
       // load: append a persisted sector as the next number, not dirty. false: duplicate key or out of memory
       bool load_sector (const bestspace_map_entry &entry);
       // apply recorded pages (mask) of one sector like feedback; adds the sector (other pages UNVERIFIED) if new
       bool merge_sector (const bestspace_map_entry &entry, std::uint64_t mask);
-      // a file sector the map does not know: allocated pages UNVERIFIED, others NOT_DATA. no-op if known, also when
-      // another thread adds it first: the codes are written before the sector is published
+      // a file sector the map lacks: allocated pages UNVERIFIED, others NOT_DATA; no-op if known (or added meanwhile)
       bool add_missing_sector (short volid, std::int32_t first_pageid, std::uint64_t allocated);
       // non-resident UNVERIFIED pages from cursor (page index over all sectors); returns how many were written
       std::size_t next_unverified (std::size_t &cursor, bestspace_map_page *out, std::size_t max_count);
@@ -192,16 +166,13 @@ namespace cubstorage
       // a check the map needs could not run now (the maintenance daemon runs it again)
       void mark_needs_retry ();
       void clear_needs_retry ();
-      // a count every map bumps when it may have new work for the maintenance daemon: a page became UNVERIFIED, a
-      // sector was added (it may be past the map pages on disk), needs_retry was set. The daemon skips a round while
-      // the count has not moved and its last pass left no work (heap_file.c). The hot paths' usual changes leave it
+      // a global count bumped when a map may have new work for the maintenance daemon (a page became UNVERIFIED, a
+      // sector was added, needs_retry was set). The daemon skips a round while it is unchanged (heap_file.c)
       static std::uint64_t work_epoch ();
       static void note_work ();
-      // counts[c]: pages with code c, over every sector (num_sectors () * PAGES_PER_SECTOR in all). Atomic loads only:
-      // writers go on meanwhile, so the counts are a moment's view, not a snapshot
+      // counts[c]: pages with code c over every sector; atomic loads, not a snapshot
       void count_codes (std::uint64_t counts[16]);
       void count (counter id, std::uint64_t value = 1);
-      // the bytes the map allocated, and the counters. Atomic loads only, no lock
       void get_usage (std::size_t &bytes, std::uint64_t counters[CNT_LAST]);
 
       static std::uint64_t make_key (short volid, std::int32_t pageid);
@@ -213,8 +184,7 @@ namespace cubstorage
 #if !defined (NDEBUG)
       // the next count internal allocations fail (unit tests, fault injection)
       static void debug_fail_allocations (int count);
-      // set_resident_code () calls hook (arg) once it has read the code and checked the bits, before its exchange: a
-      // write that comes in between (unit tests). nullptr: none
+      // set_resident_code () calls hook (arg) just before its exchange (unit tests). nullptr: none
       static void debug_resident_code_hook (void (*hook) (void *), void *arg);
 #endif
 
@@ -270,8 +240,7 @@ namespace cubstorage
       std::atomic<std::size_t> m_bytes;	// written under m_grow_mutex, read without it (get_usage ())
       std::atomic<std::uint64_t> m_counters[CNT_LAST];
 
-      // nodes reserve () allocated for the next sector add; under m_grow_mutex. A sector after the promotion needs at
-      // most a group with its directories and the radix nodes below the root on the path of its key
+      // reserve ()'s nodes for the next sector, under m_grow_mutex: a group, its directories and its key's radix path
       static constexpr std::size_t MAX_SPARE_RNODES = RADIX_LEVELS - 1;
       struct spare_nodes
       {
@@ -306,9 +275,9 @@ namespace cubstorage
       std::atomic<std::uint64_t> &persist_word (std::size_t n);
 
       record *find (short volid, std::int32_t pageid, std::size_t &n);
-      // use_spares: take the nodes of a new sector from the reserve (set_resident (), under the heap header latch)
+      // use_spares: take a new sector's nodes from the reserve (set_resident ())
       record *get_or_add (short volid, std::int32_t pageid, std::size_t &n, std::uint64_t fill, bool use_spares);
-      // fills: the codes of a new sector, word by word, written before it is published. added: this call added it
+      // fills: the codes of a new sector, written before it is published. added: this call added it
       record *get_or_add (short volid, std::int32_t pageid, std::size_t &n, const std::uint64_t fills[4],
 			  bool use_spares, bool &added);
       bool promote (bool use_spares);
@@ -341,9 +310,8 @@ namespace cubstorage
   static_assert (sizeof (bestspace_map::COUNTER_NAMES) / sizeof (bestspace_map::COUNTER_NAMES[0])
 		 == bestspace_map::CNT_LAST, "COUNTER_NAMES needs one name per counter, in enum order");
 
-  // tiers recorded for heaps whose map is not in memory. One entry per (group, sector key) with a mask of the
-  // recorded pages.
-  //   pending table (runtime): group = heap file key (heap_file.c), owner and lsa unused (0).
+  // tiers for heaps whose map is not in memory, one entry per (group, sector key) with a mask of the recorded pages.
+  //   pending table (runtime, feedback before the map is loaded): group = heap file key (heap_file.c), owner and lsa 0.
   //   recovery table (restart): group = 0, owner = class OID; a sector follows the owner with the largest LSA,
   //   because a sector moves to another file only after its file was destroyed.
   class bestspace_sector_table
@@ -377,31 +345,26 @@ namespace cubstorage
       // false: no memory for the entry; the caller calls mark_lost ()
       bool record (std::uint64_t group, std::uint64_t key, std::size_t offset, std::uint8_t code, std::uint64_t owner,
 		   std::uint64_t lsa);
-      // like record () with owner and lsa 0, unless check (arg) returns false under the stripe lock: the pending table
-      // checks that the heap's map is still not loaded, because a loader publishes the map before it takes the group
-      // under the same lock. NO_MEMORY: (group, 0) is marked lost before the lock is released, so a loader that takes
-      // the group after this sees the mark
+      // like record () with owner and lsa 0, unless check (arg) fails under the stripe lock (the pending table checks
+      // the map is still not loaded; a loader publishes the map, then takes the group under that lock). NO_MEMORY:
+      // (group, 0) is marked lost under the lock, so the loader sees the mark
       record_result record_if (std::uint64_t group, std::uint64_t key, std::size_t offset, std::uint8_t code,
 			       bool (*check) (void *), void *arg);
       // the recorded pages (mask) of one sector at once, owner and lsa 0 (pending table)
       bool record_sector (std::uint64_t group, std::uint64_t key, const std::uint64_t codes[4], std::uint64_t mask);
-      // put taken pages of one sector back (owner and lsa 0, pending table), except the pages the group has a record of
-      // again: a writer may have recorded a newer code for one after the entry was taken. false: no memory
+      // put taken pages of one sector back (pending table), except pages recorded again since the take (they have a
+      // newer code). false: no memory
       bool restore_sector (std::uint64_t group, std::uint64_t key, const std::uint64_t codes[4], std::uint64_t mask);
-      // the groups (group != 0) that have an entry or a lost mark (owner 0), sorted and distinct, without detaching
-      // anything: each stripe is read under its lock in turn, so a group recorded meanwhile may be missing. groups is
-      // malloc'd (free_and_init), nullptr when count is 0. false: out of memory
+      // the groups (!= 0) with an entry or a lost mark (owner 0), sorted and distinct; a group recorded meanwhile may
+      // be missing. groups is malloc'd (free_and_init), nullptr when count is 0. false: no memory
       bool list_groups (std::uint64_t *&groups, std::size_t &count);
       // the group (!= 0) has an entry or a lost mark (owner 0) now
       bool has_group (std::uint64_t group);
-      // detach every entry of a group (group != 0); free the list with free_list (). locked (list, arg), if given, runs
-      // before the stripe lock is released (list may be null): what it does is ordered against every record_if () of
-      // the group. It must not call this table's record or take functions (the lock is held)
+      // detach every entry of a group (!= 0); free with free_list (). locked (list, arg) runs under the stripe lock,
+      // ordered against every record_if () of the group; it must not call back into this table
       entry *take_group (std::uint64_t group, void (*locked) (entry *list, void *arg) = nullptr, void *arg = nullptr);
-      // detach every entry
       entry *take_all ();
-      // free every entry, the bucket arrays and every lost mark, lost_all () included: the table is as constructed.
-      // Not for a table other threads use at the same time (restart recovery starts and ends with it)
+      // back to the state as constructed, lost marks included. Not while other threads use the table
       void clear ();
       static void free_list (entry *&list);
       std::size_t size () const;
@@ -411,7 +374,7 @@ namespace cubstorage
       bool is_lost (std::uint64_t group, std::uint64_t owner);
       bool lost_all () const;
       void clear_lost (std::uint64_t group, std::uint64_t owner);
-      // remove one remembered (group, owner); false when none is left (restart recovery hands them to the pending table)
+      // remove one remembered (group, owner); false when none is left
       bool take_lost (std::uint64_t &group, std::uint64_t &owner);
 
     private:

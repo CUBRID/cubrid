@@ -535,8 +535,7 @@ namespace cubstorage
 	return error;
       }
 
-    // is this page still belongs to the class (class_oid) ? A map page is not a data page: one that reuses a page a
-    // slot still held is empty until its entries record goes in (heap_bsmap_add_page ())
+    // is this page still belongs to the class (class_oid) ? A map page that reuses a slot's page looks empty at first
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
 	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
 	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr)
@@ -552,11 +551,8 @@ namespace cubstorage
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     // newest
     vpid = expected.get_vpid ();
-    // the record fits by the room this transaction has now. The slot keeps the room without the space transactions
-    // saved for their rollback (05 3.1): that space is free once they end, and the slot hands its value to the map when
-    // the page leaves it, which would keep the saved space subtracted for good. The slot keeps the room, not the free
-    // space, because its pre-check above compares it with a request: free space above the request with room below it
-    // would bring the page back here on every search. What the map gets is the free space (code_of_room ())
+    // the fit uses the room this transaction has. The slot keeps the room without saved space, which is free once its
+    // transactions end; the room, not the free space, so that the pre-check above does not pass a page without room
     available = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
     freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
     if (available < needed_size)
@@ -640,17 +636,13 @@ namespace cubstorage
       {
 	L2_update (l2_index, l1_index);
 
-	// the page is not a data page of this heap any more (deallocated, removed, another class). it leaves the slot
-	// without a release, so drop it from the map too; it would stay resident there for good otherwise
+	// no longer a data page of this heap: drop it from the map too, or it stays resident there for good
 	removed_vpid = expected.get_vpid ();
 	m_parent.m_map->forget (removed_vpid.volid, removed_vpid.pageid);
       }
   }
 
-  // A slot that holds the page keeps the free space of the page's life before it left the heap: giving that back to
-  // the map (release) would write a stale code, so the slot is emptied quietly. A finder that read the slot before
-  // this fixes the page: it finds the page not in the heap (or, once handed out again, a page of the heap, which it
-  // may use), and its update of the slot fails (the slot changed)
+  // a finder that read the slot earlier finds the page out of the heap (or back in it, usable) and fails its CAS
   bool
   bestspace::shard::drop_page (VPID vpid)
   {
@@ -679,14 +671,9 @@ namespace cubstorage
     return dropped;
   }
 
-  // The shard's allocating mark (allocate_mark ()) keeps refills out while the slots are read: no slot gets a page or
-  // loses one to an eviction meanwhile, so the map's release () of a slot's page cannot interleave with the write of
-  // the same page's code. Finders still change a slot's room (L1_find ()) and empty a slot (L1_remove (),
-  // drop_page ()); a code written from a value read just before such a change is harmless: the map code of a
-  // resident page is used by nothing while the page stays resident (a claim skips it, a release writes its own code
-  // or keeps a fed-back one, a forget writes NOT_DATA over it), only by the image the checkpoint writes, which is as
-  // old as the checkpoint anyway. The mark is waited for a short while only: an allocation can hold it over a disk
-  // read.
+  // The allocating mark keeps refills out, so no slot's page is released while its code is written. A finder may
+  // change a slot meanwhile; the code then written is harmless: only the checkpoint image uses a resident page's
+  // code. The mark is waited for briefly: an allocation can hold it over a disk read.
   bool
   bestspace::shard::publish_slot_codes (std::size_t &changed)
   {
@@ -744,17 +731,11 @@ namespace cubstorage
     m_allocating.store (false);
   }
 
-  // Victims are the ALLOC_BATCH_SIZE slots a refill puts its pages into, chosen in this order:
-  //   1. slots whose page was fed back (vacuum, delete, rollback) with more room than the slot records. No one sees
-  //      that room otherwise: the map does not hand out a resident page, and the slot looks full to this shard;
-  //   2. empty slots;
-  //   3. the first slots, by number, that cannot serve this request (recorded free space below needed_size);
-  //   4. if fewer slots than that qualify, the slots with the least free space.
-  // Evicting a page loses nothing: the map keeps the code of every page and hands the page out again to a request it
-  // fits. Taking the first slots keeps the pages being filled at the front, where L3_find () and L2_find () start:
-  // they try every slot of the request's tier that is too small before they reach one that fits, so a page being
-  // filled in a high slot makes every insert walk the full slots below it.
-  // Returns how many victims, at the front, were fed back.
+  // Victims, in this order: slots whose page was fed back with more room than the slot records (no one sees that
+  // room otherwise), empty slots, the first slots whose free space is below needed_size, then the least free space.
+  // The first slots are taken because the finders start there: a page filled in a high slot would make every insert
+  // walk the full slots below it. An evicted page keeps its code in the map.
+  // Returns how many victims, at the front, were fed back
   std::size_t
   bestspace::shard::allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
       std::uint16_t needed_size)
@@ -794,7 +775,6 @@ namespace cubstorage
 	  }
       }
 
-    // then empty slots, then the first slots that cannot serve this request
     num_front = num_dirty;
     for (pass = 0; pass < 2; pass++)
       {
@@ -808,8 +788,7 @@ namespace cubstorage
 	  }
       }
 
-    // and, if those were not enough, the least free space among the rest (the request fits each of them), kept sorted
-    // after the victims chosen above
+    // then the least free space among the rest, kept sorted after the victims above
     num_victims = num_front;
     for (slot = 0; slot < NUM_SLOTS && num_front < ALLOC_BATCH_SIZE; slot++)
       {
@@ -836,17 +815,10 @@ namespace cubstorage
     return num_dirty;
   }
 
-  // Empty the first count victim slots now and write their pages back to the map. They hold pages fed back while
-  // resident with a higher tier than the slot records (allocate_pick_victims ()), so that the claim of this same
-  // refill can take them again with their tier. But the fed-back code is not always the newer value: a slot measures
-  // its page at every fix and may go on filling it after a feedback, and release () keeps the fed-back code anyway,
-  // which the next claim of the page then finds too high. So each page is measured again if it is in the buffer and
-  // free (fix_in_buffer (): no I/O, no wait, so the pages the caller holds are no concern), classified as feedback
-  // classifies it, and its code goes back under the latch over the fed-back one (release_latched ()). A page that is
-  // not a heap page of this class any more leaves the map, as L1_remove () has it. A page that cannot be fixed that
-  // way goes back as before.
-  // FAILURE: a fix failed with an error (interrupt, I/O), which stays set; every slot is emptied and its page written
-  // back all the same
+  // Empty the first count victim slots and give their pages back to the map for this refill's claim. The fed-back
+  // code may be too high (the slot went on filling the page) and release () keeps it, so a page in the buffer and not
+  // latched is measured again and its code replaces the fed-back one (release_latched ()).
+  // FAILURE: a fix failed with an error, which stays set; the slots are emptied and their pages given back anyway
   bestspace::status
   bestspace::shard::allocate_release_victims (OID *class_oid, HFID *hfid, std::size_t count,
       std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims, PGBUF_WATCHER &page_watcher)
@@ -871,8 +843,7 @@ namespace cubstorage
 
 	expected = m_L1[slot].load ();
 	vpid = expected.get_vpid ();
-	// only this allocating thread puts a page into a slot; others change its free space or empty it (L1_remove (),
-	// drop_page ()), each by a compare-and-swap
+	// only this thread puts a page into a slot; others change or empty it by CAS (L1_remove (), drop_page ())
 	while (!VPID_ISNULL (&vpid) && !m_L1[slot].compare_exchange_strong (expected, desired))
 	  {
 	    vpid = expected.get_vpid ();
@@ -883,7 +854,6 @@ namespace cubstorage
 	  }
 	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
 
-	// after a failed fix, the rest go back without one
 	fixed = (result == status::SUCCESS) ? fix_in_buffer (hfid, vpid, page_watcher) : status::DEFERRED;
 	if (fixed == status::SUCCESS)
 	  {
@@ -914,11 +884,8 @@ namespace cubstorage
     return result;
   }
 
-  // A fix with no I/O and no wait (05 7.2): the page only if it is in the page buffer and no other thread latches it.
-  // Such a fix needs no latch order: the caller may hold other pages of the heap (an update that moves a record holds
-  // its home page and the heap header), and an ordered fix ranks the page against them only to avoid waiting for a
-  // latch while holding one, which a conditional latch never does. The fixed page gets the watcher an ordered fix
-  // gives it: the heap the watcher was set up for, ranked as heap header or heap page.
+  // Fix the page only if it is in the buffer and not latched: no I/O and no wait, so no latch order is needed and the
+  // caller may hold other pages of the heap. The watcher is set up as an ordered fix sets it.
   bestspace::status
   bestspace::shard::fix_in_buffer (HFID *hfid, VPID &vpid, PGBUF_WATCHER &page_watcher)
   {
@@ -934,8 +901,7 @@ namespace cubstorage
     assert (VPID_ISNULL (&page_watcher.group_id)
 	    || (page_watcher.group_id.volid == hfid->vfid.volid && page_watcher.group_id.pageid == hfid->hpgid));
 
-    // as L1_fix (): a latch held by another thread fails the fix with no error set, whatever lock timeout the
-    // transaction has
+    // as L1_fix (): fail at once, with no error, on a latch another thread holds, whatever the lock timeout
     wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
     pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
     (void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
@@ -956,12 +922,8 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    // pgbuf_attach_watcher () sets the watcher up again, initial rank included: HEAP_HDR when the page is the heap
-    // header, which holds rows and can be claimed or held by a slot. An ordered fix leaves the initial rank as the
-    // caller set it and ranks only the fix it makes; do the same. Later fixes through this watcher take their rank
-    // from the initial rank (a claim's pass 2, and the caller's fixes of the page a refill hands back:
-    // pgbuf_replace_watcher () copies both ranks), and a heap page ranked as the header is fixed out of order against
-    // the pages the caller holds
+    // the attach also resets the initial rank (HEAP_HDR for the header page). Keep the caller's, as an ordered fix
+    // does: later fixes take their rank from it, and a heap page ranked as the header would be fixed out of order
     initial_rank = page_watcher.initial_rank;
     pgbuf_attach_watcher (thread_p, pgptr, PGBUF_LATCH_WRITE, hfid, &page_watcher);
     page_watcher.initial_rank = initial_rank;
@@ -973,9 +935,8 @@ namespace cubstorage
     return status::SUCCESS;
   }
 
-  // Fix a claimed page and check that the record fits. valid: false when the page is not a data page of this heap any
-  // more. in_buffer_only: fix the page with fix_in_buffer () (no I/O, no wait); DEFERRED when it cannot. Every check
-  // after the fix is the same either way.
+  // Fix a claimed page and check that the record fits. valid: false when it is no longer a data page of the heap.
+  // in_buffer_only: fix with fix_in_buffer () (DEFERRED when it cannot); the checks after the fix are the same.
   bestspace::status
   bestspace::shard::allocate_verify_actual_space (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
       bestspace_entry &candidate, bool &valid, bool in_buffer_only, PGBUF_WATCHER &page_watcher)
@@ -999,8 +960,7 @@ namespace cubstorage
 
     if (in_buffer_only)
       {
-	// an error is not deferred: as the fix below, a bad page leaves the map, anything else fails the insert. A page
-	// deallocated in the buffer is no error here: the fix returns it, and the page type check rejects it
+	// errors are not deferred: a bad page leaves the map, any other error fails the insert
 	result = fix_in_buffer (hfid, vpid, page_watcher);
 	if (result == status::NOT_FOUND)
 	  {
@@ -1029,7 +989,6 @@ namespace cubstorage
 	    return status::FAILURE;
 	  }
       }
-    // either fix leaves the watcher as an ordered fix does: its initial rank is the caller's
     assert (page_watcher.initial_rank == initial_rank);
 
     // a map page is never a data page (see L1_find ())
@@ -1057,10 +1016,7 @@ namespace cubstorage
 	return status::NOT_FOUND;
       }
 
-    // the record fits by the room this transaction has now. What the caller keeps of the page (the map's code, a
-    // slot's free space) is measured without the space transactions saved for their rollback (05 3.1): that space is
-    // free once they end, and nothing reports it then, so a value taken with it subtracted stays low until the page's
-    // next feedback (a page that keeps no row may never get one, and a page of code 0 is never claimed)
+    // the fit uses the room this transaction has; what the caller keeps excludes saved space (see L1_find ())
     available = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
     if (available < needed_size)
       {
@@ -1070,8 +1026,7 @@ namespace cubstorage
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
 	return status::NOT_FOUND;
       }
-    // the page goes to a slot, or back to the map (allocate_install): the room for a new record without saved space,
-    // as a slot keeps it (L1_find). The caller takes the record off
+    // the room a slot keeps (see L1_find ()); the caller takes the record off
     freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
     candidate.freespace = static_cast<std::uint16_t> (freespace);
     return status::FOUND;
@@ -1099,8 +1054,7 @@ namespace cubstorage
 
     STATS_INC (allocated, ALLOC_BATCH_SIZE - num_candidates);
 
-    // the room the latched page's slot keeps, without saved space (L1_find); allocate () decides the fit on the room
-    // this transaction has
+    // the room a slot keeps (see L1_find ()); allocate () checks the fit with this transaction's room
     freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
     // page_watcher.pgptr fixes the page pointer of the last candidates
     for (i = ALLOC_BATCH_SIZE - 1; i >= static_cast<int> (num_candidates); i--)
@@ -1133,14 +1087,12 @@ namespace cubstorage
 
 	l1.set_freespace (candidates[i].freespace);
 	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
-	// one exchange: an L1_remove () or a drop_page () of the evicted page either empties the slot first (nothing
-	// to release here) or fails its CAS (the page is not forgotten); with a load and a store it could forget the
-	// page and see it released
+	// one exchange, not a load and a store: an L1_remove () or drop_page () of the evicted page then either empties
+	// the slot first or fails its CAS, so the page is never both forgotten and released
 	old = m_L1[slot].exchange (l1);
 
 	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
 
-	// write the evicted page back to the map so it is never forgotten
 	old_vpid = old.get_vpid ();
 	if (!VPID_ISNULL (&old_vpid))
 	  {
@@ -1180,9 +1132,7 @@ namespace cubstorage
 	return status::ALLOCATING;
       }
 
-    // pick four slots to replace (see allocate_pick_victims): pages fed back with more room than their slot records,
-    // empty slots, then the first slots that cannot serve this request. the fed-back pages go back to the map before
-    // the claim, which can hand them out again with their tier (measured again first when they are in the buffer)
+    // pick the victims; the fed-back ones go back to the map first, so that this claim can hand them out again
     num_dirty = allocate_pick_victims (victims, needed_size);
     if (allocate_release_victims (class_oid, hfid, num_dirty, victims, page_watcher) == status::FAILURE)
       {
@@ -1190,9 +1140,8 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    // claim pages whose tier is above the request's: their lower bound fits it when the map is accurate. a page of
-    // the same tier may or may not fit (tiers are 8~15% wide), so it is left for smaller requests; only a request in
-    // the top tier has nothing above it and tries its own tier.
+    // claim pages of a higher tier, whose lower bound fits the request; a page of the same tier may not fit and is left
+    // for smaller requests. A request in the top tier claims its own tier
     min_code = code_of (needed_size);
     num_claimed = map->claim (min_code < bestspace_map::CODE_MAX_TIER ? min_code + 1 : bestspace_map::CODE_MAX_TIER,
 			      picked, ALLOC_BATCH_SIZE);
@@ -1201,8 +1150,7 @@ namespace cubstorage
 	(void) FI_TEST (thread_get_thread_entry_info (), FI_TEST_BESTSPACE_DELAY_CLAIM, 0);
       }
 
-    // highest tier first (05 7.2): a page with more room takes more of the rows to come before the next refill. Every
-    // claimed page holds the upper bound of its tier, so the order by free space is the order by tier
+    // highest tier first: a page with more room takes more of the rows before the next refill
     for (i = 0; i < num_claimed; i++)
       {
 	entry.volid = picked[i].volid;
@@ -1216,9 +1164,8 @@ namespace cubstorage
 	state[i] = claim_state::UNCHECKED;
       }
 
-    // what a check found becomes the page's state in the map. false: the insert fails, and every claimed page not
-    // settled yet goes back to the map. A page not measured goes back with the code of its tier bound (code_of_room ():
-    // the value a slot would give back), a measured page with the code of its free space
+    // record what a check found in the map. false: the insert fails, and every claimed page not settled yet goes back.
+    // A measured page goes back with the code of its free space, another with the code of its tier bound
     auto settle = [&] (std::size_t index, status outcome, bool page_valid) -> bool
     {
       std::size_t k;
@@ -1241,8 +1188,7 @@ namespace cubstorage
 	    }
 	  else
 	    {
-	      // the class of the page could not be read: drop the page, or every insert that claims it fails the same
-	      // way
+	      // its class could not be read: drop it, or every insert that claims it fails the same way
 	      map->forget (claimed[index].volid, claimed[index].pageid);
 	    }
 	  for (k = 0; k < num_claimed; k++)
@@ -1260,7 +1206,6 @@ namespace cubstorage
       map->count (bestspace_map::CNT_VERIFY_FAIL);
       if (page_valid)
 	{
-	  // the page was measured: record its exact tier
 	  map->release (claimed[index].volid, claimed[index].pageid, code_of (claimed[index].freespace), true);
 	}
       else
@@ -1271,8 +1216,7 @@ namespace cubstorage
       return true;
     };
 
-    // verify the claimed pages in order until one really fits; the rest become unverified replacements. The first pass
-    // checks only the pages that are in the buffer and that no one latches (no I/O, no wait) and defers the others
+    // first pass: only pages in the buffer and not latched (no I/O, no wait), until one fits; defer the others
     found = false;
     fit_index = 0;
     for (i = 0; i < num_claimed && !found; i++)
@@ -1293,8 +1237,7 @@ namespace cubstorage
 	fit_index = i;
       }
 
-    // none of them fits: check the deferred page of the highest tier with a fix that may read the disk. One read per
-    // refill at most, so a heap larger than the buffer is not read through to reuse its free space (05 7.2)
+    // none fits: one disk fix per refill at most (the highest deferred tier), so a large heap is not read through
     for (i = 0; i < num_claimed && !found; i++)
       {
 	if (state[i] != claim_state::DEFERRED)
@@ -1318,8 +1261,7 @@ namespace cubstorage
     num_candidates = 0;
     if (found)
       {
-	// the pages not checked (deferred ones too) become unverified replacements, and the page returned to the caller
-	// is always stored at the last position.
+	// the unchecked pages become unverified replacements; the page returned to the caller goes last
 	for (i = 0; i < num_claimed; i++)
 	  {
 	    if (state[i] == claim_state::UNCHECKED || state[i] == claim_state::DEFERRED)
@@ -1332,8 +1274,7 @@ namespace cubstorage
       }
     else
       {
-	// the other deferred pages go back unread, with the code they were claimed with; a code fed back while they
-	// were claimed wins (release)
+	// the deferred pages go back unread; a code fed back meanwhile wins (release ())
 	for (i = 0; i < num_claimed; i++)
 	  {
 	    assert (state[i] == claim_state::DEFERRED || state[i] == claim_state::SETTLED);
@@ -1343,7 +1284,6 @@ namespace cubstorage
 	      }
 	  }
 
-	// nothing in the map fits: extend the heap by one batch
 	error = allocate_new_pages (hfid, 0, candidates, page_watcher);
 	if (error != NO_ERROR)
 	  {
@@ -1360,9 +1300,8 @@ namespace cubstorage
 
 	if (spage_max_space_for_new_record (thread_get_thread_entry_info (), page_watcher.pgptr) < needed_size)
 	  {
-	    // heap_alloc_new_pages links the pages into the heap before it latches the first one again, so another
-	    // inserter that reached it through an old hint may have used it meanwhile. keep the batch in the hot cache
-	    // and serve the request from it instead.
+	    // heap_alloc_new_pages () links the pages before it latches the first one again, so an inserter may have
+	    // used it meanwhile: install the batch and serve the request from the slots
 	    cubthread::entry *thread_p = thread_get_thread_entry_info ();
 	    tier minimum;
 
@@ -1381,7 +1320,6 @@ namespace cubstorage
 	      {
 		return result;
 	      }
-	    // nothing usable right now: let the caller retry
 	    return status::ALLOCATING;
 	  }
       }
@@ -1557,7 +1495,6 @@ namespace cubstorage
     return m_map_num_pages;
   }
 
-  // caller holds m_layout_mutex
   bool
   bestspace::map_grow_page_slots ()
   {
@@ -1573,8 +1510,7 @@ namespace cubstorage
     return true;
   }
 
-  // the caller holds the heap header write latch: layout changes are serialized by it, readers by the mutex. A slot
-  // reserved here stays free until the next map_append_page (), which only the latch holder calls
+  // the caller holds the heap header write latch, so the reserved slot stays free until its map_append_page ()
   bool
   bestspace::map_reserve_page_slot ()
   {
@@ -1682,15 +1618,10 @@ namespace cubstorage
     return fs == tier::FS0 ? bestspace_map::CODE_NONE : static_cast<std::uint8_t> (static_cast<std::int8_t> (fs) + 1);
   }
 
-  // A slot keeps the room for a new record (spage_max_space_for_new_record_without_saving ()): the free space less one
-  // slot entry when the page has no unused one, aligned down to the page's alignment (HEAP_MAX_ALIGN on every heap
-  // page). The map holds the tier of the free space itself, as every feedback, the recovery hooks and checkdb's audit
-  // measure it (05 3.1). A slot's room handed to the map as a code is therefore first raised to the most free space it
-  // can stand for: without that, a page whose free space lies within a slot entry above a tier boundary goes back one
-  // tier low, and a page that is not fed back again (an append-only heap) keeps the hidden space for good. The raise
-  // is at most a slot entry and an alignment (7 bytes), so the code is the free space's tier or the one above it, and
-  // a slot's optimistic tier bound (optimistic_freespace ()) keeps its tier: the next tier starts at least 1% of a page
-  // above it. Over-estimating by a few bytes is what a claim's verification corrects.
+  // A slot keeps the room: the free space less a slot entry (when the page has no unused one), aligned down to
+  // HEAP_MAX_ALIGN. The map holds the free space's tier, so the room is first raised by the most it can hide; else a
+  // page just above a tier boundary goes back one tier low, for good if it is never fed back. The raise (a slot
+  // entry and 7 bytes) is below the 1% of a page between tier bounds, so a slot's optimistic bound keeps its tier
   std::uint8_t
   bestspace::code_of_room (std::uint16_t room)
   {
@@ -1922,12 +1853,9 @@ namespace cubstorage
       }
     assert (!find_entry (m_head, hfid));
     insert_entry (m_head, node);
-    // in the same hold of the mutex as the insert, which a lookup (find_from_global) also takes: a lookup that missed
-    // ran before the insert, so a reader that reads the same count before such a miss and again later knows that no
-    // create () completed in between (heap_bsmap_unloaded_cache in heap_file.c)
+    // under the mutex of the insert, which find_from_global () also takes: a miss is ordered against the count
     m_creates.fetch_add (1);
-    // after the insert: the maintenance daemon reads the epoch before it pins the bestspaces, so either it pins this
-    // one or its next round looks (what the load noted while the map was private was before the daemon could pin it)
+    // after the insert: the daemon reads the epoch before it pins, so it pins this one now or in its next round
     bestspace_map::note_work ();
     return node->entry;
   }
@@ -1938,8 +1866,7 @@ namespace cubstorage
     return m_creates.load ();
   }
 
-  // the heap is dropped or reused: its file may be destroyed or written whole next, so the background work in progress
-  // on it ends first (begin_work ()); a pinned bestspace refuses new work from now on (dropped)
+  // the heap is dropped or reused: wait for its work in progress; a pinned bestspace is only marked dropped
   void
   bestspace_registry::destroy (const VFID *vfid)
   {
@@ -2361,8 +2288,7 @@ namespace cubstorage
     return nullptr;
   }
 
-  // the work in progress on the file has ended. A worker waits only for page latches of the heap and the file header,
-  // which the caller holds none of
+  // a worker waits only for latches of the heap's pages and file header, which the caller holds none of
   void
   bestspace_registry::wait_work_locked (std::unique_lock<std::mutex> &lock, const VFID *vfid)
   {

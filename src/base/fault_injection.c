@@ -80,7 +80,7 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE},
-  /* BESTSPACE: random failures (F), sleeps that widen race windows (H), random exits (X) */
+  /* BESTSPACE: random failures, sleeps that widen race windows, random exits */
   {FI_TEST_BESTSPACE_MAP_PAGE_ALLOC_FAIL, fi_handler_random_fail, FI_INIT_STATE},
   {FI_TEST_BESTSPACE_MAP_PAGE_READ_FAIL, fi_handler_random_fail, FI_INIT_STATE},
   {FI_TEST_BESTSPACE_SECTOR_NOMEM, fi_handler_random_fail, FI_INIT_STATE},

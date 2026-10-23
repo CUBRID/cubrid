@@ -7446,8 +7446,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
-  /* the bestspace maps, after the flush: a page flushed above had its free space fed back before its latch was
-   * released, and the records written here are past newchkpt_lsa, inside the range this checkpoint's recovery redoes */
+  /* after the flush: flushed pages were fed back before their unlatch, and these records land past newchkpt_lsa */
   detailed_er_log ("logpb_checkpoint: call heap_bestspace_checkpoint()\n");
   if (heap_bestspace_checkpoint (thread_p) != NO_ERROR)
     {
