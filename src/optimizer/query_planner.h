@@ -239,6 +239,8 @@ struct qo_plan
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
+  bool parallel_driven;		/* nested loop whose driving scan the executor splits among parallel workers
+				   (qo_nljoin_cost ()); a chain inherits it from its outer (CBRD-27474) */
   bool use_iscan_descending;
   bool need_final_sort;
 
