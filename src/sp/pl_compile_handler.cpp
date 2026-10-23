@@ -161,7 +161,7 @@ namespace cubpl
 		sql_semantics_request request;
 		respone_unpacker.unpack_all (request);
 
-		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+		error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
 	      }
 	    else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
 	      {
@@ -169,7 +169,7 @@ namespace cubpl
 		global_semantics_request request;
 		respone_unpacker.unpack_all (request);
 
-		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+		error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
 	      }
 	    else if (code == METHOD_CALLBACK_GET_CODE_BY_NAME)
 	      {
@@ -183,8 +183,8 @@ namespace cubpl
 		respone_unpacker.unpack_all (class_name, req_compile_id);
 
 		error_code =
-			m_stack->send_data_to_client_recv (bypass_block, METHOD_CALLBACK_GET_CODE_BY_NAME, class_name,
-			    req_compile_id);
+			m_stack->send_data_to_client_recv (bypass_block, true, METHOD_CALLBACK_GET_CODE_BY_NAME,
+			    class_name, req_compile_id);
 	      }
 	    else
 	      {

@@ -114,8 +114,13 @@ public class SpLib {
                                 + cause.getMessage());
             }
         } catch (NoClassDefFoundError e) {
+            // a class whose initialization failed once is not initialized again,
+            // and the cause of the failure is not available any more
             Server.log(e);
-            throw new SQL_ERROR(method.getName() + ": package instance undefined");
+            throw new SQL_ERROR(
+                    "the package of "
+                            + method.getName()
+                            + " failed to be initialized earlier in this session");
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             if (cause == null) {

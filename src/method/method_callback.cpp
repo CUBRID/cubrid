@@ -766,7 +766,7 @@ namespace cubmethod
 	    else if (err_when_not_found)
 	      {
 		err = ER_SP_INVALID_TYPE;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "procedure" : "function");
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "PROCEDURE" : "FUNCTION");
 	      }
 	  }
 	AU_RESTORE (save);
@@ -825,6 +825,25 @@ namespace cubmethod
     return intl_identifier_lower_string_size (name.c_str ()) < DB_MAX_IDENTIFIER_LENGTH;
   }
 
+  /*
+   * user_specified_name_fits () - can this name be given to sm_user_specified_name ()?
+   *   return: true if it fits
+   *   name(in): <name> or <owner>.<name>
+   *
+   * Note: Beside the whole, sm_user_specified_name () only asserts that the owner and the name of
+   *       <owner>.<name> fit their parts of an identifier, so they are checked here as well
+   *       (see jsp_user_specified_name () in jsp_cl.cpp). A user or an object with a name that long
+   *       cannot exist, so a name refused here would not be found anyway.
+   */
+  static bool
+  user_specified_name_fits (const std::string &name)
+  {
+    size_t dot;
+    return identifier_fits (name)
+	   && ((dot = name.find ('.')) == std::string::npos
+	       || (dot < SM_MAX_USER_LENGTH && name.size () - dot - 1 < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH));
+  }
+
   // reported for a name identifier_fits () refused. The PL server turns it into a compile error
   // carrying the line and column of the name (see ParseTreeConverter.askServerSemanticQuestions).
   static const char *TOO_LONG_NAME_MSG = "Qualified name is too long. it must be shorter than 255 bytes.";
@@ -848,6 +867,21 @@ namespace cubmethod
     sm_downcase_name (temp.c_str(), buf, buf_size);
 
     return identifier_fits (temp);
+  }
+
+  static void
+  get_string_attr (MOP mop, const char *attr_name, std::string &out)
+  {
+    DB_VALUE val;
+    if (db_get (mop, attr_name, &val) == NO_ERROR)
+      {
+	const char *str = db_get_string (&val);
+	if (str != NULL)
+	  {
+	    out.assign (str);
+	  }
+	pr_clear_value (&val);
+      }
   }
 
   static int
@@ -1054,7 +1088,9 @@ namespace cubmethod
 
       if (lang == SP_LANG_PLCSQL)
 	{
-	  if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+	  // loaddb compiles a routine before the grants it relies on are loaded (unloaddb puts them last).
+	  // The check made when the routine is called still applies.
+	  if (!db_client_type_is_loaddb () && jsp_check_execute_authorization (routine_mop) != NO_ERROR)
 	    {
 	      err = er_errid ();
 	      if (err == NO_ERROR)
@@ -1064,27 +1100,8 @@ namespace cubmethod
 	      goto exit;
 	    }
 
-	  DB_VALUE target_class_val;
-	  if (db_get (routine_mop, SP_ATTR_TARGET_CLASS, &target_class_val) == NO_ERROR)
-	    {
-	      const char *tc = db_get_string (&target_class_val);
-	      if (tc != NULL)
-		{
-		  res.target_class.assign (tc);
-		}
-	      pr_clear_value (&target_class_val);
-	    }
-
-	  DB_VALUE unique_name_val;
-	  if (db_get (routine_mop, SP_ATTR_UNIQUE_NAME, &unique_name_val) == NO_ERROR)
-	    {
-	      const char *un = db_get_string (&unique_name_val);
-	      if (un != NULL)
-		{
-		  res.unique_name.assign (un);
-		}
-	      pr_clear_value (&unique_name_val);
-	    }
+	  get_string_attr (routine_mop, SP_ATTR_TARGET_CLASS, res.target_class);
+	  get_string_attr (routine_mop, SP_ATTR_UNIQUE_NAME, res.unique_name);
 	}
     }
 
@@ -1108,7 +1125,7 @@ exit:
     MOP serial_class_mop, serial_mop;
     DB_IDENTIFIER serial_obj_id;
 
-    if (!identifier_fits (question.name))
+    if (!user_specified_name_fits (question.name))
       {
 	res.err_id = ER_FAILED;
 	res.err_msg = TOO_LONG_NAME_MSG;
@@ -1169,7 +1186,7 @@ exit:
     split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
-    if (!identifier_fits (class_name_with_owner))
+    if (!user_specified_name_fits (class_name_with_owner))
       {
 	return ER_FAILED;
       }
@@ -1223,7 +1240,22 @@ exit:
     if (match_cnt == 0)
       {
 	err = res.err_id = ER_FAILED;
-	res.err_msg = "Failed to get attribute information";
+	if (sp_find_pkg_cursor (qualifier.c_str(), id.c_str ()))
+	  {
+#define ERR_MSG_TEMPLATE        ("'%s' is a package cursor, which cannot be used with %%TYPE yet")
+	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	    snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	    res.err_msg = buffer;
+	  }
+	else
+	  {
+#define ERR_MSG_TEMPLATE        ("'%s' is neither a table column nor a package variable or constant")
+	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	    snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	    res.err_msg = buffer;
+	  }
 	return err;
       }
     else if (match_cnt == 2)

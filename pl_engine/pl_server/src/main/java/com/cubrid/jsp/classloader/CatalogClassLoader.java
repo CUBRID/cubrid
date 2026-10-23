@@ -39,15 +39,11 @@ import java.util.Map;
 
 public class CatalogClassLoader extends ClassLoader {
 
-    public final String mainClassName;
-
     public boolean isOld;
     public CompiledCodeSet codeSet;
 
     public CatalogClassLoader(String mainClassName, String compileId, ClassLoader parent) {
         super(parent);
-
-        this.mainClassName = mainClassName;
 
         this.codeSet = ClassAccess.getObjectCodeOfCurrentInvoke();
         if (codeSet == null) {
@@ -61,7 +57,6 @@ public class CatalogClassLoader extends ClassLoader {
     public CatalogClassLoader(CompiledCodeSet codeSet, ClassLoader parent) {
         super(parent);
 
-        this.mainClassName = codeSet.mainClassName;
         this.codeSet = codeSet;
     }
 

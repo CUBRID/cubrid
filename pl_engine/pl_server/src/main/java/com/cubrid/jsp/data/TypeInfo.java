@@ -12,16 +12,4 @@ public class TypeInfo {
         scale = unpacker.unpackShort();
         prec = unpacker.unpackInt();
     }
-
-    public int getDbType() {
-        return dbType;
-    }
-
-    public int getScale() {
-        return scale;
-    }
-
-    public int getPrecision() {
-        return prec;
-    }
 }

@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.jsp.data.CompileResponse;
+import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -72,7 +73,7 @@ public class DeclConst extends DeclIdTypeDeclared {
     @Override
     public void addAsPkgItem(CompileResponse resp) {
         resp.addPkgVar(
-                typeSpec.type.dbType,
+                DBTypeAdapter.getPkgVarDbType(typeSpec.type),
                 typeSpec.type.prec,
                 typeSpec.type.scale,
                 ServerConstants.PKG_VAR_CONSTANT | (notNull ? ServerConstants.PKG_VAR_NOT_NULL : 0),
