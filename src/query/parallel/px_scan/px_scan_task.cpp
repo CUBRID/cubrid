@@ -654,8 +654,8 @@ namespace parallel_scan
     else
       {
 	pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-	err_code = stx_map_stream_to_xasl (&thread_ref, &m_xasl_tree, false, main_thread_p->xasl_unpack_info_ptr->packed_xasl,
-					   main_thread_p->xasl_unpack_info_ptr->packed_size, &m_xasl_unpack_info);
+	err_code = stx_map_stream_to_xasl (&thread_ref, &m_xasl_tree, false, m_query_entry->xasl_buf_info->packed_xasl,
+					   m_query_entry->xasl_buf_info->packed_size, &m_xasl_unpack_info);
 	if (err_code != NO_ERROR)
 	  {
 	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);

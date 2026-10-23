@@ -378,6 +378,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->query_flag = 0;
   query_p->is_holdable = false;
   query_p->includes_tde_class = false;
+  query_p->xasl_buf_info = NULL;
 
 #if defined (NDEBUG)
   /* just a safe guard for a release build. I don't expect it will be hit. */
@@ -1195,6 +1196,8 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 {
   XASL_NODE *xasl_p;
   XASL_UNPACK_INFO *xasl_buf_info;
+  /* a PL static SQL statement can run nested on this same thread entry while the outer query executes */
+  XASL_UNPACK_INFO *outer_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   QFILE_LIST_ID *list_id;
 
   assert (query_p != NULL);
@@ -1233,6 +1236,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
     }
 
   set_xasl_unpack_info_ptr (thread_p, xasl_buf_info);
+  query_p->xasl_buf_info = xasl_buf_info;
 
   query_p->includes_tde_class = XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS);
 
@@ -1291,8 +1295,10 @@ end:
 	  (void) qexec_clear_xasl (thread_p, xasl_p, true, false);
 	}
       /* free the XASL tree */
+      query_p->xasl_buf_info = NULL;
       free_xasl_unpack_info (thread_p, xasl_buf_info);
     }
+  set_xasl_unpack_info_ptr (thread_p, outer_unpack_info);
 
   return list_id;
 
