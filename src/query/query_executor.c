@@ -22095,8 +22095,15 @@ qexec_gby_skip_end (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   GBY_SKIP_STATE *st = buildlist->gby_skip_state;
   QFILE_LIST_ID *list_id = xasl->list_id;
   int error = NO_ERROR;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  const bool on_trace = thread_is_on_trace (thread_p);
 
   assert (st != NULL && !st->partial);
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+    }
   if (st->run_cnt > 0)
     {
       /* the scan ran in parallel: the groups are in the workers' runs */
@@ -22126,8 +22133,12 @@ qexec_gby_skip_end (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
     }
 
-  if (thread_is_on_trace (thread_p))
+  if (on_trace)
     {
+      /* the leader's merge of a parallel scan: its workers' row times stay in their own XASL copies */
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
       xasl->groupby_stats.read_rows = st->gbstate.input_recs + st->worker_rows;
     }
 
