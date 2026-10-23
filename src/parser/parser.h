@@ -518,6 +518,8 @@ extern "C"
   extern PT_NODE *pt_right_part (const PT_NODE * expr);
   extern PT_NODE *pt_get_end_path_node (PT_NODE * node);
   extern PT_NODE *pt_get_first_arg_ignore_prior (PT_NODE * node);
+  extern bool pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column,
+					    bool skip_subquery_terms);
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_get_subquery_of_insert_select (const PT_NODE * insert_statement);

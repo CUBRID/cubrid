@@ -11078,7 +11078,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
       }
 
-      /* (2) inner cols allowed only in this join's own ON; scan select clauses + sibling ON/START WITH too.
+      /* (2) inner cols allowed only in this join's own ON; scan select clauses, sibling ON and derived tables.
        * both forms stop scanning the inner early -- ANTI survives only when it fetched nothing at all, and
        * SEMI stops at the first match -- so which inner row (if any) is left behind is a plan artifact.
        * exposing its columns outside the ON would make the answer depend on the access path. */
@@ -11092,7 +11092,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	info.from_list = select->info.query.q.select.from;
 	info.found_inner = false;
 	info.found_outer = false;
-	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into scalar subqueries */
+	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into subqueries */
 
 	targets[0] = select->info.query.q.select.list;
 	targets[1] = select->info.query.q.select.where;
@@ -11112,14 +11112,18 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	      }
 	  }
 
-	/* other from-list specs' ON conditions (this spec's own ON is the one legal place) */
+	/* Check derived tables and other specs' ON conditions; only this spec's own ON is exempt. */
 	for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
 	  {
-	    if (other == spec || other->info.spec.on_cond == NULL)
+	    if (other != spec && other->info.spec.on_cond != NULL)
 	      {
-		continue;
+		(void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
 	      }
-	    (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	    if (!info.found_inner && other->info.spec.derived_table != NULL)
+	      {
+		(void) parser_walk_tree (parser, other->info.spec.derived_table, pt_semi_anti_ref_pre, &info, NULL,
+					 NULL);
+	      }
 	  }
 
 	if (info.found_inner)
