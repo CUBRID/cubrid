@@ -141,6 +141,9 @@ static const char *prohibited_classes[] = {
   CT_SYNONYM_NAME,
   CT_HISTOGRAM_NAME,
   CT_GLOBAL_TRAN_NAME,
+  CT_HA_WRITESET_STAT_NAME,
+  CT_HA_APPLY_STAT_NAME,
+  CT_HA_APPLY_WORKER_STAT_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,

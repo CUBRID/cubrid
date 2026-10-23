@@ -62,6 +62,9 @@ namespace cubschema
       static system_catalog_definition get_synonym ();
       static system_catalog_definition get_histogram ();
       static system_catalog_definition get_global_tran ();
+      static system_catalog_definition get_ha_writeset_stat ();
+      static system_catalog_definition get_ha_apply_stat ();
+      static system_catalog_definition get_ha_apply_worker_stat ();
 
       // views
       static system_catalog_definition get_view_class ();

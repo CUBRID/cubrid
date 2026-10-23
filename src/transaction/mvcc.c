@@ -705,6 +705,12 @@ mvcc_is_mvcc_disabled_class (const OID * class_oid)
       return true;
     }
 
+  /* the server updates its one row in place without a transaction (see writeset.cpp) */
+  if (oid_check_cached_class_oid (OID_CACHE_HA_WRITESET_STAT_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
   return false;
 }
 
