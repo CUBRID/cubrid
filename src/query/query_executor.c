@@ -4985,7 +4985,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
-      xasl->groupby_stats.groupby_hash = context->state;
+      /* the label only moves HS_NONE -> HS_ACCEPT_ALL -> HS_REJECT_ALL: a context that gave up hashing, such as a
+       * worker of an earlier parallel pass, keeps the GROUP BY partial */
+      if (context->state > xasl->groupby_stats.groupby_hash)
+	{
+	  xasl->groupby_stats.groupby_hash = context->state;
+	}
     }
 
   /* all ok */
@@ -5736,7 +5741,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       SORT_LISTFILE_PX_ARG part_px;
       part_px.key_info = &gbstate.agg_hash_context->sort_key;
       part_px.input_list = gbstate.agg_hash_context->part_list_id;
-      part_px.hash_eligible = 0;
       part_px.stats = &xasl->groupby_stats;
       part_px.parallelism = xasl->parallelism;
 
@@ -5828,7 +5832,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   SORT_LISTFILE_PX_ARG gby_px;
   gby_px.key_info = &gbstate.key_info;
   gby_px.input_list = list_id;
-  gby_px.hash_eligible = (gbstate.hash_eligible && gbstate.agg_hash_context->state != HS_REJECT_ALL);
   gby_px.stats = &xasl->groupby_stats;
   gby_px.parallelism = xasl->parallelism;
 
@@ -22144,6 +22147,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   ANALYTIC_STATS *new_stat = NULL;
   SORT_LIST *sort_list = analytic_eval->sort_list;	/* the sort list the functions run with */
   ANALYTIC_STATE *initialized;
+  /* The limit optimization computes the analytic values during the scan, like the index order skip does,
+   * so the sort is unnecessary. The final output list still has to be applied to the intermediate file. */
+  bool skip_sort = is_skip_sort || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -22204,12 +22210,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-    {
-      analytic_state.state = NO_ERROR;
-      goto wrapup;
-    }
-
   if (analytic_state.is_last_run)
     {
       if (xasl->instnum_val != NULL)
@@ -22225,7 +22225,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (is_skip_sort)
+    if (skip_sort)
       {
 	analytic_state.interm_file = list_id;
       }
@@ -22317,7 +22317,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (is_skip_sort)
+  if (skip_sort)
     {
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
@@ -22337,7 +22337,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   SORT_LISTFILE_PX_ARG anl_px;
   anl_px.key_info = &analytic_state.key_info;
   anl_px.input_list = list_id;
-  anl_px.hash_eligible = 0;	/* GROUP_BY only; never skip ANALYTIC parallelism on this account */
   anl_px.stats = new_stat;	/* may be NULL when not tracing */
   anl_px.parallelism = xasl->parallelism;
 
@@ -23193,6 +23192,13 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
 
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
+
+  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* the scan evaluated inst_num () for every row it wrote to the intermediate file; evaluating it
+       * again here would apply the predicate a second time and drop rows */
+      return NO_ERROR;
+    }
 
   if (!analytic_state->is_last_run
       || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
