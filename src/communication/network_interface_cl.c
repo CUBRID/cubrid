@@ -199,7 +199,28 @@ exit_server_no_thread_entry (void)
 static void
 exit_server (const THREAD_ENTRY & thread_ref)
 {
+#if defined (SERVER_MODE)
+  /* CS clients get a deadlock victim's error through return_error_to_client, which rolls the
+   * transaction back on the server and clears the victim mark first; the folded call returns here */
+  THREAD_ENTRY *thread_p = const_cast < THREAD_ENTRY * >(&thread_ref);
+  int errid = er_errid ();
+  LOG_TDES *tdes = (errid != NO_ERROR) ? LOG_FIND_CURRENT_TDES (thread_p) : NULL;
+
+  if (tdes != NULL && (errid == ER_LK_UNILATERALLY_ABORTED || tdes->tran_abort_reason != TRAN_NORMAL))
+    {
+      if (errid != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, thread_p->tran_index,
+		  tdes->client.get_db_user (), tdes->client.get_host_name (), tdes->client.process_id);
+	}
+      er_stack_push ();
+      (void) tran_server_unilaterally_abort_tran (thread_p);
+      er_stack_pop ();
+      tdes->tran_abort_reason = TRAN_NORMAL;
+    }
+#else
   (void) thread_ref;		// not really used; just to force caller declare obtain thread entry
+#endif
 
   exit_server_no_thread_entry ();
 }
