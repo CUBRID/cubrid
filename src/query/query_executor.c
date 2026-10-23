@@ -6836,6 +6836,9 @@ qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXE
   wr->rd.aggs = wr->agg_nodes;
   wr->rd.agg_template = proc->g_agg_list;
   wr->rd.ctx = gbstate->agg_hash_context;
+  /* the leader's vd, shared read-only: the nodes a worker gets are TYPE_POSITION / TYPE_CONSTANT copies whose
+   * fetch never writes the execution domain (qexec_set_node_domain () is reached only from arithmetic regus);
+   * widening the set above means giving each worker its own vd (qexec_deep_copy_xasl_state (), as px_scan does) */
   wr->rd.xasl_state = gbstate->xasl_state;
   wr->rd.first_aggregated = true;
   *why = NULL;
