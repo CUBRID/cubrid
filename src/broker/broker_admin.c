@@ -56,6 +56,8 @@ admin_log_write (const char *log_file, const char *msg)
   FILE *fp;
   struct tm ct;
   time_t ts;
+  char buf[BROKER_PATH_MAX * 2];
+  char *line, *next;
 
   fp = fopen (log_file, "a");
   if (fp != NULL)
@@ -63,13 +65,44 @@ admin_log_write (const char *log_file, const char *msg)
       ts = time (NULL);
       memset (&ct, 0x0, sizeof (struct tm));
       localtime_r (&ts, &ct);
-      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour,
-	       ct.tm_min, ct.tm_sec, msg);
+
+      /* a message may hold several lines; write each as its own timestamped entry to keep one entry per line */
+      strncpy (buf, msg, sizeof (buf) - 1);
+      buf[sizeof (buf) - 1] = '\0';
+      for (line = buf; line != NULL; line = next)
+	{
+	  next = strchr (line, '\n');
+	  if (next != NULL)
+	    {
+	      *next++ = '\0';
+	    }
+	  fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour,
+		   ct.tm_min, ct.tm_sec, line);
+	}
       fclose (fp);
     }
   else
     {
       printf ("cannot open admin log file [%s]\n", log_file);
+    }
+}
+
+static void
+admin_print_and_log_warn_msg (const char *log_file)
+{
+  const char *prefix = "WARNING: ";
+  const char *msg = admin_warn_msg;
+
+  if (admin_warn_msg[0] != '\0')
+    {
+      printf ("%s\n", admin_warn_msg);
+      /* cubrid_utility.log puts its own "WARNING: " before the message, and the caller ends the line */
+      if (strncmp (msg, prefix, strlen (prefix)) == 0)
+	{
+	  msg += strlen (prefix);
+	}
+      util_log_write_warnstr ("%s\n", msg);
+      admin_log_write (log_file, admin_warn_msg);
     }
 }
 
@@ -165,6 +198,7 @@ main (int argc, char **argv)
 	  else
 	    {
 	      admin_log_write (admin_log_file, "start");
+	      admin_print_and_log_warn_msg (admin_log_file);
 	    }
 	}
       else
@@ -256,6 +290,7 @@ main (int argc, char **argv)
 	{
 	  sprintf (msg_buf, "%s on", argv[2]);
 	  admin_log_write (admin_log_file, msg_buf);
+	  admin_print_and_log_warn_msg (admin_log_file);
 	}
     }
   else if (strcasecmp (argv[1], "off") == 0)
