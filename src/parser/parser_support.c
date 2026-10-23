@@ -12634,7 +12634,8 @@ pt_dblink_dml_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
  * gate again so that it names what actually turned the statement away; when no gate did, the sink was
  * cleared earlier -- ahead of the caller -- and the bare sentence is all we can say. */
 static void
-pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * loc)
+pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int odku_local_cnt,
+				PT_NODE * loc)
 {
   const char *accepted = NULL;
   char errmsg[256];
@@ -12657,6 +12658,12 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   switch (node->node_type)
     {
     case PT_INSERT:
+      /* A local table only in the ON DUPLICATE KEY UPDATE clause keeps the common message. The source is not
+       * local, so neither sentence below would name the cause. */
+      if (snl->local_cnt <= odku_local_cnt)
+	{
+	  break;
+	}
       /* Spelled out rather than composed below: INSERT's local side is a SELECT source, not a subquery,
        * and the name that sentence composes covers UPDATE and DELETE only. */
       if (pt_get_subquery_of_insert_select (node) == NULL)
@@ -13172,7 +13179,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    *     design, so this one cannot apply to it. */
   if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
-      pt_dblink_dml_reject_mixed_ref (parser, node, snl, upd_spec ? upd_spec : into_spec);
+      pt_dblink_dml_reject_mixed_ref (parser, node, snl, odku_local_cnt, upd_spec ? upd_spec : into_spec);
       return;
     }
 
