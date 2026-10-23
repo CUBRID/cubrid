@@ -54,6 +54,41 @@ set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4c
 set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
 set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
+# CI shares CUBRID_DOWNLOAD_CACHE among the builds on a node. One build at a time checks and fetches a
+# tarball under the lock; a file a failed or killed fetch left behind fails the hash and is fetched again.
+# The hash is checked here, not by EXPECTED_HASH, which makes a failed fetch fatal and leaves no retry.
+function(use_download_cache url_var hash)
+  if(NOT DEFINED ENV{CUBRID_DOWNLOAD_CACHE})
+    return()
+  endif()
+  get_filename_component(name "${${url_var}}" NAME)
+  set(dir "$ENV{CUBRID_DOWNLOAD_CACHE}/${url_var}")
+  set(${url_var} "${dir}/${name}" PARENT_SCOPE)
+  file(LOCK "${dir}" DIRECTORY GUARD FUNCTION)
+  foreach(attempt RANGE 3)
+    if(EXISTS "${dir}/${name}")
+      file(SHA256 "${dir}/${name}" got)
+    endif()
+    if(hash STREQUAL "SHA256=${got}")
+      return()
+    elseif(attempt EQUAL 3)
+      message(FATAL_ERROR "Failed to download ${${url_var}}: ${st}")
+    elseif(attempt GREATER 0)
+      execute_process(COMMAND ${CMAKE_COMMAND} -E sleep 5)
+    endif()
+    file(DOWNLOAD "${${url_var}}" "${dir}/${name}" INACTIVITY_TIMEOUT 60 STATUS st)
+  endforeach()
+endfunction()
+
+use_download_cache(WITH_LIBEXPAT_URL ${WITH_LIBEXPAT_URL_HASH})
+use_download_cache(WITH_LIBEDIT_URL ${WITH_LIBEDIT_URL_HASH})
+use_download_cache(WITH_RAPIDJSON_URL ${WITH_RAPIDJSON_URL_HASH})
+use_download_cache(WITH_LIBOPENSSL_URL ${WITH_LIBOPENSSL_URL_HASH})
+use_download_cache(WITH_LIBUNIXODBC_URL ${WITH_LIBUNIXODBC_URL_HASH})
+use_download_cache(WITH_LIBTBB_URL ${WITH_LIBTBB_URL_HASH})
+use_download_cache(WITH_RE2_URL ${WITH_RE2_URL_HASH})
+use_download_cache(WITH_LZ4_URL ${WITH_LZ4_URL_HASH})
+
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
