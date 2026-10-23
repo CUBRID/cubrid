@@ -466,7 +466,7 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
        */
       if (LSA_ISNULL (&tdes->tail_lsa))
 	{
-	  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	  repl_rec->lsa = log_Gl.prior_info.prior_lsa;
 	}
       else
 	{
