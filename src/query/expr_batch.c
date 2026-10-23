@@ -600,6 +600,37 @@ eb_cell_fixed (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * l
     }
 }
 
+/* numeric_agg_expr_from_disk () for a coefficient of at most 8 bytes, here: the same fields read the same way --
+ * the value's size and sign in byte 0, the scale's sign in byte 1, the scale in byte 2, then the magnitude's bytes,
+ * big-endian, into the coefficient (zero takes no sign) -- with the magnitude in one 64-bit word instead of the
+ * 128-bit shifts; a wider value, or a header the bytes do not hold, goes to the call, which decides as it always
+ * did.  The two read the same value for every input. */
+static inline bool
+eb_num_from_disk (const unsigned char *disk, int avail, NUMERIC_AGG_EXPR_VAL * num)
+{
+  uint64_t c = 0;
+  int size, nbytes, i;
+
+  if (avail < NUMERIC_HEADER_SIZE)
+    {
+      return numeric_agg_expr_from_disk (disk, avail, num);
+    }
+  size = disk[0] & 0x7F;
+  nbytes = size - NUMERIC_HEADER_SIZE;
+  if (nbytes < 0 || nbytes > (int) sizeof (c) || size > avail)
+    {
+      return numeric_agg_expr_from_disk (disk, avail, num);
+    }
+  for (i = 0; i < nbytes; i++)
+    {
+      c = (c << 8) | disk[NUMERIC_HEADER_SIZE + i];
+    }
+  num->coefficient = c;
+  num->scale = (disk[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) ? -((int) disk[2]) : (int) disk[2];
+  num->is_negative = (c != 0 && (disk[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0);
+  return true;
+}
+
 /* a NUMERIC in the variable area: the offset table brackets its bytes (heap_attrvalue_point_variable) */
 static inline int
 eb_cell_num (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, NUMERIC_AGG_EXPR_VAL * num)
@@ -611,7 +642,7 @@ eb_cell_num (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay
     {
       return 0;
     }
-  if (!numeric_agg_expr_from_disk ((const unsigned char *) lay->var_table + this_off, next_off - this_off, num)
+  if (!eb_num_from_disk ((const unsigned char *) lay->var_table + this_off, next_off - this_off, num)
       || num->scale != col->scale)
     {
       /* wider than the word domain, or a stored scale the domain does not describe */
