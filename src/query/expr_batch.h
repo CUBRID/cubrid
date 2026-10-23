@@ -76,6 +76,8 @@ namespace cubxasl
  * (PEEK, valid while the page is latched) */
 typedef struct heap_page_row EXPR_BATCH_ROW;
 
+struct pgbuf_watcher;
+
 /* the rows of one page and, after expr_batch_run (), the ones the filter kept */
 typedef struct expr_batch EXPR_BATCH;
 struct expr_batch
@@ -90,6 +92,9 @@ struct expr_batch
   INT64 rtf_rows;		/* this chunk: the rows the runtime filter leaf looked up and dropped (0 without one); the
 				 * caller adds them to its XASL node once the chunk went through */
   INT64 rtf_dropped;
+  const struct pgbuf_watcher *page_watcher;	/* the scan cache's watcher that holds the rows' page, or NULL: a chunk
+						 * whose page it let go and fixed again (page_was_unfixed) is handed
+						 * back by expr_batch_run () */
 };
 
 /* A hash GROUP BY over the scan (a BUILDLIST with GROUP BY, expr_batch_gby in query_executor.c): its aggregates

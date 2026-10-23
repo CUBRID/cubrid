@@ -414,6 +414,10 @@ extern bool expr_numeric_cmp_const_ok (const DB_VALUE * k);
  * INCR/DECR, a random number, a session variable)?  A page batch leaves such a term to the row path: a chunk it
  * falls back on is evaluated there again, and the node would run twice on those rows */
 extern bool expr_scan_pred_kid_has_side_effect (const void *compiled, int kid);
+/* does kid i of the root run another query on the row it evaluates (a linked scalar subquery, a list, a stored
+ * procedure call)?  A page batch declines such a term: its chunk's rows point into the page it holds, and a scan
+ * the query opens may let the page go and fix it again under them (pgbuf_ordered_fix ()) */
+extern bool expr_scan_pred_kid_runs_query (const void *compiled, int kid);
 /* the filter's prologues for this execution (the per-row entry does the same before its first row) */
 extern int expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd);
 /* evaluate kid i of the root alone for the current row (the batch's residual terms) */

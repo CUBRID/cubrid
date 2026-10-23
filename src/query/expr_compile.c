@@ -3637,16 +3637,25 @@ expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * v
   return pred->n_kids;
 }
 
-static bool expr_regu_runs_side_effect (const REGU_VARIABLE * regu);
+/* The two questions a page batch asks of a filter term before it takes the term (expr_batch.c, eb_build_filter ()):
+ * EXPR_RUNS_SIDE_EFFECT -- does a row's evaluation run a node with a side effect; EXPR_RUNS_QUERY -- does it run
+ * another query.  The walkers below answer either one over the same nodes. */
+typedef enum
+{
+  EXPR_RUNS_SIDE_EFFECT,
+  EXPR_RUNS_QUERY
+} EXPR_RUNS_WHAT;
+
+static bool expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what);
 
 static bool
-expr_regu_list_runs_side_effect (const REGU_VARIABLE_LIST list)
+expr_regu_list_runs (const REGU_VARIABLE_LIST list, EXPR_RUNS_WHAT what)
 {
   REGU_VARIABLE_LIST op;
 
   for (op = list; op != NULL; op = op->next)
     {
-      if (expr_regu_runs_side_effect (&op->value))
+      if (expr_regu_runs (&op->value, what))
 	{
 	  return true;
 	}
@@ -3654,22 +3663,33 @@ expr_regu_list_runs_side_effect (const REGU_VARIABLE_LIST list)
   return false;
 }
 
-/* Does a row's evaluation of regu run a node with a side effect -- a stored procedure call (TYPE_SP), or an operator
- * expr_arith_side_effect () names (a serial, INCR/DECR, a random number, a session variable) -- anywhere under its
- * arithmetic, function and procedure-argument nodes?  expr_regu_has_side_effect () looks at the arithmetic subtree
- * only, as its caller reorders arithmetic; a page batch may evaluate a filter term on a row and then hand the row
- * back to the row path, which evaluates it again, so it must not take a term that runs such a node at all. */
+/* Does a row's evaluation of regu run, anywhere under its arithmetic, function and procedure-argument nodes:
+ * EXPR_RUNS_SIDE_EFFECT -- a node with a side effect: a stored procedure call (TYPE_SP), or an operator
+ * expr_arith_side_effect () names (a serial, INCR/DECR, a random number, a session variable).
+ * expr_regu_has_side_effect () looks at the arithmetic subtree only, as its caller reorders arithmetic; a page
+ * batch may evaluate a filter term on a row and then hand the row back to the row path, which evaluates it again,
+ * so it must not take a term that runs such a node at all.
+ * EXPR_RUNS_QUERY -- a node that runs another query: a regu with a linked XASL (a scalar subquery the fetch executes
+ * before it reads the value), a list (TYPE_LIST_ID), a stored procedure call (TYPE_SP, which may run any query).
+ * Such a node may open a scan whose ordered fix lets go of the page the batch holds and fixes it again, while the
+ * chunk's rows still point into it. */
 static bool
-expr_regu_runs_side_effect (const REGU_VARIABLE * regu)
+expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
 {
   if (regu == NULL)
     {
       return false;
     }
+  if (what == EXPR_RUNS_QUERY && regu->xasl != NULL)
+    {
+      return true;
+    }
   switch (regu->type)
     {
     case TYPE_SP:
       return true;
+    case TYPE_LIST_ID:
+      return what == EXPR_RUNS_QUERY;
     case TYPE_INARITH:
     case TYPE_OUTARITH:
       {
@@ -3679,11 +3699,12 @@ expr_regu_runs_side_effect (const REGU_VARIABLE * regu)
 	  {
 	    return false;
 	  }
-	return expr_arith_side_effect (arith->opcode) || expr_regu_runs_side_effect (arith->leftptr)
-	  || expr_regu_runs_side_effect (arith->rightptr) || expr_regu_runs_side_effect (arith->thirdptr);
+	return (what == EXPR_RUNS_SIDE_EFFECT && expr_arith_side_effect (arith->opcode))
+	  || expr_regu_runs (arith->leftptr, what) || expr_regu_runs (arith->rightptr, what)
+	  || expr_regu_runs (arith->thirdptr, what);
       }
     case TYPE_FUNC:
-      return regu->value.funcp != NULL && expr_regu_list_runs_side_effect (regu->value.funcp->operand);
+      return regu->value.funcp != NULL && expr_regu_list_runs (regu->value.funcp->operand, what);
     case TYPE_REGUVAL_LIST:
       {
 	const REGU_VALUE_ITEM *item;
@@ -3694,7 +3715,7 @@ expr_regu_runs_side_effect (const REGU_VARIABLE * regu)
 	  }
 	for (item = regu->value.reguval_list->regu_list; item != NULL; item = item->next)
 	  {
-	    if (expr_regu_runs_side_effect (item->value))
+	    if (expr_regu_runs (item->value, what))
 	      {
 		return true;
 	      }
@@ -3702,7 +3723,7 @@ expr_regu_runs_side_effect (const REGU_VARIABLE * regu)
 	return false;
       }
     case TYPE_REGU_VAR_LIST:
-      return expr_regu_list_runs_side_effect (regu->value.regu_var_list);
+      return expr_regu_list_runs (regu->value.regu_var_list, what);
     default:
       /* a column, a literal, a host variable, a list slot: read, not computed */
       return false;
@@ -3711,7 +3732,7 @@ expr_regu_runs_side_effect (const REGU_VARIABLE * regu)
 
 /* the same question of a term eval_pred () evaluates verbatim: every operand of every term under it */
 static bool
-expr_pred_runs_side_effect (const PRED_EXPR * pr)
+expr_pred_runs (const PRED_EXPR * pr, EXPR_RUNS_WHAT what)
 {
   if (pr == NULL)
     {
@@ -3720,32 +3741,32 @@ expr_pred_runs_side_effect (const PRED_EXPR * pr)
   switch (pr->type)
     {
     case T_PRED:
-      return expr_pred_runs_side_effect (pr->pe.m_pred.lhs) || expr_pred_runs_side_effect (pr->pe.m_pred.rhs);
+      return expr_pred_runs (pr->pe.m_pred.lhs, what) || expr_pred_runs (pr->pe.m_pred.rhs, what);
     case T_NOT_TERM:
-      return expr_pred_runs_side_effect (pr->pe.m_not_term);
+      return expr_pred_runs (pr->pe.m_not_term, what);
     case T_EVAL_TERM:
       switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_comp.lhs)
-	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_comp.rhs);
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_comp.lhs, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_comp.rhs, what);
 	case T_ALSM_EVAL_TERM:
-	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_alsm.elem)
-	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_alsm.elemset);
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_alsm.elem, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_alsm.elemset, what);
 	case T_LIKE_EVAL_TERM:
-	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_like.src)
-	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_like.pattern)
-	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_like.esc_char);
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_like.src, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_like.pattern, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_like.esc_char, what);
 	case T_RLIKE_EVAL_TERM:
-	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_rlike.src)
-	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_rlike.pattern)
-	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_rlike.case_sensitive);
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_rlike.src, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_rlike.pattern, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_rlike.case_sensitive, what);
 	default:
 	  break;
 	}
       /* FALLTHRU */
     default:
-      /* a term this file does not know: not one to evaluate twice */
+      /* a term this file does not know: not one to evaluate twice, nor to run under the held page */
       return true;
     }
 }
@@ -3753,7 +3774,7 @@ expr_pred_runs_side_effect (const PRED_EXPR * pr)
 /* the same question of a node of the compiled filter: a fetched leaf's two operands (fetch_lhs/fetch_rhs are the
  * term's operands whether a side is compiled or fetched), an interpreted term's source, a connective's operands */
 static bool
-expr_scan_pred_node_runs_side_effect (const EXPR_PRED * pred)
+expr_scan_pred_node_runs (const EXPR_PRED * pred, EXPR_RUNS_WHAT what)
 {
   int i;
 
@@ -3764,22 +3785,22 @@ expr_scan_pred_node_runs_side_effect (const EXPR_PRED * pred)
   switch (pred->kind)
     {
     case EXPR_PRED_COMP_FETCH:
-      return expr_regu_runs_side_effect (pred->fetch_lhs) || expr_regu_runs_side_effect (pred->fetch_rhs);
+      return expr_regu_runs (pred->fetch_lhs, what) || expr_regu_runs (pred->fetch_rhs, what);
     case EXPR_PRED_INTERP:
     case EXPR_PRED_INTERP_COMP0:
-      return expr_pred_runs_side_effect ((const PRED_EXPR *) pred->fetch_src);
+      return expr_pred_runs ((const PRED_EXPR *) pred->fetch_src, what);
     case EXPR_PRED_AND:
     case EXPR_PRED_OR:
     case EXPR_PRED_NOT:
     case EXPR_PRED_AND_N:
     case EXPR_PRED_OR_N:
-      if (expr_scan_pred_node_runs_side_effect (pred->lhs) || expr_scan_pred_node_runs_side_effect (pred->rhs))
+      if (expr_scan_pred_node_runs (pred->lhs, what) || expr_scan_pred_node_runs (pred->rhs, what))
 	{
 	  return true;
 	}
       for (i = 0; i < pred->n_kids; i++)
 	{
-	  if (expr_scan_pred_node_runs_side_effect (pred->kids[i]))
+	  if (expr_scan_pred_node_runs (pred->kids[i], what))
 	    {
 	      return true;
 	    }
@@ -3797,7 +3818,16 @@ expr_scan_pred_kid_has_side_effect (const void *compiled, int kid)
   const EXPR_PRED *root = (const EXPR_PRED *) compiled;
   const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
 
-  return pred != NULL && expr_scan_pred_node_runs_side_effect (pred);
+  return pred != NULL && expr_scan_pred_node_runs (pred, EXPR_RUNS_SIDE_EFFECT);
+}
+
+bool
+expr_scan_pred_kid_runs_query (const void *compiled, int kid)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
+
+  return pred != NULL && expr_scan_pred_node_runs (pred, EXPR_RUNS_QUERY);
 }
 
 /* a node of the compiled filter as a raw leaf */

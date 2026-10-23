@@ -8250,6 +8250,18 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
       hsidp->batch_why_not = "a scan the batch does not take (qualification)";
       return hsidp->batch_state;
     }
+  if (xasl != NULL && !scan_id->fixed)
+    {
+      /* A consumer (an aggregate, a projection, a hash GROUP BY) reads the chunk's rows from the page the batch
+       * holds, and hands some of them to the row path while it is held.  The block decided this scan may not keep
+       * its page fixed (qexec_execute_mainblock_internal (): an index scan beside it, a correlated subquery, or
+       * compiled so), because something that runs under it fixes pages of its own, and an ordered fix of those lets
+       * this page go and fixes it again under the chunk.  The filter iterators (xasl == NULL) copy the rows they
+       * keep out of the page before any of that runs, so they are not held to it. */
+      hsidp->batch_why_not =
+	"the scan does not hold its page: another scan beside it may unfix the page under the chunk";
+      return hsidp->batch_state;
+    }
 
   /* the filter's compiled form, now instead of on the first row */
   data_filter =
@@ -8303,6 +8315,9 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
       hsidp->batch_why_not = "out of memory";
       return hsidp->batch_state;
     }
+  /* the chunks' rows point into the page this watcher holds (scan_batch_collect_chunk ()): a chunk under which the
+   * page was let go and fixed again is handed back by expr_batch_run () */
+  hsidp->batch->page_watcher = &hsidp->scan_cache.page_watcher;
   /* a chunk's exceptions: as many as its rows, so that a page of nothing but exceptions (every record relocated,
    * or of an older representation) still goes chunk by chunk and never to the row path as a whole */
   hsidp->batch_exc_cap = hsidp->batch->cap;

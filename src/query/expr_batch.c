@@ -1670,6 +1670,14 @@ eb_build_filter (EB_BUILD * b)
 	       * a random number would run twice on the rows the batch had already evaluated it on */
 	      return eb_decline (b, "a filter term with a side effect runs per row only");
 	    }
+	  if (expr_scan_pred_kid_runs_query (b->in->scan_pred_compiled, i))
+	    {
+	      /* the chunk's rows point into the page the batch holds while the compiled filter evaluates this term
+	       * on them; a term that runs another query (a linked subquery, a list, a procedure) may open a scan on
+	       * this thread whose ordered fix lets the page go and fixes it again (page_was_unfixed), and an update
+	       * in between changes the bytes the rows point at */
+	      return eb_decline (b, "a filter term runs another query while the page is held");
+	    }
 	  /* evaluated per surviving row by the compiled filter itself */
 	  plan->n_row_kids++;
 	}
@@ -4528,8 +4536,9 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
   return NO_ERROR;
 }
 
-int
-expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
+/* expr_batch_run () over the chunk: the filter, then the operand steps over the rows it kept */
+static int
+eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
 {
   int rc, i;
 
@@ -4610,6 +4619,22 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
       return rc;
     }
   return eb_run_steps (plan, batch);
+}
+
+int
+expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
+{
+  int rc = eb_run_chunk (plan, batch, thread_p, vd);
+
+  if (rc == NO_ERROR && batch->page_watcher != NULL && batch->page_watcher->page_was_unfixed)
+    {
+      /* The rows point into the page the watcher holds.  An ordered fix on this thread let the page go and fixed
+       * it again since the watcher fixed it (pgbuf_ordered_fix (): page_was_unfixed), and an update in between may
+       * have changed the bytes the chunk was evaluated on: the chunk goes to the row path as a declined one does,
+       * which reads each row again from the page as it is now. */
+      return eb_fallback (plan, "the page was unfixed under the chunk");
+    }
+  return rc;
 }
 
 /* ---------------------------------------------------------------------------------------- */
