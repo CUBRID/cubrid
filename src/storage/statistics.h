@@ -118,6 +118,8 @@ struct hist_stats
 				 * kept in attribute order after schema updates */
   DB_VALUE **histogram;		/* column histogram , null if not exists */
   double *null_frequency;	/* column null frequency , 0 if not exists */
+  bool row_snapshot_loaded;	/* row_snapshot has been looked up (row_snapshot_get ()) */
+  struct row_snapshot *row_snapshot;	/* rows of a small class, NULL if not kept (CBRD-27478) */
 };
 
 /* Statistical Information about the attribute NDV */

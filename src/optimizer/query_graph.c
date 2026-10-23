@@ -44,6 +44,7 @@
 #include "optimizer.h"
 #include "query_graph.h"
 #include "query_planner.h"
+#include "row_snapshot_cl.hpp"
 #include "schema_manager.h"
 #include "statistics.h"
 #include "system_parameter.h"
@@ -206,6 +207,7 @@ static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
+static void qo_row_snapshot_apply (QO_ENV * env);
 static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
 static void qo_derived_term_compensate (QO_ENV * env);
 
@@ -625,6 +627,11 @@ qo_optimize_helper (QO_ENV * env)
    * one) will be pointing to the wrong term after they're rearranged.
    */
   qo_assign_eq_classes (env);
+
+  /* Small-table row snapshot (CBRD-27478). It has to run exactly here: the node sargs it evaluates
+   * are attached in qo_discover_edges () (qo_node_add_sarg ()) and the term array is final after
+   * that call, while get_rank () below orders terms by the selectivity this pass rewrites. */
+  qo_row_snapshot_apply (env);
 
   get_local_subqueries (env, tree);
   get_rank (env);
@@ -1299,6 +1306,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   QO_NODE_NAME (node) = entity->info.spec.range_var->info.name.original;
   QO_NODE_IDX (node) = env->nnodes;
   QO_NODE_SORT_LIMIT_CANDIDATE (node) = false;
+  QO_NODE_SNAPSHOT_CARD (node) = -1;
 
   env->nnodes++;
 
@@ -8366,6 +8374,209 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
+ * qo_row_snapshot_apply () - re-derive join selectivities from the kept rows of small filtered nodes
+ *   return: void
+ *   env(in): optimizer environment, after qo_discover_edges () and qo_assign_eq_classes ()
+ *
+ * A code/dimension table filtered by a constant and joined to a large table on its key gets the
+ * join estimated at 1/NDV, because the planner does not know WHICH key the constant selects:
+ * histograms are kept per column, so the pair ('release dates', 16) is lost at collection time
+ * (JOB 19c: 124x underestimate, 37x slower than the reference). A table of at most
+ * statistics_row_snapshot_max_rows rows keeps its rows with the statistics (row_snapshot_cl.hpp);
+ * for its node this pass applies the constant sargs to them and, for every equi-join term the
+ * node takes part in, replaces the term's selectivity with the mean over the surviving rows of
+ * the OTHER column's equality estimate for that row's key:
+ *
+ *     sel = (1 / k) * SUM_i P (other.col = v_i)
+ *
+ * The node's own selectivity becomes k over the snapshot's rows. Nothing else changes: no derived
+ * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
+ * the index scan cost already reads. Every failure along the way -- no snapshot, a predicate the
+ * pass cannot evaluate, a key the histogram cannot price, zero survivors, a join between two
+ * snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
+ */
+static void
+qo_row_snapshot_apply (QO_ENV * env)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  int n, t, k, f, n_filters, column, other;
+  QO_NODE *node;
+  QO_TERM *term;
+  BITSET_ITERATOR iter;
+  const ROW_SNAPSHOT *snapshot;
+  const ROW_SNAPSHOT **snapshots;
+  ROW_SNAPSHOT_FILTER *filters;
+  int **survivors;
+  PT_NODE *pt_expr, *lhs, *rhs, *my_name, *other_name;
+  UINTPTR spec_id;
+  double sel;
+  bool ok;
+
+  if (row_snapshot_max_rows () <= 0)
+    {
+      return;
+    }
+
+  snapshots = (const ROW_SNAPSHOT **) parser_alloc (parser, env->nnodes * sizeof (ROW_SNAPSHOT *));
+  survivors = (int **) parser_alloc (parser, env->nnodes * sizeof (int *));
+  if (snapshots == NULL || survivors == NULL)
+    {
+      return;
+    }
+
+  /* (a) every node whose rows are kept: the rows its constant sargs leave, k of them */
+  for (n = 0; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      snapshots[n] = NULL;
+      survivors[n] = NULL;
+
+      /* one real class (no hierarchy or partition set), filtered */
+      if (QO_NODE_INFO (node) == NULL || QO_NODE_INFO_N (node) != 1 || QO_NODE_INFO (node)->info[0].mop == NULL
+	  || QO_NODE_INFO (node)->info[0].smclass == NULL || PT_SPEC_IS_DERIVED (QO_NODE_ENTITY_SPEC (node))
+	  || PT_SPEC_IS_CTE (QO_NODE_ENTITY_SPEC (node))
+	  || QO_NODE_ENTITY_SPEC (node)->info.spec.meta_class == PT_META_CLASS
+	  || bitset_is_empty (&(QO_NODE_SARGS (node))))
+	{
+	  continue;
+	}
+
+      snapshot = row_snapshot_get (QO_NODE_INFO (node)->info[0].mop, QO_NODE_INFO (node)->info[0].smclass);
+      if (snapshot == NULL)
+	{
+	  continue;
+	}
+      spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
+
+      /* every predicate on this node alone has to be a sarg this pass can evaluate, or the node
+       * keeps its estimate: a filter left out would make k too large */
+      ok = true;
+      for (t = 0; t < env->nterms && ok; t++)
+	{
+	  term = QO_ENV_TERM (env, t);
+	  if (QO_TERM_CLASS (term) != QO_TC_SARG && bitset_cardinality (&(QO_TERM_NODES (term))) == 1
+	      && BITSET_MEMBER (QO_TERM_NODES (term), n))
+	    {
+	      ok = false;
+	    }
+	}
+      if (!ok)
+	{
+	  continue;
+	}
+
+      n_filters = bitset_cardinality (&(QO_NODE_SARGS (node)));
+      filters = (ROW_SNAPSHOT_FILTER *) calloc (n_filters, sizeof (ROW_SNAPSHOT_FILTER));
+      survivors[n] = (int *) parser_alloc (parser, snapshot->n_rows * sizeof (int));
+      if (filters == NULL || survivors[n] == NULL)
+	{
+	  if (filters != NULL)
+	    {
+	      free_and_init (filters);
+	    }
+	  return;
+	}
+      f = 0;
+      for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter); t != -1 && ok; t = bitset_next_member (&iter))
+	{
+	  term = QO_ENV_TERM (env, t);
+	  /* the shapes it accepts, OR chains of one column's equalities included, are checked there */
+	  if (QO_TERM_CLASS (term) != QO_TC_SARG
+	      || !row_snapshot_filter_prepare (parser, snapshot, QO_NODE_INFO (node)->info[0].mop, spec_id,
+					       QO_TERM_PT_EXPR (term), &filters[f++]))
+	    {
+	      ok = false;
+	    }
+	}
+      k = ok ? row_snapshot_survivors (snapshot, filters, f, survivors[n]) : 0;
+      for (t = 0; t < f; t++)
+	{
+	  row_snapshot_filter_clear (&filters[t]);
+	}
+      free_and_init (filters);
+      if (k <= 0)
+	{
+	  /* not evaluable, or a constant the snapshot does not hold (a code added since the
+	   * statistics were taken): it says nothing about the rows, so the histograms keep the estimate */
+	  continue;
+	}
+
+      /* the node's own output is k of the rows the statistics saw */
+      snapshots[n] = snapshot;
+      QO_NODE_SELECTIVITY (node) = (double) k / (double) snapshot->n_rows;
+      QO_NODE_SNAPSHOT_CARD (node) = k;
+    }
+
+  /* (b) every equi-join term a snapshot node takes part in */
+  for (t = 0; t < env->nterms; t++)
+    {
+      term = QO_ENV_TERM (env, t);
+      if (QO_TERM_CLASS (term) != QO_TC_JOIN || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+	  || !QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) || bitset_cardinality (&(QO_TERM_NODES (term))) != 2)
+	{
+	  continue;
+	}
+      pt_expr = QO_TERM_PT_EXPR (term);
+      if (pt_expr == NULL || pt_expr->node_type != PT_EXPR || pt_expr->info.expr.op != PT_EQ)
+	{
+	  continue;
+	}
+      lhs = pt_expr->info.expr.arg1;
+      rhs = pt_expr->info.expr.arg2;
+      if (lhs == NULL || rhs == NULL || lhs->node_type != PT_NAME || rhs->node_type != PT_NAME)
+	{
+	  continue;
+	}
+
+      n = bitset_iterate (&(QO_TERM_NODES (term)), &iter);
+      other = bitset_next_member (&iter);
+      if (snapshots[n] == NULL)
+	{
+	  int swap = n;
+
+	  n = other;
+	  other = swap;
+	}
+      if (n < 0 || other < 0 || snapshots[n] == NULL)
+	{
+	  continue;
+	}
+      if (snapshots[other] != NULL)
+	{
+	  /* both sides were filtered on their rows: each side's estimate reads the other side's
+	   * unfiltered histogram, so neither is the join's selectivity -- keep the histogram one */
+	  continue;
+	}
+
+      spec_id = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, n))->info.spec.id;
+      if (lhs->info.name.spec_id == spec_id)
+	{
+	  my_name = lhs;
+	  other_name = rhs;
+	}
+      else if (rhs->info.name.spec_id == spec_id)
+	{
+	  my_name = rhs;
+	  other_name = lhs;
+	}
+      else
+	{
+	  continue;
+	}
+
+      node = QO_ENV_NODE (env, n);
+      column = row_snapshot_column (snapshots[n], QO_NODE_INFO (node)->info[0].mop, my_name->info.name.original);
+      if (!row_snapshot_join_selectivity (snapshots[n], survivors[n], QO_NODE_SNAPSHOT_CARD (node), column,
+					  other_name, other_name->info.name.null_frequency, &sel))
+	{
+	  continue;		/* this term keeps its histogram estimate; the next term is independent */
+	}
+      QO_TERM_SELECTIVITY (term) = sel;
+      QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_SNAPSHOT);
+    }
+}
+
+/*
  * qo_generate_implied_join_terms () - Generate implied join terms from
  *   segment equivalence groups using transitive closure.
  *   env(in):
@@ -9199,6 +9410,11 @@ qo_node_dump (QO_NODE * node, FILE * f)
     }
 
   fprintf (f, "(%lu/%lu)", QO_NODE_NCARD (node), QO_NODE_TCARD (node));
+  if (QO_NODE_SNAPSHOT_CARD (node) >= 0)
+    {
+      /* the constant sargs were evaluated on the kept rows: this many survived (CBRD-27478) */
+      fprintf (f, " (snapshot %d)", QO_NODE_SNAPSHOT_CARD (node));
+    }
   if (!bitset_is_empty (&(QO_NODE_SARGS (node))))
     {
       fputs (" (sargs ", f);
@@ -9925,6 +10141,10 @@ qo_term_dump (QO_TERM * term, FILE * f)
       fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
   fprintf (f, " (sel %G)", QO_TERM_SELECTIVITY (term));
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_SEL_FROM_SNAPSHOT))
+    {
+      fputs (" (snapshot)", f);
+    }
 
   if (QO_TERM_RANK (term) > 1)
     {
