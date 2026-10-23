@@ -91,6 +91,25 @@ static_assert (alignof (log_lsa_atomic) == alignof (log_lsa), "log_lsa_atomic mu
 static_assert (std::is_trivially_copyable<log_lsa_atomic>::value, "log_lsa_atomic must stay trivially copyable");
 static_assert (std::is_standard_layout<log_lsa_atomic>::value, "log_lsa_atomic must stay standard layout");
 
+/*
+ * An LSA a thread rewrites and reads back at once, in a hot loop. A log_lsa there stalls: the read of its 64-bit
+ * word cannot be forwarded from the two narrower stores of its bit-fields. Plain fields keep each read on one store.
+ * For locals only; the layout is not that of log_lsa.
+ */
+struct log_lsa_unpacked
+{
+  std::int64_t pageid;
+  std::int16_t offset;
+
+  inline log_lsa_unpacked () = default;
+  inline constexpr log_lsa_unpacked (const log_lsa &lsa);
+
+  inline bool operator< (const log_lsa_unpacked &olsa) const;
+  inline explicit operator log_lsa () const;
+};
+
+using LOG_LSA_UNPACKED = log_lsa_unpacked;
+
 constexpr std::int64_t NULL_LOG_PAGEID = -1;
 constexpr std::int16_t NULL_LOG_OFFSET = -1;
 constexpr log_lsa NULL_LSA { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
@@ -207,6 +226,24 @@ log_lsa_atomic::advance (int add)
 log_lsa_atomic::operator log_lsa () const
 {
   return load ();
+}
+
+constexpr
+log_lsa_unpacked::log_lsa_unpacked (const log_lsa &lsa)
+  : pageid (lsa.pageid)
+  , offset (lsa.offset)
+{
+}
+
+bool
+log_lsa_unpacked::operator< (const log_lsa_unpacked &olsa) const
+{
+  return (pageid < olsa.pageid) || (pageid == olsa.pageid && offset < olsa.offset);
+}
+
+log_lsa_unpacked::operator log_lsa () const
+{
+  return log_lsa (pageid, offset);
 }
 
 //

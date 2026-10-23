@@ -566,7 +566,7 @@ public class ExecuteThread extends Thread {
 
     public static final String SERVER_SIDE_SQL_REFUSED_MSG =
             "cannot execute SQL on the server-side connection: the stored procedure is declared"
-                    + " PARALLEL_ENABLE";
+                    + " PARALLEL_ENABLE or is running in a parallel query worker";
 
     private void sendError(String exception) throws IOException {
         resultBuffer.clear();
