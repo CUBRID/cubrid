@@ -28448,10 +28448,12 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
        * Creating an MVCC snapshot when executing an internal query on the system may not be the intended result
        * of the user. Therefore, in case of index scan of the _db_user and _db_synonym system tables,
        * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
+       * The same goes for _db_trigger, which trigger DDL looks up by name before it locks the target table.
        */
       if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
 	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid)
-	  || oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
+	  || oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
 	{
 	  need_skip_mvcc_snapshot = true;
 	}
