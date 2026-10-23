@@ -1742,8 +1742,8 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
     }
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, oid_Serial_class_oid);
   scan_started = true;
-  if (heap_get_visible_version (thread_p, serial_oidp, oid_Serial_class_oid, &old_recdes, &scan_cache, PEEK, NULL_CHN)
-      != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, serial_oidp, oid_Serial_class_oid, &old_recdes, &scan_cache, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       failed = true;
       goto exit;
