@@ -50,8 +50,11 @@ namespace cubschema
 
 		DB_VALUE default_value;
 		db_make_null (&default_value);
-		attr.dvalue_func (&default_value);
-		error_code = smt_set_attribute_default (tmpl, name, 0, (DB_VALUE *) &default_value, NULL);
+		error_code = attr.dvalue_func (&default_value);
+		if (error_code == NO_ERROR)
+		  {
+		    error_code = smt_set_attribute_default (tmpl, name, 0, (DB_VALUE *) &default_value, NULL);
+		  }
 	      }
 	    break;
 	  case attribute_kind::QUERY_SPEC:
