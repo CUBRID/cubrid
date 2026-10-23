@@ -61,6 +61,7 @@
 
 #include "expr_batch.h"
 
+#include "compressor.hpp"
 #include "db_function.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
@@ -200,6 +201,11 @@ struct eb_col
   short scale;			/* NUMERIC: the stored scale must be the domain's */
   int collation;		/* VARCHAR, CHAR: the domain's collation and codeset */
   int codeset;
+  int max_bytes;		/* VARCHAR, CHAR whose values may be stored in the long format (eb_cell_str ()): the bytes its
+				 * widest value takes (the precision at the codeset's widest character), one slot of its
+				 * scratch; 0 for a column the batch reads in the short format only */
+  char *scratch;		/* cap slots of max_bytes bytes: the chunk's decompressed values (expr_batch_init ()) */
+  unsigned char *scratch_set;	/* per row of the chunk: 1 once its slot holds the row's value (eb_cell_str_long ()) */
 };
 
 /* a GROUP BY key column: its type and domain (where its bytes sit in a record is the representation's, EB_REPR) */
@@ -733,6 +739,20 @@ eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes)
   return (char *) (((uintptr_t) p + EB_LINE - 1) & ~((uintptr_t) EB_LINE - 1));
 }
 
+/* The rows a chunk holds: as many as EXPR_BATCH_CHUNK_BYTES holds at per_row bytes, in whole 8-row steps (an
+ * int64 vector's cache line), 8 at least.  A row takes EB_ROW_BASE_BYTES (its reference, its layout, its selection
+ * entry, its UNKNOWN and NULL-mask bytes) plus the plan's vectors: expr_batch_init () passes this plan's bytes,
+ * the build passes the base alone for the most rows any chunk can hold. */
+#define EB_ROW_BASE_BYTES (sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 2)
+
+static inline int
+eb_cap_of (size_t per_row)
+{
+  int cap = (int) (EXPR_BATCH_CHUNK_BYTES / per_row);
+
+  return MAX (8, cap & ~7);
+}
+
 static int
 eb_decline (EB_BUILD * b, const char *why)
 {
@@ -794,7 +814,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
   EXPR_BATCH_PLAN *plan = b->plan;
   HEAP_RAW_LOCATOR loc;
   EB_COL *col;
-  int i, etype, vec;
+  int i, etype, vec, max_bytes = 0;
 
   for (i = 0; i < plan->n_cols; i++)
     {
@@ -821,14 +841,25 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
     }
   if ((loc.type == DB_TYPE_VARCHAR || loc.type == DB_TYPE_CHAR) && b->allow_str)
     {
-      if (loc.type == DB_TYPE_CHAR
-	  && loc.precision * INTL_CODESET_MULT ((INTL_CODESET) loc.codeset) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+      /* A value of OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more is stored in the long format, compressed
+       * when that gains (or_put_varchar_internal ()); the batch decompresses it into the column's scratch, a slot of
+       * the widest value per row of the chunk (eb_cell_str_long ()).  The scratch is bounded by EB_STR_SCRATCH_MAX
+       * at the most rows a chunk can hold: a column it does not fit keeps the long format on the row path -- a CHAR
+       * is padded to its precision before it is written (mr_writeval_char_internal ()), so every row of such a CHAR
+       * would send its chunk there, and the plan is not built. */
+      size_t widest = (size_t) loc.precision * INTL_CODESET_MULT ((INTL_CODESET) loc.codeset);
+
+      if (widest >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  /* a CHAR is padded to its precision before it is written (mr_writeval_char_internal ()), and a string of
-	   * OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more carries the compression header eb_cell_str ()
-	   * does not read: every row of such a column would send its chunk to the row path */
-	  eb_decline (b, "a CHAR column the batch does not read");
-	  return -1;
+	  if ((size_t) eb_cap_of (EB_ROW_BASE_BYTES) * widest <= EB_STR_SCRATCH_MAX)
+	    {
+	      max_bytes = (int) widest;
+	    }
+	  else if (loc.type == DB_TYPE_CHAR)
+	    {
+	      eb_decline (b, "a CHAR column the batch does not read (scratch too large)");
+	      return -1;
+	    }
 	}
       etype = EB_STR;
     }
@@ -881,6 +912,9 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
   col->scale = (short) loc.scale;
   col->collation = loc.collation;
   col->codeset = loc.codeset;
+  col->max_bytes = max_bytes;
+  col->scratch = NULL;
+  col->scratch_set = NULL;
   plan->vsrc[vec].precision = (short) loc.precision;
   plan->vsrc[vec].scale = (short) loc.scale;
   return vec;
@@ -1121,10 +1155,66 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 /* ---------------------------------------------------------------------------------------- */
 /* string leaves: a VARCHAR or CHAR column read from the record, against a string constant */
 
-/* a VARCHAR or CHAR in the variable area (a CHAR padded to its precision): 1 its bytes, 0 NULL, -1 a long or
- * compressed string (the row path's) */
+/* A string stored in the long format (or_put_varchar_internal ()): after the first byte,
+ * OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION, two network-order ints give the compressed and the decompressed length,
+ * then come the bytes -- the string itself when the compressed length is 0 (compression off, or no gain), else its
+ * compressed bytes.  Those are decompressed once per chunk into the row's slot of the column's scratch, with the
+ * engine's decompressor (the one the row path's pr_get_compressed_data_from_buffer () calls); a later read of the
+ * same cell (another leaf over the column) takes the slot as it is.  d: the cell's first byte, avail: the bytes
+ * the cell has in the record.  1 the value, -1 a cell the batch does not read (the column has no scratch, or the
+ * lengths do not fit the record or the slot), -2 the bytes did not decompress to the stored length: the chunk is
+ * the row path's, which raises the error for the record. */
+static int
+eb_cell_str_long (const EB_COL * col, int r, const unsigned char *d, int avail, const char **str, int *len)
+{
+  int net, clen, dlen;
+  char *slot;
+
+  if (col->max_bytes == 0 || avail < 1 + 2 * OR_INT_SIZE)
+    {
+      return -1;
+    }
+  memcpy (&net, d + 1, OR_INT_SIZE);
+  clen = OR_GET_INT (&net);
+  memcpy (&net, d + 1 + OR_INT_SIZE, OR_INT_SIZE);
+  dlen = OR_GET_INT (&net);
+  d += 1 + 2 * OR_INT_SIZE;
+  avail -= 1 + 2 * OR_INT_SIZE;
+  if (clen < 0 || dlen < 0 || dlen > col->max_bytes || (clen == 0 ? dlen : clen) > avail)
+    {
+      return -1;
+    }
+  if (clen == 0)
+    {
+      *str = (const char *) d;
+      *len = dlen;
+      return 1;
+    }
+  slot = col->scratch + (size_t) col->max_bytes * (size_t) r;
+  if (!col->scratch_set[r])
+    {
+      int got;
+
+      // *INDENT-OFF*
+      got = cubcompress::decompress<cubcompress::LZ4> (d, clen, slot, dlen);
+      // *INDENT-ON*
+      if (got != dlen)
+	{
+	  return -2;
+	}
+      col->scratch_set[r] = 1;
+    }
+  *str = slot;
+  *len = dlen;
+  return 1;
+}
+
+/* a VARCHAR or CHAR in the variable area (a CHAR padded to its precision): 1 its bytes, 0 NULL, -1 a cell the batch
+ * does not read, -2 one it could not decompress (both the row path's chunk).  A value shorter than
+ * OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes is its length byte and its bytes; a longer one is in the long
+ * format (eb_cell_str_long ()). */
 static inline int
-eb_cell_str (const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
+eb_cell_str (const EB_COL * col, int r, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
 {
   int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location, lay->offset_size);
   int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location + 1, lay->offset_size);
@@ -1135,7 +1225,11 @@ eb_cell_str (const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, 
       return 0;
     }
   d = (const unsigned char *) lay->var_table + this_off;
-  if (d[0] >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION || d[0] + 1 > next_off - this_off)
+  if (d[0] >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      return eb_cell_str_long (col, r, d, next_off - this_off, str, len);
+    }
+  if (d[0] + 1 > next_off - this_off)
     {
       return -1;
     }
@@ -1568,10 +1662,11 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	  const char *str = NULL;
 	  int len = 0;
 
-	  got = eb_cell_str (eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
+	  got = eb_cell_str (col, r, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
 	  if (got < 0)
 	    {
-	      return eb_fallback (plan, "a string the batch does not read from the record");
+	      return eb_fallback (plan, (got == -2) ? "a string the batch does not decompress"
+				  : "a string the batch does not read from the record");
 	    }
 	  if (got > 0 && leaf->sub_len > 0)
 	    {
@@ -1655,10 +1750,11 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
       int len = 0, got;
       bool keep;
 
-      got = eb_cell_str (eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
+      got = eb_cell_str (col, r, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
       if (got < 0)
 	{
-	  return eb_fallback (plan, "a string the batch does not read from the record");
+	  return eb_fallback (plan, (got == -2) ? "a string the batch does not decompress"
+			      : "a string the batch does not read from the record");
 	}
       if (got == 0)
 	{
@@ -3362,7 +3458,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
   int cap, i, d;
 
   memset (batch, 0, sizeof (*batch));
-  per_row = sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 2 + (size_t) plan->n_masks;
+  per_row = EB_ROW_BASE_BYTES + (size_t) plan->n_masks;
   for (i = 0; i < plan->n_vecs; i++)
     {
       const EB_VEC *v = &plan->vecs[i];
@@ -3373,8 +3469,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	    + ((v->kind == EB_VK_SHARED && EB_IS_NUM (v->etype)) ? 2 : 0);
 	}
     }
-  cap = (int) (EXPR_BATCH_CHUNK_BYTES / per_row);
-  cap = MAX (8, cap & ~7);
+  cap = eb_cap_of (per_row);
   rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
   sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
   layout = (HEAP_REC_LAYOUT *) eb_arena_alloc (plan, sizeof (HEAP_REC_LAYOUT) * cap);
@@ -3445,6 +3540,22 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       plan->mask[d] = m;
+    }
+  for (i = 0; i < plan->n_cols; i++)
+    {
+      /* a string column's scratch: a slot of its widest value per row of the chunk (the build bounded it by
+       * EB_STR_SCRATCH_MAX at the most rows a chunk can hold, and cap is at most those) */
+      EB_COL *col = &plan->cols[i];
+
+      if (col->max_bytes > 0)
+	{
+	  col->scratch = (char *) eb_arena_alloc (plan, (size_t) cap * (size_t) col->max_bytes);
+	  col->scratch_set = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+	  if (col->scratch == NULL || col->scratch_set == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
     }
   batch->rows = rows;
   batch->sel = sel;
@@ -4751,6 +4862,11 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
   for (i = 0; i < plan->n_cols; i++)
     {
       plan->cols[i].decoded = 0;
+      if (plan->cols[i].scratch_set != NULL)
+	{
+	  /* the chunk's rows are new: every long string decompresses again on its first read */
+	  memset (plan->cols[i].scratch_set, 0, (size_t) plan->cap);
+	}
     }
   rc = eb_layout_rows (plan, batch);
   if (rc != NO_ERROR)

@@ -158,6 +158,12 @@ typedef struct expr_batch_plan EXPR_BATCH_PLAN;
  * is left to them, the rest to the page being decoded and the accumulators. */
 #define EXPR_BATCH_CHUNK_BYTES (8192)
 
+/* The bytes a string column's scratch may take: for a VARCHAR or CHAR whose values may be stored compressed
+ * (OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more), a slot of its widest value per row of the chunk, where
+ * the batch decompresses the row's value.  A column whose scratch would be larger is read as before: a CHAR of that
+ * width keeps the plan from being built, a compressed VARCHAR value hands its chunk to the row path. */
+#define EB_STR_SCRATCH_MAX (1024 * 1024)
+
 extern EXPR_BATCH_PLAN *expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in,
 					       const char **why_not);
 extern void expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan);
