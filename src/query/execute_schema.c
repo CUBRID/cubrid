@@ -268,7 +268,8 @@ static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
-static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter,
+				       bool * const is_unique_index);
 static int do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_rename_internal (const char *const old_name, const char *const new_name);
@@ -1711,11 +1712,12 @@ do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter)
  *   alter(in/out): Parse tree of a PT_DROP_INDEX_CLAUSE clause potentially
  *                  followed by the rest of the clauses in the ALTER
  *                  statement.
+ *   is_unique_index(out): Whether the dropped index is a unique index
  * Note: The clauses following the PT_DROP_INDEX_CLAUSE clause are not
  *       affected in any way.
  */
 static int
-do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter)
+do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter, bool * const is_unique_index)
 {
   int error_code = NO_ERROR;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
@@ -1728,6 +1730,9 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
   assert (alter->info.alter.constraint_list != NULL);
   assert (alter->info.alter.constraint_list->next == NULL);
   assert (alter->info.alter.constraint_list->node_type == PT_NAME);
+  assert (is_unique_index != NULL);
+
+  *is_unique_index = false;
 
   index_type =
     get_reverse_unique_index_type (alter->info.alter.alter_clause.index.reverse,
@@ -1755,6 +1760,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
       is_reverse = alter->info.alter.alter_clause.index.reverse;
       is_unique = alter->info.alter.alter_clause.index.unique;
     }
+
+  *is_unique_index = is_unique;
 
   error_code =
     create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_reverse, is_unique,
@@ -1869,6 +1876,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     {
       PT_NODE *const save_next = crt_clause->next;
       const PT_ALTER_CODE alter_code = crt_clause->info.alter.code;
+      bool is_unique_index = false;
 
       /* The first ALTER clause has already been checked, we call the semantic check starting with the second clause. */
       if (do_semantic_checks)
@@ -2020,7 +2028,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  error_code = do_alter_clause_add_index (parser, crt_clause);
 	  break;
 	case PT_DROP_INDEX_CLAUSE:
-	  error_code = do_alter_clause_drop_index (parser, crt_clause);
+	  error_code = do_alter_clause_drop_index (parser, crt_clause, &is_unique_index);
 	  break;
 	case PT_CHANGE_AUTO_INCREMENT:
 	  error_code = do_alter_change_auto_increment (parser, crt_clause);
@@ -2058,7 +2066,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  goto error_exit;
 	}
 
-      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter_code))
+      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter_code)
+	  && (alter_code != PT_DROP_INDEX_CLAUSE || is_unique_index))
 	{
 	  need_check_repl_constraint = true;
 	}
