@@ -898,9 +898,10 @@ namespace cubstorage
   bestspace_map::mask_of (hint &h, std::uint8_t min_code)
   {
     std::uint64_t m = 0;
-    for (std::uint8_t c = min_code; c <= CODE_MAX_TIER; c++)
+    // bits[t] is tier t + 1
+    for (std::size_t t = min_code - 1; t < NUM_TIERS; t++)
       {
-	m |= h.bits[c - 1].load ();
+	m |= h.bits[t].load ();
       }
     return m;
   }
@@ -912,15 +913,15 @@ namespace cubstorage
   {
     std::uint64_t bit = 1ULL << i;
     std::uint32_t put_back = 0;
-    for (std::uint8_t c = min_code; c <= CODE_MAX_TIER; c++)
+    for (std::size_t t = min_code - 1; t < NUM_TIERS; t++)
       {
-	if (child.bits[c - 1].load () == 0 && (parent.bits[c - 1].load () & bit) != 0)
+	if (child.bits[t].load () == 0 && (parent.bits[t].load () & bit) != 0)
 	  {
-	    parent.bits[c - 1].fetch_and (~bit);
-	    if (child.bits[c - 1].load () != 0)
+	    parent.bits[t].fetch_and (~bit);
+	    if (child.bits[t].load () != 0)
 	      {
-		parent.bits[c - 1].fetch_or (bit);
-		put_back |= 1U << (c - 1);
+		parent.bits[t].fetch_or (bit);
+		put_back |= 1U << t;
 	      }
 	  }
       }
