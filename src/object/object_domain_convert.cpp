@@ -149,6 +149,12 @@ tp_numeric_overflow (T number)
 {
   if constexpr (DST == DB_TYPE_SHORT)
     {
+      /* The SHORT limits are exact in float and double, but the range is tested from the inside all the same, so
+       * that a NaN, which fails every comparison, is an overflow here as it is for the _FROM_FP forms below. */
+      if constexpr (std::is_floating_point<T>::value)
+	{
+	  return ! (number >= DB_INT16_MIN && number <= DB_INT16_MAX);
+	}
       return OR_CHECK_SHORT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_INTEGER)
@@ -373,7 +379,14 @@ tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN 
 		}
 	      else
 		{
-		  tp_numeric_value<DST>::make (target, ROUND (number));
+		  /* ROUND can carry a value the check above let through out of the range ([2^31 - 0.5, 2^31) to 2^31),
+		   * and narrowing that is undefined: check the integer that is kept, ROUND truncated toward zero. */
+		  const double rounded = trunc (ROUND (number));
+		  if (tp_numeric_overflow<DST> (rounded))
+		    {
+		      return DOMAIN_OVERFLOW;
+		    }
+		  tp_numeric_value<DST>::make (target, rounded);
 		}
 	    }
 	  else
@@ -424,7 +437,14 @@ tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN 
 	  else
 	    {
 	      using target_type = decltype (tp_numeric_value<DST>::get (target));
-	      target_type integral = static_cast<target_type> (ROUND (number));
+	      /* ROUND can carry a value the check above let through out of the range ([2^31 - 0.5, 2^31) to 2^31),
+	       * and narrowing that is undefined: check the integer that is kept, ROUND truncated toward zero. */
+	      const double rounded = trunc (ROUND (number));
+	      if (tp_numeric_overflow<DST> (rounded))
+		{
+		  return DOMAIN_OVERFLOW;
+		}
+	      target_type integral = static_cast<target_type> (rounded);
 	      /* Preserve the legacy assignment overflow checks, including AIX's saturating casts. */
 	      if constexpr (DST == DB_TYPE_BIGINT || (DST == DB_TYPE_INTEGER && SRC == DB_TYPE_FLOAT))
 		{
