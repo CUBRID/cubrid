@@ -211,6 +211,24 @@ typedef enum
   PGBUF_ZONE_MASK = (PGBUF_LRU_ZONE_MASK | PGBUF_INVALID_ZONE | PGBUF_VOID_ZONE),
 } PGBUF_ZONE;
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R1. [신규] PGBUF_DIRECT_VICTIM_SEARCH : 유지보수 데몬이 빈자리(victim)를 찾을 "목록 범위"
+ *
+ *  버퍼 풀의 LRU 목록 배열
+ *    index : 0 ......... S-1 | S ................................ S+P-1
+ *            [ shared LRU   ] | [ private LRU (스레드별, quota 보유) ]
+ *
+ *  유지보수 데몬은 아래 순서로 목록을 돈다. 각 단계가 이 enum 값 하나에 대응.
+ *    1단계 PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA  : private 중 quota 를 넘은 목록만
+ *    2단계 PGBUF_DIRECT_VICTIM_SEARCH_ALL         : shared 목록 전부
+ *    3단계 PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA : private 중 quota 이하 목록만 (최후 수단)
+ *
+ *  왜 이 순서인가?
+ *    일반 빈자리 탐색 pgbuf_get_victim 과 같은 정책.
+ *      - 남의 private 목록은 quota 를 넘었을 때만 건드린다
+ *      - quota 안쪽 private 는 그 스레드가 쓰는 페이지라 최대한 아끼고 마지막에만 쓴다
+ *    "제외"가 아니라 "먼저 볼 순서"다. 기다리는 스레드가 끝까지 남으면 3단계에서 quota 안쪽도 쓴다.
+ * ============================================================================================= */
 /* PGBUF_DIRECT_VICTIM_SEARCH - lru lists searched by page maintenance to assign direct victims */
 typedef enum
 {
@@ -1053,6 +1071,25 @@ PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
 #define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
   (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R2. [신규] flush 데몬을 깨울지 판단하는 매크로 2개
+ *
+ *  (1) PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (list)
+ *      = MIN (목록 크기 - quota * 0.9, zone3 크기)
+ *      pgbuf_compute_lru_vict_target 안에 똑같이 두 번 있던 식을 매크로로 뽑은 것 (동작 동일, R9).
+ *      > 0 이면 flush 데몬이 이 private 목록을 flush 대상으로 본다 (quota 90% 를 넘은 부분만).
+ *
+ *  (2) PGBUF_LRU_LIST_HAS_VICTIM_FLUSH_TARGET (list)  -- 둘 다 참이면 "깨울 이유 있음"
+ *        조건 A: count_lru3 > count_vict_cand   (zone 3 에 아직 빈자리 후보가 아닌 칸이 있음: dirty 등)
+ *        조건 B: flush 데몬의 대상 목록         (shared 이거나, private 면 (1) > 0)
+ *
+ *    목록 모양:
+ *      top [zone1 (hot)][zone2][ zone3: 빈자리 후보 (count_vict_cand) + dirty 등 ] bottom
+ *                              |<------------------- count_lru3 ------------------>|
+ *
+ *    count_vict_cand 는 fix 여부를 세지 않는 "대략적인 수"다 (fix/unfix 는 너무 잦아 세지 않는 설계).
+ *    이 매크로도 잠금 없이 읽기만 한다.
+ * ============================================================================================= */
 /* number of private list bcb's targeted by victim flush: zone three bcb's beyond 90% of quota */
 #define PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET(list) \
   MIN (PGBUF_LRU_LIST_COUNT (list) - (int) ((list)->quota * 0.9), (list)->count_lru3)
@@ -9432,6 +9469,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      if (pgbuf_Pool.direct_victims.waiter_threads_low_priority->size ()
 		  >= (5 + (thread_num_total_threads () / 20)))
 		{
+		  /* [CBRD-24029 리뷰용] ========================================================================
+		   * R3. [변경] 워커 쪽 호출부: 인자 2개 추가에 따른 수정 (동작은 이전과 동일)
+		   *
+		   *    워커가 자기 빈자리를 찾은 직후, 기다리는 스레드가 많이 쌓여 있으면
+		   *    같은 목록에서 남은 후보를 기다리는 스레드들에게 몰아서 나눠 주는 기존 경로.
+		   *      멈춤 위치 = NULL         → 루프 조건이 이전과 같음 (끝까지 봄)
+		   *      최대 개수 = DB_INT32_MAX → 이전처럼 상한 없음
+		   * ============================================================================================= */
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB, NULL, DB_INT32_MAX);
 		}
 #endif /* SERVER_MODE */
@@ -9512,6 +9557,39 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 }
 
 #if defined (SERVER_MODE)
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R4. [변경] pgbuf_panic_assign_direct_victims_from_lru : 목록 하나에서 기다리는 스레드에게 빈자리를 넘겨줌
+ *
+ *  ■ 누가 부르나
+ *    - 워커 (pgbuf_get_victim_from_lru_list) : 기다리는 스레드가 많이 쌓였을 때
+ *    - 유지보수 데몬 (pgbuf_lfcq_assign_direct_victims) : 0.1초마다
+ *    이 함수는 quota 를 보지 않는다. 통계 Num_victim_assign_direct_panic 은 두 호출자의 합계.
+ *
+ *  ■ 동작
+ *    bcb_start 부터 위로 (prev_BCB 방향) zone 3 를 최대 1000 칸 본다.
+ *
+ *       bcb_start
+ *         |  위로 이동
+ *       [bcb == bcb_stop ?] --예--> 종료                      <-- [신규] 멈춤 위치
+ *       [빈자리 후보?] --아니오--> 다음 칸
+ *         | 예 (잠금 없이 1차 확인)
+ *       BCB 잠금 시도 --실패--> 다음 칸
+ *         | 성공
+ *       [후보 맞나?] --아니오--> 풀고 다음 칸 (잠그고 확정)
+ *         | 예
+ *       pgbuf_assign_direct_victim --기다리는 스레드 없음--> 풀고 종료
+ *         | 넘겨주고 깨움
+ *       n_assigned == max_assign 이면 종료                     <-- 상한
+ *
+ *  ■ 인자
+ *    bcb_stop  : 여기에 닿으면 멈춤 (그 칸은 보지 않음). NULL 이면 끝까지.
+ *                유지보수 데몬의 2차 탐색이 1차에서 본 칸을 다시 읽지 않게 하려고 추가.
+ *    max_assign: 한 번에 넘겨줄 최대 개수. 유지보수 데몬 = 남은 몫, 워커 = 상한 없음.
+ *
+ *  ■ 함수 주석의 TODO (별도 이슈)
+ *    기다리는 스레드는 vacuum 과 남이 기다리는 latch 를 쥔 스레드가 먼저 받는다.
+ *    비상 상황에서는 사용자 트랜잭션을 먼저 살릴지 검토 필요.
+ * ============================================================================================= */
 /*
  * pgbuf_panic_assign_direct_victims_from_lru () - panic assign direct victims from lru.
  *
@@ -9547,6 +9625,14 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
   /* unlike pgbuf_lru_fall_bcb_to_zone_3, to-vacuum bcb's are assigned too: a waiter blocked for lack of victims
    * outweighs a page re-read by vacuum. */
 
+  /* [CBRD-24029 리뷰용] ========================================================================
+   * R4b. [변경] 루프 조건에 "bcb != bcb_stop" (멈춤 위치) 와 "n_assigned < max_assign" (상한) 추가
+   *
+   *  바로 위 영문 주석 (to-vacuum) 의 뜻:
+   *    평소 경로 pgbuf_lru_fall_bcb_to_zone_3 은 vacuum 이 곧 읽을 페이지는 기다리는 스레드에게 주지 않는다.
+   *    이 함수는 그 검사를 하지 않는다 = vacuum 대상 페이지도 준다 (원래 그랬음, 근거만 주석으로 남김).
+   *    근거: 빈자리가 없어 멈춰 있는 스레드를 살리는 것이 vacuum 의 페이지 재읽기 1회보다 중요.
+   * ============================================================================================= */
   for (bcb = bcb_start;
        bcb != NULL && bcb != bcb_stop && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0
        && count < MAX_DEPTH && n_assigned < max_assign; bcb = bcb->prev_BCB, count++)
@@ -9587,6 +9673,36 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
 #undef MAX_DEPTH
 }
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R5. [변경] pgbuf_direct_victims_maintenance : 이슈의 본체
+ *
+ *  ■ 누가 언제 부르나
+ *    pgbuf-maintain 데몬 (0.1초 고정 주기, 실행 시간 포함 시작~시작 간격)
+ *      pgbuf_page_maintenance_execute
+ *        (1) pgbuf_adjust_quotas              : quota, zone 조정 (항상 수행)
+ *        (2) pgbuf_direct_victims_maintenance : <-- 여기
+ *
+ *  ■ 왜 필요한가
+ *    빈자리를 못 찾은 스레드는 대기 큐에서 잠들고, 누군가 빈자리를 넘겨줘야 깨어난다.
+ *    flush 데몬, 다른 워커 등이 넘겨주지만 모두 "무슨 일이 일어나야" 동작한다.
+ *    한가할 때는 아무도 안 넘겨줄 수 있다 → 이 함수가 그때를 위한 안전망.
+ *    (수정 전에는 이 함수가 한 번도 동작하지 않아 page_latch_timeout_in_msecs, 기본 300초까지 대기)
+ *
+ *  ■ 수정 전: for (index = prv_index; ... && index != prv_index ...) → 시작하자마자 조건 거짓 → 0회 실행
+ *
+ *  ■ 수정 후 (0.1초마다)
+ *      쉬는 횟수가 남았나? ──예──> 1 줄이고 배정 생략                      (R5c)
+ *        | 아니오
+ *      남은 배정 수 = 5
+ *      1단계 quota 넘은 private → 2단계 shared → 3단계 quota 안쪽 private  (각 단계는 한 바퀴만)
+ *        각 단계: 기다리는 스레드가 없거나 5개 다 주면 즉시 끝
+ *      한 개도 못 줬고 기다리는 스레드가 남았나? ──예──> 다음 10번 (약 1초) 배정 쉼
+ *        |
+ *      flush 데몬 깨울지 확인 (쉬는 중에도 매번)                          (R5b)
+ *
+ *    static 위치 변수를 단계별로 따로 둔 이유: 1단계와 3단계가 같은 private 범위를 돌기 때문.
+ *    static 이 안전한 이유: 이 함수는 데몬 스레드 하나에서만 불린다.
+ * ============================================================================================= */
 /*
  * pgbuf_direct_victims_maintenance () - assign direct victims via searching. the purpose of function is to make sure a
  *                                       victim is assigned even when system has low to no activity, which prevents
@@ -9610,6 +9726,19 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
   static int prv_under_quota_index = 0;
   static int busy_skip_count = 0;
 
+  /* [CBRD-24029 리뷰용] ========================================================================
+   * R5c. [신규] 바쁠 때 배정 쉬기 (약 1초, 하드코딩)
+   *
+   *    "한 바퀴를 돌고도 한 개도 못 줌" = 후보가 모두 쓰이는 중이거나 목록이 바빠 건너뜀 (R8)
+   *      → 다음 10번 (0.1초 x 10 = 약 1초) 은 배정을 생략. quota 조정과 flush 데몬 깨우기는 계속.
+   *    한 개라도 주면 다음 0.1초에 평소대로.
+   *
+   *    왜 괜찮은가
+   *      - 한가할 때 (이 기능의 목적): 후보가 바로 쓸 수 있는 상태라 첫 바퀴에 준다 → 쉬지 않음
+   *      - 바쁠 때: flush 데몬과 다른 스레드가 이미 빈자리를 만들고 있음. 늦어져도 최대 약 1초
+   *      - 1초 = flush 데몬의 기본 주기 (page_flush_interval_in_msecs 1000ms) 와 같은 시간 단위
+   *    회수로 세는 이유: 이 데몬은 0.1초 주기 외에 깨우는 곳이 없어 10번 ≈ 1초가 성립.
+   * ============================================================================================= */
   /* TODO: when no victim could be assigned (candidates in use or lists busy), skip assigning for a fixed number of
    *       iterations (about 1 second) so the daemon does not add contention. a heuristic for a case not yet observed;
    *       revisit with measurements (e.g. adaptive backoff) if it turns out to matter. */
@@ -9634,6 +9763,21 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
 	}
     }
 
+  /* [CBRD-24029 리뷰용] ========================================================================
+   * R5b. [신규] flush 데몬 조건부 깨우기
+   *
+   *  ■ 왜 필요한가
+   *    flush 데몬은 flush 할 후보를 못 찾으면 잠들고, 다음 기상은
+   *    page_flush_interval_in_msecs (기본 1초, 0 이면 무한 대기) 또는 새 대기 스레드 / 다른 탐색 이벤트뿐.
+   *    그 사이 pgbuf_adjust_quotas 가 quota/zone 을 바꿔 flush 대상이 새로 생겨도 깨워 줄 주체가 없다.
+   *
+   *  ■ 조건 (모두 참일 때만)
+   *    1) 기다리는 스레드가 남아 있음
+   *    2) flush 가 지금 진행 중이 아님 (!is_flushing_victims)
+   *    3) flush 대상 목록의 zone 3 에 아직 후보가 아닌 칸이 있음 (R2, R7)
+   *
+   *  ■ 비용: 조건변수 신호 1회. 기다리는 스레드가 있을 때만, 0.1초당 최대 1회.
+   * ============================================================================================= */
   if (pgbuf_is_any_thread_waiting_for_direct_victim () && !pgbuf_Pool.is_flushing_victims
       && pgbuf_is_any_lru_victim_flush_target ())
     {
@@ -9645,6 +9789,19 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
 #undef DEFAULT_ASSIGNS_PER_ITERATION
 }
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R6. [신규] pgbuf_assign_direct_victims_round_robin : 범위 [base, base+count) 를 지난번 위치부터 한 바퀴
+ *
+ *  ■ 목록 번호 = base + (start + nvisited) % count
+ *
+ *  ■ 예1) count = 4, start = 2, 상한 여유 있음
+ *       방문: 2 -> 3 -> 0 -> 1   (한 바퀴)  → 끝난 뒤 start = (2+4)%4 = 2
+ *  ■ 예2) count = 4, start = 2, 3번 목록에서 5개 다 줌
+ *       방문: 2 -> 3             → 끝난 뒤 start = (2+2)%4 = 0  (다음엔 0번부터)
+ *
+ *  ■ 단계 필터에 안 맞는 목록도 nvisited 는 증가 → 한 바퀴를 넘지 않음
+ *  ■ count <= 0 (num_private_chains = 0 으로 private 없음) 이면 바로 return (0 나누기 방지)
+ * ============================================================================================= */
 /*
  * pgbuf_assign_direct_victims_round_robin () - visit lru lists once in round-robin order, starting from saved position,
  *                                              and assign victims directly while threads are waiting.
@@ -9688,6 +9845,10 @@ pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_ba
   *start_inout = (*start_inout + nvisited) % lru_count;
 }
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R7. [신규] 모든 LRU 목록 중 R2 의 매크로가 참인 목록이 하나라도 있으면 true.
+ *    잠금 없이 수만 읽음. 기다리는 스레드가 남았을 때만 불리므로 평소 비용 0.
+ * ============================================================================================= */
 /*
  * pgbuf_is_any_lru_victim_flush_target () - is there any lru list where victim flush can produce victims?
  *
@@ -9727,6 +9888,31 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   if (lru_list->count_vict_cand > 0)
     {
+      /* [CBRD-24029 리뷰용] ========================================================================
+       * R8. [변경] pgbuf_lfcq_assign_direct_victims : 목록 하나 처리 (유지보수 데몬 전용)
+       *
+       *  ■ 흐름
+       *    후보 수 > 0 ? (잠금 없이 대략 확인) ──아니오──> 그냥 지나감
+       *      | 예
+       *    목록 잠금 시도 (trylock) ──누가 쓰는 중──> 건너뜀                         <-- [신규 A]
+       *      | 잠금 성공                              (바쁜 목록에 끼어들어 워커를 기다리게 하지 않음)
+       *    1차: hint 부터 위로 (멈춤 위치 없음)
+       *    못 줬고 기다리는 스레드 남음 → "hint 가 나빴나?"
+       *      bottom 이 비어 있지 않고 zone 3 이면
+       *        hint = bottom
+       *        hint 와 bottom 이 다르면 2차: bottom 부터 위로, 1차 시작점(hint) 직전까지만    <-- [신규 B]
+       *      아니면 hint = NULL
+       *    목록 풀기, 남은 배정 수에서 준 만큼 뺌
+       *
+       *  ■ 2차가 hint 에서 멈춰도 빠지는 칸이 없는 이유
+       *    위  [ 1차가 본 구간: hint 부터 위로 ]
+       *    hint ─────────────────────────────── ← 1차가 이미 확인한 칸
+       *    아래 [ 2차가 볼 구간: bottom ~ hint 직전 ]
+       *    두 탐색 모두 같은 목록 잠금 안에서 일어나고, 목록에서 BCB 를 빼거나 zone 을 바꾸려면
+       *    이 잠금이 필요하므로 그 사이 hint 가 다른 곳으로 옮겨 가지 않는다.
+       *
+       *  ■ 수정 전 결함 (함께 막음): bottom 이 NULL 이면 역참조, 2차가 1차 구간을 다시 읽음
+       * ============================================================================================= */
       if (pthread_mutex_trylock (&lru_list->mutex) != 0)
 	{
 	  /* list is busy; do not compete with threads using it */
@@ -14229,6 +14415,10 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
        * (I tried), because you may find yourself in the peculiar case where quota's are on par with list size, while
        * shared are right below minimum desired size... and flush will not find anything.
        */
+      /* [CBRD-24029 리뷰용] ========================================================================
+       * R9. [리팩터링] 기존 두 줄 (목록 크기 - quota*0.9, MIN (.., count_lru3)) 을 R2 의 매크로로 바꿈. 동작 동일.
+       *    flush 데몬의 대상 기준과 유지보수 데몬의 깨우기 기준을 한 곳에서 관리하려는 목적.
+       * ============================================================================================= */
       this_prv_target = PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (lru_list);
       if (this_prv_target > 0)
 	{
