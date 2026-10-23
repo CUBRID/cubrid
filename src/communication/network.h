@@ -294,7 +294,10 @@
   /* bind-value plan variants of a cached query */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_BIND_VARIANT) \
   \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_DROP_CLONES)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_DROP_CLONES) \
+  \
+  /* progress of UPDATE STATISTICS ON ALL CLASSES, written to the event log */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_LOG_STATS_PROGRESS)
 
 enum net_server_request
 {
