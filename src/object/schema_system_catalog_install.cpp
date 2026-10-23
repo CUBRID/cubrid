@@ -332,7 +332,7 @@ catcls_install (void)
   const std::vector<cubschema::system_metadata_definition> class_defs = catcls_get_class_definitions ();
   const std::vector<cubschema::system_metadata_definition> vclass_defs = catcls_get_vclass_definitions ();
   int error_code = NO_ERROR;
-  std::vector<MOP> class_mop (class_defs.size (), nullptr);
+  std::vector<MOP> class_mops (class_defs.size (), nullptr);
   int save;
   size_t i;
   AU_SAVE_AND_DISABLE (save);
@@ -341,8 +341,8 @@ catcls_install (void)
 
   for (i = 0; i < class_defs.size (); i++)
     {
-      class_mop[i] = metadata_builder::create_and_mark_system_class (class_defs[i].name);
-      if (class_mop[i] == nullptr)
+      class_mops[i] = metadata_builder::create_and_mark_system_class (class_defs[i].name);
+      if (class_mops[i] == nullptr)
 	{
 	  assert (false);
 	  error_code = er_errid ();
@@ -352,7 +352,7 @@ catcls_install (void)
 
   for (i = 0; i < class_defs.size (); i++)
     {
-      error_code = metadata_builder::build_class (class_mop[i], class_defs[i]);
+      error_code = metadata_builder::build_class (class_mops[i], class_defs[i]);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);

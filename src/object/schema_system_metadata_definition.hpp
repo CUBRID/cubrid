@@ -59,52 +59,29 @@ namespace cubschema
   };
 
   // TODO: implement formatting utility function for std::string (like fmt library)
-  const inline std::string format_varchar (const int size)
+  inline std::string format_varchar (const int size)
   {
-    std::string s ("varchar(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
+    return "varchar(" + std::to_string (size) + ")";
   }
 
-  const inline std::string format_varbit (const int size)
+  inline std::string format_varbit (const int size)
   {
-    std::string s ("bit varying(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
+    return "bit varying(" + std::to_string (size) + ")";
   }
 
-  const inline std::string format_numeric (const int prec, const int scale)
+  inline std::string format_numeric (const int prec, const int scale)
   {
-    std::string s ("numeric(");
-    s += std::to_string (prec);
-    s += ",";
-    s += std::to_string (scale);
-    s += ")";
-    return s;
+    return "numeric(" + std::to_string (prec) + "," + std::to_string (scale) + ")";
   }
 
-  const inline std::string format_sequence (const std::string_view type)
+  inline std::string format_sequence (const std::string_view type)
   {
-    std::string s ("sequence of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
+    return type.empty () ? "sequence of" : "sequence of " + std::string (type);
   }
 
-  const inline std::string format_set (const std::string_view type)
+  inline std::string format_set (const std::string_view type)
   {
-    std::string s ("set of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
+    return type.empty () ? "set of" : "set of " + std::string (type);
   }
 
   struct constraint
