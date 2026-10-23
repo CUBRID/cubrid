@@ -3366,6 +3366,15 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 		}
 	    }
 	}
+      if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_BIT && parser->host_var_compiled_domains != NULL
+	  && parser->host_var_compiled_domains[i] != NULL
+	  && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[i]) == DB_TYPE_BIT
+	  && parser->host_var_compiled_domains[i]->precision == TP_FLOATING_PRECISION_VALUE)
+	{
+	  /* a value-typed position compiles as the floating BIT (pt_host_var_value_domain): the value carries that
+	   * precision too, since the disk writer packs by the value's (a length prefix) and the reader by the domain's */
+	  hv->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
     }
 
   /* the derived positions of another signature's plan are not this plan's: they are not filled */

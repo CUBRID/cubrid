@@ -123,6 +123,8 @@ regu_variable_node *domain_list_column_source (const struct xasl_node *xasl, int
 TP_DOMAIN *domain_list_column_of (const struct xasl_node *xasl, int pos);
 /* CBRD-27583: a list column's domain as a comparison reads it - NULL where its values decide (VARIABLE) or are NULL */
 TP_DOMAIN *domain_list_column_compared (const struct xasl_node *xasl, int pos);
+TP_DOMAIN *domain_list_column_joined (const struct xasl_node *xasl, int pos, const struct xasl_node *other_xasl,
+				      int other_pos);
 
 /* The operand coercion of T_ADD, T_SUB, T_MUL or T_DIV: conv[i] converts operand i into operand_domain[i], NULL
  * converts nothing. SUM and AVG keep one for the values they add; an arithmetic node's RESOLVED_DOMAIN holds the same

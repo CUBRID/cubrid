@@ -2752,15 +2752,26 @@ db_needs_bind_signature_plan (const DB_SESSION * session)
 {
   const PARSER_CONTEXT *parser = session->parser;
 
-  if (session->is_subsession_for_prepared || session->kept_stmt_name != NULL || session->dimension != 1
-      || session->stage == NULL || session->stage[0] < StatementPreparedStage || parser->flag.set_host_var == 0
-      || parser->flag.is_parsing_static_sql || prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) <= 0)
+  if (session->is_subsession_for_prepared || session->kept_stmt_name != NULL || session->dimension < 1
+      || session->stage == NULL || parser->flag.set_host_var == 0 || parser->flag.is_parsing_static_sql
+      || prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) <= 0)
     {
       return false;
     }
 
-  const PT_NODE *statement = session->statements[0];
-  if (statement == NULL || statement->flag.cannot_prepare || !db_is_plan_statement (statement))
+  /* several statements prepared at once (a driver's "a; b") share the positions: the plan of a signature is the
+   * compilation of the whole text, so every statement must be one a plan serves */
+  bool plan_statement = false;
+  for (int i = 0; i < session->dimension; i++)
+    {
+      const PT_NODE *statement = session->statements[i];
+      if (statement == NULL || statement->flag.cannot_prepare || session->stage[i] < StatementPreparedStage)
+	{
+	  return false;
+	}
+      plan_statement = plan_statement || db_is_plan_statement (statement);
+    }
+  if (!plan_statement)
     {
       return false;
     }
@@ -2858,7 +2869,10 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
   DB_SESSION *typed = NULL;
   int err = NO_ERROR;
 
-  typed = *typed_p = db_open_buffer_copy_local (statement->sql_user_text, statement->sql_user_text_len);
+  /* one statement compiles from its own text; several, from the text they were prepared from together */
+  const char *text = session->dimension == 1 ? statement->sql_user_text : old_parser->original_buffer;
+  const size_t text_len = session->dimension == 1 ? (size_t) statement->sql_user_text_len : strlen (text);
+  typed = *typed_p = db_open_buffer_copy_local (text, text_len);
   if (typed == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2869,7 +2883,7 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
       pt_report_to_ersys (typed->parser, PT_SYNTAX);
       return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
-  if (typed->dimension != 1 || typed->parser->host_var_count != old_parser->host_var_count)
+  if (typed->dimension != session->dimension || typed->parser->host_var_count != old_parser->host_var_count)
     {
       err = ER_IT_INCORRECT_HOSTVAR_COUNT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, old_parser->host_var_count, typed->parser->host_var_count);
@@ -2889,7 +2903,12 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
     {
       return err;
     }
-  if (pt_node_to_cmd_type (typed->statements[0]) == CUBRID_STMT_SELECT)
+  bool selects_only = true;
+  for (int i = 0; i < typed->dimension; i++)
+    {
+      selects_only = selects_only && pt_node_to_cmd_type (typed->statements[i]) == CUBRID_STMT_SELECT;
+    }
+  if (selects_only)
     {
       db_bind_value_types (typed->parser, count, values);
     }
@@ -2901,7 +2920,12 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
       db_untype_null_host_variables (typed->parser);
     }
   typed->bind_domains_from = bind_domains_from;
-  err = db_compile_statement_local (typed);
+  do
+    {
+      /* every statement of the text: db_compile_statement_local compiles the next one, 0 after the last */
+      err = db_compile_statement_local (typed);
+    }
+  while (err > 0);
   typed->bind_domains_from = NULL;
   return err < 0 ? err : NO_ERROR;
 }
@@ -2920,7 +2944,8 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
   DB_SESSION *typed = NULL;
   int err = NO_ERROR;
 
-  if (statement->sql_user_text == NULL || statement->sql_user_text_len <= 0)
+  if (session->dimension == 1 ? statement->sql_user_text == NULL || statement->sql_user_text_len <= 0
+      : session->parser->original_buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_QPROC_INVALID_XASLNODE;
@@ -4446,7 +4471,9 @@ db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values
 	  db_make_null (hv);
 	  continue;
 	}
-      db_value_domain_init (hv, type, DB_VALUE_PRECISION (val), DB_VALUE_SCALE (val));
+      /* a fixed BIT compiles as the floating BIT (pt_host_var_value_domain) */
+      db_value_domain_init (hv, type, type == DB_TYPE_BIT ? TP_FLOATING_PRECISION_VALUE : DB_VALUE_PRECISION (val),
+			    DB_VALUE_SCALE (val));
       if (TP_IS_CHAR_TYPE (type))
 	{
 	  db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));

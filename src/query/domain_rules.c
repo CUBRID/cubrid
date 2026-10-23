@@ -3241,6 +3241,22 @@ domain_list_column_compared (const XASL_NODE * xasl, int pos)
   return domain == NULL || domain_is_variable (domain) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
 }
 
+/*
+ * domain_list_column_joined () - CBRD-27583: a join key column's domain as domain_list_column_compared, but a NULL-typed
+ *   column (a NULL bind under arithmetic, D-25) takes the other side's domain: its values match no row, and the pair
+ *   is decided as that domain against itself (hjoin_init_domain_info of develop did this at each execution)
+ */
+TP_DOMAIN *
+domain_list_column_joined (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos)
+{
+  TP_DOMAIN *domain = domain_list_column_of (xasl, pos);
+  if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+    {
+      return domain_list_column_compared (other_xasl, other_pos);
+    }
+  return domain_list_column_compared (xasl, pos);
+}
+
 /* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would. */
 static DB_TYPE
 domain_classify_interpolation (const DB_VALUE * value)

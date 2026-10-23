@@ -255,7 +255,6 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
   if (xasl == NULL)
     {
-      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -278,7 +277,16 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
    * server side flag. */
   xasl->query_in_progress = false;
 end:
+  /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
+  if (xasl == NULL)
+    {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+#if !defined (SERVER_MODE)
+      /* the stand-alone pointer is a global; a freed block must not stay behind it */
+      set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
+    }
 #if defined(SERVER_MODE)
   set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
