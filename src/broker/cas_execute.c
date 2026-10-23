@@ -5037,7 +5037,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	  }
 
 	if (fetch_flag)
-	  db_set_free (set);
+	  {
+	    /* drop the reference too: callers clear val again, and a second set_free of a freed ref can release a
+	     * Set_Ref_Area slot that another session thread of this process has already re-allocated */
+	    db_value_clear (val);
+	  }
       }
       break;
 
