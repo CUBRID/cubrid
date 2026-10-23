@@ -436,6 +436,12 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 					 PT_NODE * subquery, PT_NODE * class_);
 static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * subquery,
 				     PT_NODE * class_);
+static PT_NODE *mq_count_correlated_query_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						 int *continue_walk);
+static bool mq_is_attr_read_by_statement (PARSER_CONTEXT * parser, PT_NODE * mainquery, PT_NODE * statement_spec,
+					  PT_NODE * skip_spec, ATTR_REF_INFO * infop);
+static bool mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * mainquery,
+					     PT_NODE * statement_spec, PT_NODE * subquery, PT_NODE * class_);
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
@@ -2277,6 +2283,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  /* not pushable */
 	  return NON_PUSHABLE;
 	}
+    }
+
+  /* the select list must keep the semantics of the outer joins it is merged into */
+  if (!is_only_spec
+      && !mq_check_outer_join_select_list (parser, class_spec, mainquery, statement_spec, subquery, class_))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
     }
 
   /* determine if main query's where has define_vars ':=' */
@@ -4770,6 +4784,227 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
       parser_free_tree (parser, on_cond);
     }
   return result;
+}
+
+/*
+ * mq_count_correlated_query_nodes () - count the correlated subqueries in a tree, without descending into them
+ *   return: node
+ *   parser(in):
+ *   node(in): the node to check
+ *   arg(in/out): count of correlated query nodes
+ *   continue_walk(in/out):
+ *
+ * Note: An uncorrelated subquery is evaluated once before the scan, so it is as harmless in an ON clause as a
+ *       constant. A correlated one is evaluated for every row, after the row has been read.
+ */
+static PT_NODE *
+mq_count_correlated_query_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *cnt = (int *) arg;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      if (pt_is_correlated_subquery (node))
+	{
+	  (*cnt)++;
+	}
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_is_attr_read_by_statement () - check whether a statement reads an attribute of one of its specs
+ *   return: true if the attribute is referenced
+ *   parser(in): parser context
+ *   mainquery(in): the statement
+ *   statement_spec(in): the spec list of the statement
+ *   skip_spec(in): a spec whose ON clause is not searched, or NULL
+ *   infop(in/out): attribute to look for
+ *
+ * Note: The spec list itself is not searched: a derived table's as_attr_list names the attribute without reading it.
+ */
+static bool
+mq_is_attr_read_by_statement (PARSER_CONTEXT * parser, PT_NODE * mainquery, PT_NODE * statement_spec,
+			      PT_NODE * skip_spec, ATTR_REF_INFO * infop)
+{
+  PT_NODE *spec;
+
+  if (!PT_IS_SELECT (mainquery))
+    {
+      return mq_is_attr_referenced (parser, mainquery, infop);
+    }
+
+  if (mq_is_attr_referenced (parser, mainquery->info.query.q.select.list, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.q.select.where, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.q.select.group_by, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.q.select.having, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.q.select.connect_by, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.q.select.start_with, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.q.select.after_cb_filter, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.order_by, infop)
+      || mq_is_attr_referenced (parser, mainquery->info.query.orderby_for, infop))
+    {
+      return true;
+    }
+
+  for (spec = statement_spec; spec != NULL; spec = spec->next)
+    {
+      /* compare by id: the statement may be a copy of the one the skipped spec belongs to */
+      if ((skip_spec == NULL || spec->info.spec.id != skip_spec->info.spec.id)
+	  && mq_is_attr_referenced (parser, spec->info.spec.on_cond, infop))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * mq_check_outer_join_select_list () - check that merging the select list of a view keeps the semantics of the
+ *                                      outer joins of the statement
+ *   return: true if the view can be merged
+ *   parser(in):
+ *   spec(in): the view's spec in the main query
+ *   mainquery(in): the main query
+ *   statement_spec(in): the spec list of the main query
+ *   subquery(in): the view's query
+ *   class_(in): the view class, NULL for a derived table
+ *
+ * Note: A select list item of a view on the null-padded side is padded with NULL only when it is a plain column
+ *       reference. Any other expression (a constant, NVL (), a COUNT (*) subquery ...) is evaluated for the padding
+ *       row instead, so the view is not merged when the statement reads such an item outside the view's own ON clause.
+ *       A correlated subquery of the view must not end up in the ON clause of an outer join: a select list item
+ *       holding one must not be referenced by such an ON clause, whether the view is joined by it directly or
+ *       through earlier inner joins, and the WHERE clause of a view on the null-padded side, which the merge moves
+ *       into the view's ON clause, must not hold one. The parser rejects a subquery in a join condition, and the
+ *       executor relies on it: the data filter cannot evaluate such a term, so the inner scan of a nested loop outer
+ *       join would decide its NULL padding without it (CBRD-27657).
+ */
+static bool
+mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * mainquery,
+				 PT_NODE * statement_spec, PT_NODE * subquery, PT_NODE * class_)
+{
+  PT_NODE *attributes, *query_spec_columns, *col, *attr, *on_spec, *on_cond, *save_next;
+  ATTR_REF_INFO ref_info;
+  bool is_null_padded, has_subquery = false;
+  int num_query, ori_num_query;
+
+  if (!pt_is_select (subquery))
+    {
+      return false;
+    }
+
+  /* get attr_list */
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      attributes = spec->info.spec.as_attr_list;
+      ref_info.spec_id = spec->info.spec.id;
+    }
+  else
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+      ref_info.spec_id = (class_ != NULL) ? class_->info.name.spec_id : spec->info.spec.id;
+    }
+  if (attributes == NULL)
+    {
+      /* nothing to check against; the merge itself decides */
+      return true;
+    }
+  query_spec_columns = subquery->info.query.q.select.list;
+
+  /* the view is the null-padded side when its own join type is LEFT OUTER */
+  is_null_padded = (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER);
+
+  if (is_null_padded && subquery->info.query.q.select.where != NULL)
+    {
+      /* the merge moves the WHERE clause into the view's ON clause */
+      num_query = 0;
+      (void) parser_walk_tree (parser, subquery->info.query.q.select.where, mq_count_correlated_query_nodes,
+			       &num_query, NULL, NULL);
+      if (num_query > 0)
+	{
+	  return false;
+	}
+    }
+
+  for (col = query_spec_columns, attr = attributes; col && attr; col = col->next, attr = attr->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  continue;
+	}
+
+      if (is_null_padded && col->node_type != PT_NAME && attr->node_type == PT_NAME && attr->info.name.original != NULL)
+	{
+	  /* the padding row would carry the expression's value instead of NULL. The view's own ON clause only sees
+	   * the rows of the view, so a reference from it is harmless. */
+	  ref_info.name = attr->info.name.original;
+	  if (mq_is_attr_read_by_statement (parser, mainquery, statement_spec, spec, &ref_info))
+	    {
+	      return false;
+	    }
+	}
+
+      if (!has_subquery)
+	{
+	  /* walk this item only, not the rest of the list */
+	  save_next = col->next;
+	  col->next = NULL;
+	  num_query = 0;
+	  (void) parser_walk_tree (parser, col, mq_count_correlated_query_nodes, &num_query, NULL, NULL);
+	  col->next = save_next;
+	  if (num_query > 0)
+	    {
+	      has_subquery = true;
+	    }
+	}
+
+      /* set spec_id for mq_lambda */
+      attr->info.name.spec_id = spec->info.spec.id;
+    }
+
+  if (!has_subquery)
+    {
+      return true;
+    }
+
+  /* a correlated subquery of the select list must not move into the ON clause of an outer join */
+  for (on_spec = statement_spec; on_spec != NULL; on_spec = on_spec->next)
+    {
+      if (on_spec->info.spec.on_cond == NULL
+	  || (on_spec->info.spec.join_type != PT_JOIN_LEFT_OUTER && on_spec->info.spec.join_type != PT_JOIN_RIGHT_OUTER
+	      && on_spec->info.spec.join_type != PT_JOIN_FULL_OUTER))
+	{
+	  continue;
+	}
+
+      ori_num_query = 0;
+      (void) parser_walk_tree (parser, on_spec->info.spec.on_cond, mq_count_correlated_query_nodes, &ori_num_query,
+			       NULL, NULL);
+
+      on_cond = parser_copy_tree_list (parser, on_spec->info.spec.on_cond);
+
+      /* substitute attributes for query_spec_columns as the merge would */
+      on_cond = mq_lambda (parser, on_cond, attributes, query_spec_columns);
+
+      num_query = 0;
+      (void) parser_walk_tree (parser, on_cond, mq_count_correlated_query_nodes, &num_query, NULL, NULL);
+
+      if (on_cond != NULL)
+	{
+	  parser_free_tree (parser, on_cond);
+	}
+
+      if (num_query != ori_num_query)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 #if 0
