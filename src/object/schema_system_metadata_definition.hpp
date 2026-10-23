@@ -104,7 +104,7 @@ namespace cubschema
     std::vector<grant> grants;
   };
 
-  authorization make_authorization (MOP owner, const std::vector<MOP> &grantees, DB_AUTH auth);
+  authorization make_authorization (MOP owner, const std::vector<MOP> &grantees = {}, DB_AUTH auth = DB_AUTH_NONE);
 
   struct system_metadata_definition
   {

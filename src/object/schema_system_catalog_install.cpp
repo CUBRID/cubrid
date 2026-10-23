@@ -1157,7 +1157,7 @@ namespace cubschema
       {DB_CONSTRAINT_UNIQUE, "", {"class_of", "key_attr", nullptr}}
     },
 // authorization
-    make_authorization (Au_dba_user, {}, AU_SELECT),
+    make_authorization (Au_dba_user),
 // initializer
     nullptr
 	   );
@@ -1184,7 +1184,7 @@ namespace cubschema
 // constraints
     {},
 // authorization
-    make_authorization (Au_dba_user, {}, AU_SELECT),
+    make_authorization (Au_dba_user),
 // initializer
     nullptr
 	   );
