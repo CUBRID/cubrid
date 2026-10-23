@@ -937,6 +937,26 @@ namespace cubstorage
       {
 	return false;
       }
+    write_feedback (rec, n, pageid, code);
+    return true;
+  }
+
+  bool
+  bestspace_map::feedback_if_known (short volid, std::int32_t pageid, std::uint8_t code)
+  {
+    std::size_t n;
+    record *rec = find (volid, pageid, n);
+    if (rec == nullptr)
+      {
+	return false;
+      }
+    write_feedback (rec, n, pageid, code);
+    return true;
+  }
+
+  void
+  bestspace_map::write_feedback (record *rec, std::size_t n, std::int32_t pageid, std::uint8_t code)
+  {
     std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
     // dirty before the write: a release that clears it afterwards keeps this code
     rec->dirty.fetch_or (1ULL << off);
@@ -944,7 +964,6 @@ namespace cubstorage
     // and after it: a claim that cleared the first mark may hold the older code, and its release must keep this one
     rec->dirty.fetch_or (1ULL << off);
     count (CNT_FEEDBACK);
-    return true;
   }
 
   // A sector seen first here is new to the heap, so its other pages are NOT_DATA. While needs_retry () is set it may be

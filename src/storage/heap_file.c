@@ -4785,7 +4785,7 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
 /*
  * heap_bestspace_feedback () - record the free space of a heap page the caller has changed, before it releases the
  *				 page latch (the checkpoint relies on this order)
- *   hfid(in): the page's heap, or NULL to find it from the page's class (rollback)
+ *   hfid(in): the page's heap, or NULL (rollback) to update the map of the page's class only where it has the sector
  *
  * Note: never loads a bestspace: until the map is absorbed, feedback goes to the pending table (see
  *       heap_bsmap_still_unloaded ()). During restart recovery it goes to the recovery table, with no lookup.
@@ -4822,12 +4822,18 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
 
   if (hfid == NULL)
     {
-      /* the rollback hook: find the heap from the page's class (see heap_bestspace_hfid_of_class ()) */
+      /* the rollback hook. The class gives its current heap, which may not own the page (TRUNCATE switches heaps
+       * before the old one is destroyed): update only a sector the map has, where a rollback's page normally is */
       if (heap_bestspace_hfid_of_class (thread_p, &class_oid, &found_hfid) != NO_ERROR)
 	{
 	  return;
 	}
-      hfid = &found_hfid;
+      bestspace = cubstorage::bestspaces.find (&found_hfid);
+      if (bestspace != NULL && bestspace->is_absorbed ())
+	{
+	  (void) bestspace->get_map ()->feedback_if_known (vpid->volid, vpid->pageid, code);
+	}
+      return;
     }
 
   /* read before the lookup: on a miss, heap_bsmap_still_unloaded () compares it instead of walking the registry */

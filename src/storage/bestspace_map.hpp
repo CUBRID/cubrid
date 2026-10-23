@@ -114,6 +114,8 @@ namespace cubstorage
       // ---- updates. false: the sector could not be added (out of memory or MAX_SECTORS); needs_retry () is set.
       // free space measured under the page latch (vacuum, delete, rollback, statistics, recovery)
       bool feedback (short volid, std::int32_t pageid, std::uint8_t code);
+      // feedback for a page whose sector the map already has; false (nothing changed) for an unknown sector
+      bool feedback_if_known (short volid, std::int32_t pageid, std::uint8_t code);
       // a page enters a shard L1 slot. A new sector's other pages are NOT_DATA, or UNVERIFIED while needs_retry () is
       // set (the map may have missed the sector)
       bool set_resident (short volid, std::int32_t pageid, std::uint8_t code);
@@ -294,6 +296,7 @@ namespace cubstorage
       void count_needs (std::size_t s, node_counts &need);
 
       void set_code (record *rec, std::size_t n, std::size_t off, std::uint8_t code);
+      void write_feedback (record *rec, std::size_t n, std::int32_t pageid, std::uint8_t code);
       void count_unverified_change (std::uint8_t old_code, std::uint8_t new_code);
       void publish (record *rec, std::size_t n, std::size_t off, bool mark_dirty);
       void set_above (std::size_t depth, std::size_t index, std::uint32_t tiers);

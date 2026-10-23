@@ -412,6 +412,44 @@ TEST_CASE ("forget makes a page not data and unclaimable", "[bestspace_map]")
   REQUIRE (map.claim (1, out, 4) == 0);
 }
 
+TEST_CASE ("feedback_if_known updates a page of a known sector and never adds a sector", "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page out[4];
+  std::uint8_t code;
+  bool resident;
+
+  REQUIRE_FALSE (map.feedback_if_known (0, page_of (0, 3), 8));
+  REQUIRE (map.num_sectors () == 0);
+  REQUIRE_FALSE (map.peek (0, page_of (0, 3), code, resident));
+
+  // sector 0 becomes known; its other pages are NOT_DATA
+  REQUIRE (map.set_resident (0, page_of (0, 0), 2));
+  map.release (0, page_of (0, 0), 2, true);
+  (void) map.take_persist_dirty (0);
+
+  REQUIRE (map.feedback_if_known (0, page_of (0, 3), 7));
+  REQUIRE (code_of (map, 0, page_of (0, 3)) == 7);
+  REQUIRE ((map.take_persist_dirty (0) & 0x1) != 0);
+  REQUIRE (map.claim (5, out, 4) == 1);
+  REQUIRE (out[0].pageid == page_of (0, 3));
+
+  // fed back while resident: the release keeps it, as after feedback ()
+  REQUIRE (map.feedback_if_known (0, page_of (0, 3), 8));
+  map.release (0, page_of (0, 3), 3, true);
+  REQUIRE (code_of (map, 0, page_of (0, 3)) == 8);
+
+  // the radix map after promotion
+  REQUIRE (map.feedback (0, page_of (1, 0), 4));
+  REQUIRE (map.feedback (0, page_of (2, 0), 4));
+  REQUIRE_FALSE (map.is_inline ());
+  REQUIRE (map.feedback_if_known (0, page_of (2, 9), 6));
+  REQUIRE (code_of (map, 0, page_of (2, 9)) == 6);
+  REQUIRE_FALSE (map.feedback_if_known (0, page_of (3, 0), 6));
+  REQUIRE_FALSE (map.feedback_if_known (1, page_of (2, 9), 6));
+  REQUIRE (map.num_sectors () == 3);
+}
+
 TEST_CASE ("unverified pages are never claimed and are listed for verification", "[bestspace_map]")
 {
   bestspace_map map;
