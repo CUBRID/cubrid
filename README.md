@@ -57,6 +57,15 @@ To see usage, run `.\win\build.bat /h`
 - CUBRID Issue Tracker: http://jira.cubrid.org/browse/CBRD
 - CUBRID Manuals: http://cubrid.org/manuals
 
+## Contributing
+
+Before opening a PR, please read [CONTRIBUTING.md](CONTRIBUTING.md). It covers
+the PR title format, the pinned formatter versions CI enforces, and the safe
+workflow for keeping formatter drift out of your diff.
+
+Formatter installation lives in
+[docs/install_build_requirements.md#code-formatters](docs/install_build_requirements.md#code-formatters).
+
 ## License
 
 CUBRID is distributed under two licenses according to its component:
