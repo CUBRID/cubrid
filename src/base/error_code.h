@@ -1782,7 +1782,13 @@
 #define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1386
 #define ER_PKG_DUPLICATE_NAME                       -1387
 
-#define ER_LAST_ERROR                               -1388
+#define ER_SP_NOT_EXIST_2                           -1388
+
+#define ER_SP_PKG_ROUTINE_NOT_ALLOWED               -1389
+#define ER_SP_AMBIGUOUS_NAME                        -1390
+#define ER_PKG_CREATE_NOT_ALLOWED_SYSTEM_GENERATED  -1391
+
+#define ER_LAST_ERROR                               -1392
 
 /*
  * CAUTION!

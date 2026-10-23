@@ -192,6 +192,7 @@ namespace cubpl
       }
     else
       {
+	CHECK_NULL_AND_FREE (owner, ext.sp.compile_id);
 	CHECK_NULL_AND_FREE (owner, ext.sp.target_class_name);
 	CHECK_NULL_AND_FREE (owner, ext.sp.target_method_name);
       }
@@ -229,6 +230,11 @@ namespace cubpl
       }
     else
       {
+	serializator.pack_bool (ext.sp.compile_id != nullptr);
+	if (ext.sp.compile_id)
+	  {
+	    serializator.pack_c_string (ext.sp.compile_id, strlen (ext.sp.compile_id));
+	  }
 	serializator.pack_bool (ext.sp.target_class_name != nullptr);
 	if (ext.sp.target_class_name)
 	  {
@@ -310,6 +316,18 @@ namespace cubpl
 	  {
 	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	    deserializator.unpack_string_to_memblock (class_name_blk);
+	    ext.sp.compile_id = class_name_blk.release_ptr ();
+	  }
+	else
+	  {
+	    ext.sp.compile_id = nullptr;
+	  }
+
+	deserializator.unpack_bool (has_n);
+	if (has_n)
+	  {
+	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+	    deserializator.unpack_string_to_memblock (class_name_blk);
 	    ext.sp.target_class_name = class_name_blk.release_ptr ();
 	  }
 	else
@@ -364,6 +382,11 @@ namespace cubpl
       }
     else
       {
+	size += serializator.get_packed_bool_size (size); // has compile_id
+	if (ext.sp.compile_id)
+	  {
+	    size += serializator.get_packed_c_string_size (ext.sp.compile_id, strlen (ext.sp.compile_id), size);
+	  }
 	size += serializator.get_packed_bool_size (size); // has target_class_name
 	if (ext.sp.target_class_name)
 	  {

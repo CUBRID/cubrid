@@ -2236,10 +2236,6 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   /* If the name is already a user-specified name or a system class name, do not recreate it. */
   if (dot != NULL)
     {
-      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-       * even if the exception rule is used. */
-      assert (strchr (dot + 1, '.') == NULL);
-
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
       assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
@@ -2416,9 +2412,9 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-   * even if the exception rule is used. */
-  assert (strchr (dot + 1, '.') == NULL);
+  /* There can be one more dot(.) only for a package routine (user_name.package_name.routine_name)
+   * because dot(.) cannot be used in identifier names even if the exception rule is used. */
+  assert (strchr (dot + 1, '.') == NULL || strchr (strchr (dot + 1, '.') + 1, '.') == NULL);
 
   qualifier_name_len = STATIC_CAST (int, dot - name);
 
@@ -2454,9 +2450,10 @@ sm_remove_qualifier_name (const char *name)
 
   dot = strchr (name, '.');
 
-  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-   * even if the exception rule is used. */
-  assert (dot == NULL || strchr (dot + 1, '.') == NULL);
+  /* There can be one more dot(.) only for a package routine (user_name.package_name.routine_name)
+   * because dot(.) cannot be used in identifier names even if the exception rule is used.
+   * Then package_name.routine_name is returned. */
+  assert (dot == NULL || strchr (dot + 1, '.') == NULL || strchr (strchr (dot + 1, '.') + 1, '.') == NULL);
 
   return dot ? (dot + 1) : name;
 }

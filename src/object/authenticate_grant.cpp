@@ -51,6 +51,7 @@ static int au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop,
 
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 static int au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
+static int au_check_system_generated_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop, const char *op);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -312,6 +313,38 @@ fail_end:
   return (error);
 }
 
+/*
+ * au_check_system_generated_proc_or_pkg - refuse GRANT/REVOKE on a system generated package or procedure
+ *                                         by a non-DBA
+ *   return: error code
+ *   obj_type(in): DB_OBJECT_PACKAGE or DB_OBJECT_PROCEDURE
+ *   obj_mop(in): package or procedure object
+ *   op(in): "GRANT" or "REVOKE", for the error message
+ */
+static int
+au_check_system_generated_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop, const char *op)
+{
+  bool is_system = false;
+  int error = (obj_type == DB_OBJECT_PACKAGE) ? jsp_is_system_generated_pkg (obj_mop, &is_system)
+	      : jsp_is_system_generated_sp (obj_mop, &is_system);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* a system generated object is owned by PUBLIC, of which every user is a member, so only the DBA group can */
+  if (is_system && !au_is_dba_group_member (Au_user))
+    {
+      char what[64];
+      snprintf (what, sizeof (what), "%s on a system generated %s", op,
+		(obj_type == DB_OBJECT_PACKAGE) ? "package" : "procedure");
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, what);
+    }
+
+  return error;
+}
+
 static int
 au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 {
@@ -326,6 +359,12 @@ au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH ty
 
   AU_SAVE_AND_DISABLE (save);
   MOP owner = jsp_get_owner (obj_mop);
+
+  error = au_check_system_generated_proc_or_pkg (obj_type, obj_mop, "GRANT");
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   /*
    * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
@@ -771,6 +810,12 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
          goto fail_end;
          }
        */
+      error = au_check_system_generated_proc_or_pkg (obj_type, obj_mop, "REVOKE");
+      if (error != NO_ERROR)
+	{
+	  goto fail_end;
+	}
+
       /*
        * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
        * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.

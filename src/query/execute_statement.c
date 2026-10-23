@@ -21241,6 +21241,11 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
 
       ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
     }
+  else
+    {
+      /* db_query_next_tuple () returns DB_CURSOR_END, which is not NO_ERROR, on this success path */
+      error = NO_ERROR;
+    }
 
 end:
   if (query_result)
