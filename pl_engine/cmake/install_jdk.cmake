@@ -29,23 +29,22 @@ else(UNIX)
   set(JDK_SHA256 "ffe22d16a1ea6fe709a089f3472fedb783470b879634b26b32424e40bbd00b09")
 endif(UNIX)
 
-if(DEFINED ENV{CUBRID_DOWNLOAD_CACHE})
-  get_filename_component(JDK_FILE "${JDK_URL}" NAME)
-  set(JDK_ARCHIVE "$ENV{CUBRID_DOWNLOAD_CACHE}/jdk/${JDK_FILE}")
-  file(LOCK "$ENV{CUBRID_DOWNLOAD_CACHE}/jdk" DIRECTORY)
-endif()
-
 set(JDK_DEST_DIR "${JDK_DIR}/jdk8")
 
-if(EXISTS ${JDK_ARCHIVE})
-  file(SHA256 ${JDK_ARCHIVE} JDK_GOT)
-endif()
-if(NOT JDK_GOT STREQUAL JDK_SHA256)
-    message(STATUS "[INFO] Downloading Temurin JDK 8...")
-    file(DOWNLOAD ${JDK_URL} ${JDK_ARCHIVE} EXPECTED_HASH SHA256=${JDK_SHA256} INACTIVITY_TIMEOUT 60)
-endif()
-
 if(NOT EXISTS ${JDK_DEST_DIR})
+    if(DEFINED ENV{CUBRID_DOWNLOAD_CACHE})
+      get_filename_component(JDK_FILE "${JDK_URL}" NAME)
+      set(JDK_ARCHIVE "$ENV{CUBRID_DOWNLOAD_CACHE}/jdk/${JDK_FILE}")
+      file(LOCK "$ENV{CUBRID_DOWNLOAD_CACHE}/jdk" DIRECTORY)
+    endif()
+    if(EXISTS ${JDK_ARCHIVE})
+      file(SHA256 ${JDK_ARCHIVE} JDK_GOT)
+    endif()
+    if(NOT JDK_GOT STREQUAL JDK_SHA256)
+      message(STATUS "[INFO] Downloading Temurin JDK 8...")
+      file(DOWNLOAD ${JDK_URL} ${JDK_ARCHIVE} EXPECTED_HASH SHA256=${JDK_SHA256} INACTIVITY_TIMEOUT 60)
+    endif()
+
     message(STATUS "[INFO] Extracting JDK...")
     
     execute_process(
