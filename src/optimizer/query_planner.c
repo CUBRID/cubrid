@@ -367,6 +367,12 @@ static int qo_has_is_not_null_term (QO_NODE * node);
 static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
+static bool qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
+static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+						   int *continue_walk);
+static double qo_analytic_sort_cost (QO_PLAN * plan);
+static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -2059,7 +2065,8 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
   assert (ni_entry->head != NULL);
 
   assert (scan_method == QO_SCANMETHOD_INDEX_SCAN || scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN
-	  || scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN || scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT);
+	  || scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN || scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT
+	  || scan_method == QO_SCANMETHOD_INDEX_ANALYTIC_SCAN);
 
   assert (scan_method != QO_SCANMETHOD_INDEX_SCAN || !(ni_entry->head->force < 0));
   assert (scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT || range_terms != NULL);
@@ -2165,9 +2172,10 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	  if (bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
 	      if (qo_is_filter_index (index_entryp) || qo_is_iscan_from_orderby (plan)
-		  || qo_is_iscan_from_groupby (plan))
+		  || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_analytic (plan))
 		{
-		  /* filter index has a pre-defined key-range. ordery/groupby scan already checked nullable terms */
+		  /* filter index has a pre-defined key-range. ordery/groupby/analytic scan already checked nullable
+		   * terms */
 		  ;		/* go ahead */
 		}
 	      else
@@ -2808,7 +2816,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "as %s", (name ? name : "(unknown)"));
     }
 
-  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
+  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan))
     {
       BITSET_ITERATOR bi;
       QO_ENV *env;
@@ -5219,6 +5227,51 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p, QO_PLAN * sort_plan_p)
 }
 
 /*
+ * qo_plan_top_scan () - the scan plan under the top-level sort plans of a single class plan
+ *   return: the scan plan, or NULL if the plan is not a top-level plan over a scan
+ *   plan(in):
+ */
+static QO_PLAN *
+qo_plan_top_scan (QO_PLAN * plan)
+{
+  if (plan == NULL || !plan->top_rooted)
+    {
+      return NULL;
+    }
+
+  while (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.sort_type != SORT_TEMP)
+    {
+      plan = plan->plan_un.sort.subplan;
+    }
+
+  return (plan->plan_type == QO_PLANTYPE_SCAN) ? plan : NULL;
+}
+
+/*
+ * qo_analytic_sort_cost () - the cost of the analytic sort that a sequential scan leaves to the analytic evaluation
+ *			      and that a QO_SCANMETHOD_INDEX_ANALYTIC_SCAN plan saves
+ *   return: cost of sorting the rows of the scan
+ *   plan(in): the scan plan
+ *
+ * Note: It is what qo_sort_cost () adds for a top-level (unordered) ORDER BY sort plan over the scan, so the analytic
+ *   sort skip is weighed the same way as the ORDER BY skip.
+ */
+static double
+qo_analytic_sort_cost (QO_PLAN * plan)
+{
+  double objects, pages;
+
+  objects = (plan->info)->cardinality;
+  pages = objects * (double) (plan->info)->projected_size / (double) IO_PAGESIZE;
+  if (pages < 1.0)
+    {
+      pages = 1.0;
+    }
+
+  return TEMP_SETUP_COST + objects * (double) QO_CPU_WEIGHT + pages * QO_COST_SEQ_PAGE;
+}
+
+/*
  * qo_plan_cmp () -
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
@@ -5255,6 +5308,26 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* Check if RBO is needed */
   ta = af + aa;
   tb = bf + ba;
+
+  /* CBRD-27469: a sequential scan leaves the analytic sort to the analytic evaluation, which the analytic index scan
+   * skips; add that sort to the sequential scan before comparing the two. */
+  {
+    QO_PLAN *a_scan = qo_plan_top_scan (a);
+    QO_PLAN *b_scan = qo_plan_top_scan (b);
+
+    if (a_scan != NULL && b_scan != NULL)
+      {
+	if (qo_is_iscan_from_analytic (a_scan) && qo_is_seq_scan (b_scan))
+	  {
+	    tb += qo_analytic_sort_cost (b_scan);
+	  }
+	else if (qo_is_iscan_from_analytic (b_scan) && qo_is_seq_scan (a_scan))
+	  {
+	    ta += qo_analytic_sort_cost (a_scan);
+	  }
+      }
+  }
+
   if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
       if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_LIMIT_RATIO <= tb))
@@ -5488,12 +5561,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* check index scan */
-      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a)) && qo_is_seq_scan (b))
+      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a) || qo_is_iscan_from_analytic (a)) && qo_is_seq_scan (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b)) && qo_is_seq_scan (a))
+      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b) || qo_is_iscan_from_analytic (b)) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -11066,6 +11139,17 @@ qo_search_planner (QO_PLANNER * planner)
 								  QO_SCANMETHOD_INDEX_ORDERBY_SCAN, &seg_terms, NULL));
 		    }
 
+		  /* CBRD-27469: a full index scan that supplies the rows in the PARTITION BY + ORDER BY order of an
+		   * analytic function lets the analytic evaluation skip its sort; the sort it saves is charged to
+		   * the sequential scan in qo_plan_cmp (). */
+		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry))
+		    {
+		      n =
+			qo_check_plan_on_info (info,
+					       qo_index_scan_new (info, node, ni_entry,
+								  QO_SCANMETHOD_INDEX_ANALYTIC_SCAN, &seg_terms, NULL));
+		    }
+
 		  /* CBRD-26906: an interesting-order (group-by / order-by skip) index
 		   * scan also means the hinted index is usable, so a positive index
 		   * hint that only provides ordering (no key-range) still suppresses
@@ -13702,6 +13786,24 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 }
 
 /*
+ * qo_is_iscan_from_analytic () - is the plan a full index scan generated to supply rows in the sort order of an
+ *				  analytic function (PARTITION BY + ORDER BY of its OVER clause)
+ *   return: true/false
+ *   plan(in):
+ */
+bool
+qo_is_iscan_from_analytic (QO_PLAN * plan)
+{
+  if (plan && plan->plan_type == QO_PLANTYPE_SCAN
+      && plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ANALYTIC_SCAN)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * qo_validate_index_term_notnull ()
  *  env(in): pointer to the optimizer environment
  *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
@@ -13948,18 +14050,10 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 static int
 qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type)
 {
-  QO_INDEX_ENTRY *index_entryp;
-  int i, ncols;
-  bool is_func_leading;
-  SM_ATTRIBUTE *attr;
-  QO_SEGMENT *segp;
-
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
   assert (ni_entryp->head->class_ != NULL);
   assert (sort_type == SORT_GROUPBY || sort_type == SORT_ORDERBY);
-
-  index_entryp = ni_entryp->head;
 
   if (sort_type == SORT_GROUPBY)
     {
@@ -13975,6 +14069,27 @@ qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_
 	  return 0;
 	}
     }
+
+  return qo_index_holds_all_rows (env, ni_entryp) ? 1 : 0;
+}
+
+/*
+ * qo_index_holds_all_rows () - checks whether every row of the class has a key in the index, so that a full
+ *				index scan returns all the rows a sequential scan would
+ *  return: true if no row can be left out of the index by an all-null key
+ *  env(in): pointer to the optimizer environment
+ *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ */
+static bool
+qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  QO_INDEX_ENTRY *index_entryp;
+  int i, ncols;
+  bool is_func_leading;
+  SM_ATTRIBUTE *attr;
+  QO_SEGMENT *segp;
+
+  index_entryp = ni_entryp->head;
 
   assert (index_entryp->constraints != NULL);
 
@@ -13997,7 +14112,7 @@ qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_
 	  attr = index_entryp->constraints->attributes[i];
 	  if (attr != NULL && (attr->flags & SM_ATTFLAG_NON_NULL))
 	    {
-	      return 1;
+	      return true;
 	    }
 	}
 
@@ -14008,17 +14123,214 @@ qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_
 
       if (qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[i]))
 	{
-	  return 1;
+	  return true;
 	}
 
       segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
       if (segp != NULL && qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
 	{
-	  return 1;
+	  return true;
 	}
     }
 
-  return 0;
+  return false;
+}
+
+typedef struct qo_analytic_cover_arg QO_ANALYTIC_COVER_ARG;
+struct qo_analytic_cover_arg
+{
+  QO_ENV *env;
+  QO_INDEX_ENTRY *index_entryp;
+  PT_NODE *select_list;
+  bool is_desc_scan;		/* USE_DESC_IDX: the index is scanned backward */
+  bool has_covered;		/* some sort list is a prefix of the index key order */
+  bool has_uncovered;		/* some non-empty sort list is not a prefix of the index key order */
+};
+
+/*
+ * qo_index_covers_analytic_sort_pre () - parser_walk_tree pre-callback that measures how much of the sort list of
+ *					  the visited analytic function the index key order covers
+ *   return: tree
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): QO_ANALYTIC_COVER_ARG *
+ *   continue_walk(in/out):
+ *
+ * Note: The sort list is PARTITION BY followed by ORDER BY, matched with the rules of
+ *   pt_count_analytic_covered_sort_list (), which decides the sort skip at XASL generation.
+ */
+static PT_NODE *
+qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  QO_ANALYTIC_COVER_ARG *cover = (QO_ANALYTIC_COVER_ARG *) arg;
+  QO_INDEX_ENTRY *index_entryp = cover->index_entryp;
+  QO_SEGMENT *seg;
+  PT_NODE *spec_lists[2], *spec, *expr;
+  int list_idx, seg_idx, pos, sort_len, covered_len;
+  bool is_desc, is_covering;
+
+  if (PT_IS_QUERY (tree))
+    {
+      /* analytic functions of a subquery do not see the rows of this scan */
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+
+  if (!PT_IS_ANALYTIC_NODE (tree))
+    {
+      return tree;
+    }
+
+  *continue_walk = PT_LIST_WALK;
+
+  spec_lists[0] = tree->info.function.analytic.partition_by;
+  spec_lists[1] = tree->info.function.analytic.order_by;
+
+  sort_len = covered_len = 0;
+  is_covering = true;
+  for (list_idx = 0; list_idx < 2; list_idx++)
+    {
+      for (spec = spec_lists[list_idx]; spec != NULL; spec = spec->next)
+	{
+	  sort_len++;
+	  if (!is_covering)
+	    {
+	      continue;
+	    }
+
+	  is_covering = false;
+	  if (spec->node_type != PT_SORT_SPEC || covered_len >= index_entryp->nsegs)
+	    {
+	      continue;
+	    }
+
+	  seg_idx = index_entryp->seg_idxs[covered_len];
+	  if (seg_idx == -1)
+	    {
+	      continue;
+	    }
+
+	  seg = QO_ENV_SEG (cover->env, seg_idx);
+	  if (QO_SEG_FUNC_INDEX (seg))
+	    {
+	      is_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc;
+	    }
+	  else
+	    {
+	      is_desc = index_entryp->constraints->asc_desc[covered_len];
+	    }
+
+	  if (cover->is_desc_scan)
+	    {
+	      is_desc = !is_desc;
+	    }
+
+	  /* an ascending index run supplies NULLs first and a descending run supplies NULLs last */
+	  if (spec->info.sort_spec.asc_or_desc == PT_DESC)
+	    {
+	      if (!is_desc || pt_to_null_ordering (spec) != S_NULLS_LAST)
+		{
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      if (is_desc || pt_to_null_ordering (spec) != S_NULLS_FIRST)
+		{
+		  continue;
+		}
+	    }
+
+	  /* a sort key that is also in the select list is replaced by its position in the list */
+	  expr = spec->info.sort_spec.expr;
+	  if (expr != NULL && expr->node_type == PT_VALUE && spec->info.sort_spec.pos_descr.pos_no > 0)
+	    {
+	      for (expr = cover->select_list, pos = 1; expr != NULL && pos < spec->info.sort_spec.pos_descr.pos_no;
+		   expr = expr->next, pos++)
+		{
+		  ;
+		}
+	    }
+
+	  if (expr == NULL || pt_check_path_eq (parser, expr, QO_SEG_PT_NODE (seg)) != 0)
+	    {
+	      continue;
+	    }
+
+	  covered_len++;
+	  is_covering = true;
+	}
+    }
+
+  if (sort_len > 0)
+    {
+      if (covered_len == sort_len)
+	{
+	  cover->has_covered = true;
+	}
+      else
+	{
+	  cover->has_uncovered = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_index_covers_analytic_sort () - checks whether a full scan of the index returns the rows in the sort order of
+ *				      an analytic sort group of the query, so that the analytic evaluation can skip
+ *				      its sort (CBRD-26473)
+ *   return: true if the PARTITION BY + ORDER BY list of every analytic function with a sort list is a prefix of
+ *	     the index key order
+ *   env(in): pointer to the optimizer environment
+ *   node(in): the node scanned by the index
+ *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *
+ * Note: XASL generation evaluates analytic functions in sort groups and may merge the sort lists of compatible
+ *   functions into one (pt_metadomains_compatible () compares PARTITION BY keys as sets), so a function that the
+ *   index order covers can end up in a group sorted by a key the index does not supply. Only when every sort list
+ *   is a prefix of the index key order is the merged key a prefix of it as well (the sort columns are numbered in
+ *   the order they first appear, which is then the index order), so that the first group surely skips its sort.
+ */
+static bool
+qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  QO_INDEX_ENTRY *index_entryp = ni_entryp->head;
+  QO_ANALYTIC_COVER_ARG cover;
+
+  if (tree == NULL || tree->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  /* The analytic functions see the scan order only when the scan feeds them directly: no join, grouping or
+   * hierarchical query in between. A partitioned class or a class hierarchy is scanned one class at a time, which
+   * does not keep the index order across the classes. */
+  if (env->nnodes != 1 || tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
+      || QO_NODE_IS_CLASS_HIERARCHY (node) || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
+    {
+      return false;
+    }
+
+  if (qo_is_prefix_index (index_entryp) || !qo_index_holds_all_rows (env, ni_entryp))
+    {
+      return false;
+    }
+
+  cover.env = env;
+  cover.index_entryp = index_entryp;
+  cover.select_list = tree->info.query.q.select.list;
+  cover.is_desc_scan = (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC) != 0;
+  cover.has_covered = false;
+  cover.has_uncovered = false;
+  (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_index_covers_analytic_sort_pre, &cover, NULL,
+			   NULL);
+
+  return cover.has_covered && !cover.has_uncovered;
 }
 
 /*
@@ -14941,7 +15253,8 @@ exit_on_end:
 bool
 qo_is_interesting_order_scan (QO_PLAN * plan)
 {
-  if (qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
+  if (qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan)
+      || qo_is_iscan_from_analytic (plan))
     {
       return true;
     }
@@ -15214,6 +15527,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
+    case QO_SCANMETHOD_INDEX_ANALYTIC_SCAN:
       scan_string = "INDEX SCAN";
       trace_json_object_set_new (scan, "index", trace_json_string (plan->plan_un.scan.index->head->constraints->name));
 
@@ -15572,6 +15886,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
+    case QO_SCANMETHOD_INDEX_ANALYTIC_SCAN:
       fprintf (fp, "INDEX SCAN (%s.%s)", class_name, plan->plan_un.scan.index->head->constraints->name);
 
       env = (plan->info)->env;
