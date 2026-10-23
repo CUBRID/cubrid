@@ -255,6 +255,55 @@ catcls_add_charsets (struct db_object *class_mop)
   return NO_ERROR;
 }
 
+/*
+ * catcls_add_ha_writeset_stat () - insert the one row of _db_ha_writeset_stat
+ *
+ * Note: The server only updates this row in place and never inserts one, so it is created here with every
+ *       column set. A value in every column keeps the row the same size from the first update on.
+ */
+static int
+catcls_add_ha_writeset_stat (DB_OBJECT *class_mop)
+{
+  const char *counter_columns[] =
+  {
+    CT_HAWS_HISTORY_SIZE, CT_HAWS_HISTORY_ENTRY_COUNT, CT_HAWS_COMMIT_COUNT, CT_HAWS_COMMIT_FALLBACK_COUNT,
+    CT_HAWS_FALLBACK_KEY_LIMIT_COUNT, CT_HAWS_FALLBACK_STATEMENT_COUNT, CT_HAWS_CONFLICT_REF_COUNT,
+    CT_HAWS_CONFLICT_WRITE_COUNT, CT_HAWS_CLEAR_CAPACITY_COUNT
+  };
+  DB_OBJECT *obj;
+  DB_VALUE val;
+  DB_DATETIME now;
+  time_t now_sec = time (NULL);
+  int error_code = NO_ERROR;
+
+  obj = db_create_internal (class_mop);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  db_localdatetime (&now_sec, &now);
+  db_make_datetime (&val, &now);
+  error_code = db_put_internal (obj, CT_HAWS_SERVER_START_TIME, &val);
+  if (error_code == NO_ERROR)
+    {
+      error_code = db_put_internal (obj, CT_HAWS_LAST_UPDATE_TIME, &val);
+    }
+
+  db_make_bigint (&val, 0);
+  for (const char *column : counter_columns)
+    {
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+      error_code = db_put_internal (obj, column, &val);
+    }
+
+  return error_code;
+}
+
 /* ========================================================================== */
 /* MAIN APIS */
 /* ========================================================================== */
@@ -297,6 +346,9 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
   ADD_TABLE_DEFINITION (CT_HISTOGRAM_NAME, system_catalog_initializer::get_histogram());
   ADD_TABLE_DEFINITION (CT_GLOBAL_TRAN_NAME, system_catalog_initializer::get_global_tran ());
+  ADD_TABLE_DEFINITION (CT_HA_WRITESET_STAT_NAME, system_catalog_initializer::get_ha_writeset_stat ());
+  ADD_TABLE_DEFINITION (CT_HA_APPLY_STAT_NAME, system_catalog_initializer::get_ha_apply_stat ());
+  ADD_TABLE_DEFINITION (CT_HA_APPLY_WORKER_STAT_NAME, system_catalog_initializer::get_ha_apply_worker_stat ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
   ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
@@ -1328,6 +1380,123 @@ namespace cubschema
 // authorization
     {
       Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  /* writeset statistics of this database's server while it is the HA master; see writeset.cpp */
+  system_catalog_definition
+  system_catalog_initializer::get_ha_writeset_stat ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_HA_WRITESET_STAT_NAME,
+		   // columns
+    {
+      {CT_HAWS_SERVER_START_TIME, "datetime"},
+      {CT_HAWS_LAST_UPDATE_TIME, "datetime"},
+      {CT_HAWS_HISTORY_SIZE, "bigint"},
+      {CT_HAWS_HISTORY_ENTRY_COUNT, "bigint"},
+      {CT_HAWS_COMMIT_COUNT, "bigint"},
+      {CT_HAWS_COMMIT_FALLBACK_COUNT, "bigint"},
+      {CT_HAWS_FALLBACK_KEY_LIMIT_COUNT, "bigint"},
+      {CT_HAWS_FALLBACK_STATEMENT_COUNT, "bigint"},
+      {CT_HAWS_CONFLICT_REF_COUNT, "bigint"},
+      {CT_HAWS_CONFLICT_WRITE_COUNT, "bigint"},
+      {CT_HAWS_CLEAR_CAPACITY_COUNT, "bigint"}
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
+    },
+// initializer
+    catcls_add_ha_writeset_stat
+	   );
+  }
+
+  /* parallel apply statistics of each applylogdb on this node, one row per applier; see log_applier.c */
+  system_catalog_definition
+  system_catalog_initializer::get_ha_apply_stat ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_HA_APPLY_STAT_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"copied_log_path", format_varchar (4096)},
+      {"start_time", "datetime"},
+      {"last_update_time", "datetime"},
+      {"worker_count", "integer"},
+      {"apply_state", format_varchar (32)},
+      {"done_hold_since", "datetime"},
+      {"commit_read_count", "bigint"},
+      {"dispatch_direct_count", "bigint"},
+      {"dispatch_parked_count", "bigint"},
+      {"inflight_count", "integer"},
+      {"pending_count", "integer"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  /* per-worker statistics of each applylogdb on this node, one row per running worker; see log_applier.c */
+  system_catalog_definition
+  system_catalog_initializer::get_ha_apply_worker_stat ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_HA_APPLY_WORKER_STAT_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"copied_log_path", format_varchar (4096)},
+      {"worker_idx", "integer"},
+      {"start_time", "datetime"},
+      {"last_update_time", "datetime"},
+      {"state", format_varchar (16)},
+      {"applied_task_count", "bigint"},
+      {"applied_row_count", "bigint"},
+      {"busy_usec", "bigint"},
+      {"applying_commit_lsa_pageid", "bigint"},
+      {"applying_commit_lsa_offset", "integer"},
+      {"applying_master_commit_time", "datetime"},
+      {"applying_since", "datetime"},
+      {"last_applied_commit_lsa_pageid", "bigint"},
+      {"last_applied_commit_lsa_offset", "integer"},
+      {"last_applied_master_commit_time", "datetime"},
+      {"last_applied_time", "datetime"},
+      {"last_error_code", "integer"},
+      {"last_error_time", "datetime"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", "worker_idx", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"worker_idx", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
