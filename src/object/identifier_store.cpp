@@ -41,7 +41,8 @@ namespace cubbase
   identifier_store::check_identifier_is_valid (const std::string_view str)
   {
     // check _db
-    if (strncasecmp (str.data(), SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) != 0)
+    if (str.size () < SYSTEM_CLASS_PREFIX.length ()
+	|| strncasecmp (str.data(), SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) != 0)
       {
 	int size = str.size ();
 	for (int i = 0; i < size; i++)
