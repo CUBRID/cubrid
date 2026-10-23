@@ -554,12 +554,18 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           [ "$CACHE_WRITE" = 'true' ] || export CCACHE_READONLY=1 CCACHE_NOSTATS=1
           export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
+          # The node's counters are shared by concurrent builds and off in PR builds: a build counts its own here.
+          export CCACHE_LOGFILE="$RUNNER_TEMP/ccache.log"
           mkdir -p "$CCACHE_TEMPDIR"
           [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
           # No -j: ninja reads the cgroup quota.
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
+          echo "ccache, the node's cache, cumulative over develop pushes:"
           ccache -s
+          awk '/Result: cache hit \(direct\)/ {d++} /Result: cache hit \(preprocessed\)/ {p++} /Result: cache miss/ {m++}
+            END {t = d + p + m; printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %.2f %%\n", d, p, m, t ? 100 * (d + p) / t : 0}' \
+            "$CCACHE_LOGFILE" || echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
 
       - name: 4. Publish, staged then moved in with one rename
         env:
