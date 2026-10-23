@@ -3599,7 +3599,13 @@ qdata_slab_new_group (cubthread::entry *thread_p, agg_group_slab *slab, aggregat
 }
 
 /* a group's block back to its slab: what its values hold of their own freed (the key's values were cleared by
- * qdata_free_agg_hkey () before), a first tuple allocated alone freed */
+ * qdata_free_agg_hkey () before), a first tuple allocated alone freed.
+ *
+ * The order is a contract: the key first (qdata_free_agg_hkey ()), then the value (here).  The heap's free list
+ * writes its link into the block's first word, which is the key's header (val_count, free_values, in_slab): a
+ * value given back before its key leaves qdata_free_agg_hkey () reading the link bytes as the header -- in_slab
+ * false -- and taking the block's own memory to db_private_free (), a pointer inside the heap.  Every pair goes
+ * through qdata_free_agg_hentry () or releases in that order. */
 static void
 qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value)
 {
@@ -3607,6 +3613,9 @@ qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value)
   char *b = (char *) value - slab->off_value;
   int i;
 
+  /* the heap does not show its free list; the header the link overwrites stands in for it: a block already given
+   * back reads the link where a live block reads its key count and in_slab */
+  assert (((aggregate_hash_key *) b)->in_slab && ((aggregate_hash_key *) b)->val_count == slab->n_keys);
   for (i = 0; i < value->func_count; i++)
     {
       pr_clear_value (value->accumulators[i].value);
@@ -3635,7 +3644,8 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
   aggregate_hash_value *hvalue = (aggregate_hash_value *) data;
   cubthread::entry *thread_p = (cubthread::entry *) args;
 
-  /* free key */
+  /* the key first, then the value: a pair in one slab block gives the block back with the value, and the free-list
+   * link then overwrites the key's header (qdata_slab_release ()) -- the order is not to be swapped */
   qdata_free_agg_hkey (thread_p, hkey);
 
   /* free accumulators */
