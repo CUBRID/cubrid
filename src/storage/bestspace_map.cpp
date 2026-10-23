@@ -28,6 +28,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -102,8 +103,18 @@ namespace cubstorage
     , m_needs_retry (false)
     , m_grow_mutex ()
     , m_bytes (sizeof (bestspace_map))
+    , m_reserved_for (std::numeric_limits<std::size_t>::max ())
   {
     std::size_t i;
+
+    m_spare.mid = nullptr;
+    m_spare.leaf = nullptr;
+    m_spare.grp = nullptr;
+    m_spare.num_rnodes = 0;
+    for (i = 0; i < MAX_SPARE_RNODES; i++)
+      {
+	m_spare.rnodes[i] = nullptr;
+      }
 
     for (i = 0; i < INLINE_SECTORS; i++)
       {
@@ -120,6 +131,13 @@ namespace cubstorage
   {
     free_tree (m_root.load ());
     free_radix (m_radix.load (), 0);
+    bsmap_free (m_spare.mid);
+    bsmap_free (m_spare.leaf);
+    bsmap_free (m_spare.grp);
+    for (std::size_t i = 0; i < m_spare.num_rnodes; i++)
+      {
+	bsmap_free (m_spare.rnodes[i]);
+      }
   }
 
   bestspace_map *
@@ -302,7 +320,7 @@ namespace cubstorage
   }
 
   bestspace_map::record *
-  bestspace_map::get_or_add (short volid, std::int32_t pageid, std::size_t &n, std::uint64_t fill)
+  bestspace_map::get_or_add (short volid, std::int32_t pageid, std::size_t &n, std::uint64_t fill, bool use_spares)
   {
     record *rec = find (volid, pageid, n);
     if (rec != nullptr)
@@ -320,6 +338,11 @@ namespace cubstorage
 
     std::size_t s = m_num_sectors.load (std::memory_order_relaxed);
     std::uint64_t key = make_key (volid, pageid);
+    if (use_spares)
+      {
+	// this add may use up the reserve even if it fails: the next reserve () checks it again
+	m_reserved_for.store (std::numeric_limits<std::size_t>::max (), std::memory_order_relaxed);
+      }
     if (s >= MAX_SECTORS)
       {
 	m_needs_retry.store (true);
@@ -334,13 +357,13 @@ namespace cubstorage
       }
     else
       {
-	if (m_root.load (std::memory_order_relaxed) == nullptr && !promote ())
+	if (m_root.load (std::memory_order_relaxed) == nullptr && !promote (use_spares))
 	  {
 	    m_needs_retry.store (true);
 	    return nullptr;
 	  }
 	std::size_t g = s / FANOUT;
-	if (group_ptr (g) == nullptr && !add_group (m_root.load (std::memory_order_relaxed), g))
+	if (group_ptr (g) == nullptr && !add_group (m_root.load (std::memory_order_relaxed), g, use_spares))
 	  {
 	    m_needs_retry.store (true);
 	    return nullptr;
@@ -349,7 +372,7 @@ namespace cubstorage
 	rec = &grp->sectors[s % FANOUT];
 	init_record (*rec, fill);
 	grp->keys[s % FANOUT] = key;
-	if (!radix_insert (m_radix, radix_key (key), s))
+	if (!radix_insert (m_radix, radix_key (key), s, use_spares))
 	  {
 	    m_needs_retry.store (true);
 	    return nullptr;
@@ -369,18 +392,19 @@ namespace cubstorage
   // where they are; the tree and the radix index are built aside and published, then the inline pages are published
   // again so the tree gets their hint bits.
   bool
-  bestspace_map::promote ()
+  bestspace_map::promote (bool use_spares)
   {
     std::atomic<rnode *> radix (nullptr);
-    rootdir *root = bsmap_alloc<rootdir> ();
+    // reserve () keeps nothing for the promotion (see the class comment): its nodes are allocated here
+    rootdir *no_spare = nullptr;
+    rootdir *root = alloc_node (no_spare, use_spares);
     std::size_t s, off;
 
     if (root == nullptr)
       {
 	return false;
       }
-    m_bytes += sizeof (rootdir);
-    if (!add_group (root, 0))
+    if (!add_group (root, 0, use_spares))
       {
 	// m_bytes is approximate after an allocation failure
 	free_tree (root);
@@ -388,7 +412,7 @@ namespace cubstorage
       }
     for (s = 0; s < INLINE_SECTORS; s++)
       {
-	if (!radix_insert (radix, radix_key (m_inline_keys[s]), s))
+	if (!radix_insert (radix, radix_key (m_inline_keys[s]), s, use_spares))
 	  {
 	    free_radix (radix.load (), 0);
 	    free_tree (root);
@@ -410,54 +434,50 @@ namespace cubstorage
 
   // caller holds m_grow_mutex
   bool
-  bestspace_map::add_group (rootdir *root, std::size_t g)
+  bestspace_map::add_group (rootdir *root, std::size_t g, bool use_spares)
   {
     std::size_t a = g / (FANOUT * FANOUT), b = (g / FANOUT) % FANOUT, c = g % FANOUT;
     middir *mid = root->children[a].load (std::memory_order_relaxed);
     if (mid == nullptr)
       {
-	mid = bsmap_alloc<middir> ();
+	mid = alloc_node (m_spare.mid, use_spares);
 	if (mid == nullptr)
 	  {
 	    return false;
 	  }
-	m_bytes += sizeof (middir);
 	root->children[a].store (mid, std::memory_order_release);
       }
     leafdir *leaf = mid->children[b].load (std::memory_order_relaxed);
     if (leaf == nullptr)
       {
-	leaf = bsmap_alloc<leafdir> ();
+	leaf = alloc_node (m_spare.leaf, use_spares);
 	if (leaf == nullptr)
 	  {
 	    return false;
 	  }
-	m_bytes += sizeof (leafdir);
 	mid->children[b].store (leaf, std::memory_order_release);
       }
-    group *grp = bsmap_alloc<group> ();
+    group *grp = alloc_node (m_spare.grp, use_spares);
     if (grp == nullptr)
       {
 	return false;
       }
-    m_bytes += sizeof (group);
     leaf->children[c].store (grp, std::memory_order_release);
     return true;
   }
 
   // caller holds m_grow_mutex
   bool
-  bestspace_map::radix_insert (std::atomic<rnode *> &root, std::uint64_t rk, std::size_t number)
+  bestspace_map::radix_insert (std::atomic<rnode *> &root, std::uint64_t rk, std::size_t number, bool use_spares)
   {
     rnode *r = root.load (std::memory_order_relaxed);
     if (r == nullptr)
       {
-	r = bsmap_alloc<rnode> ();
+	r = alloc_rnode (use_spares);
 	if (r == nullptr)
 	  {
 	    return false;
 	  }
-	m_bytes += sizeof (rnode);
 	root.store (r, std::memory_order_release);
       }
     for (int level = 0; level < RADIX_LEVELS - 1; level++)
@@ -466,12 +486,11 @@ namespace cubstorage
 	rnode *next = static_cast<rnode *> (r->slots[slot].load (std::memory_order_relaxed));
 	if (next == nullptr)
 	  {
-	    next = bsmap_alloc<rnode> ();
+	    next = alloc_rnode (use_spares);
 	    if (next == nullptr)
 	      {
 		return false;
 	      }
-	    m_bytes += sizeof (rnode);
 	    r->slots[slot].store (next, std::memory_order_release);
 	  }
 	r = next;
@@ -479,6 +498,200 @@ namespace cubstorage
     r->slots[radix_slot (rk, RADIX_LEVELS - 1)].store (reinterpret_cast<void *> (static_cast<std::uintptr_t> (number + 1)),
 	std::memory_order_release);
     return true;
+  }
+
+  // caller holds m_grow_mutex. A node from the reserve was counted in m_bytes when reserve () allocated it
+  template <typename T>
+  T *
+  bestspace_map::alloc_node (T *&spare, bool use_spares)
+  {
+    T *node;
+
+    if (use_spares && spare != nullptr)
+      {
+	node = spare;
+	spare = nullptr;
+	return node;
+      }
+    node = bsmap_alloc<T> ();
+    if (node != nullptr)
+      {
+	m_bytes += sizeof (T);
+	if (use_spares)
+	  {
+	    count (CNT_NODE_FALLBACK);
+	  }
+      }
+    return node;
+  }
+
+  // caller holds m_grow_mutex
+  bestspace_map::rnode *
+  bestspace_map::alloc_rnode (bool use_spares)
+  {
+    rnode *node;
+
+    if (use_spares && m_spare.num_rnodes > 0)
+      {
+	m_spare.num_rnodes--;
+	node = m_spare.rnodes[m_spare.num_rnodes];
+	m_spare.rnodes[m_spare.num_rnodes] = nullptr;
+	return node;
+      }
+    node = bsmap_alloc<rnode> ();
+    if (node != nullptr)
+      {
+	m_bytes += sizeof (rnode);
+	if (use_spares)
+	  {
+	    count (CNT_NODE_FALLBACK);
+	  }
+      }
+    return node;
+  }
+
+  // caller holds m_grow_mutex: the nodes adding sector number s needs, if its key is the one after the last sector's
+  // (the file manager hands a growing file the next sectors of a volume). The group and its directories depend only
+  // on s; the radix nodes depend on the key, so one spare radix node is kept anyway for a key in the next block.
+  // Nothing is counted for an inline record, for the promotion (see the class comment) or past MAX_SECTORS
+  void
+  bestspace_map::count_needs (std::size_t s, node_counts &need)
+  {
+    need.mid = need.leaf = need.grp = need.rnodes = 0;
+    rootdir *root = m_root.load (std::memory_order_relaxed);
+    if (s < INLINE_SECTORS || root == nullptr || s >= MAX_SECTORS)
+      {
+	return;
+      }
+
+    std::size_t g = s / FANOUT;
+    middir *mid = root->children[g / (FANOUT * FANOUT)].load (std::memory_order_relaxed);
+    leafdir *leaf = mid != nullptr ? mid->children[ (g / FANOUT) % FANOUT].load (std::memory_order_relaxed) : nullptr;
+    need.mid = mid == nullptr ? 1 : 0;
+    need.leaf = leaf == nullptr ? 1 : 0;
+    need.grp = (leaf == nullptr || leaf->children[g % FANOUT].load (std::memory_order_relaxed) == nullptr) ? 1 : 0;
+
+    // the radix path of the next key: the nodes below the first missing slot are missing too
+    std::uint64_t rk = radix_key (key_at (s - 1) + 1);
+    rnode *r = m_radix.load (std::memory_order_relaxed);
+    int level;
+    for (level = 0; r != nullptr && level < RADIX_LEVELS - 1; level++)
+      {
+	r = static_cast<rnode *> (r->slots[radix_slot (rk, level)].load (std::memory_order_relaxed));
+      }
+    need.rnodes = r == nullptr ? static_cast<std::size_t> (RADIX_LEVELS - level) : 0;
+    if (need.rnodes == 0)
+      {
+	need.rnodes = 1;
+      }
+    if (need.rnodes > MAX_SPARE_RNODES)
+      {
+	need.rnodes = MAX_SPARE_RNODES;
+      }
+  }
+
+  void
+  bestspace_map::reserve ()
+  {
+    node_counts need, got;
+    middir *mid = nullptr;
+    leafdir *leaf = nullptr;
+    group *grp = nullptr;
+    rnode *rnodes[MAX_SPARE_RNODES];
+    std::size_t s, i, num_rnodes = 0, target_rnodes;
+    bool complete;
+
+    s = m_num_sectors.load (std::memory_order_acquire);
+    if (m_reserved_for.load (std::memory_order_acquire) == s)
+      {
+	return;
+      }
+
+    // what the next sector add needs and the reserve does not hold yet
+    {
+      std::lock_guard<std::mutex> lock (m_grow_mutex);
+
+      s = m_num_sectors.load (std::memory_order_relaxed);
+      count_needs (s, need);
+      target_rnodes = need.rnodes;
+      need.mid = (need.mid > 0 && m_spare.mid == nullptr) ? 1 : 0;
+      need.leaf = (need.leaf > 0 && m_spare.leaf == nullptr) ? 1 : 0;
+      need.grp = (need.grp > 0 && m_spare.grp == nullptr) ? 1 : 0;
+      need.rnodes = need.rnodes > m_spare.num_rnodes ? need.rnodes - m_spare.num_rnodes : 0;
+    }
+
+    // allocate without the mutex: set_resident () may wait for it under the heap header latch
+    complete = true;
+    if (need.mid > 0 && (mid = bsmap_alloc<middir> ()) == nullptr)
+      {
+	complete = false;
+      }
+    if (need.leaf > 0 && (leaf = bsmap_alloc<leafdir> ()) == nullptr)
+      {
+	complete = false;
+      }
+    if (need.grp > 0 && (grp = bsmap_alloc<group> ()) == nullptr)
+      {
+	complete = false;
+      }
+    for (i = 0; i < need.rnodes; i++)
+      {
+	rnodes[num_rnodes] = bsmap_alloc<rnode> ();
+	if (rnodes[num_rnodes] == nullptr)
+	  {
+	    complete = false;
+	    break;
+	  }
+	num_rnodes++;
+      }
+
+    // keep what the count above asked for; a concurrent reserve () may have filled the same slots meanwhile
+    {
+      std::lock_guard<std::mutex> lock (m_grow_mutex);
+
+      got.mid = got.leaf = got.grp = got.rnodes = 0;
+      if (mid != nullptr && m_spare.mid == nullptr)
+	{
+	  m_spare.mid = mid;
+	  mid = nullptr;
+	  got.mid = 1;
+	}
+      if (leaf != nullptr && m_spare.leaf == nullptr)
+	{
+	  m_spare.leaf = leaf;
+	  leaf = nullptr;
+	  got.leaf = 1;
+	}
+      if (grp != nullptr && m_spare.grp == nullptr)
+	{
+	  m_spare.grp = grp;
+	  grp = nullptr;
+	  got.grp = 1;
+	}
+      while (num_rnodes > 0 && m_spare.num_rnodes < target_rnodes)
+	{
+	  num_rnodes--;
+	  m_spare.rnodes[m_spare.num_rnodes++] = rnodes[num_rnodes];
+	  rnodes[num_rnodes] = nullptr;
+	  got.rnodes++;
+	}
+      m_bytes += got.mid * sizeof (middir) + got.leaf * sizeof (leafdir) + got.grp * sizeof (group)
+		 + got.rnodes * sizeof (rnode);
+      count (CNT_NODE_RESERVED, got.mid + got.leaf + got.grp + got.rnodes);
+      if (complete && m_num_sectors.load (std::memory_order_relaxed) == s)
+	{
+	  m_reserved_for.store (s, std::memory_order_release);
+	}
+    }
+
+    // nodes a concurrent reserve () made unnecessary
+    bsmap_free (mid);
+    bsmap_free (leaf);
+    bsmap_free (grp);
+    for (i = 0; i < num_rnodes; i++)
+      {
+	bsmap_free (rnodes[i]);
+      }
   }
 
   void
@@ -684,7 +897,7 @@ namespace cubstorage
   bestspace_map::feedback (short volid, std::int32_t pageid, std::uint8_t code)
   {
     std::size_t n;
-    record *rec = get_or_add (volid, pageid, n, ALL_UNVERIFIED);
+    record *rec = get_or_add (volid, pageid, n, ALL_UNVERIFIED, false);
     if (rec == nullptr)
       {
 	return false;
@@ -693,6 +906,10 @@ namespace cubstorage
     // dirty first: a release that clears it after this point keeps this code instead of writing its older one
     rec->dirty.fetch_or (1ULL << off);
     set_code (rec, n, off, code);
+    // and dirty again after the write: a claim clears the bit before it reads the code, so a claim that cleared the
+    // first mark and read the code before this write holds the older code; the bit set now makes its release keep
+    // this one
+    rec->dirty.fetch_or (1ULL << off);
     count (CNT_FEEDBACK);
     return true;
   }
@@ -701,7 +918,7 @@ namespace cubstorage
   bestspace_map::set_resident (short volid, std::int32_t pageid, std::uint8_t code)
   {
     std::size_t n;
-    record *rec = get_or_add (volid, pageid, n, ALL_NOT_DATA);
+    record *rec = get_or_add (volid, pageid, n, ALL_NOT_DATA, true);
     if (rec == nullptr)
       {
 	return false;
@@ -714,27 +931,68 @@ namespace cubstorage
     return true;
   }
 
+  // A code fed back while the page was resident wins over the caller's, measured or not: the caller's value was taken
+  // before the feedback (the page latch is released before this call), so writing it would hide space the feedback
+  // reported, while keeping the fed-back value can only over-estimate, which a claim corrects.
   void
   bestspace_map::release (short volid, std::int32_t pageid, std::uint8_t code, bool measured)
   {
     std::size_t n;
-    record *rec = get_or_add (volid, pageid, n, ALL_UNVERIFIED);
+    record *rec = get_or_add (volid, pageid, n, ALL_UNVERIFIED, false);
     if (rec == nullptr)
       {
 	return;
       }
     std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
+    std::size_t word = off / 16, shift = (off % 16) * 4;
     std::uint64_t bit = 1ULL << off;
+    // read the code before the dirty bit is cleared: a feedback that sets dirty after the clear writes its code after
+    // this read, so the exchange below sees a different code and leaves it
+    std::uint64_t expected = rec->codes[word].load (), desired;
+    std::uint8_t seen = static_cast<std::uint8_t> ((expected >> shift) & 0xF);
     bool dirty = (rec->dirty.fetch_and (~bit) & bit) != 0;
+    bool replaced = false;
+
     rec->resident.fetch_and (~bit);
-    if (measured || !dirty)
+    if (!dirty)
       {
-	set_code (rec, n, off, code);
+	// no feedback while resident: write the caller's code, unless a feedback changed the code since it was read
+	while (static_cast<std::uint8_t> ((expected >> shift) & 0xF) == seen)
+	  {
+	    desired = (expected & ~ (0xFULL << shift)) | (static_cast<std::uint64_t> (code) << shift);
+	    if (desired == expected || rec->codes[word].compare_exchange_weak (expected, desired))
+	      {
+		replaced = true;
+		break;
+	      }
+	  }
+
+	// a feedback that set dirty after the clear and wrote the same code as the one read above is invisible to the
+	// exchange, which then replaced the fed-back code. The caller's code is lower here, so that would hide the space
+	// the feedback reported: put the code read above back. If the feedback reported the caller's code instead,
+	// this over-estimates, which a claim corrects; if it has not written yet, its code still wins. One rare
+	// three-way race remains: a claim that takes the page between the exchange and this check reads the lowered
+	// code and clears the dirty bit, so the code is not put back and stays low until the page's next feedback.
+	if (replaced && code < seen && seen <= CODE_MAX_TIER && (rec->dirty.load () & bit) != 0)
+	  {
+	    expected = rec->codes[word].load ();
+	    while (static_cast<std::uint8_t> ((expected >> shift) & 0xF) == code)
+	      {
+		desired = (expected & ~ (0xFULL << shift)) | (static_cast<std::uint64_t> (seen) << shift);
+		if (rec->codes[word].compare_exchange_weak (expected, desired))
+		  {
+		    replaced = false;
+		    break;
+		  }
+	      }
+	  }
       }
-    else
+    if (replaced)
       {
-	publish (rec, n, off, false);
+	count_unverified_change (seen, code);
       }
+    // the page is not resident any more: publish the code it keeps (a feedback that changed it marked the sector)
+    publish (rec, n, off, replaced);
     count (CNT_RELEASED);
   }
 
@@ -939,6 +1197,47 @@ namespace cubstorage
     return true;
   }
 
+  std::uint64_t
+  bestspace_map::resident_dirty_above (const bestspace_map_page *pages, std::size_t count)
+  {
+    std::uint64_t result = 0, last_key = 0, key, bit;
+    record *rec = nullptr;
+    std::size_t i, n, off;
+    std::uint8_t code;
+
+    assert (count <= 64);
+    for (i = 0; i < count; i++)
+      {
+	if (pages[i].pageid < 0)
+	  {
+	    continue;
+	  }
+	// the slots of a shard often share sectors: look a sector up once per run
+	key = make_key (pages[i].volid, pages[i].pageid);
+	if (key != last_key)
+	  {
+	    rec = find (pages[i].volid, pages[i].pageid, n);
+	    last_key = key;
+	  }
+	if (rec == nullptr)
+	  {
+	    continue;
+	  }
+	off = static_cast<std::uint32_t> (pages[i].pageid) % PAGES_PER_SECTOR;
+	bit = 1ULL << off;
+	if ((rec->resident.load () & bit) == 0 || (rec->dirty.load () & bit) == 0)
+	  {
+	    continue;
+	  }
+	code = get_code (rec, off);
+	if (code > pages[i].code && code <= CODE_MAX_TIER)
+	  {
+	    result |= 1ULL << i;
+	  }
+      }
+    return result;
+  }
+
   // ------------------------------------------------------------------ persistence
 
   std::size_t
@@ -1016,7 +1315,7 @@ namespace cubstorage
       {
 	return false;
       }
-    rec = get_or_add (key_volid (entry.key), key_first_pageid (entry.key), n, ALL_NOT_DATA);
+    rec = get_or_add (key_volid (entry.key), key_first_pageid (entry.key), n, ALL_NOT_DATA, false);
     if (rec == nullptr || n != expected)
       {
 	// out of memory, or a key that is already in the map (a duplicate on disk)
@@ -1042,7 +1341,7 @@ namespace cubstorage
   bestspace_map::merge_sector (const bestspace_map_entry &entry, std::uint64_t mask)
   {
     std::size_t n, off;
-    record *rec = get_or_add (key_volid (entry.key), key_first_pageid (entry.key), n, ALL_UNVERIFIED);
+    record *rec = get_or_add (key_volid (entry.key), key_first_pageid (entry.key), n, ALL_UNVERIFIED, false);
 
     if (rec == nullptr)
       {
@@ -1052,8 +1351,10 @@ namespace cubstorage
       {
 	off = lowest_bit (mask);
 	mask &= mask - 1;
+	// marked before and after the write, like feedback ()
 	rec->dirty.fetch_or (1ULL << off);
 	set_code (rec, n, off, entry_code (entry, off));
+	rec->dirty.fetch_or (1ULL << off);
       }
     return true;
   }
@@ -1063,7 +1364,7 @@ namespace cubstorage
   {
     std::size_t n, off;
     std::size_t before = num_sectors ();
-    record *rec = get_or_add (volid, first_pageid, n, ALL_NOT_DATA);
+    record *rec = get_or_add (volid, first_pageid, n, ALL_NOT_DATA, false);
 
     if (rec == nullptr)
       {

@@ -24,8 +24,18 @@
 // (root -> mid -> leafdir -> group, 64 children each) and a radix index from sector key to number. Every tree node
 // keeps one 64-bit word per tier whose bit i says "child i may hold a claimable page of this tier". Writers only set
 // hint bits (bottom-up); a claim clears a bit after it found nothing below it and re-checks the child, so a bit can
-// be stale-on but never stale-off. Records and nodes never move and are freed only with the map, so lock-free
-// readers never see freed memory. Adding a sector takes a per-map mutex; everything else is atomic.
+// be stale-on but never stale-off. That holds only because every put-back of a bit (the re-check found the child
+// changed) also sets the bits above it again, bottom-up (set_above ()): while the bit was off, a claim one level up
+// may have found the parent's word empty and cleared the parent's bit. Records and nodes never move and are freed
+// only with the map, so lock-free readers never see freed memory. Adding a sector takes a per-map mutex; everything
+// else is atomic.
+//
+// A heap allocation registers its new pages (set_resident ()) while it holds the heap header latch. The nodes a new
+// sector needs are allocated before that, by reserve (), so the latch is not held across malloc; a sector that
+// needs more than the reserve holds allocates the rest under the latch. The reserve holds at most one group (with
+// the directories a new group may need) and the radix nodes of the next key, and nothing for an inline map: the
+// one-time promotion to the tree allocates under the latch, so a heap that stops growing inside its second sector
+// keeps no spare nodes.
 //
 // bestspace_sector_table holds tiers for heaps whose map is not in memory: feedback that arrives before the map is
 // loaded (pending table) and tiers measured by restart recovery (recovery table).
@@ -81,6 +91,8 @@ namespace cubstorage
 	CNT_RELEASED,
 	CNT_ALLOC_BATCH,
 	CNT_REUSED,
+	CNT_NODE_RESERVED,	// nodes allocated by reserve ()
+	CNT_NODE_FALLBACK,	// nodes set_resident () allocated because the reserve did not hold them
 	CNT_LAST
       };
 
@@ -98,15 +110,23 @@ namespace cubstorage
       bool feedback (short volid, std::int32_t pageid, std::uint8_t code);
       // a page enters a shard L1 slot; a sector seen first here is a new sector of the heap (other pages NOT_DATA)
       bool set_resident (short volid, std::int32_t pageid, std::uint8_t code);
-      // a page leaves its L1 slot; a code fed back while it was resident wins unless the caller measured the page
+      // a page leaves its L1 slot with the caller's code, but a code fed back while it was resident (or while it is
+      // being released) wins. measured: the caller fixed the page to get the code; it does not override a fed-back code
       void release (short volid, std::int32_t pageid, std::uint8_t code, bool measured);
       // the page left the heap
       void forget (short volid, std::int32_t pageid);
+      // allocate, outside any page latch, the nodes set_resident () needs if the next sector it adds follows the last
+      // sector of the map on the same volume. Best effort: an allocation failure leaves the reserve short
+      void reserve ();
 
       // ---- search
       // up to max_count non-resident pages with min_code <= code <= CODE_MAX_TIER; they become resident
       std::size_t claim (std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count);
       bool peek (short volid, std::int32_t pageid, std::uint8_t &code, bool &resident);
+      // bit i: pages[i] is resident, its free space was fed back since it became resident, and the fed-back code is
+      // above pages[i].code (the caller's idea of the page). count <= 64. A page the map does not know, or with a
+      // negative pageid, is not set
+      std::uint64_t resident_dirty_above (const bestspace_map_page *pages, std::size_t count);
 
       // ---- persistence
       std::size_t num_sectors () const;
@@ -197,6 +217,27 @@ namespace cubstorage
       std::size_t m_bytes;		// under m_grow_mutex
       std::atomic<std::uint64_t> m_counters[CNT_LAST];
 
+      // nodes reserve () allocated for the next sector add; under m_grow_mutex. A sector after the promotion needs at
+      // most a group with its directories and the radix nodes below the root on the path of its key
+      static constexpr std::size_t MAX_SPARE_RNODES = RADIX_LEVELS - 1;
+      struct spare_nodes
+      {
+	middir *mid;
+	leafdir *leaf;
+	group *grp;
+	rnode *rnodes[MAX_SPARE_RNODES];
+	std::size_t num_rnodes;
+      };
+      struct node_counts
+      {
+	std::size_t mid;
+	std::size_t leaf;
+	std::size_t grp;
+	std::size_t rnodes;
+      };
+      spare_nodes m_spare;
+      std::atomic<std::size_t> m_reserved_for;	// the sector number the reserve was filled for
+
       static std::uint64_t radix_key (std::uint64_t key);
       static std::size_t radix_slot (std::uint64_t rk, int level);
       static std::uint8_t get_code (record *rec, std::size_t off);
@@ -212,12 +253,17 @@ namespace cubstorage
       std::atomic<std::uint64_t> &persist_word (std::size_t n);
 
       record *find (short volid, std::int32_t pageid, std::size_t &n);
-      record *get_or_add (short volid, std::int32_t pageid, std::size_t &n, std::uint64_t fill);
-      bool promote ();
-      bool add_group (rootdir *root, std::size_t g);
-      bool radix_insert (std::atomic<rnode *> &root, std::uint64_t rk, std::size_t number);
+      // use_spares: take the nodes of a new sector from the reserve (set_resident (), under the heap header latch)
+      record *get_or_add (short volid, std::int32_t pageid, std::size_t &n, std::uint64_t fill, bool use_spares);
+      bool promote (bool use_spares);
+      bool add_group (rootdir *root, std::size_t g, bool use_spares);
+      bool radix_insert (std::atomic<rnode *> &root, std::uint64_t rk, std::size_t number, bool use_spares);
       void free_radix (rnode *r, int level);
       void free_tree (rootdir *root);
+      template <typename T>
+      T *alloc_node (T *&spare, bool use_spares);
+      rnode *alloc_rnode (bool use_spares);
+      void count_needs (std::size_t s, node_counts &need);
 
       void set_code (record *rec, std::size_t n, std::size_t off, std::uint8_t code);
       void count_unverified_change (std::uint8_t old_code, std::uint8_t new_code);

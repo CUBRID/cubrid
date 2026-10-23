@@ -683,8 +683,10 @@ extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern INT16 heap_rv_remove_flags_from_offset (INT16 offset);
 
-extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace =
-			       0, PGBUF_WATCHER * header_watcher = NULL);
+extern void heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr);
+extern bool heap_bestspace_classify_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, OID * class_oid,
+					  std::uint8_t * code);
+extern bool heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex);
 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
@@ -715,8 +717,15 @@ extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
 				VPID * new_page_vpid);
+
+// *INDENT-OFF*
+namespace cubstorage
+{
+  class bestspace_map;
+}
+// *INDENT-ON*
 extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
-				 PGBUF_WATCHER * new_pg_watcher);
+				 PGBUF_WATCHER * new_pg_watcher, cubstorage::bestspace_map * map);
 
 extern int heap_nonheader_page_capacity ();
 

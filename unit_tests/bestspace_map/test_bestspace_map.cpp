@@ -85,6 +85,19 @@ namespace
       }
     return pages;
   }
+
+  // lockstep rounds of the race tests: wait until the other side reaches round v
+  void
+  spin_until (const std::atomic<int> &a, int v)
+  {
+    for (int spins = 0; a.load () != v; spins++)
+      {
+	if (spins > 1000)
+	  {
+	    std::this_thread::yield ();
+	  }
+      }
+  }
 }
 
 TEST_CASE ("feedback then claim hands out pages at or above the tier", "[bestspace_map]")
@@ -109,7 +122,7 @@ TEST_CASE ("feedback then claim hands out pages at or above the tier", "[bestspa
   REQUIRE (out[0].pageid == page_of (0, 3));
 }
 
-TEST_CASE ("release keeps a code fed back while resident unless the page was measured", "[bestspace_map]")
+TEST_CASE ("release keeps a code fed back while resident, measured or not", "[bestspace_map]")
 {
   bestspace_map map;
   bestspace_map_page out[1];
@@ -125,9 +138,225 @@ TEST_CASE ("release keeps a code fed back while resident unless the page was mea
 
   REQUIRE (map.claim (1, out, 1) == 1);
   REQUIRE (map.feedback (0, 10, 8));
-  // a measured value always wins
+  // a value measured before the feedback must not hide the space it reported: the fed-back code wins again
   map.release (0, 10, 2, true);
-  REQUIRE (code_of (map, 0, 10) == 2);
+  REQUIRE (code_of (map, 0, 10) == 8);
+}
+
+TEST_CASE ("release writes the caller's code when nothing was fed back while resident", "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page out[4];
+  const std::int32_t page = page_of (0, 5);
+  const bool measured_values[] = { false, true };
+  std::uint8_t code;
+  bool resident;
+
+  // three sectors: claims go through the hint tree, so a released page must get its hint bits back
+  REQUIRE (map.feedback (0, page_of (1, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page_of (2, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page, bestspace_map::CODE_NONE));
+  REQUIRE_FALSE (map.is_inline ());
+
+  for (bool measured : measured_values)
+    {
+      // a feedback before the claim does not count: the claim takes the page clean
+      REQUIRE (map.feedback (0, page, 6));
+      REQUIRE (map.claim (1, out, 4) == 1);
+      REQUIRE (out[0].pageid == page);
+      map.release (0, page, 3, measured);
+      REQUIRE (map.peek (0, page, code, resident));
+      REQUIRE (code == 3);
+      REQUIRE_FALSE (resident);
+      // and it can be claimed again at its new tier only
+      REQUIRE (map.claim (4, out, 4) == 0);
+      REQUIRE (map.claim (3, out, 4) == 1);
+      REQUIRE (out[0].pageid == page);
+
+      // a feedback while resident wins, and the release consumes it: the next stay starts clean again
+      REQUIRE (map.feedback (0, page, 7));
+      map.release (0, page, 2, measured);
+      REQUIRE (code_of (map, 0, page) == 7);
+      REQUIRE (map.claim (7, out, 4) == 1);
+      map.release (0, page, 2, measured);
+      REQUIRE (code_of (map, 0, page) == 2);
+    }
+
+  // set_resident also starts a clean stay
+  REQUIRE (map.feedback (0, page_of (0, 9), 8));
+  REQUIRE (map.set_resident (0, page_of (0, 9), 8));
+  map.release (0, page_of (0, 9), 1, false);
+  REQUIRE (code_of (map, 0, page_of (0, 9)) == 1);
+}
+
+TEST_CASE ("a feedback that races with the release of the page never loses space", "[bestspace_map]")
+{
+  struct scenario
+  {
+    std::uint8_t claimed;	// the code the page had when it was claimed
+    std::uint8_t fed_back;	// the code a feedback reports while the shard releases the page
+    std::uint8_t released;	// the code the shard releases it with
+    bool exact;			// the fed-back code must survive as is (otherwise a higher code is allowed)
+  };
+  // the first two feed back the code read at the claim: an exchange from that code cannot see such a feedback
+  const scenario scenarios[] =
+  {
+    { 8, 8, 1, true }, { 5, 5, 3, true }, { 2, 8, 1, true },
+    // the feedback agrees with the shard, or the shard's code is the higher one: over-estimating is allowed
+    { 8, 1, 1, false }, { 2, 2, 8, false }
+  };
+  const int rounds = 20000;
+  const int total = rounds * static_cast<int> (sizeof (scenarios) / sizeof (scenarios[0]));
+  const std::int32_t page = page_of (0, 5);
+  bestspace_map map;
+  std::atomic<int> go (-1), done (-1);
+  std::atomic<int> fed_back (0);
+  int unclaimable = 0, lower = 0, changed = 0, r = 0;
+
+  // three sectors: claims go through the hint tree
+  REQUIRE (map.feedback (0, page_of (1, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page_of (2, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page, bestspace_map::CODE_NONE));
+  REQUIRE_FALSE (map.is_inline ());
+
+  // Catch2 assertions are not thread-safe, and one that fails would leave the feeder running: while it runs, the
+  // test thread only counts, and checks after the join
+  std::thread feeder ([&map, &go, &done, &fed_back, page, total] ()
+  {
+    for (int i = 0; i < total; i++)
+      {
+	spin_until (go, i);
+	(void) map.feedback (0, page, static_cast<std::uint8_t> (fed_back.load ()));
+	done.store (i);
+      }
+  });
+
+  for (const scenario &sc : scenarios)
+    {
+      for (int i = 0; i < rounds; i++, r++)
+	{
+	  bestspace_map_page out[1];
+	  std::uint8_t code = 0;
+	  bool resident = false;
+
+	  // the page waits in the map with the claim-time code, and a shard claims it
+	  if (!map.feedback (0, page, sc.claimed) || map.claim (1, out, 1) != 1 || out[0].pageid != page)
+	    {
+	      unclaimable++;
+	    }
+	  fed_back.store (sc.fed_back);
+	  // the feedback and the release start together
+	  go.store (r);
+	  map.release (0, page, sc.released, (i % 2) == 0);
+	  spin_until (done, r);
+
+	  (void) map.peek (0, page, code, resident);
+	  if (code < sc.fed_back)
+	    {
+	      lower++;
+	    }
+	  else if (code != sc.fed_back && sc.exact)
+	    {
+	      changed++;
+	    }
+	}
+    }
+  feeder.join ();
+
+  REQUIRE (unclaimable == 0);
+  REQUIRE (lower == 0);
+  REQUIRE (changed == 0);
+}
+
+TEST_CASE ("a feedback that races with a claim is kept when the page is released", "[bestspace_map]")
+{
+  const int rounds = 100000;
+  const std::uint8_t waiting = 2, fed_back = 8;
+  const std::int32_t page = page_of (0, 5);
+  bestspace_map map;
+  std::atomic<int> go (-1), claim_done (-1), feed_done (-1);
+  std::atomic<int> handed_out (-1);	// the code the claim handed out, -1 if it did not get the page
+  int unclaimed = 0, lower = 0, handed_older = 0;
+
+  // three sectors: the claim goes through the hint tree
+  REQUIRE (map.feedback (0, page_of (1, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page_of (2, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page, bestspace_map::CODE_NONE));
+  REQUIRE_FALSE (map.is_inline ());
+
+  // Catch2 assertions are not thread-safe: the threads only claim and feed back, the test thread checks after the
+  // joins
+  std::thread claimer ([&map, &go, &claim_done, &handed_out, page, rounds] ()
+  {
+    for (int i = 0; i < rounds; i++)
+      {
+	bestspace_map_page out[1];
+
+	spin_until (go, i);
+	if (map.claim (1, out, 1) == 1 && out[0].pageid == page)
+	  {
+	    handed_out.store (out[0].code);
+	  }
+	else
+	  {
+	    handed_out.store (-1);
+	  }
+	claim_done.store (i);
+      }
+  });
+  std::thread feeder ([&map, &go, &feed_done, page, rounds, fed_back] ()
+  {
+    for (int i = 0; i < rounds; i++)
+      {
+	volatile int delay = 0;
+
+	spin_until (go, i);
+	// start a little later each round, so the feedback lands at every point of the claim
+	for (int k = 0; k < i % 96; k++)
+	  {
+	    delay = delay + 1;
+	  }
+	(void) map.feedback (0, page, fed_back);
+	feed_done.store (i);
+      }
+  });
+
+  for (int r = 0; r < rounds; r++)
+    {
+      std::uint8_t code = 0;
+      bool resident = true;
+      int held;
+
+      // the page waits in the map at a low tier; a claim and a feedback that frees space start together
+      (void) map.feedback (0, page, waiting);
+      go.store (r);
+      spin_until (claim_done, r);
+      spin_until (feed_done, r);
+
+      held = handed_out.load ();
+      if (held < 0)
+	{
+	  unclaimed++;
+	  continue;
+	}
+      if (held != fed_back)
+	{
+	  handed_older++;
+	}
+      // the shard kept the page as an unverified candidate and evicts it with the code it was handed
+      map.release (0, page, static_cast<std::uint8_t> (held), false);
+      (void) map.peek (0, page, code, resident);
+      if (code < fed_back)
+	{
+	  lower++;
+	}
+    }
+  claimer.join ();
+  feeder.join ();
+
+  CAPTURE (handed_older);
+  REQUIRE (unclaimed == 0);
+  REQUIRE (lower == 0);
 }
 
 TEST_CASE ("forget makes a page not data and unclaimable", "[bestspace_map]")
@@ -446,4 +675,237 @@ TEST_CASE ("add_missing_sector marks allocated pages unverified and leaves known
   REQUIRE (code_of (map, 0, page_of (1, 1)) == bestspace_map::CODE_UNVERIFIED);
   REQUIRE (code_of (map, 0, page_of (1, 2)) == bestspace_map::CODE_NOT_DATA);
   REQUIRE ((map.take_persist_dirty (0) & 0x2) != 0);
+}
+
+namespace
+{
+  std::uint64_t
+  counter_of (bestspace_map &map, bestspace_map::counter id)
+  {
+    std::uint64_t counters[bestspace_map::CNT_LAST];
+    std::size_t bytes;
+    map.get_usage (bytes, counters);
+    return counters[id];
+  }
+
+  std::size_t
+  bytes_of (bestspace_map &map)
+  {
+    std::uint64_t counters[bestspace_map::CNT_LAST];
+    std::size_t bytes;
+    map.get_usage (bytes, counters);
+    return bytes;
+  }
+}
+
+TEST_CASE ("reserve lets set_resident add the next sectors without allocating", "[bestspace_map]")
+{
+  bestspace_map map;
+
+  // an inline map reserves nothing
+  std::size_t inline_bytes = bytes_of (map);
+  map.reserve ();
+  REQUIRE (map.set_resident (0, page_of (0, 1), 8));
+  map.reserve ();
+  REQUIRE (map.set_resident (0, page_of (1, 1), 8));
+  REQUIRE (map.is_inline ());
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) == 0);
+  REQUIRE (bytes_of (map) == inline_bytes);
+
+  // nor for the promotion: the third sector allocates the tree itself, once
+  map.reserve ();
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) == 0);
+  REQUIRE (bytes_of (map) == inline_bytes);
+  REQUIRE (map.set_resident (0, page_of (2, 1), 8));
+  REQUIRE_FALSE (map.is_inline ());
+  std::uint64_t promotion = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
+  REQUIRE (promotion > 0);
+
+  // every following sector, across group (64 sectors) and radix block (64 sectids) boundaries, finds its nodes reserved
+  for (std::int32_t s = 3; s < 300; s++)
+    {
+      map.reserve ();
+      std::size_t before = bytes_of (map);
+      REQUIRE (map.set_resident (0, page_of (s, 1), 8));
+      // the nodes were counted when reserve () allocated them
+      REQUIRE (bytes_of (map) == before);
+    }
+  REQUIRE (map.num_sectors () == 300);
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == promotion);
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) > 0);
+
+  // a reserve () that is already filled for the next sector allocates nothing more
+  map.reserve ();
+  std::uint64_t reserved = counter_of (map, bestspace_map::CNT_NODE_RESERVED);
+  map.reserve ();
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) == reserved);
+
+  for (std::int32_t s = 0; s < 300; s++)
+    {
+      std::uint8_t code;
+      bool resident;
+      REQUIRE (map.peek (0, page_of (s, 1), code, resident));
+      REQUIRE (code == 8);
+      REQUIRE (resident);
+    }
+}
+
+TEST_CASE ("a sector the reserve did not predict still gets its nodes", "[bestspace_map]")
+{
+  bestspace_map map;
+
+  for (std::int32_t s = 0; s < 4; s++)
+    {
+      map.reserve ();
+      REQUIRE (map.set_resident (0, page_of (s, 0), 8));
+    }
+  // only the promotion allocated under set_resident
+  std::uint64_t promotion = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
+  REQUIRE (promotion > 0);
+
+  // another volume: the radix path differs from the top, more than the one spare radix node the reserve keeps
+  map.reserve ();
+  REQUIRE (map.set_resident (5, page_of (1000, 3), 7));
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) > promotion);
+  REQUIRE (code_of (map, 5, page_of (1000, 3)) == 7);
+  // a sector added without set_resident () does not take the reserve
+  std::uint64_t fallback = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
+  map.reserve ();
+  REQUIRE (map.feedback (9, page_of (77, 0), 4));
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == fallback);
+  REQUIRE (code_of (map, 9, page_of (77, 0)) == 4);
+  REQUIRE (map.num_sectors () == 6);
+}
+
+#if !defined (NDEBUG)
+TEST_CASE ("a reserve cut short by allocation failures falls back to allocating in set_resident", "[bestspace_map]")
+{
+  bestspace_map map;
+
+  for (std::int32_t s = 0; s < 64; s++)
+    {
+      map.reserve ();
+      REQUIRE (map.set_resident (0, page_of (s, 0), 8));
+    }
+  std::uint64_t fallback = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
+
+  // sector 64 starts group 1 and radix block 1. The spare radix node is already in the reserve; the group cannot be
+  // allocated, so set_resident allocates it itself
+  bestspace_map::debug_fail_allocations (1000);
+  std::uint64_t reserved = counter_of (map, bestspace_map::CNT_NODE_RESERVED);
+  map.reserve ();
+  bestspace_map::debug_fail_allocations (0);
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_RESERVED) == reserved);
+  REQUIRE (map.set_resident (0, page_of (64, 0), 8));
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == fallback + 1);
+  fallback = counter_of (map, bestspace_map::CNT_NODE_FALLBACK);
+
+  // sector 128: the first allocation of the reserve (the group) fails; the next reserve () tops the reserve up
+  for (std::int32_t s = 65; s < 128; s++)
+    {
+      map.reserve ();
+      REQUIRE (map.set_resident (0, page_of (s, 0), 8));
+    }
+  bestspace_map::debug_fail_allocations (1);
+  map.reserve ();
+  bestspace_map::debug_fail_allocations (0);
+  map.reserve ();
+  REQUIRE (map.set_resident (0, page_of (128, 0), 8));
+  REQUIRE (counter_of (map, bestspace_map::CNT_NODE_FALLBACK) == fallback);
+
+  // no reserve for sector 192 and no memory: set_resident fails, asks for a retry, and the map stays usable
+  for (std::int32_t s = 129; s < 192; s++)
+    {
+      map.reserve ();
+      REQUIRE (map.set_resident (0, page_of (s, 0), 8));
+    }
+  bestspace_map::debug_fail_allocations (1000);
+  REQUIRE_FALSE (map.set_resident (0, page_of (192, 0), 8));
+  bestspace_map::debug_fail_allocations (0);
+  REQUIRE (map.needs_retry ());
+  REQUIRE (map.num_sectors () == 192);
+  map.reserve ();
+  REQUIRE (map.set_resident (0, page_of (192, 0), 8));
+  REQUIRE (map.num_sectors () == 193);
+  REQUIRE (code_of (map, 0, page_of (192, 0)) == 8);
+  REQUIRE (code_of (map, 0, page_of (0, 0)) == 8);
+}
+#endif
+
+TEST_CASE ("concurrent reserve and set_resident add every sector once", "[bestspace_map]")
+{
+  bestspace_map map;
+  const std::int32_t num_sectors = 2000;
+  std::atomic<std::int32_t> next (0);
+  std::atomic<int> failures (0);
+  std::vector<std::thread> threads;
+
+  for (int t = 0; t < 4; t++)
+    {
+      threads.emplace_back ([&] ()
+      {
+	for (std::int32_t s = next.fetch_add (1); s < num_sectors; s = next.fetch_add (1))
+	  {
+	    map.reserve ();
+	    if (!map.set_resident (0, page_of (s, s % 64), 6))
+	      {
+		failures.fetch_add (1);
+	      }
+	  }
+      });
+    }
+  for (std::thread &th : threads)
+    {
+      th.join ();
+    }
+  REQUIRE (failures.load () == 0);
+  REQUIRE (map.num_sectors () == static_cast<std::size_t> (num_sectors));
+  for (std::int32_t s = 0; s < num_sectors; s++)
+    {
+      std::uint8_t code;
+      bool resident;
+      REQUIRE (map.peek (0, page_of (s, s % 64), code, resident));
+      REQUIRE (code == 6);
+      REQUIRE (resident);
+    }
+}
+
+TEST_CASE ("resident_dirty_above reports resident pages fed back with more room than the caller records",
+	   "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page pages[7];
+  bestspace_map_page out[4];
+
+  REQUIRE (map.set_resident (0, page_of (0, 1), 2));
+  REQUIRE (map.set_resident (0, page_of (0, 2), 2));
+  REQUIRE (map.set_resident (0, page_of (0, 3), 8));
+  REQUIRE (map.feedback (0, page_of (0, 1), 8));	// resident, fed back with more room
+  REQUIRE (map.feedback (0, page_of (1, 5), 8));	// fed back, not resident
+  REQUIRE (map.feedback (0, page_of (0, 3), 1));	// resident, fed back with less room than the caller records
+
+  pages[0] = { 0, page_of (0, 1), 1 };
+  pages[1] = { 0, page_of (0, 2), 1 };	// resident, never fed back: the map still has 2 from set_resident
+  pages[2] = { 0, page_of (1, 5), 1 };
+  pages[3] = { 0, page_of (9, 0), 1 };	// unknown sector
+  pages[4] = { -1, -1, 0 };		// empty slot
+  pages[5] = { 0, page_of (0, 1), 8 };	// the caller already records the fed-back tier
+  pages[6] = { 0, page_of (0, 3), 1 };
+  REQUIRE (map.resident_dirty_above (pages, 7) == (1ULL << 0));
+
+  // released: not resident any more, and the fed-back code is kept
+  map.release (0, page_of (0, 1), 1, false);
+  REQUIRE (map.resident_dirty_above (pages, 7) == 0);
+  REQUIRE (code_of (map, 0, page_of (0, 1)) == 8);
+
+  // a claim makes the page resident with a clean slate; a later feedback marks it again
+  REQUIRE (map.claim (8, out, 4) == 2);
+  REQUIRE (map.resident_dirty_above (pages, 7) == 0);
+  REQUIRE (map.feedback (0, page_of (1, 5), 3));
+  REQUIRE (map.resident_dirty_above (pages, 7) == (1ULL << 2));
+
+  // the same answer through the tree after a promotion
+  REQUIRE (map.feedback (0, page_of (2, 0), 1));
+  REQUIRE_FALSE (map.is_inline ());
+  REQUIRE (map.resident_dirty_above (pages, 7) == (1ULL << 2));
 }

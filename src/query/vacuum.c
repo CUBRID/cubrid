@@ -533,7 +533,6 @@ struct vacuum_heap_helper
 
   int n_bulk_vacuumed;		/* Number of vacuumed objects to be logged in bulk mode. */
   int n_vacuumed;		/* Number of vacuumed objects. */
-  int initial_home_free_space;	/* Free space in home page before vacuum */
 
   /* Performance tracking. */
   PERF_UTIME_TRACKER time_track;
@@ -1619,7 +1618,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.n_vacuumed = 0;
   helper.n_bulk_vacuumed = 0;
   helper.can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
-  helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
 
   /* Fix heap page. */
@@ -1679,8 +1677,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 #endif /* !NDEBUG */
-
-  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page);
 
   if (HFID_IS_NULL (hfid))
     {
@@ -1865,8 +1861,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.home_page != NULL)
 	    {
 	      assert (!HFID_IS_NULL (&helper.hfid));
-	      heap_add_bestpage (thread_p, &helper.hfid, helper.home_page,
-				 helper.can_vacuum == VACUUM_RECORD_REMOVE ? 0 : helper.initial_home_free_space);
+	      heap_bestspace_feedback (thread_p, &helper.hfid, helper.home_page);
 	      pgbuf_unfix_and_init (thread_p, helper.home_page);
 	    }
 	  goto end;
@@ -2416,8 +2411,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
-      /* add candidate page into bestspace candidates */
-      heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
+      /* tell the bestspace map the freed space of the forward page while it is latched */
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2567,22 +2562,34 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
  * return	 : Void.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
- * update_best_space_stat (in)	 :
- * unlatch_page (in) :
+ * update_best_space_stat (in)	 : The visit of the page ends here.
+ * unlatch_page (in) : Release the page latch.
+ *
+ * Note: A page the visit changed tells the bestspace map its free space before every release of its latch: at the end
+ *	 of the visit and at each unlatch in the middle of it. A flush that keeps the latch does not, because the page
+ *	 changes on and a later release feeds it. n_vacuumed also counts the records whose removal earlier flushes or
+ *	 the REC_RELOCATION and REC_BIGONE removals already logged, so a page counts as changed even when no slot waits
+ *	 to be logged any more.
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
 				bool unlatch_page)
 {
-  int bestspace_prev_freespace;
-  int i;
+  bool feed_bestspace;
 
   assert (helper != NULL);
   assert (helper->home_page != NULL);
 
+  feed_bestspace = ((update_best_space_stat == true || unlatch_page == true) && helper->n_vacuumed > 0);
+
   if (helper->n_bulk_vacuumed == 0)
     {
       /* No logging is required. */
+      if (feed_bestspace == true)
+	{
+	  assert (!HFID_IS_NULL (&helper->hfid));
+	  heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
+	}
       if (unlatch_page == true)
 	{
 	  pgbuf_unfix_and_init (thread_p, helper->home_page);
@@ -2598,20 +2605,10 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
 
   /* Update statistics only for home pages; We assume that fwd pages (from relocated records) are home pages for other
    * OIDs and their statistics are updated in that context */
-  if (update_best_space_stat == true && helper->initial_home_free_space != -1)
+  if (feed_bestspace == true)
     {
-      bestspace_prev_freespace = helper->initial_home_free_space;
-      for (i = 0; i < helper->n_bulk_vacuumed; i++)
-	{
-	  if (helper->results[i] == VACUUM_RECORD_REMOVE)
-	    {
-	      bestspace_prev_freespace = 0;
-	      break;
-	    }
-	}
-
       assert (!HFID_IS_NULL (&helper->hfid));
-      heap_add_bestpage (thread_p, &helper->hfid, helper->home_page, bestspace_prev_freespace);
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);

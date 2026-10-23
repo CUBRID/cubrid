@@ -35,6 +35,7 @@
 
 #include "bestspace.hpp"
 #include "heap_file.h"
+#include "fault_injection.h"
 
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -3597,6 +3598,10 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 			     sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
   pgbuf_set_dirty (thread_p, crt_watcher.pgptr, DONT_FREE);
 
+  /* the page is not data any more (code NOT_DATA); an abort of the system operation undoes the flag through
+   * log_rollback_record, whose bestspace hook measures the page again */
+  heap_bestspace_feedback (thread_p, hfid, crt_watcher.pgptr);
+
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
   /* Deallocate current page. */
@@ -3653,6 +3658,11 @@ error:
 	  *page_ptr = crt_watcher.pgptr;
 	}
       assert (crt_watcher.pgptr == *page_ptr);
+
+      /* the page stays in the heap and vacuum has just emptied it: tell the bestspace map before the latch is released.
+       * Once the page was unfixed for deallocation this point is not reached: an abort of the system operation undoes
+       * the flag through log_rollback_record, whose bestspace hook measures the page again. */
+      heap_bestspace_feedback (thread_p, hfid, *page_ptr);
       pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
     }
   else
@@ -4294,7 +4304,6 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
 {
   // *INDENT-OFF*
   cubstorage::bestspace_entry *entries = NULL;
-  cubstorage::bestspace_entry candidates[cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE];
   // *INDENT-ON*
   PGBUF_WATCHER header_watcher;
   HEAP_HDR_STATS *heap_hdr;
@@ -4303,7 +4312,6 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
   int num_vpids;
   VPID header_vpid;
   std::size_t num_entries;
-  std::size_t num_candidates;
   std::size_t num_shards;
   std::uint64_t num_recs, recs_sumlen;
   int num_pages;
@@ -4335,7 +4343,7 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
     }
 
   /* serialize the snapshot with other heap header writers. */
-  bestspace->to_entries (entries, candidates, num_candidates);
+  bestspace->to_entries (entries);
   bestspace->get_estimates (num_pages, num_recs, recs_sumlen);
 
   heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
@@ -4377,14 +4385,9 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
   heap_hdr->num_recs = num_recs;
   heap_hdr->recs_sumlen = recs_sumlen;
 
-  /* candidates */
+  /* candidates: the in-memory map keeps them now (C3 removes the field) */
   heap_bestspace_clear_candidates (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
 				   cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE);
-  if (num_candidates > 0)
-    {
-      std::memcpy (heap_hdr->bestspace.candidates, candidates, num_candidates * sizeof (cubstorage::bestspace_entry));
-      heap_hdr->bestspace.num_candidates = num_candidates;
-    }
   /* shards */
   heap_hdr->bestspace.num_shards = num_shards;
 
@@ -4525,11 +4528,13 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
   cubstorage::bestspace_entry *entries = NULL, *candidates = NULL;
+  cubstorage::bestspace_map *map;
   // *INDENT-ON*
   std::size_t num_entries, num_candidates, num_shards;
   HEAP_HDR_STATS *header;
   RECDES recdes;
   int error;
+  int i;
 
   assert (thread_p);
   assert (class_oid && hfid);
@@ -4588,37 +4593,45 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
       num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
     }
 
-  cubstorage::bestspaces.create (hfid, num_shards, entries,
-				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD), candidates,
-				 num_candidates, header->num_pages, header->num_recs, header->recs_sumlen,
-				 (std::uint16_t) header->unfill_space);
-
-  bestspace = cubstorage::bestspaces.find (hfid);
-  if (!bestspace)
+  /* C2: the map starts in memory only; develop's persisted candidates and surplus shard entries seed it */
+  map = cubstorage::bestspace_map::create ();
+  if (map == NULL)
     {
-      /* impossible */
-      assert_release (false);
-
       free_and_init (entries);
       if (candidates)
 	{
 	  free_and_init (candidates);
 	}
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (cubstorage::bestspace_map));
       return NULL;
     }
-
-  /* if the old shards is bigger than current option */
-  if (num_entries > num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD)
+  for (i = 0; i < (int) num_candidates; i++)
     {
-      bestspace->push_candidates (&entries[num_shards * 64], num_entries - num_shards * 64);
+      (void) map->feedback (candidates[i].volid, candidates[i].pageid,
+			    cubstorage::bestspace::code_of (candidates[i].freespace));
+    }
+  for (i = (int) (num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD); i < (int) num_entries; i++)
+    {
+      if (entries[i].pageid != NULL_PAGEID)
+	{
+	  (void) map->feedback (entries[i].volid, entries[i].pageid,
+				cubstorage::bestspace::code_of (entries[i].freespace));
+	}
     }
 
+  bestspace = cubstorage::bestspaces.create (hfid, num_shards, entries,
+					     MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD),
+					     header->num_pages, header->num_recs, header->recs_sumlen,
+					     (std::uint16_t) header->unfill_space, map);
   free_and_init (entries);
   if (candidates)
     {
       free_and_init (candidates);
+    }
+  if (bestspace == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (cubstorage::bestspace));
+      return NULL;
     }
   return bestspace;
 }
@@ -4741,52 +4754,156 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
 }
 
 /*
- * heap_add_bestpage () - Add the best page in candidates
- *   return:
+ * heap_bestspace_classify_page () - the bestspace map code of a latched page
+ *   return: false if the page is not a heap page
+ *   class_oid(out): the class in the page's chain or header record (root class for a NULL class)
+ *   code(out): NOT_DATA for a map page or a page not in its heap; the free space tier otherwise (header page too)
+ */
+bool
+heap_bestspace_classify_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, OID * class_oid, std::uint8_t * code)
+{
+  int freespace;
+  int error;
+
+  if (pgbuf_get_page_ptype (thread_p, pgptr) != PAGE_HEAP)
+    {
+      return false;
+    }
+
+  /* rollback and abort paths call this with their own error set: whatever the read sets is dropped, not cleared */
+  er_stack_push ();
+  error = heap_get_class_oid_from_page (thread_p, pgptr, class_oid);
+  er_stack_pop ();
+  if (error != NO_ERROR)
+    {
+      return false;
+    }
+  if (heap_page_is_bestspace (thread_p, pgptr) || heap_page_is_not_in_heap (thread_p, pgptr))
+    {
+      *code = cubstorage::bestspace_map::CODE_NOT_DATA;
+      return true;
+    }
+  freespace = spage_get_free_space_without_saving (thread_p, pgptr);
+  *code = cubstorage::bestspace::code_of ((std::uint16_t) MIN (MAX (freespace, 0), DB_PAGESIZE));
+  return true;
+}
+
+/*
+ * heap_bestspace_hfid_of_class () - the heap of a class; the root class has no catalog record
+ */
+static int
+heap_bestspace_hfid_of_class (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid)
+{
+  bool found = false;
+  int error;
+
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      return boot_find_root_heap (hfid);
+    }
+
+  /* the caller's error (rollback and abort paths have one set) survives: whatever the lookup sets is dropped */
+  er_stack_push ();
+  error = heap_get_class_info (thread_p, class_oid, hfid, NULL, &found);
+  er_stack_pop ();
+  if (error != NO_ERROR || !found || HFID_IS_NULL (hfid))
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_bestspace_feedback () - record the free space of a heap page the caller has changed, before it releases the
+ *				 page latch (05 6.2: the checkpoint relies on this order)
+ *   hfid(in): the page's heap, or NULL to find it from the page's class (rollback)
+ *
+ * Note: never loads a bestspace (05 4.2 rule 3): a heap whose bestspace is not in memory records nothing here.
+ *       Restart recovery records nothing either: the undo of an atomic system operation reaches the rollback hook
+ *       before the log is restarted, and its class lookup would run under the latch of the page being recovered.
  */
 void
-heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace,
-		   PGBUF_WATCHER * header_watcher)
+heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr)
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
-  cubstorage::bestspace_entry candidate;
   // *INDENT-ON*
-  int freespace;
+  HFID found_hfid;
+  OID class_oid;
+  std::uint8_t code;
   VPID *vpid;
 
-  freespace = spage_get_free_space_without_saving (thread_p, pgptr);
-  if (freespace == 0)
+  if (!LOG_ISRESTARTED ())
     {
+      /* restart recovery records nothing here yet (C4 adds the recovery table) */
       return;
     }
 
-  /* physical removal paths pass zero to force a candidate update. MVCC header-only cleanup is ignored unless it */
-  /* promotes the page to a higher free-space tier. */
-  if (prev_freespace != 0
-      && cubstorage::bestspace::size_to_tier (freespace) <= cubstorage::bestspace::size_to_tier (prev_freespace))
+  /* widen the window in which the page is latched while its free space is reported */
+  (void) FI_TEST (thread_p, FI_TEST_BESTSPACE_DELAY_FEEDBACK, 0);
+
+  if (!heap_bestspace_classify_page (thread_p, pgptr, &class_oid, &code))
     {
       return;
     }
-
-  if (heap_page_is_not_in_heap (thread_p, pgptr))
-    {
-      return;
-    }
-
-  bestspace = heap_find_bestspace (thread_p, NULL, hfid, header_watcher);
-  if (!bestspace)
-    {
-      return;
-    }
-
   vpid = pgbuf_get_vpid_ptr (pgptr);
-  assert_release (vpid != NULL);
 
-  candidate.freespace = freespace;
-  candidate.volid = vpid->volid;
-  candidate.pageid = vpid->pageid;
-  bestspace->push_candidates (&candidate, 1);
+  if (hfid == NULL)
+    {
+      if (heap_bestspace_hfid_of_class (thread_p, &class_oid, &found_hfid) != NO_ERROR)
+	{
+	  return;
+	}
+      hfid = &found_hfid;
+    }
+
+  bestspace = cubstorage::bestspaces.find ((HFID *) hfid);
+  if (bestspace != NULL)
+    {
+      (void) bestspace->get_map ()->feedback (vpid->volid, vpid->pageid, code);
+    }
+  /* C3 (Task 10): a heap whose map is not loaded goes to the pending table; C4 (Task 14): recovery goes to the
+   * recovery table */
+}
+
+/*
+ * heap_bestspace_is_heap_rcvindex () - whether a recovery index changes a heap data page (space or membership)
+ *   return: true for the heap family of 05 appendix A (overflow file records excluded)
+ *
+ * Note: the runtime rollback hook (log_rollback_record) uses it. The list is wide on purpose: an index missing here
+ *       is a map error.
+ */
+bool
+heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex)
+{
+  switch (rcvindex)
+    {
+    case RVHF_CREATE_HEADER:
+    case RVHF_NEWPAGE:
+    case RVHF_STATS:
+    case RVHF_CHAIN:
+    case RVHF_INSERT:
+    case RVHF_DELETE:
+    case RVHF_UPDATE:
+    case RVHF_REUSE_PAGE:
+    case RVHF_REUSE_PAGE_REUSE_OID:
+    case RVHF_MARK_REUSABLE_SLOT:
+    case RVHF_MVCC_INSERT:
+    case RVHF_MVCC_DELETE_REC_HOME:
+    case RVHF_MVCC_DELETE_REC_NEWHOME:
+    case RVHF_MVCC_DELETE_MODIFY_HOME:
+    case RVHF_MVCC_NO_MODIFY_HOME:
+    case RVHF_UPDATE_NOTIFY_VACUUM:
+    case RVHF_INSERT_NEWHOME:
+    case RVHF_MVCC_REDISTRIBUTE:
+    case RVHF_MARK_DELETED:
+    case RVHF_UPDATE_PAGE_IN_HEAP_FLAG:
+    case RVVAC_HEAP_RECORD_VACUUM:
+    case RVVAC_HEAP_PAGE_VACUUM:
+      return true;
+    default:
+      return false;
+    }
 }
 
 /*
@@ -5325,6 +5442,9 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	{
 	  goto error;
 	}
+
+      /* the page is empty again: tell the bestspace map its free space before the latch is released */
+      heap_bestspace_feedback (thread_p, hfid, pgptr);
 
       pgbuf_set_dirty (thread_p, pgptr, FREE);
       pgptr = NULL;
@@ -5999,6 +6119,9 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  candidate.pageid = vpid.pageid;
 	  heap_bestspace_add_candidate (entries, &num_entries, max_candidates + max_bestpages, &candidate);
 
+	  /* the page keeps its free space after the reclaim: tell the bestspace map while the page is latched */
+	  heap_bestspace_feedback (thread_p, hfid, curr_page_watcher.pgptr);
+
 	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 	}
     }
@@ -6021,16 +6144,12 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	}
     }
 
-  /* update in-memory bestspace if it is resident */
+  /* update the estimates of the in-memory bestspace if it is resident. its shards and map keep their pages: the
+   * removed ones drop out when they are next fixed */
   bestspace = heap_find_bestspace (thread_p, NULL, (HFID *) hfid, NULL);
   if (bestspace)
     {
-      bestspace->reset (entries, MIN (num_entries, max_bestpages));
       bestspace->set_estimates (heap_hdr.num_pages, heap_hdr.num_recs, heap_hdr.recs_sumlen);
-      if (num_entries > max_bestpages)
-	{
-	  bestspace->push_candidates (&entries[max_bestpages], num_entries - max_bestpages);
-	}
     }
 
   /* log the desired changes.. and then change the header We need to log the header changes in order to always benefit
@@ -9105,7 +9224,7 @@ heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STA
 	  num_recs += nrecords;
 	  recs_sumlen += reclength;
 
-	  heap_add_bestpage (thread_p, (HFID *) hfid, pg_watcher.pgptr, 0, header_watcher);
+	  heap_bestspace_feedback (thread_p, hfid, pg_watcher.pgptr);
 	}
 
       pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
@@ -17018,32 +17137,7 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  if (LOG_ISRESTARTED ())
-    {
-      HFID hfid = HFID_INITIALIZER;
-      OID class_oid = OID_INITIALIZER;
-
-      if (heap_get_class_oid_from_page (thread_p, rcv->pgptr, &class_oid) != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      bool found = false;
-
-      if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &found) != NO_ERROR || !found)
-	{
-	  /* best-effort: on a real error or a class with no heap, just skip re-adding the best page. */
-	  goto end;
-	}
-      assert (!HFID_IS_NULL (&hfid));
-#if defined(CUBRID_DEBUG)
-      assert (heap_hfid_isvalid (&hfid) == DISK_VALID);
-#endif
-
-      heap_add_bestpage (thread_p, &hfid, rcv->pgptr);
-    }
-
-end:
+  /* the bestspace map hears about the freed slot from the runtime rollback hook in log_rollback_record () */
 
   return NO_ERROR;
 }
@@ -22969,8 +23063,8 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
       return ER_FAILED;
     }
 
-  /* insert into bestspace cadidates */
-  heap_add_bestpage (thread_p, hfid_p, page_p);
+  /* tell the bestspace map the freed space while the page is latched */
+  heap_bestspace_feedback (thread_p, hfid_p, page_p);
 
   /* mark page as dirty */
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
@@ -27027,7 +27121,8 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 }
 
 int
-heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids, PGBUF_WATCHER * new_pg_watcher)
+heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
+		      PGBUF_WATCHER * new_pg_watcher, cubstorage::bestspace_map * map)
 {
   PGBUF_WATCHER heap_hdr_watcher, last_pg_watcher;
   PGBUF_WATCHER page_watcher;
@@ -27166,6 +27261,17 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   log_sysop_commit (thread_p);
   is_sysop_started = false;
 
+  /* the new pages go to the caller's shard: register them while the header latch still serializes allocations, so
+   * a new sector enters the map here (C3 creates its map page under the same latch) */
+  if (map != NULL)
+    {
+      std::uint8_t code = cubstorage::bestspace::code_of ((std::uint16_t) heap_nonheader_page_capacity ());
+      for (i = 0; i < npages; i++)
+	{
+	  (void) map->set_resident (new_page_vpids[i].volid, new_page_vpids[i].pageid, code);
+	}
+    }
+
   pgbuf_ordered_unfix (thread_p, &heap_hdr_watcher);
   heap_hdr_watcher.pgptr = NULL;
 
@@ -27174,6 +27280,16 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   if (new_pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
+      /* the pages stay in the heap but never reach the caller's shard: hand them back to the map, or they would stay
+       * resident there and never be claimed */
+      if (map != NULL)
+	{
+	  for (i = 0; i < npages; i++)
+	    {
+	      map->release (new_page_vpids[i].volid, new_page_vpids[i].pageid,
+			    cubstorage::bestspace::code_of ((std::uint16_t) heap_nonheader_page_capacity ()), false);
+	    }
+	}
       return error_code;
     }
 
@@ -27779,6 +27895,9 @@ heap_mark_page_in_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID *
   addr.pgptr = page_watcher->pgptr;
   log_append_undoredo_data (thread_p, RVHF_UPDATE_PAGE_IN_HEAP_FLAG, &addr, 0, 0, NULL, NULL);
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+
+  /* the page is data of its heap from now on: tell the bestspace map its free space before the latch is released */
+  heap_bestspace_feedback (thread_p, hfid, page_watcher->pgptr);
 
 cleanup:
   pgbuf_ordered_unfix_and_init (thread_p, page_watcher->pgptr, page_watcher);

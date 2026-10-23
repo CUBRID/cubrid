@@ -7665,6 +7665,12 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
       free_and_init (area);
     }
 
+  /* an undone heap change frees or takes space: tell the bestspace map while the page is still latched */
+  if (rcv->pgptr != NULL && heap_bestspace_is_heap_rcvindex (rcvindex))
+    {
+      heap_bestspace_feedback (thread_p, NULL, rcv->pgptr);
+    }
+
   if (rcv->pgptr != NULL)
     {
       pgbuf_unfix (thread_p, rcv->pgptr);

@@ -21,6 +21,7 @@
 #include "bestspace_map.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <thread>
@@ -135,16 +136,21 @@ TEST_CASE ("concurrent records of different pages of the same sectors are all ke
 {
   bestspace_sector_table table;
   std::vector<std::thread> threads;
+  // Catch2 assertions are not thread-safe: the threads count failures, the test thread checks them
+  std::atomic<int> failures (0);
 
   for (int t = 0; t < 8; t++)
     {
-      threads.emplace_back ([&table, t] ()
+      threads.emplace_back ([&table, &failures, t] ()
       {
 	for (std::int32_t s = 0; s < 2000; s++)
 	  {
 	    for (std::size_t off = static_cast<std::size_t> (t); off < 64; off += 8)
 	      {
-		REQUIRE (table.record (0, bestspace_map::make_key (0, s * 64), off, 1 + off % 8, 7, 1000 + s));
+		if (!table.record (0, bestspace_map::make_key (0, s * 64), off, 1 + off % 8, 7, 1000 + s))
+		  {
+		    failures.fetch_add (1);
+		  }
 	      }
 	  }
       });
@@ -153,6 +159,7 @@ TEST_CASE ("concurrent records of different pages of the same sectors are all ke
     {
       th.join ();
     }
+  REQUIRE (failures.load () == 0);
   REQUIRE (table.size () == 2000);
   bestspace_sector_table::entry *list = table.take_all ();
   for (bestspace_sector_table::entry *e = list; e != nullptr; e = e->next)
