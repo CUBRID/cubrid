@@ -299,6 +299,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
+                if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
+                    throw new SemanticError( // s438
+                            Misc.getLineColumnOf(node.ctx),
+                            "a function that returns a query result set cannot be called from PL/CSQL."
+                                    + " Use JDBC CallableStatement to call it");
+                }
+
                 if (!DBTypeAdapter.isSupported(fs.retType.type)) {
                     String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                     throw new SemanticError( // s418
@@ -306,13 +313,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             "the function uses unsupported type "
                                     + sqlType
                                     + " as its return type");
-                }
-
-                if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
-                    throw new SemanticError( // s438
-                            Misc.getLineColumnOf(node.ctx),
-                            "a function that returns a query result set cannot be called from PL/CSQL."
-                                    + " Use JDBC CallableStatement to call it");
                 }
 
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
@@ -344,48 +344,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof ExprSerialVal;
                 ((ExprSerialVal) node).verified = true;
-            } else if (q instanceof ServerAPI.IdType) {
-                ServerAPI.IdType it = (ServerAPI.IdType) q;
-
-                assert node instanceof TypeSpecPercent;
-                TypeSpecPercent tsp = (TypeSpecPercent) node;
-
-                if (!DBTypeAdapter.isSupported(it.typeInfo.dbType)) {
-                    String sqlType = DBTypeAdapter.getSqlTypeName(it.typeInfo.dbType);
-                    throw new SemanticError( // s410
-                            Misc.getLineColumnOf(node.ctx),
-                            "the table column "
-                                    + tsp.table
-                                    + "."
-                                    + tsp.column
-                                    + " has an unsupported type "
-                                    + sqlType);
-                }
-
-                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
-                        || (it.typeInfo.dbType == DBType.DB_NUMERIC
-                                && (tsp.typeVisitMode == TYPE_VISIT_PARAM_OUT
-                                        || tsp.typeVisitMode == TYPE_VISIT_RETURN))) {
-                    tsp.type =
-                            DBTypeAdapter.getDeclType(
-                                    iStore,
-                                    it.typeInfo.dbType,
-                                    it.typeInfo.prec,
-                                    it.typeInfo.scale);
-                } else {
-                    // Visiting a parameter type or return type.
-                    // Ignore specified precision and scale.
-                    tsp.type = DBTypeAdapter.getValueType(iStore, it.typeInfo.dbType);
-                }
             } else {
                 assert false : "unreachable";
             }
-        }
-
-        // in the order of creation, so that an <id>%TYPE referring to another one gets its type
-        for (TypeSpecPercentId ts : typeSpecPercentIdsToResolve) {
-            ts.type = ts.idTypeSpec.type;
-            assert ts.type != null;
         }
     }
 
@@ -591,13 +552,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + "procedure/function, variable, nor constant");
             }
 
-            TypeSpecPercentId ret =
-                    new TypeSpecPercentId(ctx, id.name, ((DeclIdTypeDeclared) id.decl).typeSpec());
-            if (ret.type == null) {
-                // the type of id is <table>.<column>%TYPE (or <pkg>.<var>%TYPE) to be resolved
-                typeSpecPercentIdsToResolve.add(ret);
-            }
-            return ret;
+            return new TypeSpecPercentId(ctx, id.name, ((DeclIdTypeDeclared) id.decl).typeSpec());
         } else {
 
             // case <X>%TYPE where X is one of
@@ -624,9 +579,60 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     name = null;
             }
 
-            TypeSpec ret = new TypeSpecPercent(ctx, qualifier, name, typeVisitMode);
-            semanticQuestions.put(ret, new ServerAPI.IdType(qualifier, name));
+            TypeSpecPercent ret = new TypeSpecPercent(ctx, qualifier, name, typeVisitMode);
+            resolveTypeSpecPercent(ret, qualifier, name);
             return ret;
+        }
+    }
+
+    // ask the server the type of <qualifier>.<name> at once, as %ROWTYPE does,
+    // so that the type can be used in the parse tree conversion (e.g. OPEN-FOR of SYS_REFCURSOR)
+    private void resolveTypeSpecPercent(TypeSpecPercent tsp, String qualifier, String name) {
+
+        List<ServerAPI.Question> answered =
+                ServerAPI.getGlobalSemantics(Arrays.asList(new ServerAPI.IdType(qualifier, name)));
+        if (answered == null) {
+            throw new RuntimeException(
+                    "internal error: failed to get the type of " + qualifier + "." + name);
+        }
+        assert answered.size() == 1;
+
+        ServerAPI.IdType it = (ServerAPI.IdType) answered.get(0);
+        if (it.errCode != 0) {
+            throw new SemanticError(Misc.getLineColumnOf(tsp.ctx), it.errMsg); // s411
+        }
+
+        // package variables and constants of PL-only types
+        if (it.typeInfo.dbType == DBType.DB_PL_BOOLEAN) {
+            tsp.type = Type.BOOLEAN;
+            return;
+        } else if (it.typeInfo.dbType == DBType.DB_PL_SYS_REFCURSOR) {
+            tsp.type = Type.SYS_REFCURSOR;
+            return;
+        } else if (it.typeInfo.dbType == DBType.DB_PL_RECORD) {
+            throw new SemanticError( // s440
+                    Misc.getLineColumnOf(tsp.ctx),
+                    tsp.table + "." + tsp.column + " of a record type cannot be used with %TYPE");
+        }
+
+        if (!DBTypeAdapter.isSupported(it.typeInfo.dbType)) {
+            String sqlType = DBTypeAdapter.getSqlTypeName(it.typeInfo.dbType);
+            throw new SemanticError( // s410
+                    Misc.getLineColumnOf(tsp.ctx),
+                    tsp.table + "." + tsp.column + " has an unsupported type " + sqlType);
+        }
+
+        if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
+                || (it.typeInfo.dbType == DBType.DB_NUMERIC
+                        && (tsp.typeVisitMode == TYPE_VISIT_PARAM_OUT
+                                || tsp.typeVisitMode == TYPE_VISIT_RETURN))) {
+            tsp.type =
+                    DBTypeAdapter.getDeclType(
+                            iStore, it.typeInfo.dbType, it.typeInfo.prec, it.typeInfo.scale);
+        } else {
+            // Visiting a parameter type or return type.
+            // Ignore specified precision and scale.
+            tsp.type = DBTypeAdapter.getValueType(iStore, it.typeInfo.dbType);
         }
     }
 
@@ -2099,6 +2105,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 if (fs.params == null || fs.params.length == 0) {
 
+                    if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
+                        throw new SemanticError( // s439
+                                Misc.getLineColumnOf(ctx),
+                                "a function that returns a query result set cannot be called from PL/CSQL."
+                                        + " Use JDBC CallableStatement to call it");
+                    }
+
                     if (!DBTypeAdapter.isSupported(fs.retType.type)) {
                         String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                         throw new SemanticError( // s437
@@ -2108,13 +2121,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                         + "' uses unsupported type "
                                         + sqlType
                                         + " as its return type");
-                    }
-
-                    if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
-                        throw new SemanticError( // s439
-                                Misc.getLineColumnOf(ctx),
-                                "a function that returns a query result set cannot be called from PL/CSQL."
-                                        + " Use JDBC CallableStatement to call it");
                     }
 
                     Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
@@ -3258,7 +3264,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
-    private final List<TypeSpecPercentId> typeSpecPercentIdsToResolve = new ArrayList<>();
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
     private Set<SqlUse> sqlUsesOfTopLevelRoutine = null;

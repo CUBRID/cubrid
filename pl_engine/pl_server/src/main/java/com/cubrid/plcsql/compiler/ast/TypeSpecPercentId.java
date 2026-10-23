@@ -39,7 +39,7 @@ public class TypeSpecPercentId extends TypeSpec {
     public final TypeSpec idTypeSpec; // type spec of the id
 
     public TypeSpecPercentId(ParserRuleContext ctx, String id, TypeSpec idTypeSpec) {
-        super(ctx, idTypeSpec.type); // null if idTypeSpec is not resolved yet
+        super(ctx, idTypeSpec.type);
         this.id = id;
         this.idTypeSpec = idTypeSpec;
     }

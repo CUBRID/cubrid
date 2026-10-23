@@ -1244,7 +1244,22 @@ exit:
     if (match_cnt == 0)
       {
 	err = res.err_id = ER_FAILED;
-	res.err_msg = "Failed to get attribute information";
+	if (sp_find_pkg_cursor (qualifier.c_str(), id.c_str ()))
+	  {
+#define ERR_MSG_TEMPLATE        ("'%s' is a package cursor, which cannot be used with %%TYPE yet")
+	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	    snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	    res.err_msg = buffer;
+	  }
+	else
+	  {
+#define ERR_MSG_TEMPLATE        ("'%s' is neither a table column nor a package variable or constant")
+	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	    snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	    res.err_msg = buffer;
+	  }
 	return err;
       }
     else if (match_cnt == 2)

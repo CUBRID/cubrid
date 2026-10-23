@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.jsp.data.CompileResponse;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
@@ -250,7 +251,7 @@ public abstract class DeclRoutine extends Decl {
                         isProcedure()
                                 ? ServerConstants.SP_TYPE_PROCEDURE
                                 : ServerConstants.SP_TYPE_FUNCTION,
-                        isProcedure() ? 0 : retTypeSpec.type.dbType,
+                        isProcedure() ? 0 : getRetDbType(),
                         directive,
                         sda,
                         comment);
@@ -265,5 +266,14 @@ public abstract class DeclRoutine extends Decl {
         }
 
         resp.addPkgSp(pkgSp);
+    }
+
+    private int getRetDbType() {
+        if (retTypeSpec.type == Type.SYS_REFCURSOR) {
+            // as the return type SYS_REFCURSOR of stored functions
+            return DBType.DB_RESULTSET;
+        } else {
+            return retTypeSpec.type.dbType;
+        }
     }
 }
