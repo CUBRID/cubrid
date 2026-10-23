@@ -739,15 +739,13 @@ namespace memoize
     return hash;
   }
 
-  thread_local const std::vector<const TP_DOMAIN *> *key::equal::domains = nullptr;
-
   bool key::equal::operator() (const key *k1, const key *k2) const
   {
     size_t sz = k1->m_values.size();
-    assert (sz == k2->m_values.size() && sz == domains->size ());
+    assert (sz == k2->m_values.size() && sz == m_domains->size ());
     for (size_t i = 0; i < sz; i++)
       {
-	if (!domain_key_values_equal ((*domains)[i], &k1->m_values[i], &k2->m_values[i]))
+	if (!domain_key_values_equal ((*m_domains)[i], &k1->m_values[i], &k2->m_values[i]))
 	  {
 	    return false;
 	  }
@@ -819,7 +817,7 @@ namespace memoize
     , m_last_key (nullptr)
     , m_keyptr_src ()
     , m_key_domains ()
-    , m_key_value_map ()
+    , m_key_value_map (0, key::hash (), key::equal {&m_key_domains})
     , m_current_value_list ()
     , disabled (false)
     , insert_stopped (false)
@@ -913,7 +911,6 @@ namespace memoize
 	 * once on the re-entry below, and the outer is emitted twice (CBRD-27465). */
 	has_range = false;
 
-	key::equal::domains = &m_key_domains;
 	auto range = m_key_value_map.equal_range (m_last_key);
 
 	if (range.first == range.second)
@@ -996,7 +993,6 @@ namespace memoize
 	    m_value_sz += v->get_size();
 	  }
 
-	key::equal::domains = &m_key_domains;
 	m_key_value_map.insert ({k, v});
 
 	return result_code::SUCCESS;
@@ -1030,7 +1026,6 @@ namespace memoize
 	    m_key_sz += k->get_size();
 	    m_hash_sz += hash_entry_sz;
 
-	    key::equal::domains = &m_key_domains;
 	    m_key_value_map.insert ({k, nullptr});
 	  }
 
@@ -1087,7 +1082,6 @@ namespace memoize
   {
     if (current_key_joined)
       {
-	key::equal::domains = &m_key_domains;
 	auto range = m_key_value_map.equal_range (m_last_key);
 
 	for (auto it = range.first; it != range.second;)

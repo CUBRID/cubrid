@@ -61,11 +61,8 @@ namespace memoize
       };
       struct equal
       {
-	/* the key positions' regu domains (storage::m_key_domains), set by the storage before each lookup: CBRD-27583
-	 * (S3-25). Not a member: a functor given to the map's constructor comes with a bucket count hint, and the
-	 * map's bucket growth from that hint differs from the default constructor's, which get_current_size counts
-	 * (cbrd_27465 Case 12 judges the memory limit to the KB) */
-	static thread_local const std::vector<const TP_DOMAIN *> *domains;
+	/* the key positions' regu domains (storage::m_key_domains): CBRD-27583 (S3-25) */
+	const std::vector<const TP_DOMAIN *> *m_domains;
 	bool operator() (const key *k1, const key *k2) const;
       };
   };
