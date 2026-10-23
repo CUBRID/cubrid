@@ -65,7 +65,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
-import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.antlr.v4.runtime.*;
@@ -2923,10 +2922,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         setSqlDataAccess(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
         return new StmtRollback(ctx);
     }
-
-    private static final Set<String> dbmsOutputProc =
-            new TreeSet<>(
-                    Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT"));
 
     @Override
     public Stmt visitProcedure_call(Procedure_callContext ctx) {

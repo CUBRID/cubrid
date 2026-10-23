@@ -3471,15 +3471,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return ret.setDelimiter(",");
     }
 
-    private static String getParameterNames(NodeList<DeclParam> paramList) {
-
-        List<String> ret = new LinkedList<>();
-        for (DeclParam dp : paramList.nodes) {
-            ret.add(dp.name);
-        }
-        return String.join(",", ret.toArray(DUMMY_STRING_ARRAY));
-    }
-
     private static String[] getNullifyOutParamCode(NodeList<DeclParam> paramList) {
 
         List<String> ret = new LinkedList<>();
