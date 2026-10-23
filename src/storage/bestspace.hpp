@@ -102,7 +102,8 @@ namespace cubstorage
 	CONTENDED,
 	ALLOCATING,
 	SUCCESS,
-	FAILURE
+	FAILURE,
+	DEFERRED	// a claimed page not checked: not in the page buffer, or latched by another thread (05 7.2)
       };
 
       friend tier &operator++ (tier &v)
@@ -313,11 +314,19 @@ namespace cubstorage
 
 	  std::size_t allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
 					     std::uint16_t needed_size);
-	  void allocate_release_victims (std::size_t count,
-					 std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
+	  status allocate_release_victims (OID *class_oid, HFID *hfid, std::size_t count,
+					   std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
+					   &victims, PGBUF_WATCHER &page_watcher);
 
-	  status allocate_verify_actual_space (OID *class_oid, std::uint16_t needed_size, bestspace_entry &candidate,
-					       bool &valid, PGBUF_WATCHER &page_watcher);
+	  // fix a page only if it is in the buffer and no other thread latches it: no I/O, no wait. SUCCESS: fixed,
+	  // with the watcher an ordered fix gives it; DEFERRED: not fixed; NOT_FOUND: a bad page id (error cleared);
+	  // FAILURE: an error is set
+	  static status fix_in_buffer (HFID *hfid, VPID &vpid, PGBUF_WATCHER &page_watcher);
+
+	  // in_buffer_only: no I/O and no wait; DEFERRED when the page cannot be fixed that way
+	  status allocate_verify_actual_space (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+					       bestspace_entry &candidate, bool &valid, bool in_buffer_only,
+					       PGBUF_WATCHER &page_watcher);
 
 	  int allocate_new_pages (HFID *hfid, std::size_t num_candidates,
 				  std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, PGBUF_WATCHER &page_watcher);

@@ -189,6 +189,63 @@ TEST_CASE ("release writes the caller's code when nothing was fed back while res
   REQUIRE (code_of (map, 0, page_of (0, 9)) == 1);
 }
 
+TEST_CASE ("release_latched writes its code over a code fed back while resident", "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page out[4];
+  bestspace_map_page slots[1];
+  const std::int32_t page = page_of (0, 5);
+  std::uint8_t code;
+  bool resident;
+
+  // three sectors: claims go through the hint tree, so a released page must get its hint bits back
+  REQUIRE (map.feedback (0, page_of (1, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page_of (2, 0), bestspace_map::CODE_NONE));
+  REQUIRE (map.feedback (0, page, 6));
+  REQUIRE_FALSE (map.is_inline ());
+
+  // the page sits in a slot; vacuum feeds it back at tier 5, then the slot fills it down to tier 1
+  REQUIRE (map.claim (1, out, 4) == 1);
+  REQUIRE (map.feedback (0, page, 5));
+  slots[0] = { 0, page, 1 };
+  REQUIRE (map.resident_dirty_above (slots, 1) == 1);
+
+  // measured under the latch: the measurement wins, and the page is neither resident nor dirty any more
+  map.release_latched (0, page, 1);
+  REQUIRE (map.peek (0, page, code, resident));
+  REQUIRE (code == 1);
+  REQUIRE_FALSE (resident);
+  REQUIRE (map.resident_dirty_above (slots, 1) == 0);
+  // claimable at its measured tier only
+  REQUIRE (map.claim (2, out, 4) == 0);
+  REQUIRE (map.claim (1, out, 4) == 1);
+  REQUIRE (out[0].pageid == page);
+  // the stay that claim starts is clean: a release with nothing fed back writes its own code
+  map.release (0, page, 3, false);
+  REQUIRE (code_of (map, 0, page) == 3);
+
+  // without a feedback it is a plain write; a page that is not data any more is never handed out again
+  REQUIRE (map.claim (3, out, 4) == 1);
+  map.release_latched (0, page, 7);
+  REQUIRE (code_of (map, 0, page) == 7);
+  REQUIRE (map.claim (7, out, 4) == 1);
+  REQUIRE (map.feedback (0, page, 8));
+  map.release_latched (0, page, bestspace_map::CODE_NOT_DATA);
+  REQUIRE (code_of (map, 0, page) == bestspace_map::CODE_NOT_DATA);
+  REQUIRE (map.claim (1, out, 4) == 0);
+
+  // the same on an inline map
+  bestspace_map small;
+  REQUIRE (small.set_resident (0, 9, 2));
+  REQUIRE (small.feedback (0, 9, 8));
+  small.release_latched (0, 9, 2);
+  REQUIRE (small.peek (0, 9, code, resident));
+  REQUIRE (code == 2);
+  REQUIRE_FALSE (resident);
+  REQUIRE (small.claim (3, out, 4) == 0);
+  REQUIRE (small.claim (2, out, 4) == 1);
+}
+
 TEST_CASE ("a feedback that races with the release of the page never loses space", "[bestspace_map]")
 {
   struct scenario

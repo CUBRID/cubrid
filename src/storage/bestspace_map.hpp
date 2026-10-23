@@ -93,6 +93,12 @@ namespace cubstorage
 	CNT_REUSED,
 	CNT_NODE_RESERVED,	// nodes allocated by reserve ()
 	CNT_NODE_FALLBACK,	// nodes set_resident () allocated because the reserve did not hold them
+	// claimed pages a refill's first pass did not check (not in the buffer, or latched by another thread). The
+	// one a refill then checks with a disk fix is counted here and in CNT_DISK_VERIFY:
+	// unchecked = DEFERRED - DISK_VERIFY
+	CNT_DEFERRED,
+	CNT_DISK_VERIFY,	// claimed pages a refill checked with a fix that may read the disk (one per refill)
+	CNT_VICTIM_MEASURED,	// evicted pages measured in the buffer and written back with release_latched ()
 	CNT_LAST
       };
 
@@ -114,6 +120,10 @@ namespace cubstorage
       // a page leaves its L1 slot with the caller's code, but a code fed back while it was resident (or while it is
       // being released) wins. measured: the caller fixed the page to get the code; it does not override a fed-back code
       void release (short volid, std::int32_t pageid, std::uint8_t code, bool measured);
+      // a page leaves its L1 slot with a code the caller measured under the page latch it still holds. A feedback is
+      // given under that latch too, so none is newer than this code: it replaces a code fed back while the page was
+      // resident (release () keeps that one). The page is neither resident nor dirty afterwards
+      void release_latched (short volid, std::int32_t pageid, std::uint8_t code);
       // the page left the heap
       void forget (short volid, std::int32_t pageid);
       // the page was found gone without a latch that keeps it so (the maintenance daemon): NOT_DATA only while it is

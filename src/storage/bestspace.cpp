@@ -836,16 +836,31 @@ namespace cubstorage
     return num_dirty;
   }
 
-  // empty the first count victim slots now and write their pages back to the map, which keeps the fed-back code: the
-  // claim of this same refill can take such a page again, now with its real tier
-  void
-  bestspace::shard::allocate_release_victims (std::size_t count,
-      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims)
+  // Empty the first count victim slots now and write their pages back to the map. They hold pages fed back while
+  // resident with a higher tier than the slot records (allocate_pick_victims ()), so that the claim of this same
+  // refill can take them again with their tier. But the fed-back code is not always the newer value: a slot measures
+  // its page at every fix and may go on filling it after a feedback, and release () keeps the fed-back code anyway,
+  // which the next claim of the page then finds too high. So each page is measured again if it is in the buffer and
+  // free (fix_in_buffer (): no I/O, no wait, so the pages the caller holds are no concern), classified as feedback
+  // classifies it, and its code goes back under the latch over the fed-back one (release_latched ()). A page that is
+  // not a heap page of this class any more leaves the map, as L1_remove () has it. A page that cannot be fixed that
+  // way goes back as before.
+  // FAILURE: a fix failed with an error (interrupt, I/O), which stays set; every slot is emptied and its page written
+  // back all the same
+  bestspace::status
+  bestspace::shard::allocate_release_victims (OID *class_oid, HFID *hfid, std::size_t count,
+      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims, PGBUF_WATCHER &page_watcher)
   {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    bestspace_map *map = m_parent.m_map;
     std::size_t i, slot;
+    OID page_class_oid;
+    std::uint8_t code;
+    status result, fixed;
     VPID vpid;
     L1 expected, desired;
 
+    result = status::SUCCESS;
     desired.set_freespace (0);
     desired.set_vpid (vpid_Null_vpid);
     for (i = 0; i < count; i++)
@@ -867,42 +882,155 @@ namespace cubstorage
 	    continue;
 	  }
 	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
-	m_parent.m_map->release (vpid.volid, vpid.pageid, code_of_room (expected.get_freespace ()), false);
+
+	// after a failed fix, the rest go back without one
+	fixed = (result == status::SUCCESS) ? fix_in_buffer (hfid, vpid, page_watcher) : status::DEFERRED;
+	if (fixed == status::SUCCESS)
+	  {
+	    if (heap_bestspace_classify_page (thread_p, page_watcher.pgptr, &page_class_oid, &code)
+		&& OID_EQ (&page_class_oid, class_oid))
+	      {
+		map->release_latched (vpid.volid, vpid.pageid, code);
+		map->count (bestspace_map::CNT_VICTIM_MEASURED);
+	      }
+	    else
+	      {
+		map->forget (vpid.volid, vpid.pageid);
+	      }
+	    pgbuf_ordered_unfix (thread_p, &page_watcher);
+	    continue;
+	  }
+	if (fixed == status::NOT_FOUND)
+	  {
+	    map->forget (vpid.volid, vpid.pageid);
+	    continue;
+	  }
+	if (fixed == status::FAILURE)
+	  {
+	    result = status::FAILURE;
+	  }
+	map->release (vpid.volid, vpid.pageid, code_of_room (expected.get_freespace ()), false);
       }
+    return result;
   }
 
+  // A fix with no I/O and no wait (05 7.2): the page only if it is in the page buffer and no other thread latches it.
+  // Such a fix needs no latch order: the caller may hold other pages of the heap (an update that moves a record holds
+  // its home page and the heap header), and an ordered fix ranks the page against them only to avoid waiting for a
+  // latch while holding one, which a conditional latch never does. The fixed page gets the watcher an ordered fix
+  // gives it: the heap the watcher was set up for, ranked as heap header or heap page.
   bestspace::status
-  bestspace::shard::allocate_verify_actual_space (OID *class_oid, std::uint16_t needed_size, bestspace_entry &candidate,
-      bool &valid, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::fix_in_buffer (HFID *hfid, VPID &vpid, PGBUF_WATCHER &page_watcher)
+  {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    unsigned int initial_rank;
+    PAGE_PTR pgptr;
+    int wait_msecs;
+    int error;
+
+    assert (hfid != nullptr);
+    assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
+    // the watcher belongs to this heap: the fix attaches it again from hfid
+    assert (VPID_ISNULL (&page_watcher.group_id)
+	    || (page_watcher.group_id.volid == hfid->vfid.volid && page_watcher.group_id.pageid == hfid->hpgid));
+
+    // as L1_fix (): a latch held by another thread fails the fix with no error set, whatever lock timeout the
+    // transaction has
+    wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+    pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+    (void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
+    if (pgptr == NULL)
+      {
+	error = er_errid_if_has_error ();
+	if (error == NO_ERROR || error == ER_LK_PAGE_TIMEOUT)
+	  {
+	    // not in the buffer, or latched by another thread
+	    er_clear ();
+	    return status::DEFERRED;
+	  }
+	if (error == ER_PB_BAD_PAGEID)
+	  {
+	    er_clear ();
+	    return status::NOT_FOUND;
+	  }
+	return status::FAILURE;
+      }
+
+    // pgbuf_attach_watcher () sets the watcher up again, initial rank included: HEAP_HDR when the page is the heap
+    // header, which holds rows and can be claimed or held by a slot. An ordered fix leaves the initial rank as the
+    // caller set it and ranks only the fix it makes; do the same. Later fixes through this watcher take their rank
+    // from the initial rank (a claim's pass 2, and the caller's fixes of the page a refill hands back:
+    // pgbuf_replace_watcher () copies both ranks), and a heap page ranked as the header is fixed out of order against
+    // the pages the caller holds
+    initial_rank = page_watcher.initial_rank;
+    pgbuf_attach_watcher (thread_p, pgptr, PGBUF_LATCH_WRITE, hfid, &page_watcher);
+    page_watcher.initial_rank = initial_rank;
+    if (!VPID_EQ (&page_watcher.group_id, &vpid))
+      {
+	// the header page keeps the HEAP_HDR rank the attach gave its fix, as an ordered fix gives it
+	page_watcher.curr_rank = initial_rank;
+      }
+    return status::SUCCESS;
+  }
+
+  // Fix a claimed page and check that the record fits. valid: false when the page is not a data page of this heap any
+  // more. in_buffer_only: fix the page with fix_in_buffer () (no I/O, no wait); DEFERRED when it cannot. Every check
+  // after the fix is the same either way.
+  bestspace::status
+  bestspace::shard::allocate_verify_actual_space (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+      bestspace_entry &candidate, bool &valid, bool in_buffer_only, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
     OID page_class_oid;
     VPID vpid;
+    unsigned int initial_rank;
     int available, freespace;
+    status result;
     int error;
 
     assert (class_oid != nullptr);
+    assert (hfid != nullptr);
     assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
 
     valid = true;
     vpid.volid = candidate.volid;
     vpid.pageid = candidate.pageid;
+    initial_rank = page_watcher.initial_rank;
 
-    error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, &page_watcher);
-    if (error != NO_ERROR)
+    if (in_buffer_only)
       {
-	if (error == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+	// an error is not deferred: as the fix below, a bad page leaves the map, anything else fails the insert. A page
+	// deallocated in the buffer is no error here: the fix returns it, and the page type check rejects it
+	result = fix_in_buffer (hfid, vpid, page_watcher);
+	if (result == status::NOT_FOUND)
 	  {
 	    valid = false;
-	    er_clear ();
-	    return status::NOT_FOUND;
 	  }
-	if (er_errid () == NO_ERROR)
+	if (result != status::SUCCESS)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	    return result;
 	  }
-	return status::FAILURE;
       }
+    else
+      {
+	error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, &page_watcher);
+	if (error != NO_ERROR)
+	  {
+	    if (error == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+	      {
+		valid = false;
+		er_clear ();
+		return status::NOT_FOUND;
+	      }
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      }
+	    return status::FAILURE;
+	  }
+      }
+    // either fix leaves the watcher as an ordered fix does: its initial rank is the caller's
+    assert (page_watcher.initial_rank == initial_rank);
 
     // a map page is never a data page (see L1_find ())
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
@@ -1025,10 +1153,20 @@ namespace cubstorage
   bestspace::shard::allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 			      PGBUF_WATCHER &page_watcher)
   {
+    // a claimed page: not looked at, deferred by the first pass, back in the map (released or forgotten), or the fit
+    enum class claim_state
+    {
+      UNCHECKED,
+      DEFERRED,
+      SETTLED,
+      FIT
+    };
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> claimed;
+    std::array<claim_state, ALLOC_BATCH_SIZE> state;
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     bestspace_map_page picked[ALLOC_BATCH_SIZE];
+    bestspace_entry entry;
     bestspace_map *map = m_parent.m_map;
     std::size_t num_claimed, num_candidates, num_dirty, fit_index, i, j;
     std::uint8_t min_code;
@@ -1044,9 +1182,13 @@ namespace cubstorage
 
     // pick four slots to replace (see allocate_pick_victims): pages fed back with more room than their slot records,
     // empty slots, then the first slots that cannot serve this request. the fed-back pages go back to the map before
-    // the claim, which can hand them out again with their tier
+    // the claim, which can hand them out again with their tier (measured again first when they are in the buffer)
     num_dirty = allocate_pick_victims (victims, needed_size);
-    allocate_release_victims (num_dirty, victims);
+    if (allocate_release_victims (class_oid, hfid, num_dirty, victims, page_watcher) == status::FAILURE)
+      {
+	allocate_unmark ();
+	return status::FAILURE;
+      }
 
     // claim pages whose tier is above the request's: their lower bound fits it when the map is accurate. a page of
     // the same tier may or may not fit (tiers are 8~15% wide), so it is left for smaller requests; only a request in
@@ -1058,76 +1200,148 @@ namespace cubstorage
       {
 	(void) FI_TEST (thread_get_thread_entry_info (), FI_TEST_BESTSPACE_DELAY_CLAIM, 0);
       }
+
+    // highest tier first (05 7.2): a page with more room takes more of the rows to come before the next refill. Every
+    // claimed page holds the upper bound of its tier, so the order by free space is the order by tier
     for (i = 0; i < num_claimed; i++)
       {
-	claimed[i].volid = picked[i].volid;
-	claimed[i].pageid = picked[i].pageid;
-	claimed[i].freespace = optimistic_freespace (picked[i].code);
+	entry.volid = picked[i].volid;
+	entry.pageid = picked[i].pageid;
+	entry.freespace = optimistic_freespace (picked[i].code);
+	for (j = i; j > 0 && claimed[j - 1].freespace < entry.freespace; j--)
+	  {
+	    claimed[j] = claimed[j - 1];
+	  }
+	claimed[j] = entry;
+	state[i] = claim_state::UNCHECKED;
       }
 
-    // verify the claimed pages in order until one really fits; the rest become unverified replacements.
+    // what a check found becomes the page's state in the map. false: the insert fails, and every claimed page not
+    // settled yet goes back to the map. A page not measured goes back with the code of its tier bound (code_of_room ():
+    // the value a slot would give back), a measured page with the code of its free space
+    auto settle = [&] (std::size_t index, status outcome, bool page_valid) -> bool
+    {
+      std::size_t k;
+
+      if (outcome == status::FOUND)
+	{
+	  state[index] = claim_state::FIT;
+	  map->count (bestspace_map::CNT_REUSED);
+	  return true;
+	}
+
+      state[index] = claim_state::SETTLED;
+      if (outcome == status::FAILURE)
+	{
+	  if (page_valid)
+	    {
+	      // the page could not be fixed (interrupted, I/O error): it may still have the space
+	      map->release (claimed[index].volid, claimed[index].pageid, code_of_room (claimed[index].freespace),
+			    false);
+	    }
+	  else
+	    {
+	      // the class of the page could not be read: drop the page, or every insert that claims it fails the same
+	      // way
+	      map->forget (claimed[index].volid, claimed[index].pageid);
+	    }
+	  for (k = 0; k < num_claimed; k++)
+	    {
+	      if (state[k] == claim_state::UNCHECKED || state[k] == claim_state::DEFERRED)
+		{
+		  state[k] = claim_state::SETTLED;
+		  map->release (claimed[k].volid, claimed[k].pageid, code_of_room (claimed[k].freespace), false);
+		}
+	    }
+	  return false;
+	}
+
+      assert (outcome == status::NOT_FOUND);
+      map->count (bestspace_map::CNT_VERIFY_FAIL);
+      if (page_valid)
+	{
+	  // the page was measured: record its exact tier
+	  map->release (claimed[index].volid, claimed[index].pageid, code_of (claimed[index].freespace), true);
+	}
+      else
+	{
+	  // not a page of this heap any more (deallocated, removed, another class)
+	  map->forget (claimed[index].volid, claimed[index].pageid);
+	}
+      return true;
+    };
+
+    // verify the claimed pages in order until one really fits; the rest become unverified replacements. The first pass
+    // checks only the pages that are in the buffer and that no one latches (no I/O, no wait) and defers the others
     found = false;
     fit_index = 0;
-    num_candidates = 0;
-    for (i = 0; i < num_claimed; i++)
+    for (i = 0; i < num_claimed && !found; i++)
       {
-	if (found)
+	result = allocate_verify_actual_space (class_oid, hfid, needed_size, claimed[i], valid, true, page_watcher);
+	if (result == status::DEFERRED)
 	  {
-	    candidates[num_candidates++] = claimed[i];
+	    state[i] = claim_state::DEFERRED;
+	    map->count (bestspace_map::CNT_DEFERRED);
 	    continue;
 	  }
-
-	result = allocate_verify_actual_space (class_oid, needed_size, claimed[i], valid, page_watcher);
-	if (result == status::FOUND)
+	if (!settle (i, result, valid))
 	  {
-	    found = true;
-	    fit_index = num_candidates;
-	    candidates[num_candidates++] = claimed[i];
-	    map->count (bestspace_map::CNT_REUSED);
-	    continue;
-	  }
-	if (result == status::FAILURE)
-	  {
-	    if (valid)
-	      {
-		// the page could not be fixed (interrupted, I/O error): it may still have the space
-		map->release (claimed[i].volid, claimed[i].pageid, code_of (claimed[i].freespace), false);
-	      }
-	    else
-	      {
-		// the class of the page could not be read: drop the page, or every insert that claims it fails the same way
-		map->forget (claimed[i].volid, claimed[i].pageid);
-	      }
-	    for (j = i + 1; j < num_claimed; j++)
-	      {
-		map->release (claimed[j].volid, claimed[j].pageid, code_of (claimed[j].freespace), false);
-	      }
 	    allocate_unmark ();
 	    return status::FAILURE;
 	  }
-
-	assert (result == status::NOT_FOUND);
-	map->count (bestspace_map::CNT_VERIFY_FAIL);
-	if (valid)
-	  {
-	    // the page was measured: record its exact tier
-	    map->release (claimed[i].volid, claimed[i].pageid, code_of (claimed[i].freespace), true);
-	  }
-	else
-	  {
-	    // not a page of this heap any more (deallocated, removed, another class)
-	    map->forget (claimed[i].volid, claimed[i].pageid);
-	  }
+	found = (result == status::FOUND);
+	fit_index = i;
       }
 
+    // none of them fits: check the deferred page of the highest tier with a fix that may read the disk. One read per
+    // refill at most, so a heap larger than the buffer is not read through to reuse its free space (05 7.2)
+    for (i = 0; i < num_claimed && !found; i++)
+      {
+	if (state[i] != claim_state::DEFERRED)
+	  {
+	    continue;
+	  }
+
+	map->count (bestspace_map::CNT_DISK_VERIFY);
+	result = allocate_verify_actual_space (class_oid, hfid, needed_size, claimed[i], valid, false, page_watcher);
+	assert (result != status::DEFERRED);
+	if (!settle (i, result, valid))
+	  {
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
+	found = (result == status::FOUND);
+	fit_index = i;
+	break;
+      }
+
+    num_candidates = 0;
     if (found)
       {
-	// the page returned to the caller is always stored at the last position.
-	std::swap (candidates[fit_index], candidates[num_candidates - 1]);
+	// the pages not checked (deferred ones too) become unverified replacements, and the page returned to the caller
+	// is always stored at the last position.
+	for (i = 0; i < num_claimed; i++)
+	  {
+	    if (state[i] == claim_state::UNCHECKED || state[i] == claim_state::DEFERRED)
+	      {
+		candidates[num_candidates++] = claimed[i];
+	      }
+	  }
+	assert (state[fit_index] == claim_state::FIT);
+	candidates[num_candidates++] = claimed[fit_index];
       }
     else
       {
-	assert (num_candidates == 0);
+	// the other deferred pages go back unread, with the code they were claimed with; a code fed back while they
+	// were claimed wins (release)
+	for (i = 0; i < num_claimed; i++)
+	  {
+	    assert (state[i] == claim_state::DEFERRED || state[i] == claim_state::SETTLED);
+	    if (state[i] == claim_state::DEFERRED)
+	      {
+		map->release (claimed[i].volid, claimed[i].pageid, code_of_room (claimed[i].freespace), false);
+	      }
+	  }
 
 	// nothing in the map fits: extend the heap by one batch
 	error = allocate_new_pages (hfid, 0, candidates, page_watcher);

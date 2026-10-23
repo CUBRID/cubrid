@@ -984,9 +984,12 @@ namespace cubstorage
     return true;
   }
 
-  // A code fed back while the page was resident wins over the caller's, measured or not: the caller's value was taken
-  // before the feedback (the page latch is released before this call), so writing it would hide space the feedback
-  // reported, while keeping the fed-back value can only over-estimate, which a claim corrects.
+  // A code fed back while the page was resident wins over the caller's, measured or not. release () cannot tell which
+  // is newer: the caller's value may predate the feedback (a measurement taken before the page latch was released,
+  // a slot's value from its last fix), and then writing it would hide space the feedback reported; or the feedback may
+  // predate it (a slot measures its page again at every fix and may go on filling it after a feedback), and then the
+  // fed-back code over-estimates, which a claim's check corrects at the cost of that check. A caller that still holds
+  // the page latch knows its value is the newer one: it uses release_latched ().
   void
   bestspace_map::release (short volid, std::int32_t pageid, std::uint8_t code, bool measured)
   {
@@ -1046,6 +1049,29 @@ namespace cubstorage
       }
     // the page is not resident any more: publish the code it keeps (a feedback that changed it marked the sector)
     publish (rec, n, off, replaced);
+    count (CNT_RELEASED);
+  }
+
+  // The caller measured the page under the latch it still holds, and feedback is given under that latch: no feedback is
+  // newer than this code, so it goes in over a fed-back one. The code is written while the page is still resident (a
+  // claim cannot take it, so publish () sets no hint bit yet), then the page stops being dirty and resident, and
+  // publish () sets the hint bits of its tier.
+  void
+  bestspace_map::release_latched (short volid, std::int32_t pageid, std::uint8_t code)
+  {
+    std::size_t n;
+    record *rec = get_or_add (volid, pageid, n, ALL_UNVERIFIED, false);
+    if (rec == nullptr)
+      {
+	return;
+      }
+    std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
+    std::uint64_t bit = 1ULL << off;
+
+    set_code (rec, n, off, code);
+    rec->dirty.fetch_and (~bit);
+    rec->resident.fetch_and (~bit);
+    publish (rec, n, off, false);
     count (CNT_RELEASED);
   }
 
