@@ -1998,9 +1998,9 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 		  goto cleanup;
 		}
 	    }
-	  else
+	  else if (!DB_IS_NULL (agg_p->accumulator.value))
 	    {
-	      /* its total order puts an empty partition's NULL first; by the comparison the unpack decided */
+	      /* a class with no value (empty or all NULL) gives NULL: not a minimum */
 	      cmp = eval_compare_values_resolved (thread_p, agg_p->merge_compare, NULL, agg_p->accumulator.value, &result,
 						  1, NULL);
 	      if (cmp == DB_LT)
@@ -2025,7 +2025,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 		  goto cleanup;
 		}
 	    }
-	  else
+	  else if (!DB_IS_NULL (agg_p->accumulator.value))
 	    {
 	      cmp = eval_compare_values_resolved (thread_p, agg_p->merge_compare, NULL, agg_p->accumulator.value, &result,
 						  1, NULL);
