@@ -50,4 +50,14 @@ public class TypeSpecPercent extends TypeSpec {
         this.column = column;
         this.typeVisitMode = typeVisitMode;
     }
+
+    @Override
+    public boolean isSameAs(TypeSpec other) {
+        if (!(other instanceof TypeSpecPercent)) {
+            return false;
+        }
+
+        TypeSpecPercent o = (TypeSpecPercent) other;
+        return table.equals(o.table) && column.equals(o.column);
+    }
 }

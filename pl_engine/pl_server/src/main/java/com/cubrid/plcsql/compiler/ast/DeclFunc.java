@@ -30,7 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclFunc extends DeclRoutine {
@@ -44,6 +46,7 @@ public class DeclFunc extends DeclRoutine {
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
             boolean isPublic,
             NodeList<DeclParam> paramList,
@@ -55,6 +58,7 @@ public class DeclFunc extends DeclRoutine {
                 ctx,
                 name,
                 comment,
+                sqlUsesOfTopLevel,
                 loopOptimizables,
                 isPublic,
                 paramList,
@@ -68,6 +72,7 @@ public class DeclFunc extends DeclRoutine {
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
             boolean isPublic,
             NodeList<DeclParam> paramList,
@@ -77,6 +82,7 @@ public class DeclFunc extends DeclRoutine {
                 ctx,
                 name,
                 comment,
+                sqlUsesOfTopLevel,
                 loopOptimizables,
                 isPublic,
                 paramList,
@@ -103,7 +109,7 @@ public class DeclFunc extends DeclRoutine {
         // name and parameters must be the same
         if (!this.name.equals(other.name)
                 || !this.paramList.equals(other.paramList)
-                || this.retTypeSpec.type != other.retTypeSpec.type) {
+                || !this.retTypeSpec.isSameAs(other.retTypeSpec)) {
             return false;
         }
 

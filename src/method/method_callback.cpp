@@ -751,7 +751,7 @@ namespace cubmethod
     int save;
     DB_VALUE val;
 
-    found = jsp_find_stored_procedure (uniq_name, DB_AUTH_NONE);
+    found = jsp_find_stored_procedure (uniq_name);
     if (found)
       {
 	AU_SAVE_AND_DISABLE (save);
@@ -766,7 +766,7 @@ namespace cubmethod
 	    else if (err_when_not_found)
 	      {
 		err = ER_SP_INVALID_TYPE;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "procedure" : "function");
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "PROCEDURE" : "FUNCTION");
 	      }
 	  }
 	AU_RESTORE (save);
@@ -825,6 +825,25 @@ namespace cubmethod
     return intl_identifier_lower_string_size (name.c_str ()) < DB_MAX_IDENTIFIER_LENGTH;
   }
 
+  /*
+   * user_specified_name_fits () - can this name be given to sm_user_specified_name ()?
+   *   return: true if it fits
+   *   name(in): <name> or <owner>.<name>
+   *
+   * Note: Beside the whole, sm_user_specified_name () only asserts that the owner and the name of
+   *       <owner>.<name> fit their parts of an identifier, so they are checked here as well
+   *       (see jsp_user_specified_name () in jsp_cl.cpp). A user or an object with a name that long
+   *       cannot exist, so a name refused here would not be found anyway.
+   */
+  static bool
+  user_specified_name_fits (const std::string &name)
+  {
+    size_t dot;
+    return identifier_fits (name)
+	   && ((dot = name.find ('.')) == std::string::npos
+	       || (dot < SM_MAX_USER_LENGTH && name.size () - dot - 1 < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH));
+  }
+
   // reported for a name identifier_fits () refused. The PL server turns it into a compile error
   // carrying the line and column of the name (see ParseTreeConverter.askServerSemanticQuestions).
   static const char *TOO_LONG_NAME_MSG = "Qualified name is too long. it must be shorter than 255 bytes.";
@@ -848,6 +867,21 @@ namespace cubmethod
     sm_downcase_name (temp.c_str(), buf, buf_size);
 
     return identifier_fits (temp);
+  }
+
+  static void
+  get_string_attr (MOP mop, const char *attr_name, std::string &out)
+  {
+    DB_VALUE val;
+    if (db_get (mop, attr_name, &val) == NO_ERROR)
+      {
+	const char *str = db_get_string (&val);
+	if (str != NULL)
+	  {
+	    out.assign (str);
+	  }
+	pr_clear_value (&val);
+      }
   }
 
   static int
@@ -1054,7 +1088,9 @@ namespace cubmethod
 
       if (lang == SP_LANG_PLCSQL)
 	{
-	  if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+	  // loaddb compiles a routine before the grants it relies on are loaded (unloaddb puts them last).
+	  // The check made when the routine is called still applies.
+	  if (!db_client_type_is_loaddb () && jsp_check_execute_authorization (routine_mop) != NO_ERROR)
 	    {
 	      err = er_errid ();
 	      if (err == NO_ERROR)
@@ -1064,27 +1100,8 @@ namespace cubmethod
 	      goto exit;
 	    }
 
-	  DB_VALUE target_class_val;
-	  if (db_get (routine_mop, SP_ATTR_TARGET_CLASS, &target_class_val) == NO_ERROR)
-	    {
-	      const char *tc = db_get_string (&target_class_val);
-	      if (tc != NULL)
-		{
-		  res.target_class.assign (tc);
-		}
-	      pr_clear_value (&target_class_val);
-	    }
-
-	  DB_VALUE unique_name_val;
-	  if (db_get (routine_mop, SP_ATTR_UNIQUE_NAME, &unique_name_val) == NO_ERROR)
-	    {
-	      const char *un = db_get_string (&unique_name_val);
-	      if (un != NULL)
-		{
-		  res.unique_name.assign (un);
-		}
-	      pr_clear_value (&unique_name_val);
-	    }
+	  get_string_attr (routine_mop, SP_ATTR_TARGET_CLASS, res.target_class);
+	  get_string_attr (routine_mop, SP_ATTR_UNIQUE_NAME, res.unique_name);
 	}
     }
 
@@ -1108,7 +1125,7 @@ exit:
     MOP serial_class_mop, serial_mop;
     DB_IDENTIFIER serial_obj_id;
 
-    if (!identifier_fits (question.name))
+    if (!user_specified_name_fits (question.name))
       {
 	res.err_id = ER_FAILED;
 	res.err_msg = TOO_LONG_NAME_MSG;
@@ -1169,7 +1186,7 @@ exit:
     split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
-    if (!identifier_fits (class_name_with_owner))
+    if (!user_specified_name_fits (class_name_with_owner))
       {
 	return ER_FAILED;
       }
@@ -1223,7 +1240,22 @@ exit:
     if (match_cnt == 0)
       {
 	err = res.err_id = ER_FAILED;
-	res.err_msg = "Failed to get attribute information";
+	if (sp_find_pkg_cursor (qualifier.c_str(), id.c_str ()))
+	  {
+#define ERR_MSG_TEMPLATE        ("'%s' is a package cursor, which cannot be used with %%TYPE yet")
+	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	    snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	    res.err_msg = buffer;
+	  }
+	else
+	  {
+#define ERR_MSG_TEMPLATE        ("'%s' is neither a table column nor a package variable or constant")
+	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	    snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	    res.err_msg = buffer;
+	  }
 	return err;
       }
     else if (match_cnt == 2)
@@ -1390,60 +1422,22 @@ exit:
     DB_VALUE key;
     MOP code_mop = NULL;
 
-    if (!is_pkg)
+    // _db_stored_procedure_code or _db_package_code, keyed by the generated class name
+    db_make_string (&key, class_name.c_str ());
+    code_mop = db_find_unique (db_find_class (is_pkg ? CT_PACKAGE_CODE_NAME : CT_STORED_PROC_CODE_NAME),
+			       is_pkg ? PKG_CODE_ATTR_NAME : SP_CODE_ATTR_NAME, &key);
+    pr_clear_value (&key);
+    if (code_mop != NULL)
       {
-	// stored procedure / function: _db_stored_procedure_code keyed by name (= class name)
-	db_make_string (&key, class_name.c_str ());
-	code_mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &key);
-	pr_clear_value (&key);
-	if (code_mop != NULL)
+	DB_VALUE v;
+	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_COMPILE_ID : SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
 	  {
-	    DB_VALUE v;
-	    if (db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	    const char *s = db_get_string (&v);
+	    if (s != NULL)
 	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    compile_id.assign (s);
-		  }
-		pr_clear_value (&v);
+		compile_id.assign (s);
 	      }
-	  }
-      }
-    else
-      {
-	// package: _db_package (target_class -> unique_name, compile_id), _db_package_code (ocode)
-	db_make_string (&key, class_name.c_str ());
-	MOP pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_TARGET_CLASS, &key);
-	pr_clear_value (&key);
-	if (pkg_mop != NULL)
-	  {
-	    std::string unique_name;
-	    DB_VALUE v;
-	    if (db_get (pkg_mop, PKG_ATTR_UNIQUE_NAME, &v) == NO_ERROR)
-	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    unique_name.assign (s);
-		  }
-		pr_clear_value (&v);
-	      }
-	    if (db_get (pkg_mop, PKG_ATTR_COMPILE_ID, &v) == NO_ERROR)
-	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    compile_id.assign (s);
-		  }
-		pr_clear_value (&v);
-	      }
-	    if (!unique_name.empty ())
-	      {
-		db_make_string (&key, unique_name.c_str ());
-		code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_PKG_UNIQUE_NAME, &key);
-		pr_clear_value (&key);
-	      }
+	    pr_clear_value (&v);
 	  }
       }
 
@@ -1493,7 +1487,6 @@ exit:
   callback_handler::change_exec_rights (packing_unpacker &unpacker)
   {
     // Push/pop the execution rights around a direct call of an external PL/CSQL routine, so that the
-    // callee's body runs with its own owner's rights rather than the caller's. This does the same
     // callee's body runs with its own owner's rights rather than the caller's. The outcome is
     // reported back: neither the server nor the PL server may proceed if the switch did not happen.
     int command;
@@ -1578,7 +1571,7 @@ exit:
 
     AU_SAVE_AND_DISABLE (save);
 
-    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str (), DB_AUTH_NONE);
+    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str ());
     if (routine_mop == NULL)
       {
 	// dropped between the caller's compilation and this execution

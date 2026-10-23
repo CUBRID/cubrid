@@ -73,14 +73,9 @@ public class CatalogClassLoaderRelay extends ClassLoader {
                 || mainClassName.startsWith("Pckg_"));
 
         CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
-        if (classLoader == null) {
+        if (classLoader == null || !compileId.equals(classLoader.codeSet.compileId)) {
             classLoader = new CatalogClassLoader(mainClassName, compileId, this);
             unitClassLoaders.put(mainClassName, classLoader);
-        } else {
-            if (!compileId.equals(classLoader.codeSet.compileId)) {
-                classLoader = new CatalogClassLoader(mainClassName, compileId, this);
-                unitClassLoaders.put(mainClassName, classLoader);
-            }
         }
 
         assert classLoader != null;
