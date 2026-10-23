@@ -4408,8 +4408,8 @@ admin_check_ssl_files (void)
   if (admin_has_bundled_ssl_key (cert))
     {
       snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
-		"WARNING: the broker uses the SSL private key shipped with CUBRID, which is public: %s\n"
-		"Anyone can impersonate this broker. Generate a new private key and certificate.", key);
+		"WARNING: the system uses the SSL private key shipped with CUBRID, which is public: %s\n"
+		"Anyone can impersonate this service. Generate a new private key and certificate.", key);
     }
 
   return 0;
