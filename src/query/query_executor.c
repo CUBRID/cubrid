@@ -6244,7 +6244,12 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
       s = qexec_gby_mtable_find (t, rd->temp_part_key, qexec_gby_mtable_hash (rd->temp_part_key));
       if (s->key == NULL)
 	{
-	  /* every partial entry was let go together with its group's first tuple */
+	  /* An invariant, not a state the merge may meet: a partial entry is written together with its group's
+	   * first tuple when a table is let go (qdata_save_agg_htable_to_list (), qexec_gby_merge_collapse ()), the
+	   * two go to one partition because they are split by the same key (qexec_gby_merge_part_of ()), and the
+	   * fold takes every piece's rows before any partial entry (qexec_gby_merge_fold ()).  A key without a
+	   * group here means a tuple was lost or a key was split differently, and a group aggregated without its
+	   * rows would be a wrong result: the merge fails rather than sends the partition to the sort. */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  rc = ER_FAILED;
 	  break;
@@ -7019,10 +7024,11 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	}
       qmgr_free_old_page_and_init (thread_p, page, tfile);
     }
-  if (rc == NO_ERROR && er_errid () != NO_ERROR && px->failed.load () == false && page == NULL)
+  if (rc == NO_ERROR && it.failed ())
     {
-      /* get_next_page () ends with NULL on an error too */
-      rc = ER_FAILED;
+      /* get_next_page () ends with NULL on an error too: the iterator says which, as a worker thread's error state
+       * may hold an error left from before */
+      ASSERT_ERROR_AND_SET (rc);
     }
   if (big.tpl != NULL)
     {
