@@ -13652,9 +13652,14 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  qualified = true;
 	  scan_ptr_qualified = false;
 
-	  if (xasl->rtf != NULL)
+	  if (xasl->rtf != NULL && xasl->curr_spec->s_id.type != S_PARALLEL_HEAP_SCAN
+	      && xasl->curr_spec->s_id.type != S_PARALLEL_INDEX_SCAN
+	      && xasl->curr_spec->s_id.type != S_PARALLEL_LIST_SCAN)
 	    {
-	      /* a hash join's runtime filter: no build row has this key, so nothing below it can join */
+	      /* a hash join's runtime filter: no build row has this key, so nothing below it can join.  A parallel
+	       * scan's rows were looked up by its workers already (px_scan_task.cpp row_body ()), which dropped the
+	       * failing ones and counted every row on their clones: looking them up here again would count the kept
+	       * rows twice */
 	      bool pass = hjoin_rtf_pass (xasl->rtf, xasl->rtf_val);
 
 	      xasl->rtf_rows++;
