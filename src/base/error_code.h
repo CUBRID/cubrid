@@ -1786,17 +1786,19 @@
 
 #define ER_AU_REJECT_LOGIN                          -1385
 
-#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1386
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
-#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1387
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1387
 
-#define ER_HEAP_OOS_CORRUPTED_RECORD                -1388
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1388
 
-#define ER_HEAP_OOS_INVALID_ARGUMENT                -1389
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1389
 
-#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1390
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1390
 
-#define ER_LAST_ERROR                               -1391
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1391
+
+#define ER_LAST_ERROR                               -1392
 
 
 /*
