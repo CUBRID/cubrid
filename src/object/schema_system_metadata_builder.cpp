@@ -281,6 +281,30 @@ namespace cubschema
   }
 
   int
+  system_metadata_builder::install_vclasses (const std::vector<system_metadata_definition> &defs)
+  {
+    int error_code = NO_ERROR;
+
+    for (const system_metadata_definition &def : defs)
+      {
+	MOP class_mop = create_and_mark_system_class (def.name);
+	if (class_mop == nullptr)
+	  {
+	    assert (false);
+	    return er_errid ();
+	  }
+
+	error_code = build_vclass (class_mop, def);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  int
   system_metadata_builder::rebuild_vclasses (const std::vector<system_metadata_definition> &defs,
       const std::string &owner_prefix)
   {

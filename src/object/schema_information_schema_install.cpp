@@ -67,28 +67,10 @@ info_schema_install (void)
   int error_code = NO_ERROR;
   int save;
 
-  AU_SAVE_AND_DISABLE (save);
-
   namespace metadata_builder = cubschema::system_metadata_builder;
 
-  for (size_t i = 0; i < view_defs.size (); i++)
-    {
-      MOP class_mop = metadata_builder::create_and_mark_system_class (view_defs[i].name);
-      if (class_mop == nullptr)
-	{
-	  assert (false);
-	  error_code = er_errid();
-	  goto end;
-	}
-
-      error_code = metadata_builder::build_vclass (class_mop, view_defs[i]);
-      if (error_code != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-end:
+  AU_SAVE_AND_DISABLE (save);
+  error_code = metadata_builder::install_vclasses (view_defs);
   AU_RESTORE (save);
 
   return error_code;
