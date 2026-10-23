@@ -28,6 +28,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "log_applier_sql_log.h"
 #include "system_parameter.h"
 #include "object_primitive.h"
@@ -65,11 +66,15 @@ SL_INFO sl_Info;
 
 static FILE *log_fp;
 static FILE *catalog_fp;
+/* the workers write SQL log entries concurrently; one entry, the catalog update and the file switch are done
+ * under this lock so that entries do not interleave and no worker writes to a file another one has closed */
+static pthread_mutex_t sl_write_mutex = PTHREAD_MUTEX_INITIALIZER;
 static unsigned int sql_log_max_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
 static int sl_write_sql (string_buffer & query, string_buffer * select);
+static int sl_write_sql_locked (string_buffer & query, string_buffer * select);
 static void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 static void sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 static int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
@@ -518,6 +523,18 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, const ch
 
 static int
 sl_write_sql (string_buffer & query, string_buffer * select)
+{
+  int error;
+
+  pthread_mutex_lock (&sl_write_mutex);
+  error = sl_write_sql_locked (query, select);
+  pthread_mutex_unlock (&sl_write_mutex);
+
+  return error;
+}
+
+static int
+sl_write_sql_locked (string_buffer & query, string_buffer * select)
 {
   time_t curr_time;
   char time_buf[20];
