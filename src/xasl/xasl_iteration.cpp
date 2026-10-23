@@ -102,7 +102,11 @@ extern "C" {
       dst_node->xasl_stats.ioreads += src_node->xasl_stats.ioreads;
       dst_node->xasl_stats.fetches += src_node->xasl_stats.fetches;
 
-      dst_node->groupby_stats.groupby_hash = (src_node->groupby_stats.groupby_hash != HS_NONE) ? src_node->groupby_stats.groupby_hash : dst_node->groupby_stats.groupby_hash;
+      /* HS_NONE < HS_ACCEPT_ALL < HS_REJECT_ALL: one clone that gave up hashing keeps the GROUP BY partial */
+      if (src_node->groupby_stats.groupby_hash > dst_node->groupby_stats.groupby_hash)
+	{
+	  dst_node->groupby_stats.groupby_hash = src_node->groupby_stats.groupby_hash;
+	}
       dst_node->groupby_stats.groupby_sort = dst_node->groupby_stats.groupby_sort ? true : src_node->groupby_stats.groupby_sort;
       dst_node->groupby_stats.run_groupby = dst_node->groupby_stats.run_groupby ? true : src_node->groupby_stats.run_groupby;
       dst_node->groupby_stats.groupby_pages += src_node->groupby_stats.groupby_pages;

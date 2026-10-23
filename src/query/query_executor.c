@@ -4984,7 +4984,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
-      xasl->groupby_stats.groupby_hash = context->state;
+      /* the label only moves HS_NONE -> HS_ACCEPT_ALL -> HS_REJECT_ALL: a context that gave up hashing, such as a
+       * worker of an earlier parallel pass, keeps the GROUP BY partial */
+      if (context->state > xasl->groupby_stats.groupby_hash)
+	{
+	  xasl->groupby_stats.groupby_hash = context->state;
+	}
     }
 
   /* all ok */
@@ -5735,7 +5740,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       SORT_LISTFILE_PX_ARG part_px;
       part_px.key_info = &gbstate.agg_hash_context->sort_key;
       part_px.input_list = gbstate.agg_hash_context->part_list_id;
-      part_px.hash_eligible = 0;
       part_px.stats = &xasl->groupby_stats;
       part_px.parallelism = xasl->parallelism;
 
@@ -5827,7 +5831,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   SORT_LISTFILE_PX_ARG gby_px;
   gby_px.key_info = &gbstate.key_info;
   gby_px.input_list = list_id;
-  gby_px.hash_eligible = (gbstate.hash_eligible && gbstate.agg_hash_context->state != HS_REJECT_ALL);
   gby_px.stats = &xasl->groupby_stats;
   gby_px.parallelism = xasl->parallelism;
 
@@ -22134,7 +22137,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   SORT_LISTFILE_PX_ARG anl_px;
   anl_px.key_info = &analytic_state.key_info;
   anl_px.input_list = list_id;
-  anl_px.hash_eligible = 0;	/* GROUP_BY only; never skip ANALYTIC parallelism on this account */
   anl_px.stats = new_stat;	/* may be NULL when not tracing */
   anl_px.parallelism = xasl->parallelism;
 
