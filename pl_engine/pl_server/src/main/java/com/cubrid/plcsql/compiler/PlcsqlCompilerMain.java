@@ -320,10 +320,6 @@ public class PlcsqlCompilerMain {
             t0 = logElapsedTime(logStore, "converting to AST", t0);
         }
 
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "getting global semantics information from server", t0);
-        }
-
         // ------------------------------------------
         // typechecking
 

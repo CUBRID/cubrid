@@ -1103,8 +1103,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
-                // "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);", // this
-                // does not cope with recompilation of callee
+                // TODO: evaluate the direct access of the target class
+                // "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
                 "    %'RETURN-TYPE'% ret;",
                 "    if (method[%'METHOD-SLOT'%] == null) {",
                 "      method[%'METHOD-SLOT'%] = reflectMethod(targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
@@ -1183,8 +1183,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             node.name,
                             "%'+AUTH-CHECK'%",
                             getAuthCheckCode(node.targetClass, node.uniqueName),
-                            "%'TARGET-CLASS'%",
-                            node.targetClass,
+                            // TODO: evaluate the direct access of the target class, which is not
+                            // used now because
+                            // it does not cope with recompilation of the callee as is.
+                            // "%'TARGET-CLASS'%",
+                            // node.targetClass,
                             "%'METHOD-NAME'%",
                             simpleName(node.name),
                             "%'RETURN-TYPE'%",
@@ -2769,8 +2772,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  void invoke(%'PARAMETERS'%) {",
                 "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
-                // "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);", // this does not cope with
-                // recompilation of callee
+                // TODO: evaluate the direct access of the target class
+                // "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
                 "    if (method[%'METHOD-SLOT'%] == null) {",
                 "      method[%'METHOD-SLOT'%] = reflectMethod(targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
                 "    }",
@@ -2816,8 +2819,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.name,
                     "%'+AUTH-CHECK'%",
                     getAuthCheckCode(node.targetClass, node.uniqueName),
-                    "%'TARGET-CLASS'%",
-                    node.targetClass,
+                    // TODO: evaluate the direct access of the target class, which is not used now
+                    // because
+                    // it does not cope with recompilation of the callee as is.
+                    // "%'TARGET-CLASS'%",
+                    // node.targetClass,
                     "%'METHOD-NAME'%",
                     simpleName(node.name),
                     "%'CURRENT-OWNER'%",

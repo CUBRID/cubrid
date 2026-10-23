@@ -766,7 +766,7 @@ namespace cubmethod
 	    else if (err_when_not_found)
 	      {
 		err = ER_SP_INVALID_TYPE;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "procedure" : "function");
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "PROCEDURE" : "FUNCTION");
 	      }
 	  }
 	AU_RESTORE (save);
@@ -867,6 +867,21 @@ namespace cubmethod
     sm_downcase_name (temp.c_str(), buf, buf_size);
 
     return identifier_fits (temp);
+  }
+
+  static void
+  get_string_attr (MOP mop, const char *attr_name, std::string &out)
+  {
+    DB_VALUE val;
+    if (db_get (mop, attr_name, &val) == NO_ERROR)
+      {
+	const char *str = db_get_string (&val);
+	if (str != NULL)
+	  {
+	    out.assign (str);
+	  }
+	pr_clear_value (&val);
+      }
   }
 
   static int
@@ -1085,27 +1100,8 @@ namespace cubmethod
 	      goto exit;
 	    }
 
-	  DB_VALUE target_class_val;
-	  if (db_get (routine_mop, SP_ATTR_TARGET_CLASS, &target_class_val) == NO_ERROR)
-	    {
-	      const char *tc = db_get_string (&target_class_val);
-	      if (tc != NULL)
-		{
-		  res.target_class.assign (tc);
-		}
-	      pr_clear_value (&target_class_val);
-	    }
-
-	  DB_VALUE unique_name_val;
-	  if (db_get (routine_mop, SP_ATTR_UNIQUE_NAME, &unique_name_val) == NO_ERROR)
-	    {
-	      const char *un = db_get_string (&unique_name_val);
-	      if (un != NULL)
-		{
-		  res.unique_name.assign (un);
-		}
-	      pr_clear_value (&unique_name_val);
-	    }
+	  get_string_attr (routine_mop, SP_ATTR_TARGET_CLASS, res.target_class);
+	  get_string_attr (routine_mop, SP_ATTR_UNIQUE_NAME, res.unique_name);
 	}
     }
 
