@@ -4352,11 +4352,16 @@ sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
  * sm_update_all_statistics() - Update the statistics for all classes
  * 			        in the database.
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   random_seed(in): sampling seed for the histogram build
+ *   no_histogram(in): true iff WITH NO HISTOGRAM - skip the histogram pass entirely
+ *   skip_histogram_mops(in): classes excluded from the histogram pass (optimizedb --no-histogram-classes);
+ *                            their class statistics are still updated. NULL if none
+ *   n_skip(in): number of entries in skip_histogram_mops
  *   return: NO_ERROR on success, non-zero for ERROR
  */
 
 int
-sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
+sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram, MOP * skip_histogram_mops, int n_skip)
 {
   int error = NO_ERROR;
   DB_OBJLIST *cl;
@@ -4370,33 +4375,36 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
     }
 
   error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ );
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      /* Need to reset the statistics cache for all resident classes */
-      for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+      /* do not build histograms over a failed server-side statistics update */
+      return error;
+    }
+
+  /* Need to reset the statistics cache for all resident classes */
+  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+    {
+      if (!WS_IS_DELETED (cl->op))
 	{
-	  if (!WS_IS_DELETED (cl->op))
+	  /* uncache statistics only if object is cached - MOP trickery */
+	  class_ = (SM_CLASS *) cl->op->object;
+	  if (class_ != NULL && class_->class_type == SM_CLASS_CT)
 	    {
-	      /* uncache statistics only if object is cached - MOP trickery */
-	      class_ = (SM_CLASS *) cl->op->object;
-	      if (class_ != NULL && class_->class_type == SM_CLASS_CT)
+	      if (class_->stats != NULL)
 		{
-		  if (class_->stats != NULL)
-		    {
-		      stats_free_statistics (class_->stats);
-		      class_->stats = NULL;
-		    }
-		  /* make sure the class is flushed but quit if an error happens */
-		  if (locator_flush_class (cl->op) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      return (er_errid ());
-		    }
-		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
+		  stats_free_statistics (class_->stats);
+		  class_->stats = NULL;
+		}
+	      /* make sure the class is flushed but quit if an error happens */
+	      if (locator_flush_class (cl->op) != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return (er_errid ());
+		}
+	      error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
+	      if (error != NO_ERROR)
+		{
+		  return error;
 		}
 	    }
 	}
@@ -4404,7 +4412,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
 
   if (!no_histogram)
     {
-      error = update_histogram_for_all_classes (random_seed);
+      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip);
       if (error != NO_ERROR)
 	{
 	  return error;
