@@ -302,6 +302,7 @@ int
 au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 {
   DB_OBJECT *trigger_owner_obj = NULL;
+  TR_TRIGGER *trigger = NULL;
 #if 0
   DB_OBJECT *target_class_obj = NULL;
   SM_CLASS *target_class = NULL;
@@ -414,6 +415,17 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 	{
 	  assert (false);
 	}
+      goto end;
+    }
+
+  trigger = tr_map_trigger (trigger_mop, false);
+  if (trigger != NULL && trigger->class_mop == NULL)
+    {
+      /*
+       * tr_rename_trigger above admits a user trigger only for its owner,
+       * so the current user is the old owner and its cache must be invalidated.
+       */
+      tr_mark_user_triggers_modified ();
     }
 
 end:

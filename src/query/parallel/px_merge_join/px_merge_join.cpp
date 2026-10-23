@@ -67,10 +67,8 @@ namespace parallel_query
 	QFILE_FREE_AND_INIT_LIST_ID (list_id);
       }
 
-      /* like the hash join, the main thread keeps writing its own counters; its px_stats array only collects the
-       * workers' slices, so it is allocated here only when no enclosing parallel executor provides one */
       int
-      init_trace_stats (THREAD_ENTRY *thread_p, merge_manager &manager, int range_cnt, bool &main_stats_allocated)
+      init_worker_stats (THREAD_ENTRY *thread_p, merge_manager &manager, int range_cnt)
       {
 	size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
@@ -81,55 +79,30 @@ namespace parallel_query
 	    return er_errid ();
 	  }
 	memset (manager.m_px_worker_stats, 0, range_cnt * stats_size);
-
-	if (thread_p->m_px_stats == NULL)
-	  {
-	    thread_p->m_px_stats = perfmon_allocate_values ();
-	    if (thread_p->m_px_stats == NULL)
-	      {
-		assert_release_error (er_errid () != NO_ERROR);
-		return er_errid ();
-	      }
-	    memset (thread_p->m_px_stats, 0, stats_size);
-	    main_stats_allocated = true;
-	  }
 	return NO_ERROR;
       }
 
       void
       drain_worker_stats (THREAD_ENTRY *thread_p, merge_manager &manager, int range_cnt)
       {
-	int stats_cnt = 0;
-	const int *offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
-
-	assert (thread_p->m_px_stats != NULL);
+	size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
 	pthread_mutex_lock (&thread_p->m_px_stats_mutex);
 	for (int i = 0; i < range_cnt; i++)
 	  {
 	    UINT64 *worker_stats = manager.get_worker_stats (i);
-	    for (int k = 0; k < stats_cnt; k++)
-	      {
-		thread_p->m_px_stats[offsets[k]] += worker_stats[offsets[k]];
-		worker_stats[offsets[k]] = 0;
-	      }
+	    perfmon_add_values_to_local (thread_p, worker_stats);
+	    memset (worker_stats, 0, stats_size);
 	  }
 	pthread_mutex_unlock (&thread_p->m_px_stats_mutex);
-
-	perfmon_merge_parallel_stats_to_tran_stats (thread_p);
       }
 
       void
-      release_trace_stats (THREAD_ENTRY *thread_p, merge_manager &manager, bool main_stats_allocated)
+      release_worker_stats (THREAD_ENTRY *thread_p, merge_manager &manager)
       {
 	if (manager.m_px_worker_stats != NULL)
 	  {
 	    db_private_free_and_init (thread_p, manager.m_px_worker_stats);
-	  }
-	if (main_stats_allocated)
-	  {
-	    perfmon_merge_parallel_stats_to_tran_stats (thread_p);
-	    free_and_init (thread_p->m_px_stats);
 	  }
       }
     }
@@ -195,7 +168,6 @@ namespace parallel_query
       manager.m_vd = vd;
       manager.m_parts = &parts;
       manager.m_px_worker_stats = NULL;
-      bool main_stats_allocated = false;
 
       QFILE_TUPLE_VALUE_TYPE_LIST type_list;
       type_list.type_cnt = merge_infop->ls_pos_cnt;
@@ -232,12 +204,11 @@ namespace parallel_query
 	    }
 	}
 
-      if (thread_is_on_trace (thread_p))
+      if (perfmon_parallel_stats_needed (thread_p))
 	{
-	  error = init_trace_stats (thread_p, manager, range_cnt, main_stats_allocated);
+	  error = init_worker_stats (thread_p, manager, range_cnt);
 	  if (error != NO_ERROR)
 	    {
-	      release_trace_stats (thread_p, manager, main_stats_allocated);
 	      destroy_lists (thread_p, manager.m_outputs);
 	      free_and_init (type_list.domp);
 	      px_worker_manager->release_workers ();
@@ -259,7 +230,7 @@ namespace parallel_query
 	if (task_mgr.has_error ())
 	  {
 	    task_mgr.clear_interrupt (*thread_p);
-	    release_trace_stats (thread_p, manager, main_stats_allocated);
+	    release_worker_stats (thread_p, manager);
 	    destroy_lists (thread_p, manager.m_outputs);
 	    free_and_init (type_list.domp);
 	    px_worker_manager->release_workers ();
@@ -273,7 +244,7 @@ namespace parallel_query
 	{
 	  drain_worker_stats (thread_p, manager, range_cnt);
 	}
-      release_trace_stats (thread_p, manager, main_stats_allocated);
+      release_worker_stats (thread_p, manager);
 
       free_and_init (type_list.domp);
       int base = 0;

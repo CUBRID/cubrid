@@ -2183,6 +2183,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   bool had_holder = false;
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
+  bool is_trace_only;
   bool maybe_deallocated;
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
@@ -2238,8 +2239,10 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   perf.lock_wait_time = 0;
   perf.is_perf_tracking = perfmon_is_perf_tracking ();
+  /* nobody watches statistics, but this thread's trace reads its fetches and fix time */
+  is_trace_only = !perf.is_perf_tracking && thread_p != NULL && thread_p->on_trace;
 
-  if (perf.is_perf_tracking)
+  if (perf.is_perf_tracking || is_trace_only)
     {
       tsc_getticks (&perf.start_tick);
     }
@@ -2520,7 +2523,8 @@ fast_path:
     {
       perf.perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
 
-      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
+      /* the watch may have ended since the fix started; a thread on trace still counts this fetch */
+      perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf.perf_latch_mode = PERF_HOLDER_LATCH_READ;
@@ -2571,6 +2575,19 @@ fast_path:
 					  perf.fix_wait_time);
 	}
     }
+  else if (is_trace_only)
+    {
+      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset, 1);
+
+      tsc_getticks (&perf.end_tick);
+      tsc_elapsed_time_usec (&perf.tv_diff, perf.end_tick, perf.start_tick);
+      perf.fix_wait_time = perf.tv_diff.tv_sec * 1000000LL + perf.tv_diff.tv_usec;
+      if (perf.fix_wait_time > 0)
+	{
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
+					  perf.fix_wait_time);
+	}
+    }
 
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
@@ -2588,6 +2605,12 @@ fast_path:
  *   vpid(in): Complete Page identifier
  *
  * Note:
+ *       Fetch accounting and fix-time measurement are intentionally omitted for performance.
+ *       On a buffer miss, pgbuf_claim_bcb_for_fix() still increments ioreads without a matching fetch.
+ *       Workloads that use this path heavily, such as large ORDER BY queries whose sort keys are a subset of the
+ *       selected columns, can report Data_page_buffer_hit_ratio below the actual hit ratio, even 0.00.
+ *       TODO: Review how to resolve this fetch/ioread accounting asymmetry.
+ *
  *       WARNING:
  *       This is only for reading temporary file.
  *       if bcb is on buffer, only fcnt++. it is latchless and LRU mutexless.
@@ -4671,7 +4694,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	    }
 
 	  /* Record number of reads in statistics */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_IOREADS);
 
 	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
 				     length, area) == NULL)
@@ -4694,7 +4717,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 
       if (thread_get_sort_stats_active (thread_p))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
 
       /* release mutex */
@@ -8430,7 +8453,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   if (fetch_mode != NEW_PAGE)
     {
       /* Record number of reads in statistics */
-      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+      perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_IOREADS);
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -8527,7 +8550,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
       if (thread_get_sort_stats_active (thread_p))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_IO_PAGES);
 	}
     }
   else
@@ -8558,7 +8581,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
       if (thread_get_sort_stats_active (thread_p))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
     }
 

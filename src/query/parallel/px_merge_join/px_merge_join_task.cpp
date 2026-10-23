@@ -274,7 +274,7 @@ exit_on_stop:
 
       assert (output != nullptr);
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->m_px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = m_manager->get_worker_stats (m_range_index);
 	  thread_ref.m_uses_px_stats = true;

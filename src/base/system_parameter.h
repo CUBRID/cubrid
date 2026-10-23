@@ -562,8 +562,10 @@ enum param_id
   PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
   PRM_ID_COST_HEAP_FETCH_PER_OID,
 
+  PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_COST_HEAP_FETCH_PER_OID
+  PRM_LAST_ID = PRM_ID_PLAN_CACHE_BIND_VARIANTS
 };
 typedef enum param_id PARAM_ID;
 

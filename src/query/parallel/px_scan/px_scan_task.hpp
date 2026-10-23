@@ -117,6 +117,17 @@ namespace parallel_scan
       bool m_handlers_initialized;	/* write_initialize () reached; finalize () may finalize the handlers */
       TSC_TICKS m_start_tick;
 
+      struct scan_fixes
+      {
+	UINT64 fetches;
+	UINT64 ioreads;
+	UINT64 fetch_time;
+      };
+      /* trace only: the scan's own page fixes, counted around the page and slot reads the way
+       * scan_next_scan_local () counts a serial scan; the NL inner scans, dptr subqueries and result
+       * writes a worker runs per row stay outside, as they do for a serial scan */
+      scan_fixes m_scan_fixes;
+
       worker_manager *m_worker_manager;
 
       int initialize (cubthread::entry &thread_ref);
@@ -124,6 +135,8 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
+      scan_fixes read_fixes (cubthread::entry &thread_ref);
+      void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
       void drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop);
   };

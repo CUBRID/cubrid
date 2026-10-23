@@ -52,7 +52,7 @@ namespace parallel_query
       const VAL_DESCR *m_vd;
       const merge_partitions *m_parts;
       std::vector<QFILE_LIST_ID *> m_outputs;	/* one private output list per range, opened on the main thread */
-      UINT64 *m_px_worker_stats;	/* one perf stat slice per range while tracing, else NULL */
+      UINT64 *m_px_worker_stats;	/* one perf stat slice per range when stats are read, else NULL */
 
       UINT64 *get_worker_stats (int range_index) const;
     };
