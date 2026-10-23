@@ -108,13 +108,24 @@ namespace cubstorage
       // ---- updates. false: the sector could not be added (out of memory or MAX_SECTORS); needs_retry () is set.
       // free space measured under the page latch (vacuum, delete, rollback, statistics, recovery)
       bool feedback (short volid, std::int32_t pageid, std::uint8_t code);
-      // a page enters a shard L1 slot; a sector seen first here is a new sector of the heap (other pages NOT_DATA)
+      // a page enters a shard L1 slot; a sector seen first here is a new sector of the heap (other pages NOT_DATA), or,
+      // while needs_retry () is set, a sector the map may be missing (other pages UNVERIFIED)
       bool set_resident (short volid, std::int32_t pageid, std::uint8_t code);
       // a page leaves its L1 slot with the caller's code, but a code fed back while it was resident (or while it is
       // being released) wins. measured: the caller fixed the page to get the code; it does not override a fed-back code
       void release (short volid, std::int32_t pageid, std::uint8_t code, bool measured);
       // the page left the heap
       void forget (short volid, std::int32_t pageid);
+      // the page was found gone without a latch that keeps it so (the maintenance daemon): NOT_DATA only while it is
+      // still UNVERIFIED and not resident. false: left as it is
+      bool forget_unverified (short volid, std::int32_t pageid);
+      // the code a shard slot keeps for its page, written into the map while the page stays resident, so that the
+      // image a checkpoint writes carries it (heap_file.c). No-op unless the page is resident and not dirty (a dirty
+      // page's fed-back code is what release () keeps), or when its code is not a tier (NOT_DATA, UNVERIFIED). Marks
+      // the sector persist-dirty when the code changes. A feedback or forget that writes the page's code meanwhile
+      // is not hidden by it (a feedback of the code it replaces may come back over-estimated, as in release ()).
+      // true: the code changed
+      bool set_resident_code (short volid, std::int32_t pageid, std::uint8_t code);
       // allocate, outside any page latch, the nodes set_resident () needs if the next sector it adds follows the last
       // sector of the map on the same volume. Best effort: an allocation failure leaves the reserve short
       void reserve ();
@@ -140,7 +151,8 @@ namespace cubstorage
       bool load_sector (const bestspace_map_entry &entry);
       // apply recorded pages (mask) of one sector like feedback; adds the sector (other pages UNVERIFIED) if new
       bool merge_sector (const bestspace_map_entry &entry, std::uint64_t mask);
-      // a file sector the map does not know: allocated pages UNVERIFIED, others NOT_DATA. no-op if known
+      // a file sector the map does not know: allocated pages UNVERIFIED, others NOT_DATA. no-op if known, also when
+      // another thread adds it first: the codes are written before the sector is published
       bool add_missing_sector (short volid, std::int32_t first_pageid, std::uint64_t allocated);
       // non-resident UNVERIFIED pages from cursor (page index over all sectors); returns how many were written
       std::size_t next_unverified (std::size_t &cursor, bestspace_map_page *out, std::size_t max_count);
@@ -151,7 +163,14 @@ namespace cubstorage
       bool is_inline () const;
       std::uint64_t num_unverified () const;
       bool needs_retry () const;
+      // a check the map needs could not run now (the maintenance daemon runs it again)
+      void mark_needs_retry ();
       void clear_needs_retry ();
+      // a count every map bumps when it may have new work for the maintenance daemon: a page became UNVERIFIED, a
+      // sector was added (it may be past the map pages on disk), needs_retry was set. The daemon skips a round while
+      // the count has not moved and its last pass left no work (heap_file.c). The hot paths' usual changes leave it
+      static std::uint64_t work_epoch ();
+      static void note_work ();
       void count_codes (std::uint64_t counts[16]);
       void count (counter id, std::uint64_t value = 1);
       void get_usage (std::size_t &bytes, std::uint64_t counters[CNT_LAST]);
@@ -165,6 +184,9 @@ namespace cubstorage
 #if !defined (NDEBUG)
       // the next count internal allocations fail (unit tests, fault injection)
       static void debug_fail_allocations (int count);
+      // set_resident_code () calls hook (arg) once it has read the code and checked the bits, before its exchange: a
+      // write that comes in between (unit tests). nullptr: none
+      static void debug_resident_code_hook (void (*hook) (void *), void *arg);
 #endif
 
     private:
@@ -243,7 +265,7 @@ namespace cubstorage
       static std::uint64_t radix_key (std::uint64_t key);
       static std::size_t radix_slot (std::uint64_t rk, int level);
       static std::uint8_t get_code (record *rec, std::size_t off);
-      static void init_record (record &rec, std::uint64_t fill);
+      static void init_record (record &rec, const std::uint64_t fills[4]);
       static std::uint64_t mask_of (hint &h, std::uint8_t min_code);
       static std::uint32_t prune (hint &parent, hint &child, std::size_t i, std::uint8_t min_code);
       static void set_bit (std::atomic<std::uint64_t> &w, std::uint64_t bit);
@@ -257,6 +279,9 @@ namespace cubstorage
       record *find (short volid, std::int32_t pageid, std::size_t &n);
       // use_spares: take the nodes of a new sector from the reserve (set_resident (), under the heap header latch)
       record *get_or_add (short volid, std::int32_t pageid, std::size_t &n, std::uint64_t fill, bool use_spares);
+      // fills: the codes of a new sector, word by word, written before it is published. added: this call added it
+      record *get_or_add (short volid, std::int32_t pageid, std::size_t &n, const std::uint64_t fills[4],
+			  bool use_spares, bool &added);
       bool promote (bool use_spares);
       bool add_group (rootdir *root, std::size_t g, bool use_spares);
       bool radix_insert (std::atomic<rnode *> &root, std::uint64_t rk, std::size_t number, bool use_spares);
@@ -344,6 +369,9 @@ namespace cubstorage
       entry *take_group (std::uint64_t group, void (*locked) (entry *list, void *arg) = nullptr, void *arg = nullptr);
       // detach every entry
       entry *take_all ();
+      // free every entry, the bucket arrays and every lost mark, lost_all () included: the table is as constructed.
+      // Not for a table other threads use at the same time (restart recovery starts and ends with it)
+      void clear ();
       static void free_list (entry *&list);
       std::size_t size () const;
 

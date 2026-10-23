@@ -62,6 +62,15 @@ typedef enum
   FILE_HEAP_HEADER_UNKNOWN	/* cannot tell now: no header page yet, or the file header is latched by someone else */
 } FILE_HEAP_HEADER_STATE;
 
+/* What file_probe_heap_sectors () finds for the file of a heap whose page the caller holds */
+typedef enum
+{
+  FILE_HEAP_SECTORS_BUSY,	/* cannot tell now: the file header is latched by someone else, or no header page yet */
+  FILE_HEAP_SECTORS_GONE,	/* the file id names no permanent heap file with this header page any more (dropped) */
+  FILE_HEAP_SECTORS_COVERED,	/* no more sectors with an allocated page than the caller knows */
+  FILE_HEAP_SECTORS_COLLECTED	/* more: the sectors with an allocated page are collected */
+} FILE_HEAP_SECTORS_STATE;
+
 /* Set a vfid with values of volid and fileid */
 #define VFID_SET(vfid_ptr, volid_value, fileid_value) \
   do { \
@@ -332,5 +341,8 @@ extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
 /* partial file scan stuff */
 extern int file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB_COLLECTOR * collector_out);
 extern int file_get_num_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_sectors_out);
+extern int file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * hdr_vpid,
+				    int known_sectors, FILE_HEAP_SECTORS_STATE * state, int *n_sectors_out,
+				    FILE_FTAB_COLLECTOR * collector_out);
 
 #endif /* _FILE_MANAGER_H_ */

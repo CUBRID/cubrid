@@ -24,6 +24,7 @@
 #include <atomic>
 #include <cstdint>
 #include <map>
+#include <random>
 #include <thread>
 #include <vector>
 
@@ -130,6 +131,227 @@ TEST_CASE ("recovery: a sector follows the owner with the largest LSA in any pro
   {
     return x.lsa < y.lsa;
   }));
+}
+
+namespace
+{
+  // one page state that restart recovery records: the class in the page and the page LSA after the change
+  struct rv_state
+  {
+    std::uint64_t key;
+    std::size_t off;
+    std::uint64_t owner, lsa;
+    std::uint8_t code;
+  };
+
+  struct rv_expect
+  {
+    std::uint64_t owner = 0, lsa = 0, mask = 0;
+    std::uint8_t codes[64] = {};
+  };
+
+  // the states of each page in log order (one list per page). Sector s belongs to class 0xA, then to 0xB when
+  // s % 3 > 0, then to 0xC when s % 3 == 2: each later owner gets the sector after the earlier owner's file is
+  // destroyed, so all of its LSAs are larger. A redo skip records the disk state of a page again with the same LSA
+  void
+  rv_make_states (std::mt19937_64 &rng, std::size_t sectors, std::vector<std::vector<rv_state>> &pages,
+		  std::map<std::uint64_t, rv_expect> &expect)
+  {
+    const std::uint64_t owners[3] = { 0xA, 0xB, 0xC };
+
+    pages.assign (sectors * 64, std::vector<rv_state> ());
+    expect.clear ();
+    for (std::size_t s = 0; s < sectors; s++)
+      {
+	const std::uint64_t key = bestspace_map::make_key (static_cast<short> (s % 3), static_cast<std::int32_t> (s * 64));
+	std::uint64_t lsa = 100;
+	rv_expect &ex = expect[key];
+
+	for (std::size_t era = 0; era <= s % 3; era++)
+	  {
+	    // the sector restarts empty for each owner: only the last owner's pages count
+	    ex = rv_expect ();
+	    ex.owner = owners[era];
+	    std::size_t n = 1 + rng () % 40;
+	    for (std::size_t i = 0; i < n; i++)
+	      {
+		rv_state st;
+		st.key = key;
+		st.off = rng () % 64;
+		st.owner = owners[era];
+		st.code = static_cast<std::uint8_t> (rng () % 16);
+		lsa += 1 + rng () % 5;
+		st.lsa = lsa;
+		pages[s * 64 + st.off].push_back (st);
+		if (rng () % 4 == 0)
+		  {
+		    // the next record of the page is skipped: the same disk state again
+		    pages[s * 64 + st.off].push_back (st);
+		  }
+		ex.lsa = lsa;
+		ex.mask |= 1ULL << st.off;
+		ex.codes[st.off] = st.code;
+	      }
+	  }
+      }
+  }
+
+  // the states of the given pages in a random order that keeps each page's own order (one redo worker per page)
+  void
+  rv_deliver (bestspace_sector_table &table, const std::vector<std::vector<rv_state>> &pages,
+	      const std::vector<std::size_t> &mine, std::uint64_t seed, std::atomic<int> &failures)
+  {
+    std::mt19937_64 rng (seed);
+    std::vector<std::size_t> next (mine.size (), 0), open;
+
+    for (std::size_t i = 0; i < mine.size (); i++)
+      {
+	if (!pages[mine[i]].empty ())
+	  {
+	    open.push_back (i);
+	  }
+      }
+    while (!open.empty ())
+      {
+	std::size_t pick = rng () % open.size (), i = open[pick];
+	const rv_state &st = pages[mine[i]][next[i]++];
+	if (!table.record (0, st.key, st.off, st.code, st.owner, st.lsa))
+	  {
+	    failures.fetch_add (1);
+	  }
+	if (next[i] == pages[mine[i]].size ())
+	  {
+	    open[pick] = open.back ();
+	    open.pop_back ();
+	  }
+      }
+  }
+
+  void
+  rv_check (bestspace_sector_table &table, const std::map<std::uint64_t, rv_expect> &expect)
+  {
+    bestspace_sector_table::entry *list = table.take_all ();
+    std::size_t n = 0;
+
+    for (bestspace_sector_table::entry *e = list; e != nullptr; e = e->next, n++)
+      {
+	auto it = expect.find (e->key);
+	REQUIRE (it != expect.end ());
+	REQUIRE (e->group == 0);
+	REQUIRE (e->owner == it->second.owner);
+	REQUIRE (e->owner_lsa == it->second.lsa);
+	REQUIRE (e->mask == it->second.mask);
+	for (std::size_t off = 0; off < 64; off++)
+	  {
+	    if (e->mask & (1ULL << off))
+	      {
+		REQUIRE (code_in (e, off) == it->second.codes[off]);
+	      }
+	  }
+      }
+    REQUIRE (n == expect.size ());
+    bestspace_sector_table::free_list (list);
+  }
+}
+
+TEST_CASE ("recovery: shuffled states of up to three owners per sector end with the last owner's last states",
+	   "[bestspace_sector_table]")
+{
+  std::vector<std::vector<rv_state>> pages;
+  std::map<std::uint64_t, rv_expect> expect;
+  std::atomic<int> failures (0);
+
+  for (std::uint64_t round = 0; round < 20; round++)
+    {
+      std::mt19937_64 rng (0x5EC7012 + round);
+      bestspace_sector_table table;
+      std::vector<std::size_t> all;
+
+      rv_make_states (rng, 150, pages, expect);
+      for (std::size_t p = 0; p < pages.size (); p++)
+	{
+	  all.push_back (p);
+	}
+      rv_deliver (table, pages, all, rng (), failures);
+      REQUIRE (failures.load () == 0);
+      rv_check (table, expect);
+    }
+}
+
+TEST_CASE ("recovery: parallel redo workers recording pages of the same sectors end with the same states",
+	   "[bestspace_sector_table]")
+{
+  std::vector<std::vector<rv_state>> pages;
+  std::map<std::uint64_t, rv_expect> expect;
+  // Catch2 assertions are not thread-safe: the threads count failures, the test thread checks them
+  std::atomic<int> failures (0);
+
+  for (std::uint64_t round = 0; round < 5; round++)
+    {
+      std::mt19937_64 rng (0xCAFE + round);
+      bestspace_sector_table table;
+      const std::size_t workers = 8;
+      std::vector<std::vector<std::size_t>> mine (workers);
+      std::vector<std::thread> threads;
+
+      rv_make_states (rng, 600, pages, expect);
+      // a page goes to one worker, as parallel redo hashes a VPID to one task
+      for (std::size_t p = 0; p < pages.size (); p++)
+	{
+	  std::size_t worker = static_cast<std::size_t> ((p * 0x9E3779B97F4A7C15ULL >> 32) % workers);
+	  mine[worker].push_back (p);
+	}
+      for (std::size_t w = 0; w < workers; w++)
+	{
+	  std::uint64_t seed = rng ();
+	  threads.emplace_back ([&table, &pages, &mine, &failures, w, seed] ()
+	  {
+	    rv_deliver (table, pages, mine[w], seed, failures);
+	  });
+	}
+      for (std::thread &th : threads)
+	{
+	  th.join ();
+	}
+      REQUIRE (failures.load () == 0);
+      rv_check (table, expect);
+    }
+}
+
+TEST_CASE ("recovery: a late state of an earlier owner never takes the sector back", "[bestspace_sector_table]")
+{
+  bestspace_sector_table table;
+  const std::uint64_t key = bestspace_map::make_key (2, 128);
+
+  // a worker records a page of the new owner first
+  REQUIRE (table.record (0, key, 5, 9, 0xB, 300));
+  // pages of the old owner that other workers redo later: dropped
+  REQUIRE (table.record (0, key, 1, 4, 0xA, 120));
+  REQUIRE (table.record (0, key, 5, 2, 0xA, 250));
+  // another page of the new owner with a smaller LSA, then its redo skip (same disk state, same LSA): kept
+  REQUIRE (table.record (0, key, 7, 3, 0xB, 280));
+  REQUIRE (table.record (0, key, 7, 3, 0xB, 280));
+
+  bestspace_sector_table::entry *list = table.take_all ();
+  REQUIRE (length (list) == 1);
+  REQUIRE (list->owner == 0xB);
+  REQUIRE (list->owner_lsa == 300);
+  REQUIRE (list->mask == ((1ULL << 5) | (1ULL << 7)));
+  REQUIRE (code_in (list, 5) == 9);
+  REQUIRE (code_in (list, 7) == 3);
+  bestspace_sector_table::free_list (list);
+
+  // a later owner (the file was destroyed again) clears every page of the previous one
+  REQUIRE (table.record (0, key, 5, 9, 0xB, 300));
+  REQUIRE (table.record (0, key, 2, 6, 0xC, 400));
+  REQUIRE (table.record (0, key, 7, 1, 0xB, 310));
+  list = table.take_all ();
+  REQUIRE (length (list) == 1);
+  REQUIRE (list->owner == 0xC);
+  REQUIRE (list->owner_lsa == 400);
+  REQUIRE (list->mask == (1ULL << 2));
+  REQUIRE (code_in (list, 2) == 6);
+  bestspace_sector_table::free_list (list);
 }
 
 TEST_CASE ("concurrent records of different pages of the same sectors are all kept", "[bestspace_sector_table]")
@@ -447,6 +669,61 @@ TEST_CASE ("lost groups are remembered until cleared", "[bestspace_sector_table]
   REQUIRE (table.is_lost (123456, 0));
 }
 
+TEST_CASE ("clear empties the entries and every lost mark, and the table records again", "[bestspace_sector_table]")
+{
+  bestspace_sector_table table;
+  const std::uint64_t codes[4] = { 0x5, 0, 0, 0 };
+  std::uint64_t group = 0, owner = 0, *groups = nullptr;
+  std::size_t count = 0;
+
+  // enough sectors that every stripe grows its buckets
+  for (std::int32_t s = 0; s < 4096; s++)
+    {
+      REQUIRE (table.record (0, bestspace_map::make_key (0, s * 64), s % 64, 2, 0xA + (s % 3), 100 + s));
+      REQUIRE (table.record (7, bestspace_map::make_key (1, s * 64), 0, 3, 0, 0));
+    }
+  table.mark_lost (0, 0xB);
+  for (std::uint64_t g = 1; g <= bestspace_sector_table::MAX_LOST + 1; g++)
+    {
+      table.mark_lost (g, 0);
+    }
+  REQUIRE (table.size () == 8192);
+  REQUIRE (table.lost_all ());
+
+  table.clear ();
+  REQUIRE (table.size () == 0);
+  REQUIRE_FALSE (table.lost_all ());
+  REQUIRE_FALSE (table.is_lost (7, 0));
+  REQUIRE_FALSE (table.take_lost (group, owner));
+  REQUIRE_FALSE (table.has_group (7));
+  REQUIRE (table.list_groups (groups, count));
+  REQUIRE (count == 0);
+  bestspace_sector_table::entry *list = table.take_all ();
+  REQUIRE (list == nullptr);
+  list = table.take_group (7);
+  REQUIRE (list == nullptr);
+  REQUIRE (table.restore_sector (7, bestspace_map::make_key (1, 0), codes, 0x1));
+
+  // as constructed: records, takes and lost marks work again
+  REQUIRE (table.record (0, bestspace_map::make_key (0, 64), 3, 4, 0xC, 200));
+  table.mark_lost (0, 0xC);
+  REQUIRE (table.size () == 2);
+  REQUIRE (table.take_lost (group, owner));
+  REQUIRE (owner == 0xC);
+  list = table.take_group (7);
+  REQUIRE (length (list) == 1);
+  REQUIRE (code_in (list, 0) == 5);
+  bestspace_sector_table::free_list (list);
+  list = table.take_all ();
+  REQUIRE (length (list) == 1);
+  REQUIRE (list->owner == 0xC);
+  REQUIRE (code_in (list, 3) == 4);
+  bestspace_sector_table::free_list (list);
+  table.clear ();
+  table.clear ();
+  REQUIRE (table.size () == 0);
+}
+
 #if !defined (NDEBUG)
 TEST_CASE ("an entry allocation failure is reported", "[bestspace_sector_table]")
 {
@@ -492,5 +769,49 @@ TEST_CASE ("record_if marks the group lost when it cannot record", "[bestspace_s
   REQUIRE (table.record_if (4, second, 0, 1, always, nullptr) == bestspace_sector_table::NO_MEMORY);
   REQUIRE (table.is_lost (4, 0));
   REQUIRE_FALSE (table.is_lost (5, 0));
+}
+
+TEST_CASE ("recovery: a state that cannot be recorded leaves its class lost", "[bestspace_sector_table]")
+{
+  bestspace_sector_table table;
+  const std::uint64_t first = bestspace_map::make_key (0, 0), second = bestspace_map::make_key (0, 64);
+  std::uint64_t group = 1, owner = 0;
+
+  REQUIRE (table.record (0, first, 0, 3, 0xA, 100));
+  bestspace_map::debug_fail_allocations (1);
+  // a sector already in the table needs no allocation
+  REQUIRE (table.record (0, first, 1, 4, 0xA, 110));
+  // a new sector does: heap_bestspace_rv_record () marks the class lost, once however often it fails
+  REQUIRE_FALSE (table.record (0, second, 0, 5, 0xB, 120));
+  table.mark_lost (0, 0xB);
+  table.mark_lost (0, 0xB);
+  bestspace_map::debug_fail_allocations (0);
+  REQUIRE (table.record (0, second, 1, 6, 0xC, 130));
+
+  REQUIRE (table.is_lost (0, 0xB));
+  REQUIRE_FALSE (table.is_lost (0, 0xA));
+  REQUIRE_FALSE (table.is_lost (0, 0xC));
+  REQUIRE (table.take_lost (group, owner));
+  REQUIRE (group == 0);
+  REQUIRE (owner == 0xB);
+  REQUIRE_FALSE (table.take_lost (group, owner));
+
+  bestspace_sector_table::entry *list = table.take_all ();
+  REQUIRE (length (list) == 2);
+  for (bestspace_sector_table::entry *e = list; e != nullptr; e = e->next)
+    {
+      if (e->key == first)
+	{
+	  REQUIRE (e->owner == 0xA);
+	  REQUIRE (e->mask == 0x3);
+	}
+      else
+	{
+	  REQUIRE (e->key == second);
+	  REQUIRE (e->owner == 0xC);
+	  REQUIRE (e->mask == 0x2);
+	}
+    }
+  bestspace_sector_table::free_list (list);
 }
 #endif

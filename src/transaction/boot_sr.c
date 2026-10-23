@@ -2447,6 +2447,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  /* the bestspace maintenance daemon: its rounds start once the server is up (SERVER_MODE only) */
+  heap_bestspace_daemon_init ();
+
+  /* the checkpoint restart recovery could not complete (the bestspace maps it measured are written with logging, so
+   * after the log is restarted): run it now, before the server registers with the master or an SA mode boot returns,
+   * so that the redo point moves before anything else runs, as it does when recovery's checkpoint completes */
+  log_run_deferred_restart_checkpoint (thread_p);
+
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
@@ -2773,6 +2781,8 @@ error:
 
 
   vacuum_stop_workers (thread_p);
+  /* its system worker must be retired before log_final () */
+  heap_bestspace_daemon_destroy ();
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
@@ -3087,6 +3097,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   logtb_set_to_system_tran_index (thread_p);
   log_abort_all_active_transaction (thread_p);
   vacuum_stop_workers (thread_p);
+  /* before the maps are written below (heap_bestspace_checkpoint ()), so that they do not change after it; and its
+   * system worker must be retired before log_final () destroys the system transactions */
+  heap_bestspace_daemon_destroy ();
 
   /* before removing temp vols */
   (void) logtb_reflect_global_unique_stats_to_btree (thread_p);

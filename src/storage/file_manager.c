@@ -5800,6 +5800,67 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
 }
 
 /*
+ * file_header_fix_conditional () - read latch a file header page at once or not at all, for a caller that may hold a
+ *				    page of the file (file_destroy () latches the file header before every page of the
+ *				    file, so waiting for it could deadlock)
+ *
+ * return          : error code (the sector check failed)
+ * thread_p (in)   : thread entry
+ * vpid_fhead (in) : the file header page
+ * page_out (out)  : the page read latched, or NULL
+ * busy (out)      : with a NULL page, true when the page could not be latched at once (or read now); false when it is
+ *		     deallocated or its sector is not reserved
+ */
+static int
+file_header_fix_conditional (THREAD_ENTRY * thread_p, const VPID * vpid_fhead, PAGE_PTR * page_out, bool * busy)
+{
+  DISK_ISVALID isvalid;
+  bool deallocated;
+  int error_code = NO_ERROR;
+
+  *page_out = NULL;
+  *busy = false;
+
+  /* the sector first, as pgbuf_fix_if_not_deallocated () does: a fix in a sector that is not reserved asserts under
+   * page validation. The sector table pages are never latched by someone waiting for a heap page */
+  isvalid = disk_is_page_sector_reserved (thread_p, vpid_fhead->volid, vpid_fhead->pageid);
+  if (isvalid == DISK_INVALID)
+    {
+      return NO_ERROR;
+    }
+  else if (isvalid == DISK_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  /* a conditional latch that fails sets no error: only what this fix sets is looked at, then dropped */
+  er_stack_push ();
+  *page_out = pgbuf_fix (thread_p, vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  deallocated = *page_out == NULL && er_errid () == ER_PB_BAD_PAGEID;
+  er_stack_pop ();
+  /* latched by someone else, or not readable now */
+  *busy = *page_out == NULL && !deallocated;
+  return NO_ERROR;
+}
+
+/*
+ * file_header_is_perm_heap () - is a latched page the file header of the permanent heap file vfid
+ *
+ * return          : true if it is
+ * thread_p (in)   : thread entry
+ * page_fhead (in) : the page, read or write latched
+ * vfid (in)       : the heap file
+ */
+static bool
+file_header_is_perm_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VFID * vfid)
+{
+  FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
+
+  return (pgbuf_get_page_ptype (thread_p, page_fhead) == PAGE_FTAB && VFID_EQ (&fhead->self, vfid)
+	  && !FILE_IS_TEMPORARY (fhead) && (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS));
+}
+
+/*
  * file_probe_heap_header () - the header page (sticky first page) of a heap file, for a caller that holds neither a
  *			       lock nor a page of the file: it may have been destroyed, and its file header page reused
  *
@@ -5840,29 +5901,16 @@ file_probe_heap_header (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_
     }
   else
     {
-      bool deallocated;
-      DISK_ISVALID isvalid;
+      bool busy;
 
-      /* the sector first, as pgbuf_fix_if_not_deallocated () does: a fix in a sector that is not reserved asserts under
-       * page validation. The sector table pages are never latched by someone waiting for a heap page */
-      isvalid = disk_is_page_sector_reserved (thread_p, vpid_fhead.volid, vpid_fhead.pageid);
-      if (isvalid == DISK_INVALID)
+      assert (latch_condition == PGBUF_CONDITIONAL_LATCH);
+      error_code = file_header_fix_conditional (thread_p, &vpid_fhead, &page_fhead, &busy);
+      if (error_code != NO_ERROR)
 	{
-	  return NO_ERROR;
-	}
-      else if (isvalid == DISK_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
-      /* a conditional latch that fails sets no error: only what this fix sets is looked at, then dropped */
-      er_stack_push ();
-      page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, latch_condition);
-      deallocated = page_fhead == NULL && er_errid () == ER_PB_BAD_PAGEID;
-      er_stack_pop ();
-      if (page_fhead == NULL && !deallocated)
+      if (busy)
 	{
-	  /* latched by someone else, or not readable now */
 	  *state = FILE_HEAP_HEADER_UNKNOWN;
 	  return NO_ERROR;
 	}
@@ -5874,8 +5922,7 @@ file_probe_heap_header (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  if (pgbuf_get_page_ptype (thread_p, page_fhead) == PAGE_FTAB && VFID_EQ (&fhead->self, vfid)
-      && !FILE_IS_TEMPORARY (fhead) && (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS))
+  if (file_header_is_perm_heap (thread_p, page_fhead, vfid))
     {
       if (VPID_ISNULL (&fhead->vpid_sticky_first))
 	{
@@ -11729,16 +11776,31 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
   for (const auto &[vfid, file_type]:invalid_files)
 // *INDENT-ON*
   {
+    bool is_heap = file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS;
+
+    if (is_heap)
+      {
+	/* the bestspace upkeep holds no lock on the class: keep it away while file_destroy () latches every page */
+	heap_bestspace_quiesce (&vfid, true);
+      }
     log_sysop_start (thread_p);
 
     if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
       {
 	ASSERT_ERROR_AND_SET (error_code);
 	log_sysop_abort (thread_p);
+	if (is_heap)
+	  {
+	    heap_bestspace_end_quiesce (&vfid);
+	  }
 	return error_code;
       }
 
     log_sysop_commit (thread_p);
+    if (is_heap)
+      {
+	heap_bestspace_end_quiesce (&vfid);
+      }
 
     switch (file_type)
       {
@@ -11915,9 +11977,21 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 	}
       else
 	{
-	  if (file_destroy (thread_p, target_vfid, false) != NO_ERROR)
+	  bool is_heap = file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS;
+
+	  if (is_heap)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      /* the bestspace upkeep holds no lock on the class: away while file_destroy () latches every page */
+	      heap_bestspace_quiesce (target_vfid, true);
+	    }
+	  error_code = file_destroy (thread_p, target_vfid, false);
+	  if (is_heap)
+	    {
+	      heap_bestspace_end_quiesce (target_vfid);
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
 
 	      log_sysop_abort (thread_p);
 
@@ -12564,10 +12638,24 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       goto exit;
     }
 
-  error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
+  error_code = file_get_tde_algorithm (thread_p, &hfid.vfid, PGBUF_UNCONDITIONAL_LATCH, &prev_tde_algo);
   if (error_code != NO_ERROR)
     {
       goto exit;
+    }
+  if (prev_tde_algo != tde_algo)
+    {
+      /* the bestspace upkeep (the maintenance daemon, the checkpoint's writer) holds no lock on the class, and with the
+       * heap header latched it waits for heap pages or the file header: keep it away while every page is latched
+       * under the file header, and let it go on afterwards, also after an error. The map stays loaded: the pages are
+       * encrypted from now on, their free space does not change */
+      heap_bestspace_quiesce (&hfid.vfid, false);
+      error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
+      heap_bestspace_end_quiesce (&hfid.vfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
 
   if (heap_ovf_find_vfid (thread_p, &hfid, &hovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
@@ -12696,32 +12784,52 @@ file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *ite
 }
 
 /*
- * file_get_all_data_sectors () - collect all data sectors
+ * file_extdata_collect_nonempty_sectors_part () - collect FILE_PARTIAL_SECTOR from partial table, leaving out the
+ *						   sectors with no page allocated
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * item (in)     : item (FILE_PARTIAL_SECTOR)
+ * index (in)    : index
+ * stop (out)    : ignored
+ * args (in/out) : FILE_FTAB_COLLECTOR *
+ */
+static int
+file_extdata_collect_nonempty_sectors_part (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop,
+					    void *args)
+{
+  FILE_PARTIAL_SECTOR *partsect = (FILE_PARTIAL_SECTOR *) item;
+
+  if (partsect->page_bitmap == FILE_EMPTY_PAGE_BITMAP)
+    {
+      /* reserved, nothing allocated yet */
+      return NO_ERROR;
+    }
+  return file_extdata_collect_data_sectors_part (thread_p, item, index_unused, stop, args);
+}
+
+/*
+ * file_collect_data_sectors () - collect the data sectors of a file whose header page the caller holds latched
  *
  * return        : NO_ERROR or error code
  * thread_p (in) : thread entry
- * hfid (in)     : heap file ID
- * collector_out(out): output collected table pages
+ * page_fhead (in) : file header page, latched by the caller (and still latched on return)
+ * nonempty_only (in) : leave out the partial sectors with no page allocated. A sector that holds file table pages
+ *			only is kept, with an empty bitmap
+ * collector_out(out): the sectors, file table pages removed from their bitmaps
  */
-int
-file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB_COLLECTOR * collector_out)
+static int
+file_collect_data_sectors (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool nonempty_only,
+			   FILE_FTAB_COLLECTOR * collector_out)
 {
   VPID vpid_fhead;
-  PAGE_PTR page_fhead;
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
   FILE_FTAB_COLLECTOR ftab_collector;
   int i, j;
   int error_code = NO_ERROR;
 
-  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_fhead == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-
+  pgbuf_get_vpid (page_fhead, &vpid_fhead);
   fhead = (FILE_HEADER *) page_fhead;
   collector_out->npages = 0;
   collector_out->nsects = 0;
@@ -12732,7 +12840,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      fhead->n_sector_total * sizeof (FILE_PARTIAL_SECTOR));
-      pgbuf_unfix (thread_p, page_fhead);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -12745,7 +12852,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-      pgbuf_unfix (thread_p, page_fhead);
       db_private_free_and_init (thread_p, collector_out->partsect_ftab);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -12760,6 +12866,7 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
   error_code =
     file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
+			      nonempty_only ? file_extdata_collect_nonempty_sectors_part :
 			      file_extdata_collect_data_sectors_part, collector_out, false, NULL, NULL);
 
   if (error_code != NO_ERROR)
@@ -12767,7 +12874,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
       ASSERT_ERROR ();
       db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
       db_private_free_and_init (thread_p, collector_out->partsect_ftab);
-      pgbuf_unfix (thread_p, page_fhead);
       return ER_FAILED;
     }
 
@@ -12782,7 +12888,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 	  ASSERT_ERROR ();
 	  db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
 	  db_private_free_and_init (thread_p, collector_out->partsect_ftab);
-	  pgbuf_unfix (thread_p, page_fhead);
 	  return ER_FAILED;
 	}
     }
@@ -12802,7 +12907,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 	}
     }
 
-  pgbuf_unfix (thread_p, page_fhead);
   db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
   if (error_code != NO_ERROR)
     {
@@ -12812,6 +12916,125 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
     }
 
   return NO_ERROR;
+}
+
+/*
+ * file_get_all_data_sectors () - collect all data sectors
+ *
+ * return        : NO_ERROR or error code
+ * thread_p (in) : thread entry
+ * hfid (in)     : heap file ID
+ * collector_out(out): output collected table pages
+ */
+int
+file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB_COLLECTOR * collector_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  error_code = file_collect_data_sectors (thread_p, page_fhead, false, collector_out);
+  pgbuf_unfix (thread_p, page_fhead);
+  return error_code;
+}
+
+/*
+ * file_probe_heap_sectors () - the sectors of a heap file that have an allocated page, for a caller that holds a page
+ *				 of the heap and knows known_sectors of them: only when the file has more are they
+ *				 listed
+ *
+ * return              : NO_ERROR, or the error of reading a file table page or of an allocation (state is then
+ *			 FILE_HEAP_SECTORS_BUSY and nothing is collected)
+ * thread_p (in)       : thread entry
+ * vfid (in)           : the heap file
+ * hdr_vpid (in)       : the heap header page (the file's sticky first page)
+ * known_sectors (in)  : how many sectors of the file the caller knows
+ * state (out)         : FILE_HEAP_SECTORS_BUSY, _GONE, _COVERED or _COLLECTED
+ * n_sectors_out (out) : with _COVERED or _COLLECTED, the file's sectors that have an allocated page (a user page or a
+ *			 file table page)
+ * collector_out (out) : with _COLLECTED, those sectors with the file table pages removed from their bitmaps (a sector
+ *			 of table pages only has an empty bitmap). The caller frees partsect_ftab (db_private_free)
+ *
+ * note: the file header is latched conditionally, as file_probe_heap_header () does: file_destroy () write latches it
+ *	 before it fixes every page of the file, and file_apply_tde_algorithm () too, so a caller holding a page of the
+ *	 heap that waited here could wait for a thread that waits for that page. While the header stays read latched,
+ *	 the file table pages are read with plain read fixes. Those cannot wait: a table page is write latched only by a
+ *	 thread that holds the file header write latched (allocation, deallocation, destroy), which nobody can hold now,
+ *	 so nobody holds a table page write latched or waits for one either.
+ *
+ *	 The count is n_sector_total - n_sector_empty, not n_sector_total (file_get_num_data_sectors ()): a file
+ *	 reserves sectors before it uses them (file_perm_expand () reserves, with the default tablespace, 1% of the file
+ *	 at once, up to 1024 sectors), and a caller that knows the sectors where pages were allocated would see more
+ *	 sectors almost every time.
+ */
+int
+file_probe_heap_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * hdr_vpid, int known_sectors,
+			 FILE_HEAP_SECTORS_STATE * state, int *n_sectors_out, FILE_FTAB_COLLECTOR * collector_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  bool busy;
+  int error_code = NO_ERROR;
+
+  *state = FILE_HEAP_SECTORS_GONE;
+  *n_sectors_out = 0;
+  collector_out->npages = 0;
+  collector_out->nsects = 0;
+  collector_out->partsect_ftab = NULL;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  error_code = file_header_fix_conditional (thread_p, &vpid_fhead, &page_fhead, &busy);
+  if (error_code != NO_ERROR)
+    {
+      *state = FILE_HEAP_SECTORS_BUSY;
+      return error_code;
+    }
+  if (page_fhead == NULL)
+    {
+      /* latched by someone else; or deallocated: gone */
+      *state = busy ? FILE_HEAP_SECTORS_BUSY : FILE_HEAP_SECTORS_GONE;
+      return NO_ERROR;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  if (!file_header_is_perm_heap (thread_p, page_fhead, vfid))
+    {
+      *state = FILE_HEAP_SECTORS_GONE;
+    }
+  else if (VPID_ISNULL (&fhead->vpid_sticky_first))
+    {
+      /* being created */
+      *state = FILE_HEAP_SECTORS_BUSY;
+    }
+  else if (!VPID_EQ (&fhead->vpid_sticky_first, hdr_vpid))
+    {
+      /* the file id names another heap now */
+      *state = FILE_HEAP_SECTORS_GONE;
+    }
+  else
+    {
+      *n_sectors_out = fhead->n_sector_total - fhead->n_sector_empty;
+      if (*n_sectors_out <= known_sectors)
+	{
+	  *state = FILE_HEAP_SECTORS_COVERED;
+	}
+      else
+	{
+	  error_code = file_collect_data_sectors (thread_p, page_fhead, true, collector_out);
+	  *state = error_code == NO_ERROR ? FILE_HEAP_SECTORS_COLLECTED : FILE_HEAP_SECTORS_BUSY;
+	}
+    }
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return error_code;
 }
 
 /************************************************************************/

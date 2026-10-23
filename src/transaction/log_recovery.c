@@ -407,6 +407,11 @@ end:
 
   if (rcv->pgptr != NULL)
     {
+      if (heap_bestspace_is_heap_rcvindex (rcvindex))
+	{
+	  /* the compensation set the page LSA past every redo of the page: the undone state is its final one */
+	  heap_bestspace_rv_record (thread_p, rcv->pgptr);
+	}
       pgbuf_unfix (thread_p, rcv->pgptr);
     }
 
@@ -534,6 +539,12 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	  /* already applied, make sure to unfix the page */
 	  // only acceptable during recovery, not acceptable for replication
 	  assert (log_is_in_crash_recovery ());
+	  if (heap_bestspace_is_heap_rcvindex (rcvindex) && log_is_in_crash_recovery ())
+	    {
+	      /* the page reached the disk after this record: the disk copy is its state up to the page LSA, and it may
+	       * be the last one the bestspace map can learn (no later record of the page needs redo) */
+	      heap_bestspace_rv_record (thread_p, rcv.pgptr);
+	    }
 	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
 	  return false;
 	}
@@ -736,13 +747,13 @@ log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & l
 /*
  * log_recovery - Recover information
  *
- * return: nothing
+ * return: true when the checkpoint at the end of recovery completed
  *
  *   ismedia_crash(in):Are we recovering from a media crash ?
  *   stopat(in):
  *
  */
-void
+bool
 log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 {
   LOG_TDES *rcv_tdes;		/* Tran. descriptor for the recovery phase */
@@ -752,6 +763,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_LSA start_redolsa;	/* Where to start redo phase */
   LOG_LSA end_redo_lsa;		/* Where to stop the redo phase */
   bool did_incom_recovery;
+  bool chkpt_done;		/* the checkpoint at the end completed */
   int tran_index;
   INT64 num_redo_log_records;
   int error_code = NO_ERROR;
@@ -772,7 +784,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:LOG_FIND_TDES");
-      return;
+      return false;
     }
 
   rcv_tran_index = tran_index;
@@ -790,6 +802,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
 		stopat != NULL ? *stopat : -1);
+
+  /* the heap pages redo and undo change are measured into an empty table (an SA mode process can restart again) */
+  heap_bestspace_rv_start ();
 
   /* Find the starting LSA for the analysis phase */
 
@@ -848,7 +863,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:logpb_fetch_start_append_page");
       // dead-ended. not reach here
-      return;
+      return false;
     }
 
   if (did_incom_recovery == false)
@@ -935,7 +950,11 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   logpb_decache_archive_info (thread_p);
 
   LOG_CS_EXIT (thread_p);
-  (void) logpb_checkpoint (thread_p);
+  /* the heap pages recovery measured go to the pending table of the bestspace maps. This checkpoint cannot log their
+   * writes and fails while they are pending (heap_bestspace_checkpoint ()), so the redo point stays; the boot runs
+   * the checkpoint again once the log is restarted (log_run_deferred_restart_checkpoint ()) and it writes them */
+  heap_bestspace_rv_finish (thread_p);
+  chkpt_done = (logpb_checkpoint (thread_p) != NULL_PAGEID);
   LOG_CS_ENTER (thread_p);
 
   /* Flush all dirty pages */
@@ -952,7 +971,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:locator_initialize");
       // dead-ended. not reach here
-      return;
+      return false;
     }
 
   /* Remove all class representations. */
@@ -962,7 +981,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:heap_classrepr_restart_cache");
       // dead-ended. not reach here
-      return;
+      return false;
     }
 
 #ifdef CCI_XA
@@ -972,6 +991,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 #endif
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
+
+  return chkpt_done;
 }
 
 /*

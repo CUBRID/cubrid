@@ -701,8 +701,18 @@ struct heap_bsmap_audit
 };
 extern int heap_bestspace_audit (THREAD_ENTRY * thread_p, HFID * hfid, bool repair, HEAP_BSMAP_AUDIT * audit);
 extern bool heap_bestspace_is_heap_rcvindex (LOG_RCVINDEX rcvindex);
+extern void heap_bestspace_rv_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern void heap_bestspace_rv_record_chain (THREAD_ENTRY * thread_p, const VPID * vpid, const char *data, int length,
+					    const LOG_LSA * lsa);
+extern void heap_bestspace_rv_start (void);
+extern void heap_bestspace_rv_finish (THREAD_ENTRY * thread_p);
 extern void heap_bestspace_drop (const VFID * vfid);
+extern void heap_bestspace_quiesce (const VFID * vfid, bool retire);
+extern void heap_bestspace_end_quiesce (const VFID * vfid);
 extern int heap_bestspace_checkpoint (THREAD_ENTRY * thread_p);
+extern int heap_bsmap_free_orphan (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, bool * busy);
+extern void heap_bestspace_daemon_init (void);
+extern void heap_bestspace_daemon_destroy (void);
 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);

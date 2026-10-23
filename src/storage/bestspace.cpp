@@ -535,9 +535,11 @@ namespace cubstorage
 	return error;
       }
 
-    // is this page still belongs to the class (class_oid) ?
+    // is this page still belongs to the class (class_oid) ? A map page is not a data page: one that reuses a page a
+    // slot still held is empty until its entries record goes in (heap_bsmap_add_page ())
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
 	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr)
 	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
 	|| !OID_EQ (&page_class_oid, class_oid))
       {
@@ -552,7 +554,9 @@ namespace cubstorage
     vpid = expected.get_vpid ();
     // the record fits by the room this transaction has now. The slot keeps the room without the space transactions
     // saved for their rollback (05 3.1): that space is free once they end, and the slot hands its value to the map when
-    // the page leaves it, which would keep the saved space subtracted for good
+    // the page leaves it, which would keep the saved space subtracted for good. The slot keeps the room, not the free
+    // space, because its pre-check above compares it with a request: free space above the request with room below it
+    // would bring the page back here on every search. What the map gets is the free space (code_of_room ())
     available = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
     freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
     if (available < needed_size)
@@ -643,6 +647,77 @@ namespace cubstorage
       }
   }
 
+  // A slot that holds the page keeps the free space of the page's life before it left the heap: giving that back to
+  // the map (release) would write a stale code, so the slot is emptied quietly. A finder that read the slot before
+  // this fixes the page: it finds the page not in the heap (or, once handed out again, a page of the heap, which it
+  // may use), and its update of the slot fails (the slot changed)
+  bool
+  bestspace::shard::drop_page (VPID vpid)
+  {
+    std::size_t slot;
+    L1 expected, desired;
+    VPID held;
+    bool dropped = false;
+
+    desired.set_freespace (0);
+    desired.set_vpid (vpid_Null_vpid);
+    for (slot = 0; slot < L3_FANOUT * L2_FANOUT; slot++)
+      {
+	expected = m_L1[slot].load ();
+	held = expected.get_vpid ();
+	// a finder may change the slot's free space meanwhile: try again while the slot still holds the page
+	while (VPID_EQ (&held, &vpid) && !m_L1[slot].compare_exchange_strong (expected, desired))
+	  {
+	    held = expected.get_vpid ();
+	  }
+	if (VPID_EQ (&held, &vpid))
+	  {
+	    L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
+	    dropped = true;
+	  }
+      }
+    return dropped;
+  }
+
+  // The shard's allocating mark (allocate_mark ()) keeps refills out while the slots are read: no slot gets a page or
+  // loses one to an eviction meanwhile, so the map's release () of a slot's page cannot interleave with the write of
+  // the same page's code. Finders still change a slot's room (L1_find ()) and empty a slot (L1_remove (),
+  // drop_page ()); a code written from a value read just before such a change is harmless: the map code of a
+  // resident page is used by nothing while the page stays resident (a claim skips it, a release writes its own code
+  // or keeps a fed-back one, a forget writes NOT_DATA over it), only by the image the checkpoint writes, which is as
+  // old as the checkpoint anyway. The mark is waited for a short while only: an allocation can hold it over a disk
+  // read.
+  bool
+  bestspace::shard::publish_slot_codes (std::size_t &changed)
+  {
+    constexpr int MAX_TRIES = 64;
+    std::size_t slot;
+    VPID vpid;
+    int tries;
+    L1 l1;
+
+    for (tries = 0; allocate_mark () != status::SUCCESS; tries++)
+      {
+	if (tries == MAX_TRIES)
+	  {
+	    return false;
+	  }
+	std::this_thread::yield ();
+      }
+    for (slot = 0; slot < L3_FANOUT * L2_FANOUT; slot++)
+      {
+	l1 = m_L1[slot].load ();
+	vpid = l1.get_vpid ();
+	if (!VPID_ISNULL (&vpid)
+	    && m_parent.m_map->set_resident_code (vpid.volid, vpid.pageid, code_of_room (l1.get_freespace ())))
+	  {
+	    changed++;
+	  }
+      }
+    allocate_unmark ();
+    return true;
+  }
+
   bestspace::status
   bestspace::shard::allocate_mark ()
   {
@@ -704,7 +779,7 @@ namespace cubstorage
 	freespace[slot] = l1.get_freespace ();
 	pages[slot].volid = vpid.volid;
 	pages[slot].pageid = VPID_ISNULL (&vpid) ? -1 : vpid.pageid;
-	pages[slot].code = code_of (freespace[slot]);
+	pages[slot].code = code_of_room (freespace[slot]);
       }
     dirty = m_parent.m_map->resident_dirty_above (pages.data (), NUM_SLOTS);
 
@@ -781,7 +856,8 @@ namespace cubstorage
 
 	expected = m_L1[slot].load ();
 	vpid = expected.get_vpid ();
-	// only this allocating thread puts a page into a slot; others change its free space or empty it (L1_remove)
+	// only this allocating thread puts a page into a slot; others change its free space or empty it (L1_remove (),
+	// drop_page ()), each by a compare-and-swap
 	while (!VPID_ISNULL (&vpid) && !m_L1[slot].compare_exchange_strong (expected, desired))
 	  {
 	    vpid = expected.get_vpid ();
@@ -791,7 +867,7 @@ namespace cubstorage
 	    continue;
 	  }
 	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
-	m_parent.m_map->release (vpid.volid, vpid.pageid, code_of (expected.get_freespace ()), false);
+	m_parent.m_map->release (vpid.volid, vpid.pageid, code_of_room (expected.get_freespace ()), false);
       }
   }
 
@@ -828,8 +904,10 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
+    // a map page is never a data page (see L1_find ())
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -921,14 +999,15 @@ namespace cubstorage
 	if (i == num_candidates - 1 && candidates[i].freespace <= victims[i].second)
 	  {
 	    // the returned page has less room than the victim: keep the victim, the page stays in the map
-	    map->release (candidates[i].volid, candidates[i].pageid, code_of (candidates[i].freespace), true);
+	    map->release (candidates[i].volid, candidates[i].pageid, code_of_room (candidates[i].freespace), true);
 	    continue;
 	  }
 
 	l1.set_freespace (candidates[i].freespace);
 	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
-	// one exchange: an L1_remove of the evicted page either empties the slot first (nothing to release here) or fails
-	// its CAS (the page is not forgotten); with a load and a store it could forget the page and see it released
+	// one exchange: an L1_remove () or a drop_page () of the evicted page either empties the slot first (nothing
+	// to release here) or fails its CAS (the page is not forgotten); with a load and a store it could forget the
+	// page and see it released
 	old = m_L1[slot].exchange (l1);
 
 	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
@@ -937,7 +1016,7 @@ namespace cubstorage
 	old_vpid = old.get_vpid ();
 	if (!VPID_ISNULL (&old_vpid))
 	  {
-	    map->release (old_vpid.volid, old_vpid.pageid, code_of (old.get_freespace ()), false);
+	    map->release (old_vpid.volid, old_vpid.pageid, code_of_room (old.get_freespace ()), false);
 	  }
       }
   }
@@ -1105,10 +1184,16 @@ namespace cubstorage
   bestspace::bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 			std::uint16_t unfill_space, bestspace_map *map, bool map_inline, VPID *map_pages,
 			std::size_t map_num_pages)
-    : m_shards ()
+    : m_verify_cursor (0)
+    , m_orphan_num_follow (0)
+    , m_orphan_followed (0)
+    , m_shards ()
     , m_map (map)
     , m_absorbed (false)
+    , m_orphan_suspect (false)
     , m_layout_mutex ()
+    , m_orphan_num_hints (0)
+    , m_orphan_walk (false)
     , m_map_inline (map_inline)
     , m_map_pages (map_pages)
     , m_map_num_pages (map_pages != nullptr ? map_num_pages : 0)
@@ -1122,6 +1207,8 @@ namespace cubstorage
     assert (shard_count > 0);
     assert (map != nullptr);
 
+    VPID_SET_NULL (&m_orphan_walk_next);
+    VPID_SET_NULL (&m_orphan_walk_prev);
     for (std::size_t i = 0; i < shard_count; i++)
       {
 	m_shards.emplace_back (*this);
@@ -1137,10 +1224,76 @@ namespace cubstorage
       }
   }
 
+  bool
+  bestspace::drop_from_slots (VPID vpid)
+  {
+    bool dropped = false;
+
+    for (shard &s : m_shards)
+      {
+	dropped = s.drop_page (vpid) || dropped;
+      }
+    return dropped;
+  }
+
+  std::size_t
+  bestspace::publish_slot_codes ()
+  {
+    std::size_t changed = 0;
+
+    for (shard &s : m_shards)
+      {
+	(void) s.publish_slot_codes (changed);
+      }
+    return changed;
+  }
+
   bestspace_map *
   bestspace::get_map ()
   {
     return m_map;
+  }
+
+  void
+  bestspace::set_orphan_suspect (const VPID &hint)
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+
+    if (VPID_ISNULL (&hint) || m_orphan_num_hints == ORPHAN_HINTS)
+      {
+	m_orphan_walk = true;
+      }
+    else
+      {
+	m_orphan_hints[m_orphan_num_hints++] = hint;
+      }
+    m_orphan_suspect.store (true);
+    bestspace_map::note_work ();
+  }
+
+  bool
+  bestspace::orphan_suspect () const
+  {
+    return m_orphan_suspect.load ();
+  }
+
+  bool
+  bestspace::take_orphan_suspect (VPID hints[ORPHAN_HINTS], std::size_t &num_hints, bool &walk)
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+
+    if (!m_orphan_suspect.exchange (false))
+      {
+	return false;
+      }
+    for (num_hints = 0; num_hints < m_orphan_num_hints; num_hints++)
+      {
+	hints[num_hints] = m_orphan_hints[num_hints];
+      }
+    walk = m_orphan_walk;
+    m_orphan_num_hints = 0;
+    m_orphan_walk = false;
+    return true;
   }
 
   // acquire: a writer that sees true also sees every code the loader merged before set_absorbed ()
@@ -1315,6 +1468,23 @@ namespace cubstorage
     return fs == tier::FS0 ? bestspace_map::CODE_NONE : static_cast<std::uint8_t> (static_cast<std::int8_t> (fs) + 1);
   }
 
+  // A slot keeps the room for a new record (spage_max_space_for_new_record_without_saving ()): the free space less one
+  // slot entry when the page has no unused one, aligned down to the page's alignment (HEAP_MAX_ALIGN on every heap
+  // page). The map holds the tier of the free space itself, as every feedback, the recovery hooks and checkdb's audit
+  // measure it (05 3.1). A slot's room handed to the map as a code is therefore first raised to the most free space it
+  // can stand for: without that, a page whose free space lies within a slot entry above a tier boundary goes back one
+  // tier low, and a page that is not fed back again (an append-only heap) keeps the hidden space for good. The raise
+  // is at most a slot entry and an alignment (7 bytes), so the code is the free space's tier or the one above it, and
+  // a slot's optimistic tier bound (optimistic_freespace ()) keeps its tier: the next tier starts at least 1% of a page
+  // above it. Over-estimating by a few bytes is what a claim's verification corrects.
+  std::uint8_t
+  bestspace::code_of_room (std::uint16_t room)
+  {
+    int freespace = room + SSIZEOF (SPAGE_SLOT) + HEAP_MAX_ALIGN - 1;
+
+    return code_of (static_cast<std::uint16_t> (MIN (freespace, DB_PAGESIZE)));
+  }
+
   std::uint16_t
   bestspace::optimistic_freespace (std::uint8_t code)
   {
@@ -1471,6 +1641,8 @@ namespace cubstorage
     : m_head (nullptr)
     , m_cache_count (0)
     , m_mutex ()
+    , m_quiesced ()
+    , m_work (nullptr)
     , m_generation (1)
     , m_creates (0)
   {
@@ -1524,6 +1696,7 @@ namespace cubstorage
     node->next = nullptr;
     node->pins = 0;
     node->dropped = false;
+    node->retired = false;
     node->entry = placement_new (static_cast<bestspace *> (area), shard_count, num_pages, recs_num, recs_sumlen,
 				 unfill_space, map, map_inline, map_pages, map_num_pages);
 
@@ -1539,6 +1712,9 @@ namespace cubstorage
     // ran before the insert, so a reader that reads the same count before such a miss and again later knows that no
     // create () completed in between (heap_bsmap_unloaded_cache in heap_file.c)
     m_creates.fetch_add (1);
+    // after the insert: the maintenance daemon reads the epoch before it pins the bestspaces, so either it pins this
+    // one or its next round looks (what the load noted while the map was private was before the daemon could pin it)
+    bestspace_map::note_work ();
     return node->entry;
   }
 
@@ -1548,18 +1724,21 @@ namespace cubstorage
     return m_creates.load ();
   }
 
+  // the heap is dropped or reused: its file may be destroyed or written whole next, so the background work in progress
+  // on it ends first (begin_work ()); a pinned bestspace refuses new work from now on (dropped)
   void
   bestspace_registry::destroy (const VFID *vfid)
   {
     registry_entry *node;
 
-    std::lock_guard<std::mutex> lock (m_mutex);
+    std::unique_lock<std::mutex> lock (m_mutex);
 
     while ((node = get_node_from_list (m_head, vfid)))
       {
 	m_generation.fetch_add (1);
 	destroy_or_drop_entry (node);
       }
+    wait_work_locked (lock, vfid);
   }
 
   void
@@ -1567,13 +1746,14 @@ namespace cubstorage
   {
     registry_entry *node;
 
-    std::lock_guard<std::mutex> lock (m_mutex);
+    std::unique_lock<std::mutex> lock (m_mutex);
 
     while ((node = get_node_from_list (m_head, hfid)))
       {
 	m_generation.fetch_add (1);
 	destroy_or_drop_entry (node);
       }
+    wait_work_locked (lock, &hfid->vfid);
   }
 
   bestspace *
@@ -1708,6 +1888,150 @@ namespace cubstorage
   }
 
   bool
+  bestspace_registry::begin_work (const pinned &pin, work &w, bool *quiesced)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+    registry_entry *node = (registry_entry *) pin.node;
+    quiesced_file *q = find_quiesced_locked (&pin.hfid.vfid);
+
+    if (quiesced != nullptr)
+      {
+	*quiesced = q != nullptr && !node->dropped && !node->retired;
+      }
+    if (q != nullptr)
+      {
+	q->refused = true;
+      }
+    if (node->dropped || node->retired || q != nullptr)
+      {
+	return false;
+      }
+    w.vfid = pin.hfid.vfid;
+    w.next = m_work;
+    m_work = &w;
+    return true;
+  }
+
+  bool
+  bestspace_registry::begin_work (const VFID *vfid, work &w)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+    quiesced_file *q = find_quiesced_locked (vfid);
+
+    if (q != nullptr)
+      {
+	q->refused = true;
+	return false;
+      }
+    w.vfid = *vfid;
+    w.next = m_work;
+    m_work = &w;
+    return true;
+  }
+
+  void
+  bestspace_registry::end_work (work &w)
+  {
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      work **link;
+
+      for (link = &m_work; *link != &w; link = & (*link)->next)
+	{
+	  assert (*link != nullptr);
+	}
+      *link = w.next;
+      w.next = nullptr;
+    }
+    m_work_cv.notify_all ();
+  }
+
+  bool
+  bestspace_registry::may_work (const pinned &pin)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+    registry_entry *node = (registry_entry *) pin.node;
+    quiesced_file *q = find_quiesced_locked (&pin.hfid.vfid);
+
+    if (q != nullptr)
+      {
+	// the daemon leaves the heap's work for later
+	q->refused = true;
+      }
+    return !node->dropped && !node->retired && q == nullptr;
+  }
+
+  void
+  bestspace_registry::quiesce (const VFID *vfid, bool retire)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex);
+    quiesced_file *slot = nullptr;
+    registry_entry *node;
+
+    // the file's slot, or a free one
+    m_work_cv.wait (lock, [this, vfid, &slot]
+    {
+      quiesced_file *free_slot = nullptr;
+
+      for (quiesced_file &q : m_quiesced)
+	{
+	  if (q.count > 0 && VFID_EQ (&q.vfid, vfid))
+	    {
+	      slot = &q;
+	      return true;
+	    }
+	  if (q.count == 0 && free_slot == nullptr)
+	    {
+	      free_slot = &q;
+	    }
+	}
+      slot = free_slot;
+      return slot != nullptr;
+    });
+    if (slot->count == 0)
+      {
+	slot->vfid = *vfid;
+	slot->refused = false;
+      }
+    slot->count++;
+    if (retire)
+      {
+	for (node = m_head; node != nullptr; node = node->next)
+	  {
+	    if (VFID_EQ (&node->hfid.vfid, vfid))
+	      {
+		node->retired = true;
+	      }
+	  }
+      }
+    wait_work_locked (lock, vfid);
+  }
+
+  void
+  bestspace_registry::end_quiesce (const VFID *vfid)
+  {
+    bool refused = false;
+
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      quiesced_file *q = find_quiesced_locked (vfid);
+
+      assert (q != nullptr);
+      if (q != nullptr && --q->count == 0)
+	{
+	  refused = q->refused;
+	}
+    }
+    // a quiesce () waiting for a slot
+    m_work_cv.notify_all ();
+    if (refused)
+      {
+	// the maintenance daemon left the heap's work for later, and may have gone idle since
+	bestspace_map::note_work ();
+      }
+  }
+
+  bool
   bestspace_registry::empty ()
   {
     std::lock_guard<std::mutex> lock (m_mutex);
@@ -1808,6 +2132,37 @@ namespace cubstorage
       {
 	destroy_entry (entry);
       }
+  }
+
+  bestspace_registry::quiesced_file *
+  bestspace_registry::find_quiesced_locked (const VFID *vfid)
+  {
+    for (quiesced_file &q : m_quiesced)
+      {
+	if (q.count > 0 && VFID_EQ (&q.vfid, vfid))
+	  {
+	    return &q;
+	  }
+      }
+    return nullptr;
+  }
+
+  // the work in progress on the file has ended. A worker waits only for page latches of the heap and the file header,
+  // which the caller holds none of
+  void
+  bestspace_registry::wait_work_locked (std::unique_lock<std::mutex> &lock, const VFID *vfid)
+  {
+    m_work_cv.wait (lock, [this, vfid]
+    {
+      for (const work *w = m_work; w != nullptr; w = w->next)
+	{
+	  if (VFID_EQ (&w->vfid, vfid))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    });
   }
 
   void
@@ -1928,4 +2283,5 @@ namespace cubstorage
 
   bestspace_registry bestspaces;
   bestspace_sector_table bestspace_pending;
+  bestspace_sector_table bestspace_recovery;
 }

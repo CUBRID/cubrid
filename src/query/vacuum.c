@@ -2249,6 +2249,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  return ER_FAILED;
 	}
 
+      /* tell the bestspace map the freed space of the forward page while it is latched: the end of the visit feeds
+       * only the home page, and the forward page's own home records may never be vacuumed again */
+      assert (!HFID_IS_NULL (&helper->hfid));
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->forward_page);
+
       /* Since forward page was vacuumed, log it immediately. Then unfix forward page. */
       vacuum_log_vacuum_heap_page (thread_p, helper->forward_page, 1, &helper->forward_oid.slotid, &helper->can_vacuum,
 				   helper->reusable, false);
@@ -6422,10 +6427,14 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
       if (error != NO_ERROR)
 	{
-	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free */
+	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free. The file
+	   * is destroyed all the same (the postpone's error is not looked at), so the bestspace upkeep, which holds no
+	   * lock on the class, ends what it does on the heap now and leaves the bestspace alone for good */
 	  vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES,
 			       "failed to add dropped file %d|%d; its bestspace entry is left behind",
 			       VFID_AS_ARGS (&rcv_data->vfid));
+	  heap_bestspace_quiesce (&rcv_data->vfid, true);
+	  heap_bestspace_end_quiesce (&rcv_data->vfid);
 	  return error;
 	}
 
