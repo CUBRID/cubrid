@@ -619,6 +619,7 @@ static int pt_split_pred_regu_list (PARSER_CONTEXT * parser, const VAL_LIST * va
 
 static void pt_add_regu_var_to_list (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source);
 static void pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source);
+static int pt_append_pos_regu_to_list (REGU_VARIABLE_LIST * head, TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos_no);
 
 static PRED_REGU_VARIABLE_P_LIST pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err);
 
@@ -17266,43 +17267,29 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT)
+	      && (xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER))
 	    {
-	      PT_NODE *final_node = NULL;
-	      REGU_VARIABLE_LIST regu_list_new, prev = NULL;
-	      REGU_VARIABLE *regu_var_temp;
+	      /* inst_num () in the final list (at any depth): the scan writes it as the last column and the analytic
+	       * pass fetches it back into xasl->instnum_val, which the final list reads */
+	      REGU_VARIABLE_LIST regu_list_new;
+	      int pos = buildlist->a_outptr_list_ex->valptr_cnt;
 
-	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
+	      regu_alloc (regu_list_new);
+	      if (regu_list_new == NULL)
 		{
-		  if (pt_is_instnum (final_node))
-		    {
-		      buildlist->a_outptr_list_ex->valptr_cnt++;
+		  goto analytic_exit_on_error;
+		}
+	      regu_list_new->value.type = TYPE_CONSTANT;
+	      regu_list_new->value.domain = &tp_Bigint_domain;
+	      regu_list_new->value.value.dbvalptr = xasl->instnum_val;
+	      pt_add_regu_var_to_list (&buildlist->a_outptr_list_ex->valptrp, regu_list_new);
+	      buildlist->a_outptr_list_ex->valptr_cnt++;
 
-		      regu_alloc (regu_list_new);
-		      if (regu_list_new == NULL)
-			{
-			  goto analytic_exit_on_error;
-			}
-
-		      regu_var_temp = pt_make_regu_numbering (parser, final_node);
-		      regu_list_new->value = *regu_var_temp;
-
-		      if (prev == NULL)
-			{
-			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
-			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
-			}
-		      else
-			{
-			  regu_list_new->next = prev->next;
-			  prev->next = regu_list_new;
-			}
-		      prev = regu_list_new;
-		    }
-		  else
-		    {
-		      prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
-		    }
+	      if (pt_append_pos_regu_to_list (&buildlist->a_regu_list, &tp_Bigint_domain, xasl->instnum_val, pos)
+		  != NO_ERROR)
+		{
+		  goto analytic_exit_on_error;
 		}
 	    }
 
