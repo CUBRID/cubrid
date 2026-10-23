@@ -4827,11 +4827,13 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
 
-  if (proc->rtf_keys > 0)
+  if (proc->rtf_keys >= 0)
     {
       /* the runtime filter one input's keys made for the other input's outermost scan (hjoin_rtf_build ()); rows and
        * dropped are what hjoin_rtf_release () copied out of it when the target's scans closed -- a probe that ended in
-       * an error is dumped before that release (qexec_clear_xasl ()), so they read 0 there */
+       * an error is dumped before that release (qexec_clear_xasl ()), so they read 0 there.  keys 0 is a filter too:
+       * every key of the input it was built from was NULL, and it dropped every probe row it compared (none could
+       * have joined); -1 is no filter (hjoin_rtf_first_input (), stx_build_hashjoin_proc ()) */
       if (!proc->rtf_applied)
 	{
 	  /* built, but no scan of the target opened with it (the target ran without opening its scans under the
@@ -5170,9 +5172,9 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
 
-  if (proc->rtf_keys > 0)
+  if (proc->rtf_keys >= 0)
     {
-      /* the runtime filter, the same item as the text trace's RUNTIME FILTER line */
+      /* the runtime filter, the same item as the text trace's RUNTIME FILTER line (keys 0: built from NULL keys only) */
       rtf = trace_json_object ();
       trace_json_object_set_new (rtf, "keys", trace_json_integer (proc->rtf_keys));
       if (!proc->rtf_applied)

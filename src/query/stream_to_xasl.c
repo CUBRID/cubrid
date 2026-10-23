@@ -3300,6 +3300,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   int error = NO_ERROR;
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+  /* no runtime filter yet: 0 is a filter built from keys that were all NULL (the trace prints it), and a join that
+   * never looks for one (its block has a px executor) keeps this value */
+  node_p->rtf_keys = -1;
 
   /* outer */
   ptr = or_unpack_int (ptr, &offset);
