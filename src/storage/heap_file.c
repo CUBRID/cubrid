@@ -745,8 +745,10 @@ static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRI
 static void heap_attrvalue_point_variable (const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
 					   OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
-static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-				const HEAP_REC_LAYOUT * layout);
+/* always inlined: the row path reads every column through it (heap_attrinfo_read_dbvalues () and its variants),
+ * and left to the inliner's size limit the call stays out of line once the layout wrapper below counts in */
+STATIC_INLINE int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+				       const HEAP_REC_LAYOUT * layout) __attribute__ ((ALWAYS_INLINE));
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -8188,6 +8190,205 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 
 /*
+ * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
+ *   return: S_SUCCESS (the chunk is full -- cap rows, or exc_cap exceptions -- and the page may have
+ *           more), S_END (the page has no more: *n_rows and *n_exc may be below their caps, even 0),
+ *           or S_ERROR
+ *   vpid(in): the page
+ *   class_oid(in): the class scanned (the scan cache's)
+ *   scan_cache(in/out): the scan cache; its watcher holds the page on return
+ *   slot(in/out): the walk's position: 0 before the first call for the page; on S_SUCCESS the slot
+ *                 the next call resumes after (the last row collected, or the slot before an
+ *                 exception the full list could not take)
+ *   rows(out): cap slots, peeked, in slot order
+ *   cap(in): at most so many rows
+ *   n_rows(out): the rows collected
+ *   repids(in): the representations the caller decodes (n_repids of them); a visible record of
+ *               another one is an exception.  n_repids 0: not checked
+ *   n_repids(in): their number
+ *   unknown_repid(out): NULL_REPRID on entry; receives the representation of the first visible
+ *                       record listed as an exception for its representation alone (the caller
+ *                       may learn it for the next page).  NULL: not reported
+ *   exc(out): exc_cap slots: the OIDs of the records this page alone does not answer for, in slot
+ *             order; the caller fetches each on the row path once the chunk is consumed
+ *   exc_cap(in): at most so many exceptions
+ *   n_exc(out): the exceptions listed
+ *
+ * The walk heap_next_1page () makes, record after record, made in runs: the same slots skipped
+ * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
+ * visibility as heap_scan_get_visible_version () decides it -- an all-visible header, or
+ * scan_cache->mvcc_snapshot->snapshot_fnc () == SNAPSHOT_SATISFIED.  TOO_OLD is a deleted row
+ * (skipped), and TOO_NEW without a previous version is a row inserted after the snapshot (the
+ * log walk heap_get_visible_version_from_log () would find nothing: skipped).  What is left is a
+ * record whose answer is not in this page -- relocated or in overflow pages (the header is
+ * elsewhere), too new for the snapshot with a previous version in the log, or visible but of a
+ * representation the caller does not decode (one it has not learned yet) -- and such a record goes to the
+ * exception list by its OID instead of stopping the walk: the rows around it still make the
+ * chunk, and the caller fetches it by OID on the row path (heap_get_visible_version ()) once the
+ * chunk is consumed and the page let go.  So a page holds the batch whatever a few of its records
+ * are; the rows and the exceptions of one chunk come in slot order each, but the exceptions are
+ * served after the rows, so the output order is not the heap order (no consumer of the batch
+ * promises it: an aggregate or a hash GROUP BY does not care, and a projection has no ORDER BY).
+ * A scan cache without a snapshot (an MVCC-disabled class) never gets here -- the batch refuses
+ * those scans (scan_batch_open_internal ()) -- so the snapshot == NULL branch below is defensive.
+ */
+SCAN_CODE
+heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
+			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
+			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid, OID * exc, int exc_cap,
+			   int *n_exc)
+{
+  MVCC_SNAPSHOT *snapshot = NULL;
+  PAGE_PTR pgptr;
+  RECDES rec;
+  OID oid;
+  SCAN_CODE scan;
+  int n = 0, e = 0;
+
+  *n_rows = 0;
+  *n_exc = 0;
+  /* A cached scan (HEAP_SCAN_IS_LOCAL_CACHE_READ) reads a copy of the page so that it holds no latch while its rows
+   * are out; the callers that pass such a scan -- the filter iterator (scan_batch_open_filter ()) and the rows node
+   * (scan_batch_open_rows (), scan_batch_rows_consume ()) -- keep that promise themselves: they copy the records of
+   * the rows they keep and let the page go before they go out. */
+  if (scan_cache->page_watcher.pgptr != NULL && !VPID_EQ (vpid, pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr)))
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+  if (scan_cache->page_watcher.pgptr == NULL)
+    {
+      scan_cache->page_watcher.pgptr =
+	heap_scan_pb_latch_and_fetch (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, scan_cache,
+				      &scan_cache->page_watcher);
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  if (er_errid () == ER_PB_BAD_PAGEID)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 0);
+	    }
+	  return S_ERROR;
+	}
+    }
+  pgptr = scan_cache->page_watcher.pgptr;
+  if (heap_page_is_bestspace (thread_p, pgptr))
+    {
+      return S_END;
+    }
+  if (!scan_cache->mvcc_disabled_class && scan_cache->mvcc_snapshot != NULL
+      && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+    {
+      snapshot = scan_cache->mvcc_snapshot;
+    }
+
+  oid.volid = vpid->volid;
+  oid.pageid = vpid->pageid;
+  oid.slotid = *slot;		/* 0: the walk starts at slot 1 */
+  while (true)
+    {
+      MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+      bool is_exception = false;
+
+      scan = spage_next_record (pgptr, &oid.slotid, &rec, PEEK);
+      if (scan == S_END)
+	{
+	  *n_rows = n;
+	  *n_exc = e;
+	  return S_END;
+	}
+      if (scan != S_SUCCESS)
+	{
+	  return S_ERROR;
+	}
+      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID || rec.type == REC_NEWHOME || rec.type == REC_ASSIGN_ADDRESS
+	  || rec.type == REC_UNKNOWN)
+	{
+	  continue;
+	}
+      if (rec.type != REC_HOME)
+	{
+	  /* REC_RELOCATION, REC_BIGONE: the header is in the forward page; the row path fetches it from there */
+	  is_exception = true;
+	}
+      else
+	{
+	  if (or_mvcc_get_header (&rec, &mvcc_header) != NO_ERROR)
+	    {
+	      assert (false);
+	      return S_ERROR;
+	    }
+	  if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+	    {
+	      MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
+
+	      if (res == TOO_OLD_FOR_SNAPSHOT)
+		{
+		  /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
+		  continue;
+		}
+	      if (res != SNAPSHOT_SATISFIED)
+		{
+		  if (LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header)))
+		    {
+		      /* inserted after the snapshot, nothing older to show: the row path's S_DOESNT_EXIST */
+		      continue;
+		    }
+		  /* its visible version is a previous one, in the log */
+		  is_exception = true;
+		}
+	    }
+	  if (!is_exception && n_repids > 0)
+	    {
+	      REPR_ID rec_repid = MVCC_GET_REPID (&mvcc_header);
+	      int i = 0;
+
+	      while (i < n_repids && repids[i] != rec_repid)
+		{
+		  i++;
+		}
+	      if (i == n_repids)
+		{
+		  /* a record of a representation the caller does not decode: the row path decodes it through the
+		   * class representation cache, and the caller may learn the representation for the next page */
+		  is_exception = true;
+		  if (unknown_repid != NULL && *unknown_repid == NULL_REPRID)
+		    {
+		      *unknown_repid = rec_repid;
+		    }
+		}
+	    }
+	}
+      if (class_oid != NULL && !OID_ISNULL (class_oid) && OID_IS_ROOTOID (&oid))
+	{
+	  continue;
+	}
+      if (is_exception)
+	{
+	  if (e == exc_cap)
+	    {
+	      /* the list is full: the chunk ends before this record, which the next call sees first */
+	      *slot = oid.slotid - 1;
+	      *n_rows = n;
+	      *n_exc = e;
+	      return S_SUCCESS;
+	    }
+	  exc[e++] = oid;
+	  continue;
+	}
+      rows[n].oid = oid;
+      rows[n].recdes = rec;
+      rows[n].hdr_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&mvcc_header)];	/* OR_HEADER_SIZE (rec.data) */
+      n++;
+      if (n == cap)
+	{
+	  *slot = oid.slotid;
+	  *n_rows = n;
+	  *n_exc = e;
+	  return S_SUCCESS;
+	}
+    }
+}
+
+/*
  * heap_first () - Retrieve or peek first object of heap
  *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
  *   hfid(in):
@@ -10817,7 +11018,10 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
- * live, derived once per record instead of once per attribute. */
+ * live, derived once per record instead of once per attribute.  The body is written out here
+ * rather than through heap_rec_layout_init_repr () (the same four lines, for a caller that holds
+ * the representation constants and not the cache: the page batch): one call less in the
+ * inliner's count for heap_attrvalue_read (), which this feeds. */
 STATIC_INLINE void
 heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -10834,6 +11038,121 @@ heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEA
   layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
   layout->bound_bits =
     OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
+}
+
+/*
+ * heap_attrinfo_raw_locator () - where an attribute sits in records of the latest representation
+ *   return: NO_ERROR when the attribute can be decoded straight from record bytes, ER_FAILED
+ *           otherwise (no error is set: the answer is a capability, not a fault)
+ *   attr_info(in): the attribute cache (started: last_classrepr is loaded)
+ *   attrid(in): the attribute
+ *   out(out): the locator
+ *
+ * A page batch (expr_batch.c) decodes one representation's records without the attribute
+ * cache: it compares each record's representation id with the one recorded here and reads
+ * the fixed area at location, or the variable area through the offset table at location.
+ * Only the types the batch decodes qualify -- the fixed-width numbers and dates, NUMERIC,
+ * which is a variable attribute today (see heap_attrvalue_resolve_plan ()), and VARCHAR and
+ * CHAR, read from the variable area by the batch's string leaves.
+ */
+int
+heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out)
+{
+  OR_ATTRIBUTE *attrepr;
+
+  if (attr_info == NULL || attr_info->last_classrepr == NULL || out == NULL)
+    {
+      return ER_FAILED;
+    }
+  attrepr = heap_locate_last_attrepr (attrid, attr_info);
+  if (attrepr == NULL || attrepr->domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  switch (attrepr->type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_DATE:
+      if (attrepr->is_fixed == 0)
+	{
+	  return ER_FAILED;
+	}
+      break;
+    case DB_TYPE_NUMERIC:
+      if (attrepr->is_fixed != 0)
+	{
+	  return ER_FAILED;	/* a fixed NUMERIC would need the kernel this file does not have */
+	}
+      break;
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+      if (attrepr->is_fixed != 0)
+	{
+	  return ER_FAILED;
+	}
+      break;
+    default:
+      return ER_FAILED;
+    }
+
+  out->collation = TP_DOMAIN_COLLATION (attrepr->domain);
+  out->codeset = TP_DOMAIN_CODESET (attrepr->domain);
+  out->repid = attr_info->last_classrepr->id;
+  out->n_variable = attr_info->last_classrepr->n_variable;
+  out->fixed_length = attr_info->last_classrepr->fixed_length;
+  out->is_fixed = (attrepr->is_fixed != 0);
+  out->location = attrepr->location;
+  out->position = attrepr->position;
+  out->type = attrepr->type;
+  out->precision = attrepr->domain->precision;
+  out->scale = attrepr->domain->scale;
+  return NO_ERROR;
+}
+
+/*
+ * heap_attrinfo_raw_key_locator () - where an attribute's bytes sit in records of the latest representation,
+ *				      whatever its type
+ *   return: NO_ERROR, or ER_FAILED (no error set) when the attribute is not in the representation
+ *   attr_info(in): the attribute cache (started)
+ *   attrid(in): the attribute
+ *   out(out): the locator (precision and scale as the domain has them)
+ *   disk_size(out): a fixed attribute's bytes (tp_domain_disk_size ()); 0 for a variable one
+ *
+ * For a reader that only compares a record's bytes with another record's (a page batch's GROUP BY key cache):
+ * equal bytes decode to equal values, whatever the type, so no decoding rule is needed here.
+ */
+int
+heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out, int *disk_size)
+{
+  OR_ATTRIBUTE *attrepr;
+
+  if (attr_info == NULL || attr_info->last_classrepr == NULL || out == NULL)
+    {
+      return ER_FAILED;
+    }
+  attrepr = heap_locate_last_attrepr (attrid, attr_info);
+  if (attrepr == NULL || attrepr->domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  out->repid = attr_info->last_classrepr->id;
+  out->n_variable = attr_info->last_classrepr->n_variable;
+  out->fixed_length = attr_info->last_classrepr->fixed_length;
+  out->is_fixed = (attrepr->is_fixed != 0);
+  out->location = attrepr->location;
+  out->position = attrepr->position;
+  out->type = attrepr->type;
+  out->precision = attrepr->domain->precision;
+  out->scale = attrepr->domain->scale;
+  out->collation = TP_DOMAIN_COLLATION (attrepr->domain);
+  out->codeset = TP_DOMAIN_CODESET (attrepr->domain);
+  *disk_size = out->is_fixed ? tp_domain_disk_size (attrepr->domain) : 0;
+
+  return (out->is_fixed && *disk_size <= 0) ? ER_FAILED : NO_ERROR;
 }
 
 /*
@@ -11201,7 +11520,7 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
   value->rd_attrepr = attrepr;
 }
 
-static int
+STATIC_INLINE int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
 		     const HEAP_REC_LAYOUT * layout)
 {

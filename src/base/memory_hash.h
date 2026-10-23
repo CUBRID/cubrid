@@ -101,6 +101,7 @@ extern MHT_TABLE *mht_create (const char *name, int est_size,
 extern void mht_destroy (MHT_TABLE * ht);
 extern int mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args);
 extern void *mht_get (MHT_TABLE * ht, const void *key);
+extern void *mht_get_hash (MHT_TABLE * ht, const void *key, unsigned int hash);
 extern void *mht_get2 (const MHT_TABLE * ht, const void *key, void **last);
 extern const void *mht_put (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_data (MHT_TABLE * ht, const void *key, void *data);

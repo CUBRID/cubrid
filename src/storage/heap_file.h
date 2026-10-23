@@ -434,6 +434,20 @@ extern SCAN_CODE heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * cl
 extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
 				  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 
+/* one record of a page, peeked: valid while the page stays fixed */
+typedef struct heap_page_row HEAP_PAGE_ROW;
+struct heap_page_row
+{
+  OID oid;
+  RECDES recdes;
+  int hdr_size;			/* the record header's bytes, OR_HEADER_SIZE (recdes.data), from the header the collector read */
+};
+extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
+					    HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap,
+					    int *n_rows, const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid,
+					    OID * exc, int exc_cap, int *n_exc);
+
+
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 
@@ -522,6 +536,9 @@ extern DB_VALUE *heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, in
 
 extern HEAP_ATTRVALUE *heap_attrvalue_locate (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out);
+extern int heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out,
+					  int *disk_size);
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
 					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain);

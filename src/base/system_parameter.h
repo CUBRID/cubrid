@@ -563,8 +563,11 @@ enum param_id
 
   PRM_ID_PLAN_CACHE_BIND_VARIANTS,
 
+  /* hash join: the runtime filter one input's keys make for the other input's outermost scan */
+  PRM_ID_HASH_JOIN_RUNTIME_FILTER,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PLAN_CACHE_BIND_VARIANTS
+  PRM_LAST_ID = PRM_ID_HASH_JOIN_RUNTIME_FILTER
 };
 typedef enum param_id PARAM_ID;
 

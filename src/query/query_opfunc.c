@@ -445,6 +445,15 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
 	  return (EXPR_PROG *) valptr_list_p->eval_prog;
 	}
     }
+  if (valptr_list_p->eval_prog_row_external)
+    {
+      /* a page batch packed this row's values into the program's cells: nothing to evaluate */
+      valptr_list_p->eval_prog_row_external = false;
+      if (valptr_list_p->eval_prog_state == 1)
+	{
+	  return (EXPR_PROG *) valptr_list_p->eval_prog;
+	}
+    }
 
   if (valptr_list_p->eval_prog_state == 0)
     {
@@ -528,6 +537,61 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
 }
 
 /*
+ * qdata_valptr_column_domain () - the domain a projection column's value is cast into before the tuple takes it
+ *   return: the domain, or NULL when the node takes no value in this execution (nothing is enforced)
+ *
+ * The column's domain in this execution, as qdata_get_dbval_from_constant_regu_variable () reads it: the one the
+ * node took -- a generic step's node protocol sets it on the row (a collation the values give, fetch_arith_node_end),
+ * a kernel-served variable node takes the gate's resolution here (expr_regu_exec_domain) -- else its plan's, then
+ * the consumer's.  Reading regu->domain itself was wrong for a node whose compiled type is fixed but whose domain is
+ * variable (DOMAIN_PLAN_VARIABLE): a CAST_WRAP over an ENUM + bind is STRING by type, yet the row's domain is the
+ * resolved one, and the cast into the collation-only STRING domain leaves the value's type (gha-ci 38388019045).
+ * A page batch that stands in for the projection (a hash GROUP BY's aggregate operands) casts into the same one.
+ */
+TP_DOMAIN *
+qdata_valptr_column_domain (REGU_VARIABLE * regu_var_p, const val_descr * val_desc_p)
+{
+  TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
+  TP_DOMAIN *domain;
+
+  if (now != NULL && TP_DOMAIN_TYPE (now) == DB_TYPE_VARIABLE)
+    {
+      now = expr_regu_exec_domain (val_desc_p, regu_var_p);
+    }
+  domain = (now != NULL) ? (TP_DOMAIN *) qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item) : NULL;
+  return (domain != NULL) ? domain : now;
+}
+
+/*
+ * qdata_valptr_prog_settle () - the list's program for this execution, compiled (or recompiled for other bound
+ *				  types) as the first row's qdata_valptr_prog_ensure () would, without evaluating a row
+ *   return: the active program, or NULL when the list keeps the interpreted fetch
+ */
+void *
+qdata_valptr_prog_settle (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)
+{
+  EXPR_PROG *prog;
+
+  if (valptr_list_p->eval_prog_state == 0)
+    {
+      qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+    }
+  if (valptr_list_p->eval_prog_state != 1)
+    {
+      return NULL;
+    }
+  prog = (EXPR_PROG *) valptr_list_p->eval_prog;
+  if (!expr_prog_signature_ok (prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
+      || !expr_prog_share_current (prog, valptr_list_p->eval_prog_share_spec))
+    {
+      qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+      valptr_list_p->eval_prog_state = 0;
+      qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+    }
+  return (valptr_list_p->eval_prog_state == 1) ? valptr_list_p->eval_prog : NULL;
+}
+
+/*
  * qdata_get_dbval_from_prog () - a column's value from the evaluated program, run
  *				  through the same trailing domain enforcement as
  *				  qdata_get_dbval_from_constant_regu_variable ()
@@ -548,25 +612,7 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
 
-  /* the column's domain in this execution, as qdata_get_dbval_from_constant_regu_variable () reads it: the one the
-   * node took -- a generic step's node protocol sets it on the row (a collation the values give, fetch_arith_node_end),
-   * a kernel-served variable node takes the gate's resolution here (expr_regu_exec_domain) -- else its plan's, then
-   * the consumer's.  Reading regu->domain itself was wrong for a node whose compiled type is fixed but whose domain is
-   * variable (DOMAIN_PLAN_VARIABLE): a CAST_WRAP over an ENUM + bind is STRING by type, yet the row's domain is the
-   * resolved one, and the cast into the collation-only STRING domain leaves the value's type (gha-ci 38388019045). */
-  {
-    TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
-
-    if (now != NULL && TP_DOMAIN_TYPE (now) == DB_TYPE_VARIABLE)
-      {
-	now = expr_regu_exec_domain (val_desc_p, regu_var_p);
-      }
-    domain = (now != NULL) ? (TP_DOMAIN *) qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item) : NULL;
-    if (domain == NULL)
-      {
-	domain = now;
-      }
-  }
+  domain = qdata_valptr_column_domain (regu_var_p, val_desc_p);
   if (domain == NULL)
     {
       /* a node that takes no value in this execution: nothing to enforce */

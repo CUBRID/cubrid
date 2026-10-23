@@ -111,6 +111,10 @@ typedef enum hashjoin_print_step
  * Struct & Typedef Definitions
  */
 
+/* A hash join's runtime filter (query_hash_join.c, hjoin_rtf_*): the build input's keys, checked on the probe
+ * input's outermost scan before its nested scans run, so rows that cannot match never reach them. */
+typedef struct hjoin_runtime_filter HJOIN_RUNTIME_FILTER;
+
 typedef struct hashjoin_input
 {
   XASL_NODE *xasl;
@@ -240,6 +244,10 @@ typedef struct hashjoin_stats
 
   bool swap_join_inputs;
 
+  /* the build read each tuple's hash from the hashes its input took as the tuples were written (HJOIN_PREHASH)
+   * instead of reading its keys and hashing them */
+  bool build_prehashed;
+
   double collision_rate;
 
   HASHJOIN_INPUT_STATS split;
@@ -260,6 +268,32 @@ typedef struct hashjoin_stats_group
   HASHJOIN_STATS *context_stats;
   UINT32 context_cnt;
 } HASHJOIN_STATS_GROUP;
+
+/* HJOIN_PREHASH: the build input's key hashes, taken as its tuples are written to its list.
+ *
+ * Armed on the input the plan builds from (hjoin_prehash_arm ()) before it runs; then every tuple
+ * qexec_end_one_iteration () writes to the input's list appends, in write order, the hash qdata_hash_scan_key ()
+ * gives the tuple's key values as the build reads them back from the list (hjoin_prehash_append ()), or marks the
+ * tuple as one with a NULL key, which the build skips.  The single build (hjoin_build ()) reads the hashes in step
+ * with its scan of the list instead of reading the keys and hashing them, when every tuple of the list has its
+ * hash (hjoin_prehash_for_build ()).  Owned by the join's node; the arrays are the arming thread's, freed by
+ * hjoin_prehash_release (). */
+typedef struct hjoin_prehash
+{
+  XASL_NODE *input;		/* the armed input (its hj_prehash points here), or NULL */
+  THREAD_ENTRY *owner;		/* the thread that armed it, the one that runs the join: the only one that appends */
+  const int *key_cols;		/* the input's key columns, in key order (merge_info) */
+  int key_cnt;
+  bool valid;			/* every tuple written so far has its hash, in write order */
+  struct qmgr_temp_file *tfile;	/* the list file the hashes were taken from (its tfile_vfid at the first tuple) */
+  UINT32 *hashes;		/* [cnt]: per tuple, the key hash before qdata_hash_scan_key_finish () */
+  INT64 cnt;
+  INT64 cap;
+  INT64 *null_rows;		/* [null_cnt], ascending: the tuples with a NULL key (no hash; the build skips them) */
+  INT64 null_cnt;
+  INT64 null_cap;
+  UINT64 mem_limit;		/* max_hash_list_scan_size: the arrays never grow past it */
+} HJOIN_PREHASH;
 
 /* HASHJOIN_FETCH_INFO */
 typedef struct hashjoin_fetch_info
@@ -419,6 +453,7 @@ typedef struct hashjoin_manager
 
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
+  HJOIN_PREHASH *prehash;
 
 #if HASHJOIN_DUMP_HASH_TABLE
   pthread_mutex_t dump_hash_table_mutex;
@@ -508,5 +543,36 @@ void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
 #endif /* HASHJOIN_PROFILE_TIME */
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* runtime filter: which input runs first (NULL: none) and which one the filter goes on */
+extern XASL_NODE *hjoin_rtf_first_input (XASL_NODE * hashjoin_xasl, XASL_NODE ** target);
+/* after the first input ran: build the filter from its list and put it on the target, when it is small enough */
+extern int hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE * first, XASL_NODE * target);
+/* a row of the target's outermost scan: false when its key is in no build row.  A lookup only: the caller counts
+ * the row on its XASL node (rtf_rows, rtf_dropped) */
+extern bool hjoin_rtf_pass (const HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
+/* The first rows a node checks against the filter are its sample: once rtf_rows reaches this many, the caller asks
+ * hjoin_rtf_sample () whether the filter earns its lookups on this node -- it leaves the node (xasl->rtf NULL,
+ * rtf_off the rows checked) when it dropped fewer than one row in eight of them; true then.  The row path asks at
+ * the row that completes the sample, the batch consumer at the chunk that crosses it. */
+#define HJOIN_RTF_PROBE_SAMPLE (4096)
+extern bool hjoin_rtf_sample (XASL_NODE * xasl);
+/* the same lookup on a key already read as an integer (a DATE as its day count): the page batch's leaf */
+extern bool hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key);
+extern bool hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf);
+/* a parallel worker's own XASL: the same filter, on the worker's value list cell; unbind adds the clone's counters
+ * to orig's (the node the clone was bound from) and drops the alias */
+extern void hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig);
+extern void hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig);
+extern void hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl);
+
+/* build input hashes (HJOIN_PREHASH): armed before the join's inputs run, appended per tuple the input writes,
+ * dropped when the input writes a tuple some other way, released with the join or the node's clear */
+extern void hjoin_prehash_arm (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl);
+extern void hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input);
+extern void hjoin_prehash_drop (XASL_NODE * input);
+extern void hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * prehash);
+#endif
 
 #endif /* _QUERY_HASH_JOIN_H_ */

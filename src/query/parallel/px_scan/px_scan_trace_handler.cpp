@@ -21,6 +21,8 @@
  */
 
 #include "px_scan_trace_handler.hpp"
+#include "expr_batch.h"
+#include "scan_manager.h"
 #include "perf_monitor.h"
 #include "query_dump.h"
 #include "system_parameter.h"
@@ -117,7 +119,7 @@ namespace parallel_scan
       }
   }
 
-  void trace_handler::add_expr_compile_dump (xasl_node *xasl)
+  void trace_handler::add_expr_compile_dump (xasl_node *xasl, SCAN_ID *scan_id)
   {
     char *buf = nullptr;
     size_t len = 0;
@@ -149,6 +151,12 @@ namespace parallel_scan
 	return;
       }
     qdump_print_expr_compile_text (fp, xasl, 0, " [px worker]");
+    if (scan_id != NULL && scan_id->type == S_HEAP_SCAN
+	&& (scan_id->s.hsid.batch_plan != NULL || scan_id->s.hsid.batch_why_not != NULL))
+      {
+	/* the page batch of this worker's scan (expr_batch.h), beside the compiler's sections */
+	expr_batch_dump (fp, scan_id->s.hsid.batch_plan, scan_id->s.hsid.batch_why_not, 0);
+      }
     fclose (fp);
     if (buf != nullptr)
       {

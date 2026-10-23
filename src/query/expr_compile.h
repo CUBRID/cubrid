@@ -338,4 +338,130 @@ extern bool expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, u
 /* the operand program of a compiled scan filter, if it has one (SQL trace) */
 extern void expr_scan_pred_dump (FILE * fp, const void *compiled, int indent);
 
+/* ---- Views a page batch takes of the compiled products (expr_batch.c) -------------------
+ *
+ * The batch evaluates the filter's comparison leaves and the operand program's steps over
+ * a page's rows at a time.  It does not run the trees and programs; it reads what they
+ * resolved once per clone -- which column a leaf compares, against which constant, with
+ * which operator, and which typed kernel a step was given -- and drives its own vector
+ * loops with that.  Everything the batch cannot classify it leaves to the row path, so a
+ * reading that declines (returns false / EXPR_STEP_OTHER) is a capability, not an error. */
+
+/* a comparison leaf "column op constant" of a compiled scan filter */
+typedef struct expr_raw_leaf_info EXPR_RAW_LEAF_INFO;
+struct expr_raw_leaf_info
+{
+  const REGU_VARIABLE *col_regu;	/* the TYPE_ATTR_ID side */
+  bool col_is_lhs;		/* the column is the left operand (else the constant is) */
+  DB_TYPE fast_type;		/* the type both sides were resolved for */
+  int rel_op;			/* REL_OP, as written: lhs rel_op rhs */
+  const DB_VALUE *k_value;	/* the constant side: a literal the leaf pinned or holds, or the bound
+				 * value of an auto-parameterized literal / host variable (TYPE_POS_VALUE,
+				 * fixed for the execution; the leaf's signature recompiles when its
+				 * type changes between executions) */
+  DB_VALUE *const *k_cell;	/* ... or the program cell a prologue computes it into (read after
+				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
+  const REGU_VARIABLE *col2_regu;	/* instead of a constant, another column of the scan ("a < b"): the right
+					 * operand, col_regu the left; neither k_value nor k_cell is set */
+  bool like;			/* a VARCHAR or CHAR column LIKE the constant pattern k_value (rel_op unused), ... */
+  bool negate;			/* ... under a NOT */
+  const REGU_VARIABLE *k_set;	/* "column IN (constants)": the set (a TYPE_FUNC of literals and host variables) */
+  const DB_VALUE *sub_start;	/* "SUBSTRING (column, start, length) IN (constants)": the two constants */
+  const DB_VALUE *sub_len;
+  const void *or_src;		/* an interpreted filter's OR term (a PRED_EXPR) for expr_pred_or_raw_leaves (); nothing
+				 * else is set */
+};
+/* a literal's or host variable's value for this execution, or NULL for any other operand */
+extern const DB_VALUE *expr_raw_const_value (const REGU_VARIABLE * k, const val_descr * vd);
+
+/* the shape of the root: 1 = a single comparison leaf or OR (n_kids = 1), 2 = a flattened AND chain
+ * (n_kids = its term count), -1 = anything else (NOT, a term the compiler left alone) */
+extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
+/* The filter's share registry: the arithmetic nodes whose result slot a program of the same scan (the node's
+ * projection, its aggregate operands) may be wired to instead of recomputing the expression.  A page batch,
+ * which evaluates the filter over arrays and not per row, keeps each shared slot's value per row for those
+ * programs: a node a filter term computes per row is read into a vector right after that term; a node the
+ * prologues compute holds one value for the execution. */
+typedef struct expr_share_info EXPR_SHARE_INFO;
+struct expr_share_info
+{
+  const REGU_VARIABLE *regu;	/* the node; its domain is the type of the value */
+  DB_VALUE *slot;		/* the slot the filter writes and a consumer's cell is wired to */
+  DB_VALUE *const *cell;	/* the filter program's cell holding the slot's address */
+  bool in_prologue;		/* computed once per execution by the prologues, before any row */
+  int kid;			/* else the root's term whose compiled side computes it per row, or -1 */
+};
+extern int expr_scan_pred_share_count (const void *compiled);
+extern bool expr_scan_pred_share_info (const void *compiled, int i, EXPR_SHARE_INFO * out);
+/* the deepest node of the filter's program (the recursion limit, expr_ctx_arm_depth ()) */
+extern int expr_scan_pred_max_level (const void *compiled);
+/* kid i of the root as a raw leaf; false when it is not "column op constant" with a direct-compare
+ * type.  fast_type DB_TYPE_NUMERIC: a NUMERIC column against an exact-numeric constant, compared
+ * exactly whatever the two scales (the generic leaf, or a term with an integer constant) */
+extern bool expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+/* an interpreted filter's AND chain as raw NUMERIC leaves: the count, or -1 */
+extern int expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap);
+/* An OR of raw leaves and AND chains of raw leaves ("(a = 1 and b < 2) or c in (3, 4)"): the leaves of every
+ * disjunct in order, n_disj[d] the count of disjunct d; the disjunct count, or -1.  Of a term of an interpreted
+ * filter (or_src), or of kid i of a compiled one. */
+extern int expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap,
+				    int *n_disj, int disj_cap);
+extern int expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out,
+					 int cap, int *n_disj, int disj_cap);
+/* the constants such a NUMERIC comparison takes: SHORT, INTEGER, NUMERIC, a BIGINT of 15 digits */
+extern bool expr_numeric_cmp_const_ok (const DB_VALUE * k);
+/* does kid i of the root run a node with a side effect on the row it evaluates (a stored procedure call, a serial,
+ * INCR/DECR, a random number, a session variable)?  A page batch leaves such a term to the row path: a chunk it
+ * falls back on is evaluated there again, and the node would run twice on those rows */
+extern bool expr_scan_pred_kid_has_side_effect (const void *compiled, int kid);
+/* does kid i of the root run another query on the row it evaluates (a linked scalar subquery, a list, a stored
+ * procedure call)?  A page batch declines such a term: its chunk's rows point into the page it holds, and a scan
+ * the query opens may let the page go and fix it again under them (pgbuf_ordered_fix ()) */
+extern bool expr_scan_pred_kid_runs_query (const void *compiled, int kid);
+/* the filter's prologues for this execution (the per-row entry does the same before its first row) */
+extern int expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd);
+/* evaluate kid i of the root alone for the current row (the batch's residual terms) */
+extern DB_LOGICAL expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, val_descr * vd,
+					   OID * obj_oid);
+
+/* what a program step computes, as far as a vector kernel can reproduce it */
+typedef enum
+{
+  EXPR_STEP_OTHER = 0,		/* not reproduced: the program stays on the row path */
+  EXPR_STEP_LEAF_FETCH,		/* publishes a column (TYPE_ATTR_ID / TYPE_CONSTANT) or list value */
+  EXPR_STEP_HOSTVAR,		/* publishes a host variable (exec prologue) */
+  EXPR_STEP_ADD,		/* typed arithmetic: type says INTEGER / BIGINT / DOUBLE / NUMERIC */
+  EXPR_STEP_SUB,
+  EXPR_STEP_MUL,
+  EXPR_STEP_JUMP_NULL_ARITH,	/* lazy right side: when arg1 is NULL the row skips to jump_to */
+  EXPR_STEP_RESOLVED,		/* a constant expression's gate: its value from the execution, or the steps up to
+				 * jump_to compute it (expr_k_resolved_value ()) */
+  EXPR_STEP_CAST		/* CAST of arg1 into domain */
+} EXPR_STEP_CLASS;
+
+typedef struct expr_step_info EXPR_STEP_INFO;
+struct expr_step_info
+{
+  EXPR_STEP_CLASS cls;
+  DB_TYPE type;			/* arithmetic: the kernel's operand and result type */
+  bool numeric_pure;		/* NUMERIC arithmetic: the float family (both operands NUMERIC) */
+  bool coerces;			/* arithmetic: an epilogue coerces the result to a domain ... */
+  const struct tp_domain *domain;	/* ... this one (tp_value_coerce ()) */
+  int arg1_cell;		/* cell indexes, -1 when unused */
+  int arg2_cell;
+  int out_cell;			/* the cell this step publishes */
+  int jump_to;			/* JUMP_NULL_ARITH: the step the row continues at */
+  bool in_prologue;		/* runs once per program / execution, not per row */
+  const REGU_VARIABLE *regu;	/* LEAF_FETCH: what it fetches */
+};
+
+extern void expr_prog_step_info (const EXPR_PROG * prog, int step, EXPR_STEP_INFO * out);
+/* the step that publishes a cell, or -1 for a cell wired to a stable address (a literal, a
+ * value-list slot) at compile time */
+extern int expr_prog_cell_publisher (const EXPR_PROG * prog, int cell);
+/* run steps [from, to) without a row: a constant expression's steps, whose operands are constants */
+extern int expr_prog_run_steps (EXPR_PROG * prog, int from, int to, cubthread::entry * thread_p, val_descr * vd);
+/* run the prologues for this execution without running a row */
+extern int expr_prog_prepare_execution (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd);
+
 #endif /* _EXPR_COMPILE_H_ */

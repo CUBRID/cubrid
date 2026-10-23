@@ -3892,10 +3892,36 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	{
 	  trace_json_object_set_new (groupby, "sort", trace_json_false ());
 	}
+      /* the same items as the text trace (qdump_print_stats_text ()) */
+      if (gstats->groupby_hash_merge_parts > 0)
+	{
+	  trace_json_object_set_new (groupby, "hash_merge_partitions",
+				     trace_json_integer (gstats->groupby_hash_merge_parts));
+	  trace_json_object_set_new (groupby, "hash_merge_levels",
+				     trace_json_integer (gstats->groupby_hash_merge_levels));
+	  trace_json_object_set_new (groupby, "hash_merge_sorted_partitions",
+				     trace_json_integer (gstats->groupby_hash_merge_sorted));
+	  if (gstats->groupby_hash_merge_workers > 0)
+	    {
+	      trace_json_object_set_new (groupby, "hash_merge_workers",
+					 trace_json_integer (gstats->groupby_hash_merge_workers));
+	    }
+	  else if (gstats->groupby_hash_merge_why != NULL)
+	    {
+	      trace_json_object_set_new (groupby, "hash_merge_workers_why",
+					 trace_json_string (gstats->groupby_hash_merge_why));
+	    }
+	}
+      if (gstats->groupby_hash_groups > 0)
+	{
+	  trace_json_object_set_new (groupby, "groups_est", trace_json_integer (gstats->groupby_hash_groups));
+	}
 
       trace_json_object_set_new (groupby, "rows", trace_json_integer (gstats->rows));
       trace_json_object_set_new (groupby, "readrows", trace_json_integer (gstats->read_rows));
       trace_json_object_set_new (proc, "GROUPBY", groupby);
+      /* the stage that ran in parallel: the sort of the leftovers, or their hash merge (then the same workers as
+       * hash_merge_workers) */
       if (gstats->parallel_num > 0)
 	{
 	  parallel = trace_json_object ();
@@ -4143,11 +4169,16 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
 	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
 	      SCAN_STATS save_stats;
+	      const char *save_why_not = NULL;
 
 	      scan_stats = &spec->s_id.scan_stats;
 
 	      /* save */
 	      memcpy (&save_stats, scan_stats, sizeof (SCAN_STATS));
+	      if (spec->s_id.type == S_HEAP_SCAN)
+		{
+		  save_why_not = spec->s_id.s.hsid.batch_why_not;
+		}
 
 	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
@@ -4211,6 +4242,11 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
 		  assert (scan_stats->agl == NULL);
 
+		  if (spec->s_id.type == S_HEAP_SCAN)
+		    {
+		      /* the batch's reason on this partition (qexec_init_next_partition ()), shown as the scan's own */
+		      spec->s_id.s.hsid.batch_why_not = curr_part->batch_why_not;
+		    }
 		  scan_print_stats_text (fp, &spec->s_id);
 
 		  if (class_name != NULL)
@@ -4226,6 +4262,10 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 
 	      /* restore */
 	      memcpy (&spec->s_id.scan_stats, &save_stats, sizeof (SCAN_STATS));
+	      if (spec->s_id.type == S_HEAP_SCAN)
+		{
+		  spec->s_id.s.hsid.batch_why_not = save_why_not;
+		}
 	    }
 	}
       else
@@ -4643,9 +4683,28 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ", sort: false");
 	}
+      if (gstats->groupby_hash_merge_parts > 0)
+	{
+	  fprintf (fp, ", hash merge partitions: %d (levels: %d, sorted parts: %d)", gstats->groupby_hash_merge_parts,
+		   gstats->groupby_hash_merge_levels, gstats->groupby_hash_merge_sorted);
+	  if (gstats->groupby_hash_merge_workers > 0)
+	    {
+	      fprintf (fp, " (workers: %d)", gstats->groupby_hash_merge_workers);
+	    }
+	  else if (gstats->groupby_hash_merge_why != NULL)
+	    {
+	      fprintf (fp, " (workers: none, %s)", gstats->groupby_hash_merge_why);
+	    }
+	}
+      if (gstats->groupby_hash_groups > 0)
+	{
+	  fprintf (fp, ", groups (est.): %lld", (long long) gstats->groupby_hash_groups);
+	}
       fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);
 
+      /* the stage that ran in parallel: the sort of the leftovers, or their hash merge (then the same workers as
+       * "hash merge partitions: N (workers: M)") */
       if (gstats->parallel_num > 0)
 	{
 	  fprintf (fp, "%*c", indent + 8, ' ');
@@ -4767,6 +4826,33 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   status = stats_group->status;
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
+
+  if (proc->rtf_keys >= 0)
+    {
+      /* the runtime filter one input's keys made for the other input's outermost scan (hjoin_rtf_build ()); rows and
+       * dropped are what hjoin_rtf_release () copied out of it when the target's scans closed -- a probe that ended in
+       * an error is dumped before that release (qexec_clear_xasl ()), so they read 0 there.  keys 0 is a filter too:
+       * every key of the input it was built from was NULL, and it dropped every probe row it compared (none could
+       * have joined); -1 is no filter (hjoin_rtf_first_input (), stx_build_hashjoin_proc ()) */
+      if (!proc->rtf_applied)
+	{
+	  /* built, but no scan of the target opened with it (the target ran without opening its scans under the
+	   * filter): nothing was checked, and "rows: 0, dropped: 0" would read as a filter that saw no row */
+	  fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, not applied)\n", indent + 2, ' ', (long long) proc->rtf_keys);
+	}
+      else
+	{
+	  fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, rows: %lld, dropped: %lld", indent + 2, ' ',
+		   (long long) proc->rtf_keys, (long long) proc->rtf_rows, (long long) proc->rtf_dropped);
+	  if (proc->rtf_off > 0)
+	    {
+	      /* the filter left the target after its sample (hjoin_rtf_sample ()): the rows checked by then, summed
+	       * over the nodes that took it off (a worker's clone, the leader's node) */
+	      fprintf (fp, ", off after %lld rows", (long long) proc->rtf_off);
+	    }
+	  fprintf (fp, ")\n");
+	}
+    }
   part_cnt = stats_group->context_cnt;
 
   const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
@@ -4843,6 +4929,11 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s", indent, ' ',
 	       TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
 	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
+      if (stats->build_prehashed)
+	{
+	  /* the build read its hashes from the input's, taken as the input's tuples were written (HJOIN_PREHASH) */
+	  fprintf (fp, ", hashes: precomputed");
+	}
 
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
@@ -5053,7 +5144,7 @@ static void
 qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 {
   trace_json_t *split, *part_array, *parallel, *build, *probe, *merge, *subquery;
-  trace_json_t *input, *profile;
+  trace_json_t *input, *profile, *rtf;
 
   XASL_NODE *outer_xasl, *inner_xasl;
 
@@ -5085,6 +5176,27 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
+
+  if (proc->rtf_keys >= 0)
+    {
+      /* the runtime filter, the same item as the text trace's RUNTIME FILTER line (keys 0: built from NULL keys only) */
+      rtf = trace_json_object ();
+      trace_json_object_set_new (rtf, "keys", trace_json_integer (proc->rtf_keys));
+      if (!proc->rtf_applied)
+	{
+	  trace_json_object_set_new (rtf, "applied", trace_json_false ());
+	}
+      else
+	{
+	  trace_json_object_set_new (rtf, "rows", trace_json_integer (proc->rtf_rows));
+	  trace_json_object_set_new (rtf, "dropped", trace_json_integer (proc->rtf_dropped));
+	  if (proc->rtf_off > 0)
+	    {
+	      trace_json_object_set_new (rtf, "off after rows", trace_json_integer (proc->rtf_off));
+	    }
+	}
+      trace_json_object_set_new (parent, "RUNTIME FILTER", rtf);
+    }
 
   const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
   assert (part_stats == NULL || is_partition_parallel || status == HASHJOIN_STATUS_PARALLEL_PROBE);
@@ -5161,6 +5273,11 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (build, "ioread", trace_json_integer (stats->build.ioreads));
       trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
       trace_json_object_set_new (build, "method", trace_json_string (qdump_hashjoin_type_string (stats->hash_method)));
+      if (stats->build_prehashed)
+	{
+	  /* the build read its hashes from the input's, taken as the input's tuples were written (HJOIN_PREHASH) */
+	  trace_json_object_set_new (build, "hashes", trace_json_string ("precomputed"));
+	}
 
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)

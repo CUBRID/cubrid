@@ -39,7 +39,13 @@ namespace parallel_scan
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
       int set_page (THREAD_ENTRY *thread_p, VPID *vpid);
+      /* the next slot walked is the one after this one (0: the page's first) */
+      void resume_after (PGSLOTID slot);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
+      const VPID *vpid () const
+      {
+	return &m_vpid;
+      }
 
     private:
       FILTER_INFO m_data_filter;

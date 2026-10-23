@@ -261,6 +261,13 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->tcard_list = NULL;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->rtf = NULL;
+  xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
+  xasl->rtf_off = 0;
+  xasl->rtf_applied = false;
+  xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
@@ -2460,6 +2467,13 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->rtf = NULL;
+  xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
+  xasl->rtf_off = 0;
+  xasl->rtf_applied = false;
+  xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
   return ptr;
 
@@ -3288,6 +3302,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   int error = NO_ERROR;
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+  /* no runtime filter yet: 0 is a filter built from keys that were all NULL (the trace prints it), and a join that
+   * never looks for one (its block has a px executor) keeps this value */
+  node_p->rtf_keys = -1;
 
   /* outer */
   ptr = or_unpack_int (ptr, &offset);
@@ -4281,6 +4298,7 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
   outptr_list->eval_prog_row_ready = false;
+  outptr_list->eval_prog_row_external = false;
   outptr_list->eval_prog_share_spec = NULL;
 
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
@@ -4858,6 +4876,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
 
   ptr = or_unpack_int (ptr, &access_spec->pruning_type);
+  access_spec->batch_keep = NULL;	/* the struct is not allocated zeroed (stx_alloc_struct ()) */
   access_spec->parts = NULL;
   access_spec->curent = NULL;
   access_spec->pruned = false;

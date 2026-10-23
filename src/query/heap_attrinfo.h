@@ -24,6 +24,7 @@
 #define _HEAP_ATTRINFO_H_
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "object_representation.h"
 #include "object_representation_sr.h"
 
 struct pr_type;
@@ -115,6 +116,55 @@ struct heap_cache_attrinfo
 };
 
 extern DB_VALUE *heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info);
+
+/* heap_rec_layout_init_repr_hdr () - the record layout from the representation constants and the header size
+ *   layout(out): the layout
+ *   obj(in): the record bytes (RECDES.data)
+ *   hdr_size(in): the record header's bytes, OR_HEADER_SIZE (obj), when the caller has it already (a page
+ *                 batch's rows carry it from the collector's read of the MVCC header, HEAP_PAGE_ROW.hdr_size)
+ *   n_variable(in): OR_CLASSREP.n_variable of the record's representation
+ *   fixed_length(in): OR_CLASSREP.fixed_length of the same representation
+ *
+ * The two representation constants are all a caller that has already matched the record's
+ * representation id needs (a page batch decoding every record with one representation,
+ * expr_batch.c); heap_file.c wraps it for the callers that hold the attribute cache. Inline
+ * because the lazy read derives a layout per record on the scan's hot path.
+ */
+STATIC_INLINE void
+heap_rec_layout_init_repr_hdr (HEAP_REC_LAYOUT * layout, const char *obj, int hdr_size, int n_variable,
+			       int fixed_length)
+{
+  layout->offset_size = OR_GET_OFFSET_SIZE (obj);
+  layout->var_table = (char *) obj + hdr_size;
+  layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (n_variable, layout->offset_size);
+  layout->bound_bits = OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + fixed_length : NULL;
+}
+
+/* heap_rec_layout_init_repr () - the same, the header size read from the record (OR_HEADER_SIZE (obj)) */
+STATIC_INLINE void
+heap_rec_layout_init_repr (HEAP_REC_LAYOUT * layout, const char *obj, int n_variable, int fixed_length)
+{
+  heap_rec_layout_init_repr_hdr (layout, obj, OR_HEADER_SIZE (obj), n_variable, fixed_length);
+}
+
+/* Where one attribute sits in records of the class's latest representation: the numbers a
+ * reader that decodes straight from record bytes needs, and nothing of the catalog they came
+ * from (heap_attrinfo_raw_locator () in heap_file.c). */
+typedef struct heap_raw_locator HEAP_RAW_LOCATOR;
+struct heap_raw_locator
+{
+  REPR_ID repid;		/* the representation these offsets belong to */
+  int n_variable;		/* representation constants heap_rec_layout_init_repr () takes */
+  int fixed_length;
+  bool is_fixed;		/* fixed area (location = byte offset) or variable area (location = table index) */
+  int location;
+  int position;			/* bound-bit index (fixed attributes) */
+  DB_TYPE type;			/* the attribute's disk type */
+  int precision;		/* NUMERIC: the domain's precision and scale */
+  int scale;
+  int collation;		/* VARCHAR, CHAR: the domain's collation and codeset */
+  int codeset;
+};
 
 #else /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 

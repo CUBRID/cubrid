@@ -110,6 +110,7 @@ struct expr_share
 {
   const REGU_VARIABLE *regu;
   DB_VALUE *slot;
+  int cell;			/* the root program's cell the node publishes into (its address is slot) */
 };
 /* comparison leaf resolved at compile time from (operand type, relational operator) */
 typedef DB_LOGICAL (*EXPR_PRED_EVAL_FN) (const EXPR_PRED * pred);
@@ -2315,8 +2316,7 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int no
  * One cell per (operator, result type, operand mix): the kernel a binary arithmetic node
  * runs, or NULL where no kernel exists and the node stays interpreted.  The table is the
  * whole policy -- a reviewer reads a cell, not a switch -- and the slot a program leaves
- * open for a variable node is filled from it once the gate has resolved the node's types
- * (database-reference 참고: the compiler's operator/type tables).
+ * open for a variable node is filled from it once the gate has resolved the node's types.
  *
  *   mix SAME         both operands already have the result type: the typed operator
  *   mix NUMERIC_INT  a NUMERIC result over a SHORT/INTEGER/BIGINT side the kernel coerces
@@ -3213,6 +3213,7 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 	{
 	  root->share[root->n_share].regu = bctx->node_cells[i].regu;
 	  root->share[root->n_share].slot = root->prog->cells[cell];
+	  root->share[root->n_share].cell = cell;
 	  root->n_share++;
 	}
     }
@@ -3450,6 +3451,968 @@ expr_scan_pred_dump (FILE * fp, const void *compiled, int indent)
     {
       expr_prog_dump (fp, root->prog, indent);
     }
+}
+
+/* ---- views for the page batch (expr_compile.h) ---------------------------------------- */
+
+/* the kids of a root the batch can take term by term: the single leaf itself, or the AND chain's terms */
+static EXPR_PRED *
+expr_scan_pred_kid (EXPR_PRED * root, int kid)
+{
+  if (root->kind == EXPR_PRED_AND_N)
+    {
+      return (kid >= 0 && kid < root->n_kids) ? root->kids[kid] : NULL;
+    }
+  return (kid == 0 && (root->kind == EXPR_PRED_COMP_FETCH || root->kind == EXPR_PRED_OR_N)) ? root : NULL;
+}
+
+int
+expr_scan_pred_root_shape (const void *compiled, int *n_kids)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+
+  *n_kids = 0;
+  if (root == NULL)
+    {
+      return -1;
+    }
+  if (root->kind == EXPR_PRED_COMP_FETCH || root->kind == EXPR_PRED_OR_N)
+    {
+      /* an OR root is one term: the batch runs it as an OR of raw leaves, or per row */
+      *n_kids = 1;
+      return 1;
+    }
+  if (root->kind == EXPR_PRED_AND_N)
+    {
+      *n_kids = root->n_kids;
+      return 2;
+    }
+  return -1;
+}
+
+static const DB_VALUE *expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd);
+static bool expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+static bool expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+
+static bool expr_pred_term_raw_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+static bool expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
+					  EXPR_RAW_LEAF_INFO * out);
+
+int
+expr_scan_pred_share_count (const void *compiled)
+{
+  return (compiled != NULL) ? ((const EXPR_PRED *) compiled)->n_share : 0;
+}
+
+bool
+expr_scan_pred_share_info (const void *compiled, int i, EXPR_SHARE_INFO * out)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const struct expr_share *e;
+  int step, k, n_kids;
+
+  memset (out, 0, sizeof (*out));
+  out->kid = -1;
+  if (root == NULL || root->prog == NULL || i < 0 || i >= root->n_share)
+    {
+      return false;
+    }
+  e = &root->share[i];
+  step = expr_prog_cell_publisher (root->prog, e->cell);
+  if (step < 0)
+    {
+      return false;
+    }
+  out->regu = e->regu;
+  out->slot = e->slot;
+  out->cell = &root->prog->cells[e->cell];
+  out->in_prologue = (step < root->prog->n_prologue + root->prog->n_exec_prologue);
+  if (out->in_prologue)
+    {
+      return true;
+    }
+  /* the term whose compiled operand side holds the publishing step: that side runs on every row the term
+   * evaluates, so the slot holds the row's value right after the term */
+  if (expr_scan_pred_root_shape (compiled, &n_kids) < 0)
+    {
+      return true;
+    }
+  for (k = 0; k < n_kids; k++)
+    {
+      const EXPR_PRED *pred = expr_scan_pred_kid ((EXPR_PRED *) root, k);
+
+      if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH)
+	{
+	  continue;
+	}
+      if ((pred->lhs_compiled && step >= pred->lhs_start && step < pred->lhs_start + pred->lhs_n)
+	  || (pred->rhs_compiled && step >= pred->rhs_start && step < pred->rhs_start + pred->rhs_n))
+	{
+	  out->kid = k;
+	  break;
+	}
+    }
+  return true;
+}
+
+int
+expr_scan_pred_max_level (const void *compiled)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+
+  return (root != NULL && root->prog != NULL) ? root->prog->max_level : 0;
+}
+
+bool
+expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+
+  memset (out, 0, sizeof (*out));
+  if (root == NULL)
+    {
+      return false;
+    }
+  return expr_scan_pred_node_raw_info (root, expr_scan_pred_kid ((EXPR_PRED *) root, kid), vd, out);
+}
+
+/* A compiled OR (an OR_N node, or a term left to the interpreter whose source is an OR) of disjuncts that are raw
+ * leaves or AND chains of them */
+int
+expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap,
+			      int *n_disj, int disj_cap)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
+  int d, i, n = 0;
+
+  if (pred == NULL)
+    {
+      return -1;
+    }
+  if (pred->kind == EXPR_PRED_INTERP)
+    {
+      return expr_pred_or_raw_leaves (pred->fetch_src, vd, out, cap, n_disj, disj_cap);
+    }
+  if (pred->kind != EXPR_PRED_OR_N || pred->n_kids < 2 || pred->n_kids > disj_cap)
+    {
+      return -1;
+    }
+  for (d = 0; d < pred->n_kids; d++)
+    {
+      const EXPR_PRED *dj = pred->kids[d];
+
+      if (dj->kind == EXPR_PRED_AND_N)
+	{
+	  if (n + dj->n_kids > cap)
+	    {
+	      return -1;
+	    }
+	  for (i = 0; i < dj->n_kids; i++)
+	    {
+	      memset (&out[n], 0, sizeof (out[n]));
+	      if (!expr_scan_pred_node_raw_info (root, dj->kids[i], vd, &out[n]))
+		{
+		  return -1;
+		}
+	      n++;
+	    }
+	  n_disj[d] = dj->n_kids;
+	}
+      else
+	{
+	  if (n + 1 > cap)
+	    {
+	      return -1;
+	    }
+	  memset (&out[n], 0, sizeof (out[n]));
+	  if (!expr_scan_pred_node_raw_info (root, dj, vd, &out[n]))
+	    {
+	      return -1;
+	    }
+	  n++;
+	  n_disj[d] = 1;
+	}
+    }
+  return pred->n_kids;
+}
+
+/* The two questions a page batch asks of a filter term before it takes the term (expr_batch.c, eb_build_filter ()):
+ * EXPR_RUNS_SIDE_EFFECT -- does a row's evaluation run a node with a side effect; EXPR_RUNS_QUERY -- does it run
+ * another query.  The walkers below answer either one over the same nodes. */
+typedef enum
+{
+  EXPR_RUNS_SIDE_EFFECT,
+  EXPR_RUNS_QUERY
+} EXPR_RUNS_WHAT;
+
+static bool expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what);
+
+static bool
+expr_regu_list_runs (const REGU_VARIABLE_LIST list, EXPR_RUNS_WHAT what)
+{
+  REGU_VARIABLE_LIST op;
+
+  for (op = list; op != NULL; op = op->next)
+    {
+      if (expr_regu_runs (&op->value, what))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* Does a row's evaluation of regu run, anywhere under its arithmetic, function and procedure-argument nodes:
+ * EXPR_RUNS_SIDE_EFFECT -- a node with a side effect: a stored procedure call (TYPE_SP), or an operator
+ * expr_arith_side_effect () names (a serial, INCR/DECR, a random number, a session variable).
+ * expr_regu_has_side_effect () looks at the arithmetic subtree only, as its caller reorders arithmetic; a page
+ * batch may evaluate a filter term on a row and then hand the row back to the row path, which evaluates it again,
+ * so it must not take a term that runs such a node at all.
+ * EXPR_RUNS_QUERY -- a node that runs another query: a regu with a linked XASL (a scalar subquery the fetch executes
+ * before it reads the value), a list (TYPE_LIST_ID), a stored procedure call (TYPE_SP, which may run any query).
+ * Such a node may open a scan whose ordered fix lets go of the page the batch holds and fixes it again, while the
+ * chunk's rows still point into it. */
+static bool
+expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
+{
+  if (regu == NULL)
+    {
+      return false;
+    }
+  if (what == EXPR_RUNS_QUERY && regu->xasl != NULL)
+    {
+      return true;
+    }
+  switch (regu->type)
+    {
+    case TYPE_SP:
+      return true;
+    case TYPE_LIST_ID:
+      return what == EXPR_RUNS_QUERY;
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      {
+	const ARITH_TYPE *arith = regu->value.arithptr;
+
+	if (arith == NULL)
+	  {
+	    return false;
+	  }
+	return (what == EXPR_RUNS_SIDE_EFFECT && expr_arith_side_effect (arith->opcode))
+	  || expr_regu_runs (arith->leftptr, what) || expr_regu_runs (arith->rightptr, what)
+	  || expr_regu_runs (arith->thirdptr, what);
+      }
+    case TYPE_FUNC:
+      return regu->value.funcp != NULL && expr_regu_list_runs (regu->value.funcp->operand, what);
+    case TYPE_REGUVAL_LIST:
+      {
+	const REGU_VALUE_ITEM *item;
+
+	if (regu->value.reguval_list == NULL)
+	  {
+	    return false;
+	  }
+	for (item = regu->value.reguval_list->regu_list; item != NULL; item = item->next)
+	  {
+	    if (expr_regu_runs (item->value, what))
+	      {
+		return true;
+	      }
+	  }
+	return false;
+      }
+    case TYPE_REGU_VAR_LIST:
+      return expr_regu_list_runs (regu->value.regu_var_list, what);
+    default:
+      /* a column, a literal, a host variable, a list slot: read, not computed */
+      return false;
+    }
+}
+
+/* the same question of a term eval_pred () evaluates verbatim: every operand of every term under it */
+static bool
+expr_pred_runs (const PRED_EXPR * pr, EXPR_RUNS_WHAT what)
+{
+  if (pr == NULL)
+    {
+      return false;
+    }
+  switch (pr->type)
+    {
+    case T_PRED:
+      return expr_pred_runs (pr->pe.m_pred.lhs, what) || expr_pred_runs (pr->pe.m_pred.rhs, what);
+    case T_NOT_TERM:
+      return expr_pred_runs (pr->pe.m_not_term, what);
+    case T_EVAL_TERM:
+      switch (pr->pe.m_eval_term.et_type)
+	{
+	case T_COMP_EVAL_TERM:
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_comp.lhs, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_comp.rhs, what);
+	case T_ALSM_EVAL_TERM:
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_alsm.elem, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_alsm.elemset, what);
+	case T_LIKE_EVAL_TERM:
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_like.src, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_like.pattern, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_like.esc_char, what);
+	case T_RLIKE_EVAL_TERM:
+	  return expr_regu_runs (pr->pe.m_eval_term.et.et_rlike.src, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_rlike.pattern, what)
+	    || expr_regu_runs (pr->pe.m_eval_term.et.et_rlike.case_sensitive, what);
+	default:
+	  break;
+	}
+      /* FALLTHRU */
+    default:
+      /* a term this file does not know: not one to evaluate twice, nor to run under the held page */
+      return true;
+    }
+}
+
+/* the same question of a node of the compiled filter: a fetched leaf's two operands (fetch_lhs/fetch_rhs are the
+ * term's operands whether a side is compiled or fetched), an interpreted term's source, a connective's operands */
+static bool
+expr_scan_pred_node_runs (const EXPR_PRED * pred, EXPR_RUNS_WHAT what)
+{
+  int i;
+
+  if (pred == NULL)
+    {
+      return false;
+    }
+  switch (pred->kind)
+    {
+    case EXPR_PRED_COMP_FETCH:
+      return expr_regu_runs (pred->fetch_lhs, what) || expr_regu_runs (pred->fetch_rhs, what);
+    case EXPR_PRED_INTERP:
+    case EXPR_PRED_INTERP_COMP0:
+      return expr_pred_runs ((const PRED_EXPR *) pred->fetch_src, what);
+    case EXPR_PRED_AND:
+    case EXPR_PRED_OR:
+    case EXPR_PRED_NOT:
+    case EXPR_PRED_AND_N:
+    case EXPR_PRED_OR_N:
+      if (expr_scan_pred_node_runs (pred->lhs, what) || expr_scan_pred_node_runs (pred->rhs, what))
+	{
+	  return true;
+	}
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  if (expr_scan_pred_node_runs (pred->kids[i], what))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+    default:
+      /* a leaf over compiled cells only (not a scan filter's shape): its operands are not reachable from here */
+      return true;
+    }
+}
+
+bool
+expr_scan_pred_kid_has_side_effect (const void *compiled, int kid)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
+
+  return pred != NULL && expr_scan_pred_node_runs (pred, EXPR_RUNS_SIDE_EFFECT);
+}
+
+bool
+expr_scan_pred_kid_runs_query (const void *compiled, int kid)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
+
+  return pred != NULL && expr_scan_pred_node_runs (pred, EXPR_RUNS_QUERY);
+}
+
+/* a node of the compiled filter as a raw leaf */
+static bool
+expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
+			      EXPR_RAW_LEAF_INFO * out)
+{
+  const REGU_VARIABLE *col, *k;
+  bool col_is_lhs, numeric = false;
+
+  if (pred != NULL && (pred->kind == EXPR_PRED_INTERP_COMP0 || pred->kind == EXPR_PRED_INTERP))
+    {
+      /* a term the compiler left to the interpreter: as the terms of an interpreted filter */
+      return expr_pred_term_raw_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
+    }
+  if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH)
+    {
+      return false;
+    }
+  if (pred->fast_type == DB_TYPE_UNKNOWN)
+    {
+      /* the generic comparison: of its types only NUMERIC has an exact typed form here (both
+       * sides were resolved to NUMERIC; the constant's scale may differ from the column's) */
+      const REGU_VARIABLE *c = (pred->fetch_lhs->type == TYPE_ATTR_ID) ? pred->fetch_lhs : pred->fetch_rhs;
+
+      if (c->type != TYPE_ATTR_ID || c->domain == NULL || TP_DOMAIN_TYPE (c->domain) != DB_TYPE_NUMERIC)
+	{
+	  /* another type compared generically (a CHAR column inside an OR the optimizer made of an IN list): the
+	   * original term, read as an interpreted filter's term */
+	  memset (out, 0, sizeof (*out));
+	  return pred->fetch_src != NULL && expr_pred_term_raw_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
+	}
+      numeric = true;
+    }
+  /* two columns of the scan of one type ("l_commitdate < l_receiptdate"): a fixed-size type the fast kernel
+   * compares as it is */
+  if (!numeric && !pred->need_type_guard && pred->fetch_lhs->type == TYPE_ATTR_ID
+      && pred->fetch_rhs->type == TYPE_ATTR_ID && !pred->lhs_compiled && !pred->rhs_compiled && !pred->rhs_pinned
+      && pred->fetch_lhs->domain != NULL && pred->fetch_rhs->domain != NULL
+      && TP_DOMAIN_TYPE (pred->fetch_lhs->domain) == pred->fast_type
+      && TP_DOMAIN_TYPE (pred->fetch_rhs->domain) == pred->fast_type
+      && (pred->fast_type == DB_TYPE_INTEGER || pred->fast_type == DB_TYPE_BIGINT || pred->fast_type == DB_TYPE_DATE
+	  || pred->fast_type == DB_TYPE_DOUBLE))
+    {
+      out->col_regu = pred->fetch_lhs;
+      out->col2_regu = pred->fetch_rhs;
+      out->col_is_lhs = true;
+      out->fast_type = pred->fast_type;
+      out->rel_op = pred->rel_op;
+      return true;
+    }
+  /* The sides a page can take: a column (TYPE_ATTR_ID) against a value fixed for the execution
+   * -- an inline literal (TYPE_DBVAL), a literal the leaf pinned, a prologue-computed constant,
+   * or an auto-parameterized literal / host variable (TYPE_POS_VALUE: the leaf guards its type
+   * per row because the slot is refilled between executions; within one execution it is one
+   * value, which the page checks once).  A TYPE_CONSTANT or TYPE_POSITION side is refilled per
+   * row by someone else and stays with the row path. */
+  if (pred->need_type_guard
+      && !((pred->fetch_lhs->type == TYPE_ATTR_ID && pred->fetch_rhs->type == TYPE_POS_VALUE)
+	   || (pred->fetch_rhs->type == TYPE_ATTR_ID && pred->fetch_lhs->type == TYPE_POS_VALUE)))
+    {
+      return false;
+    }
+  if (pred->fetch_lhs->type == TYPE_ATTR_ID && !pred->lhs_compiled)
+    {
+      col = pred->fetch_lhs;
+      k = pred->fetch_rhs;
+      col_is_lhs = true;
+    }
+  else if (pred->fetch_rhs->type == TYPE_ATTR_ID && !pred->rhs_compiled && !pred->rhs_pinned)
+    {
+      col = pred->fetch_rhs;
+      k = pred->fetch_lhs;
+      col_is_lhs = false;
+    }
+  else
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = col_is_lhs;
+  out->fast_type = numeric ? DB_TYPE_NUMERIC : pred->fast_type;
+  out->rel_op = pred->rel_op;
+  if (!col_is_lhs && pred->lhs_compiled)
+    {
+      /* a constant the program computes: only when it does so before the rows */
+      if (pred->lhs_n > 0 && root->prog != NULL
+	  && pred->lhs_start + pred->lhs_n <= root->prog->n_prologue + root->prog->n_exec_prologue)
+	{
+	  out->k_cell = pred->arg1p;
+	  return true;
+	}
+      return false;
+    }
+  if (col_is_lhs && pred->rhs_compiled)
+    {
+      if (pred->rhs_n > 0 && root->prog != NULL
+	  && pred->rhs_start + pred->rhs_n <= root->prog->n_prologue + root->prog->n_exec_prologue)
+	{
+	  out->k_cell = pred->arg2p;
+	  return true;
+	}
+      return false;
+    }
+  if (col_is_lhs && pred->rhs_pinned)
+    {
+      out->k_value = &pred->pinned_rhs;
+      return true;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      out->k_value = &k->value.dbval;
+      return !DB_IS_NULL (out->k_value) && DB_VALUE_DOMAIN_TYPE (out->k_value) == out->fast_type;
+    }
+  if (k->type == TYPE_POS_VALUE)
+    {
+      out->k_value = expr_raw_pos_value (k, vd);
+      return out->k_value != NULL;
+    }
+  return false;
+}
+
+/* the value a TYPE_POS_VALUE operand reads in this execution: the bound value, or the gate's
+ * converted copy of it (the index rule of expr_pos_value_index ()) */
+static const DB_VALUE *
+expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd)
+{
+  int vidx = -1;
+
+  if (vd == NULL)
+    {
+      return NULL;
+    }
+  if (k->plan_item != NULL && k->plan_item->ref >= 0 && vd->xasl_state != NULL
+      && vd->xasl_state->resolved_domain.readable && k->plan_item->ref < vd->xasl_state->resolved_domain.n_vals)
+    {
+      vidx = k->plan_item->ref;
+    }
+  else if (k->value.val_pos >= 0 && k->value.val_pos < vd->dbval_cnt)
+    {
+      vidx = k->value.val_pos;
+    }
+  return (vidx >= 0) ? &vd->dbval_ptr[vidx] : NULL;
+}
+
+/* A term the compiler left to eval_pred_comp0 () because its sides differ in type: a NUMERIC
+ * column against an integer constant ("l_quantity < 24", the literal auto-parameterized).
+ * eval_value_rel_cmp () coerces the constant to NUMERIC and compares exactly, which a typed
+ * loop reproduces.  Only the constants that coercion takes without loss are offered
+ * (expr_numeric_cmp_const_ok ()); the batch checks the value again when a page starts, a host
+ * variable being rebindable between executions. */
+static bool
+expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  return expr_pred_term_numeric_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
+}
+
+/* the same for a term of an interpreted filter (a PRED_EXPR the compiler left alone) */
+static bool
+expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const COMP_EVAL_TERM *et;
+  const REGU_VARIABLE *col, *k;
+  const DB_VALUE *kv = NULL;
+  bool col_is_lhs;
+
+  if (pr == NULL || pr->type != T_EVAL_TERM || pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+    {
+      return false;
+    }
+  et = &pr->pe.m_eval_term.et.et_comp;
+  switch (et->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_LT:
+    case R_LE:
+    case R_GT:
+    case R_GE:
+      break;
+    default:
+      return false;
+    }
+  if (et->lhs == NULL || et->rhs == NULL)
+    {
+      return false;
+    }
+  if (et->lhs->type == TYPE_ATTR_ID)
+    {
+      col = et->lhs;
+      k = et->rhs;
+      col_is_lhs = true;
+    }
+  else if (et->rhs->type == TYPE_ATTR_ID)
+    {
+      col = et->rhs;
+      k = et->lhs;
+      col_is_lhs = false;
+    }
+  else
+    {
+      return false;
+    }
+  if (col->domain == NULL || TP_DOMAIN_TYPE (col->domain) != DB_TYPE_NUMERIC)
+    {
+      return false;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      kv = &k->value.dbval;
+    }
+  else if (k->type == TYPE_POS_VALUE)
+    {
+      kv = expr_raw_pos_value (k, vd);
+    }
+  if (kv == NULL || DB_IS_NULL (kv) || !expr_numeric_cmp_const_ok (kv))
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = col_is_lhs;
+  out->fast_type = DB_TYPE_NUMERIC;
+  out->rel_op = et->rel_op;
+  out->k_value = kv;
+  return true;
+}
+
+const DB_VALUE *
+expr_raw_const_value (const REGU_VARIABLE * k, const val_descr * vd)
+{
+  if (k == NULL)
+    {
+      return NULL;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      return &k->value.dbval;
+    }
+  if (k->type == TYPE_POS_VALUE)
+    {
+      return expr_raw_pos_value (k, vd);
+    }
+  return NULL;
+}
+
+/* "column IN (c1, c2, ...)" over an integer or string column of the scan, the list a set of literals and host
+ * variables (fixed for the execution) */
+static bool
+expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const ALSM_EVAL_TERM *al;
+  const REGU_VARIABLE *set, *col;
+  REGU_VARIABLE_LIST op;
+  DB_TYPE ct;
+
+  if (pr == NULL || pr->type != T_EVAL_TERM || pr->pe.m_eval_term.et_type != T_ALSM_EVAL_TERM)
+    {
+      return false;
+    }
+  al = &pr->pe.m_eval_term.et.et_alsm;
+  if (al->eq_flag != F_SOME || al->rel_op != R_EQ || al->elem == NULL || al->elemset == NULL
+      || (al->elemset->type == TYPE_FUNC ? al->elemset->value.funcp == NULL
+	  : (al->elemset->type != TYPE_DBVAL || !TP_IS_SET_TYPE (DB_VALUE_TYPE (&al->elemset->value.dbval))
+	     || DB_IS_NULL (&al->elemset->value.dbval))))
+    {
+      return false;
+    }
+  if (al->elem->type == TYPE_INARITH && al->elem->value.arithptr != NULL
+      && al->elem->value.arithptr->opcode == T_SUBSTRING)
+    {
+      /* SUBSTRING (string column, start, length) with the two fixed for the execution: the batch takes the
+       * characters from the record's bytes (qstr_substring ()); the result is a VARCHAR of the column's collation */
+      const ARITH_TYPE *a = al->elem->value.arithptr;
+
+      if (a->leftptr == NULL || a->leftptr->type != TYPE_ATTR_ID || a->leftptr->domain == NULL
+	  || (TP_DOMAIN_TYPE (a->leftptr->domain) != DB_TYPE_VARCHAR
+	      && TP_DOMAIN_TYPE (a->leftptr->domain) != DB_TYPE_CHAR) || a->thirdptr == NULL
+	  || (out->sub_start = expr_raw_const_value (a->rightptr, vd)) == NULL
+	  || (out->sub_len = expr_raw_const_value (a->thirdptr, vd)) == NULL)
+	{
+	  return false;
+	}
+      col = a->leftptr;
+      ct = DB_TYPE_VARCHAR;
+    }
+  else if (al->elem->type == TYPE_ATTR_ID && al->elem->domain != NULL)
+    {
+      col = al->elem;
+      ct = TP_DOMAIN_TYPE (al->elem->domain);
+    }
+  else
+    {
+      return false;
+    }
+  set = al->elemset;
+  if (set->type == TYPE_DBVAL)
+    {
+      /* a set literal ("in set{...}"): its elements are read where it is (expr_batch.c) */
+    }
+  else if (set->value.funcp->ftype != F_SET && set->value.funcp->ftype != F_SEQUENCE
+	   && set->value.funcp->ftype != F_MULTISET)
+    {
+      return false;
+    }
+  for (op = (set->type == TYPE_FUNC) ? set->value.funcp->operand : NULL; op != NULL; op = op->next)
+    {
+      if (expr_raw_const_value (&op->value, vd) == NULL)
+	{
+	  return false;
+	}
+    }
+  if (ct != DB_TYPE_INTEGER && ct != DB_TYPE_SHORT && ct != DB_TYPE_BIGINT && ct != DB_TYPE_DATE
+      && ct != DB_TYPE_VARCHAR && ct != DB_TYPE_CHAR)
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = true;
+  out->fast_type = ct;
+  out->rel_op = R_EQ;
+  out->k_set = set;
+  return true;
+}
+
+/* A term on a VARCHAR or CHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col [NOT] LIKE
+ * 'pattern'" without an ESCAPE (a page batch compares the record's bytes with the collation's own function, and
+ * matches a pattern with qstr_like_match () under the column's collation, '%' and '_' as the row path takes them;
+ * without an ESCAPE a backslash is a literal) */
+static bool
+expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const REGU_VARIABLE *col, *k;
+  const DB_VALUE *kv = NULL;
+  bool negate = false, like = false;
+  int rel_op = R_EQ;
+
+  if (pr != NULL && pr->type == T_NOT_TERM)
+    {
+      negate = true;
+      pr = pr->pe.m_not_term;
+    }
+  if (pr == NULL || pr->type != T_EVAL_TERM)
+    {
+      return false;
+    }
+  if (pr->pe.m_eval_term.et_type == T_LIKE_EVAL_TERM)
+    {
+      const LIKE_EVAL_TERM *lk = &pr->pe.m_eval_term.et.et_like;
+
+      if (lk->esc_char != NULL || lk->src == NULL || lk->pattern == NULL || lk->src->type != TYPE_ATTR_ID)
+	{
+	  return false;
+	}
+      col = lk->src;
+      k = lk->pattern;
+      like = true;
+    }
+  else if (!negate && pr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+    {
+      const COMP_EVAL_TERM *et = &pr->pe.m_eval_term.et.et_comp;
+
+      if ((et->rel_op != R_EQ && et->rel_op != R_NE) || et->lhs == NULL || et->rhs == NULL)
+	{
+	  return false;
+	}
+      if (et->lhs->type == TYPE_ATTR_ID)
+	{
+	  col = et->lhs;
+	  k = et->rhs;
+	}
+      else if (et->rhs->type == TYPE_ATTR_ID)
+	{
+	  col = et->rhs;
+	  k = et->lhs;
+	}
+      else
+	{
+	  return false;
+	}
+      rel_op = et->rel_op;
+    }
+  else
+    {
+      return false;
+    }
+  if (col->domain == NULL
+      || (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR && TP_DOMAIN_TYPE (col->domain) != DB_TYPE_CHAR))
+    {
+      return false;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      kv = &k->value.dbval;
+    }
+  else if (k->type == TYPE_POS_VALUE)
+    {
+      kv = expr_raw_pos_value (k, vd);
+    }
+  if (kv == NULL || DB_IS_NULL (kv)
+      || (DB_VALUE_DOMAIN_TYPE (kv) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (kv) != DB_TYPE_CHAR))
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = true;
+  out->fast_type = TP_DOMAIN_TYPE (col->domain);
+  out->rel_op = rel_op;
+  out->k_value = kv;
+  out->like = like;
+  out->negate = negate;
+  return true;
+}
+
+/*
+ * expr_pred_raw_leaves () - an interpreted data filter as raw leaves
+ *   return: the terms of its AND chain (left to right, the order eval_pred () visits them), or -1 when a term
+ *	     is not "NUMERIC column op exact-numeric constant" or the chain is longer than cap
+ *
+ * A filter whose terms all compare a NUMERIC column with an integer constant has nothing the compiler takes
+ * (eval_pred_comp0 () coerces the constant per row), so it stays interpreted; a page batch runs such terms as
+ * raw leaves all the same (expr_scan_pred_numeric_term_info ()).
+ */
+int
+expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap)
+{
+  const PRED_EXPR *terms[64];
+  int n, i;
+
+  if (pred_expr == NULL)
+    {
+      return -1;
+    }
+  n = expr_scan_pred_chain_collect ((const PRED_EXPR *) pred_expr, B_AND, terms, 0, (int) DIM (terms));
+  if (n <= 0 || n > cap)
+    {
+      return -1;
+    }
+  for (i = 0; i < n; i++)
+    {
+      if (!expr_pred_term_raw_info (terms[i], vd, &out[i]))
+	{
+	  memset (&out[i], 0, sizeof (out[i]));
+	  if (terms[i]->type != T_PRED || terms[i]->pe.m_pred.bool_op != B_OR)
+	    {
+	      return -1;
+	    }
+	  /* an OR term: the batch reads its disjuncts (expr_pred_or_raw_leaves ()) */
+	  out[i].or_src = terms[i];
+	}
+    }
+  return n;
+}
+
+/* a term of an interpreted filter as a raw leaf: a NUMERIC comparison, a string one, or an IN list */
+static bool
+expr_pred_term_raw_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  memset (out, 0, sizeof (*out));
+  if (pr == NULL)
+    {
+      return false;
+    }
+  if (expr_pred_term_numeric_info (pr, vd, out))
+    {
+      return true;
+    }
+  memset (out, 0, sizeof (*out));
+  if (expr_pred_term_string_info (pr, vd, out))
+    {
+      return true;
+    }
+  memset (out, 0, sizeof (*out));
+  if (expr_pred_term_in_info (pr, vd, out))
+    {
+      return true;
+    }
+  memset (out, 0, sizeof (*out));
+  return false;
+}
+
+int
+expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
+			 int disj_cap)
+{
+  const PRED_EXPR *disj[16];
+  const PRED_EXPR *terms[32];
+  int nd, d, i, nt, n = 0;
+
+  if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED
+      || ((const PRED_EXPR *) or_src)->pe.m_pred.bool_op != B_OR)
+    {
+      return -1;
+    }
+  nd = expr_scan_pred_chain_collect ((const PRED_EXPR *) or_src, B_OR, disj, 0, MIN ((int) DIM (disj), disj_cap));
+  if (nd < 2)
+    {
+      return -1;
+    }
+  for (d = 0; d < nd; d++)
+    {
+      nt = expr_scan_pred_chain_collect (disj[d], B_AND, terms, 0, (int) DIM (terms));
+      if (nt <= 0 || n + nt > cap)
+	{
+	  return -1;
+	}
+      for (i = 0; i < nt; i++)
+	{
+	  if (!expr_pred_term_raw_info (terms[i], vd, &out[n + i]))
+	    {
+	      return -1;
+	    }
+	}
+      n += nt;
+      n_disj[d] = nt;
+    }
+  return nd;
+}
+
+/* the constants a NUMERIC column compares with exactly, whichever of the two forms the term took */
+bool
+expr_numeric_cmp_const_ok (const DB_VALUE * k)
+{
+  switch (DB_VALUE_DOMAIN_TYPE (k))
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_NUMERIC:
+      return true;
+    case DB_TYPE_BIGINT:
+      /* the interpreter coerces the constant to tp_domain_resolve_default (DB_TYPE_NUMERIC) -- the precision-40
+       * float numeric, which takes any BIGINT exactly; the batch keeps a narrower window so the coefficient at the
+       * column's scale stays well inside the 10^38 bound eb_num_leaf_constant () reasons with */
+      return db_get_bigint (k) < 1000000000000000LL && db_get_bigint (k) > -1000000000000000LL;
+    default:
+      return false;
+    }
+}
+
+int
+expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  EXPR_EVAL_CTX ctx;
+
+  if (root == NULL || root->prog == NULL)
+    {
+      return NO_ERROR;
+    }
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = root->prog;
+  ctx.checked = false;
+  expr_ctx_arm_depth (&ctx, root->prog);
+  return expr_prog_prepare (root->prog, &ctx);
+}
+
+DB_LOGICAL
+expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid (root, kid) : NULL;
+  EXPR_EVAL_CTX ctx;
+
+  if (pred == NULL)
+    {
+      assert (false);
+      return V_ERROR;
+    }
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = obj_oid;
+  ctx.tpl = NULL;
+  ctx.prog = root->prog;
+  ctx.checked = false;
+  if (root->prog != NULL)
+    {
+      expr_ctx_arm_depth (&ctx, root->prog);
+      if (unlikely (expr_prog_prepare (root->prog, &ctx) != NO_ERROR))
+	{
+	  return V_ERROR;
+	}
+    }
+  return expr_scan_pred_eval_node (pred, &ctx);
 }
 
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
@@ -5836,6 +6799,129 @@ expr_run_range_checked (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ct
       i++;
     }
   return NO_ERROR;
+}
+
+/* ---- views for the page batch (expr_compile.h) ---------------------------------------- */
+
+static int
+expr_prog_cell_index (const EXPR_PROG * prog, DB_VALUE ** cellp)
+{
+  if (cellp == NULL || cellp < prog->cells || cellp >= prog->cells + prog->n_cells)
+    {
+      return -1;
+    }
+  return (int) (cellp - prog->cells);
+}
+
+void
+expr_prog_step_info (const EXPR_PROG * prog, int step_idx, EXPR_STEP_INFO * out)
+{
+  const EXPR_STEP *step = &prog->steps[step_idx];
+  EXPR_KERNEL_FN k = step->kernel;
+
+  memset (out, 0, sizeof (*out));
+  out->cls = EXPR_STEP_OTHER;
+  out->type = DB_TYPE_UNKNOWN;
+  out->arg1_cell = expr_prog_cell_index (prog, step->arg1p);
+  out->arg2_cell = expr_prog_cell_index (prog, step->arg2p);
+  out->out_cell = expr_prog_cell_index (prog, step->out_cell);
+  out->jump_to = step->jump_to;
+  out->in_prologue = (step_idx < prog->n_prologue + prog->n_exec_prologue);
+  out->regu = step->regu;
+  out->coerces = (step->domain != NULL);
+  out->domain = step->domain;
+
+  if (k == expr_k_leaf_fetch)
+    {
+      out->cls = EXPR_STEP_LEAF_FETCH;
+    }
+  else if (k == expr_k_hostvar)
+    {
+      out->cls = EXPR_STEP_HOSTVAR;
+    }
+  else if (k == expr_k_jump_null_arith)
+    {
+      out->cls = EXPR_STEP_JUMP_NULL_ARITH;
+    }
+  else if (k == expr_k_resolved_value)
+    {
+      out->cls = EXPR_STEP_RESOLVED;
+    }
+  else if (k == expr_k_cast || k == expr_k_cast_strict)
+    {
+      out->cls = EXPR_STEP_CAST;
+    }
+  else if (k == expr_k_add_int || k == expr_k_sub_int || k == expr_k_mul_int)
+    {
+      out->cls = (k == expr_k_add_int) ? EXPR_STEP_ADD : (k == expr_k_sub_int) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_INTEGER;
+    }
+  else if (k == expr_k_add_bigint || k == expr_k_sub_bigint || k == expr_k_mul_bigint)
+    {
+      out->cls = (k == expr_k_add_bigint) ? EXPR_STEP_ADD : (k == expr_k_sub_bigint) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_BIGINT;
+    }
+  else if (k == expr_k_add_double || k == expr_k_sub_double || k == expr_k_mul_double)
+    {
+      out->cls = (k == expr_k_add_double) ? EXPR_STEP_ADD : (k == expr_k_sub_double) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_DOUBLE;
+    }
+  else if (k == expr_k_add_numeric_float || k == expr_k_sub_numeric_float || k == expr_k_mul_numeric)
+    {
+      /* the float family only: the plain family (a coerced integer side) rounds differently */
+      out->cls =
+	(k == expr_k_add_numeric_float) ? EXPR_STEP_ADD : (k ==
+							   expr_k_sub_numeric_float) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_NUMERIC;
+      out->numeric_pure = true;
+    }
+}
+
+int
+expr_prog_cell_publisher (const EXPR_PROG * prog, int cell)
+{
+  int i;
+
+  if (cell < 0 || cell >= prog->n_cells)
+    {
+      return -1;
+    }
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      if (prog->steps[i].out_cell == &prog->cells[cell])
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+int
+expr_prog_run_steps (EXPR_PROG * prog, int from, int to, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_EVAL_CTX ctx;
+
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = prog;
+  expr_ctx_arm_depth (&ctx, prog);
+  return expr_run_range (prog, from, to, &ctx);
+}
+
+int
+expr_prog_prepare_execution (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_EVAL_CTX ctx;
+
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = prog;
+  expr_ctx_arm_depth (&ctx, prog);
+  return expr_prog_prepare (prog, &ctx);
 }
 
 int

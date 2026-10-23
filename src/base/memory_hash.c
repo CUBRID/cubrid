@@ -1473,6 +1473,42 @@ mht_get (MHT_TABLE * ht, const void *key)
 }
 
 /*
+ * mht_get_hash - find data associated with key, its hash computed by the caller
+ *   return: the data associated with the key, or NULL if not found
+ *   ht(in): hash table
+ *   key(in): hashing key
+ *   hash(in): the key's hash over the full unsigned range, of which the table's hash function takes hash % size
+ *	       as the bucket for every size (so the caller's one hash serves the lookup and whatever else it
+ *	       hashes the key for)
+ *
+ * Note: mht_get () without the call of the table's hash function.
+ */
+void *
+mht_get_hash (MHT_TABLE * ht, const void *key, unsigned int hash)
+{
+  HENTRY_PTR hentry;
+
+  assert (ht != NULL);
+  assert (key != NULL);
+
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+  assert (hash == (*ht->hash_func) (key, ht->size));
+
+  for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
+    {
+      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+	{
+	  mht_adjust_lru_list (ht, hentry);
+	  return hentry->data;
+	}
+    }
+  return NULL;
+}
+
+/*
  * mht_adjust_lru_list -
  *   ht(in): hash table
  *   hentry(in): hash entry
