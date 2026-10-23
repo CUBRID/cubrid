@@ -46,6 +46,7 @@
 #include "cas_error.h"
 #include "cas_protocol.h"
 #include "error_manager.h"
+#include "language_support.h"
 #include "object_representation.h"
 #include "system_parameter.h"
 
@@ -440,6 +441,13 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 		}
 	      db_string_free (user);
 	    }
+	  status = NO_ERROR;
+	}
+      else if (sub_code == CAS_CSQL_SUB_DB_CODESET)
+	{
+	  /* the fat client's lang_charset () was the database's; the thin
+	   * one's is the environment's, so the server reports its own */
+	  chunks.emplace_back (CAS_CSQL_CHUNK_CODESET, std::to_string ((int) lang_charset ()));
 	  status = NO_ERROR;
 	}
       else

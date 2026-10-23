@@ -628,7 +628,11 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
       if ((signed char) *pos < 0)
 	{
 	  char *locale = setlocale (LC_CTYPE, NULL);
+#if defined(CSQL_THIN)
+	  INTL_CODESET codeset = (INTL_CODESET) csql_wire_db_codeset ();
+#else
 	  INTL_CODESET codeset = lang_charset ();
+#endif
 	  const char *find1 = NULL, *find2 = NULL;
 
 	  /* check of DB codeset */

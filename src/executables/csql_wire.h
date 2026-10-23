@@ -81,6 +81,7 @@ extern "C"
   extern const char *csql_wire_user_name (void);
   extern const char *csql_wire_db_name (void);
   extern const char *csql_wire_host_name (void);
+  extern int csql_wire_db_codeset (void);
 
 #ifdef __cplusplus
 }

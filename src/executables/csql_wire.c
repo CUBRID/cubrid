@@ -68,6 +68,8 @@ static char wire_Passwd[128];
 static int wire_Client_type = 0;
 /* the server session's current user for the \u prompt (login () changes it) */
 static char wire_Session_user[DB_MAX_USER_LENGTH];
+/* the database codeset for the multibyte prompt check; -1 (INTL_CODESET_NONE) if unknown */
+static int wire_Db_codeset = -1;
 
 static int wire_Err_code = 0;
 static char wire_Err_msg[WIRE_ERR_MSG_MAX];
@@ -941,7 +943,7 @@ wire_roundtrip (wire_body * b, bool replay)
 	  break;
 	}
       if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG
-	  && tag != CAS_CSQL_CHUNK_STDOUT && tag != CAS_CSQL_CHUNK_USER)
+	  && tag != CAS_CSQL_CHUNK_STDOUT && tag != CAS_CSQL_CHUNK_USER && tag != CAS_CSQL_CHUNK_CODESET)
 	{
 	  framing_error = true;
 	  break;
@@ -992,6 +994,16 @@ wire_roundtrip (wire_body * b, bool replay)
 	  size_t n = ((size_t) clen < sizeof (wire_Session_user)) ? (size_t) clen : sizeof (wire_Session_user) - 1;
 	  memcpy (wire_Session_user, reply + pos, n);
 	  wire_Session_user[n] = '\0';
+	  pos += (size_t) clen;
+	  continue;
+	}
+      if (tag == CAS_CSQL_CHUNK_CODESET)
+	{
+	  char num[16];
+	  size_t n = ((size_t) clen < sizeof (num)) ? (size_t) clen : sizeof (num) - 1;
+	  memcpy (num, reply + pos, n);
+	  num[n] = '\0';
+	  wire_Db_codeset = atoi (num);
 	  pos += (size_t) clen;
 	  continue;
 	}
@@ -1277,6 +1289,28 @@ csql_wire_user_name (void)
   int status = wire_roundtrip (&b, false);
   free (b.buf);
   return status < 0 ? NULL : wire_Session_user;
+}
+
+/* The fat client checked a multibyte prompt against lang_charset (), which
+ * its boot took from the database; the thin client's comes from the
+ * environment, so the server is asked.  -1 (INTL_CODESET_NONE) on failure. */
+int
+csql_wire_db_codeset (void)
+{
+  wire_body b = { NULL, 0, 0 };
+  char fc = (char) CAS_FC_CSQL_REQUEST;
+
+  if (wire_body_append (&b, &fc, 1) != NO_ERROR || wire_arg_int (&b, CAS_CSQL_SUB_DB_CODESET) != NO_ERROR)
+    {
+      free (b.buf);
+      wire_set_error (ER_FAILED, "out of memory");
+      return -1;
+    }
+
+  wire_Db_codeset = -1;
+  int status = wire_roundtrip (&b, false);
+  free (b.buf);
+  return status < 0 ? -1 : wire_Db_codeset;
 }
 
 const char *
