@@ -284,8 +284,12 @@ jsp_find_stored_procedure (const char *name)
     {
       er_clear ();
 
-      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-      if (db_client_type_is_loaddb_compat () /*latest compat client type */ )
+      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user.
+       * It looks for routines unloaded from versions under 11.4, which have no package routines
+       * (<user>.<package>.<routine>). */
+      const char *dot = strchr (checked_name, '.');
+      if (db_client_type_is_loaddb_compat () /*latest compat client type */
+	  && (dot == NULL || strchr (dot + 1, '.') == NULL))
 	{
 	  err = jsp_find_sp_of_another_owner (checked_name, &mop);
 	}
