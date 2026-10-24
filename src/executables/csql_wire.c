@@ -1237,8 +1237,7 @@ csql_wire_execute (const CSQL_ARGUMENT * csql_arg, int input_type, int line_no, 
     }
   if (wire_arg_str (&b, delims) != NO_ERROR
       || wire_arg_str (&b, widths) != NO_ERROR
-      || wire_arg_str (&b, in_file) != NO_ERROR
-      || wire_arg_str (&b, text) != NO_ERROR)
+      || wire_arg_str (&b, in_file) != NO_ERROR || wire_arg_str (&b, text) != NO_ERROR)
     {
       free (b.buf);
       wire_set_error (ER_FAILED, "out of memory");

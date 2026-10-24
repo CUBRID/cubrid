@@ -105,20 +105,20 @@ class csql_hangup_watch
 	  return;		/* no watch: the statement runs as it would without it */
 	}
       try
-      {
-	m_thread = std::thread ([fd, tran_index, wake = m_wake] ()
 	{
-	  struct pollfd pfd[2] = { { fd, POLLRDHUP, 0 }, { wake, POLLIN, 0 } };
+	  m_thread = std::thread ([fd, tran_index, wake = m_wake] ()
+	  {
+	    struct pollfd pfd[2] = { { fd, POLLRDHUP, 0 }, { wake, POLLIN, 0 } };
 
-	  if (poll (pfd, 2, -1) > 0 && (pfd[0].revents & (POLLRDHUP | POLLHUP | POLLERR)) != 0)
-	    {
-	      interrupt (tran_index);
-	    }
-	});
-      }
+	    if (poll (pfd, 2, -1) > 0 && (pfd[0].revents & (POLLRDHUP | POLLHUP | POLLERR)) != 0)
+	      {
+		interrupt (tran_index);
+	      }
+	  });
+	}
       catch (const std::system_error &)
-      {
-      }
+	{
+	}
     }
 
     ~csql_hangup_watch ()
