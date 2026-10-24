@@ -2738,11 +2738,15 @@ struct pt_name_info
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
+#define PT_NAME_INFO_IN_GROUP_HAVING 32768	/* name in group by/having/order by. it may be an alias of the select list */
+#define PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL 65536	/* name in group by/having/order by of a static SQL, not resolved
+							 * by name binding. it is resolved as an alias or converted to
+							 * a host variable after the alias resolution */
 
-  short flag;
-#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
-#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
-#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
+  int flag;
+#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (int) (f))
+#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (int) (f)
+#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (int) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
@@ -2942,6 +2946,9 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned group_having_alias_resolved:1;	/* aliases in group by/having/order by of the query and its subqueries
+						 * are resolved, and for a static SQL, the deferred names are converted
+						 * to host variables (see pt_resolve_group_having_alias_and_deferred_name ()) */
     unsigned uncorr_hoisted:1;	/* correlation_level was 0 (uncorrelated) until pt_uncorr_post ()
 				 * hoisted this subquery into an enclosing aptr list, overwriting
 				 * the level. Lets a plan regeneration from the same tree (see
