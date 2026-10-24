@@ -70,6 +70,10 @@ typedef std::vector<std::pair<char, std::string>> csql_chunk_vec;
  * is sent.  32 MiB is far above any legitimate csql result page; on overflow
  * the request becomes a controlled statement error. */
 #define CSQL_CAPTURE_LIMIT (32 * 1024 * 1024)
+/* error-log records only feed the client's csql.err, which the fat client wrote without failing the
+ * statement; past this share of the cap further records are dropped (a PL loop that catches 100000
+ * NO_DATA_FOUND errors must still run, shell cbrd_26555) */
+#define CSQL_CAPTURE_LOG_LIMIT (4 * 1024 * 1024)
 
 typedef struct
 {
@@ -77,6 +81,7 @@ typedef struct
   size_t *total;
   bool *overflow;
   char tag;
+  size_t log_bytes;		/* CAS_CSQL_CHUNK_LOG only: what the records took so far */
 } csql_capture_cookie;
 
 static thread_local csql_capture_cookie *csql_Error_cookie = NULL;
@@ -174,9 +179,9 @@ csql_capture_error ()
     {
       size += strlen ("(null)");
     }
-  if (size > CSQL_CAPTURE_LIMIT - *cap->total)
+  if (size > CSQL_CAPTURE_LOG_LIMIT - cap->log_bytes || size > CSQL_CAPTURE_LIMIT - *cap->total)
     {
-      *cap->overflow = true;
+      cap->log_bytes = CSQL_CAPTURE_LOG_LIMIT;
       return;
     }
 
@@ -193,6 +198,7 @@ csql_capture_error ()
       /* Each record has its own frame; adjacent log records must not merge. */
       cap->chunks->emplace_back (CAS_CSQL_CHUNK_LOG, std::string (area, length));
       *cap->total += length;
+      cap->log_bytes += length;
     }
   catch (const std::bad_alloc &)
     {
@@ -369,10 +375,10 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
   csql_chunk_vec chunks;
   size_t captured = 0;
   bool overflow = false;
-  csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT };
-  csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR };
-  csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG };
-  csql_capture_cookie stdout_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_STDOUT };
+  csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT, 0 };
+  csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR, 0 };
+  csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG, 0 };
+  csql_capture_cookie stdout_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_STDOUT, 0 };
   FILE *out_fp = NULL, *err_fp = NULL, *stdout_fp = NULL;
   int status = -1;
 
