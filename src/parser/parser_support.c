@@ -4904,12 +4904,19 @@ static int
 pt_grow_host_var_positions (PARSER_CONTEXT * parser, int old_count, int count)
 {
   const int first_derived = parser->host_var_derived_from == NULL ? 0 : old_count;
+  const int first_pad = parser->host_var_derived_pads == NULL ? 0 : first_derived;
   int *derived_from = (int *) realloc (parser->host_var_derived_from, count * sizeof (int));
   if (derived_from == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   parser->host_var_derived_from = derived_from;
+  bool *pads = (bool *) realloc (parser->host_var_derived_pads, count * sizeof (bool));
+  if (pads == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  parser->host_var_derived_pads = pads;
   TP_DOMAIN **expected = (TP_DOMAIN **) realloc (parser->host_var_expected_domains, count * sizeof (TP_DOMAIN *));
   if (expected == NULL)
     {
@@ -4930,6 +4937,10 @@ pt_grow_host_var_positions (PARSER_CONTEXT * parser, int old_count, int count)
   for (int k = first_derived; k < count; k++)
     {
       derived_from[k] = -1;
+    }
+  for (int k = first_pad; k < count; k++)
+    {
+      pads[k] = false;
     }
   for (int k = MAX (old_count, parser->host_var_count); k < count; k++)
     {
@@ -5059,6 +5070,35 @@ pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index)
 {
   return parser->host_var_derived_from != NULL && index >= parser->host_var_count
     && index < parser->host_var_count + parser->auto_param_count && parser->host_var_derived_from[index] >= 0;
+}
+
+/*
+ * pt_padded_host_var_position_exists () - CBRD-27583 (Q9): whether a translation already gave user position user a
+ *   bind copy's derived position of domain: a later translation's copy reads it, it makes none
+ */
+bool
+pt_padded_host_var_position_exists (const PARSER_CONTEXT * parser, int user, TP_DOMAIN * domain)
+{
+  for (int k = parser->host_var_count; k < parser->host_var_count + parser->auto_param_count; k++)
+    {
+      if (pt_is_padded_host_var (parser, k) && parser->host_var_derived_from[k] == user
+	  && tp_domain_match (parser->host_var_expected_domains[k], domain, TP_EXACT_MATCH))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_is_padded_host_var () - CBRD-27583 (Q7): whether position index is the derived position of a bind copy, whose
+ *   CHAR(n) the client fills a VARCHAR value padded into (host_var_derived_pads)
+ */
+bool
+pt_is_padded_host_var (const PARSER_CONTEXT * parser, int index)
+{
+  return pt_is_derived_host_var (parser, index) && parser->host_var_derived_pads != NULL
+    && parser->host_var_derived_pads[index];
 }
 
 /*
@@ -5295,14 +5335,15 @@ pt_check_null_takes_plan (PARSER_CONTEXT * parser, PT_NODE * node, bool assign)
  *   Without a node the position is made for a later translation's node (pt_derive_column_host_var_position).
  */
 static int
-pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain, bool create)
+pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain, bool pads,
+			     bool create)
 {
   const int count = parser->host_var_count + parser->auto_param_count;
   int k;
 
   for (k = parser->host_var_count; k < count; k++)
     {
-      if (parser->host_var_derived_from[k] == user_index
+      if (parser->host_var_derived_from[k] == user_index && pt_is_padded_host_var (parser, k) == pads
 	  && tp_domain_match (parser->host_var_expected_domains[k], domain, TP_EXACT_MATCH))
 	{
 	  break;
@@ -5331,6 +5372,10 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
 	}
       parser->host_var_expected_domains[k] = domain;
       parser->host_var_derived_from[k] = user_index;
+      if (parser->host_var_derived_pads != NULL)
+	{
+	  parser->host_var_derived_pads[k] = pads;
+	}
       ++parser->auto_param_count;
       ++parser->host_var_derived_count;
       /* the compilation sees what the binds give it: the value (DML), the type (SELECT: a typed NULL) or nothing */
@@ -5343,6 +5388,7 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
     {
       hv->info.host_var.index = k;
       hv->info.host_var.rule_cast = false;
+      hv->info.host_var.pads = false;
       hv->expected_domain = domain;
     }
   return NO_ERROR;
@@ -5364,6 +5410,14 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
   const int i = hv->info.host_var.index;
   TP_DOMAIN *own = !hv->info.host_var.rule_cast && pt_host_var_is_context_typed (hv->expected_domain)
     ? hv->expected_domain : NULL;
+
+  if (hv->info.host_var.pads)
+    {
+      /* Q6: a bind copy reads the column's CHAR(n), padded, whatever the user position's domain; it does not decide
+       * that domain (the reduced term, which does, comes after its copies) */
+      return pt_derive_host_var_position (parser, hv, i, hv->expected_domain, true,
+					  walk->assign || parser->flag.host_var_derive_later);
+    }
 
   if (walk->assign && !walk->seen[i])
     {
@@ -5410,7 +5464,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
     {
       return NO_ERROR;
     }
-  return pt_derive_host_var_position (parser, hv, i, need, walk->assign || parser->flag.host_var_derive_later);
+  return pt_derive_host_var_position (parser, hv, i, need, false, walk->assign || parser->flag.host_var_derive_later);
 }
 
 /*
@@ -5466,7 +5520,7 @@ pt_derive_column_host_var_position (PARSER_CONTEXT * parser, PT_NODE * name, PT_
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  return pt_derive_host_var_position (parser, NULL, i, target, true);
+  return pt_derive_host_var_position (parser, NULL, i, target, false, true);
 }
 
 /* CBRD-27583 (D-70): whether the walk is in a MERGE's DELETE condition, where XASL generation puts the UPDATE's assigned

@@ -157,6 +157,7 @@ extern "C"
     DB_VALUE_ARRAY host_variables;	/* statement host variables */
     TP_DOMAIN **host_var_expected_domains;	/* the user positions' and (CBRD-27583) the derived positions' */
     int *host_var_derived_from;	/* CBRD-27583: [host_variables.size] a derived position's user position, else -1 */
+    bool *host_var_derived_pads;	/* CBRD-27583 (Q7): [host_variables.size] a bind copy's derived position */
     int host_var_derived_count;	/* CBRD-27583: how many of auto_param_count are derived positions */
     int *host_var_format_classes;	/* CBRD-27583 (D-70): [user positions] each one's PT_HOST_VAR_CLASS */
     int auto_param_count;	/* number of auto parametrized values */

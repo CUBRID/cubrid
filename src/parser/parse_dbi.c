@@ -3134,9 +3134,10 @@ pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE
       return ER_FAILED;
     }
   if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) && TP_DOMAIN_TYPE (domain) != DB_VALUE_DOMAIN_TYPE (source)
-      && DB_VALUE_DOMAIN_TYPE (source) == DB_TYPE_VARCHAR)
+      && DB_VALUE_DOMAIN_TYPE (source) == DB_TYPE_VARCHAR && !pt_is_padded_host_var (parser, index))
     {
-      /* as pt_set_host_variables: a VARCHAR value bound to a CHAR(n) keeps its original value once the cast accepts it */
+      /* as pt_set_host_variables: a VARCHAR value bound to a CHAR(n) keeps its original value once the cast accepts it;
+       * a bind copy's position reads it padded, as the reduced CHAR comparison did (Q7) */
       pr_clear_value (hv);
       pr_clone_value (source, hv);
     }

@@ -417,6 +417,7 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->host_variables.vals = NULL;
   info->host_var_expected_domains = NULL;
   info->host_var_derived_from = NULL;
+  info->host_var_derived_pads = NULL;
   info->host_var_derived_count = 0;
   info->host_var_format_classes = NULL;
   info->auto_param_count = 0;
@@ -467,14 +468,14 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
       /* CBRD-27583 (D-70): and each one's class */
       packed_size += OR_INT_SIZE * (info->host_variables.size - info->auto_param_count);
     }
-  /* CBRD-27583: the derived positions: count, then each one's index, user position and domain */
+  /* CBRD-27583: the derived positions: count, then each one's index, user position, whether it pads (Q7) and domain */
   packed_size += OR_INT_SIZE;
   for (i = info->host_variables.size - info->auto_param_count; info->host_var_derived_count > 0
        && i < info->host_variables.size; i++)
     {
       if (info->host_var_derived_from[i] >= 0)
 	{
-	  packed_size += OR_INT_SIZE * 2 + or_packed_domain_size (info->host_var_expected_domains[i], 0);
+	  packed_size += OR_INT_SIZE * 3 + or_packed_domain_size (info->host_var_expected_domains[i], 0);
 	}
     }
   /* calculate size for columns */
@@ -574,6 +575,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	{
 	  ptr = or_pack_int (ptr, i);
 	  ptr = or_pack_int (ptr, info->host_var_derived_from[i]);
+	  ptr = or_pack_int (ptr, info->host_var_derived_pads != NULL && info->host_var_derived_pads[i]);
 	  ptr = or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
 	}
     }
@@ -699,6 +701,12 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size * sizeof (int));
 	  goto error;
 	}
+      info->host_var_derived_pads = (bool *) calloc (size, sizeof (bool));
+      if (info->host_var_derived_pads == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size * sizeof (bool));
+	  goto error;
+	}
       for (int k = 0; k < size; k++)
 	{
 	  info->host_var_derived_from[k] = -1;
@@ -709,11 +717,13 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	}
       for (int d = 0; d < info->host_var_derived_count; d++)
 	{
-	  int k, from;
+	  int k, from, pads;
 	  ptr = or_unpack_int (ptr, &k);
 	  ptr = or_unpack_int (ptr, &from);
+	  ptr = or_unpack_int (ptr, &pads);
 	  ptr = or_unpack_domain (ptr, &domains[k], NULL);
 	  info->host_var_derived_from[k] = from;
+	  info->host_var_derived_pads[k] = pads != 0;
 	}
     }
 
@@ -798,6 +808,10 @@ error:
   if (info->host_var_derived_from)
     {
       free_and_init (info->host_var_derived_from);
+    }
+  if (info->host_var_derived_pads)
+    {
+      free_and_init (info->host_var_derived_pads);
     }
   if (info->host_var_format_classes)
     {

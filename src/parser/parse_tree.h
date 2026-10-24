@@ -566,6 +566,7 @@ struct trace_json_t;
 	free_and_init(parser_->host_var_format_classes); \
 	free_and_init(parser_->host_var_elt_indexes); \
 	free_and_init(parser_->host_var_derived_from); \
+	free_and_init(parser_->host_var_derived_pads); \
 	free_and_init(parser_->host_var_bind_domains); \
 	parser_->host_var_derived_count = 0;} while (0)
 
@@ -610,6 +611,7 @@ struct trace_json_t;
 	     parser_->host_var_format_classes = parent_parser->host_var_format_classes; \
 	     parser_->host_var_elt_indexes = parent_parser->host_var_elt_indexes; \
 	     parser_->host_var_derived_from = parent_parser->host_var_derived_from; \
+	     parser_->host_var_derived_pads = parent_parser->host_var_derived_pads; \
 	     parser_->host_var_derived_count = parent_parser->host_var_derived_count; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
@@ -623,6 +625,7 @@ struct trace_json_t;
 	     parser_->host_var_format_classes = NULL; \
 	     parser_->host_var_elt_indexes = NULL; \
 	     parser_->host_var_derived_from = NULL; parser_->host_var_derived_count = 0; \
+	     parser_->host_var_derived_pads = NULL; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
@@ -2523,6 +2526,8 @@ struct pt_host_var_info
   PT_NODE *next;		/* for linking to same host_var indexes */
   bool rule_cast;		/* CBRD-27583: the expected domain is the type rule's target for a value-typed comparison
 				 * (pt_typed_bind_comparison), not the context's: the position keeps its compiled domain */
+  bool pads;			/* CBRD-27583 (Q6): a bind copy an equality with a CHAR column made (qo_reduce_equality_terms):
+				 * it reads the value as the column's CHAR(n), a VARCHAR value padded too (rule_cast to it) */
 };
 
 /* Info for lists of PT_NODE */
@@ -4003,6 +4008,9 @@ struct parser_context
   int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
 				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
 				 * the user position whose value the client converts into it, else -1 */
+  bool *host_var_derived_pads;	/* CBRD-27583 (Q7): [host_var_count + auto_param_count] with host_var_derived_from:
+				 * a derived position of a bind copy (PT_HOST_VAR_INFO.pads), whose CHAR(n) the client
+				 * fills a VARCHAR value padded into, unlike any other CHAR position (pt_set_host_variables) */
   TP_DOMAIN **host_var_bind_domains;	/* CBRD-27583 (D-76): [host_var_count] in the compilation of a bind type
 					 * signature, a position's bind domain: the last expected domain the first
 					 * translation's type checking gave a node of it (develop's pt_preset_hostvar

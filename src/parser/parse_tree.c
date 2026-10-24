@@ -1285,6 +1285,10 @@ parser_free_parser (PARSER_CONTEXT * parser)
     {
       free_and_init (parser->host_var_derived_from);
     }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
   if (parser->host_var_bind_domains)
     {
       free_and_init (parser->host_var_bind_domains);

@@ -4088,6 +4088,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   prepare_info.host_variables.vals = prepared_session->parser->host_variables;
   prepare_info.host_var_expected_domains = prepared_session->parser->host_var_expected_domains;
   prepare_info.host_var_derived_from = prepared_session->parser->host_var_derived_from;
+  prepare_info.host_var_derived_pads = prepared_session->parser->host_var_derived_pads;
   prepare_info.host_var_derived_count = prepared_session->parser->host_var_derived_count;
   prepare_info.host_var_format_classes = prepared_session->parser->host_var_format_classes;
   /* set autoparam count */
@@ -4272,6 +4273,10 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
     {
       free_and_init (parser->host_var_derived_from);
     }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
 
   parser->auto_param_count = 0;
   parser->host_var_count = 0;
@@ -4280,6 +4285,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   parser->host_variables = prepare_info.host_variables.vals;
   parser->host_var_expected_domains = prepare_info.host_var_expected_domains;
   parser->host_var_derived_from = prepare_info.host_var_derived_from;
+  parser->host_var_derived_pads = prepare_info.host_var_derived_pads;
   parser->host_var_derived_count = prepare_info.host_var_derived_count;
   /* D-70: an AGNOSTIC position binds whether its value is NULL */
   parser->host_var_format_classes = prepare_info.host_var_format_classes;
@@ -4298,6 +4304,10 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   if (parser->host_var_derived_from)
     {
       free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
     }
   parser->flag.set_host_var = 1;
 
@@ -5739,6 +5749,10 @@ db_close_session_local (DB_SESSION * session)
   if (parser->host_var_derived_from)
     {
       free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
     }
 
   parser->host_var_count = parser->auto_param_count = 0;

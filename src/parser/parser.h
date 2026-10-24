@@ -630,6 +630,8 @@ extern "C"
   extern TP_DOMAIN *pt_host_var_value_domain (PARSER_CONTEXT * parser, int index);
   extern TP_DOMAIN *pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected);
   extern bool pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index);
+  extern bool pt_is_padded_host_var (const PARSER_CONTEXT * parser, int index);
+  extern bool pt_padded_host_var_position_exists (const PARSER_CONTEXT * parser, int user, TP_DOMAIN * domain);
   extern TP_DOMAIN *pt_host_var_position_domain (PARSER_CONTEXT * parser, int index);
   extern bool pt_host_var_stand_in (PARSER_CONTEXT * parser, int index, const TP_DOMAIN * domain);
   extern int pt_host_var_occurrence_class (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent,

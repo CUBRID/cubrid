@@ -15637,6 +15637,8 @@ do_subquery_positions (const PARSER_CONTEXT * parser, PARSER_CONTEXT * context, 
     (TP_DOMAIN **) do_subquery_position_array (parser->host_var_compiled_domains, typed, sizeof (TP_DOMAIN *), &failed);
   context->host_var_derived_from =
     (int *) do_subquery_position_array (parser->host_var_derived_from, count, sizeof (int), &failed);
+  context->host_var_derived_pads =
+    (bool *) do_subquery_position_array (parser->host_var_derived_pads, count, sizeof (bool), &failed);
   context->host_var_format_classes =
     (int *) do_subquery_position_array (parser->host_var_format_classes, users, sizeof (int), &failed);
   context->host_var_elt_indexes =
@@ -15681,6 +15683,10 @@ do_subquery_positions (const PARSER_CONTEXT * parser, PARSER_CONTEXT * context, 
 		{
 		  context->host_var_derived_from[s] = u;
 		  context->host_var_derived_count++;
+		  if (context->host_var_derived_pads != NULL)
+		    {
+		      context->host_var_derived_pads[s] = pt_is_padded_host_var (parser, i);
+		    }
 		}
 	    }
 	}
@@ -15837,6 +15843,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   free (context.host_var_format_classes);
   free (context.host_var_elt_indexes);
   free (context.host_var_derived_from);
+  free (context.host_var_derived_pads);
   free (context.host_var_bind_domains);
 
   return err;
