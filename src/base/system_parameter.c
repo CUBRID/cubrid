@@ -8847,11 +8847,12 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	  break;
 	}
 #if defined (SERVER_MODE)
-      /* The folded client reads the same session value that SET updates.
+      /* The folded client reads the same session value that SET updates, for a
+       * PRM_CLIENT_SESSION parameter too (server-proper code keeps its own value).
        * Keep this view local to GET: session initialization must still copy
        * the process defaults, and string/list results must remain owned. */
       SYSPRM_PARAM session_prm = *prm;
-      if (csc_bracket_is_active () && PRM_SESSION_READTHROUGH (prm->id) && BO_IS_SERVER_RESTARTED ())
+      if (csc_bracket_is_active () && PRM_IS_FOR_SESSION (prm) && BO_IS_SERVER_RESTARTED ())
 	{
 	  SESSION_PARAM *value = session_get_session_parameter (thread_get_thread_entry_info (), prm->id);
 	  if (value != NULL)
