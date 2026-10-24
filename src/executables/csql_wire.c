@@ -945,12 +945,16 @@ wire_roundtrip (wire_body * b, bool replay)
       return ER_FAILED;
     }
 
+  wire_output output = { NULL, SIG_ERR };
+next_frame:
   char rh[8];
   int read_status = wire_read_exact (wire_Fd, rh, 8);
-  /* the server sends the reply header only after the request has finished */
+  /* the server sends the reply header only after the request has finished,
+   * except for the partial frames of a long render (CAS_CSQL_CHUNK_MORE) */
   wire_Awaiting_reply = 0;
   if (read_status != NO_ERROR)
     {
+      wire_close_output (&output);
       /* lost while awaiting the reply (killtran, server restart): like the send
        * failure above, the fat client's ER_NET_SERVER_CRASHED, which leaves csql
        * running for ;restart */
@@ -965,6 +969,7 @@ wire_roundtrip (wire_body * b, bool replay)
   int length = (int) wire_get_be32 (rh);
   if (length < 4 || length > WIRE_REPLY_LIMIT)
     {
+      wire_close_output (&output);
       wire_set_error (ER_FAILED, "malformed reply");
       wire_close_fd ();
       return ER_FAILED;
@@ -972,6 +977,7 @@ wire_roundtrip (wire_body * b, bool replay)
   char *reply = (char *) malloc ((size_t) length);
   if (reply == NULL || wire_read_exact (wire_Fd, reply, (size_t) length) != NO_ERROR)
     {
+      wire_close_output (&output);
       free (reply);
       wire_set_error (ER_NET_SERVER_CRASHED,
 		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_NET_SERVER_CRASHED));
@@ -982,6 +988,7 @@ wire_roundtrip (wire_body * b, bool replay)
   int first = (int) wire_get_be32 (reply);
   if (first < 0)
     {
+      wire_close_output (&output);
       /* error frame: [indicator][code][msg]; msg is not guaranteed
        * NUL-terminated, so copy it with an explicit bounded length */
       int code = (length >= 8) ? (int) wire_get_be32 (reply + 4) : ER_FAILED;
@@ -1003,6 +1010,7 @@ wire_roundtrip (wire_body * b, bool replay)
     }
   if (length < 9)
     {
+      wire_close_output (&output);
       free (reply);
       wire_set_error (ER_FAILED, "short reply");
       wire_close_fd ();
@@ -1015,8 +1023,8 @@ wire_roundtrip (wire_body * b, bool replay)
   size_t pos = 9;
   size_t ulength = (size_t) length;
   bool saw_end = false;
+  bool saw_more = false;
   bool framing_error = false;
-  wire_output output = { NULL, SIG_ERR };
   while (pos < ulength)
     {
       int tag = (unsigned char) reply[pos];
@@ -1024,6 +1032,11 @@ wire_roundtrip (wire_body * b, bool replay)
       if (tag == CAS_CSQL_CHUNK_END)
 	{
 	  saw_end = true;
+	  break;
+	}
+      if (tag == CAS_CSQL_CHUNK_MORE)
+	{
+	  saw_more = true;
 	  break;
 	}
       if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG
@@ -1138,6 +1151,13 @@ wire_roundtrip (wire_body * b, bool replay)
 	    }
 	}
       pos += (size_t) clen;
+    }
+  if (saw_more && !framing_error)
+    {
+      /* keep the pager open: the next frame continues this reply */
+      free (reply);
+      wire_Awaiting_reply = 1;
+      goto next_frame;
     }
   wire_close_output (&output);
   if (csql_Output_fp != NULL)

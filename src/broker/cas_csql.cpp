@@ -74,6 +74,9 @@ typedef std::vector<std::pair<char, std::string>> csql_chunk_vec;
  * statement; past this share of the cap further records are dropped (a PL loop that catches 100000
  * NO_DATA_FOUND errors must still run, shell cbrd_26555) */
 #define CSQL_CAPTURE_LOG_LIMIT (4 * 1024 * 1024)
+/* past this much render the captured chunks go to the client in a partial frame, as the fat client
+ * streamed a result it fetched, instead of piling up in the server (shell cbrd_20654: 800 MB of rows) */
+#define CSQL_CAPTURE_FLUSH (1024 * 1024)
 
 typedef struct
 {
@@ -82,6 +85,7 @@ typedef struct
   bool *overflow;
   char tag;
   size_t log_bytes;		/* CAS_CSQL_CHUNK_LOG only: what the records took so far */
+  SOCKET fd;			/* the client, for partial frames */
 } csql_capture_cookie;
 
 static thread_local csql_capture_cookie *csql_Error_cookie = NULL;
@@ -228,6 +232,35 @@ class csql_error_capture_guard
     er_error_observer_t m_previous_observer;
 };
 
+/* a frame of csql_reply_chunks' layout ending in CAS_CSQL_CHUNK_MORE; the final frame carries the status */
+static bool
+csql_send_partial (SOCKET fd, csql_chunk_vec &chunks)
+{
+  std::string frame (8, '\0');
+  auto put_int = [&frame] (int v)
+  {
+    int n = htonl (v);
+    frame.append ((const char *) &n, sizeof (n));
+  };
+
+  put_int (0);			/* result code */
+  put_int (0);			/* status */
+  frame.push_back (db_commit_is_needed ()? 1 : 0);
+  for (const auto &c : chunks)
+    {
+      frame.push_back (c.first);
+      put_int ((int) c.second.size ());
+      frame.append (c.second);
+    }
+  frame.push_back (CAS_CSQL_CHUNK_MORE);
+  int body_size = htonl ((int) frame.size () - 8);
+  memcpy (&frame[0], &body_size, sizeof (body_size));
+  frame[4] = CAS_INFO_STATUS_ACTIVE;
+  frame[5] = frame[6] = frame[7] = CAS_INFO_RESERVED_DEFAULT;
+  chunks.clear ();
+  return net_write_stream (fd, frame.data (), (int) frame.size ()) == 0;
+}
+
 static ssize_t
 csql_capture_write (void *cookie, const char *buf, size_t size)
 {
@@ -235,6 +268,15 @@ csql_capture_write (void *cookie, const char *buf, size_t size)
 
   if (size > 0 && !*cap->overflow)
     {
+      if (*cap->total + size > CSQL_CAPTURE_FLUSH && !cap->chunks->empty () && !IS_INVALID_SOCKET (cap->fd))
+	{
+	  if (!csql_send_partial (cap->fd, *cap->chunks))
+	    {
+	      *cap->overflow = true;	/* the client is gone; the final reply fails the same way */
+	      return (ssize_t) size;
+	    }
+	  *cap->total = 0;
+	}
       if (*cap->total + size > CSQL_CAPTURE_LIMIT)
 	{
 	  *cap->overflow = true;
@@ -375,10 +417,10 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
   csql_chunk_vec chunks;
   size_t captured = 0;
   bool overflow = false;
-  csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT, 0 };
-  csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR, 0 };
-  csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG, 0 };
-  csql_capture_cookie stdout_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_STDOUT, 0 };
+  csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT, 0, sock_fd };
+  csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR, 0, sock_fd };
+  csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG, 0, sock_fd };
+  csql_capture_cookie stdout_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_STDOUT, 0, sock_fd };
   FILE *out_fp = NULL, *err_fp = NULL, *stdout_fp = NULL;
   int status = -1;
 
