@@ -8928,7 +8928,8 @@ pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node
 {
   const int index = hv_node->info.host_var.index;
   if (index < parser->host_var_count && parser->host_var_derived_from == NULL && parser->host_var_bind_domains != NULL
-      && !hv_node->info.host_var.rule_cast && !(parser->host_var_format_classes[index] & PT_HOST_VAR_BIND_DOMAIN))
+      && !hv_node->info.host_var.rule_cast && hv_node->info.host_var.pads_to == NULL
+      && !(parser->host_var_format_classes[index] & PT_HOST_VAR_BIND_DOMAIN))
     {
       parser->host_var_bind_domains[index] = hv_node->expected_domain;
     }
@@ -8943,9 +8944,10 @@ static void
 pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool develop)
 {
   pt_hv_consistent_data_type_with_domain (parser, hv_node);
-  if (parser->host_var_count <= hv_node->info.host_var.index)
+  if (parser->host_var_count <= hv_node->info.host_var.index || hv_node->info.host_var.pads_to != NULL)
     {
-      /* automated parameters are not needed an expected domain */
+      /* automated parameters are not needed an expected domain; a bind copy (Q6) does not type its user position:
+       * the type checking that runs again after the rewrites types it in its new comparison */
       return;
     }
 

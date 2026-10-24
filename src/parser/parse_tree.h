@@ -2526,8 +2526,9 @@ struct pt_host_var_info
   PT_NODE *next;		/* for linking to same host_var indexes */
   bool rule_cast;		/* CBRD-27583: the expected domain is the type rule's target for a value-typed comparison
 				 * (pt_typed_bind_comparison), not the context's: the position keeps its compiled domain */
-  bool pads;			/* CBRD-27583 (Q6): a bind copy an equality with a CHAR column made (qo_reduce_equality_terms):
-				 * it reads the value as the column's CHAR(n), a VARCHAR value padded too (rule_cast to it) */
+  TP_DOMAIN *pads_to;		/* CBRD-27583 (Q6): of a bind copy an equality with a CHAR column made
+				 * (qo_reduce_equality_terms), the column's CHAR(n) it reads the value padded into; it
+				 * neither types nor presets its user position (type checking runs again on the copy) */
 };
 
 /* Info for lists of PT_NODE */

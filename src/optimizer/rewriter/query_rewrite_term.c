@@ -1019,9 +1019,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		{
 		  /* Q6: every copy reads the user value as arg1's CHAR(n), padded (pt_assign_host_var_position) */
 		  temp->info.host_var.index = pad_user;
-		  temp->info.host_var.rule_cast = true;
-		  temp->info.host_var.pads = true;
-		  temp->expected_domain = pad_domain;
+		  temp->info.host_var.pads_to = pad_domain;
 		}
 	    }
 

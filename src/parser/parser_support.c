@@ -5388,7 +5388,7 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
     {
       hv->info.host_var.index = k;
       hv->info.host_var.rule_cast = false;
-      hv->info.host_var.pads = false;
+      hv->info.host_var.pads_to = NULL;
       hv->expected_domain = domain;
     }
   return NO_ERROR;
@@ -5411,11 +5411,11 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
   TP_DOMAIN *own = !hv->info.host_var.rule_cast && pt_host_var_is_context_typed (hv->expected_domain)
     ? hv->expected_domain : NULL;
 
-  if (hv->info.host_var.pads)
+  if (hv->info.host_var.pads_to != NULL)
     {
       /* Q6: a bind copy reads the column's CHAR(n), padded, whatever the user position's domain; it does not decide
        * that domain (the reduced term, which does, comes after its copies) */
-      return pt_derive_host_var_position (parser, hv, i, hv->expected_domain, true,
+      return pt_derive_host_var_position (parser, hv, i, hv->info.host_var.pads_to, true,
 					  walk->assign || parser->flag.host_var_derive_later);
     }
 
