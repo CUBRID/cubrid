@@ -196,6 +196,23 @@ method_dispatch (packing_unpacker &unpacker)
 /* merged client-half thread boundary flag (network_interface_sr.cpp) */
 extern thread_local unsigned int db_on_server;
 
+/* METHOD_CALLBACK_CHANGE_RIGHTS is a no-reply notification: legacy CS handled it at the depth of the
+ * request that carried it, so it never reached one level past the deepest nested query. Peek at it so
+ * the folded dispatch, which nests it, does not count it against METHOD_MAX_RECURSION_DEPTH. */
+static bool
+method_is_change_rights (packing_unpacker &unpacker)
+{
+  packing_unpacker peek (unpacker.get_curr_ptr (), unpacker.get_buffer_end () - unpacker.get_curr_ptr ());
+  cubmethod::header header (peek);
+  int code = -1;
+
+  if (header.command == METHOD_REQUEST_CALLBACK)
+    {
+      peek.unpack_int (code);
+    }
+  return code == METHOD_CALLBACK_CHANGE_RIGHTS;
+}
+
 /*
  * method_dispatch () - Dispatch method protocol in-process for the merged
  *   server (#120 D2/D7): the very worker thread blocked in the invoke loop
@@ -228,7 +245,7 @@ method_dispatch (packing_unpacker &unpacker)
 
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  if (depth > METHOD_MAX_RECURSION_DEPTH)
+  if (depth > METHOD_MAX_RECURSION_DEPTH && !method_is_change_rights (unpacker))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = ER_SP_TOO_MANY_NESTED_CALL;
