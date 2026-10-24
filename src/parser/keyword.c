@@ -618,6 +618,7 @@ static KEYWORD_RECORD keywords[] = {
   {WORK, "WORK", 0},
   {WORKSPACE, "WORKSPACE", 1},
   {WRITE, "WRITE", 0},
+  {WRITESET, "WRITESET", 1},
   {XOR, "XOR", 0},
   {YEAR_, "YEAR", 0},
   {YEAR_MONTH, "YEAR_MONTH", 0},

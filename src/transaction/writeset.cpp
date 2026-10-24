@@ -44,6 +44,8 @@
 #include "system_parameter.h"
 #include "db_value_printer.hpp"
 #include "string_buffer.hpp"
+#include "db_date.h"
+#include "show_scan.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -57,7 +59,7 @@
 /* Global WRITE/REF commit history indexed by writeset key hash. */
 LOG_WSET_HISTORY wset_History;
 
-/* Counted since the server started, in this process's memory only. */
+/* Counted since the server started, in this process's memory only; SHOW WRITESET STATUS shows them. */
 struct wset_statistics
 {
   std::atomic<UINT64> overflow_count { 0 };
@@ -76,6 +78,7 @@ struct wset_statistics
 };
 
 static wset_statistics wset_Statistics;
+static time_t wset_Statistics_start_time = 0;	/* when the counters started, shown by SHOW WRITESET STATUS */
 
 /* Keys that committers holding the shared history lock are about to publish. The capacity check adds its own
  * keys here before comparing, so several committers that pass the check at the same moment see one another's
@@ -473,6 +476,7 @@ wset_history_initialize (void)
   wset_Trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
 
   wset_History_initialized = true;
+  wset_Statistics_start_time = time (NULL);
 
   WSET_TRACE (1, "INITIALIZE history_size=%lld trace_level=%d\n",
 	      (long long) wset_History.history_size, wset_Trace_level);
@@ -1529,6 +1533,79 @@ wset_raise_history_start (const LOG_LSA *lsa, const char *reason)
 
   WSET_TRACE (1, "HISTORY_START raise reason=%s history_start=%lld|%d\n", reason, (long long) lsa->pageid,
 	      (int) lsa->offset);
+}
+
+/*
+ * wset_status_start_scan - build the one row of SHOW WRITESET STATUS
+ *
+ *   thread_p(in): thread entry
+ *   type(in): SHOWSTMT_WRITESET_STATUS
+ *   arg_values(in), arg_cnt(in): unused; the statement takes no argument
+ *   ptr(out): the array context holding the row
+ *
+ * return: NO_ERROR, or an error code
+ *
+ * Note: The row is made from the counters in this server's memory when the statement runs; nothing is kept
+ *       on disk, and the counters start from 0 with the server. The key count is read under the shared
+ *       history lock, so a whole-map clear, which takes the exclusive lock, does not run at the same time.
+ */
+int
+wset_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values, int arg_cnt, void **ptr)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  const int num_cols = 10;
+  DB_VALUE *vals = NULL;
+  DB_DATETIME start_time;
+  INT64 entry_count = 0;
+  int idx = 0;
+
+  *ptr = NULL;
+
+  ctx = showstmt_alloc_array_context (thread_p, 1, num_cols);
+  if (ctx == NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+  if (vals == NULL)
+    {
+      ASSERT_ERROR ();
+      showstmt_free_array_context (thread_p, ctx);
+      return er_errid ();
+    }
+
+  if (wset_History_initialized)
+    {
+      pthread_rwlock_rdlock (&wset_History.history_lock);
+      entry_count = (INT64) wset_History.map.size ();
+      pthread_rwlock_unlock (&wset_History.history_lock);
+    }
+
+  db_localdatetime (&wset_Statistics_start_time, &start_time);
+  db_make_datetime (&vals[idx++], &start_time);
+  db_make_bigint (&vals[idx++], wset_History.history_size);
+  db_make_bigint (&vals[idx++], entry_count);
+
+#define WSET_STATUS_COUNTER(counter) \
+  db_make_bigint (&vals[idx++], (DB_BIGINT) wset_Statistics.counter.load (std::memory_order_relaxed))
+
+  WSET_STATUS_COUNTER (commit_count);
+  WSET_STATUS_COUNTER (commit_fallback_count);
+  WSET_STATUS_COUNTER (fallback_key_limit_count);
+  WSET_STATUS_COUNTER (fallback_statement_count);
+  WSET_STATUS_COUNTER (conflict_ref_count);
+  WSET_STATUS_COUNTER (conflict_write_count);
+  WSET_STATUS_COUNTER (clear_capacity_count);
+
+#undef WSET_STATUS_COUNTER
+
+  assert (idx == num_cols);
+
+  *ptr = ctx;
+
+  return NO_ERROR;
 }
 
 #endif /* SERVER_MODE || SA_MODE */
