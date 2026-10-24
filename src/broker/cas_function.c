@@ -2196,6 +2196,11 @@ FN_RETURN
 fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   cas_log_write (0, true, "con_close");
+#if defined (SERVER_MODE)
+  /* a session's log closes (and truncates) with it; do it before the reply, or a client that reads
+   * the log as soon as it disconnects can meet the truncation's zeroed tail */
+  cas_log_close (true);
+#endif
   net_buf_cp_int (net_buf, 0, NULL);
 
   return FN_CLOSE_CONN;
