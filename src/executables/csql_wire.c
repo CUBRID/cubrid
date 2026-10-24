@@ -1188,8 +1188,15 @@ csql_wire_execute (const CSQL_ARGUMENT * csql_arg, int input_type, int line_no, 
   wire_body b = { NULL, 0, 0 };
   char fc = (char) CAS_FC_CSQL_REQUEST;
   char widths[4096];
+  char in_path[PATH_MAX];
+  const char *in_file = "";
 
   csql_column_widths_serialize (widths, sizeof (widths));
+  if (csql_arg->in_file_name != NULL)
+    {
+      /* the server's ddl audit copies the input file (logddl_file_backup) from its own working directory */
+      in_file = realpath (csql_arg->in_file_name, in_path) != NULL ? in_path : csql_arg->in_file_name;
+    }
 
   if (wire_body_append (&b, &fc, 1) != NO_ERROR
       || wire_arg_int (&b, CAS_CSQL_SUB_EXECUTE) != NO_ERROR
@@ -1208,7 +1215,7 @@ csql_wire_execute (const CSQL_ARGUMENT * csql_arg, int input_type, int line_no, 
     }
   if (wire_arg_str (&b, delims) != NO_ERROR
       || wire_arg_str (&b, widths) != NO_ERROR
-      || wire_arg_str (&b, csql_arg->in_file_name != NULL ? csql_arg->in_file_name : "") != NO_ERROR
+      || wire_arg_str (&b, in_file) != NO_ERROR
       || wire_arg_str (&b, text) != NO_ERROR)
     {
       free (b.buf);
