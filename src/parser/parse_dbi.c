@@ -3124,7 +3124,11 @@ pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE
   TP_DOMAIN *domain = parser->host_var_expected_domains[index];
 
   pr_clear_value (hv);
-  if (tp_value_cast_preserve_domain (source, hv, domain, false, true) != DOMAIN_COMPATIBLE)
+  /* Q12: a bind copy's position takes the value as the reduction of a literal does (qo_reduce_equality_terms): a
+   * string longer than the column is cut, which the reduced term, still ANDed, rejects */
+  const TP_DOMAIN_STATUS status = pt_is_padded_host_var (parser, index)
+    ? tp_value_cast_force (source, hv, domain, false) : tp_value_cast_preserve_domain (source, hv, domain, false, true);
+  if (status != DOMAIN_COMPATIBLE)
     {
       const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (domain)));
       char name[256];
