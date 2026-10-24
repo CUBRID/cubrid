@@ -832,7 +832,8 @@ wire_close_output (wire_output * output)
 {
   if (output->stream != NULL)
     {
-      fflush (output->stream);
+      /* a pager pipe is flushed by its pclose; without a pager the stream is
+       * csql_Output_fp, which keeps the fat client's stdio buffering */
       csql_pclose (output->stream, csql_Output_fp);
       output->stream = NULL;
     }
