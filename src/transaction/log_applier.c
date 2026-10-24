@@ -521,6 +521,8 @@ struct la_apply_stat
 };
 
 static LA_APPLY_STAT la_Apply_stat;
+
+#define LA_STAT_SAVEPOINT_NAME "la_stat"
 static LA_WORKER_LIVE la_Worker_live[LA_MAX_WORKER_COUNT];
 static pthread_mutex_t la_Worker_live_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -532,6 +534,7 @@ static void la_stat_note_error (LA_STATS * stats, int error);
 static void la_stat_make_time (DB_VALUE * value, time_t sec, int msec);
 static int la_stat_init_rows (void);
 static int la_stat_update_rows (void);
+static void la_stat_store (void);
 static void la_stat_count_pending (const LA_TASK * task, void *arg);
 static void la_stat_sprint_time (char *buf, int buf_size, DB_VALUE * value);
 static void la_print_parallel_apply_info (const char *log_path, const char *prefix_name, bool verbose);
@@ -1705,8 +1708,7 @@ la_coordinator_commit_apply_info (void)
   res = la_update_ha_last_applied_info ();
   if (res > 0)
     {
-      /* a failed statistics update is reported once and does not keep the apply info from being stored */
-      (void) la_stat_update_rows ();
+      la_stat_store ();
       return db_commit_transaction ();
     }
 
@@ -1957,14 +1959,64 @@ la_stat_init_rows (void)
 }
 
 /*
+ * la_stat_store() - update the statistics rows without letting them hold back or undo the apply info
+ *
+ * Note:
+ *   Called between the _db_ha_apply_info update and the commit of the same transaction. The statistics are an
+ *   extra and must never touch that update:
+ *   - The statistics statements run with no lock wait. A session holding a lock on a statistics row makes them
+ *     fail at once instead of stopping the coordinator, and a transaction that never waits cannot be chosen as
+ *     a deadlock victim, which would roll back the apply info with it.
+ *   - A failure rolls back to the savepoint taken after the apply info update, so the apply info is committed
+ *     and the statistics keep their last stored values. They hold running totals, so the next store writes
+ *     everything again; nothing is lost.
+ */
+static void
+la_stat_store (void)
+{
+  int save_wait_msecs;
+  int error;
+  int w;
+
+  if (!la_Apply_stat.enabled)
+    {
+      return;
+    }
+
+  if (db_savepoint_transaction_internal (LA_STAT_SAVEPOINT_NAME) != NO_ERROR)
+    {
+      /* without the savepoint a failure could not be undone alone; skip the statistics this time */
+      er_clear ();
+      return;
+    }
+
+  save_wait_msecs = TM_TRAN_WAIT_MSECS ();
+  (void) tran_reset_wait_times (0);
+  error = la_stat_update_rows ();
+  (void) tran_reset_wait_times (save_wait_msecs);
+
+  if (error == NO_ERROR)
+    {
+      return;
+    }
+
+  (void) db_abort_to_savepoint_internal (LA_STAT_SAVEPOINT_NAME);
+
+  /* the worker rows written before the failure were rolled back too; write them all next time */
+  for (w = 0; w < la_Info.worker_count; w++)
+    {
+      la_Apply_stat.workers[w].stored = false;
+    }
+}
+
+/*
  * la_stat_update_rows() - update this applier's statistics rows in the current transaction
  *   return: NO_ERROR, or the first error; the rows keep their last stored values
  *
  * Note:
- *   Called by la_coordinator_commit_apply_info between the _db_ha_apply_info update and the commit. A worker
- *   row is updated only when it would change: when the worker has retired another task or started or ended
- *   one since the last store. last_update_time of a worker row is therefore when its values were last
- *   stored.
+ *   Called by la_stat_store, which undoes the rows on a failure. A worker row is updated only when it would
+ *   change: when the worker has retired another task or started or ended one since the last store.
+ *   last_update_time of a worker row is therefore when its values were last stored.
  */
 static int
 la_stat_update_rows (void)
