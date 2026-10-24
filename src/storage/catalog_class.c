@@ -5637,17 +5637,10 @@ catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p)
   /* skip OID for root class, is already set with 'boot_get_db_parm' */
   for (i = OID_CACHE_CLASS_CLASS_ID; i < OID_CACHE_SIZE; i++)
     {
-      /* a class this database does not have leaves class_oid untouched; without the reset its entry would get
-       * the previous class's OID, and a check against the entry (mvcc_is_mvcc_disabled_class) would match it */
-      OID_SET_NULL (&class_oid);
       status = xlocator_find_class_oid (thread_p, oid_get_cached_class_name (i), &class_oid, NULL_LOCK);
       if (status == LC_CLASSNAME_ERROR)
 	{
 	  return ER_FAILED;
-	}
-      if (status != LC_CLASSNAME_EXIST)
-	{
-	  OID_SET_NULL (&class_oid);
 	}
 
       oid_set_cached_class_oid (i, &class_oid);

@@ -85,7 +85,6 @@ namespace cubschema
     CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
-    CT_HA_WRITESET_STAT_NAME,	// "_db_ha_writeset_stat"
     CT_HA_APPLY_STAT_NAME,		// "_db_ha_apply_stat"
     CT_HA_APPLY_WORKER_STAT_NAME,	// "_db_ha_apply_worker_stat"
     CT_TRIGGER_NAME,		// "_db_trigger"

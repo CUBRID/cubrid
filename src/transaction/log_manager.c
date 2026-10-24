@@ -11215,8 +11215,6 @@ log_daemons_init ()
   log_check_ha_delay_info_daemon_init ();
   log_clock_daemon_init ();
   log_flush_daemon_init ();
-  /* stopped by wset_stat_finalize at shutdown, before the vacuum master, since it writes a log record */
-  wset_stat_daemon_init ();
 }
 #endif /* SERVER_MODE */
 
