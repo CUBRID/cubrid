@@ -985,6 +985,8 @@ IDL       [a-zA-Z0-9_]
 [wW][oO][rR][kK][sS][pP][aA][cC][eE]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return WORKSPACE; }
 [wW][rR][iI][tT][eE]							{ return WRITE; }
+[wW][rR][iI][tT][eE][sS][eE][tT]					{ csql_yylval.cptr = pt_makename(yytext);
+									  return WRITESET; }
 [xX][oO][rR]								{ return XOR; }
 [yY][eE][aA][rR]							{ return YEAR_; }
 [yY][eE][aA][rR]_[mM][oO][nN][tT][hH]      				{ return YEAR_MONTH; }
