@@ -1739,7 +1739,6 @@
 #define ER_SP_SERVER_CRASHED                        -1359
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1360
-
 #define ER_SES_SESSION_NOT_ATTACHED                 -1361
 
 #define ER_LAST_ERROR                               -1362
