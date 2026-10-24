@@ -1323,7 +1323,10 @@ $ LOADDB
 1300 日志恢复: %1$s 阶段已完成。
 1301 日志恢复：%1$s 进度：(%2$lld/%3$lld)，%4$.2f 百分比，已用时间：%5$.2f (s)，估计剩余时间：%6$.2f (s)。
 
-1302 最后一个错误.
+1302 The secret of session %1$u does not match.
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
