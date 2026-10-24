@@ -767,6 +767,10 @@ namespace cubconn
 	  goto retire;
 	}
 
+      /* the client the broker handed over, as it filled a CAS slot (query_cancel log line) */
+      std::memcpy (as_info->cas_clt_ip, &params.client_ip, sizeof (as_info->cas_clt_ip));
+      as_info->cas_clt_port = params.client_port;
+
       /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
       registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name, conn->client_id);
 

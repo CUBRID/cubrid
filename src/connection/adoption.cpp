@@ -148,6 +148,7 @@ namespace cubconn
       std::atomic<execution_state> state { execution_state::busy };
       std::atomic<std::uint64_t> idle_since { 0 };
       std::atomic<bool> reset_requested { false };	/* cubrid broker reset, until the session yields */
+      std::atomic<std::int64_t> cancel_msec { 0 };	/* last driver cancel, until the session logs it */
       std::shared_ptr<auto_group> pressure;
     };
 
@@ -271,6 +272,7 @@ namespace cubconn
 
     static manager *adoption_Manager = NULL;
     static thread_local std::uint32_t current_session_token = 0;
+    static thread_local std::shared_ptr<session_binding> current_session_binding;	/* any mode, for cancel */
     static thread_local std::uint64_t seen_config_generation = 0;
     static thread_local std::shared_ptr<session_histogram> current_histogram;
     static thread_local bool histogram_owns_watch = false;
@@ -695,6 +697,7 @@ namespace cubconn
       if (it != m->registry.end ())
 	{
 	  current_session_token = token;
+	  current_session_binding = it->second.binding;
 	  seen_config_generation = 0;
 	  it->second.stats_slot = (T_APPL_SERVER_INFO *) as_info_slot;
 	  it->second.client_id = client_id;
@@ -1186,6 +1189,7 @@ namespace cubconn
     {
       registry_begin_session_cleanup (token);
       current_binding.reset ();
+      current_session_binding.reset ();
       if (token == current_session_token)
 	{
 	  current_histogram.reset ();
@@ -1742,8 +1746,16 @@ namespace cubconn
 	{
 	  /* the query_cancel(SIGUSR1) successor (#117 D4): interrupt the
 	   * session's transaction directly */
+	  binding->cancel_msec.store (std::chrono::duration_cast<std::chrono::milliseconds>
+				      (std::chrono::system_clock::now ().time_since_epoch ()).count ());
 	  (void) logtb_set_tran_index_interrupt (NULL, pin.tran_index, true);
 	}
+    }
+
+    std::int64_t
+    registry_take_cancel (void)
+    {
+      return current_session_binding != nullptr ? current_session_binding->cancel_msec.exchange (0) : 0;
     }
 
     static void

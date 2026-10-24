@@ -49,6 +49,9 @@
 #include "hide_password.h"
 #include "cas_optimization.h"
 #include "cas_common_vars.h"
+#if defined (SERVER_MODE)
+#include "adoption.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -559,6 +562,19 @@ cas_log_query_cancel (int dummy, ...)
   char buf[LINE_MAX];
   bool log_mode;
   struct timeval tv;
+
+#if defined (SERVER_MODE)
+  /* a driver cancel reaches the session as an interrupt (#117 D4), not as the CAS's SIGUSR1 */
+  if (query_cancel_flag != 1)
+    {
+      INT64 cancel_msec = cubconn::adoption::registry_take_cancel ();
+      if (cancel_msec != 0)
+	{
+	  query_cancel_time = cancel_msec;
+	  query_cancel_flag = 1;
+	}
+    }
+#endif
 
   if (log_fp == NULL || query_cancel_flag != 1)
     {
