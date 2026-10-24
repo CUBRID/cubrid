@@ -638,6 +638,7 @@ extern "C"
 					   PT_NODE * grandparent);
   extern const char *pt_host_var_coerce_target (const PARSER_CONTEXT * parser, int index, DB_TYPE type,
 						const char *target, char *buf, int size);
+  extern bool pt_cast_bind_copy_value (const DB_VALUE * source, DB_VALUE * dest, const TP_DOMAIN * domain);
   extern int pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE * source);
   extern void pt_set_agnostic_host_variable (const DB_VALUE * val, DB_VALUE * hv);
   extern PT_NODE *pt_bind_comparison_mate (PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent, bool * bind_is_lhs);

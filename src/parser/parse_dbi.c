@@ -3113,6 +3113,31 @@ pt_host_var_coerce_target (const PARSER_CONTEXT * parser, int index, DB_TYPE typ
 }
 
 /*
+ * pt_cast_bind_copy_value () - CBRD-27583 (Q12, Q19): the value a bind copy's position reads, the bound value cast
+ *   into the column's CHAR(n) as the reduction of a literal casts it (qo_reduce_equality_terms): a value longer than
+ *   the column, a string or the text of a number or a date, is cut, which the reduced term, still ANDed, rejects.
+ *   Returns whether the value has such a cast.
+ */
+bool
+pt_cast_bind_copy_value (const DB_VALUE * source, DB_VALUE * dest, const TP_DOMAIN * domain)
+{
+  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (source)))
+    {
+      return tp_value_cast_force (source, dest, domain, false) == DOMAIN_COMPATIBLE;
+    }
+  /* a number's or a date's cast into a shorter CHAR(n) overflows instead of cutting: cut its text */
+  DB_VALUE text;
+  db_make_null (&text);
+  TP_DOMAIN_STATUS status = tp_value_cast (source, &text, &tp_String_domain, false);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      status = tp_value_cast_force (&text, dest, domain, false);
+    }
+  pr_clear_value (&text);
+  return status == DOMAIN_COMPATIBLE;
+}
+
+/*
  * pt_set_derived_host_variable () - CBRD-27583: a derived position holds the value of its user position converted
  *   into the derived position's domain, the conversion a context-typed position gets (pt_set_host_variables). A value
  *   that does not convert is a bind-time error naming the derived position's type.
@@ -3124,10 +3149,9 @@ pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE
   TP_DOMAIN *domain = parser->host_var_expected_domains[index];
 
   pr_clear_value (hv);
-  /* Q12: a bind copy's position takes the value as the reduction of a literal does (qo_reduce_equality_terms): a
-   * string longer than the column is cut, which the reduced term, still ANDed, rejects */
-  const TP_DOMAIN_STATUS status = pt_is_padded_host_var (parser, index)
-    ? tp_value_cast_force (source, hv, domain, false) : tp_value_cast_preserve_domain (source, hv, domain, false, true);
+  const TP_DOMAIN_STATUS status = !pt_is_padded_host_var (parser, index)
+    ? tp_value_cast_preserve_domain (source, hv, domain, false, true)
+    : pt_cast_bind_copy_value (source, hv, domain) ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
   if (status != DOMAIN_COMPATIBLE)
     {
       const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (domain)));

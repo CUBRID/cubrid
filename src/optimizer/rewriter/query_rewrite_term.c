@@ -509,17 +509,17 @@ qo_bind_copy_user_position (PARSER_CONTEXT * parser, PT_NODE * hv)
 }
 
 /*
- * qo_bind_copy_domain () - CBRD-27583 (Q6, Q9, Q11): the domain the copies of a bind equal to CHAR column column read,
- *   the column's (length, codeset, collation), when the bound value is a string; NULL when they cannot read it: no
- *   string value (no values, a NULL, another type: the terms stay unreduced), or a later translation that finds no
- *   such position of the first one
+ * qo_bind_copy_domain () - CBRD-27583 (Q6, Q9, Q11, Q19): the domain the copies of a bind equal to CHAR column column
+ *   read, the column's (length, codeset, collation), as the reduction of a literal casts it: develop's copy shares the
+ *   bind and compares as c4 = vc does (c4 = vc and c4 = ? with 12 rejects vc = '12'). NULL when they cannot read it:
+ *   a value with no text (pt_cast_bind_copy_value refuses it: the terms stay unreduced), or a later translation that
+ *   finds no such position of the first one
  */
 static TP_DOMAIN *
 qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
 {
   const int user = qo_bind_copy_user_position (parser, hv);
-  if (user < 0 || parser->host_variables == NULL
-      || !TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&parser->host_variables[user])))
+  if (user < 0)
     {
       return NULL;
     }
@@ -529,6 +529,20 @@ qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
   if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_CHAR)
     {
       return NULL;
+    }
+  /* without a value (a PREPARE without values, a NULL) the copies reduce as develop's: a later value with no text
+   * fails at its bind (pt_set_derived_host_variable) */
+  const DB_VALUE *value = parser->host_variables != NULL ? &parser->host_variables[user] : NULL;
+  if (value != NULL && !DB_IS_NULL (value))
+    {
+      DB_VALUE cast;
+      db_make_null (&cast);
+      const bool casts = pt_cast_bind_copy_value (value, &cast, domain);
+      pr_clear_value (&cast);
+      if (!casts)
+	{
+	  return NULL;
+	}
     }
   if (parser->host_var_derived_from != NULL && !parser->flag.host_var_derive_later
       && !pt_padded_host_var_position_exists (parser, user, domain))
