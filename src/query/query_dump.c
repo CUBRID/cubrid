@@ -50,10 +50,12 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
+#include "client_session_context.hpp"	/* CSC_CLIENT_STDOUT */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define foutput stdout
+/* a folded csql renders the client half's stdout (xasl_debug_dump) into its reply */
+#define foutput CSC_CLIENT_STDOUT
 
 enum
 {
