@@ -1864,6 +1864,8 @@ wset_stat_execute (cubthread::entry &thread_ref)
     }
 }
 
+REGISTER_DAEMON (ha_writeset_stat);
+
 /*
  * wset_stat_daemon_init - start writing _db_ha_writeset_stat every ha_writeset_stat_interval_in_secs seconds
  *
