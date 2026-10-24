@@ -1468,7 +1468,11 @@ $ LOADDB
 
 1371 WITH FULLSCAN이 샘플링 방식으로 전환되었습니다. (class "%1$s", heap pages : %2$d, stats_fullscan_max_pages : %3$d)
 
-1372 마지막 에러
+1372 세션 %1$u의 비밀값이 일치하지 않습니다.
+
+1373 세션 %1$u은(는) 이 연결의 세션이 아니므로 종료하거나 유지할 수 없습니다.
+
+1374 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

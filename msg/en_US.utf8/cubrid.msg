@@ -1469,7 +1469,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1371 WITH FULLSCAN is downgraded to sampling (class "%1$s", heap pages : %2$d, stats_fullscan_max_pages : %3$d).
 
-1372 Last Error
+1372 The secret of session %1$u does not match.
+
+1373 Cannot end or keep session %1$u because it is not attached to this connection.
+
+1374 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
