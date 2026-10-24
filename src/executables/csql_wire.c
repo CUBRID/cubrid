@@ -88,6 +88,10 @@ static bool wire_Interactive = false;
  * stable when the thread reads them. */
 static sem_t wire_Cancel_sem;
 static volatile sig_atomic_t wire_Cancel_thread_up = 0;
+/* set only while a request waits for its reply: the server interrupts the
+ * session's transaction even when it is idle, so a Ctrl-C at the pager after
+ * the reply would make the next statement fail with "Has been interrupted" */
+static volatile sig_atomic_t wire_Awaiting_reply = 0;
 
 static void wire_cancel_send (void);
 static int wire_apply_statement_blocks (void);
@@ -856,8 +860,10 @@ wire_roundtrip (wire_body * b, bool replay)
 
   wire_put_be32 (head, (unsigned int) b->len);
   memset (head + 4, 0xff, 4);
+  wire_Awaiting_reply = 1;
   if (wire_write_exact (wire_Fd, head, 8) != NO_ERROR || wire_write_exact (wire_Fd, b->buf, b->len) != NO_ERROR)
     {
+      wire_Awaiting_reply = 0;
       wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
 		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
 				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
@@ -866,7 +872,10 @@ wire_roundtrip (wire_body * b, bool replay)
     }
 
   char rh[8];
-  if (wire_read_exact (wire_Fd, rh, 8) != NO_ERROR)
+  int read_status = wire_read_exact (wire_Fd, rh, 8);
+  /* the server sends the reply header only after the request has finished */
+  wire_Awaiting_reply = 0;
+  if (read_status != NO_ERROR)
     {
       wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
 		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
@@ -1333,7 +1342,7 @@ csql_wire_host_name (void)
 void
 csql_wire_cancel (void)
 {
-  if (wire_Cancel_thread_up)
+  if (wire_Cancel_thread_up && wire_Awaiting_reply)
     {
       (void) sem_post (&wire_Cancel_sem);
     }
@@ -1342,7 +1351,10 @@ csql_wire_cancel (void)
 static void
 wire_cancel_send (void)
 {
-  if (wire_Fd < 0 || wire_Token == 0)
+  /* shortcut: a reply that arrives between this check and the send still
+   * leaves the interrupt pending on the idle session; close it when the
+   * server ignores CANCEL for a session that is not executing a request */
+  if (wire_Fd < 0 || wire_Token == 0 || !wire_Awaiting_reply)
     {
       return;
     }
