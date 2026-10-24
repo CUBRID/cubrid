@@ -37,6 +37,7 @@
 
 #include "cas_protocol.h"
 #include "cas_error.h"
+#include "databases_file.h"
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
@@ -648,6 +649,27 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
       return ER_BO_CANT_LOAD_SYSPRM;
+    }
+
+  if (host[0] == '\0')
+    {
+      /* a bare name takes its server host from databases.txt, as the legacy csql's boot did */
+      DB_INFO *dir = cfg_find_db (db);
+      if (dir != NULL && dir->num_hosts > 1)
+	{
+	  cfg_free_directory (dir);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_NO_EXPLICIT_SERVER_HOST, 0);
+	  wire_set_error (ER_NET_NO_EXPLICIT_SERVER_HOST, er_msg ());
+	  return ER_NET_NO_EXPLICIT_SERVER_HOST;
+	}
+      if (dir != NULL && dir->num_hosts == 1 && dir->hosts[0] != NULL)
+	{
+	  wire_copy (host, sizeof (host), dir->hosts[0]);
+	}
+      if (dir != NULL)
+	{
+	  cfg_free_directory (dir);
+	}
     }
 
   int err;
