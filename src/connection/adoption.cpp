@@ -1035,7 +1035,9 @@ namespace cubconn
 	}
       if (pin.client_fd >= 0)
 	{
-	  shutdown (pin.client_fd, SHUT_RDWR);
+	  /* read side only: an interrupted statement still sends its error (-4) to the
+	   * driver, as a CAS did after losing its server, and the next read ends the session */
+	  shutdown (pin.client_fd, SHUT_RD);
 	}
       return true;
     }
