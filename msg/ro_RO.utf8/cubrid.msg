@@ -1323,7 +1323,6 @@ $ LOADDB
 1301 Recuperare jurnal: %1$s progres: (%2$lld/%3$lld), %4$.2f procent, timp scurs: %5$.2f (s), timp rămas estimat: %6$.2f (s).
 
 1302 The secret of session %1$u does not match.
-
 1303 Cannot end session %1$u because it is not attached to this connection.
 
 1304 Ultima eroare

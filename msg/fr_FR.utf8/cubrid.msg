@@ -1323,7 +1323,6 @@ $ LOADDB
 1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
 
 1302 The secret of session %1$u does not match.
-
 1303 Cannot end session %1$u because it is not attached to this connection.
 
 1304 Dernière erreur
