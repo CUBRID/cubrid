@@ -619,6 +619,7 @@ static int pt_split_pred_regu_list (PARSER_CONTEXT * parser, const VAL_LIST * va
 
 static void pt_add_regu_var_to_list (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source);
 static void pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source);
+static int pt_append_pos_regu_to_list (REGU_VARIABLE_LIST * head, TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos_no);
 
 static PRED_REGU_VARIABLE_P_LIST pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err);
 
@@ -6773,6 +6774,32 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 
 
 /*
+ * pt_make_key_limit_arith () - build a key limit node (rownum < N is N - 1, a range is upper - lower,
+ *                              a merge with a user KEYLIMIT is LEAST/GREATEST) and mark it as such,
+ *                              so key_limit_eval () can tell it from arithmetic written by the user
+ *   return: a regu variable or NULL on error
+ *   arg1(in), arg2(in): operands
+ *   op(in): T_SUB, T_LEAST or T_GREATEST
+ *   domain(in): result domain
+ */
+REGU_VARIABLE *
+pt_make_key_limit_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const OPERATOR_TYPE op,
+			 const TP_DOMAIN * domain)
+{
+  REGU_VARIABLE *regu;
+
+  assert (op == T_SUB || op == T_LEAST || op == T_GREATEST);
+
+  regu = pt_make_regu_arith (arg1, arg2, NULL, op, domain);
+  if (regu != NULL)
+    {
+      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_KEY_LIMIT_ARITH);
+    }
+
+  return regu;
+}
+
+/*
  * pt_make_regu_arith () - takes a regu_variable pair,
  *                         and makes an regu arith type
  *   return: A NULL return indicates an error occurred
@@ -9913,8 +9940,17 @@ pt_to_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list, UNBOX un
 
   for (node = node_list; node != NULL; node = node->next)
     {
+      PT_NODE *save_next = node->next;
+
+      /* in this list the node link is the following item, not a conjunctive normal form term;
+       * pt_to_pred_expr (), which pt_to_regu_variable () calls for a PT_TYPE_LOGICAL node, walks
+       * the link and would otherwise fold the following items into this item's predicate */
+      node->next = NULL;
+
       regu_alloc (*tail);
       regu = pt_to_regu_variable (parser, node, unbox);
+
+      node->next = save_next;
 
       if (attr_offsets && value_list && regu)
 	{
@@ -11724,7 +11760,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
     {
       if (regu_var_u != NULL)
 	{
-	  key_infop->key_limit_u = pt_make_regu_arith (key_infop->key_limit_u, regu_var_u, NULL, T_LEAST, dom_bigint);
+	  key_infop->key_limit_u = pt_make_key_limit_arith (key_infop->key_limit_u, regu_var_u, T_LEAST, dom_bigint);
 	  if (key_infop->key_limit_u == NULL)
 	    {
 	      goto error;
@@ -11741,8 +11777,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
     {
       if (regu_var_l != NULL)
 	{
-	  key_infop->key_limit_l =
-	    pt_make_regu_arith (key_infop->key_limit_l, regu_var_l, NULL, T_GREATEST, dom_bigint);
+	  key_infop->key_limit_l = pt_make_key_limit_arith (key_infop->key_limit_l, regu_var_l, T_GREATEST, dom_bigint);
 	  if (key_infop->key_limit_l == NULL)
 	    {
 	      goto error;
@@ -11850,7 +11885,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 	{
 	  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
-	  limit_infop->upper = pt_make_regu_arith (limit_infop->upper, limit_infop->lower, NULL, T_SUB, dom_bigint);
+	  limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, limit_infop->lower, T_SUB, dom_bigint);
 	  if (limit_infop->upper == NULL)
 	    {
 	      goto exit_on_error;
@@ -17232,43 +17267,29 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT)
+	      && (xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER))
 	    {
-	      PT_NODE *final_node = NULL;
-	      REGU_VARIABLE_LIST regu_list_new, prev = NULL;
-	      REGU_VARIABLE *regu_var_temp;
+	      /* inst_num () in the final list (at any depth): the scan writes it as the last column and the analytic
+	       * pass fetches it back into xasl->instnum_val, which the final list reads */
+	      REGU_VARIABLE_LIST regu_list_new;
+	      int pos = buildlist->a_outptr_list_ex->valptr_cnt;
 
-	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
+	      regu_alloc (regu_list_new);
+	      if (regu_list_new == NULL)
 		{
-		  if (pt_is_instnum (final_node))
-		    {
-		      buildlist->a_outptr_list_ex->valptr_cnt++;
+		  goto analytic_exit_on_error;
+		}
+	      regu_list_new->value.type = TYPE_CONSTANT;
+	      regu_list_new->value.domain = &tp_Bigint_domain;
+	      regu_list_new->value.value.dbvalptr = xasl->instnum_val;
+	      pt_add_regu_var_to_list (&buildlist->a_outptr_list_ex->valptrp, regu_list_new);
+	      buildlist->a_outptr_list_ex->valptr_cnt++;
 
-		      regu_alloc (regu_list_new);
-		      if (regu_list_new == NULL)
-			{
-			  goto analytic_exit_on_error;
-			}
-
-		      regu_var_temp = pt_make_regu_numbering (parser, final_node);
-		      regu_list_new->value = *regu_var_temp;
-
-		      if (prev == NULL)
-			{
-			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
-			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
-			}
-		      else
-			{
-			  regu_list_new->next = prev->next;
-			  prev->next = regu_list_new;
-			}
-		      prev = regu_list_new;
-		    }
-		  else
-		    {
-		      prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
-		    }
+	      if (pt_append_pos_regu_to_list (&buildlist->a_regu_list, &tp_Bigint_domain, xasl->instnum_val, pos)
+		  != NO_ERROR)
+		{
+		  goto analytic_exit_on_error;
 		}
 	    }
 
@@ -18346,50 +18367,6 @@ pt_check_min_max_column_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 }
 
 /*
- * pt_where_rejects_column_null () - true if some conjunct of the CNF WHERE list
- *     already rejects NULL values of the given column, mirroring the criteria
- *     qo_fold_is_and_not_null () uses to fold a user-written "col IS NOT NULL"
- *     away: a single-predicate term (no or_next) of the WHERE location whose
- *     first argument or right-hand side is that column. IS NULL and <=> accept
- *     NULL operands and therefore do not count.
- *   return: bool
- *   parser(in): context
- *   where(in): CNF WHERE list
- *   column(in): PT_NAME node of the min/max column
- */
-static bool
-pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column)
-{
-  PT_NODE *term, *term_prior;
-
-  for (term = where; term != NULL; term = term->next)
-    {
-      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0)
-	{
-	  /* not a single-predicate conjunct of the WHERE proper: an OR-ed predicate
-	   * can still accept a NULL of the column through its other disjuncts */
-	  continue;
-	}
-
-      if (term->info.expr.op == PT_IS_NULL || term->info.expr.op == PT_NULLSAFE_EQ)
-	{
-	  /* these evaluate to true on NULL operands */
-	  continue;
-	}
-
-      term_prior = pt_get_first_arg_ignore_prior (term);
-      if ((term_prior != NULL && pt_check_path_eq (parser, column, term_prior) == 0)
-	  || (term->info.expr.arg2 != NULL && pt_check_path_eq (parser, column, term->info.expr.arg2) == 0))
-	{
-	  /* a NULL column value makes this conjunct UNKNOWN, so the row cannot qualify */
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * pt_add_null_filter_for_min_max_opt () - for a single-table, single-tuple
  *     aggregate query whose aggregates are all MIN/MAX over one and the same
  *     simple column, add "<column> IS NOT NULL" to the WHERE clause.
@@ -18479,7 +18456,8 @@ pt_add_null_filter_for_min_max_opt (PARSER_CONTEXT * parser, PT_NODE * select_no
       return;
     }
 
-  if (pt_where_rejects_column_null (parser, select_node->info.query.q.select.where, info.column))
+  /* nothing removes WHERE terms here */
+  if (pt_where_rejects_column_null (parser, select_node->info.query.q.select.where, info.column, false))
     {
       /* some conjunct already rejects NULLs of the column (the same criteria under which the
        * rewriter folds a user-written IS NOT NULL away, but that fold runs before this point,
@@ -29858,6 +29836,9 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	  AGGREGATE_TYPE *agg_list =
 	    (xasl_src->type ==
 	     BUILDVALUE_PROC) ? xasl_src->proc.buildvalue.agg_list : xasl_src->proc.buildlist.g_agg_list;
+	  PRED_EXPR *having_pred =
+	    (xasl_src->type ==
+	     BUILDVALUE_PROC) ? xasl_src->proc.buildvalue.having_pred : xasl_src->proc.buildlist.g_having_pred;
 	  while (agg_list)
 	    {
 	      regu_var_list_p = agg_list->operands;
@@ -29877,6 +29858,13 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      agg_list = agg_list->next;
 	    }
 
+	  /* HAVING can compare with outer columns, so its correlated values are part of the key too. */
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) having_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  cnt += ret;
 	}
       break;
     case SQ_TYPE_PRED:
@@ -29989,6 +29977,13 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    {
 	      cnt += ret;
 	    }
+	  /* IF, CASE, DECODE and a predicate used as a value keep their condition here, not in the operands. */
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  cnt += ret;
 	  break;
 	case TYPE_FUNC:
 	  if (regu_src->value.funcp->operand)
@@ -30282,7 +30277,7 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   switch (qo_plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
+      if (!(qo_is_iscan (qo_plan) || qo_is_iscan_from_analytic (qo_plan)) || (env = (qo_plan->info)->env) == NULL)
 	{
 	  return 0;
 	}
