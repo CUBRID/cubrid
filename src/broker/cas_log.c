@@ -235,6 +235,17 @@ cas_log_open (char *br_name)
       else
 	{
 	  log_fp = cas_fopen (log_filepath, "w");
+	  if (log_fp == NULL && errno == ENOENT)
+	    {
+	      /* the directory was removed after startup (a CAS got it back from its broker's restart) */
+	      char dir[BROKER_PATH_MAX];
+	      strncpy (dir, log_filepath, sizeof (dir) - 1);
+	      dir[sizeof (dir) - 1] = '\0';
+	      if (cas_mkdir (dirname (dir), 0777) == 0)
+		{
+		  log_fp = cas_fopen (log_filepath, "w");
+		}
+	    }
 	  saved_log_fpos = 0;
 	}
 
