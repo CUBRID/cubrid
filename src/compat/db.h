@@ -49,6 +49,7 @@
 extern int db_Connect_status;
 
 extern SESSION_ID db_Session_id;
+extern char db_Session_secret[];
 extern bool db_Keep_session;
 
 extern int db_Row_count;
