@@ -4400,7 +4400,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   *session_id = db_Session_id;
 
   /* get row count */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       xsession_get_row_count (thread_p, row_count);
     }
