@@ -1625,7 +1625,6 @@
 #define ER_SQL_ERROR_LOG_MSG_TRACE                  -1265
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1266
-
 #define ER_SES_SESSION_NOT_ATTACHED                 -1267
 
 #define ER_LAST_ERROR                               -1268

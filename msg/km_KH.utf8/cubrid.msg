@@ -1336,7 +1336,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1265 Internal CAS error : %1$d, %2$s
 
 1266 The secret of session %1$u does not match.
-
 1267 Cannot end session %1$u because it is not attached to this connection.
 
 1268 Last Error
