@@ -113,7 +113,7 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
-      net_timeout_set (CAS_SHM_CFG (session_timeout));
+      net_timeout_set (CAS_IN_TRAN_SESSION_TIMEOUT);
     }
   else
     {
@@ -179,7 +179,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
       /* holdable results have the same lifespan of a normal session */
-      net_timeout_set (CAS_SHM_CFG (session_timeout));
+      net_timeout_set (CAS_IN_TRAN_SESSION_TIMEOUT);
     }
   else
     {

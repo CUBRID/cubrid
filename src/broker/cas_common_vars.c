@@ -46,6 +46,9 @@ CAS_TLS int cas_log_slot_index;
 #endif
 T_SHM_APPL_SERVER *shm_appl;
 CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
+#if defined (SERVER_MODE)
+CAS_TLS int cas_in_tran_session_timeout = -1;
+#endif
 CAS_TLS T_APPL_SERVER_INFO *as_info;
 
 /* Transaction and query timing */

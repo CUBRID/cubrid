@@ -95,8 +95,14 @@ extern CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
 
 #if defined(SERVER_MODE)
 #define CAS_SHM_CFG(field) (cas_session_cfg.field)
+/* The broker's SESSION_TIMEOUT bounds a client idle inside a transaction, as a
+ * CAS does, while cas_session_cfg.session_timeout keeps the idle session open.
+ * -1 when no broker config reached the session. */
+extern CAS_TLS int cas_in_tran_session_timeout;
+#define CAS_IN_TRAN_SESSION_TIMEOUT cas_in_tran_session_timeout
 #else
 #define CAS_SHM_CFG(field) (shm_appl->field)
+#define CAS_IN_TRAN_SESSION_TIMEOUT (shm_appl->session_timeout)
 #endif
 extern CAS_TLS T_APPL_SERVER_INFO *as_info;
 
