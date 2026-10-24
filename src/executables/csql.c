@@ -1276,13 +1276,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	if (wire_rc < 0)
 	  {
 	    csql_Error_code = CSQL_ERR_SQL_ERROR;
-	    csql_thin_display_wire_error ();
 	    if (cmd_no == S_CMD_CHECKPOINT)
 	      {
 		/* Like the local checkpoint case, report the error and keep
 		 * the prompt available for restart or exit. */
+		csql_thin_display_wire_error ();
 		return DO_CMD_SUCCESS;
 	      }
+	    /* DO_CMD_FAILURE reports the wire error (error_continue) */
 	    csql_check_server_down ();
 	    return DO_CMD_FAILURE;
 	  }
@@ -1336,7 +1337,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	int wire_rc = csql_wire_session_cmd (csql_arg, line_read);
 	if (wire_rc < 0)
 	  {
-	    csql_thin_display_wire_error ();
+	    csql_Error_code = CSQL_ERR_SQL_ERROR;
 	    csql_check_server_down ();
 	    return DO_CMD_FAILURE;
 	  }
