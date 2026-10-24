@@ -1143,6 +1143,12 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
    * identifier we can make a good estimate of oid entry count.
    */
   cursor_id_p->oid_ent_count = CEIL_PTVDIV (DB_PAGESIZE, sizeof (OID)) - 1;
+  if (cursor_id_p->oid_ent_count <= 0)
+    {
+      /* no page size yet; also keeps a negative count out of malloc (-Werror=alloc-size-larger-than) */
+      cursor_id_p->oid_ent_count = 0;
+      return;
+    }
 
   oids_size = cursor_id_p->oid_ent_count * sizeof (OID);
   cursor_id_p->oid_set = (OID *) malloc (oids_size);
