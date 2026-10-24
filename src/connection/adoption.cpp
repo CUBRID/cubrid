@@ -1182,22 +1182,6 @@ namespace cubconn
     }
 
     void
-    registry_set_fn_status (std::uint32_t token, int fn_status)
-    {
-      manager *m = adoption_Manager;
-      if (m == NULL)
-	{
-	  return;
-	}
-      std::lock_guard<std::mutex> guard (m->registry_mutex);
-      auto it = m->registry.find (token);
-      if (it != m->registry.end ())
-	{
-	  it->second.fn_status = fn_status;
-	}
-    }
-
-    void
     registry_session_finished (std::uint32_t token)
     {
       registry_begin_session_cleanup (token);
@@ -1772,7 +1756,10 @@ namespace cubconn
 	auto it = m.registry.find (body.token);
 	if (it != m.registry.end ())
 	  {
-	    reply.fn_status = it->second.fn_status;
+	    /* the session thread keeps its slot's fn_status as a CAS did (DONE once a reply is out), which
+	     * tells a driver whose reply was lost to stop waiting; the entry's BUSY covers the time before */
+	    const T_APPL_SERVER_INFO *slot = it->second.stats_slot;
+	    reply.fn_status = slot != NULL ? slot->fn_status : it->second.fn_status;
 	  }
       }
       (void) send_message (ch, msg_op::STATUS_REPLY, &reply, sizeof (reply));

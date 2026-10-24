@@ -242,7 +242,6 @@ namespace cubconn
     /* consumes a cubrid broker reset of this session: true when the yield now ending the connection was a reset */
     bool registry_auto_take_reset (void);
     std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
-    void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);
     bool registry_take_session_config (broker_session_config &config);
     /* SESSION_TIMEOUT of the broker that handed off this token (0 when unknown);
