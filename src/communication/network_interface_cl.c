@@ -4666,9 +4666,14 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	    {
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
 	    }
-	  if (ptr != NULL)
+	  if (ptr != NULL && (int) (ptr - area) + or_packed_stream_length (SESSION_SECRET_SIZE) <= area_size)
 	    {
 	      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
+	    }
+	  else
+	    {
+	      /* a server from before CBRD-27434 sends no secret */
+	      memset (session_secret, 0, SESSION_SECRET_SIZE);
 	    }
 
 	  free_and_init (area);
