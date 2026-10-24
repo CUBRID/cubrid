@@ -615,8 +615,10 @@ namespace cubconn
 	    (void) setsockopt (params.client_fd, SOL_SOCKET, SO_SNDTIMEO, &pre_auth_tv, sizeof (pre_auth_tv));
 	  }
       }
+      bool ssl_cert_failed = false;
       if (is_ssl)
 	{
+	  cas_ssl_cert_error[0] = '\0';
 	  if (cas_init_ssl (params.client_fd) < 0
 	      || read_full (params.client_fd, params.db_info, sizeof (params.db_info)) != NO_ERROR)
 	    {
@@ -625,12 +627,17 @@ namespace cubconn
 		  cas_ssl_close (params.client_fd);
 		  ssl_client = false;	/* defensive: keep the pair consistent should threads ever be pooled */
 		}
-	      /* no conn entry yet: refund the adoption channel's quota seat
-	       * (codex B3 F1 — this exit leaked it since B1) */
-	      css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);
-	      registry_session_finished (params.token);
-	      close (params.client_fd);
-	      return;
+	      if (cas_ssl_cert_error[0] == '\0')
+		{
+		  /* no conn entry yet: refund the adoption channel's quota seat
+		   * (codex B3 F1 — this exit leaked it since B1) */
+		  css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);
+		  registry_session_finished (params.token);
+		  close (params.client_fd);
+		  return;
+		}
+	      /* a certificate problem: take the session's SQL log only to record it, as the CAS did */
+	      ssl_cert_failed = true;
 	    }
 	}
 
@@ -689,6 +696,21 @@ namespace cubconn
 
       /* this thread now acts as the in-process client (D5) */
       db_on_server = 0;
+
+      if (ssl_cert_failed)
+	{
+	  cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
+					 CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
+	  if (cas_server_session_log_begin (params.broker_name.c_str ()) == 0)
+	    {
+	      /* the broker's SQL_LOG decides whether the line is written */
+	      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, "",
+					  conn->client_id);
+	      cas_server_apply_pending_config (false);
+	      cas_log_write_and_end (0, false, "%s", cas_ssl_cert_error);
+	    }
+	  goto retire;
+	}
 
       if (parse_db_info (params.db_info, sizeof (params.db_info), info) != NO_ERROR)
 	{

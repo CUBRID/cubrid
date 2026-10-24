@@ -82,6 +82,14 @@
 static CAS_TLS SSL *ssl = NULL;
 CAS_TLS bool ssl_client = false;
 
+#if defined (SERVER_MODE)
+/* TLS starts before the session has its SQL log: keep a certificate problem for driver_session to write */
+CAS_TLS char cas_ssl_cert_error[CAS_SSL_CERT_ERROR_SIZE];
+#define CAS_SSL_CERT_LOG(...) snprintf (cas_ssl_cert_error, sizeof (cas_ssl_cert_error), __VA_ARGS__)
+#else
+#define CAS_SSL_CERT_LOG(...) cas_log_write_and_end (0, false, __VA_ARGS__)
+#endif
+
 static int cas_ssl_validity_check (SSL_CTX * ctx);
 static SSL_CTX *cas_ssl_load_ctx (int *err_code, time_t * cert_mtime, time_t * key_mtime);
 #if defined (SERVER_MODE)
@@ -109,21 +117,21 @@ cas_ssl_load_ctx (int *err_code, time_t * cert_mtime, time_t * key_mtime)
 
   if (cert_not_found && pk_not_found)
     {
-      cas_log_write_and_end (0, false, "SSL: Both the certificate & Private key could not be found: %s, %s", cert, key);
+      CAS_SSL_CERT_LOG ("SSL: Both the certificate & Private key could not be found: %s, %s", cert, key);
       *err_code = ER_CERT_COPPUPTED;
       return NULL;
     }
 
   if (cert_not_found)
     {
-      cas_log_write_and_end (0, false, "SSL: Certificate not found: %s", cert);
+      CAS_SSL_CERT_LOG ("SSL: Certificate not found: %s", cert);
       *err_code = ER_CERT_COPPUPTED;
       return NULL;
     }
 
   if (pk_not_found)
     {
-      cas_log_write_and_end (0, false, "SSL: Private key not found: %s", key);
+      CAS_SSL_CERT_LOG ("SSL: Private key not found: %s", key);
       *err_code = ER_CERT_COPPUPTED;
       return NULL;
     }
