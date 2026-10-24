@@ -492,6 +492,32 @@ wire_host_is_local (const char *host)
   return is_local;
 }
 
+/* the legacy csql reached db@host through that host's cub_master, so an address naming this machine that
+ * refuses the master port (127.255.255.255) failed the connection */
+static bool
+wire_master_reachable (const char *host)
+{
+  struct addrinfo hints, *res = NULL;
+  char port_str[16];
+  bool reachable = false;
+
+  memset (&hints, 0, sizeof (hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  snprintf (port_str, sizeof (port_str), "%d", prm_get_master_port_id ());
+  if (getaddrinfo (host, port_str, &hints, &res) == 0 && res != NULL)
+    {
+      int fd = socket (res->ai_family, res->ai_socktype, res->ai_protocol);
+      if (fd >= 0)
+	{
+	  reachable = connect (fd, res->ai_addr, res->ai_addrlen) == 0;
+	  close (fd);
+	}
+      freeaddrinfo (res);
+    }
+  return reachable;
+}
+
 static int
 wire_connect_broker (const char *host, int port, const char *db, const char *user, const char *passwd)
 {
@@ -627,6 +653,12 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
   int err;
   if (wire_host_is_local (host))
     {
+      if (host[0] != '\0' && strcmp (host, "localhost") != 0 && !wire_master_reachable (host))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED, 2, db, host);
+	  wire_set_error (ER_BO_CONNECT_FAILED, er_msg ());
+	  return ER_BO_CONNECT_FAILED;
+	}
       err = wire_connect_local (db, user_name, passwd, client_type);
     }
   else
