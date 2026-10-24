@@ -1335,7 +1335,10 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1264 Internal CAS error : %1$d 
 1265 Internal CAS error : %1$d, %2$s
 
-1266 Son Hata
+1266 The secret of session %1$u does not match.
+1267 Cannot end session %1$u because it is not attached to this connection.
+
+1268 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
