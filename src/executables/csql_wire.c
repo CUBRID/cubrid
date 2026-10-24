@@ -23,6 +23,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -453,6 +454,44 @@ wire_connect_local (const char *db, const char *user, const char *passwd, int cl
   return NO_ERROR;
 }
 
+/* db@host naming this machine (its host name or one of its addresses) is local, as it was for the legacy
+ * csql, which reached the local cub_master; only a genuinely remote host needs a broker */
+static bool
+wire_host_is_local (const char *host)
+{
+  struct addrinfo hints, *res = NULL, *ai;
+  struct ifaddrs *ifaddr, *ifa;
+  bool is_local = false;
+
+  if (host[0] == '\0' || strcmp (host, "localhost") == 0)
+    {
+      return true;
+    }
+  memset (&hints, 0, sizeof (hints));
+  hints.ai_family = AF_INET;
+  if (getaddrinfo (host, NULL, &hints, &res) != 0)
+    {
+      return false;
+    }
+  if (getifaddrs (&ifaddr) == 0)
+    {
+      for (ai = res; ai != NULL && !is_local; ai = ai->ai_next)
+	{
+	  struct in_addr addr = ((struct sockaddr_in *) ai->ai_addr)->sin_addr;
+
+	  is_local = (ntohl (addr.s_addr) >> 24) == 127;
+	  for (ifa = ifaddr; ifa != NULL && !is_local; ifa = ifa->ifa_next)
+	    {
+	      is_local = (ifa->ifa_addr != NULL && ifa->ifa_addr->sa_family == AF_INET
+			  && ((struct sockaddr_in *) ifa->ifa_addr)->sin_addr.s_addr == addr.s_addr);
+	    }
+	}
+      freeifaddrs (ifaddr);
+    }
+  freeaddrinfo (res);
+  return is_local;
+}
+
 static int
 wire_connect_broker (const char *host, int port, const char *db, const char *user, const char *passwd)
 {
@@ -586,7 +625,7 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
     }
 
   int err;
-  if (host[0] == '\0' || strcmp (host, "localhost") == 0)
+  if (wire_host_is_local (host))
     {
       err = wire_connect_local (db, user_name, passwd, client_type);
     }
