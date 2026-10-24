@@ -2030,6 +2030,9 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
       return PERF_MODULE_VACUUM;
+    case TT_SERVER:
+      /* a folded driver session serves its client's transaction on its own thread */
+      return thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX ? PERF_MODULE_USER : PERF_MODULE_SYSTEM;
     default:
       return PERF_MODULE_SYSTEM;
     }
