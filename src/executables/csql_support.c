@@ -882,14 +882,12 @@ void
 csql_check_server_down (void)
 {
 #if defined(CSQL_THIN)
-  /* wf122/B5: the wire layer drops the connection on transport failure */
-  if (!csql_wire_is_connected ())
+  /* wf122/B5: the wire layer drops the connection on transport failure; like the
+   * fat client, only the server-down abort exits, so a lost connection can ;restart */
+  if (!csql_wire_is_connected () && csql_wire_last_error (NULL) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
-      if (csql_wire_last_error (NULL) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
-	{
-	  csql_Error_code = CSQL_ERR_SQL_ERROR;
-	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-	}
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       fprintf (csql_Error_fp, "Exiting ...\n");
       csql_exit (EXIT_FAILURE);
     }

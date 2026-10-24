@@ -894,7 +894,10 @@ wire_roundtrip (wire_body * b, bool replay)
   wire_set_error (NO_ERROR, NULL);
   if (wire_Fd < 0)
     {
-      wire_set_error (ER_FAILED, "not connected");
+      /* a request after the connection was lost: the fat client's server-down abort */
+      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
       return ER_FAILED;
     }
 
@@ -904,9 +907,8 @@ wire_roundtrip (wire_body * b, bool replay)
   if (wire_write_exact (wire_Fd, head, 8) != NO_ERROR || wire_write_exact (wire_Fd, b->buf, b->len) != NO_ERROR)
     {
       wire_Awaiting_reply = 0;
-      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
-		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
-				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
+      wire_set_error (ER_NET_SERVER_CRASHED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_NET_SERVER_CRASHED));
       wire_close_fd ();
       return ER_FAILED;
     }
@@ -917,9 +919,11 @@ wire_roundtrip (wire_body * b, bool replay)
   wire_Awaiting_reply = 0;
   if (read_status != NO_ERROR)
     {
-      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
-		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
-				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
+      /* lost while awaiting the reply (killtran, server restart): like the send
+       * failure above, the fat client's ER_NET_SERVER_CRASHED, which leaves csql
+       * running for ;restart */
+      wire_set_error (ER_NET_SERVER_CRASHED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_NET_SERVER_CRASHED));
       wire_close_fd ();
       return ER_FAILED;
     }
@@ -937,9 +941,8 @@ wire_roundtrip (wire_body * b, bool replay)
   if (reply == NULL || wire_read_exact (wire_Fd, reply, (size_t) length) != NO_ERROR)
     {
       free (reply);
-      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
-		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
-				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
+      wire_set_error (ER_NET_SERVER_CRASHED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_NET_SERVER_CRASHED));
       wire_close_fd ();
       return ER_FAILED;
     }
