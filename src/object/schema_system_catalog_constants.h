@@ -55,7 +55,6 @@
 #define CT_SYNONYM_NAME            "_db_synonym"
 #define CT_HISTOGRAM_NAME       "_db_histogram"
 #define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
-#define CT_HA_WRITESET_STAT_NAME   "_db_ha_writeset_stat"
 #define CT_HA_APPLY_STAT_NAME      "_db_ha_apply_stat"
 #define CT_HA_APPLY_WORKER_STAT_NAME "_db_ha_apply_worker_stat"
 
@@ -99,20 +98,6 @@
 #define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
-
-/* _db_ha_writeset_stat: one row per database, written in place by the active server (see writeset.cpp).
- * Every column is fixed size, so the row never changes size and can always be updated in place. */
-#define CT_HAWS_SERVER_START_TIME	  "server_start_time"
-#define CT_HAWS_LAST_UPDATE_TIME	  "last_update_time"
-#define CT_HAWS_HISTORY_SIZE		  "history_size"
-#define CT_HAWS_HISTORY_ENTRY_COUNT	  "history_entry_count"
-#define CT_HAWS_COMMIT_COUNT		  "commit_count"
-#define CT_HAWS_COMMIT_FALLBACK_COUNT	  "commit_fallback_count"
-#define CT_HAWS_FALLBACK_KEY_LIMIT_COUNT  "fallback_key_limit_count"
-#define CT_HAWS_FALLBACK_STATEMENT_COUNT  "fallback_statement_count"
-#define CT_HAWS_CONFLICT_REF_COUNT	  "conflict_ref_count"
-#define CT_HAWS_CONFLICT_WRITE_COUNT	  "conflict_write_count"
-#define CT_HAWS_CLEAR_CAPACITY_COUNT	  "clear_capacity_count"
 
 #define SP_ATTR_TARGET_METHOD_LEN       (4096)
 

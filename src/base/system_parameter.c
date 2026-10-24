@@ -822,7 +822,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HA_WRITESET_HISTORY_SIZE "ha_writeset_history_size"
 #define PRM_NAME_HA_WRITESET_TRACE_LEVEL "ha_writeset_trace_level"
 #define PRM_NAME_HA_APPLY_WORKER_COUNT "ha_apply_worker_count"
-#define PRM_NAME_HA_WRITESET_STAT_INTERVAL_IN_SECS "ha_writeset_stat_interval_in_secs"
 
 #define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
 #define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
@@ -5701,17 +5700,6 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = HB_DEFAULT_APPLY_WORKER_COUNT}},
    {false, {.i = HB_DEFAULT_APPLY_WORKER_COUNT}},
    {false, {.i = HB_MAX_APPLY_WORKER_COUNT}}, {false, {.i = 1}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_WRITESET_STAT_INTERVAL_IN_SECS,
-   PRM_NAME_HA_WRITESET_STAT_INTERVAL_IN_SECS,
-   (PRM_FOR_SERVER | PRM_FOR_HA),
-   PRM_INTEGER,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 1}},
-   {false, {.i = 1}},
-   {false, {.i = 3600}}, {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

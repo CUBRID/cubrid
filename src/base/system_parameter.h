@@ -568,10 +568,8 @@ enum param_id
 
   PRM_ID_HA_APPLY_WORKER_COUNT,
 
-  PRM_ID_HA_WRITESET_STAT_INTERVAL_IN_SECS,
-
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HA_WRITESET_STAT_INTERVAL_IN_SECS
+  PRM_LAST_ID = PRM_ID_HA_APPLY_WORKER_COUNT
 };
 typedef enum param_id PARAM_ID;
 
