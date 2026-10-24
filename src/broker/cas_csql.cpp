@@ -27,12 +27,17 @@
 
 #ident "$Id$"
 
+#include <poll.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #include <new>
 #include <string>
+#include <system_error>
+#include <thread>
 #include <vector>
 #include <utility>
 
@@ -47,8 +52,11 @@
 #include "cas_protocol.h"
 #include "error_manager.h"
 #include "language_support.h"
+#include "log_impl.h"
 #include "object_representation.h"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #include "csql.h"
 #include "adoption.hpp"
@@ -72,6 +80,81 @@ typedef struct
 } csql_capture_cookie;
 
 static thread_local csql_capture_cookie *csql_Error_cookie = NULL;
+
+/* A CS csql that died mid-statement had its transaction interrupted by the server's connection handler
+ * (css_connection_handler_thread), so neither its work nor its auto-commit survived. The folded statement
+ * runs on the client's own session thread, which reads the socket only between requests: watch it for the
+ * hang-up while a request executes. */
+class csql_hangup_watch
+{
+  public:
+    csql_hangup_watch (SOCKET fd, int tran_index)
+      : m_wake (eventfd (0, EFD_CLOEXEC))
+    {
+      if (m_wake < 0)
+	{
+	  return;		/* no watch: the statement runs as it would without it */
+	}
+      try
+      {
+	m_thread = std::thread ([fd, tran_index, wake = m_wake] ()
+	{
+	  struct pollfd pfd[2] = { { fd, POLLRDHUP, 0 }, { wake, POLLIN, 0 } };
+
+	  if (poll (pfd, 2, -1) > 0 && (pfd[0].revents & (POLLRDHUP | POLLHUP | POLLERR)) != 0)
+	    {
+	      interrupt (tran_index);
+	    }
+	});
+      }
+      catch (const std::system_error &)
+      {
+      }
+    }
+
+    ~csql_hangup_watch ()
+    {
+      if (m_thread.joinable ())
+	{
+	  (void) eventfd_write (m_wake, 1);
+	  m_thread.join ();
+	}
+      if (m_wake >= 0)
+	{
+	  close (m_wake);
+	}
+    }
+
+  private:
+    /* the interrupt reaches engine code that needs a thread entry and its error context:
+     * register this foreign thread the way the adoption control channel does */
+    static void interrupt (int tran_index)
+    {
+      cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
+
+      if (entry_p == NULL)
+	{
+	  return;
+	}
+      entry_p->register_id ();
+      entry_p->type = TT_SERVER;
+      entry_p->tran_index = -1;
+      entry_p->m_status = cubthread::entry::status::TS_RUN;
+      entry_p->shutdown = false;
+      entry_p->get_error_context ().register_thread_local ();
+
+      (void) logtb_set_tran_index_interrupt (NULL, tran_index, true);
+
+      entry_p->tran_index = NULL_TRAN_INDEX;
+      entry_p->m_status = cubthread::entry::status::TS_DEAD;
+      entry_p->get_error_context ().deregister_thread_local ();
+      entry_p->unregister_id ();
+      cubthread::get_manager ()->retire_entry (*entry_p);
+    }
+
+    int m_wake;
+    std::thread m_thread;
+};
 
 static void
 csql_capture_error ()
@@ -366,6 +449,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 	  opts.stdout_fp = stdout_fp;
 
 	  cas_log_write (0, true, "csql_request execute");
+	  csql_hangup_watch watch (sock_fd, LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()));
 	  status = csql_server_execute_request (&csql_arg, &opts, text, out_fp, err_fp);
 	}
       else if (sub_code == CAS_CSQL_SUB_SESSION_CMD)
@@ -398,6 +482,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 	  opts.stdout_fp = stdout_fp;
 
 	  cas_log_write (0, true, "csql_request session_cmd");
+	  csql_hangup_watch watch (sock_fd, LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()));
 	  status = csql_server_session_cmd_request (&csql_arg, &opts, line, out_fp, err_fp);
 	}
       else if (sub_code == CAS_CSQL_SUB_TRAN)
