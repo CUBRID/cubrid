@@ -55,6 +55,7 @@ struct broker_runtime_config
   char log_dir[BROKER_SESSION_PATH_MAX];
   char slow_log_dir[BROKER_SESSION_PATH_MAX];
   char error_log_dir[BROKER_SESSION_PATH_MAX];
+  char access_log_file[BROKER_SESSION_PATH_MAX];	/* <ACCESS_LOG_DIR>/<broker>.access */
 };
 
 enum broker_runtime_parameter

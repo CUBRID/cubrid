@@ -209,6 +209,8 @@ cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
   get_cubrid_file (FID_SQL_LOG_DIR, cfg->log_dir, sizeof (cfg->log_dir));
   get_cubrid_file (FID_SLOW_LOG_DIR, cfg->slow_log_dir, sizeof (cfg->slow_log_dir));
   cfg->error_log_dir[0] = '\0'; /* direct csql keeps the database error log */
+  cfg->net_buf_size = 0;	/* the default fetch buffer */
+  cfg->access_log_file[0] = '\0';	/* the server's access log */
   cas_in_tran_session_timeout = cfg->session_timeout;
 }
 

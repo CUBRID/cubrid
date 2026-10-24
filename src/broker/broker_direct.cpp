@@ -992,6 +992,9 @@ namespace brd
     snprintf (config.error_log_dir, sizeof (config.error_log_dir), "%s%s%s",
 	      IS_ABS_PATH (shm->err_log_dir) ? "" : get_cubrid_home (), IS_ABS_PATH (shm->err_log_dir) ? "" : "/",
 	      shm->err_log_dir);
+    snprintf (config.access_log_file, sizeof (config.access_log_file), "%s%s%s",
+	      IS_ABS_PATH (shm->access_log_file) ? "" : get_cubrid_home (),
+	      IS_ABS_PATH (shm->access_log_file) ? "" : "/", shm->access_log_file);
   }
 
   /* Only the broker's control thread writes its live defaults. Building the

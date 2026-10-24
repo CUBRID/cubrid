@@ -773,6 +773,8 @@ namespace cubconn
 
       /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
       registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name, conn->client_id);
+      /* the broker's config for this session, before the ACL check logs a rejection with it */
+      cas_server_apply_pending_config (false);
 
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
        * #116 D6) — the same ordering the CAS kept (check, then db_connect).
@@ -783,7 +785,7 @@ namespace cubconn
 				   (const unsigned char *) &params.client_ip) < 0)
 	{
 	  as_info->num_connect_rejected++;
-	  if (prm_get_bool_value (PRM_ID_CAS_ACCESS_LOG))
+	  if (CAS_SHM_CFG (access_log) == ON)
 	    {
 	      (void) cas_server_access_log (&session_start, shm_as_index, (int) params.client_ip, info.db_name,
 					    info.db_user, ACL_REJECTED);
@@ -810,7 +812,6 @@ namespace cubconn
 
       /* the session-scoped log producers a CAS process opened at startup
        * (B2-D2/D4): SQL/slow logs on this slot, DDL audit identity */
-      cas_server_apply_pending_config (false);
       cas_log_open (broker_name);
       cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
       cas_slow_log_open (broker_name);

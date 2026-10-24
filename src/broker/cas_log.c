@@ -940,7 +940,13 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 {
 
   FILE *fp;
+#if defined (SERVER_MODE)
+  /* the session's broker names its own file, as each broker's CAS wrote <ACCESS_LOG_DIR>/<broker>.access */
+  char *access_log_file = cas_session_cfg.access_log_file[0] != '\0'
+    ? cas_session_cfg.access_log_file : shm_appl->access_log_file;
+#else
   char *access_log_file = shm_appl->access_log_file;
+#endif
   char clt_ip_str[16];
   struct tm start_tm;
   time_t start_sec;
@@ -961,7 +967,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
   if (ACCESS_LOG_IS_DENIED_TYPE (log_type))
     {
       int n;
-      n = snprintf (log_file_buf, PATH_MAX, "%s%s", shm_appl->access_log_file, ACCESS_LOG_DENIED_FILENAME_POSTFIX);
+      n = snprintf (log_file_buf, PATH_MAX, "%s%s", access_log_file, ACCESS_LOG_DENIED_FILENAME_POSTFIX);
       if (n >= PATH_MAX)
 	{
 	  return -1;
