@@ -901,17 +901,22 @@ namespace cubconn
 			    err == ER_AU_REJECT_LOGIN && ctx->au_context.prompt_password
 			    && info.db_passwd[0] == '\0' && std::strcmp (info.url, "thin_csql") == 0
 			    && params.driver_header[SRV_CON_MSG_IDX_RESERVED2] == CSQL_CONNECT_PROMPT_PASSWORD);
-	  /* cas_db_connect's failure line */
-	  if (er_msg () == NULL || er_msg ()[0] == '\0')
-	    {
-	      cas_log_write_and_end (0, false, "connect db %s user %s url %s, error:%d.", info.db_name, info.db_user,
-				     info.url, err);
-	    }
-	  else
-	    {
-	      cas_log_write_and_end (0, false, "connect db %s user %s url %s, error:%d, %s", info.db_name,
-				     info.db_user, info.url, err, er_msg ());
-	    }
+	  /* cas_db_connect's failure line, in the SQL and slow logs */
+	  {
+	    char msg_buf[LINE_MAX];
+	    if (er_msg () == NULL || er_msg ()[0] == '\0')
+	      {
+		snprintf (msg_buf, sizeof (msg_buf), "connect db %s user %s url %s, error:%d.", info.db_name,
+			  info.db_user, info.url, err);
+	      }
+	    else
+	      {
+		snprintf (msg_buf, sizeof (msg_buf), "connect db %s user %s url %s, error:%d, %s", info.db_name,
+			  info.db_user, info.url, err, er_msg ());
+	      }
+	    cas_log_write_and_end (0, false, "%s", msg_buf);
+	    cas_slow_log_write_and_end (NULL, 0, "%s", msg_buf);
+	  }
 	  if (resumed)
 	    {
 	      session_auto_detach (entry_p, false);
