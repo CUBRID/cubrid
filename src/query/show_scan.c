@@ -60,6 +60,7 @@
 #include "server_support.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
+#include "writeset.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -233,6 +234,12 @@ showstmt_scan_init (void)
   req = &show_Requests[SHOWSTMT_PAGE_BUFFER_STATUS];
   req->show_type = SHOWSTMT_PAGE_BUFFER_STATUS;
   req->start_func = pgbuf_start_scan;
+  req->next_func = showstmt_array_next_scan;
+  req->end_func = showstmt_array_end_scan;
+
+  req = &show_Requests[SHOWSTMT_WRITESET_STATUS];
+  req->show_type = SHOWSTMT_WRITESET_STATUS;
+  req->start_func = wset_status_start_scan;
   req->next_func = showstmt_array_next_scan;
   req->end_func = showstmt_array_end_scan;
 

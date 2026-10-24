@@ -733,6 +733,34 @@ metadata_of_page_buffer_status (void)
   return &md;
 }
 
+/* the HA master's writeset statistics, counted since the server started; see wset_status_start_scan */
+static SHOWSTMT_METADATA *
+metadata_of_writeset_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Start_time", "datetime"},
+    {"History_size", "bigint"},
+    {"History_entry_count", "bigint"},
+    {"Commit_count", "bigint"},
+    {"Commit_fallback_count", "bigint"},
+    {"Fallback_key_limit_count", "bigint"},
+    {"Fallback_statement_count", "bigint"},
+    {"Conflict_ref_count", "bigint"},
+    {"Conflict_write_count", "bigint"},
+    {"Clear_capacity_count", "bigint"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_WRITESET_STATUS, true /* only_for_dba */ , "show writeset status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statement column infos
  *   return:-
@@ -979,6 +1007,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
   show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
   show_Metas[SHOWSTMT_PAGE_BUFFER_STATUS] = metadata_of_page_buffer_status ();
+  show_Metas[SHOWSTMT_WRITESET_STATUS] = metadata_of_writeset_status ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {
