@@ -8650,7 +8650,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
   char *db_user = NULL, *host = NULL, *program_name = NULL;
   char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
   char server_session_key[SERVER_SESSION_KEY_SIZE];
-  char session_secret[SESSION_SECRET_SIZE];
+  char session_secret[SESSION_SECRET_SIZE] = { 0 };
   SESSION_PARAM *session_params = NULL;
   int error = NO_ERROR, update_parameter_values = 0;
 
@@ -8661,7 +8661,15 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
   ptr = or_unpack_string_alloc (ptr, &host);
   ptr = or_unpack_string_alloc (ptr, &program_name);
 
-  ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
+  if (ptr != NULL && (int) (ptr - request) + or_packed_stream_length (SESSION_SECRET_SIZE) <= reqlen)
+    {
+      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
+    }
+  else
+    {
+      /* a client from before CBRD-27434 sends no secret, so it cannot prove that it owns the session */
+      id = DB_EMPTY_SESSION;
+    }
 
   if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0
