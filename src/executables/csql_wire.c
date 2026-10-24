@@ -1055,7 +1055,12 @@ wire_roundtrip (wire_body * b, bool replay)
 	    {
 	      fwrite (reply + pos, 1, (size_t) clen, fp);
 	    }
-	  fflush (fp);
+	  /* fat csql parity: only the error stream is unbuffered; results stay in the stdio
+	   * buffer until the reply ends, so a later statement's error precedes them in 2>&1 */
+	  if (tag == CAS_CSQL_CHUNK_ERR)
+	    {
+	      fflush (fp);
+	    }
 	}
       pos += (size_t) clen;
     }
