@@ -922,7 +922,8 @@ la_coordinator_dispatch_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_sta
     }
   task.seq = dispatch_seq;
 
-  if (sched_status == LA_SCHED_DISPATCHED && task.has_items)
+  /* commits only, like commit_read_count; a serial fragment is a task too but no commit */
+  if (sched_status == LA_SCHED_DISPATCHED && task.has_items && task.rectype == LOG_COMMIT)
     {
       la_Apply_stat.dispatch_direct_count++;
     }
@@ -1792,9 +1793,14 @@ la_stat_add_result (const LA_RESULT * result)
   worker->applied_row_count += result->stats.insert_counter + result->stats.update_counter
     + result->stats.delete_counter + result->stats.schema_counter;
   worker->busy_usec += result->busy_usec;
-  LSA_COPY (&worker->last_applied_commit_lsa, &result->commit_lsa);
-  worker->last_applied_master_commit_time = result->log_record_time;
-  worker->last_applied_time = result->apply_end_time;
+
+  /* a serial fragment has no master commit time; the last applied transaction stays the last commit */
+  if (result->rectype == LOG_COMMIT)
+    {
+      LSA_COPY (&worker->last_applied_commit_lsa, &result->commit_lsa);
+      worker->last_applied_master_commit_time = result->log_record_time;
+      worker->last_applied_time = result->apply_end_time;
+    }
 
   if (result->stats.last_error_code != NO_ERROR)
     {
@@ -2056,7 +2062,7 @@ la_stat_update_rows (void)
 	  db_make_null (&in_value[idx++]);
 	  db_make_null (&in_value[idx++]);
 	}
-      if (worker->applied_task_count > 0)
+      if (worker->last_applied_time.tv_sec != 0)
 	{
 	  db_make_bigint (&in_value[idx++], worker->last_applied_commit_lsa.pageid);
 	  db_make_int (&in_value[idx++], worker->last_applied_commit_lsa.offset);
@@ -8126,7 +8132,7 @@ la_coordinator_submit_task (LA_TASK * task)
     }
 
   error = la_pending_push (task);
-  if (error == NO_ERROR && task->has_items)
+  if (error == NO_ERROR && task->has_items && task->rectype == LOG_COMMIT)
     {
       la_Apply_stat.dispatch_parked_count++;
     }
