@@ -46,7 +46,8 @@
 #include "byte_order.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
-static int _net_buf_size = INT_DEFAULE_NET_BUF_SIZE;
+/* per session in the merged server: each session takes its broker's NET_BUF_SIZE */
+static CAS_TLS int _net_buf_size = INT_DEFAULE_NET_BUF_SIZE;
 
 void
 net_buf_init (T_NET_BUF * net_buf, T_BROKER_VERSION client_version)
@@ -864,8 +865,12 @@ get_net_buf_size ()
 void
 set_net_buf_size ()
 {
-  _net_buf_size = (shm_appl == NULL
-		   || shm_appl->net_buf_size <= 0) ? INT_DEFAULE_NET_BUF_SIZE : shm_appl->net_buf_size * ONE_K;
+#if defined (SERVER_MODE)
+  int kbytes = cas_session_cfg.net_buf_size;
+#else
+  int kbytes = shm_appl == NULL ? 0 : shm_appl->net_buf_size;
+#endif
+  _net_buf_size = kbytes <= 0 ? INT_DEFAULE_NET_BUF_SIZE : kbytes * ONE_K;
 
   return;
 }

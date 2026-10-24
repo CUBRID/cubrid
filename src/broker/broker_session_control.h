@@ -51,6 +51,7 @@ struct broker_runtime_config
   int32_t query_timeout;
   int32_t max_string_length;
   int32_t trigger_action_flag;
+  int32_t net_buf_size;		/* NET_BUF_SIZE in KB */
   char log_dir[BROKER_SESSION_PATH_MAX];
   char slow_log_dir[BROKER_SESSION_PATH_MAX];
   char error_log_dir[BROKER_SESSION_PATH_MAX];

@@ -982,6 +982,7 @@ namespace brd
     config.query_timeout = shm->query_timeout;
     config.max_string_length = shm->max_string_length;
     config.trigger_action_flag = shm->trigger_action_flag;
+    config.net_buf_size = shm->net_buf_size;
     snprintf (config.log_dir, sizeof (config.log_dir), "%s%s%s",
 	      IS_ABS_PATH (shm->log_dir) ? "" : get_cubrid_home (), IS_ABS_PATH (shm->log_dir) ? "" : "/",
 	      shm->log_dir);
