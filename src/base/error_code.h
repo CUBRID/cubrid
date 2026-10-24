@@ -1789,7 +1789,6 @@
 #define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1387
-
 #define ER_SES_SESSION_NOT_ATTACHED                 -1388
 
 #define ER_LAST_ERROR                               -1389
