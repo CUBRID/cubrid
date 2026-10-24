@@ -862,6 +862,13 @@ namespace cubconn
 	    }
 	}
 
+      {
+	/* cas_set_session_id's line: the session the driver asks for, 0 for a new one */
+	std::uint32_t asked;
+	std::memcpy (&asked, info.session_id + 8, sizeof (asked));
+	cas_log_write_and_end (0, false, "session id for connection %u", ntohl (asked));
+      }
+
       if (resumed)
 	{
 	  BOOT_CLIENT_CREDENTIAL credential;
@@ -889,6 +896,17 @@ namespace cubconn
 			    err == ER_AU_REJECT_LOGIN && ctx->au_context.prompt_password
 			    && info.db_passwd[0] == '\0' && std::strcmp (info.url, "thin_csql") == 0
 			    && params.driver_header[SRV_CON_MSG_IDX_RESERVED2] == CSQL_CONNECT_PROMPT_PASSWORD);
+	  /* cas_db_connect's failure line */
+	  if (er_msg () == NULL || er_msg ()[0] == '\0')
+	    {
+	      cas_log_write_and_end (0, false, "connect db %s user %s url %s, error:%d.", info.db_name, info.db_user,
+				     info.url, err);
+	    }
+	  else
+	    {
+	      cas_log_write_and_end (0, false, "connect db %s user %s url %s, error:%d, %s", info.db_name,
+				     info.db_user, info.url, err, er_msg ());
+	    }
 	  if (resumed)
 	    {
 	      session_auto_detach (entry_p, false);
@@ -979,8 +997,8 @@ namespace cubconn
 	  (void) cas_server_access_log (&session_start, shm_as_index, (int) params.client_ip, info.db_name,
 					info.db_user, NEW_CONNECTION);
 	}
-      cas_log_write_and_end (0, false, "connect db %s@%s user %s session id %u", as_info->database_name,
-			     as_info->database_host, info.db_user, as_info->session_id);
+      cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s session id %u", as_info->database_name,
+			     as_info->database_host, info.db_user, info.url, as_info->session_id);
 
       {
 	/* pre-auth bound ends with the connect reply */
