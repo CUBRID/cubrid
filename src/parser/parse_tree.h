@@ -496,6 +496,13 @@ struct trace_json_t;
 #define PT_SET_VALUE_QUERY(n) \
           ((n)->flag.is_value_query = 1)
 
+/* the cast the semantic check keeps over an untyped NULL to give a set operation or VALUES column the type of the
+ * other rows; the column keeps the name the NULL gave it */
+#define PT_IS_CAST_OF_UNTYPED_NULL(n) \
+          ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_CAST \
+           && PT_EXPR_INFO_IS_FLAGED ((n), PT_EXPR_INFO_CAST_SHOULD_FOLD) && (n)->flag.do_not_fold \
+           && (n)->info.expr.arg1 != NULL && (n)->info.expr.arg1->type_enum == PT_TYPE_NULL)
+
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
           (PT_IS_EXPR_NODE (n) ? (n)->info.expr.is_order_dependent \

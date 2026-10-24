@@ -142,6 +142,7 @@ namespace cubthread
     , tran_entries ()
     , no_supplemental_log (false)
     , trigger_involved (false)
+    , serial_restart (false)
     , is_cdc_daemon (false)
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
@@ -310,6 +311,7 @@ namespace cubthread
     no_supplemental_log = false;
 
     trigger_involved = false;
+    serial_restart = false;
 
     is_cdc_daemon = false;
 

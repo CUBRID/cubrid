@@ -136,8 +136,10 @@ static PT_NODE *pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser, PT_N
 						   SEMAN_COMPATIBLE_INFO * cinfo, bool * new_cast_added);
 static SEMAN_COMPATIBLE_INFO *pt_get_values_query_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
 								   bool * need_cast);
+static void pt_keep_typed_null_column (PT_NODE * att);
 static SEMAN_COMPATIBLE_INFO *pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_list1,
 						      PT_NODE * select_list2, bool * need_cast);
+static bool pt_null_takes_info_of (const SEMAN_COMPATIBLE_INFO * cinfo);
 static bool pt_combine_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo1,
 					SEMAN_COMPATIBLE_INFO * cinfo2, PT_NODE * att1, PT_NODE * att2, int index);
 static bool pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo, PT_TYPE_ENUM common_type,
@@ -282,6 +284,34 @@ static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, 
 static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type);
 static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param);
 
+/*
+ * pt_null_takes_info_of () - can an untyped NULL in a set operation or VALUES column take this domain as it is
+ *   return: true if the NULL side is cast to the domain, false if the column is left as it is
+ *   cinfo(in): compatible info of the non-NULL side
+ *
+ * Note: a string or numeric info without precision is no domain.
+ * shortcut: host variables, objects, collections and ENUM leave the NULL side uncast because the compatible info
+ *   cannot carry their class or element domain, and bit strings because the compatible info keeps no bit length and
+ *   a bit string NULL cast kept for execution breaks the list file; extend when such a column must keep its type.
+ */
+static bool
+pt_null_takes_info_of (const SEMAN_COMPATIBLE_INFO * cinfo)
+{
+  PT_TYPE_ENUM type = cinfo->type_enum;
+
+  if (PT_IS_BIT_STRING_TYPE (type))
+    {
+      return false;
+    }
+  if (PT_IS_STRING_TYPE (type) || type == PT_TYPE_NUMERIC)
+    {
+      return cinfo->prec != 0;
+    }
+
+  return ((PT_IS_NUMERIC_TYPE (type) && type != PT_TYPE_LOGICAL) || PT_IS_DATE_TIME_TYPE (type)
+	  || type == PT_TYPE_JSON || type == PT_TYPE_BLOB || type == PT_TYPE_CLOB);
+}
+
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
  *   cinfo1(in);
@@ -316,6 +346,17 @@ pt_combine_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cin
     {
       cinfo2->idx = index;
       pt_get_compatible_info_from_node (att2, cinfo2);
+    }
+
+  /* an untyped NULL does not type the column: the other side keeps its domain */
+  if (cinfo2->type_enum == PT_TYPE_NULL && pt_null_takes_info_of (cinfo1))
+    {
+      return true;
+    }
+  if (cinfo1->type_enum == PT_TYPE_NULL && pt_null_takes_info_of (cinfo2))
+    {
+      *cinfo1 = *cinfo2;
+      return true;
     }
 
   common_type = pt_common_type (cinfo1->type_enum, cinfo2->type_enum);
@@ -501,6 +542,24 @@ out_of_mem:
 }
 
 /*
+ * pt_keep_typed_null_column () - keep the type of a typed NULL (CAST (NULL AS T)) in a set operation or VALUES
+ *				   column; folding would make it an untyped NULL after the column was typed T
+ *   return: none
+ *   att(in): column of a select list or VALUES row
+ */
+static void
+pt_keep_typed_null_column (PT_NODE * att)
+{
+  /* bit strings are left out as in pt_null_takes_info_of */
+  if (att->node_type == PT_EXPR && att->info.expr.op == PT_CAST && att->type_enum != PT_TYPE_NULL
+      && !PT_IS_BIT_STRING_TYPE (att->type_enum) && att->info.expr.arg1 != NULL
+      && att->info.expr.arg1->type_enum == PT_TYPE_NULL)
+    {
+      att->flag.do_not_fold = 1;
+    }
+}
+
+/*
  * pt_get_compatible_info () -
  *   return:  return a pointer of SEMAN_COMPATIBLE_INFO array or null on error
  *   parser(in): parser context
@@ -558,6 +617,9 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * selec
   /* compare the columns */
   for (i = 0, att1 = select_list1, att2 = select_list2; i < cnt1; ++i, att1 = att1->next, att2 = att2->next)
     {
+      pt_keep_typed_null_column (att1);
+      pt_keep_typed_null_column (att2);
+
       compatible = pt_union_compatible (parser, att1, att2, false, &is_object_type);
       if (compatible == PT_UNION_INCOMP)
 	{
@@ -723,6 +785,13 @@ pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser, PT_NODE * att, PT_NO
       PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_SHOULD_FOLD);
 
       *new_cast_added = true;
+    }
+
+  /* folding would turn the cast NULL back into an untyped NULL and drop the column type (bit strings are left out
+   * as in pt_null_takes_info_of) */
+  if (new_att->info.expr.arg1->type_enum == PT_TYPE_NULL && !PT_IS_BIT_STRING_TYPE (new_att->type_enum))
+    {
+      new_att->flag.do_not_fold = 1;
     }
 
   return new_att;
@@ -2229,6 +2298,18 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
       return PT_UNION_COMP;
     }
 
+  /* an untyped NULL does not type the column: cast it to the other side's domain */
+  if (!view_definition_context && (typ1 == PT_TYPE_NULL || typ2 == PT_TYPE_NULL))
+    {
+      SEMAN_COMPATIBLE_INFO other_info;
+
+      pt_get_compatible_info_from_node ((typ1 == PT_TYPE_NULL) ? item2 : item1, &other_info);
+      if (pt_null_takes_info_of (&other_info))
+	{
+	  return PT_UNION_INCOMP;
+	}
+    }
+
   if (typ2 == PT_TYPE_NA || typ2 == PT_TYPE_NULL)
     {
       /* NA is compatible with any type except PT_TYPE_NONE */
@@ -2616,6 +2697,22 @@ pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE * att1, PT_NODE *
 
   dt1 = att1->data_type;
   dt2 = att2->data_type;
+
+  if ((att1->type_enum == PT_TYPE_NULL) != (att2->type_enum == PT_TYPE_NULL))
+    {
+      PT_NODE *other = (att1->type_enum == PT_TYPE_NULL) ? att2 : att1;
+      SEMAN_COMPATIBLE_INFO other_info;
+
+      /* an untyped NULL does not type the column: the other side keeps its domain, the NULL side is cast to it */
+      pt_get_compatible_info_from_node (other, &other_info);
+      if (pt_null_takes_info_of (&other_info))
+	{
+	  other_info.idx = idx;
+	  *cinfo = other_info;
+	  *need_cast = true;
+	  return att1;
+	}
+    }
 
   if ((PT_IS_STRING_TYPE (att1->type_enum) && att2->type_enum == PT_TYPE_MAYBE)
       || (PT_IS_STRING_TYPE (att2->type_enum) && att1->type_enum == PT_TYPE_MAYBE))
@@ -10981,7 +11078,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
       }
 
-      /* (2) inner cols allowed only in this join's own ON; scan select clauses + sibling ON/START WITH too.
+      /* (2) inner cols allowed only in this join's own ON; scan select clauses, sibling ON and derived tables.
        * both forms stop scanning the inner early -- ANTI survives only when it fetched nothing at all, and
        * SEMI stops at the first match -- so which inner row (if any) is left behind is a plan artifact.
        * exposing its columns outside the ON would make the answer depend on the access path. */
@@ -10995,7 +11092,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	info.from_list = select->info.query.q.select.from;
 	info.found_inner = false;
 	info.found_outer = false;
-	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into scalar subqueries */
+	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into subqueries */
 
 	targets[0] = select->info.query.q.select.list;
 	targets[1] = select->info.query.q.select.where;
@@ -11015,14 +11112,18 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	      }
 	  }
 
-	/* other from-list specs' ON conditions (this spec's own ON is the one legal place) */
+	/* Check derived tables and other specs' ON conditions; only this spec's own ON is exempt. */
 	for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
 	  {
-	    if (other == spec || other->info.spec.on_cond == NULL)
+	    if (other != spec && other->info.spec.on_cond != NULL)
 	      {
-		continue;
+		(void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
 	      }
-	    (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	    if (!info.found_inner && other->info.spec.derived_table != NULL)
+	      {
+		(void) parser_walk_tree (parser, other->info.spec.derived_table, pt_semi_anti_ref_pre, &info, NULL,
+					 NULL);
+	      }
 	  }
 
 	if (info.found_inner)

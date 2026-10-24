@@ -307,6 +307,7 @@ namespace cubthread
       /* for supplemental log */
       bool no_supplemental_log;
       bool trigger_involved;
+      bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb
