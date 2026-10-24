@@ -1322,7 +1322,11 @@ $ LOADDB
 1300 Ricupero di log: fase di recupero del %1$s è terminata.
 1301 Recupero log: %1$s progresso: (%2$lld/%3$lld), %4$.2f percento, tempo trascorso: %5$.2f (s), tempo rimanente stimato: %6$.2f (s).
 
-1302 Ultimo errore
+1302 The secret of session %1$u does not match.
+
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

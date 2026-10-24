@@ -1322,7 +1322,11 @@ $ LOADDB
 1300 Günlük kurtarma: %1$s Aşama tamamlandı.
 1301 Günlük kurtarma: %1$s ilerleme: (%2$lld/%3$lld), %4$.2f, geçen süre: %5$.2f (s), tahmini kalan süre: %6$.2f (s).
 
-1302 Son Hata
+1302 The secret of session %1$u does not match.
+
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

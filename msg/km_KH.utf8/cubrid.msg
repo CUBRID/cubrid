@@ -1322,7 +1322,11 @@ $ LOADDB
 1300 Log recovery: %1$s Phase is finished.
 1301 Log recovery: %1$s progress: (%2$lld/%3$lld), %4$.2f percent, elapsed time: %5$.2f (s), estimated remaining time: %6$.2f (s).
 
-1302 Last Error
+1302 The secret of session %1$u does not match.
+
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

@@ -1322,7 +1322,11 @@ $ LOADDB
 1300 Registro de registro: %1$s fase se termina.
 1301 Registro de registro: %1$s progreso: (%2$lld/%3$lld), %4$.2f por ciento, tiempo transcurrido: %5$.2f (s), tiempo resistente estimado: %6$.2f (s).
 
-1302 Ultimo error
+1302 The secret of session %1$u does not match.
+
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
