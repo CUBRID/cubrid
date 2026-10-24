@@ -27,6 +27,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 
+#include <algorithm>
 #include <mutex>
 #include <utility>
 #include <cstdint>
@@ -1055,12 +1056,17 @@ namespace cubstorage
     STATS_INC (allocated, ALLOC_BATCH_SIZE - num_candidates);
 
     freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
-    // page_watcher.pgptr fixes the page pointer of the last candidates
-    for (i = ALLOC_BATCH_SIZE - 1; i >= static_cast<int> (num_candidates); i--)
+    // page_watcher.pgptr fixes vpids[0], the page returned to the caller, which takes the last candidate.
+    // the other new pages take the remaining candidates in heap chain order, so the inserts that follow
+    // fill the batch in ascending page order instead of from the last page down.
+    candidates[ALLOC_BATCH_SIZE - 1].freespace = freespace;
+    candidates[ALLOC_BATCH_SIZE - 1].volid = vpids[0].volid;
+    candidates[ALLOC_BATCH_SIZE - 1].pageid = vpids[0].pageid;
+    for (i = 1; i < static_cast<int> (ALLOC_BATCH_SIZE - num_candidates); i++)
       {
-	candidates[i].freespace = freespace;
-	candidates[i].volid = vpids[ALLOC_BATCH_SIZE - 1 - i].volid;
-	candidates[i].pageid = vpids[ALLOC_BATCH_SIZE - 1 - i].pageid;
+	candidates[num_candidates + i - 1].freespace = freespace;
+	candidates[num_candidates + i - 1].volid = vpids[i].volid;
+	candidates[num_candidates + i - 1].pageid = vpids[i].pageid;
       }
     return NO_ERROR;
   }
@@ -1069,25 +1075,44 @@ namespace cubstorage
   bestspace::shard::allocate_replace_pages (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
       &victims, std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
   {
+    std::array<std::uint16_t, ALLOC_BATCH_SIZE> slots;
+    std::size_t num_slots;
+    std::size_t first;
     std::size_t i;
-    L1 l1;
 
-    // renew the L1s
+    auto replace = [this] (std::uint16_t slot, const bestspace_entry &candidate)
+    {
+      L1 l1;
+
+      l1.set_freespace (candidate.freespace);
+      l1.set_vpid ({ candidate.pageid, candidate.volid });
+      m_L1[slot].store (l1);
+
+      L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
+    };
+
+    // the returned page (the last candidate) replaces a victim only if it has more space than the roomiest one
+    num_slots = ALLOC_BATCH_SIZE - 1;
+    if (candidates[ALLOC_BATCH_SIZE - 1].freespace > victims[ALLOC_BATCH_SIZE - 1].second)
+      {
+	num_slots = ALLOC_BATCH_SIZE;
+      }
+    for (i = 0; i < num_slots; i++)
+      {
+	slots[i] = victims[i].first;
+      }
+
+    // later inserts take pages of the same tier in slot order. Give the returned page the first slot and the other
+    // candidates the next ones in their order, so new pages fill in heap chain order.
+    std::sort (slots.begin (), slots.begin () + num_slots);
+    first = num_slots - (ALLOC_BATCH_SIZE - 1);
+    if (first == 1)
+      {
+	replace (slots[0], candidates[ALLOC_BATCH_SIZE - 1]);
+      }
     for (i = 0; i < ALLOC_BATCH_SIZE - 1; i++)
       {
-	l1.set_freespace (candidates[i].freespace);
-	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
-	m_L1[victims[i].first].store (l1);
-
-	L2_update (victims[i].first / L2_FANOUT, victims[i].first % L2_FANOUT);
-      }
-    if (candidates[i].freespace > victims[i].second)
-      {
-	l1.set_freespace (candidates[i].freespace);
-	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
-	m_L1[victims[i].first].store (l1);
-
-	L2_update (victims[i].first / L2_FANOUT, victims[i].first % L2_FANOUT);
+	replace (slots[first + i], candidates[i]);
       }
   }
 
