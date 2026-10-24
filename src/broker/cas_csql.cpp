@@ -297,6 +297,18 @@ csql_capture_write (void *cookie, const char *buf, size_t size)
   return (ssize_t) size;
 }
 
+/* the chunks of the csql request this thread is rendering, for csc_render_fflush */
+static thread_local csql_chunk_vec *csql_Flush_chunks = nullptr;
+
+void
+csql_capture_mark_flush (void)
+{
+  if (csql_Flush_chunks != nullptr)
+    {
+      csql_Flush_chunks->emplace_back (CAS_CSQL_CHUNK_FLUSH, std::string ());
+    }
+}
+
 static FILE *
 csql_capture_open (csql_capture_cookie *cap)
 {
@@ -417,6 +429,17 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
   csql_chunk_vec chunks;
   size_t captured = 0;
   bool overflow = false;
+  struct flush_target
+  {
+    explicit flush_target (csql_chunk_vec *chunks)
+    {
+      csql_Flush_chunks = chunks;
+    }
+    ~flush_target ()
+    {
+      csql_Flush_chunks = nullptr;
+    }
+  } flush_target (&chunks);
   csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT, 0, sock_fd };
   csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR, 0, sock_fd };
   csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG, 0, sock_fd };

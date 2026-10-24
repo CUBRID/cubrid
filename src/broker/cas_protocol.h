@@ -184,6 +184,7 @@ extern "C"
 #define CAS_CSQL_CHUNK_USER                     5	/* session user name for the \u prompt, not console text */
 #define CAS_CSQL_CHUNK_CODESET                  6	/* database INTL_CODESET in decimal, not console text */
 #define CAS_CSQL_CHUNK_MORE                     7	/* ends a partial reply: another frame of this reply follows */
+#define CAS_CSQL_CHUNK_FLUSH                    8	/* empty: the client flushes its stdout here, as the fat client did */
 
 /* CAS_FC_CSQL_REQUEST request flag bits (thin csql <-> server) */
 #define CAS_CSQL_FLAG_AUTO_COMMIT        0x00000001

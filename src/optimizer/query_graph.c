@@ -60,13 +60,13 @@
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "xasl.h"
+#include "client_session_context.hpp"	/* csc_render_fflush */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SERVER_MODE)
 /* merged client half: the session's optimizer-level override
  * (client_session_context.cpp) */
-extern bool csc_bracket_is_active (void);
 extern int *csc_qo_optimization_level (void);
 #endif
 
@@ -8887,7 +8887,7 @@ qo_env_dump (QO_ENV * env, FILE * f)
 	}
     }
 
-  fflush (f);
+  csc_render_fflush (f);
 }
 
 /*

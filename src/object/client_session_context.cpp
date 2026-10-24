@@ -229,6 +229,18 @@ csc_render_stdout_slot (void)
   return &csc_current ()->render_stdout;
 }
 
+extern void csql_capture_mark_flush (void);	/* cas_csql.cpp */
+
+void
+csc_render_fflush (FILE *fp)
+{
+  fflush (fp);
+  if (fp != NULL && fp == csc_render_stdout ())
+    {
+      csql_capture_mark_flush ();
+    }
+}
+
 /* no assert: message sites run on pure server threads too (createdb, utilities) */
 FILE *
 csc_render_stdout (void)

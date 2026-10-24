@@ -1062,7 +1062,8 @@ next_frame:
 	  break;
 	}
       if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG
-	  && tag != CAS_CSQL_CHUNK_STDOUT && tag != CAS_CSQL_CHUNK_USER && tag != CAS_CSQL_CHUNK_CODESET)
+	  && tag != CAS_CSQL_CHUNK_STDOUT && tag != CAS_CSQL_CHUNK_USER && tag != CAS_CSQL_CHUNK_CODESET
+	  && tag != CAS_CSQL_CHUNK_FLUSH)
 	{
 	  framing_error = true;
 	  break;
@@ -1123,6 +1124,16 @@ next_frame:
 	  memcpy (num, reply + pos, n);
 	  num[n] = '\0';
 	  wire_Db_codeset = atoi (num);
+	  pos += (size_t) clen;
+	  continue;
+	}
+      if (tag == CAS_CSQL_CHUNK_FLUSH)
+	{
+	  /* the fat client flushed its stdout here (plan dumps), which places a later error in 2>&1 */
+	  if (replay)
+	    {
+	      fflush (stdout);
+	    }
 	  pos += (size_t) clen;
 	  continue;
 	}

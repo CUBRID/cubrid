@@ -235,8 +235,11 @@ extern void csc_retire_and_delete (client_session_context *ctx);
 #if defined (SERVER_MODE)
 extern FILE *csc_render_stdout (void);
 #define CSC_CLIENT_STDOUT (csc_render_stdout ())
+/* fflush that a thin csql repeats on its own stdout, keeping the fat client's flush points */
+extern void csc_render_fflush (FILE *fp);
 #else
 #define CSC_CLIENT_STDOUT stdout
+#define csc_render_fflush(fp) fflush (fp)
 #endif
 
 #endif /* _CLIENT_SESSION_CONTEXT_HPP_ */
