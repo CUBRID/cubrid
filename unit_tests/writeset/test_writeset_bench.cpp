@@ -78,7 +78,7 @@ TEST_CASE ("hash unit cost benchmarks", "[benchmark]")
 	db_make_int (&v, 1000000 + i);
 	wset_add_write_key (filler, &cls, &WS_DEFAULT_VFID, &v);
       }
-    wset_publish_commit_to_history (filler, &fill_lsa);
+    commit_tx (filler, &fill_lsa);
     delete filler;
   }
 
@@ -99,7 +99,7 @@ TEST_CASE ("hash unit cost benchmarks", "[benchmark]")
   LOG_LSA commit_lsa = lsa_of (200, 0);
   BENCHMARK ("flush x1000 keys vs 100k map (update; read mean/1000 for per-key ns)")
   {
-    wset_publish_commit_to_history (worker, &commit_lsa);
+    commit_tx (worker, &commit_lsa);
     return 0;
   };
 
@@ -133,7 +133,7 @@ TEST_CASE ("A1: probe per-key cost is flat across map size", "[benchmark]")
 	  db_make_int (&v, i);
 	  wset_add_write_key (filler, &cls, &WS_DEFAULT_VFID, &v);
 	}
-      wset_publish_commit_to_history (filler, &fill_lsa);
+      commit_tx (filler, &fill_lsa);
       delete filler;
 
       /* 1000 keys that all hit the loaded map */
@@ -184,7 +184,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
 	db_make_int (&v, i);
 	wset_add_write_key (filler, &parent_cls, &WS_DEFAULT_VFID, &v);
       }
-    wset_publish_commit_to_history (filler, &fill_lsa);
+    commit_tx (filler, &fill_lsa);
     delete filler;
   }
   {
@@ -196,7 +196,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
 	db_make_int (&v, i);
 	wset_add_write_key (filler, &child_cls, &WS_DEFAULT_VFID, &v);
       }
-    wset_publish_commit_to_history (filler, &fill_lsa);
+    commit_tx (filler, &fill_lsa);
     delete filler;
   }
 
@@ -221,7 +221,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
   BENCHMARK ("REF flush x1000 keys vs 100k map (read mean/1000 for per-key ns)")
   {
     LOG_LSA commit_lsa = lsa_of (ref_page++, 0);
-    wset_publish_commit_to_history (ref_tx, &commit_lsa);
+    commit_tx (ref_tx, &commit_lsa);
     return 0;
   };
 
@@ -245,7 +245,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
   BENCHMARK ("FK-row flush x1000 rows (2000 keys; read mean/1000 for per-row ns)")
   {
     LOG_LSA commit_lsa = lsa_of (fk_page++, 0);
-    wset_publish_commit_to_history (fk_tx, &commit_lsa);
+    commit_tx (fk_tx, &commit_lsa);
     return 0;
   };
 

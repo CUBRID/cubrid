@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"pkill -f \\\"valgrind --error-limit=no ./bin/test_writeset\\\" ; sleep 1; pgrep -af \\\"valgrind\\\" | head -2; cd /home/youngjun/Workspace/cubrid-applier/src; grep -rn \\\"define DB_ALIGN\\\\b\\\\|defi...",
+  "error": "Exit code 144",
+  "timestamp": "2026-10-16T04:35:34.649Z",
+  "retry_count": 1
+}

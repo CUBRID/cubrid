@@ -150,7 +150,7 @@ TEST_CASE ("A2: large single transaction collect/probe/flush cost", "[stress]")
 
   LOG_LSA commit = lsa_of (10, 0);
   t0 = clock_type::now ();
-  wset_publish_commit_to_history (tx, &commit);
+  commit_tx (tx, &commit);
   double flush_ms = ms_since (t0);
 
   report ("A2 keys", (double) nkeys, "keys");
@@ -185,7 +185,7 @@ namespace
 	    wset_add_write_key (filler, cls, &WS_DEFAULT_VFID, &v);
 	  }
 	LOG_LSA lsa = lsa_of (page++, 0);
-	wset_publish_commit_to_history (filler, &lsa);
+	commit_tx (filler, &lsa);
 	delete filler;
 	done += n;
       }
@@ -235,7 +235,7 @@ TEST_CASE ("B2: throughput vs thread count", "[stress]")
       {
 	LOG_LSA dep;
 	wset_find_dependency_from_history (tx[t], &dep);
-	wset_publish_commit_to_history (tx[t], &commit);
+	commit_tx (tx[t], &commit);
       });
 
       long ops = (long) nthreads * iters * 2;	/* probe + flush */
@@ -278,7 +278,7 @@ TEST_CASE ("B3: cost scales with keys per commit", "[stress]")
       {
 	LOG_LSA dep;
 	wset_find_dependency_from_history (tx[t], &dep);
-	wset_publish_commit_to_history (tx[t], &commit);
+	commit_tx (tx[t], &commit);
       });
 
       long ops = (long) nthreads * iters * 2;
@@ -316,7 +316,7 @@ TEST_CASE ("B3s: keys per commit, single thread (supplementary)", "[stress]")
       for (int i = 0; i < iters; i++)
 	{
 	  wset_find_dependency_from_history (tx, &dep);
-	  wset_publish_commit_to_history (tx, &commit);
+	  commit_tx (tx, &commit);
 	}
       double wall = ms_since (t0);
 
@@ -357,7 +357,7 @@ TEST_CASE ("B4: hot key vs disjoint keys", "[stress]")
     {
       LOG_LSA dep;
       wset_find_dependency_from_history (tx[t], &dep);
-      wset_publish_commit_to_history (tx[t], &commit);
+      commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
       {
@@ -379,7 +379,7 @@ TEST_CASE ("B4: hot key vs disjoint keys", "[stress]")
     {
       LOG_LSA dep;
       wset_find_dependency_from_history (tx[t], &dep);
-      wset_publish_commit_to_history (tx[t], &commit);
+      commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
       {
@@ -413,7 +413,7 @@ TEST_CASE ("B5: worst corner (many threads x large commits x large map)", "[stre
   {
     LOG_LSA dep;
     wset_find_dependency_from_history (tx[t], &dep);
-    wset_publish_commit_to_history (tx[t], &commit);
+    commit_tx (tx[t], &commit);
   });
 
   long ops = (long) nthreads * iters * 2;
@@ -455,7 +455,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     {
       LOG_LSA dep;
       wset_find_dependency_from_history (tx[t], &dep);
-      wset_publish_commit_to_history (tx[t], &commit);
+      commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
       {
@@ -488,7 +488,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
 	      wset_add_ref_key (ref, &parent_cls, &WS_DEFAULT_VFID, &v, int_domain);
 	    }
 	  LOG_LSA lsa = lsa_of (page++, 0);
-	  wset_publish_commit_to_history (ref, &lsa);
+	  commit_tx (ref, &lsa);
 	  delete ref;
 	  done += n;
 	}
@@ -504,7 +504,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     {
       LOG_LSA dep;
       wset_find_dependency_from_history (tx[t], &dep);
-      wset_publish_commit_to_history (tx[t], &commit);
+      commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
       {
@@ -569,7 +569,7 @@ TEST_CASE ("F1: large single FK transaction collect/probe/flush cost", "[stress]
 
   LOG_LSA commit = lsa_of (10, 0);
   t0 = clock_type::now ();
-  wset_publish_commit_to_history (tx, &commit);
+  commit_tx (tx, &commit);
   double flush_ms = ms_since (t0);
 
   report ("F1 rows", (double) rows, "rows");
@@ -609,7 +609,7 @@ TEST_CASE ("F4: FK rows per commit, single thread", "[stress]")
       for (int i = 0; i < iters; i++)
 	{
 	  wset_find_dependency_from_history (tx, &dep);
-	  wset_publish_commit_to_history (tx, &commit);
+	  commit_tx (tx, &commit);
 	}
       double wall = ms_since (t0);
 
@@ -651,7 +651,7 @@ TEST_CASE ("F5: few transactions x mass FK inserts (16 threads, rows sweep)", "[
       {
 	LOG_LSA dep;
 	wset_find_dependency_from_history (tx[t], &dep);
-	wset_publish_commit_to_history (tx[t], &commit);
+	commit_tx (tx[t], &commit);
       });
 
       long ops = (long) nthreads * iters * 2;

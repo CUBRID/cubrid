@@ -52,7 +52,7 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
       add_write_int (t1, &cls, i);
     }
   LOG_LSA l1 = lsa_of (10, 0);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
   REQUIRE (wset_History.map.size () == (size_t) 60);
   REQUIRE (LSA_ISNULL (&wset_History.history_start));
 
@@ -65,7 +65,7 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
       add_write_int (t2, &cls, i);
     }
   LOG_LSA l2 = lsa_of (20, 0);
-  wset_publish_commit_to_history (t2, &l2);
+  commit_tx (t2, &l2);
   REQUIRE (wset_History.map.size () == (size_t) 60);
   REQUIRE (LSA_EQ (&wset_History.history_start, &l2));
 

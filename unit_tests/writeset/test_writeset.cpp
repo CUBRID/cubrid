@@ -189,11 +189,11 @@ TEST_CASE ("composite parent WRITE and child REF produce the same collision hash
   REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
 
   /* The equal hashes must also drive both dependency directions through the global history. */
-  wset_publish_commit_to_history (parent, &parent_commit);
+  commit_tx (parent, &parent_commit);
   LOG_LSA child_dependency = probe (child);
   REQUIRE (LSA_EQ (&child_dependency, &parent_commit));
 
-  wset_publish_commit_to_history (child, &child_commit);
+  commit_tx (child, &child_commit);
   log_tdes *later_parent = make_tdes (3);
   REQUIRE (wset_add_write_key (later_parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
   LOG_LSA later_parent_dependency = probe (later_parent);
@@ -340,7 +340,7 @@ TEST_CASE ("same key waits behind its previous writer", "[writeset]")
 
   log_tdes *t1 = make_tdes (1);
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
 
   log_tdes *t2 = make_tdes (2);
   add_write_int (t2, &cls, 1);
@@ -360,7 +360,7 @@ TEST_CASE ("a different key is not serialized behind an unrelated commit", "[wri
 
   log_tdes *t1 = make_tdes (1);
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
 
   log_tdes *t2 = make_tdes (2);
   add_write_int (t2, &cls, 2);
@@ -381,11 +381,11 @@ TEST_CASE ("dependency is the newest commit among all touched keys", "[writeset]
 
   log_tdes *t1 = make_tdes (1);
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
 
   log_tdes *t2 = make_tdes (2);
   add_write_int (t2, &cls, 2);
-  wset_publish_commit_to_history (t2, &l2);
+  commit_tx (t2, &l2);
 
   log_tdes *t3 = make_tdes (3);
   add_write_int (t3, &cls, 1);
@@ -408,7 +408,7 @@ TEST_CASE ("foreign-key reference waits behind the parent's writer", "[writeset]
   /* parent INSERT publishes its primary key */
   log_tdes *parent = make_tdes (1);
   add_write_int (parent, &parent_cls, 7);
-  wset_publish_commit_to_history (parent, &l1);
+  commit_tx (parent, &l1);
 
   /* child references the same value through its foreign key: the REF hash must
    * collide with the parent's WRITE hash (byte-identical packing invariant) */
@@ -431,7 +431,7 @@ TEST_CASE ("references stamp the read slot: siblings stay parallel, a later pare
 
   log_tdes *parent = make_tdes (1);
   add_write_int (parent, &parent_cls, 7);
-  wset_publish_commit_to_history (parent, &l1);
+  commit_tx (parent, &l1);
 
   /* first child references the parent and commits: its own dependency is the
    * parent's writer (write slot), and it stamps the read slot at flush */
@@ -439,7 +439,7 @@ TEST_CASE ("references stamp the read slot: siblings stay parallel, a later pare
   add_ref_int (child1, &parent_cls, 7);
   LOG_LSA dep1 = probe (child1);
   REQUIRE (LSA_EQ (&dep1, &l1));
-  wset_publish_commit_to_history (child1, &l2);
+  commit_tx (child1, &l2);
 
   /* a sibling referencing the same parent still depends on the parent only:
    * references consult the write slot, never the read slot, so child1's stamp
@@ -477,7 +477,7 @@ TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp
   add_ref_int (child1, &parent_cls, 9);
   LOG_LSA dep1 = probe (child1);
   REQUIRE (LSA_ISNULL (&dep1));
-  wset_publish_commit_to_history (child1, &l5);
+  commit_tx (child1, &l5);
 
   /* a sibling still sees an empty write slot: independent */
   log_tdes *child2 = make_tdes (2);
@@ -488,7 +488,7 @@ TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp
   /* an out-of-order (older) reference flush must not move the read slot backwards */
   log_tdes *child3 = make_tdes (3);
   add_ref_int (child3, &parent_cls, 9);
-  wset_publish_commit_to_history (child3, &l3);
+  commit_tx (child3, &l3);
 
   /* the parent's writer waits for the newest referencer (l5, not l3) */
   log_tdes *parent_delete = make_tdes (4);
@@ -511,10 +511,13 @@ TEST_CASE ("write slot keeps the newest commit when publishes arrive out of orde
 
   log_tdes *newer = make_tdes (1);
   add_write_int (newer, &cls, 7);
-  wset_publish_commit_to_history (newer, &newer_lsa);
-
   log_tdes *delayed_older = make_tdes (2);
   add_write_int (delayed_older, &cls, 7);
+
+  /* logged in LSA order, published in the opposite order */
+  wset_note_commit_with_log_lock (delayed_older, &older_lsa);
+  wset_note_commit_with_log_lock (newer, &newer_lsa);
+  wset_publish_commit_to_history (newer, &newer_lsa);
   wset_publish_commit_to_history (delayed_older, &older_lsa);
 
   log_tdes *successor = make_tdes (3);
@@ -536,7 +539,7 @@ TEST_CASE ("overflow demotes to commit order and raises the history floor", "[wr
 
   log_tdes *t1 = make_tdes (1);
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
 
   /* an overflowed transaction waits for everything before it (= prev commit) */
   log_tdes *ovf = make_tdes (2);
@@ -546,7 +549,7 @@ TEST_CASE ("overflow demotes to commit order and raises the history floor", "[wr
 
   /* and its flush clears the history and raises the floor, so everything
    * after waits for the overflow commit */
-  wset_publish_commit_to_history (ovf, &l3);
+  commit_tx (ovf, &l3);
 
   log_tdes *t3 = make_tdes (3);
   add_write_int (t3, &cls, 99);
@@ -567,10 +570,13 @@ TEST_CASE ("delayed overflow clear preserves a newer published commit as the his
 
   log_tdes *newer = make_tdes (2);
   add_write_int (newer, &cls, 7);
-  wset_publish_commit_to_history (newer, &newer_lsa);
-
   log_tdes *delayed_overflow = make_tdes (1);
   delayed_overflow->wset_overflow = true;
+
+  /* logged in LSA order, published in the opposite order */
+  wset_note_commit_with_log_lock (delayed_overflow, &older_lsa);
+  wset_note_commit_with_log_lock (newer, &newer_lsa);
+  wset_publish_commit_to_history (newer, &newer_lsa);
   wset_publish_commit_to_history (delayed_overflow, &older_lsa);
 
   REQUIRE (LSA_EQ (&wset_History.history_start, &newer_lsa));
@@ -732,7 +738,7 @@ TEST_CASE ("the same key under two different index vfids stays independent (PK v
   /* publish a WRITE of value 5 under the primary-key index only */
   log_tdes *t1 = make_tdes (1);
   add_write_int (t1, &cls, 5, &pk_vfid);
-  wset_publish_commit_to_history (t1, &lpk);
+  commit_tx (t1, &lpk);
 
   /* a WRITE of the same value 5 under the unique index must not inherit the primary-key write's
    * dependency: a different index vfid means a different history slot */
@@ -740,7 +746,7 @@ TEST_CASE ("the same key under two different index vfids stays independent (PK v
   add_write_int (t2, &cls, 5, &uk_vfid);
   LOG_LSA dep2 = probe (t2);
   REQUIRE (LSA_ISNULL (&dep2));
-  wset_publish_commit_to_history (t2, &luk);
+  commit_tx (t2, &luk);
 
   /* and the reverse: a later write of value 5 under the primary-key index waits behind lpk (the
    * primary-key slot), not luk (the unique slot) - the two indexes are tracked separately */
@@ -789,7 +795,7 @@ TEST_CASE ("concurrent flushes on disjoint keys all publish (no lost update)", "
       LOG_LSA commit = lsa_of (10 + t, 0);
       workers.emplace_back ([tx, t, commit] ()
       {
-	wset_publish_commit_to_history (tx[t], &commit);
+	commit_tx (tx[t], &commit);
       });
     }
   for (auto &w : workers)
@@ -817,7 +823,7 @@ TEST_CASE ("concurrent siblings referencing one parent stay parallel", "[writese
   /* parent published, then many children reference the same parent key */
   log_tdes *parent = make_tdes (1);
   add_write_int (parent, &parent_cls, 7);
-  wset_publish_commit_to_history (parent, &lp);
+  commit_tx (parent, &lp);
 
   std::vector<log_tdes *> child (nsiblings);
   for (int i = 0; i < nsiblings; i++)
@@ -880,7 +886,7 @@ TEST_CASE ("dropping a system operation's keys leaves the outer writeset intact"
   REQUIRE (tx->wset_hashes[0].hash == outer_hash);
 
   /* the surviving outer writeset still publishes normally */
-  wset_publish_commit_to_history (tx, &commit_lsa);
+  commit_tx (tx, &commit_lsa);
 
   log_tdes *reader = make_tdes (2);
   add_write_int (reader, &cls, 2);
@@ -907,7 +913,7 @@ TEST_CASE ("concurrent references then a parent write waits behind the newest re
 
   log_tdes *parent = make_tdes (1);
   add_write_int (parent, &parent_cls, 7);
-  wset_publish_commit_to_history (parent, &lp);
+  commit_tx (parent, &lp);
 
   /* children flush references to the same parent concurrently, each with a
    * distinct commit LSA; the newest among them is lseq(nsiblings) */
@@ -930,7 +936,7 @@ TEST_CASE ("concurrent references then a parent write waits behind the newest re
       LOG_LSA commit = lsa_of (20 + i, 0);
       workers.emplace_back ([&child, i, commit] ()
       {
-	wset_publish_commit_to_history (child[i], &commit);
+	commit_tx (child[i], &commit);
       });
     }
   for (auto &w : workers)
@@ -967,7 +973,7 @@ TEST_CASE ("sysop fallback label is the latest published coordinate", "[writeset
   REQUIRE (LSA_ISNULL (&dep));
 
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
 
   /* after a commit the label is that commit, whatever keys t2 touched */
   wset_find_sysop_fallback_dependency (t2, &dep);
@@ -989,7 +995,7 @@ TEST_CASE ("raising history_start makes later transactions wait for the sysop", 
   LOG_LSA dep;
 
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
 
   /* a system operation at 12|0 is labeled for commit order and raises the floor */
   wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
@@ -1045,7 +1051,7 @@ TEST_CASE ("an overflowed transaction after a sysop waits for the sysop", "[writ
   LOG_LSA dep;
 
   add_write_int (t1, &cls, 1);
-  wset_publish_commit_to_history (t1, &l1);
+  commit_tx (t1, &l1);
   wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
 
   ovf->wset_overflow = true;
