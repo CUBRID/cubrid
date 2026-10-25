@@ -146,9 +146,6 @@ public class Context {
                 fileClassLoader = new FileClassLoaderDynamic(lastModifiedTimeOfDynamicPath);
             }
 
-            // to reload updated classes in a new transaction
-            getCatalogClassLoaderRelay().markChildrenAsOld();
-
             if (connection != null) {
                 connection.invalidateStatements();
             }

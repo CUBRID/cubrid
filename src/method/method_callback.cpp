@@ -1455,10 +1455,9 @@ exit:
     // The lookup runs on the client where the catalog objects live; it mirrors the server-side
     // logic sp_get_code_by_name used to perform, but with plain client object APIs.
     std::string class_name;
-    std::string req_compile_id;
-    unpacker.unpack_all (class_name, req_compile_id);
+    unpacker.unpack_all (class_name);
 
-    int status = SP_CODE_FETCH_NOT_FOUND;
+    bool found = false;
     std::string compile_id;
     std::string ocode;
 
@@ -1498,16 +1497,7 @@ exit:
 	er_clear ();
       }
 
-    if (code_mop == NULL)
-      {
-	status = SP_CODE_FETCH_NOT_FOUND;
-      }
-    else if (!req_compile_id.empty () && req_compile_id == compile_id)
-      {
-	// the caller already has the current version: skip shipping the (large) ocode
-	status = SP_CODE_FETCH_UNCHANGED;
-      }
-    else
+    if (code_mop != NULL)
       {
 	DB_VALUE v;
 	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_OCODE : SP_CODE_ATTR_OCODE, &v) == NO_ERROR)
@@ -1519,18 +1509,18 @@ exit:
 	      }
 	    pr_clear_value (&v);
 	  }
-	status = SP_CODE_FETCH_CHANGED;
+	found = true;
       }
 
     AU_RESTORE (save);
 
-    // reply framing the PL server (ClassAccess) expects: error, status, then compile_id + ocode
-    // only when the code actually changed
-    if (status == SP_CODE_FETCH_CHANGED)
+    // reply framing the PL server (ClassAccess) expects: error, found, then compile_id + ocode
+    // only when found
+    if (found)
       {
-	return xs_pack_and_queue (NO_ERROR, status, compile_id, ocode);
+	return xs_pack_and_queue (NO_ERROR, found, compile_id, ocode);
       }
-    return xs_pack_and_queue (NO_ERROR, status);
+    return xs_pack_and_queue (NO_ERROR, found);
   }
 
   int

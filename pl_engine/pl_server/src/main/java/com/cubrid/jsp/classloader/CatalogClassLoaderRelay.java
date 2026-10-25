@@ -43,12 +43,6 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         super(getSystemClassLoader());
     }
 
-    public void markChildrenAsOld() {
-        for (CatalogClassLoader ccl : unitClassLoaders.values()) {
-            ccl.setOld(true);
-        }
-    }
-
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
 
@@ -88,8 +82,8 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     }
 
     // this is only called for a direct call from SpLib::checkExecuteAuthorization, with the
-    // compile_id the runtime EXECUTE check read. Unlike findClass(), it does not wait for a new
-    // transaction to notice that the code has been replaced.
+    // compile_id the runtime EXECUTE check read, so that a callee replaced since this session
+    // loaded it runs as replaced, even in the same transaction.
     public Class<?> findClassWithCurrentCompileId(String mainClassName, String compileId)
             throws ClassNotFoundException {
 
@@ -102,8 +96,6 @@ public class CatalogClassLoaderRelay extends ClassLoader {
             }
             classLoader = new CatalogClassLoader(codeSet, this);
             unitClassLoaders.put(mainClassName, classLoader);
-        } else {
-            classLoader.setOld(false);
         }
 
         return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
@@ -130,22 +122,6 @@ public class CatalogClassLoaderRelay extends ClassLoader {
             }
             classLoader = new CatalogClassLoader(codeSet, this);
             unitClassLoaders.put(mainClassName, classLoader);
-        } else {
-            if (classLoader.isOld) {
-                CompiledCodeSet codeSet0 = classLoader.codeSet;
-                CompiledCodeSet codeSet1 = ClassAccess.getObjectCodeNewerThan(codeSet0);
-                if (codeSet1 == null) {
-                    // it was dropped
-                    throw new ClassNotFoundException(className);
-                } else if (codeSet1 == codeSet0) {
-                    // it is actually not old
-                    classLoader.setOld(false);
-                } else {
-                    // the class has been updated.
-                    classLoader = new CatalogClassLoader(codeSet1, this);
-                    unitClassLoaders.put(mainClassName, classLoader);
-                }
-            }
         }
 
         assert classLoader != null;

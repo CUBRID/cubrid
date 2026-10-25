@@ -39,7 +39,6 @@ import java.util.Map;
 
 public class CatalogClassLoader extends ClassLoader {
 
-    public boolean isOld;
     public CompiledCodeSet codeSet;
 
     public CatalogClassLoader(String mainClassName, String compileId, ClassLoader parent) {
@@ -89,10 +88,6 @@ public class CatalogClassLoader extends ClassLoader {
         defined.put(name, ret);
 
         return ret;
-    }
-
-    public void setOld(boolean val) {
-        isOld = val;
     }
 
     // ===========================

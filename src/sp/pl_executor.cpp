@@ -1098,15 +1098,14 @@ exit:
     int code = METHOD_CALLBACK_GET_CODE_BY_NAME;
 
     std::string class_name;
-    std::string req_compile_id;
-    unpacker.unpack_all (class_name, req_compile_id);
+    unpacker.unpack_all (class_name);
 
     auto relay_result = [&] (const cubmem::block & b)
     {
       return m_stack->send_data_to_java (b);
     };
 
-    return m_stack->send_data_to_client_recv (relay_result, true, code, class_name, req_compile_id);
+    return m_stack->send_data_to_client_recv (relay_result, true, code, class_name);
   }
 
   int

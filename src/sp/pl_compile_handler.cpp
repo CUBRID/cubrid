@@ -179,12 +179,11 @@ namespace cubpl
 		// same way the executor does at run time.
 		packing_unpacker respone_unpacker (payload_blk);
 		std::string class_name;
-		std::string req_compile_id;
-		respone_unpacker.unpack_all (class_name, req_compile_id);
+		respone_unpacker.unpack_all (class_name);
 
 		error_code =
 			m_stack->send_data_to_client_recv (bypass_block, true, METHOD_CALLBACK_GET_CODE_BY_NAME,
-			    class_name, req_compile_id);
+			    class_name);
 	      }
 	    else
 	      {

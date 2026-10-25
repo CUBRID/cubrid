@@ -451,15 +451,6 @@ enum EXEC_RIGHTS_COMMAND
   EXEC_RIGHTS_POP = 1		// restore the user switched from
 };
 
-// result of looking up object code by (generated) class name (shared by the CAS handler that
-// answers METHOD_CALLBACK_GET_CODE_BY_NAME and the PL server that consumes the reply)
-enum SP_CODE_FETCH_STATUS
-{
-  SP_CODE_FETCH_NOT_FOUND = 0,	// no SP/package with the given class name (e.g. dropped)
-  SP_CODE_FETCH_UNCHANGED = 1,	// stored compile_id equals the requested one
-  SP_CODE_FETCH_CHANGED = 2	// object code returned along with its compile_id
-};
-
 enum METHOD_ARG_MODE
 {
   METHOD_ARG_MODE_IN = 1,
