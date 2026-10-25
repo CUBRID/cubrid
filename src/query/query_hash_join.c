@@ -1264,6 +1264,11 @@ error_exit:
       manager->px_worker_manager->release_workers ();
       manager->px_worker_manager = NULL;
     }
+
+  if (manager->px_worker_stats != NULL)
+    {
+      db_private_free_and_init (thread_p, manager->px_worker_stats);
+    }
 #else
   assert (manager->px_worker_manager == NULL);
 #endif /* defined (SERVER_MODE) */
@@ -1280,8 +1285,8 @@ error_exit:
 	}
 
       db_private_free_and_init (thread_p, manager->contexts);
-      manager->context_cnt = 0;
     }
+  manager->context_cnt = 0;
 
   if (thread_is_on_trace (thread_p))
     {
