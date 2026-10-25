@@ -133,6 +133,7 @@ namespace cubthread
     , trace_format (0)
     , on_trace (false)
     , clear_trace (false)
+    , trace_plan_detail (false)
     , tran_entries ()
     , no_supplemental_log (false)
     , trigger_involved (false)

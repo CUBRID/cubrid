@@ -42,6 +42,7 @@
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "bind_variant.h"
 #include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
@@ -252,7 +253,7 @@ extern int histogram_build_multi_by_reservoir_request (OID * class_oid, int attr
 						       INT64 * out_pages_seen = NULL, INT64 * out_pages_kept = NULL);
 extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL);
 extern int stats_update_all_statistics (int with_fullscan, int print_summary);
-extern int update_histogram_for_all_classes (int random_seed);
+extern int update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk);
 extern void btree_set_no_logging_index (bool no_logging_index);
@@ -282,6 +283,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
+extern int qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply);
 extern int qmgr_drop_query_plans_by_sha1 (char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);

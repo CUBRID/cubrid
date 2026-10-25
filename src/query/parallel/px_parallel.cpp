@@ -158,7 +158,8 @@ namespace parallel_query
       }
     else if ((UINT32) hint_degree >= start_degree)
       {
-	hint_degree = MIN (hint_degree, system_core_count);
+	/* reached only from the "hint_degree >= 0" branch above, so the unsigned cast cannot wrap */
+	hint_degree = (int) MIN ((std::size_t) hint_degree, system_core_count);
 
 	/* hint first, ignore the parallelism parameter */
 	if (num_pages < (UINT64) hint_degree)

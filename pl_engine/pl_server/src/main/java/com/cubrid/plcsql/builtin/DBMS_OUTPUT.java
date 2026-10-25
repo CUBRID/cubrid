@@ -55,7 +55,8 @@ public class DBMS_OUTPUT {
     private static void refuseIfServerSideSqlForbidden() {
         if (ExecuteThread.isServerSideSqlForbiddenOnCurrentThread()) {
             throw new RuntimeException(
-                    "cannot use DBMS_OUTPUT: the stored procedure is declared PARALLEL_ENABLE");
+                    "cannot use DBMS_OUTPUT: the stored procedure is declared PARALLEL_ENABLE"
+                            + " or is running in a parallel query worker");
         }
     }
 

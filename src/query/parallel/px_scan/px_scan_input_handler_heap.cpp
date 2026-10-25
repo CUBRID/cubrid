@@ -31,7 +31,7 @@
 namespace parallel_scan
 {
   thread_local HEAP_SCANCACHE *input_handler_heap::m_tl_scan_cache = NULL;
-  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {0};
+  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {};
   thread_local ftab_set *input_handler_heap::m_tl_ftab_set = NULL;
   thread_local VPID input_handler_heap::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_heap::m_tl_pgoffset = 0;

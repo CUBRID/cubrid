@@ -795,7 +795,8 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 
   for (; pageid < to_pageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
-      num_pages = MIN (LOGPB_IO_NPAGES, (int) (to_pageid - pageid));
+      /* the loop condition guarantees to_pageid - pageid >= 1, so both operands are non-negative */
+      num_pages = MIN ((int) LOGPB_IO_NPAGES, (int) (to_pageid - pageid));
       phy_pageid = logwr_to_physical_pageid (pageid);
       num_pages = MIN (num_pages, logwr_Gl.hdr.npages - phy_pageid + 1);
 
@@ -1390,7 +1391,8 @@ logwr_archive_active_log (void)
        * Page is contained in the active log.
        * Find the corresponding physical page and read the page form disk.
        */
-      num_pages = MIN (LOGPB_IO_NPAGES, (int) (logwr_Gl.last_arv_lpageid - pageid + 1));
+      /* the loop condition guarantees last_arv_lpageid - pageid + 1 >= 1, so both operands are non-negative */
+      num_pages = MIN ((int) LOGPB_IO_NPAGES, (int) (logwr_Gl.last_arv_lpageid - pageid + 1));
 
       phy_pageid = logwr_to_physical_pageid (pageid);
       num_pages = MIN (num_pages, logwr_Gl.hdr.npages - phy_pageid + 1);

@@ -343,7 +343,9 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
-  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost;
+				 * for semi/anti, the share of outer rows the join emits,
+				 * so the LIMIT estimate can tell how many outer rows to read for LIMIT rows */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -478,5 +480,15 @@ extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
 extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 extern bool qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms);
+
+/* selectivity of one between-range operator straight from the column histogram, with no
+ * QO_ENV around it. Shared with the bind-value plan watch (histogram_cl.cpp), which prices the
+ * same range terms outside the optimizer and must not drift from what the optimizer charged. */
+extern bool qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
+						    DB_VALUE * arg2_val, double *out_sel);
+
+/* fold the shape of a plan (types, join order and methods, scans and their indexes; no costs)
+ * into a running signature: equal for two compiles that chose the same plan */
+extern UINT64 qo_plan_signature (QO_PLAN * plan, UINT64 sig);
 
 #endif /* _QUERY_PLANNER_H_ */

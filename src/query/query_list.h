@@ -44,10 +44,16 @@ typedef enum
   JOIN_LEFT,
   JOIN_RIGHT,
   JOIN_OUTER,
-  JOIN_CSELECT
+  JOIN_CSELECT,
+  JOIN_SEMI,
+  JOIN_ANTI
 } JOIN_TYPE;
 
-#define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+#define IS_OUTER_JOIN_TYPE(t) \
+  ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+
+#define IS_NULL_FILL_JOIN_TYPE(t) \
+  (IS_OUTER_JOIN_TYPE (t) || (t) == JOIN_ANTI)
 
 /* PAGE CONSTANTS */
 
@@ -742,14 +748,21 @@ enum
   EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
   TRAN_AUTO_COMMIT = 0x1 << 16,
   LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
-  HV_PRED_PLAN_UNPEEKED = 0x1 << 18	/* plan built with unbound host-var predicate markers; the
+  HV_PRED_PLAN_UNPEEKED = 0x1 << 18,	/* plan built with unbound host-var predicate markers; the
 					 * first execution replans under the actual bind values */
+  XASL_TRACE_PLAN_DETAIL = 0x1 << 19,	/* the session shows its plans in detail (csql ;plan detail): the trace
+					 * carries the compiled expression programs' section too */
+  BIND_WATCH_CANDIDATE = 0x1 << 20	/* the statement passed target selection for bind-value plan
+					 * variants (joined nodes, a skewed host-var predicate not
+					 * pinned by a unique key): its executions choose among the
+					 * query's plans by fingerprint (bind_variant.h) */
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
 #define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
 #define IS_XASL_TRACE_JSON(flag)    (((flag) & XASL_TRACE_JSON) != 0)
+#define IS_XASL_TRACE_PLAN_DETAIL(flag)    (((flag) & XASL_TRACE_PLAN_DETAIL) != 0)
 
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 

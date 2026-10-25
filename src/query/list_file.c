@@ -489,15 +489,16 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 		    QFILE_DEPENDENT_MODE dep_mode)
 {
   memcpy (dest_list_id_p, src_list_id_p, DB_SIZEOF (QFILE_LIST_ID));
+  dest_list_id_p->sort_list = NULL;
+  memset (&dest_list_id_p->tpl_descr, 0, sizeof (QFILE_TUPLE_DESCRIPTOR));
 
   /* copy domain info of type list */
   if (qfile_type_list_copy (&dest_list_id_p->type_list, &src_list_id_p->type_list) != NO_ERROR)
     {
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   /* copy sort list */
-  dest_list_id_p->sort_list = NULL;
   if (is_include_sort_list && src_list_id_p->sort_list)
     {
       SORT_LIST *src, *dest = NULL;
@@ -509,8 +510,7 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 	  dest = qfile_allocate_sort_list (NULL, len);
 	  if (dest == NULL)
 	    {
-	      free_and_init (dest_list_id_p->type_list.domp);
-	      return ER_FAILED;
+	      goto exit_on_error;
 	    }
 	}
 
@@ -524,12 +524,6 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 	  dest->pos_descr.pos_no = src->pos_descr.pos_no;
 	}
     }
-  else
-    {
-      dest_list_id_p->sort_list = NULL;
-    }
-
-  memset (&dest_list_id_p->tpl_descr, 0, sizeof (QFILE_TUPLE_DESCRIPTOR));
 
   if (src_list_id_p->dependent_list_id != NULL)
     {
@@ -545,11 +539,31 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 	  const_cast < QFILE_LIST_ID * >(src_list_id_p)->dependent_list_id = NULL;
 	  break;
 
+	case QFILE_COPY_DEPENDENT:
+	  {
+	    /* Clone closed list descriptors, not ownership of the shared temporary files. */
+	    QFILE_LIST_ID **next = &dest_list_id_p->dependent_list_id;
+	    *next = NULL;
+	    for (const QFILE_LIST_ID * src = src_list_id_p->dependent_list_id; src != NULL;
+		 src = src->dependent_list_id)
+	      {
+		assert (src->last_pgptr == NULL);
+		*next = qfile_clone_list_id (src, false, QFILE_SKIP_DEPENDENT);
+		if (*next == NULL)
+		  {
+		    QFILE_FREE_AND_INIT_LIST_ID (dest_list_id_p->dependent_list_id);
+		    goto exit_on_error;
+		  }
+		next = &(*next)->dependent_list_id;
+	      }
+	  }
+	  break;
+
 	case QFILE_PROHIBIT_DEPENDENT:
 	default:
 	  /* impossible case */
 	  assert_release_error (false);
-	  return er_errid ();
+	  goto exit_on_error;
 	}
     }
   else
@@ -560,6 +574,21 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
   qfile_update_qlist_count (thread_get_thread_entry_info (), dest_list_id_p, 1);
 
   return NO_ERROR;
+
+exit_on_error:
+  /* the copy is not counted in m_qlist_count yet and owns nothing of the source: free what it allocated and leave
+   * an empty list id, which a caller's clear neither uncounts nor frees */
+  if (dest_list_id_p->sort_list != NULL)
+    {
+      qfile_free_sort_list (NULL, dest_list_id_p->sort_list);
+    }
+  free_and_init (dest_list_id_p->type_list.domp);
+  QFILE_CLEAR_LIST_ID (dest_list_id_p);
+  if (er_errid () == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
+  return ER_FAILED;
 }
 
 /*
@@ -4657,7 +4686,13 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
     {
       qfile_destroy_list (thread_p, list_id_p);
     }
-  qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_MOVE_DEPENDENT);
+  if (qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+    {
+      qfile_close_list (thread_p, srlist_id);
+      qfile_destroy_list (thread_p, srlist_id);
+      QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
+      return NULL;
+    }
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 
   return list_id_p;

@@ -121,7 +121,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE user_val;
-  DB_VALUE user_group[2] = { 0, };
+  DB_VALUE user_group[2] = {};
   const char *dba_query = "select [%s] from [%s];";
   const char *user_query = "select [%s] from [%s] where name='%s';";
   const char *group_query =

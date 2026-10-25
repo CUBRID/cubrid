@@ -172,6 +172,20 @@ namespace parallel_index_scan
 	  }
       }
 
+    /* delegate sort + dedup/merge to scan_manager helper (R_KEYLIST: eliminate_duplicated_keys; R_RANGELIST: merge_key_ranges) so serial and parallel share the same overlap/IN-dup handling; before the DESC swap below, as scan_get_index_oidset merges before btree_prepare_bts swaps (merge_key_ranges reads key1 as the lower bound). */
+    if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
+      {
+	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
+		      static_cast<int> (m_key_val_ranges.size ()), m_btid_int.search_keys);
+	if (new_cnt < 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	    m_key_val_ranges.clear ();
+	    return ER_FAILED;
+	  }
+	m_key_val_ranges.resize (new_cnt);
+      }
+
     /* part_key_desc detection from first valid range — matches btree_prepare_bts. */
     for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
       {
@@ -206,20 +220,6 @@ namespace parallel_index_scan
 	    m_key_val_ranges[i].key1 = m_key_val_ranges[i].key2;
 	    m_key_val_ranges[i].key2 = tmp_key;
 	  }
-      }
-
-    /* delegate sort + dedup/merge to scan_manager helper (R_KEYLIST: eliminate_duplicated_keys; R_RANGELIST: merge_key_ranges) so serial and parallel share the same overlap/IN-dup handling. */
-    if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
-      {
-	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
-		      static_cast<int> (m_key_val_ranges.size ()), m_btid_int.search_keys);
-	if (new_cnt < 0)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
-	    m_key_val_ranges.clear ();
-	    return ER_FAILED;
-	  }
-	m_key_val_ranges.resize (new_cnt);
       }
 
     return NO_ERROR;

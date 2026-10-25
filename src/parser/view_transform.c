@@ -6788,7 +6788,7 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 static PT_NODE *
 mq_resolve_insert_statement (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 {
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PT_NODE *odku = insert_statement->info.insert.odku_assignments;
   PT_NODE *from = insert_statement->info.insert.spec;
   PT_NODE *attr;
@@ -6912,7 +6912,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *subquery = NULL;
   PT_SPEC_INFO *from_spec = NULL;
   bool viable;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int what_for = DB_AUTH_INSERT;
   int is_class = 0;
 
@@ -7142,7 +7142,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* The odku_assignments might refer nodes from the SELECT statements. Even though name resolving was already
        * performed on odku_assigments, we have to redo it here. If the SELECT target was a view, it has been rewritten
        * by mq_translate_local and names which referenced it were not updated. */
-      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
       PT_NODE *odku = insert_statement->info.insert.odku_assignments;
 
       from = insert_statement->info.insert.spec;
@@ -7236,7 +7236,7 @@ static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   PT_NODE *from, *flat;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
   from = merge_statement->info.merge.into;
@@ -7502,7 +7502,6 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
       break;
 
     default:
-      statement = statement;
       break;
     }
 
@@ -7804,7 +7803,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
       break;
 
     default:
-      statement = statement;
       break;
     }
 
@@ -14910,6 +14908,16 @@ mq_is_order_dependent_node (PT_NODE * node)
       return false;
     }
 
+  /* An analytic function's arguments are evaluated during the initial scan, before both the
+   * analytic sort and the query's ORDER BY. Lifting the function above a sorted derived table
+   * (mq_rewrite_order_dependent_query) cannot make an assignment inside it follow ORDER BY,
+   * and it leaves the derived table flagged as having analytics with none left in it, which
+   * pt_to_buildlist_proc () then dereferences (CBRD-27503). Treat it as order independent. */
+  if (PT_IS_ANALYTIC_NODE (node))
+    {
+      return false;
+    }
+
   /* check expression node */
   if (PT_IS_EXPR_NODE (node))
     {
@@ -14969,6 +14977,14 @@ mq_mark_order_dependent_nodes (PT_NODE * node)
 
   if (node == NULL)
     {
+      return false;
+    }
+
+  /* same rule as mq_is_order_dependent_node (): an analytic function stays in the derived table
+   * as an order independent subexpression, even when an assignment sits next to it */
+  if (PT_IS_ANALYTIC_NODE (node))
+    {
+      PT_SET_ORDER_DEPENDENT_FLAG (node, false);
       return false;
     }
 

@@ -64,7 +64,7 @@
 
 struct xasl_node;
 struct xasl_unpack_info;
-struct regu_variable_node;
+class regu_variable_node;
 namespace cubxasl
 {
   struct pred_expr;
@@ -306,7 +306,7 @@ struct DOMAIN_SESSION_VARIABLE
 struct DOMAIN_PLAN_CONSTANT_EXPRESSION
 {
   DOMAIN_PLAN_ITEM *item;
-  struct regu_variable_node *regu;
+  regu_variable_node *regu;
 };
 
 /* A constant an addition, subtraction, multiplication or division converts for its operand coercion, or the constant a
@@ -315,7 +315,7 @@ struct DOMAIN_PLAN_CONSTANT_EXPRESSION
 struct DOMAIN_PLAN_CONSTANT_OPERAND
 {
   const DOMAIN_PLAN_ITEM *item;	/* the arithmetic node's, or the aggregate's */
-  const struct regu_variable_node *operand;	/* the constant: a literal, a bind or a constant expression */
+  const regu_variable_node *operand;	/* the constant: a literal, a bind or a constant expression */
   // *INDENT-OFF*
   const cubxasl::aggregate_list_node *aggregate;	/* the SUM or AVG; NULL for an arithmetic node */
   // *INDENT-ON*
@@ -326,7 +326,7 @@ struct DOMAIN_PLAN_CONSTANT_OPERAND
 /* One column of one bound of a key range. */
 struct domain_plan_key_elem
 {
-  struct regu_variable_node *regu;	/* the element; NULL: an index skip scan's skip value, read from the index */
+  regu_variable_node *regu;	/* the element; NULL: an index skip scan's skip value, read from the index */
   const TP_DOMAIN *index_elem;	/* the index column's domain */
   const TP_DOMAIN *keep_elem;	/* STRICT, KEEP: the element's domain in the column's direction */
   TP_VALUE_CONVERTER strict_conv;	/* STRICT: the element's type into index_elem, COMPARE mode

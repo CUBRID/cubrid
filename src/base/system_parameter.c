@@ -562,6 +562,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
@@ -828,6 +829,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
 // #endregion
 
@@ -5670,6 +5672,20 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* bind-value plan variants (CBRD-27490): how many distinct plans a query may learn for its
+   * bind values; 0 turns the feature off. The client-side compile chooses among them. */
+  {PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+   PRM_NAME_PLAN_CACHE_BIND_VARIANTS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_WRITESET_HISTORY_SIZE,
    PRM_NAME_HA_WRITESET_HISTORY_SIZE,
    (PRM_FOR_SERVER | PRM_FOR_HA),
@@ -6131,6 +6147,9 @@ static const int *sysprm_find_shared_system_parameter (SYSPRM_PARAM * prm);
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id);
 #endif /* SERVER_MODE */
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+static bool sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value);
+#endif
 
 #if defined (CS_MODE)
 static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
@@ -6464,10 +6483,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   struct stat stat_buf;
   int r = NO_ERROR;
   char *s;
-#if defined (CS_MODE)
-  SESSION_PARAM *sprm = NULL;
-  int num_session_prms;
-#endif
 
 #ifndef NDEBUG
   sysprm_check_id_order ();
@@ -8010,7 +8025,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_INT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8105,7 +8120,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_FLOAT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8231,7 +8246,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.i;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8326,7 +8341,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.f;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -10964,6 +10979,31 @@ prm_get_value (PARAM_ID prm_id)
   return NULL;
 }
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * sysprm_set_sub_client_session_value () - set a session parameter of the sub-client of this thread
+ *
+ * return      : true if prm_id is a session parameter of the sub-client of this thread and the value is set to it,
+ *		 false otherwise (the caller sets prm_Def)
+ * prm_id (in) : parameter id
+ * value (in)  : new value; a string or an integer list is owned by the parameter, as prm_set_*_value () does
+ *
+ * Note: prm_get_* () reads the session parameters of a sub-client from sysprm_Sub_client_session_params, so
+ *	 prm_set_*_value () must write them there too, not to prm_Def shared with the other connections.
+ */
+static bool
+sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value)
+{
+  if (!PRM_SUB_CLIENT_SESSION (prm_id))
+    {
+      return false;
+    }
+
+  (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm_id), value);
+  return true;
+}
+#endif
+
 /*
  * prm_set_integer_value () - set a new value to a parameter of type integer
  *
@@ -10978,6 +11018,18 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.i = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_INT (GET_PRM (prm_id)->value) = value;
 
@@ -10997,6 +11049,18 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.b = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_BOOL (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -11015,6 +11079,18 @@ prm_set_float_value (PARAM_ID prm_id, float value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.f = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_FLOAT (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -11032,6 +11108,18 @@ prm_set_string_value (PARAM_ID prm_id, char *value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.str = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
@@ -11061,6 +11149,18 @@ prm_set_integer_list_value (PARAM_ID prm_id, int *value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.integer_list = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
       free_and_init (PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value));
@@ -11087,6 +11187,18 @@ prm_set_bigint_value (PARAM_ID prm_id, UINT64 value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.bi = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_BIGINT (GET_PRM (prm_id)->value) = value;
 
@@ -12492,10 +12604,27 @@ sysprm_print_parameters_for_ha_repl (void)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
-      if (!PRM_IS_FOR_HA_CONTEXT (GET_PRM (i)))
+      SYSPRM_PARAM *prm = GET_PRM (i);
+      bool is_different;
+
+      if (!PRM_IS_FOR_HA_CONTEXT (prm))
 	{
 	  continue;
 	}
+
+      is_different = PRM_IS_DIFFERENT (prm);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+      /* copy-initialized, since SYSPRM_PARAM has const members and cannot be assigned */
+      SYSPRM_PARAM sub_client_prm = *prm;
+
+      if (PRM_SUB_CLIENT_SESSION (i))
+	{
+	  /* print the value of the session of the sub-client of this thread, not prm_Def of the main client */
+	  sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (i)->value;
+	  prm = &sub_client_prm;
+	  is_different = (sysprm_compare_values (prm) != 0);
+	}
+#endif
 
       if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
@@ -12521,12 +12650,12 @@ sysprm_print_parameters_for_ha_repl (void)
 		}
 	    }
 	}
-      else if (!PRM_IS_DIFFERENT (GET_PRM (i)))
+      else if (!is_different)
 	{
 	  continue;
 	}
 
-      n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
+      n = prm_print (prm, ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
       ptr += n;
       len -= n;
 

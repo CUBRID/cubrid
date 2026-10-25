@@ -90,9 +90,12 @@ namespace parallel_query
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
@@ -122,9 +125,12 @@ namespace parallel_query
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
@@ -194,9 +200,12 @@ error_exit:
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
 
 	  stats->build.range_elapsed_time.min = shared_info.build_range_time.min;
@@ -297,11 +306,13 @@ error_exit:
       switch (manager->join_type)
 	{
 	case JOIN_INNER:
+	case JOIN_SEMI:
 	  context->outer.fill_record = nullptr;
 	  context->inner.fill_record = nullptr;
 	  break;
 
 	case JOIN_LEFT:
+	case JOIN_ANTI:
 	  context->outer.fill_record = &context->outer.tuple_record;
 	  context->inner.fill_record = nullptr;
 	  break;
@@ -525,9 +536,12 @@ error_exit:
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
 
 	  stats->probe.range.elapsed_time.min = shared_info.probe_range.elapsed_time.min;

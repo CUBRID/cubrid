@@ -520,11 +520,8 @@ load_unicode_data (const LOCALE_DATA * ld)
 		      break;
 		    }
 
-		  if (str_p != NULL)
-		    {
-		      uc->unicode_mapping_cp_count =
-			string_to_int_array (str_p, uc->unicode_mapping, UNICODE_DECOMP_MAP_CP_COUNT, " ");
-		    }
+		  uc->unicode_mapping_cp_count =
+		    string_to_int_array (str_p, uc->unicode_mapping, UNICODE_DECOMP_MAP_CP_COUNT, " ");
 		  break;
 		}
 	      while (0);

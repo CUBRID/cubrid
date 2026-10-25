@@ -1240,6 +1240,10 @@ typedef struct _ha_config
 /* optimizedb option list */
 #define OPTIMIZE_CLASS_NAME_S                   'n'
 #define OPTIMIZE_CLASS_NAME_L                   "class-name"
+#define OPTIMIZE_NO_HISTOGRAM_S                 11000
+#define OPTIMIZE_NO_HISTOGRAM_L                 "no-histogram"
+#define OPTIMIZE_NO_HISTOGRAM_CLASSES_S         11001
+#define OPTIMIZE_NO_HISTOGRAM_CLASSES_L         "no-histogram-classes"
 
 /* installdb option list */
 #define INSTALL_SERVER_NAME_S                   11100

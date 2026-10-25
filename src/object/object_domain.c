@@ -1953,6 +1953,28 @@ tp_sub_client_domain_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
 }
 
 /*
+ * tp_sub_client_domain_order - the key by which tp_is_domain_cached () assumes a domain list is sorted
+ *    return: number of the elements of a set/midxkey domain, or 0 for the other domains
+ *    domain(in): domain
+ */
+static int
+tp_sub_client_domain_order (const TP_DOMAIN * domain)
+{
+  switch (TP_DOMAIN_TYPE (domain))
+    {
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      return tp_domain_size (domain->setdomain);
+    case DB_TYPE_MIDXKEY:
+      return tp_setdomain_size (domain);
+    default:
+      return 0;
+    }
+}
+
+/*
  * tp_domain_cache_for_sub_client - cache a transient domain referring to a class MOP of the sub-client of this thread
  *    return: cached domain
  *    transient(in/out): transient domain, may be freed
@@ -1962,7 +1984,8 @@ tp_sub_client_domain_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
 static TP_DOMAIN *
 tp_domain_cache_for_sub_client (TP_DOMAIN * transient)
 {
-  TP_DOMAIN **dlist, *domain, *ins_pos = NULL;
+  TP_DOMAIN **dlist, **pos, *domain, *ins_pos = NULL;
+  int order;
 
   dlist = tp_sub_client_domain_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
   if (*dlist != NULL)
@@ -1975,24 +1998,20 @@ tp_domain_cache_for_sub_client (TP_DOMAIN * transient)
 	}
     }
 
+  /*
+   * Unlike the shared lists, a list of a sub-client has no built-in domain at the head, so the transient domain may
+   * have to precede the head. Insert it keeping the order assumed by tp_is_domain_cached (), otherwise the search
+   * stops before the domain and the same domain is cached again and again.
+   */
+  order = tp_sub_client_domain_order (transient);
+  for (pos = dlist; *pos != NULL && tp_sub_client_domain_order (*pos) <= order; pos = &((*pos)->next_list))
+    {
+      ;
+    }
+
   transient->is_cached = 1;
-  if (*dlist == NULL)
-    {
-      *dlist = transient;
-    }
-  else
-    {
-      /* ins_pos is the last domain checked by tp_is_domain_cached () */
-      if (ins_pos == NULL)
-	{
-	  for (ins_pos = *dlist; ins_pos->next_list != NULL; ins_pos = ins_pos->next_list)
-	    {
-	      ;
-	    }
-	}
-      transient->next_list = ins_pos->next_list;
-      ins_pos->next_list = transient;
-    }
+  transient->next_list = *pos;
+  *pos = transient;
 
   return transient;
 }

@@ -193,6 +193,8 @@ struct sort_param
 				 * so the root cause is not overwritten (lives on the main SORT_PARAM only) */
   void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY/SORT_ANALYTIC: SORT_LISTFILE_PX_ARG* */
   QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY/ANALYTIC workers */
+  UINT64 *px_stats;		/* a worker's statistics, handed over when it ends; sort_listfile () merges them into
+				 * the main thread once all workers are done */
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
@@ -316,6 +318,9 @@ static int sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * 
 static int sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static void sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num,
 				       bool keep_result_run);
+#if defined(SERVER_MODE)
+static void sort_px_hand_over_stats (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param);
+#endif /* SERVER_MODE */
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -1418,6 +1423,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->px_extra_arg = px_extra_arg;
   sort_param->px_sector_scan = NULL;
   sort_param->px_error_published = false;
+  sort_param->px_stats = NULL;
   sort_param->px_parallel_num = 1;
   sort_param->px_worker_manager = NULL;
 
@@ -1588,6 +1594,19 @@ cleanup:
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
       sort_param->px_worker_manager->release_workers ();
+
+      if (px_sort_param != NULL)
+	{
+	  /* everything the workers counted (sort pages, page fixes, ...), merged once now that they are all done */
+	  for (int i = 0; i < sort_param->px_parallel_num; i++)
+	    {
+	      if (px_sort_param[i].px_stats != NULL)
+		{
+		  perfmon_add_values_to_local (thread_p, px_sort_param[i].px_stats);
+		  free_and_init (px_sort_param[i].px_stats);
+		}
+	    }
+	}
       free_and_init (px_sort_param);
     }
   else
@@ -1615,10 +1634,11 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
-  if (sort_param->px_orig_thread_p->on_trace)
+  thread_ref.on_trace = sort_param->px_orig_thread_p->on_trace;
+  /* sort pages count as they do on the main thread, which sorts with this flag set */
+  thread_set_sort_stats_active (thread_p, true);
+  if (perfmon_parallel_stats_needed (&thread_ref))
     {
-      thread_set_sort_stats_active (thread_p, true);
-      thread_ref.on_trace = true;
       perfmon_initialize_parallel_stats (&thread_ref);
     }
 
@@ -1716,11 +1736,8 @@ cleanup:
 	}
     }
 
-  if (sort_param->px_orig_thread_p->on_trace)
-    {
-      thread_set_sort_stats_active (thread_p, false);
-      perfmon_destroy_parallel_stats (&thread_ref);
-    }
+  thread_set_sort_stats_active (thread_p, false);
+  sort_px_hand_over_stats (thread_p, sort_param);
 
   thread_p->pop_resource_tracks ();
 
@@ -4775,11 +4792,14 @@ sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT
 
   thread_p->push_resource_tracks ();
 
+  thread_ref.on_trace = ctx->px_orig_thread_p->on_trace;
+  thread_set_sort_stats_active (thread_p, true);
+  if (perfmon_parallel_stats_needed (&thread_ref))
+    {
+      perfmon_initialize_parallel_stats (&thread_ref);
+    }
   if (thread_is_on_trace (ctx->px_orig_thread_p))
     {
-      thread_set_sort_stats_active (thread_p, true);
-      thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref);
       tsc_getticks (&start_tick);
     }
 
@@ -4792,9 +4812,9 @@ sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT
       TSC_ADD_TIMEVAL (ctx->orderby_stats.orderby_time, tv_diff);
       ctx->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
       ctx->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
-      thread_set_sort_stats_active (thread_p, false);
-      perfmon_destroy_parallel_stats (&thread_ref);
     }
+  thread_set_sort_stats_active (thread_p, false);
+  sort_px_hand_over_stats (thread_p, ctx);
   thread_p->pop_resource_tracks ();
 
   pthread_mutex_lock (&qctx->mtx);
@@ -5117,11 +5137,14 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 
   thread_p->push_resource_tracks ();
 
+  thread_ref.on_trace = sort_param->px_orig_thread_p->on_trace;
+  thread_set_sort_stats_active (thread_p, true);
+  if (perfmon_parallel_stats_needed (&thread_ref))
+    {
+      perfmon_initialize_parallel_stats (&thread_ref);
+    }
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
     {
-      thread_set_sort_stats_active (thread_p, true);
-      thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref);
       tsc_getticks (&start_tick);
     }
 
@@ -5170,10 +5193,9 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 
       sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
       sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
-
-      thread_set_sort_stats_active (thread_p, false);
-      perfmon_destroy_parallel_stats (&thread_ref);
     }
+  thread_set_sort_stats_active (thread_p, false);
+  sort_px_hand_over_stats (thread_p, sort_param);
   thread_p->pop_resource_tracks ();
 
   /* done */
@@ -5507,6 +5529,38 @@ sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, 
 	}
     }
 }
+
+#if defined(SERVER_MODE)
+/*
+ * sort_px_hand_over_stats () - hand a worker's statistics over to its parameters
+ *   return: void
+ *   thread_p(in): the worker
+ *   px_sort_param(in): the worker's parameters
+ *
+ * Note: sort_listfile () merges them into the main thread once every worker is done. A merge-queue slot runs
+ *       several merges, so a second hand-over adds to the first.
+ */
+static void
+sort_px_hand_over_stats (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param)
+{
+  if (thread_p->m_px_stats == NULL)
+    {
+      return;
+    }
+
+  if (px_sort_param->px_stats == NULL)
+    {
+      px_sort_param->px_stats = thread_p->m_px_stats;
+      thread_p->m_px_stats = NULL;
+      thread_p->m_uses_px_stats = false;
+    }
+  else
+    {
+      perfmon_merge_values (px_sort_param->px_stats, thread_p->m_px_stats);
+      perfmon_destroy_parallel_stats (thread_p);
+    }
+}
+#endif /* SERVER_MODE */
 
 /*
  * sort_end_parallelism () - end parallelism
