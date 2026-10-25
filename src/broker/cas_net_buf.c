@@ -44,6 +44,8 @@
 #include "error_code.h"
 #include "dbtype.h"
 #include "byte_order.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 /* per session in the merged server: each session takes its broker's NET_BUF_SIZE */
