@@ -523,6 +523,8 @@ struct la_apply_stat
 static LA_APPLY_STAT la_Apply_stat;
 
 #define LA_STAT_SAVEPOINT_NAME "la_stat"
+/* lock and page latch wait of the statistics statements: long enough to outwait vacuum on their heap pages */
+#define LA_STAT_WAIT_MSECS 100
 static LA_WORKER_LIVE la_Worker_live[LA_MAX_WORKER_COUNT];
 static pthread_mutex_t la_Worker_live_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1964,9 +1966,9 @@ la_stat_init_rows (void)
  * Note:
  *   Called between the _db_ha_apply_info update and the commit of the same transaction. The statistics are an
  *   extra and must never touch that update:
- *   - The statistics statements run with no lock wait. A session holding a lock on a statistics row makes them
- *     fail at once instead of stopping the coordinator, and a transaction that never waits cannot be chosen as
- *     a deadlock victim, which would roll back the apply info with it.
+ *   - The statistics statements wait at most LA_STAT_WAIT_MSECS for a lock or a page latch, so a session holding
+ *     a statistics row cannot stop the coordinator. The wait also covers page latches, so it must not be 0: vacuum
+ *     latches the heap pages of the statistics tables briefly, and with no wait every such moment was a failure.
  *   - A failure rolls back to the savepoint taken after the apply info update, so the apply info is committed
  *     and the statistics keep their last stored values. They hold running totals, so the next store writes
  *     everything again; nothing is lost.
@@ -1991,7 +1993,7 @@ la_stat_store (void)
     }
 
   save_wait_msecs = TM_TRAN_WAIT_MSECS ();
-  (void) tran_reset_wait_times (0);
+  (void) tran_reset_wait_times (LA_STAT_WAIT_MSECS);
   error = la_stat_update_rows ();
   (void) tran_reset_wait_times (save_wait_msecs);
 
