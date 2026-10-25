@@ -772,6 +772,8 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->query_id = query_id;
   manager->val_descr = val_descr;
 
+  manager->mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+
   domain_info = &proc->domain_info;
   error = hjoin_init_domain_info (thread_p, manager, domain_info);
   if (error != NO_ERROR)
@@ -1331,7 +1333,6 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 {
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
 
-  UINT64 mem_limit;
   INT64 build_tuple_cnt;
   UINT64 per_entry_size;
   UINT32 part_cnt;
@@ -1346,8 +1347,13 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   assert (outer_list_id != NULL);
   assert (inner_list_id != NULL);
 
-  mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  assert (mem_limit > 0);
+  if (manager->mem_limit == 0)
+    {
+      /* no hash join is planned under 0, but a hash join plan prepared before the change can still run,
+       * and then it runs with HASH_FILE */
+      assert (manager->context_cnt == 0);
+      return HASHJOIN_STATUS_SINGLE;
+    }
 
   switch (manager->join_type)
     {
@@ -1373,7 +1379,7 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
    * (each partition re-selects its method). */
   per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
 
-  part_cnt = CEIL_PTVDIV (per_entry_size * build_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
+  part_cnt = CEIL_PTVDIV (per_entry_size * build_tuple_cnt, manager->mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
       if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
@@ -2537,7 +2543,7 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   build = context->build;
   assert (build != NULL);
 
-  error = hjoin_scan_init (thread_p, &context->hash_scan, manager->key_cnt, build->list_id);
+  error = hjoin_scan_init (thread_p, &context->hash_scan, manager->key_cnt, manager->mem_limit, build->list_id);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -2672,22 +2678,19 @@ hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
  *   thread_p(in): Thread entry.
  *   hash_scan(in/out): Hash scan structure to initialize.
  *   key_cnt(in): Number of join columns.
+ *   mem_limit(in): max_hash_list_scan_size.
  *   list_id(in): List identifier to be used as build input.
  */
 int
-hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id)
+hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, UINT64 mem_limit,
+		 QFILE_LIST_ID * list_id)
 {
-  UINT64 mem_limit;
-
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (hash_scan != NULL);
   assert (list_id == NULL || list_id->tuple_cnt > 0);
   assert (key_cnt > 0);
-
-  mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  assert (mem_limit > 0);
 
   assert (hash_scan->build_regu_list == NULL);	/* Unused */
   assert (hash_scan->probe_regu_list == NULL);	/* Unused */

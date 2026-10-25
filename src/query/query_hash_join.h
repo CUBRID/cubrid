@@ -404,6 +404,9 @@ typedef struct hashjoin_manager
   QUERY_ID query_id;
   VAL_DESCR *val_descr;
 
+  /* max_hash_list_scan_size, read once per join */
+  UINT64 mem_limit;
+
   HASHJOIN_CONTEXT single_context;
   HASHJOIN_CONTEXT *contexts;
   UINT32 context_cnt;
@@ -477,7 +480,8 @@ void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 
 /* Hash List Scan */
-int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
+int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, UINT64 mem_limit,
+		     QFILE_LIST_ID * list_id);
 void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */
