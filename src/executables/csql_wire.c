@@ -700,7 +700,6 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
 			  "connection (db@host); use them on a local connection");
 	  return ER_FAILED;
 	}
-      const char *env = getenv ("CUBRID_CSQL_BROKER_PORT");
       int port = (env != NULL && atoi (env) > 0) ? atoi (env) : WIRE_DEFAULT_BROKER_PORT;
       err = wire_connect_broker (host, port, db, user_name, passwd);
       wire_Port = port;
@@ -939,6 +938,16 @@ wire_close_output (wire_output * output)
     }
 }
 
+/* the server closed the connection while no request was in flight */
+static bool
+wire_peer_closed (void)
+{
+  char c;
+  ssize_t n = recv (wire_Fd, &c, 1, MSG_PEEK | MSG_DONTWAIT);
+
+  return n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR);
+}
+
 /* Send the assembled body and replay the reply; return the server status or
  * a negative code on a wire/server error. */
 static int
@@ -948,9 +957,11 @@ wire_roundtrip (wire_body * b, bool replay)
   int status = ER_FAILED;
 
   wire_set_error (NO_ERROR, NULL);
-  if (wire_Fd < 0)
+  if (wire_Fd < 0 || wire_peer_closed ())
     {
-      /* a request after the connection was lost: the fat client's server-down abort */
+      /* a request after the connection was lost, or after the server closed it while idle
+       * (server stop): the fat client's server-down abort */
+      wire_close_fd ();
       wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
 		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
 				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
