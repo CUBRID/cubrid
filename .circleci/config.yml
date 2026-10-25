@@ -88,7 +88,6 @@ jobs:
     <<: *defaults
     environment:
       TEST_SUITE: sql
-      BRANCH_TESTCASES: tc-cbrd-27618-11.4
     resource_class: medium
     parallelism: 8
     <<: *test_defaults
