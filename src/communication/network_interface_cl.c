@@ -9209,6 +9209,9 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
   int i;
 #if defined (SERVER_MODE)
   bool killed_self = false;
+  /* only a csql session: a CAS's own transaction was never in the list it killed */
+  bool is_csql = BOOT_CSQL_CLIENT_TYPE (db_get_client_type ())
+    || (csc_bracket_is_active () && *csc_render_stdout_slot () != NULL);
 #endif /* SERVER_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -9223,7 +9226,7 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
 	  /* the interrupt notification belongs to the victim, not to the killer's session */
 	  er_clear ();
 #if defined (SERVER_MODE)
-	  killed_self = killed_self || (!interrupt_only && tran_index_list[i] == thread_p->tran_index);
+	  killed_self = killed_self || (is_csql && !interrupt_only && tran_index_list[i] == thread_p->tran_index);
 #endif /* SERVER_MODE */
 	}
       else if (error == ER_KILL_TR_NOT_ALLOWED)
