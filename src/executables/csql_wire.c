@@ -673,7 +673,9 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
     }
 
   int err;
-  if (wire_host_is_local (host))
+  const char *env = getenv ("CUBRID_CSQL_BROKER_PORT");
+  /* an explicit broker port asks for the broker even when db@host names this machine */
+  if (host[0] == '\0' || strcmp (host, "localhost") == 0 || (env == NULL && wire_host_is_local (host)))
     {
       if (host[0] != '\0' && strcmp (host, "localhost") != 0 && !wire_master_reachable (host))
 	{
