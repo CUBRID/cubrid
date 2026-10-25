@@ -4050,7 +4050,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	   * between operations of one transaction, restart idempotency). */
 	  sysop_key_count =
 	    tdes->wset_hashes.size () > sysop_key_begin ? tdes->wset_hashes.size () - sysop_key_begin : 0;
-	  wset_find_sysop_fallback_dependency (tdes, &tdes->wset_dependency_seq);
 	  sysop_commit_order = true;
 	  log_append_wset_label_and_sysop_end (thread_p, tdes, log_record, data_size, data, &sysop_lsa);
 	}
@@ -4065,10 +4064,10 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 
       if (sysop_commit_order)
 	{
-	  /* Every later transaction must wait for this operation. The keys collected inside it are dropped
-	   * unpublished: the row lock on a serial is released at SYSOP_END, so publishing them at the
-	   * outer commit would describe an order that never held. */
-	  wset_raise_history_start (&sysop_lsa, "SYSOP_COMMIT_ORDER");
+	  /* Every later transaction waits for this operation: log_append_wset_label_and_sysop_end raised the
+	   * history floor to it. The keys collected inside it are dropped unpublished: the row lock on a serial
+	   * is released at SYSOP_END, so publishing them at the outer commit would describe an order that never
+	   * held. */
 	  wset_discard_sysop_keys (tdes, sysop_key_begin);
 	}
     }
@@ -4878,6 +4877,8 @@ log_sysop_fallback_reason (const LOG_TDES * tdes, int repl_start_index)
  * NOTE: The label and the SYSOP_END are written inside one prior_lsa_mutex region so no other
  *       transaction's label or commit record can fall between them. The applier binds a label to the
  *       SYSOP_END of the same trid that immediately follows it, so this adjacency must be preserved.
+ *       The label is decided and the history floor raised to the SYSOP_END in the same region, for the
+ *       reason given in log_append_repl_info_and_commit_log: the operation is then a barrier on the slave.
  */
 static void
 log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -4885,8 +4886,10 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 {
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
+  wset_find_sysop_fallback_dependency (tdes, &tdes->wset_dependency_seq);
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_sysop_end_internal (thread_p, tdes, sysop_end, data_size, data, true, sysop_end_lsa_out);
+  wset_raise_history_start (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 }

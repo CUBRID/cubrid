@@ -1504,15 +1504,14 @@ wset_find_sysop_fallback_dependency (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
   assert (tdes != NULL);
   assert (wset_parent_out != NULL);
 
+  /* both values are guarded by seq_lock; the map is not read. Called inside prior_lsa_mutex. */
   pthread_mutex_lock (&wset_History.seq_lock);
-  pthread_rwlock_rdlock (&wset_History.history_lock);
   LSA_COPY (wset_parent_out, &wset_History.prev_commit_lsa);
   if (!LSA_ISNULL (&wset_History.history_start)
       && (LSA_ISNULL (wset_parent_out) || LSA_LT (wset_parent_out, &wset_History.history_start)))
     {
       LSA_COPY (wset_parent_out, &wset_History.history_start);
     }
-  pthread_rwlock_unlock (&wset_History.history_lock);
   pthread_mutex_unlock (&wset_History.seq_lock);
 
   WSET_TRACE (1, "DEPENDENCY trid=%d mode=SYSOP_COMMIT_ORDER dependency=%lld|%d\n", tdes->trid,
@@ -1539,13 +1538,13 @@ wset_raise_history_start (const LOG_LSA *lsa, const char *reason)
       return;
     }
 
+  /* every reader of history_start holds seq_lock; the map is not touched, so the history lock is not taken. The
+   * SYSOP_END path calls this inside prior_lsa_mutex, where waiting for the history lock would stall all logging. */
   pthread_mutex_lock (&wset_History.seq_lock);
-  pthread_rwlock_wrlock (&wset_History.history_lock);
   if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (lsa, &wset_History.history_start))
     {
       LSA_COPY (&wset_History.history_start, lsa);
     }
-  pthread_rwlock_unlock (&wset_History.history_lock);
   pthread_mutex_unlock (&wset_History.seq_lock);
 
   WSET_TRACE (1, "HISTORY_START raise reason=%s history_start=%lld|%d\n", reason, (long long) lsa->pageid,
