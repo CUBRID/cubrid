@@ -5010,8 +5010,14 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
+  /* The label is decided and the commit-order state updated inside this lock, in the order the commits are
+   * logged. Decided before the lock, a label could miss a commit logged in between, and a later commit could
+   * decide its label before a commit-order transaction logged ahead of it raised the history floor: a statement
+   * would then not be a barrier on the slave. */
+  wset_find_dependency_from_history (tdes, &tdes->wset_dependency_seq);
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
+  wset_note_commit_with_log_lock (tdes, commit_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 }
@@ -5599,7 +5605,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	      && log_does_allow_replication () == true)
 	    {
-	      wset_find_dependency_from_history (tdes, &tdes->wset_dependency_seq);
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
 	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq) || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
@@ -6377,10 +6382,9 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	    {
-	      /* Same three steps as the local commit in log_commit_local: the dependency is chosen from the
-	       * history right before the label is written, and the keys are published once the commit LSA
-	       * is known, so a two-phase commit orders on the slave like any other commit. */
-	      wset_find_dependency_from_history (tdes, &tdes->wset_dependency_seq);
+	      /* Same steps as the local commit in log_commit_local: the dependency is chosen inside the log lock
+	       * right before the label is written, and the keys are published once the commit LSA is known, so a
+	       * two-phase commit orders on the slave like any other commit. */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
 	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq) || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
 	      wset_publish_commit_to_history (tdes, &commit_lsa);

@@ -106,7 +106,6 @@ static int wset_cast_midxkey_element (DB_MIDXKEY *fk_midxkey, int index, TP_DOMA
 static int wset_make_parent_midxkey (DB_VALUE *fk_value, TP_DOMAIN *parent_pk_domain, DB_VALUE *parent_key,
 				     bool *has_reference);
 static int wset_push_hash (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind);
-static void wset_advance_commit_baseline (const LOG_LSA *commit_lsa);
 static void wset_clear_history_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out);
 static bool wset_history_has_capacity (size_t publish_count);
 static void wset_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *wset_parent_out);
@@ -1201,15 +1200,34 @@ wset_publish_keys (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *comm
   return true;
 }
 
-static void
-wset_advance_commit_baseline (const LOG_LSA *commit_lsa)
+/*
+ * wset_note_commit_with_log_lock - record a commit in the commit-order state as it is logged
+ *
+ *   tdes(in): the committing transaction
+ *   commit_lsa(in): its commit LSA, just appended
+ *
+ * Note: Called inside prior_lsa_mutex right after the commit record, so the state follows the log order: a label
+ *       decided later in that lock sees this commit as the latest one, and a commit-order transaction (statement
+ *       replication or too many keys) raises the history floor to itself before any later commit decides its
+ *       label. Only the floor moves here; wset_publish_commit_to_history clears the map afterwards, outside the
+ *       log lock, and entries left in it meanwhile lie below the floor and cannot lower a label. Every reader of
+ *       prev_commit_lsa and history_start holds seq_lock, so seq_lock alone is enough here.
+ */
+void
+wset_note_commit_with_log_lock (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 {
-  assert (commit_lsa != NULL);
+  assert (tdes != NULL);
+  assert (commit_lsa != NULL && !LSA_ISNULL (commit_lsa));
 
   pthread_mutex_lock (&wset_History.seq_lock);
   if (LSA_ISNULL (&wset_History.prev_commit_lsa) || LSA_GT (commit_lsa, &wset_History.prev_commit_lsa))
     {
       LSA_COPY (&wset_History.prev_commit_lsa, commit_lsa);
+    }
+  if (tdes->wset_overflow
+      && (LSA_ISNULL (&wset_History.history_start) || LSA_GT (commit_lsa, &wset_History.history_start)))
+    {
+      LSA_COPY (&wset_History.history_start, commit_lsa);
     }
   pthread_mutex_unlock (&wset_History.seq_lock);
 }
@@ -1389,7 +1407,6 @@ wset_publish_commit_to_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
       return;
     }
 
-  wset_advance_commit_baseline (commit_lsa);
   WSET_TRACE (1,
 	      "COMMIT trid=%d commit_lsa=%lld|%d dependency=%lld|%d entries=%zu fallback=%d\n",
 	      tdes->trid, (long long) commit_lsa->pageid, (int) commit_lsa->offset,
