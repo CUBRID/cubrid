@@ -87,6 +87,28 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
     }
 
+    // this is only called for a direct call from SpLib::checkExecuteAuthorization, with the
+    // compile_id the runtime EXECUTE check read. Unlike findClass(), it does not wait for a new
+    // transaction to notice that the code has been replaced.
+    public Class<?> findClassWithCurrentCompileId(String mainClassName, String compileId)
+            throws ClassNotFoundException {
+
+        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+        if (classLoader == null || !compileId.equals(classLoader.codeSet.compileId)) {
+            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
+            if (codeSet == null) {
+                // was it dropped?
+                throw new ClassNotFoundException(mainClassName);
+            }
+            classLoader = new CatalogClassLoader(codeSet, this);
+            unitClassLoaders.put(mainClassName, classLoader);
+        } else {
+            classLoader.setOld(false);
+        }
+
+        return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
+    }
+
     @Override
     public Class<?> findClass(String className) throws ClassNotFoundException {
 
@@ -133,10 +155,6 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         // CatalogClassLoader::loadClass()
         //  and calling classLoader.loadClass() is waste of CPU clocks.
         return classLoader.findClass(className);
-    }
-
-    public Class<?> findClassInner(String mainClassName) throws ClassNotFoundException {
-        return findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
     }
 
     public void clear() {

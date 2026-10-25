@@ -119,9 +119,11 @@ public class ClassAccess {
 
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
     // On success ownerRef[0] is set to the target's owner, which the caller switches the execution
-    // rights to before the call. On failure errMsgRef[0] is set to the reason the server gave,
-    // which is the only thing that tells a dropped routine from a revoked grant.
-    public static int checkExecuteAuth(String uniqueName, String[] ownerRef, String[] errMsgRef) {
+    // rights to before the call, and compileIdRef[0] to the compile_id of its current code.
+    // On failure errMsgRef[0] is set to the reason the server gave, which is the only thing that
+    // tells a dropped routine from a revoked grant.
+    public static int checkExecuteAuth(
+            String uniqueName, String[] ownerRef, String[] compileIdRef, String[] errMsgRef) {
         try {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
             // the executor's callback loop reads the request code from the payload
@@ -138,9 +140,11 @@ public class ClassAccess {
 
             int authError = unpacker.unpackInt();
             String ownerName = unpacker.unpackCString(); // empty unless the check passed
+            String compileId = unpacker.unpackCString(); // empty unless the check passed
             String errMsg = unpacker.unpackCString(); // empty unless it failed
             if (authError == 0) {
                 ownerRef[0] = ownerName;
+                compileIdRef[0] = compileId;
             } else if (!errMsg.isEmpty()) {
                 errMsgRef[0] = errMsg;
             }

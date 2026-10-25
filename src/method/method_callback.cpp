@@ -884,6 +884,56 @@ namespace cubmethod
       }
   }
 
+  // the compile_id of the code a PL/CSQL routine runs: its own code row's, or for a package member,
+  // its package's. Left empty for a routine without code (a Java SP).
+  static int
+  get_routine_compile_id (MOP routine_mop, std::string &compile_id)
+  {
+    DB_VALUE code, pkg_of;
+    MOP code_mop = NULL;
+    const char *compile_id_attr = SP_CODE_ATTR_COMPILE_ID;
+    int err;
+
+    err = db_get (routine_mop, SP_ATTR_CODE, &code);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    if (!DB_IS_NULL (&code))
+      {
+	code_mop = db_get_object (&code);
+      }
+    else
+      {
+	err = db_get (routine_mop, SP_ATTR_PKG_OF, &pkg_of);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	if (!DB_IS_NULL (&pkg_of))
+	  {
+	    err = db_get (db_get_object (&pkg_of), PKG_ATTR_CODE, &code);
+	    pr_clear_value (&pkg_of);
+	    if (err != NO_ERROR)
+	      {
+		return err;
+	      }
+	    if (!DB_IS_NULL (&code))
+	      {
+		code_mop = db_get_object (&code);
+		compile_id_attr = PKG_CODE_ATTR_COMPILE_ID;
+	      }
+	  }
+      }
+
+    if (code_mop != NULL)
+      {
+	get_string_attr (code_mop, compile_id_attr, compile_id);
+      }
+    pr_clear_value (&code);
+    return NO_ERROR;
+  }
+
   static int
   get_user_defined_routine_info (global_semantics_question &question, global_semantics_response_udpf &res)
   {
@@ -1551,6 +1601,7 @@ exit:
 
     int auth_error = NO_ERROR;
     std::string owner_name;
+    std::string compile_id;
     std::string err_msg;
     int save;
 
@@ -1595,13 +1646,21 @@ exit:
 	  {
 	    owner_name.assign (name);
 	    ws_free_string (name);
+
+	    // The caller loads the class of this code, so that a routine replaced since the caller last
+	    // loaded it runs as replaced, even in the same transaction.
+	    if (get_routine_compile_id (routine_mop, compile_id) != NO_ERROR)
+	      {
+		take_error (ER_FAILED);
+		owner_name.clear ();
+	      }
 	  }
       }
 
     AU_RESTORE (save);
 
-    // the owner name is empty unless the check passed, and the message empty unless it failed
-    return xs_pack_and_queue (auth_error, owner_name, err_msg);
+    // the owner name and compile_id are empty unless the check passed, and the message empty unless it failed
+    return xs_pack_and_queue (auth_error, owner_name, compile_id, err_msg);
   }
 
 //////////////////////////////////////////////////////////////////////////

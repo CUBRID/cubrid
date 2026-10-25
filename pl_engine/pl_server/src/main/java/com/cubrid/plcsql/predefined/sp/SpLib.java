@@ -143,30 +143,33 @@ public class SpLib {
         }
     }
 
-    public static Class<?> findTargetClass(String mainClassName, String uniqName) {
-        Context context = ContextManager.getContextofCurrentThread();
-        CatalogClassLoaderRelay cclr = context.getCatalogClassLoaderRelay();
-        try {
-            return cclr.findClassInner(mainClassName);
-        } catch (ClassNotFoundException e) {
-            Server.log(e);
-            throw new SQL_ERROR(
-                    "cannot find executable binary of " + uniqName + " (was it dropped?)");
-        }
-    }
-
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
-    // Called from generated code the first time each call site is reached.
-    public static String checkExecuteAuthorization(String uniqueName) {
+    // Called from generated code the first time each call site is reached in an activation of the
+    // caller. Also sets targetClass[slot] to the class of the callee's current code, so that a
+    // callee replaced since this session loaded it runs as replaced, even in the same transaction.
+    // Returns the owner the caller has to switch the execution rights to before the direct call.
+    public static String checkExecuteAuthorization(
+            String uniqueName, String mainClassName, Class<?>[] targetClass, int slot) {
         String[] ownerRef = new String[1];
+        String[] compileIdRef = new String[1];
         String[] errMsgRef = new String[1];
-        if (ClassAccess.checkExecuteAuth(uniqueName, ownerRef, errMsgRef) != 0) {
+        if (ClassAccess.checkExecuteAuth(uniqueName, ownerRef, compileIdRef, errMsgRef) != 0) {
             throw new SQL_ERROR(
                     errMsgRef[0] == null
                             ? "no authorization to execute " + uniqueName
                             : errMsgRef[0]);
         }
-        // the owner the caller has to switch the execution rights to before the direct call
+
+        Context context = ContextManager.getContextofCurrentThread();
+        CatalogClassLoaderRelay cclr = context.getCatalogClassLoaderRelay();
+        try {
+            targetClass[slot] = cclr.findClassWithCurrentCompileId(mainClassName, compileIdRef[0]);
+        } catch (ClassNotFoundException e) {
+            Server.log(e);
+            throw new SQL_ERROR(
+                    "cannot find executable binary of " + uniqueName + " (was it dropped?)");
+        }
+
         return ownerRef[0];
     }
 

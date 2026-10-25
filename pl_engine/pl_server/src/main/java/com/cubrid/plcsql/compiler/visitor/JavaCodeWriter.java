@@ -160,15 +160,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return new String[] {
             "if (!authChecked[" + slot + "]) {",
             // checkExecuteAuthorization() gives the name in the form the server stores it
-            // especially, in uppercase.
-            "  ownerName[" + slot + "] = checkExecuteAuthorization(\"" + uniqueName + "\");",
-            "  targetClass["
+            // especially, in uppercase. It also sets targetClass[slot].
+            "  ownerName["
                     + slot
-                    + "] = findTargetClass(\""
-                    + targetClass
-                    + "\", \""
+                    + "] = checkExecuteAuthorization(\""
                     + uniqueName
-                    + "\");",
+                    + "\", \""
+                    + targetClass
+                    + "\", targetClass, "
+                    + slot
+                    + ");",
             "  authChecked[" + slot + "] = true;",
             "}"
         };
