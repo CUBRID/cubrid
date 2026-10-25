@@ -87,8 +87,11 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     public Class<?> findClassWithCurrentCompileId(String mainClassName, String compileId)
             throws ClassNotFoundException {
 
+        // An empty compileId means it could not be read (see get_routine_compile_id () on the
+        // client), and then the loaded class, if any, is used.
         CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
-        if (classLoader == null || !compileId.equals(classLoader.codeSet.compileId)) {
+        if (classLoader == null
+                || (!compileId.isEmpty() && !compileId.equals(classLoader.codeSet.compileId))) {
             CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
             if (codeSet == null) {
                 // was it dropped?

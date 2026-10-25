@@ -3370,6 +3370,31 @@ ws_clear_all_hints (bool retain_lock)
 }
 
 /*
+ * ws_clear_uncached_deleted_marks - clear the deleted marks of the objects that have never been cached
+ *    return: void
+ *
+ * Note:
+ *    An object is marked deleted when the server cannot find it in the snapshot of the current statement, e.g. when
+ *    it was inserted by a transaction that committed after the statement began. The mark lasts until the end of the
+ *    transaction, so the later statements of the transaction cannot see the object either. This clears the marks
+ *    of such objects so that they are fetched again. If one is really deleted, fetching it marks it again.
+ *    Objects that have ever been cached (class_mop is set), e.g. the ones the transaction deleted, are left as they are.
+ */
+void
+ws_clear_uncached_deleted_marks (void)
+{
+  MOP mop;
+
+  for (mop = ws_Commit_mops; mop != NULL; mop = (mop->commit_link == mop) ? NULL : mop->commit_link)
+    {
+      if (mop->deleted && mop->class_mop == NULL && mop->object == NULL && !mop->dirty)
+	{
+	  mop->deleted = 0;
+	}
+    }
+}
+
+/*
  * ws_abort_mops - called by the transaction manager when a transaction is
  * aborted
  *    return: void

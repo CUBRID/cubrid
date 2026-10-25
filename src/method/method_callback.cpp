@@ -890,7 +890,7 @@ namespace cubmethod
   get_routine_compile_id (MOP routine_mop, std::string &compile_id)
   {
     DB_VALUE code, pkg_of;
-    MOP code_mop = NULL;
+    MOP code_mop = NULL, holder_mop = routine_mop;
     const char *compile_id_attr = SP_CODE_ATTR_COMPILE_ID;
     int err;
 
@@ -912,7 +912,8 @@ namespace cubmethod
 	  }
 	if (!DB_IS_NULL (&pkg_of))
 	  {
-	    err = db_get (db_get_object (&pkg_of), PKG_ATTR_CODE, &code);
+	    holder_mop = db_get_object (&pkg_of);
+	    err = db_get (holder_mop, PKG_ATTR_CODE, &code);
 	    pr_clear_value (&pkg_of);
 	    if (err != NO_ERROR)
 	      {
@@ -928,9 +929,34 @@ namespace cubmethod
 
     if (code_mop != NULL)
       {
-	get_string_attr (code_mop, compile_id_attr, compile_id);
+	DB_VALUE cid;
+
+	// The code row can be invisible to this statement, e.g. when the routine was replaced by a transaction that
+	// committed after this statement began. Leave compile_id empty then, and the caller keeps the code it has loaded.
+	if (db_get (code_mop, compile_id_attr, &cid) == NO_ERROR)
+	  {
+	    if (db_get_string (&cid) != NULL)
+	      {
+		compile_id.assign (db_get_string (&cid));
+	      }
+	    pr_clear_value (&cid);
+	  }
+	else
+	  {
+	    er_clear ();
+	  }
       }
     pr_clear_value (&code);
+
+    if (compile_id.empty () && !ws_is_dirty (holder_mop))
+      {
+	// A PL/CSQL routine always has code. The reference to it reads null, or the code row cannot be read, when the
+	// routine was replaced by a transaction that committed after this statement began. Drop the row that refers to
+	// the code (the routine's or its package's) from the workspace, and clear the deleted mark of the code row, so
+	// that the next statement reads them again.
+	ws_decache (holder_mop);
+	ws_clear_uncached_deleted_marks ();
+      }
     return NO_ERROR;
   }
 
@@ -1496,6 +1522,13 @@ exit:
       {
 	er_clear ();
       }
+    else if (code_mop == NULL && er_errid () != NO_ERROR)
+      {
+	// The code row could not be read, e.g. replaced by a transaction that committed after this statement
+	// began. The row is marked deleted then; clear the mark so that the next statement reads it again.
+	ws_clear_uncached_deleted_marks ();
+	er_clear ();
+      }
 
     if (code_mop != NULL)
       {
@@ -1510,6 +1543,14 @@ exit:
 	    pr_clear_value (&v);
 	  }
 	found = true;
+
+	// The row was read with a lock, which keeps the cached copy for the rest of the transaction. Drop it, so that
+	// a later statement reads the code as of its own snapshot, e.g. after a package body was replaced in place
+	// by a transaction that committed after this statement began.
+	if (!ws_is_dirty (code_mop))
+	  {
+	    ws_decache (code_mop);
+	  }
       }
 
     AU_RESTORE (save);
