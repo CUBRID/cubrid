@@ -71,6 +71,34 @@ static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static void print_grant_entry (DB_SET *grants, int grant_index, FILE *fp);
 
 /*
+ * SYSTEM OBJECTS
+ */
+
+static const AU_SYSTEM_OBJECT AU_SYSTEM_OBJECTS[] =
+{
+  {DB_OBJECT_SENSITIVITY_LABEL, "SENSITIVITY LABEL", (DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_ALTER)}
+};
+
+/*
+ * au_find_system_object - find a system object by its type
+ *   return: the system object, or NULL if obj_type is not one
+ *   obj_type(in): object type
+ */
+const AU_SYSTEM_OBJECT *
+au_find_system_object (DB_OBJECT_TYPE obj_type)
+{
+  for (const AU_SYSTEM_OBJECT &sys_obj : AU_SYSTEM_OBJECTS)
+    {
+      if (sys_obj.type == obj_type)
+	{
+	  return &sys_obj;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * GRANT/REVOKE OPERATION
  */
 
