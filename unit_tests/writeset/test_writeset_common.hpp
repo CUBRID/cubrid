@@ -161,6 +161,15 @@ namespace wstest
     wset_find_dependency_from_history (tdes, &dep);
     return dep;
   }
+
+  /* a commit as the server makes it: the commit-order state is updated when the commit record is logged
+   * (inside the log lock), then the keys are published */
+  inline void
+  commit_tx (log_tdes *tdes, const LOG_LSA *commit_lsa)
+  {
+    wset_note_commit_with_log_lock (tdes, commit_lsa);
+    wset_publish_commit_to_history (tdes, commit_lsa);
+  }
 }
 
 #endif /* _TEST_LOG_WSET_COMMON_HPP_ */

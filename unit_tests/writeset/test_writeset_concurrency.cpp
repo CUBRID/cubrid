@@ -146,7 +146,7 @@ namespace
 		}
 	      LOG_LSA dep;
 	      wset_find_dependency_from_history (tx[t], &dep);
-	      wset_publish_commit_to_history (tx[t], &commit);
+	      commit_tx (tx[t], &commit);
 	      if (latched)
 		{
 		  latch.unlock ();
@@ -196,7 +196,7 @@ namespace
 	wset_add_write_key (filler, &cls, &WS_DEFAULT_VFID, &v);
       }
     LOG_LSA fill_lsa = lsa_of (10, 0);
-    wset_publish_commit_to_history (filler, &fill_lsa);
+    commit_tx (filler, &fill_lsa);
     delete filler;
 
     std::vector<log_tdes *> tx (nthreads);
