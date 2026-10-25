@@ -3858,21 +3858,28 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                 Coercion c = id.coercion;
                 assert c != null;
-                if (c instanceof Coercion.Identity) {
-                    argsToLocal.append("o" + i);
-                } else {
-                    String paramType = getJavaCodeOfType(param.typeSpec);
-                    allocCoercedOutArgs.add(
-                            String.format(
-                                    "%s[] p%d = new %s[] { %s };",
-                                    paramType, i, paramType, c.javaCode("o" + i + "[0]")));
 
-                    argsToLocal.append("p" + i);
+                // Pass a copy, never the caller's variable itself, and write it back only when the
+                // callee returns normally: the callee does not change the argument if it ends with
+                // an exception, and the value written back is checked against the argument's type
+                // (e.g. its length or precision), as in a call through the server.
+                // An OUT (not IN OUT) parameter gets no value from the caller.
+                String paramType = getJavaCodeOfType(param.typeSpec);
+                allocCoercedOutArgs.add(
+                        String.format(
+                                "%s[] p%d = new %s[] { %s };",
+                                paramType,
+                                i,
+                                paramType,
+                                ((DeclParamOut) param).alsoIn
+                                        ? c.javaCode("o" + i + "[0]")
+                                        : "null"));
 
-                    Coercion cRev = c.getReversion(iStore);
-                    assert cRev != null; // by earlier check
-                    update.add(String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
-                }
+                argsToLocal.append("p" + i);
+
+                Coercion cRev = c.getReversion(iStore);
+                assert cRev != null; // by earlier check
+                update.add(String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
 
                 DeclId declId = id.decl;
                 if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
