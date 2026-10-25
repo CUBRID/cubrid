@@ -106,8 +106,9 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
        * the planning (e.g. the query plan of SHOW TRACE would not be the one of this statement) */
       session->parser->flag.is_verifying_static_sql_text = 1;
 
-      if (statement != NULL && !has_into && db_compile_statement (session) >= 0
-	  && db_number_of_input_markers (session, 1) == parser->host_var_count)
+      /* the host variables need no check here: the text has "?:N" for every index of the PL/CSQL variables, and the
+       * caller checks that the compiled statement keeps all of them */
+      if (statement != NULL && !has_into && db_compile_statement (session) >= 0)
 	{
 	  ok = true;
 	}
@@ -766,11 +767,28 @@ namespace cubmethod
 		while (marker);
 	      }
 
-	    if (error == NO_ERROR && use_text_edits && semantics.hvs.size () > (size_t) parser->host_var_count)
+	    if (error == NO_ERROR && use_text_edits)
 	      {
-		/* the host variables in the text are "?:N" with the indexes of the PL/CSQL variables. auto-parameterized
-		 * values (the indexes after them) are not in the text, where the values are still literals */
-		semantics.hvs.resize (parser->host_var_count);
+		/* the host variables in the text are "?:N" with the indexes of the PL/CSQL variables, and each of them
+		 * needs its value. a PL/CSQL variable removed from the compiled statement (e.g. with an ORDER BY of
+		 * an IN subquery, or with an unused column of a merged derived table) has no marker: print the tree */
+		bool all_bound = semantics.hvs.size () >= (size_t) parser->host_var_count;
+
+		for (int k = 0; all_bound && k < parser->host_var_count; k++)
+		  {
+		    all_bound = (semantics.hvs[k].mode != 0);
+		  }
+
+		if (all_bound)
+		  {
+		    /* auto-parameterized values (the indexes after them) are not in the text, where they are literals */
+		    semantics.hvs.resize (parser->host_var_count);
+		  }
+		else
+		  {
+		    parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_ALIAS;
+		    semantics.rewritten_query = parser_print_tree (parser, stmt);
+		  }
 	      }
 	  }
 	else
