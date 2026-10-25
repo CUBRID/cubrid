@@ -75,6 +75,8 @@ extern void wset_trace_key_source (LOG_TDES *tdes, const char *operation, const 
 extern void wset_fallback_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason);
 extern void wset_find_dependency_from_history (LOG_TDES *tdes, LOG_LSA *wset_parent_out);
 extern void wset_publish_commit_to_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
+/* inside prior_lsa_mutex, right after the commit record: the commit-order state follows the log order */
+extern void wset_note_commit_with_log_lock (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
 
 /* A system operation that replicated rows (serial update, INCR/DECR, checksumdb) is labeled for commit
  * order at its SYSOP_END and the keys it collected are dropped unpublished. */
