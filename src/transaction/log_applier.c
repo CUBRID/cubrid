@@ -837,8 +837,8 @@ la_coordinator_wait_for_commit_order_slot (void)
  * Note:
  *   After a crash, the transactions up to the stored bound are re-applied with their re-apply errors
  *   skipped, so every transaction a worker may have committed must lie at or below it. Storing the bound
- *   first, before the task is handed over, keeps that true whenever the crash comes. The bound jumps to the
- *   end of the copied log, so it is stored once per batch of commits, not once per commit.
+ *   first, before the task is handed over, keeps that true whenever the crash comes. The bound is the commit
+ *   of the task itself, so a commit that was never handed over stays above it and its errors are counted.
  *   A commit without replicated items is not covered: it cannot fail when re-applied, and storing for it
  *   would turn an empty commit into a real one that a mutual HA peer receives as empty and answers the
  *   same way, without end.
@@ -846,7 +846,6 @@ la_coordinator_wait_for_commit_order_slot (void)
 static int
 la_coordinator_cover_commit (const LA_TASK * task)
 {
-  LOG_LSA bound;
   int error;
 
   /* the slot alone does not mean there is something to re-apply: la_log_record_process opens a slot at the
@@ -861,19 +860,13 @@ la_coordinator_cover_commit (const LA_TASK * task)
       return NO_ERROR;
     }
 
-  LSA_COPY (&bound, &task->commit_lsa);
-  if (la_Info.act_log.log_hdr != NULL && LSA_GT (&la_Info.act_log.log_hdr->eof_lsa, &bound))
-    {
-      LSA_COPY (&bound, &la_Info.act_log.log_hdr->eof_lsa);
-    }
-
-  error = la_update_ha_apply_max_committed_lsa (&bound);
+  error = la_update_ha_apply_max_committed_lsa (&task->commit_lsa);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  LSA_COPY (&la_Info.max_committed_lsa, &bound);
+  LSA_COPY (&la_Info.max_committed_lsa, &task->commit_lsa);
 
   return NO_ERROR;
 }
