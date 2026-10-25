@@ -8677,8 +8677,11 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
       count = session_p->bkup.count;
       if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
 	{
+	  /* count was just loaded from session_p->bkup.count, which the enclosing "> 0" test keeps positive, so
+	   * comparing it as unsigned is value preserving and keeps the existing remaining-space semantics. */
 	  count =
-	    (int) MIN (count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
+	    (int) MIN ((UINT64) count,
+		       prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
 	}
       buffer_p = session_p->bkup.buffer;
       do
@@ -9507,8 +9510,8 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	{
 	  if (strcmp (backup_header_p->magic, CUBRID_MAGIC_DATABASE_BACKUP_OLD) == 0)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_INCOMPATIBLE, 2, rel_name (),
-		      rel_release_string ());
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_INCOMPATIBLE, 3, rel_name (),
+		      rel_release_string (), "unknown");
 	      return NULL;
 	    }
 

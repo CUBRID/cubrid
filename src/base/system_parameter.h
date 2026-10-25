@@ -562,6 +562,8 @@ enum param_id
   PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
   PRM_ID_COST_HEAP_FETCH_PER_OID,
 
+  PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+
   PRM_ID_HA_WRITESET_HISTORY_SIZE,
 
   PRM_ID_HA_WRITESET_TRACE_LEVEL,
@@ -761,7 +763,6 @@ extern "C"
  * future clients that connect to broker
  */
   extern SESSION_PARAM *cached_session_parameters;
-  extern void sysprm_load_session_parameters ();
 #if defined (MULTI_CONN_TO_A_SERVER)
   /*
    * Session parameter values of the sub-client of the current thread. NULL on the other threads (e.g., the main

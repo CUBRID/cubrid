@@ -208,14 +208,20 @@ db_unregister_sub_client (void)
 }
 
 /*
- * db_get_num_sub_clients () - get the number of alive sub-clients
+ * db_close_sub_client_registration () - block the start of new sub-clients
  *   return: number of sub-clients registered by db_restart_sub () and not shut down yet
+ *
+ * Note: It is called when the main client is shut down at exit (see boot_shutdown_client_at_exit ()).
+ *       As in db_shutdown (), the check and the block are done under g_sub_client_mutex, so that no sub-client
+ *       can be registered between them and the finalization of the client modules.
  */
 int
-db_get_num_sub_clients (void)
+db_close_sub_client_registration (void)
 {
   std::lock_guard < std::mutex > lock (g_sub_client_mutex);
 
+  /* no more sub-clients can be started from now on */
+  (void) g_ready_to_sub.store (false, std::memory_order_release);
   return g_num_sub_clients;
 }
 #endif
@@ -1098,12 +1104,14 @@ db_restart (const char *program, int print_version, const char *volume)
  * sub_index(in) : the index of the sub-client
  *
  * Note: The sub-client is bound to the calling thread. db_shutdown_sub () must be called
- *       by the same thread before the thread exits. Otherwise, the transaction and the locks
- *       of the sub-client remain in the server until the process exits.
+ *       by the same thread before the thread exits, whether this function succeeded or not.
+ *       Otherwise, the transaction and the locks of the sub-client remain in the server until
+ *       the process exits, and the error context of the thread is leaked.
  *       db_shutdown () and db_restart () of the main client fail while a sub-client is alive,
  *       because they finalize the client modules shared with the sub-clients.
- *       If it fails, the resources of the sub-client are released by itself, so db_shutdown_sub ()
- *       does not need to be called (calling it is harmless).
+ *       If it fails, the resources of the sub-client are released by itself, except the error
+ *       context, which is kept so that the caller can get the error. db_shutdown_sub () then
+ *       releases only the error context.
  */
 int
 db_restart_sub (int sub_index)
@@ -1137,7 +1145,7 @@ db_restart_sub (int sub_index)
 
   /*
    * The error context of this thread. It is created after the shutdown above, which destroys the previous one.
-   * It is kept after a failure, so that the caller can get the error.
+   * It is kept after a failure, so that the caller can get the error, and released by db_shutdown_sub ().
    */
   er_init_sub_client_context ();
 
@@ -1182,7 +1190,7 @@ db_restart_sub (int sub_index)
   return NO_ERROR;
 
 error:
-  /* release the resources of this thread, so that db_shutdown_sub () is not required after a failure */
+  /* release the resources of this thread */
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Disable_modifications = 0;
   au_ctx_destructor ();
@@ -1339,7 +1347,6 @@ db_ping_server (int client_val, int *server_val)
   return error;
 }
 
-#if !defined(SERVER_MODE)
 /*
  * db_disable_modification - Disable database modification operation
  *   return: error code
@@ -1369,7 +1376,6 @@ db_enable_modification (void)
   assert (db_Disable_modifications >= 0);
   return NO_ERROR;
 }
-#endif
 
 /*
  * db_end_session - end current session

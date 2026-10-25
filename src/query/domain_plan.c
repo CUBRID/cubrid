@@ -163,6 +163,8 @@ struct DOMAIN_LOAD_CONTEXT
 					 * (domain_outer_scope); NULL */
   bool *compare_term_ranges;	/* [max_compare_terms] a term of an index scan's key range */
   bool in_key_range;		/* the walk is in an index scan's key range predicate, where_range */
+  bool in_key_limit;		/* the walk is in an index scan's key limit (key_limit_l, key_limit_u): the scan reads a
+				 * bind there by its value's type and coerces it to BIGINT when it opens */
   int n_compare_terms;
   int max_compare_terms;
   DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first */
@@ -1604,6 +1606,12 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     {
       return;
     }
+  if (ctx->in_key_limit && regu->type == TYPE_POS_VALUE)
+    {
+      /* a key limit's bind is read by its value, as a comparison's: a statement sharing the plan binds a literal of
+       * another type (limit 4, then limit 2147483648) and the scan coerces it to BIGINT when it opens */
+      item->flags |= DOMAIN_PLAN_CONSUMER_CONVERTS;
+    }
   if (row_invariant && cls != OPERAND_CORRELATED)
     {
       domain_load_entry_of (item)->row_invariant = true;
@@ -2069,11 +2077,13 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	      domain_walk_regu (ctx, key->key_ranges[i].key1, DOMAIN_CTX_KEY_ELEM);
 	      domain_walk_regu (ctx, key->key_ranges[i].key2, DOMAIN_CTX_KEY_ELEM);
 	    }
+	  ctx->in_key_limit = true;
 	  domain_walk_regu (ctx, key->key_limit_l);
 	  domain_walk_regu (ctx, key->key_limit_u);
+	  ctx->in_key_limit = false;
 	  /* the scan computes its key limits when it opens, and turns an overflow of their arithmetic into a limit
-	   * (scan_handle_overflow_subtraction_upper, fetch_and_coerce_key_limit_lower): a constant there is the scan's
-	   * to compute, not one whose failure is resolve_domains' error */
+	   * (fetch_key_limits): a constant there is the scan's to compute, not one whose failure is resolve_domains'
+	   * error */
 	  domain_force_row (key->key_limit_l);
 	  domain_force_row (key->key_limit_u);
 	}
