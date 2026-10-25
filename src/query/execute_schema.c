@@ -2854,6 +2854,79 @@ drop_class_name (const char *name, bool is_cascade_constraints)
 }
 
 /*
+ * collect_subclasses_to_validate() - Collect subclasses whose inherited constraints may change after DROP CLASS.
+ *   return: Error code
+ *   class_name(in): Name of the class to be dropped
+ *   subclasses_affected_by_drop(in/out): Subclasses to validate after all classes are dropped
+ */
+static int
+collect_subclasses_to_validate (const char *class_name, DB_OBJLIST ** subclasses_affected_by_drop)
+{
+  DB_OBJECT *class_obj = NULL;
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *subclass = NULL;
+  int error = NO_ERROR;
+
+  if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  class_obj = db_find_class (class_name);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  for (subclass = class_->users; subclass != NULL; subclass = subclass->next)
+    {
+      error = ml_add (subclasses_affected_by_drop, subclass->op, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * validate_subclasses_after_drop() - Validate surviving subclasses after all classes are dropped.
+ *   return: Error code
+ *   subclasses_affected_by_drop(in): Subclasses collected before dropping their superclasses
+ */
+static int
+validate_subclasses_after_drop (DB_OBJLIST * subclasses_affected_by_drop)
+{
+  DB_OBJLIST *subclass = NULL;
+  int error = NO_ERROR;
+
+  for (subclass = subclasses_affected_by_drop; subclass != NULL; subclass = subclass->next)
+    {
+      if (WS_IS_DELETED (subclass->op))
+	{
+	  continue;
+	}
+
+      error = check_ha_repl_constraints_in_hierarchy (subclass->op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_drop() - Drops a vclass, class
  *   return: Error code if a vclass is not deleted.
  *   parser(in): Parser context
@@ -2866,6 +2939,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity_spec_list, *entity_spec;
   PT_NODE *entity;
   PT_NODE *entity_list;
+  DB_OBJLIST *subclasses_affected_by_drop = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2896,6 +2970,12 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       entity_list = entity_spec->info.spec.flat_entity_list;
       for (entity = entity_list; entity != NULL; entity = entity->next)
 	{
+	  error = collect_subclasses_to_validate (entity->info.name.original, &subclasses_affected_by_drop);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
 	  error = drop_class_name (entity->info.name.original, statement->info.drop.is_cascade_constraints);
 	  if (error != NO_ERROR)
 	    {
@@ -2904,9 +2984,21 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  error = validate_subclasses_after_drop (subclasses_affected_by_drop);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ml_free (subclasses_affected_by_drop);
   return error;
 
 error_exit:
+  if (subclasses_affected_by_drop != NULL)
+    {
+      ml_free (subclasses_affected_by_drop);
+    }
+
   if (error != ER_LK_UNILATERALLY_ABORTED)
     {
       tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
