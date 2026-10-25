@@ -9207,6 +9207,9 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
   int success = NO_ERROR;
   int error;
   int i;
+#if defined (SERVER_MODE)
+  bool killed_self = false;
+#endif /* SERVER_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -9219,6 +9222,9 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
 	  (*num_killed)++;
 	  /* the interrupt notification belongs to the victim, not to the killer's session */
 	  er_clear ();
+#if defined (SERVER_MODE)
+	  killed_self = killed_self || (!interrupt_only && tran_index_list[i] == thread_p->tran_index);
+#endif /* SERVER_MODE */
 	}
       else if (error == ER_KILL_TR_NOT_ALLOWED)
 	{
@@ -9231,6 +9237,16 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
 	  er_clear ();
 	}
     }
+
+#if defined (SERVER_MODE)
+  if (killed_self && success == NO_ERROR)
+    {
+      /* the legacy client lost its server connection and reported the server-down abort
+       * on the statement's commit */
+      success = ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, success, 0);
+    }
+#endif /* SERVER_MODE */
 
   exit_server (*thread_p);
 
