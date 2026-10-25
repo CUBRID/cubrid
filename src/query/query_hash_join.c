@@ -1327,7 +1327,7 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
 
   UINT64 mem_limit;
-  INT64 min_tuple_cnt;
+  INT64 build_tuple_cnt;
   UINT64 per_entry_size;
   UINT32 part_cnt;
 
@@ -1344,16 +1344,31 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   assert (mem_limit > 0);
 
-  min_tuple_cnt =
-    (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
-  assert (min_tuple_cnt >= 0);
+  switch (manager->join_type)
+    {
+    case JOIN_SEMI:
+    case JOIN_LEFT:
+    case JOIN_ANTI:
+      build_tuple_cnt = inner_list_id->tuple_cnt;
+      break;
+
+    case JOIN_RIGHT:
+      build_tuple_cnt = outer_list_id->tuple_cnt;
+      break;
+
+    default:
+      build_tuple_cnt =
+	(outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
+      break;
+    }
+  assert (build_tuple_cnt >= 0);
 
   /* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position.
-   * Linear estimate is enough: min_tuple_cnt is INT64, and the partition count is only approximate
+   * Linear estimate is enough: build_tuple_cnt is INT64, and the partition count is only approximate
    * (each partition re-selects its method). */
   per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
 
-  part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
+  part_cnt = CEIL_PTVDIV (per_entry_size * build_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
       if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
