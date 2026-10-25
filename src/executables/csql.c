@@ -1283,8 +1283,17 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		csql_thin_display_wire_error ();
 		return DO_CMD_SUCCESS;
 	      }
-	    /* DO_CMD_FAILURE reports the wire error (error_continue) */
-	    csql_check_server_down ();
+	    /* DO_CMD_FAILURE reports the wire error (error_continue). Like the legacy client, a
+	     * server-down abort is reported, then reported again as csql exits; ;killtran on a
+	     * lost connection reports its error and keeps csql running for ;restart */
+	    if (cmd_no != S_CMD_KILLTRAN)
+	      {
+		if (!csql_wire_is_connected () && csql_wire_last_error (NULL) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+		  {
+		    csql_thin_display_wire_error ();
+		  }
+		csql_check_server_down ();
+	      }
 	    return DO_CMD_FAILURE;
 	  }
 	/* codex review #9: only a state-CHANGING on/off form updates the
