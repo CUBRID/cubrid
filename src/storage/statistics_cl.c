@@ -188,9 +188,6 @@ stats_client_unpack_statistics (char *buf_p)
 	  OR_GET_INT64 (buf_p, &btree_stats_p->keys);
 	  buf_p += OR_INT64_SIZE;
 
-	  btree_stats_p->dedup_idx = OR_GET_INT (buf_p);
-	  buf_p += OR_INT_SIZE;
-
 	  buf_p = or_unpack_domain (buf_p, &btree_stats_p->key_type, 0);
 
 	  if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
@@ -374,9 +371,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
 	      prefix_p = "";
 	      assert (bt_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-	      assert (bt_stats_p->dedup_idx != 0);
-	      int pkeys_size = (bt_stats_p->dedup_idx >= 0) ? bt_stats_p->dedup_idx : bt_stats_p->pkeys_size;
-	      for (k = 0; k < pkeys_size; k++)
+	      for (k = 0; k < bt_stats_p->pkeys_size; k++)
 		{
 		  fprintf (file_p, "%s%lld", prefix_p, (long long) bt_stats_p->pkeys[k]);
 		  prefix_p = ",";
