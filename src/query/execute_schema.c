@@ -427,6 +427,8 @@ static int do_alter_index_compact_one_class (MOP class_mop, const char *index_na
 static int check_ha_repl_constraint (DB_OBJECT * class_obj);
 static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
 static int check_ha_repl_constraints_in_hierarchy (DB_OBJECT * class_obj);
+static int validate_subclasses_after_drop (const char *superclass_name, DB_OBJLIST * subclasses_affected_by_drop,
+					   DB_OBJLIST * classes_to_drop);
 
 int ib_thread_count = 0;
 
@@ -2857,7 +2859,7 @@ drop_class_name (const char *name, bool is_cascade_constraints)
  * collect_subclasses_to_validate() - Collect subclasses whose inherited constraints may change after DROP CLASS.
  *   return: Error code
  *   class_name(in): Name of the class to be dropped
- *   subclasses_affected_by_drop(in/out): Subclasses to validate after all classes are dropped
+ *   subclasses_affected_by_drop(in/out): Subclasses to validate after their superclass is dropped
  */
 static int
 collect_subclasses_to_validate (const char *class_name, DB_OBJLIST ** subclasses_affected_by_drop)
@@ -2899,34 +2901,6 @@ collect_subclasses_to_validate (const char *class_name, DB_OBJLIST ** subclasses
 }
 
 /*
- * validate_subclasses_after_drop() - Validate surviving subclasses after all classes are dropped.
- *   return: Error code
- *   subclasses_affected_by_drop(in): Subclasses collected before dropping their superclasses
- */
-static int
-validate_subclasses_after_drop (DB_OBJLIST * subclasses_affected_by_drop)
-{
-  DB_OBJLIST *subclass = NULL;
-  int error = NO_ERROR;
-
-  for (subclass = subclasses_affected_by_drop; subclass != NULL; subclass = subclass->next)
-    {
-      if (WS_IS_DELETED (subclass->op))
-	{
-	  continue;
-	}
-
-      error = check_ha_repl_constraints_in_hierarchy (subclass->op);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * do_drop() - Drops a vclass, class
  *   return: Error code if a vclass is not deleted.
  *   parser(in): Parser context
@@ -2940,6 +2914,8 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity;
   PT_NODE *entity_list;
   DB_OBJLIST *subclasses_affected_by_drop = NULL;
+  DB_OBJLIST *classes_to_drop = NULL;
+  DB_OBJECT *class_obj = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2964,6 +2940,30 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
+  if (!HA_DISABLED ())
+    {
+      entity_spec_list = statement->info.drop.spec_list;
+      for (entity_spec = entity_spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  entity_list = entity_spec->info.spec.flat_entity_list;
+	  for (entity = entity_list; entity != NULL; entity = entity->next)
+	    {
+	      class_obj = db_find_class (entity->info.name.original);
+	      if (class_obj == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  goto error_exit;
+		}
+
+	      error = ml_add (&classes_to_drop, class_obj, NULL);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	}
+    }
+
   entity_spec_list = statement->info.drop.spec_list;
   for (entity_spec = entity_spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
     {
@@ -2981,22 +2981,31 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      goto error_exit;
 	    }
+
+	  error = validate_subclasses_after_drop (entity->info.name.original, subclasses_affected_by_drop,
+						  classes_to_drop);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  ml_free (subclasses_affected_by_drop);
+	  subclasses_affected_by_drop = NULL;
 	}
     }
 
-  error = validate_subclasses_after_drop (subclasses_affected_by_drop);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  ml_free (subclasses_affected_by_drop);
+  ml_free (classes_to_drop);
   return error;
 
 error_exit:
   if (subclasses_affected_by_drop != NULL)
     {
       ml_free (subclasses_affected_by_drop);
+    }
+
+  if (classes_to_drop != NULL)
+    {
+      ml_free (classes_to_drop);
     }
 
   if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -10161,6 +10170,62 @@ check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT 
 	    {
 	      const char *subclass_name = sm_get_ch_name (subclass->op);
 
+	      if (subclass_name == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  return error;
+		}
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS, 2,
+		      superclass_name, subclass_name);
+	      return ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS;
+	    }
+	}
+
+      error = check_ha_repl_constraints_in_subclasses (superclass_name, subclass->op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * validate_subclasses_after_drop() - Validate subclasses after their superclass is dropped.
+ *   return: Error code
+ *   superclass_name(in): Name of the dropped superclass
+ *   subclasses_affected_by_drop(in): Subclasses collected before dropping the superclass
+ *   classes_to_drop(in): Classes included in the same DROP statement
+ */
+static int
+validate_subclasses_after_drop (const char *superclass_name, DB_OBJLIST * subclasses_affected_by_drop,
+				DB_OBJLIST * classes_to_drop)
+{
+  DB_OBJLIST *subclass = NULL;
+  int error = NO_ERROR;
+
+  if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  for (subclass = subclasses_affected_by_drop; subclass != NULL; subclass = subclass->next)
+    {
+      const char *subclass_name = NULL;
+
+      if (WS_IS_DELETED (subclass->op) || ml_find (classes_to_drop, subclass->op))
+	{
+	  continue;
+	}
+
+      if (sm_is_replication_class (subclass->op))
+	{
+	  error = check_ha_repl_constraint (subclass->op);
+	  if (error != NO_ERROR)
+	    {
+	      subclass_name = sm_get_ch_name (subclass->op);
 	      if (subclass_name == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error);
