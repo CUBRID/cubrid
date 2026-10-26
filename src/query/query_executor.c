@@ -16243,8 +16243,14 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     }
   else
     {
-      /* The increments are the transaction's. */
+      /* The increments are the transaction's, and so are the row locks taken for them: keep those to commit, as
+       * the instant lock mode did.  Given back, a row could pass to a writer that waits on this transaction, and a
+       * rollback to a savepoint would then leave this transaction waiting on that writer to change the row again. */
       log_sysop_attach_to_outer (thread_p);
+      if (lock_transient_scope_is_outermost (thread_p))
+	{
+	  lock_forget_transient_object_locks (thread_p);
+	}
     }
 
 exit:
