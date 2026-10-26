@@ -590,7 +590,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
 #define PRM_NAME_MAX_HASH_LIST_SCAN_SIZE "max_hash_list_scan_size"
-#define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
+#define PRM_NAME_MAX_CONNECT_BY_DFS_SIZE "max_connect_by_dfs_size"
 #define PRM_NAME_OPTIMIZER_RESERVE_03 "optimizer_reserve_03"
 #define PRM_NAME_OPTIMIZER_RESERVE_04 "optimizer_reserve_04"
 #define PRM_NAME_OPTIMIZER_RESERVE_05 "optimizer_reserve_05"
@@ -3575,14 +3575,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_OPTIMIZER_RESERVE_02,
-   PRM_NAME_OPTIMIZER_RESERVE_02,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
+  {PRM_ID_MAX_CONNECT_BY_DFS_SIZE,
+   PRM_NAME_MAX_CONNECT_BY_DFS_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_SIZE_UNIT),
+   PRM_BIGINT,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 128 * 1024 * 1024 /* 128 MB */ }},
+   {false, {.bi = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
