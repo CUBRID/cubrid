@@ -220,6 +220,7 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
 static bool mq_is_attr_name_used (PT_NODE * attr_list, const char *name);
+static bool mq_is_aggregate_without_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
 static PT_NODE *mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						       PT_NODE * derived_table, PT_NODE ** new_spec);
@@ -1577,6 +1578,23 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
 }
 
 /*
+ * mq_is_aggregate_without_group_by () - check if a query is an aggregate query without GROUP BY
+ *   return: true if so
+ *   parser(in):
+ *   query(in):
+ *
+ * Note: such a query returns one row by the aggregation. When no column of it is referenced, its select list must not
+ *       be reduced to a constant: the tree keeps the aggregation (PT_SELECT_INFO_HAS_AGG), but the printed text
+ *       does not (e.g. "select count(*) from t" printed as "select 1 from t" returns a row per row of t).
+ */
+static bool
+mq_is_aggregate_without_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  return (query != NULL && PT_IS_SELECT (query) && query->info.query.q.select.group_by == NULL
+	  && pt_has_aggregate (parser, query));
+}
+
+/*
  * mq_is_attr_name_used () - check if a name is used by an attribute in the list
  *   return: true if used
  *   attr_list(in): attribute list
@@ -1774,8 +1792,23 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   if (new_select_list == NULL)
     {
       /* case of constant attr. e.g.) count(*), count(1) */
-      /* just add one of integer value */
-      new_select_list = pt_make_integer_value (parser, 1);
+      if (mq_is_aggregate_without_group_by (parser, subquery))
+	{
+	  /* keep one of the aggregated columns, which keeps the aggregation when the tree is printed */
+	  for (col = subquery->info.query.q.select.list; col != NULL && col->flag.is_hidden_column; col = col->next)
+	    {
+	      ;
+	    }
+	  if (col != NULL)
+	    {
+	      new_select_list = parser_copy_tree (parser, col);
+	    }
+	}
+      if (new_select_list == NULL)
+	{
+	  /* just add one of integer value */
+	  new_select_list = pt_make_integer_value (parser, 1);
+	}
     }
 
   /* cut off select list and order by */
@@ -2585,13 +2618,6 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 
   /* check for DISTINCT */
   if (pt_is_distinct (subquery))
-    {
-      return NON_PUSHABLE;
-    }
-
-  /* check for an aggregate query without GROUP BY: it returns one row only by the aggregation, and a select list
-   * reduced to a constant does not show it (e.g. "select count(*) from t" printed as "select 1 from t") */
-  if (subquery->info.query.q.select.group_by == NULL && pt_has_aggregate (parser, subquery))
     {
       return NON_PUSHABLE;
     }
@@ -5861,8 +5887,36 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  if (new_query->info.query.q.select.list == NULL)
 	    {
 	      /* case of constant attr. e.g.) count(*), count(1) */
-	      /* just add one of integer value */
-	      new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
+	      if (mq_is_aggregate_without_group_by (parser, query_spec))
+		{
+		  /* keep one of the attributes of the view, which is substituted with an aggregated column of the
+		   * view and keeps the aggregation when the tree is printed */
+		  v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
+		  if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
+		    {
+		      return NULL;
+		    }
+		  if (v_attr_list != NULL && v_attr_list->type_enum == PT_TYPE_OBJECT)
+		    {
+		      v_attr_list = v_attr_list->next;	/* skip oid attr */
+		    }
+		  if (v_attr_list != NULL)
+		    {
+		      v_attr = parser_copy_tree (parser, v_attr_list);
+		      if (v_attr == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+			  return NULL;
+			}
+		      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
+		      new_query->info.query.q.select.list = v_attr;
+		    }
+		}
+	      if (new_query->info.query.q.select.list == NULL)
+		{
+		  /* just add one of integer value */
+		  new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
+		}
 	    }
 	}
       else
