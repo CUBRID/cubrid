@@ -392,6 +392,7 @@ static bool qo_mjoin_input_sorted (QO_PLAN * input, QO_EQCLASS * order, BITSET *
 static bool qo_mjoin_terms_are_names (QO_ENV * env, BITSET * join_terms);
 static int qo_mjoin_merge_sort_segs (QO_PLAN * join, int *outer_segs, int *inner_segs, int max);
 static bool qo_plan_has_sorted_merge_input (QO_PLAN * plan);
+static PT_NODE *qo_plan_compute_mjoin_sort_list (QO_PLAN * root, PT_NODE * order_by);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -1357,11 +1358,11 @@ qo_top_plan_new (QO_PLAN * plan)
   if (group_by || (all_distinct == PT_DISTINCT || order_by))
     {
 
-      bool groupby_skip, orderby_skip, is_index_w_prefix;
+      bool groupby_skip, orderby_skip, mjoin_orderby_skip, is_index_w_prefix;
       bool found_instnum;
       int t;
 
-      groupby_skip = orderby_skip = false;	/* init */
+      groupby_skip = orderby_skip = mjoin_orderby_skip = false;	/* init */
 
       found_instnum = false;
       for (t = 0; t < (signed) plan->info->planner->T; t++)
@@ -1553,7 +1554,28 @@ qo_top_plan_new (QO_PLAN * plan)
 		  return plan;
 		}
 
-	      plan = qo_sort_new (plan, QO_UNORDERED, all_distinct == PT_DISTINCT ? SORT_DISTINCT : SORT_ORDERBY);
+	      if (prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN) && all_distinct != PT_DISTINCT
+		  && group_by == NULL && !(found_instnum && (orderby_for || ordbynum_flag))
+		  && !tree->info.query.q.select.connect_by && !pt_has_analytic (parser, tree))
+		{
+		  plan->iscan_sort_list = qo_plan_compute_mjoin_sort_list (plan, order_by);
+		  mjoin_orderby_skip = pt_sort_spec_cover (plan->iscan_sort_list, order_by);
+		  if (!mjoin_orderby_skip && plan->iscan_sort_list != NULL)
+		    {
+		      parser_free_tree (parser, plan->iscan_sort_list);
+		      plan->iscan_sort_list = NULL;
+		    }
+		}
+
+	      if (mjoin_orderby_skip)
+		{
+		  /* a merge join already returns the rows in ORDER BY order */
+		  plan->need_final_sort = false;
+		}
+	      else
+		{
+		  plan = qo_sort_new (plan, QO_UNORDERED, all_distinct == PT_DISTINCT ? SORT_DISTINCT : SORT_ORDERBY);
+		}
 	    }
 	}
     }
@@ -3868,6 +3890,108 @@ qo_plan_has_sorted_merge_input (QO_PLAN * plan)
     default:
       return false;
     }
+}
+
+/*
+ * qo_plan_compute_mjoin_sort_list () - computes the sort list of the merge join output that reaches the top plan
+ *   return: PT_SORT_SPEC list (ascending), or NULL
+ *   root(in): top plan
+ *   order_by(in): ORDER BY list; selects the outer or the inner column of each merge position
+ *
+ * Note: only plans that return the rows of their outer side in order are walked through.
+ */
+static PT_NODE *
+qo_plan_compute_mjoin_sort_list (QO_PLAN * root, PT_NODE * order_by)
+{
+  QO_PLAN *plan;
+  QO_ENV *env;
+  PARSER_CONTEXT *parser;
+  PT_NODE *tree, *sort_list = NULL, *sort, *col, *ord;
+  QFILE_TUPLE_VALUE_POSITION pos_descr, inner_descr;
+  int outer_segs[QO_MJOIN_MAX_SORT_TERMS], inner_segs[QO_MJOIN_MAX_SORT_TERMS];
+  int npos, k, j;
+
+  plan = root;
+  while (plan != NULL
+	 && !(plan->plan_type == QO_PLANTYPE_JOIN && plan->plan_un.join.join_method == QO_JOINMETHOD_MERGE_JOIN))
+    {
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_SORT:
+	  plan = (plan->plan_un.sort.sort_type == SORT_TEMP) ? plan->plan_un.sort.subplan : NULL;
+	  break;
+
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  break;
+
+	case QO_PLANTYPE_JOIN:
+	  plan = (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+		  || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN) ? plan->plan_un.join.outer : NULL;
+	  break;
+
+	default:
+	  plan = NULL;
+	  break;
+	}
+    }
+
+  if (plan == NULL || (plan->plan_un.join.join_type != JOIN_INNER && plan->plan_un.join.join_type != JOIN_LEFT))
+    {
+      return NULL;
+    }
+
+  env = plan->info->env;
+  parser = QO_ENV_PARSER (env);
+  tree = QO_ENV_PT_TREE (env);
+
+  npos = qo_mjoin_merge_sort_segs (plan, outer_segs, inner_segs, QO_MJOIN_MAX_SORT_TERMS);
+
+  for (k = 0, ord = order_by; k < npos; k++, ord = (ord != NULL) ? ord->next : NULL)
+    {
+      pt_to_pos_descr (parser, &pos_descr, QO_SEG_PT_NODE (QO_ENV_SEG (env, outer_segs[k])), tree, NULL, false);
+
+      /* only an inner join returns the inner column equal to the outer one; a left join pads it with NULL */
+      if (ord != NULL && pos_descr.pos_no != ord->info.sort_spec.pos_descr.pos_no && inner_segs[k] != -1
+	  && plan->plan_un.join.join_type == JOIN_INNER)
+	{
+	  pt_to_pos_descr (parser, &inner_descr, QO_SEG_PT_NODE (QO_ENV_SEG (env, inner_segs[k])), tree, NULL, false);
+	  if (inner_descr.pos_no == ord->info.sort_spec.pos_descr.pos_no)
+	    {
+	      pos_descr = inner_descr;
+	    }
+	}
+
+      if (pos_descr.pos_no <= 0)
+	{
+	  break;
+	}
+
+      for (col = tree->info.query.q.select.list, j = 1; j < pos_descr.pos_no && col; j++)
+	{
+	  col = col->next;
+	}
+
+      if (col == NULL)
+	{
+	  break;
+	}
+
+      sort = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort == NULL)
+	{
+	  PT_ERRORm (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  break;
+	}
+
+      sort->info.sort_spec.expr = pt_point (parser, pt_get_end_path_node (col));
+      sort->info.sort_spec.pos_descr = pos_descr;
+      sort->info.sort_spec.asc_or_desc = PT_ASC;
+
+      sort_list = parser_append_node (sort, sort_list);
+    }
+
+  return sort_list;
 }
 
 /*
