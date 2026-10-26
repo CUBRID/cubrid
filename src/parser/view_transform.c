@@ -2553,6 +2553,13 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
       return NON_PUSHABLE;
     }
 
+  /* check for an aggregate query without GROUP BY: it returns one row only by the aggregation, and a select list
+   * reduced to a constant does not show it (e.g. "select count(*) from t" printed as "select 1 from t") */
+  if (subquery->info.query.q.select.group_by == NULL && pt_has_aggregate (parser, subquery))
+    {
+      return NON_PUSHABLE;
+    }
+
   /* check for CONNECT BY */
   if (mainquery->info.query.q.select.connect_by || subquery->info.query.q.select.connect_by)
     {
