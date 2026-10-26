@@ -381,13 +381,6 @@ typedef struct hashjoin_proc_node
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
-
-  /* The result columns this join builds when the node above it asked for a layout holding an
-   * expression. The probe loop evaluates these regu variables over both input tuples and writes the
-   * result tuple itself. NULL leaves merge_info in charge, which copies input columns and evaluates
-   * nothing. The two never share the work: with this list set, merge_info->ls_pos_cnt is 0. */
-  REGU_VARIABLE_LIST layout_regu_list;
-  int layout_regu_count;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;

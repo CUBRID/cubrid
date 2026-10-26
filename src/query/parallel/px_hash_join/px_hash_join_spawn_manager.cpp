@@ -40,7 +40,6 @@ namespace parallel_query
       , m_after_join_pred (nullptr)
       , m_outer_regu_list_pred (nullptr)
       , m_inner_regu_list_pred (nullptr)
-      , m_layout_regu_list (nullptr)
     {
       //
     }
@@ -128,12 +127,6 @@ namespace parallel_query
     spawn_manager::get_inner_regu_list_pred (REGU_VARIABLE_LIST src)
     {
       return spawn (src, m_inner_regu_list_pred);
-    }
-
-    REGU_VARIABLE_LIST
-    spawn_manager::get_layout_regu_list (REGU_VARIABLE_LIST src)
-    {
-      return spawn (src, m_layout_regu_list);
     }
 
     cubxasl::spawner *
