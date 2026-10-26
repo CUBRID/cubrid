@@ -111,5 +111,6 @@ extern int fetch_key_limits (THREAD_ENTRY * thread_p, regu_variable_node * key_l
 			     DB_BIGINT * lower, DB_BIGINT * upper, bool * is_null);
 
 extern bool fetch_is_agg_expr_shape (const regu_variable_node * regu_var, int budget);
+extern bool fetch_opcode_caches (OPERATOR_TYPE opcode);
 
 #endif /* _FETCH_H_ */

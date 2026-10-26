@@ -679,11 +679,17 @@ fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a)
 static bool
 fetch_arith_caches (const ARITH_TYPE * arithptr)
 {
-  if (arithptr->pred != NULL)
-    {
-      return false;
-    }
-  switch (arithptr->opcode)
+  return arithptr->pred == NULL && fetch_opcode_caches (arithptr->opcode);
+}
+
+/*
+ * fetch_opcode_caches () - fetch_arith_caches by the operator alone (the branch operators CASE, DECODE, IF and
+ *   PREDICATE are not cached because the fetch does not analyze their predicate)
+ */
+bool
+fetch_opcode_caches (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
     {
     case T_INCR:
     case T_DECR:
