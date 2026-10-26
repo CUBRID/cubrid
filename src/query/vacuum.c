@@ -366,7 +366,7 @@ struct vacuum_data
     int page_data_max_count;	/* Maximum data entries fitting one vacuum data page. */
 
     int log_block_npages;		/* The number of pages in a log block. */
-    VACUUM_LOG_BLOCKID interrupted_partial_blockid; /* Partial block whose later publication must retain retry safety. */
+    VACUUM_LOG_BLOCKID interrupted_partial_blockid;	/* Failed partial block; publish it as interrupted. */
 
     bool is_loaded;		/* True if vacuum data is loaded. */
     vacuum_shutdown_sequence shutdown_sequence;
