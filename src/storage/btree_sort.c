@@ -80,7 +80,6 @@
 /* Upper limit on the number of input (and of output) files of a merge pass, its fan-in; the temp file count
  * is twice this. */
 #define BTSORT_MAX_HALF_FILES      4
-#define BTSORT_MAX_TOT_FILES      (BTSORT_MAX_HALF_FILES * 2)
 
 /* Lower limit on the number of input (and of output) files of a merge pass; the temp file count is twice this.
  * Fewer than two input files cannot merge. */
@@ -207,14 +206,14 @@ struct btsort_px_merge_input
 typedef struct btsort_param BTSORT_PARAM;
 struct btsort_param
 {
-  VFID temp[BTSORT_MAX_TOT_FILES];	/* Temporary file identifiers */
+  VFID *temp;			/* Temporary file identifiers; temp_slots entries */
   /* Where the previous page lookup landed in each temp file's user page table. Sorting walks a temp file in page
    * order, so remembering the position turns each lookup into a single page access instead of a walk of the whole
    * table. This lives in BTSORT_PARAM because every parallel worker gets its own copy, which is what makes it usable
    * while several workers read the same file. Reset it whenever temp[i] changes. */
-  FILE_FIND_NTH_CURSOR temp_cursor[BTSORT_MAX_TOT_FILES];
+  FILE_FIND_NTH_CURSOR *temp_cursor;	/* temp_slots entries */
   VFID multipage_file;		/* Temporary file for multi page sorting records */
-  BTSORT_FILE_CONTENTS file_contents[BTSORT_MAX_TOT_FILES];	/* Contents of each temporary file */
+  BTSORT_FILE_CONTENTS *file_contents;	/* Contents of each temporary file; temp_slots entries */
 
   bool tde_encrypted;		/* whether related temp files are encrypted (TDE) or not */
 
@@ -223,6 +222,8 @@ struct btsort_param
   int tot_runs;			/* Total number of runs */
   int tot_buffers;		/* Size of internal memory used in terms of number of buffers it occupies */
   int tot_tempfiles;		/* Total number of temporary files */
+  int temp_slots;		/* Entries of temp, temp_cursor and file_contents (btsort_alloc_temp_slots): tot_tempfiles,
+				 * or more for a worker, whose slots the merge queue reuses */
   int half_files;		/* Half number of temporary files */
   int in_half;			/* Which half of temp files is for input */
 
@@ -302,15 +303,15 @@ struct btsort_merge_ctx
   BTSORT_PARAM *sort_param;
   int act_infiles;		/* input files that still hold a run: the first act_infiles of the input half */
   int in_sectsize;		/* pages of the input section of each active input file */
-  BTSORT_MERGE_INPUT in[BTSORT_MAX_HALF_FILES];
+  BTSORT_MERGE_INPUT *in;	/* one per input file of the half; half_files entries */
 
   int out_half;			/* first output file of the pass: 0 or half_files */
   BTSORT_MERGE_OUTPUT out;	/* the output section */
 
-  int file_next_page[BTSORT_MAX_TOT_FILES];	/* page of each temp file the pass reads or writes next */
+  int *file_next_page;		/* page of each temp file the pass reads or writes next; tot_tempfiles entries */
 
-  int heap[BTSORT_MAX_HALF_FILES];	/* min-heap of the active inputs, ordered by their smallest records; heap[0]
-					 * is the input holding the minimum record */
+  int *heap;			/* min-heap of the active inputs, ordered by their smallest records; heap[0] is the
+				 * input holding the minimum record; half_files entries */
   RECDES tail_long_rec;		/* long record behind the last record of the min input's page when that record is
 				 * a BIGONE placeholder; grown and reused like the inputs' long_rec */
   bool page_tail_is_min;	/* false: must find the min record; true: the last record of the min input's page is
@@ -482,6 +483,8 @@ static BT_LOAD_PX_OUTCOME btsort_px_construct_index_leaf (THREAD_ENTRY * thread_
 /* Temp file and run list section                                       */
 /************************************************************************/
 
+static int btsort_alloc_temp_slots (BTSORT_PARAM * sort_param, int n_slots);
+static void btsort_free_temp_slots (BTSORT_PARAM * sort_param);
 static int btsort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor,
 				int file_pg_cnt_est, bool force_alloc, bool tde_encrypted);
 static int btsort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
@@ -861,7 +864,6 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   int error = NO_ERROR;
   BTSORT_PARAM ori_sort_param;
   BTSORT_PARAM *sort_param = &ori_sort_param;
-  int i;
 
   /* for parallel sort */
   BTSORT_PARAM *px_sort_param = NULL;
@@ -903,12 +905,10 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->tot_tempfiles = 0;
 
   /* initialize memory allocable fields */
-  for (i = 0; i < BTSORT_MAX_TOT_FILES; i++)
-    {
-      VFID_SET_NULL (&sort_param->temp[i]);
-      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
-      sort_param->file_contents[i].num_pages = NULL;
-    }
+  sort_param->temp = NULL;
+  sort_param->temp_cursor = NULL;
+  sort_param->file_contents = NULL;
+  sort_param->temp_slots = 0;
   sort_param->internal_memory = NULL;
 
   /* initialize temp. overflow file. Real value will be assigned in btsort_inphase_sort function, if long size sorting
@@ -940,25 +940,10 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->tot_tempfiles = sort_param->half_files * 2;
   sort_param->in_half = 0;
 
-  for (i = 0; i < BTSORT_MAX_TOT_FILES; i++)
+  error = btsort_alloc_temp_slots (sort_param, sort_param->tot_tempfiles);
+  if (error != NO_ERROR)
     {
-      /* Initilize temporary file identifier; real value will be set in "btsort_add_new_file () */
-      VFID_SET_NULL (&sort_param->temp[i]);
-      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
-
-      /* Initilize file contents list */
-      sort_param->file_contents[i].num_pages = (int *) malloc (BTSORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
-      if (sort_param->file_contents[i].num_pages == NULL)
-	{
-	  sort_param->tot_tempfiles = i;
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (BTSORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
-	  goto cleanup;
-	}
-
-      sort_param->file_contents[i].num_slots = BTSORT_INITIAL_DYN_ARRAY_SIZE;
-      sort_param->file_contents[i].first_run = -1;
-      sort_param->file_contents[i].last_run = -1;
+      goto cleanup;
     }
 
   /* Size estimate of an input temp file: a one-run share of the buffer. The files grow as runs
@@ -1185,7 +1170,8 @@ btsort_return_used_resources (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param
       free_and_init (sort_param->internal_memory);
     }
 
-  if (parallel_type == BTSORT_PX_SINGLE || parallel_type == BTSORT_PX_MAIN_IN_PARALLEL)
+  /* temp is NULL when the slots were never allocated or their allocation failed */
+  if ((parallel_type == BTSORT_PX_SINGLE || parallel_type == BTSORT_PX_MAIN_IN_PARALLEL) && sort_param->temp != NULL)
     {
       for (k = 0; k < sort_param->tot_tempfiles; k++)
 	{
@@ -1201,13 +1187,7 @@ btsort_return_used_resources (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param
       (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
-  for (k = 0; k < BTSORT_MAX_TOT_FILES; k++)
-    {
-      if (sort_param->file_contents[k].num_pages != NULL)
-	{
-	  free_and_init (sort_param->file_contents[k].num_pages);
-	}
-    }
+  btsort_free_temp_slots (sort_param);
 
   if (parallel_type == BTSORT_PX_THREAD_IN_PARALLEL)
     {
@@ -1283,7 +1263,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   /* Variables for the current output file */
   int out_curfile;
   char *output_buffer;
-  int cur_page[BTSORT_MAX_HALF_FILES];
+  int *cur_page = NULL;		/* current page of each input temp file; half_files entries */
 
   /* Variables for the internal memory */
   RECDES temp_recdes;
@@ -1302,12 +1282,13 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   int rv = NO_ERROR;
 #endif /* SERVER_MODE */
 
-  assert (sort_param->half_files <= BTSORT_MAX_HALF_FILES);
-
-  /* Initialize the current pages of all temp files to 0 */
-  for (i = 0; i < sort_param->half_files; i++)
+  /* the current page of every temp file starts at 0 */
+  cur_page = (int *) calloc ((size_t) sort_param->half_files, sizeof (int));
+  if (cur_page == NULL)
     {
-      cur_page[i] = 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) sort_param->half_files * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   sort_param->tot_runs = 0;
@@ -1624,6 +1605,7 @@ exit_on_error:
     {
       free_and_init (long_recdes.data);
     }
+  free_and_init (cur_page);
 
   return error;
 }
@@ -1943,7 +1925,7 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
 			int parallel_num)
 {
   int error = NO_ERROR;
-  int i, j;
+  int i;
 
   /* init stats */
   sort_param->ori_sort_param = NULL;
@@ -1967,12 +1949,11 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
       px_sort_param[i].get_arg = NULL;
       px_sort_param[i].put_arg = NULL;
       px_sort_param[i].ori_sort_param = NULL;
-      for (j = 0; j < BTSORT_MAX_TOT_FILES; j++)
-	{
-	  px_sort_param[i].file_contents[j].num_pages = NULL;
-	  /* the copy above brought main's page lookup positions along. workers sort into their own files. */
-	  file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[j]);
-	}
+      /* the copy above brought main's temp file arrays along; workers sort into their own files */
+      px_sort_param[i].temp = NULL;
+      px_sort_param[i].temp_cursor = NULL;
+      px_sort_param[i].file_contents = NULL;
+      px_sort_param[i].temp_slots = 0;
     }
 
   /* For parallel sort, tot_buffers must be at least 8 (bump up if currently < 8) */
@@ -2005,21 +1986,13 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
 	  goto clear;
 	}
       px_sort_param[i].tot_buffers = sort_param->tot_buffers;	/* match allocated size (may be 8 for parallel) */
-      for (j = 0; j < BTSORT_MAX_TOT_FILES; j++)
+      /* the merge queue reuses these slots for up to 2 * BTSORT_PX_MERGE_FILES files, more than the worker's own
+       * when a sort buffer below 8 pages gave it fewer than BTSORT_MAX_HALF_FILES per half */
+      error =
+	btsort_alloc_temp_slots (&px_sort_param[i], MAX (px_sort_param[i].tot_tempfiles, 2 * BTSORT_PX_MERGE_FILES));
+      if (error != NO_ERROR)
 	{
-	  /* Initilize file contents list */
-	  px_sort_param[i].file_contents[j].num_pages = (int *) calloc (BTSORT_INITIAL_DYN_ARRAY_SIZE, sizeof (int));
-	  if (px_sort_param[i].file_contents[j].num_pages == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      (size_t) (BTSORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
-	      goto clear;
-	    }
-
-	  px_sort_param[i].file_contents[j].num_slots = BTSORT_INITIAL_DYN_ARRAY_SIZE;
-	  px_sort_param[i].file_contents[j].first_run = -1;
-	  px_sort_param[i].file_contents[j].last_run = -1;
+	  goto clear;
 	}
 
       /* init px variable */
@@ -2043,13 +2016,7 @@ clear:
 	    {
 	      free_and_init (px_sort_param[i].internal_memory);
 	    }
-	  for (j = 0; j < BTSORT_MAX_TOT_FILES; j++)
-	    {
-	      if (px_sort_param[i].file_contents[j].num_pages != NULL)
-		{
-		  free_and_init (px_sort_param[i].file_contents[j].num_pages);
-		}
-	    }
+	  btsort_free_temp_slots (&px_sort_param[i]);
 	}
     }
 
@@ -2214,6 +2181,12 @@ btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_par
 
   for (i = 0; i < parallel_num; i++)
     {
+      if (px_sort_param[i].temp == NULL)
+	{
+	  /* btsort_copy_sort_param failed before this worker's slots were allocated, or freed them */
+	  continue;
+	}
+
       for (k = 0; k < px_sort_param[i].tot_tempfiles; k++)
 	{
 	  if (!VFID_ISNULL (&px_sort_param[i].temp[k]))
@@ -2341,12 +2314,20 @@ btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles)
 static int
 btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half, bool put_to_caller)
 {
-  int needed_pages[BTSORT_MAX_TOT_FILES] = { 0 };	/* pages each temp file receives in this pass */
+  int *needed_pages;		/* pages each temp file receives in this pass; tot_tempfiles entries */
   BTSORT_FILE_CONTENTS *contents;
   int contains;
   int alloc_pages;
   int i, k;
   int error_code = NO_ERROR;
+
+  needed_pages = (int *) calloc ((size_t) sort_param->tot_tempfiles, sizeof (int));
+  if (needed_pages == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) sort_param->tot_tempfiles * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
   /* The k-th output run of the pass merges the k-th runs of the input files and goes to output file
    * out_half + k % half_files; its size is estimated as the pages of those input runs. A pass whose records go to
@@ -2379,7 +2360,7 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-		  return error_code;
+		  goto exit;
 		}
 	      continue;
 	    }
@@ -2388,7 +2369,7 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error_code;
+	      goto exit;
 	    }
 	  alloc_pages = (needed_pages[i] - contains);
 	  if (alloc_pages > 0)
@@ -2397,7 +2378,7 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-		  return error_code;
+		  goto exit;
 		}
 	    }
 	}
@@ -2410,14 +2391,17 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-		  return error_code;
+		  goto exit;
 		}
 	      VFID_SET_NULL (&sort_param->temp[i]);
 	      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
 	    }
 	}
     }
-  return NO_ERROR;
+exit:
+  free_and_init (needed_pages);
+
+  return error_code;
 }
 
 /*
@@ -3117,11 +3101,25 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int runs_left;		/* runs of the pass still to produce */
   int prev_in_half;		/* for the in/out half exchange */
   int i;
+  size_t arrays_size;		/* the block holding in, file_next_page and heap */
 
   error = NO_ERROR;
 
   memset (&ctx, 0, sizeof (ctx));
   ctx.sort_param = sort_param;
+
+  /* the per-input and per-file arrays of the merge state, in one block: in[half_files], file_next_page[tot_tempfiles],
+   * heap[half_files]. The inputs start zeroed so that bailout finds no long record buffer to free. */
+  arrays_size = (size_t) sort_param->half_files * sizeof (BTSORT_MERGE_INPUT)
+    + (size_t) (sort_param->tot_tempfiles + sort_param->half_files) * sizeof (int);
+  ctx.in = (BTSORT_MERGE_INPUT *) calloc (1, arrays_size);
+  if (ctx.in == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, arrays_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  ctx.file_next_page = (int *) (ctx.in + sort_param->half_files);
+  ctx.heap = ctx.file_next_page + sort_param->tot_tempfiles;
 
   ctx.out_half = (sort_param->in_half == 0) ? sort_param->half_files : 0;
 
@@ -3221,6 +3219,7 @@ bailout:
     {
       free_and_init (ctx.tail_long_rec.data);
     }
+  free_and_init (ctx.in);
 
   return error;
 }
@@ -3427,6 +3426,7 @@ btsort_merge_queue_setup_ctx (int pool_idx, BTSORT_MERGE_QUEUE_CTX * qctx, const
   assert (k >= 2 && k <= BTSORT_PX_MERGE_FILES);
   ctx->half_files = k;
   ctx->tot_tempfiles = k * 2;
+  assert (ctx->tot_tempfiles <= ctx->temp_slots);
   ctx->in_half = 0;
   ctx->px_result_file_idx = 0;
   for (j = 0; j < k; j++)
@@ -4811,6 +4811,89 @@ cleanup:
 /************************************************************************/
 /* Temp file and run list section                                       */
 /************************************************************************/
+
+/*
+ * btsort_alloc_temp_slots () - Allocate the per-temp-file arrays of a sort parameter
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
+ *   sort_param(in/out): sort parameters; temp_slots is set to n_slots
+ *   n_slots(in): entries of each array; at least tot_tempfiles
+ *
+ * Note: Every slot starts empty: a null file, a reset cursor and a zeroed run list with room for
+ *       BTSORT_INITIAL_DYN_ARRAY_SIZE runs. A worker that receives no records makes no run, which the readers of
+ *       its result run see as num_pages[0] = 0. On failure whatever was allocated is freed again.
+ */
+static int
+btsort_alloc_temp_slots (BTSORT_PARAM * sort_param, int n_slots)
+{
+  int i;
+
+  assert (n_slots >= sort_param->tot_tempfiles);
+
+  sort_param->temp = (VFID *) malloc ((size_t) n_slots * sizeof (VFID));
+  sort_param->temp_cursor = (FILE_FIND_NTH_CURSOR *) malloc ((size_t) n_slots * sizeof (FILE_FIND_NTH_CURSOR));
+  sort_param->file_contents = (BTSORT_FILE_CONTENTS *) calloc ((size_t) n_slots, sizeof (BTSORT_FILE_CONTENTS));
+  sort_param->temp_slots = n_slots;
+  if (sort_param->temp == NULL || sort_param->temp_cursor == NULL || sort_param->file_contents == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) n_slots * (sizeof (VFID) + sizeof (FILE_FIND_NTH_CURSOR) + sizeof (BTSORT_FILE_CONTENTS)));
+      btsort_free_temp_slots (sort_param);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < n_slots; i++)
+    {
+      /* the real file identifier is set by btsort_add_new_file () */
+      VFID_SET_NULL (&sort_param->temp[i]);
+      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
+
+      sort_param->file_contents[i].num_pages = (int *) calloc (BTSORT_INITIAL_DYN_ARRAY_SIZE, sizeof (int));
+      if (sort_param->file_contents[i].num_pages == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (BTSORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
+	  btsort_free_temp_slots (sort_param);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      sort_param->file_contents[i].num_slots = BTSORT_INITIAL_DYN_ARRAY_SIZE;
+      sort_param->file_contents[i].first_run = -1;
+      sort_param->file_contents[i].last_run = -1;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btsort_free_temp_slots () - Free the per-temp-file arrays of a sort parameter and the run lists in them
+ *   return: void
+ *   sort_param(in/out): sort parameters
+ */
+static void
+btsort_free_temp_slots (BTSORT_PARAM * sort_param)
+{
+  int i;
+
+  if (sort_param->file_contents != NULL)
+    {
+      for (i = 0; i < sort_param->temp_slots; i++)
+	{
+	  if (sort_param->file_contents[i].num_pages != NULL)
+	    {
+	      free_and_init (sort_param->file_contents[i].num_pages);
+	    }
+	}
+      free_and_init (sort_param->file_contents);
+    }
+  if (sort_param->temp != NULL)
+    {
+      free_and_init (sort_param->temp);
+    }
+  if (sort_param->temp_cursor != NULL)
+    {
+      free_and_init (sort_param->temp_cursor);
+    }
+  sort_param->temp_slots = 0;
+}
 
 /*
  * btsort_add_new_file () - Create a new temporary file for sorting purposes
