@@ -10008,6 +10008,8 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 
   bool is_for_spec = true;
   PT_NODE *auth_cmd_list = node->info.grant.auth_cmd_list;
+  const AU_SYSTEM_OBJECT *sys_obj = au_find_system_object (PT_GET_SYSTEM_OBJECT (node));
+
   while (auth_cmd_list)
     {
       PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
@@ -10020,7 +10022,25 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       auth_cmd_list = auth_cmd_list->next;
     }
 
-  if (is_for_spec == true)
+  if (sys_obj != NULL)
+    {
+      if (node->node_type == PT_GRANT && node->info.grant.grant_option == PT_GRANT_OPTION)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AU_GRANT_OPTION_NOT_ALLOWED,
+		      sys_obj->name);
+	}
+
+      for (auth_cmd_list = PT_GET_AUTH_CMD_LIST (node); auth_cmd_list != NULL; auth_cmd_list = auth_cmd_list->next)
+	{
+	  if ((pt_auth_to_db_auth (auth_cmd_list) & sys_obj->privileges) == 0)
+	    {
+	      PT_ERRORmf (parser, auth_cmd_list, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+			  pt_show_priv (auth_cmd_list->info.auth_cmd.auth_cmd));
+	      break;
+	    }
+	}
+    }
+  else if (is_for_spec == true)
     {
       /* Replace each Entity Spec with an Equivalent flat list */
       info.spec_parent = NULL;
