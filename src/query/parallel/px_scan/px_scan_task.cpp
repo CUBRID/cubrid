@@ -650,8 +650,12 @@ namespace parallel_scan
     qexec_free_xasl_state (&thread_ref, m_xasl_state);
     /* the leader's runtime filter bound in initialize () is the leader's to free: drop the alias before the clone
      * is cleared and retired to the pool (hjoin_rtf_bind_clone ()), and hand the rows this worker counted on the
-     * clone to the leader's node -- the one the clone was bound from */
-    hjoin_rtf_unbind_clone (m_xasl, m_orig_xasl);
+     * clone to the leader's node -- the one the clone was bound from.  A clone_xasl () that failed left no clone (the
+     * release below says so too): nothing was bound */
+    if (m_xasl != nullptr)
+      {
+	hjoin_rtf_unbind_clone (m_xasl, m_orig_xasl);
+      }
     if (!m_uses_xasl_clone)
       {
 	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression

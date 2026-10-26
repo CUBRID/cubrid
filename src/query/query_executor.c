@@ -6465,14 +6465,21 @@ qexec_gby_merge_open_parts (THREAD_ENTRY * thread_p, QFILE_LIST_ID * rows_like, 
 {
   int p;
 
+  /* each array zeroed as soon as it is had: when the other one fails, qexec_gby_merge_free_parts () walks this one */
   *rows = (QFILE_LIST_ID **) db_private_alloc (thread_p, n * sizeof (QFILE_LIST_ID *));
+  if (*rows != NULL)
+    {
+      memset (*rows, 0, n * sizeof (QFILE_LIST_ID *));
+    }
   *partials = (QFILE_LIST_ID **) db_private_alloc (thread_p, n * sizeof (QFILE_LIST_ID *));
+  if (*partials != NULL)
+    {
+      memset (*partials, 0, n * sizeof (QFILE_LIST_ID *));
+    }
   if (*rows == NULL || *partials == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  memset (*rows, 0, n * sizeof (QFILE_LIST_ID *));
-  memset (*partials, 0, n * sizeof (QFILE_LIST_ID *));
   for (p = 0; p < n; p++)
     {
       (*rows)[p] = qexec_gby_merge_open_list (thread_p, rows_like, query_id, false);
