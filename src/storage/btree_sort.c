@@ -394,7 +394,8 @@ STATIC_INLINE int btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf,
 					   RECDES * long_rec) __attribute__ ((ALWAYS_INLINE));
 static int btsort_merge_count_active_infiles (const BTSORT_PARAM * sort_param);
 static int btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles);
-static int btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half);
+static int btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half,
+					  bool put_to_caller);
 static int btsort_merge_in_section_size (int tot_buffers, int in_sections);
 static void btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx);
 static void btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx);
@@ -483,7 +484,6 @@ static BT_LOAD_PX_OUTCOME btsort_px_construct_index_leaf (THREAD_ENTRY * thread_
 
 static int btsort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor,
 				int file_pg_cnt_est, bool force_alloc, bool tde_encrypted);
-static int btsort_get_avg_numpages_of_nonempty_tmpfile (BTSORT_PARAM * sort_param);
 static int btsort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
 			      INT32 num_pages, char *area_start, bool tde_encrypted);
 static int btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
@@ -1147,8 +1147,6 @@ static int
 btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
   int error = NO_ERROR;
-  int file_pg_cnt_est;
-  int i;
 
   error =
     btsort_inphase_sort (thread_p, sort_param, sort_param->get_fn, sort_param->get_arg, &sort_param->total_numrecs);
@@ -1159,24 +1157,9 @@ btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
   if (sort_param->tot_runs > 1)
     {
-      assert (sort_param->tot_runs > 0);
-      /* Create output temporary files make file and temporary volume page count estimates */
-      file_pg_cnt_est = btsort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
-      file_pg_cnt_est = MAX (1, file_pg_cnt_est);
-
-      for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
-	{
-	  error =
-	    btsort_add_new_file (thread_p, &(sort_param->temp[i]), &sort_param->temp_cursor[i], file_pg_cnt_est, true,
-				 sort_param->tde_encrypted);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-
+      /* the merge passes create the output temp files they write */
       error = btsort_exphase_merge (thread_p, sort_param);
-    }				/* if (sort_param->tot_runs > 1) */
+    }
 
   return error;
 }
@@ -2349,13 +2332,14 @@ btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles)
  *   return: NO_ERROR, or error code
  *   sort_param(in): sort parameters
  *   out_half(in): index of the first output file
+ *   put_to_caller(in): true when the single run of this pass goes to put_fn, so no output file receives pages
  *
  * Note: Deals the runs of the input files to the output files as the pass will, which gives the pages each output
- *       file needs; an output file that has fewer gets them, and one that needs none is retired so that its pages can
- *       be reused.
+ *       file needs. An output file that needs pages is created if it does not exist yet, or grown to that size;
+ *       one that needs none is retired so that its pages can be reused.
  */
 static int
-btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half)
+btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half, bool put_to_caller)
 {
   int needed_pages[BTSORT_MAX_TOT_FILES] = { 0 };	/* pages each temp file receives in this pass */
   BTSORT_FILE_CONTENTS *contents;
@@ -2365,13 +2349,17 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
   int error_code = NO_ERROR;
 
   /* The k-th output run of the pass merges the k-th runs of the input files and goes to output file
-   * out_half + k % half_files; its size is estimated as the pages of those input runs */
-  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
+   * out_half + k % half_files; its size is estimated as the pages of those input runs. A pass whose records go to
+   * put_fn needs no output pages, so every output file is retired below */
+  if (!put_to_caller)
     {
-      contents = &sort_param->file_contents[i];
-      for (k = 0; k < btsort_run_count (contents); k++)
+      for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
 	{
-	  needed_pages[out_half + k % sort_param->half_files] += contents->num_pages[contents->first_run + k];
+	  contents = &sort_param->file_contents[i];
+	  for (k = 0; k < btsort_run_count (contents); k++)
+	    {
+	      needed_pages[out_half + k % sort_param->half_files] += contents->num_pages[contents->first_run + k];
+	    }
 	}
     }
 
@@ -2382,7 +2370,20 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
     {
       if (needed_pages[i] > 0)
 	{
-	  assert (!VFID_ISNULL (&sort_param->temp[i]));
+	  if (VFID_ISNULL (&sort_param->temp[i]))
+	    {
+	      /* the first pass that writes to the file creates it, with the pages it needs */
+	      error_code =
+		btsort_add_new_file (thread_p, &sort_param->temp[i], &sort_param->temp_cursor[i], needed_pages[i], true,
+				     sort_param->tde_encrypted);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+	      continue;
+	    }
+
 	  error_code = file_get_num_user_pages (thread_p, &sort_param->temp[i], &contains);
 	  if (error_code != NO_ERROR)
 	    {
@@ -3127,14 +3128,6 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   /* One pass per iteration, while more than one input file holds a run */
   while ((ctx.act_infiles = btsort_merge_count_active_infiles (sort_param)) > 1)
     {
-      /* Make sure the output files have the pages this pass will write */
-      error = btsort_merge_prepare_outfiles (thread_p, sort_param, ctx.out_half);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto bailout;
-	}
-
       /* Each pass reads and writes every temp file from its first page */
       for (i = 0; i < sort_param->tot_tempfiles; i++)
 	{
@@ -3155,6 +3148,15 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	{
 	  /* put_fn is performed by the parent thread; it reads the file that receives the result */
 	  sort_param->px_result_file_idx = ctx.out.file_idx;
+	}
+
+      /* Create or grow the output files for the runs of this pass; the final run of a serial merge goes to put_fn
+       * and takes no pages */
+      error = btsort_merge_prepare_outfiles (thread_p, sort_param, ctx.out_half, put_to_caller);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto bailout;
 	}
 
       /* Produce the runs of the pass */
@@ -3660,24 +3662,9 @@ static int
 btsort_merge_nruns (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
   int error = NO_ERROR;
-  int i = 0, idx = 0, file_pg_cnt_est;
+  int i;
 
-  /* Create output temporary files make file and temporary volume page count estimates */
-  file_pg_cnt_est = btsort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
-  file_pg_cnt_est = MAX (1, file_pg_cnt_est);
-
-  for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
-    {
-      error =
-	btsort_add_new_file (thread_p, &(sort_param->temp[i]), &sort_param->temp_cursor[i], file_pg_cnt_est, true,
-			     sort_param->tde_encrypted);
-      if (error != NO_ERROR)
-	{
-	  goto retire_all_on_error;
-	}
-    }
-
-  /* Merge the parallel processed results. */
+  /* Merge the parallel processed results; the merge passes create the output temp files they write. */
   error = btsort_exphase_merge (thread_p, sort_param);
 
   if (error != NO_ERROR)
@@ -4892,38 +4879,6 @@ btsort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR 
     }
 
   return NO_ERROR;
-}
-
-/*
- * btsort_get_avg_numpages_of_nonempty_tmpfile () - Return average number of pages
- *                                       currently occupied by nonempty
- *                                       temporary file
- *   return:
- *   sort_param(in): Sort paramater
- */
-static int
-btsort_get_avg_numpages_of_nonempty_tmpfile (BTSORT_PARAM * sort_param)
-{
-  int f;
-  int sum, i;
-  int nonempty_temp_file_num = 0;
-
-  sum = 0;
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
-    {
-      /* If the list is not empty */
-      f = sort_param->file_contents[i].first_run;
-      if (f > -1)
-	{
-	  nonempty_temp_file_num++;
-	  for (; f <= sort_param->file_contents[i].last_run; f++)
-	    {
-	      sum += sort_param->file_contents[i].num_pages[f];
-	    }
-	}
-    }
-
-  return (sum / MAX (1, nonempty_temp_file_num));
 }
 
 /*
