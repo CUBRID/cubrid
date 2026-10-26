@@ -11790,7 +11790,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 
       or_init (&buf, raw.data, raw.length);
       /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
-      att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
+      error = att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
     }
 
   if (oos_owned_buffer && raw.data != oos_scratch)
@@ -11798,7 +11798,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       recdes_free_data_area (&raw);
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
