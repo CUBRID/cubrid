@@ -70,7 +70,7 @@ static int au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH typ
 static void free_grant_list (AU_GRANT *grants);
 static void map_grant_list (AU_GRANT *grants, MOP grantor);
 
-static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
+static int find_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor);
 static void print_grant_entry (DB_SET *grants, int grant_index, FILE *fp);
 
 /*
@@ -458,7 +458,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 
       if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
-	  gindex = find_grant_entry (grants, class_mop, grantor);
+	  gindex = find_grant_entry (grants, DB_OBJECT_CLASS, class_mop, grantor);
 	  if (gindex == -1)
 	    {
 	      error = ER_AU_GRANT_NOT_FOUND;
@@ -641,7 +641,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 
       if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
-	  gindex = find_grant_entry (grants, obj_mop, grantor);
+	  gindex = find_grant_entry (grants, DB_OBJECT_PROCEDURE, obj_mop, grantor);
 	  if (gindex == -1)
 	    {
 	      error = ER_AU_GRANT_NOT_FOUND;
@@ -805,7 +805,7 @@ au_add_privileges (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, MOP grantor, 
       return error;
     }
 
-  gindex = find_grant_entry (grants, obj_mop, grantor);
+  gindex = find_grant_entry (grants, obj_type, obj_mop, grantor);
   if (gindex == -1)
     {
       current = AU_NO_AUTHORIZATION;
@@ -1172,6 +1172,7 @@ drop_grant_entry (DB_SET *grants, int index)
  *                     a grant	from a particular user on a particular database object.
  *   return: sequence index to grant entry
  *   grants(in): sequence of grant information
+ *   obj_type(in): object type of the entry
  *   obj_mop(in): database object to look for
  *   grantor(in): user who made the grant
  *
@@ -1179,7 +1180,7 @@ drop_grant_entry (DB_SET *grants, int index)
  *       is found.  If the grant was not found it returns -1.
  */
 static int
-find_grant_entry (DB_SET *grants, MOP obj_mop, MOP grantor)
+find_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor)
 {
   DB_VALUE element;
   int i, gsize, position;
@@ -1188,6 +1189,12 @@ find_grant_entry (DB_SET *grants, MOP obj_mop, MOP grantor)
   gsize = set_size (grants);
   for (i = 0; i < gsize && position == -1; i += GRANT_ENTRY_LENGTH)
     {
+      set_get_element (grants, GRANT_ENTRY_TYPE (i), &element);
+      if (db_get_int (&element) != obj_type)
+	{
+	  continue;
+	}
+
       set_get_element (grants, GRANT_ENTRY_CLASS (i), &element);
       if (db_get_object (&element) == obj_mop)
 	{
