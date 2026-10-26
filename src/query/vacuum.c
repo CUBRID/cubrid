@@ -1561,6 +1561,11 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
       /* Vacuum page. */
       error_code =
 	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
+      if (error_code == ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  /* Keep the incomplete block retryable in both debug and release builds. */
+	  return error_code;
+	}
       if (error_code != NO_ERROR)
 	{
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
@@ -1789,6 +1794,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (error_code == ER_INTERRUPTED)
 	    {
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
+	  if (error_code == ER_OUT_OF_VIRTUAL_MEMORY)
+	    {
+	      /* The current sysop was aborted. Leave the block incomplete so this record can be retried. */
 	      goto end;
 	    }
 	  if (error_code != NO_ERROR)
@@ -3745,7 +3755,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
     {
-      vacuum_check_shutdown_interruption (thread_p, error_code);
+      if (error_code != ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	}
       goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
@@ -3907,20 +3920,20 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
     }
   else
     {
-      /* We expect that worker job is abandoned during shutdown. But all other cases are error cases. */
+      /* Shutdown and allocation failures leave the block available for a later retry. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
 
 #if !defined (NDEBUG)
-      /* Interrupting jobs without shutdown is unacceptable. */
-      assert (thread_p->shutdown);
-      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested ());
+      /* Other reasons for abandoning a worker job remain unexpected. */
+      assert (thread_p->shutdown || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY);
+      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested () || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY);
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
 	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
-      assert (er_errid () == ER_INTERRUPTED);
+      assert (er_errid () == ER_INTERRUPTED || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY);
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */

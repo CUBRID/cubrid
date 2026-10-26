@@ -29471,8 +29471,10 @@ heap_recdes_has_valid_header (const RECDES * record)
     && OR_HEADER_SIZE (record->data) <= record->length;
 }
 
+/* *INDENT-OFF* */
 int
 heap_recdes_get_oos_refs (const RECDES * recdes, OOS_REF_VECTOR & oos_refs)
+try
 {
   using namespace oos_log;
 
@@ -29550,6 +29552,14 @@ heap_recdes_get_oos_refs (const RECDES * recdes, OOS_REF_VECTOR & oos_refs)
   assert (false && "unreachable: there must be last element");
   return ER_FAILED;
 }
+catch (const std::bad_alloc &)
+{
+  /* Both reference growth and debug formatting must return through the caller's cleanup path. */
+  oos_refs.clear ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (oos_chain_ref));
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+}
+/* *INDENT-ON* */
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 /*

@@ -453,7 +453,10 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
   int error_code = heap_recdes_get_oos_refs (record, oos_refs);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
+      if (error_code != ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  assert_release (false);
+	}
       return error_code;
     }
 

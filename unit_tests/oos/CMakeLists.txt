@@ -37,6 +37,7 @@ set(SA_MODE_TESTS
   test_oos_bestspace
   test_oos_growth_sweep
   test_oos_record_flags
+  test_oos_reference_errors
   test_byte_span_writer
   test_oos_tde_gate
   test_oos_workspace
@@ -162,6 +163,9 @@ add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 add_test(NAME test_oos_growth_sweep COMMAND test_oos_growth_sweep)
 # pure-logic test for separating record metadata from MVCC lifecycle flags.
 add_test(NAME test_oos_record_flags COMMAND test_oos_record_flags)
+# Allocation failures are simulated within this binary; it needs no database fixture.
+add_test(NAME test_oos_reference_errors COMMAND test_oos_reference_errors)
+set_tests_properties(test_oos_reference_errors PROPERTIES TIMEOUT 30)
 # pure-logic test for the bounded writer used by oos_read; no DB fixture.
 add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
 # pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
