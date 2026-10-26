@@ -25894,9 +25894,23 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (PT_IS_SPEC_FLAG_SET (node, PT_SPEC_FLAG_MVCC_COND_REEV))
 	    {
 	      /* set the position in SELECT list */
+	      assert (j < delete_->num_reev_classes);
+	      if (j >= delete_->num_reev_classes)
+		{
+		  break;
+		}
 	      delete_->mvcc_reev_classes[j++] = i;
 	    }
 	}
+
+      /* The count above was taken over the DELETE statement's spec list, but only a class that owns an
+       * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+       * (an outer-joined table none of whose columns the outer query reads) leaves an entry unfilled, so the
+       * executor must be told how many entries this loop actually wrote.  Dropping every one of them would
+       * tell it this statement reads no row of its own; the target class always owns a pair, so no shape
+       * has been found that does. */
+      assert (j > 0 || delete_->num_reev_classes == 0);
+      delete_->num_reev_classes = j;
 
       /* OID of the user who is creating this XASL */
       if ((oid = ws_identifier (db_get_user ())) != NULL)
@@ -26014,12 +26028,24 @@ pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
     {
       level++;
     }
-  else if (tree->node_type == PT_SPEC
-	   && (tree->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)) && level > 1)
+  else if (tree->node_type == PT_SPEC && level > 1)
     {
+      /* Any spec below a subquery, flagged or not.  Reevaluation flags are only ever set on the
+       * statement's own spec list (pt_mvcc_flag_specs_cond_reev walks `from`), so a spec down here
+       * can never carry one -- testing for the flag would make this unreachable.
+       *
+       * Do not try to spare the uncorrelated ones.  It looks safe -- a subquery that does not read
+       * the current row is evaluated once and its result stands for the statement -- and it does
+       * open the constant-scalar-assignment case.  But x18, x22 and r5, all WHERE k IN (SELECT ...),
+       * fail with it: the materialized list lives in the select's scan state and the force phase
+       * cannot re-check the predicate against it.  Correlation is not the property that decides. */
       level = -1;
       *continue_walk = PT_STOP_WALK;
     }
+
+  /* the walk carries the level through arg; without this the local copy is discarded on
+   * every node, level never leaves 0, and the level > 1 test above can never be reached */
+  *(int *) arg = level;
 
   return tree;
 }
@@ -26048,6 +26074,8 @@ pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg
     {
       level--;
     }
+
+  *(int *) arg = level;
 
   return tree;
 }
@@ -26846,9 +26874,22 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	    }
 
 	  /* set the position in SELECT list */
+	  assert (cl < update->num_reev_classes);
+	  if (cl >= update->num_reev_classes)
+	    {
+	      break;
+	    }
 	  update->mvcc_reev_classes[cl++] = cls_idx;
 	}
     }
+
+  /* The count above was taken over the UPDATE statement's spec list, but only a class that owns an
+   * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+   * leaves an entry unfilled, so the executor must be told how many entries this loop actually wrote.
+   * As on the DELETE side, dropping every flagged class would tell the executor this statement reads no
+   * row of its own; the target class always owns a pair, so no shape has been found that does. */
+  assert (cl > 0 || update->num_reev_classes == 0);
+  update->num_reev_classes = cl;
 
   /* fill in XASL cache related information */
   /* OID of the user who is creating this XASL */

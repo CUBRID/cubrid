@@ -13955,15 +13955,29 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
   cls_oid = &mvcc_cond_reeval->cls_oid;
   if (!is_upddel)
     {
-      /* the class is different than the class to be updated/deleted, so use the latest version of row */
+      /* Not the class being updated/deleted: re-read its own row out of its own heap.  Evaluating this
+       * class's filters against the target's record instead is what let a join DELETE act on rows whose
+       * predicate no longer held.  The read carries no snapshot, so a version a concurrent transaction
+       * deleted still reads; a failure here means the slot itself is gone. */
       recdesp = &temp_recdes;
-      oid_inst = oid;
-      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &scan_cache->node.hfid) != NO_ERROR)
+      oid_inst = mvcc_cond_reeval->inst_oid;
+      if (oid_inst == NULL || OID_ISNULL (oid_inst))
+	{
+	  /* the plan flagged this class for reevaluation but the scan bound no row of it to re-read.  The
+	   * caller asserts an error is set on V_ERROR, so say what went wrong rather than return silently. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+
+      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &mvcc_cond_reeval->cls_hfid)
+	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
 	}
       scan_cache_inited = true;
+
       scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
       if (scan_code != S_SUCCESS)
 	{
