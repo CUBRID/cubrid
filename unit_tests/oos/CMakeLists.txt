@@ -79,6 +79,9 @@ endforeach()
 
 # =============================================================================
 # CTest fixture: auto-create unittestdb before OOS tests, delete it after
+#
+# Every fixture setup and cleanup below reads the shared databases.txt to decide ownership while
+# createdb/deletedb rewrite it in place, so they take one registry lock instead of running in parallel.
 # =============================================================================
 add_test(NAME oos_setup_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -87,7 +90,9 @@ add_test(NAME oos_setup_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_unittestdb.sh"
 )
-set_tests_properties(oos_setup_db PROPERTIES FIXTURES_SETUP OOS_DB)
+set_tests_properties(oos_setup_db
+  PROPERTIES FIXTURES_SETUP OOS_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY
+)
 
 add_test(NAME oos_cleanup_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -96,7 +101,9 @@ add_test(NAME oos_cleanup_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_unittestdb.sh"
 )
-set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
+set_tests_properties(oos_cleanup_db
+  PROPERTIES FIXTURES_CLEANUP OOS_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 30
+)
 
 # Script lifecycle regression uses a private sandbox utility, without a database fixture.
 add_test(NAME test_oos_fixture_lifecycle
@@ -119,7 +126,9 @@ add_test(NAME oos_setup_no_logging_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosnologdb
 )
-set_tests_properties(oos_setup_no_logging_db PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB TIMEOUT 180)
+set_tests_properties(oos_setup_no_logging_db
+  PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
 
 add_test(NAME oos_cleanup_no_logging_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -128,7 +137,9 @@ add_test(NAME oos_cleanup_no_logging_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosnologdb
 )
-set_tests_properties(oos_cleanup_no_logging_db PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB TIMEOUT 60)
+set_tests_properties(oos_cleanup_no_logging_db
+  PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
 
 add_test(NAME oos_setup_recovery_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -137,7 +148,9 @@ add_test(NAME oos_setup_recovery_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosrecoverydb
 )
-set_tests_properties(oos_setup_recovery_db PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB TIMEOUT 180)
+set_tests_properties(oos_setup_recovery_db
+  PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
 
 add_test(NAME oos_cleanup_recovery_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -146,7 +159,9 @@ add_test(NAME oos_cleanup_recovery_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosrecoverydb
 )
-set_tests_properties(oos_cleanup_recovery_db PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB TIMEOUT 60)
+set_tests_properties(oos_cleanup_recovery_db
+  PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
 
 # =============================================================================
 # Register SA_MODE tests

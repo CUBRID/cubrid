@@ -242,7 +242,8 @@ test_isolated_preexisting ()
   if fixture setup_isolated_db.sh oosnologdb; then
     fail 'isolated setup replaced an unowned database'
   fi
-  grep -q oosnologdb "$OOS_FIXTURE_SANDBOX/setup_isolated_db.sh.log" || fail 'isolated setup refusal did not name the database'
+  grep -q oosnologdb "$OOS_FIXTURE_SANDBOX/setup_isolated_db.sh.log" \
+    || fail 'isolated setup refusal did not name the database'
   fixture cleanup_isolated_db.sh oosnologdb || fail 'isolated cleanup rejected an unowned database'
   [ ! -s "$OOS_FIXTURE_SANDBOX/commands" ] || fail 'unowned database received a native lifecycle command'
   cmp -s "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/original.data" || fail 'unowned data changed'
@@ -260,6 +261,8 @@ test_isolated_owned_recreate ()
   [ "$(cat "$volume")" = 'fixture database bytes' ] || fail 'isolated setup kept the previous run'
   fixture cleanup_isolated_db.sh oosrecoverydb || fail 'owned isolated cleanup failed'
   [ ! -e "$volume" ] || fail 'owned isolated database survived successful deletion'
+  [ ! -e "$CUBRID_DATABASES/.oos-oosrecoverydb.owner" ] \
+    || fail 'isolated cleanup kept the receipt of a deleted database'
   check_unrelated_registration
   cp "$OOS_FIXTURE_SANDBOX/commands" "$OOS_FIXTURE_SANDBOX/first-cleanup.commands"
   fixture cleanup_isolated_db.sh oosrecoverydb || fail 'repeated isolated cleanup failed'
@@ -288,11 +291,17 @@ test_isolated_replaced_volume ()
   cmp -s "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/replacement.data" || fail 'replacement data changed'
   cmp -s "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/replacement.registry" \
     || fail 'replacement registry changed'
+  check_conf
 }
 
 test_isolated_failed_creation ()
 {
   new_case isolated-failed-creation
+  fixture setup_isolated_db.sh oosnologdb || fail 'initial isolated creation failed'
+  # As for the shared fixture: a vanished registration leaves a stale receipt, and a failed create
+  # may leave exactly the old row and inode behind. That is still not ownership.
+  awk '$1 != "oosnologdb"' "$CUBRID_DATABASES/databases.txt" > "$CUBRID_DATABASES/remaining"
+  mv "$CUBRID_DATABASES/remaining" "$CUBRID_DATABASES/databases.txt"
   touch "$OOS_FIXTURE_SANDBOX/fail-create"
   if fixture setup_isolated_db.sh oosnologdb; then
     fail 'injected isolated creation failure was hidden'
@@ -307,16 +316,45 @@ test_isolated_failed_creation ()
   [ -f "$CUBRID_DATABASES/oosnologdb/oosnologdb" ] || fail 'failed isolated creation lost partial data'
   cmp -s "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/failed.registry" \
     || fail 'failed isolated creation lost its registration'
+  check_conf
+}
+
+test_isolated_delete_retry ()
+{
+  new_case isolated-delete-retry
+  local volume="$CUBRID_DATABASES/oosnologdb/oosnologdb"
+  fixture setup_isolated_db.sh oosnologdb || fail 'isolated creation failed'
+  cp "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/owned.registry"
+  cp "$volume" "$OOS_FIXTURE_SANDBOX/owned.data"
+  touch "$OOS_FIXTURE_SANDBOX/fail-delete"
+  if fixture cleanup_isolated_db.sh oosnologdb; then
+    fail 'injected isolated deletion failure was hidden'
+  else
+    [ "$?" -eq 29 ] || fail 'native isolated deletion failure status changed'
+  fi
+  cmp -s "$volume" "$OOS_FIXTURE_SANDBOX/owned.data" || fail 'failed isolated deletion lost data'
+  cmp -s "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/owned.registry" \
+    || fail 'failed isolated deletion lost its registration'
+
+  rm "$OOS_FIXTURE_SANDBOX/fail-delete"
+  fixture cleanup_isolated_db.sh oosnologdb || fail 'isolated deletion retry failed'
+  [ ! -e "$volume" ] || fail 'isolated deletion retry lost ownership authority'
+  [ ! -e "$CUBRID_DATABASES/.oos-oosnologdb.owner" ] \
+    || fail 'isolated cleanup kept the receipt of a deleted database'
+  check_unrelated_registration
+  check_conf
 }
 
 if [ "$#" -eq 0 ]; then
   set -- preexisting replaced_volume owned_retry changed_registration failed_creation delete_retry \
-    isolated_preexisting isolated_owned_recreate isolated_replaced_volume isolated_failed_creation
+    isolated_preexisting isolated_owned_recreate isolated_replaced_volume isolated_failed_creation \
+    isolated_delete_retry
 fi
 for test_name in "$@"; do
   case "$test_name" in
     preexisting|replaced_volume|owned_retry|changed_registration|failed_creation|delete_retry) ;;
     isolated_preexisting|isolated_owned_recreate|isolated_replaced_volume|isolated_failed_creation) ;;
+    isolated_delete_retry) ;;
     *) fail "unknown case: $test_name" ;;
   esac
   "test_$test_name"

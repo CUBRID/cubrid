@@ -41,7 +41,8 @@ db_dir=$(oos_database_dir "$db_name")
 if oos_database_exists "$db_name"; then
   if ! oos_database_owned "$db_name"; then
     printf 'refusing to recreate database %s: this fixture did not create it\n' "$db_name" >&2
-    printf 'if it is a leftover test database, delete it with: cubrid deletedb %s\n' "$db_name" >&2
+    printf 'if it is a leftover test database, remove it with: cubrid server stop %s; cubrid deletedb %s\n' \
+      "$db_name" "$db_name" >&2
     exit 1
   fi
   cubrid server stop "$db_name" 2>/dev/null || true
