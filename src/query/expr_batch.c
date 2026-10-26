@@ -4104,8 +4104,8 @@ eb_raw_kid_or (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   return NO_ERROR;
 }
 
-/* a leaf comparing two columns of the row, as the fast kernel compares two values of their one type; a NULL on
- * either side is UNKNOWN */
+/* a leaf comparing two columns of the row, as the fast kernel compares two values of their one type
+ * (EXPR_PRED_CMP_LEAF in expr_compile.c: the operator itself on the two values); a NULL on either side is UNKNOWN */
 static int
 eb_raw_kid_cols (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 {
@@ -4134,31 +4134,53 @@ eb_raw_kid_cols (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * lea
       if (leaf->etype == EB_I64)
 	{
 	  c = (ai < bi) ? -1 : (ai > bi);
+	  switch (leaf->rel_op)
+	    {
+	    case R_EQ:
+	      keep = (c == 0);
+	      break;
+	    case R_NE:
+	      keep = (c != 0);
+	      break;
+	    case R_LT:
+	      keep = (c < 0);
+	      break;
+	    case R_LE:
+	      keep = (c <= 0);
+	      break;
+	    case R_GT:
+	      keep = (c > 0);
+	      break;
+	    default:
+	      keep = (c >= 0);
+	      break;
+	    }
 	}
       else
 	{
-	  c = (ad < bd) ? -1 : (ad > bd);
-	}
-      switch (leaf->rel_op)
-	{
-	case R_EQ:
-	  keep = (c == 0);
-	  break;
-	case R_NE:
-	  keep = (c != 0);
-	  break;
-	case R_LT:
-	  keep = (c < 0);
-	  break;
-	case R_LE:
-	  keep = (c <= 0);
-	  break;
-	case R_GT:
-	  keep = (c > 0);
-	  break;
-	default:
-	  keep = (c >= 0);
-	  break;
+	  /* the operator on the two doubles, not a three-way order: a NaN on either side is neither equal nor ordered,
+	   * so only "<>" holds, as for the fast kernel */
+	  switch (leaf->rel_op)
+	    {
+	    case R_EQ:
+	      keep = (ad == bd);
+	      break;
+	    case R_NE:
+	      keep = (ad != bd);
+	      break;
+	    case R_LT:
+	      keep = (ad < bd);
+	      break;
+	    case R_LE:
+	      keep = (ad <= bd);
+	      break;
+	    case R_GT:
+	      keep = (ad > bd);
+	      break;
+	    default:
+	      keep = (ad >= bd);
+	      break;
+	    }
 	}
       if (keep)
 	{
