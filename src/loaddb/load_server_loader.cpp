@@ -995,33 +995,7 @@ namespace cubload
 	    return error_code;
 	  }
 
-	/*
-	 * The element converters build the literal's natural type and look at no target
-	 * domain, which is what a collection with no single element domain needs. When the
-	 * collection does have one, INSERT coerces the element into it - {B'1010'} goes
-	 * into a SET(VARCHAR) as {'a'} - so do the same here.
-	 *
-	 * A cast that does not work leaves the value alone on purpose: set_add_element ()
-	 * then refuses it and reports what it refused.
-	 */
-	if (domain.setdomain != NULL && TP_DOMAIN_TYPE (domain.setdomain) != db_value_type (&db_val))
-	  {
-	    db_value cast_val;
-
-	    db_make_null (&cast_val);
-
-	    if (db_value_domain_init (&cast_val, TP_DOMAIN_TYPE (domain.setdomain), domain.setdomain->precision,
-				      domain.setdomain->scale) == NO_ERROR
-		&& tp_value_cast (&db_val, &cast_val, domain.setdomain, false) == DOMAIN_COMPATIBLE)
-	      {
-		db_value_clear (&db_val);
-		db_val = cast_val;
-	      }
-	    else
-	      {
-		db_value_clear (&cast_val);
-	      }
-	  }
+	cast_elem_to_set_domain (domain.setdomain, &db_val);
 
 	// add element to the set (db_val will be cloned, so it is safe to reuse same variable)
 	error_code = set_add_element (set, &db_val);

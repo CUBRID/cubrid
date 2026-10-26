@@ -362,6 +362,51 @@ namespace cubload
     return c_func;
   }
 
+  /*
+   * cast_elem_to_set_domain - coerce an element into the collection's element domain
+   *    return: void
+   *    setdomain(in): element domain of the collection being built, or NULL when it has none
+   *    val(in/out): the element, converted to the literal's natural type
+   * Note:
+   *    The element converters build the literal's natural type and look at no target
+   *    domain, which is what a collection with no single element domain needs. When the
+   *    collection does have one, INSERT coerces the element into it - {B'1010'} goes into
+   *    a SET(VARCHAR) as {'a'} - so do the same here, or a bit string, a date, an amount
+   *    and a plain number would all be refused where INSERT takes them.
+   *
+   *    A cast that does not work leaves the value alone on purpose: set_add_element ()
+   *    then refuses it and reports what it refused, which is the message the loader has
+   *    always printed for an element the collection cannot hold.
+   */
+  void
+  cast_elem_to_set_domain (const tp_domain *setdomain, db_value *val)
+  {
+    db_value cast_val;
+
+    if (setdomain == NULL || TP_DOMAIN_TYPE (setdomain) == db_value_type (val))
+      {
+	return;
+      }
+
+    db_make_null (&cast_val);
+
+    if (db_value_domain_init (&cast_val, TP_DOMAIN_TYPE (setdomain), setdomain->precision,
+			      setdomain->scale) != NO_ERROR)
+      {
+	db_value_clear (&cast_val);
+	return;
+      }
+
+    if (tp_value_cast (val, &cast_val, const_cast<tp_domain *> (setdomain), false) != DOMAIN_COMPATIBLE)
+      {
+	db_value_clear (&cast_val);
+	return;
+      }
+
+    db_value_clear (val);
+    *val = cast_val;
+  }
+
   int
   mismatch (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {

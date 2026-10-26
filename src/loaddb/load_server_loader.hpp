@@ -90,7 +90,7 @@ namespace cubload
       int process_constant (constant_type *cons, const attribute &attr);
 
       /*
-       * heap_value_sink - the heap attribute info takes the value.
+       * sink_heap - the heap attribute info takes the value.
        *
        * The server side's one destination for a converted value, named to
        * match the two the standalone loader has (ldr_sink_instance () and

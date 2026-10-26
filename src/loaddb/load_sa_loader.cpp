@@ -512,7 +512,6 @@ static DB_OBJLIST *internal_classes = NULL;
  *  this code will probably need to change, too.
  */
 
-static DB_VALUE ldr_short_tmpl;
 static DB_VALUE ldr_int_tmpl;
 static DB_VALUE ldr_bigint_tmpl;
 static DB_VALUE ldr_float_tmpl;
@@ -633,7 +632,6 @@ static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_AT
 static int ldr_generic (LDR_CONTEXT *context, DB_VALUE *value);
 static int ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_type type,
 				   LDR_ATTDESC *attdesc, DB_VALUE *val);
-static void ldr_cast_elem_to_set_domain (LDR_CONTEXT *context, DB_VALUE *val);
 static int ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
 			    data_type type);
 static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
@@ -2160,7 +2158,12 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	default:
 	  CHECK_ERR (err, ldr_convert_elem_value (context, str, len, type, &context->attrs[context->next_attr],
 						  &tempval));
-	  ldr_cast_elem_to_set_domain (context, &tempval);
+	  /*
+	   * Do not use GET_DOMAIN (): this only ever runs on a collection element,
+	   * and the macro's other branch reads attrs[next_attr].att->domain.
+	   * On a %constructor line's argument that att is NULL.
+	   */
+	  cubload::cast_elem_to_set_domain (context->set_domain, &tempval);
 	  break;
 	}
       if ((err = set_add_element (context->collection, &tempval)) == ER_SET_DOMAIN_CONFLICT)
@@ -2449,57 +2452,6 @@ ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_
 
 error_exit:
   return err;
-}
-
-/*
- * ldr_cast_elem_to_set_domain - coerce an element into the collection's element domain
- *    return: void
- *    context(in): loader context, for the set domain of the collection being built
- *    val(in/out): the element, converted to the literal's natural type
- * Note:
- *    The element converters build the literal's natural type and look at no target
- *    domain, which is what a collection with no single element domain needs. When the
- *    collection does have one, INSERT coerces the element into it - {B'1010'} goes into
- *    a SET(VARCHAR) as {'a'} - so do the same here, or a bit string, a date, an amount
- *    and a plain number would all be refused where INSERT takes them.
- *
- *    A cast that does not work leaves the value alone on purpose: set_add_element ()
- *    then refuses it and reports what it refused, which is the message the loader has
- *    always printed for an element the collection cannot hold.
- */
-static void
-ldr_cast_elem_to_set_domain (LDR_CONTEXT *context, DB_VALUE *val)
-{
-  TP_DOMAIN *domain;
-  DB_VALUE cast_val;
-  /*
-   * Do not use GET_DOMAIN (): this only ever runs on a collection element,
-   * and the macro's other branch reads attrs[next_attr].att->domain.
-   * On a %constructor line's argument that att is NULL.
-   */
-  domain = context->set_domain;
-
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) == db_value_type (val))
-    {
-      return;
-    }
-
-  db_make_null (&cast_val);
-
-  if (db_value_domain_init (&cast_val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale) != NO_ERROR)
-    {
-      db_value_clear (&cast_val);
-      return;
-    }
-
-  if (tp_value_cast (val, &cast_val, domain, false) != DOMAIN_COMPATIBLE)
-    {
-      db_value_clear (&cast_val);
-      return;
-    }
-
-  db_value_clear (val);
-  *val = cast_val;
 }
 
 /*
@@ -5015,24 +4967,12 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       break;
 
     case DB_TYPE_BIGINT:
-      ldr_store_convert (attdesc, LDR_INT, true, true);
-      break;
-
     case DB_TYPE_INTEGER:
-      ldr_store_convert (attdesc, LDR_INT, true, true);
-      break;
-
     case DB_TYPE_SHORT:
       ldr_store_convert (attdesc, LDR_INT, true, true);
       break;
 
     case DB_TYPE_FLOAT:
-      ldr_store_convert (attdesc, LDR_INT, true, true);
-      ldr_store_convert (attdesc, LDR_NUMERIC, true, true);
-      ldr_store_convert (attdesc, LDR_DOUBLE, true, true);
-      ldr_store_convert (attdesc, LDR_FLOAT, true, true);
-      break;
-
     case DB_TYPE_DOUBLE:
       ldr_store_convert (attdesc, LDR_INT, true, true);
       ldr_store_convert (attdesc, LDR_NUMERIC, true, true);
@@ -5107,8 +5047,10 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
     case DB_TYPE_MONETARY:
       ldr_store_convert (attdesc, LDR_MONETARY, true, true);
       break;
+
     case DB_TYPE_JSON:
-      ldr_store_cast (attdesc, LDR_STR, false, false);
+      // Should be ldr_store_cast (attdesc, LDR_STR, false, false);
+      // However, since it is already the default, we leave this trace as a comment.
       break;
 
     default:
@@ -5837,7 +5779,6 @@ ldr_init_loader (LDR_CONTEXT *context)
    * Optimization to avoid calling db_value_domain_init all of the time
    * during loading; we can simply copy these templates much more cheaply.
    */
-  db_make_short (&ldr_short_tmpl, 0);
   db_make_int (&ldr_int_tmpl, 0);
   db_make_bigint (&ldr_bigint_tmpl, 0);
   db_make_float (&ldr_float_tmpl, (float) 0.0);

@@ -35,6 +35,7 @@ namespace cubload
 
   conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
   conv_func &get_elem_conv_func (const data_type ldr_type);
+  void cast_elem_to_set_domain (const tp_domain *setdomain, db_value *val);
 
 } // namespace cubload
 
