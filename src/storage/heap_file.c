@@ -10810,7 +10810,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 	       * of the object
 	       */
 	      attrepr = ((value->read_attrepr != NULL) ? value->read_attrepr : value->last_attrepr);
-	      if (attrepr != NULL)
+	      if (attrepr != NULL || IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
 		{
 		  if (pr_clear_value (&value->dbvalue) != NO_ERROR)
 		    {
