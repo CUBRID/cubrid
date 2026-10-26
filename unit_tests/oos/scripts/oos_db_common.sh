@@ -52,6 +52,34 @@ oos_database_exists ()
   awk -v db="$db_name" '$1 == db { found = 1 } END { exit found ? 0 : 1 }' "$databases_txt"
 }
 
+oos_unittestdb_receipt ()
+{
+  printf '%s/.oos-unittestdb.owner\n' "$CUBRID_DATABASES"
+}
+
+oos_unittestdb_identity ()
+{
+  local databases_txt="$CUBRID_DATABASES/databases.txt"
+  local registration
+  local db_name
+  local data_dir
+  local _registry_tail
+  local volume_identity
+
+  [ -f "$databases_txt" ] || return 1
+  # Ambiguous registrations must never grant deletion authority.
+  registration=$(awk -v db="$OOS_UNITTESTDB_NAME" '
+    $1 == db { registration = $0; count++ }
+    END { if (count != 1) exit 1; print registration }
+  ' "$databases_txt") || return 1
+  read -r db_name data_dir _registry_tail <<< "$registration"
+  [ -n "$data_dir" ] && [ -f "$data_dir/$db_name" ] || return 1
+  # The row alone cannot distinguish a database recreated at the same path. The main
+  # volume's identity survives ordinary writes but changes when that volume is replaced.
+  volume_identity=$(stat -Lc '%d:%i' -- "$data_dir/$db_name" 2>/dev/null) || return 1
+  printf '%s\n%s\n' "$registration" "$volume_identity"
+}
+
 oos_remove_fixture_sections ()
 {
   local conf="$1"

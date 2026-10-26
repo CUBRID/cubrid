@@ -48,9 +48,20 @@ if oos_database_exists "$OOS_UNITTESTDB_NAME"; then
 fi
 
 mkdir -p "$CUBRID_DATABASES"
+receipt=$(oos_unittestdb_receipt)
+# A receipt for a vanished database cannot authorize a new, possibly failed creation.
+rm -f "$receipt"
 cp "$conf" "$backup"
 oos_append_fixture_section "$conf"
 
 mkdir -p "$(oos_database_dir "$OOS_UNITTESTDB_NAME")"
 cubrid createdb --db-volume-size=20M --log-volume-size=20M "$OOS_UNITTESTDB_NAME" en_US.utf8 \
   -F "$(oos_database_dir "$OOS_UNITTESTDB_NAME")"
+
+receipt_tmp=$(mktemp "${receipt}.XXXXXX")
+if ! oos_unittestdb_identity > "$receipt_tmp"; then
+  rm -f "$receipt_tmp"
+  printf 'cannot identify created fixture database %s\n' "$OOS_UNITTESTDB_NAME" >&2
+  exit 1
+fi
+mv "$receipt_tmp" "$receipt"

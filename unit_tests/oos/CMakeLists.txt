@@ -89,6 +89,12 @@ add_test(NAME oos_cleanup_db
 )
 set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
 
+# Script lifecycle regression uses a private sandbox utility, without a database fixture.
+add_test(NAME test_oos_fixture_lifecycle
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_unittestdb_lifecycle.sh"
+)
+set_tests_properties(test_oos_fixture_lifecycle PROPERTIES TIMEOUT 30)
+
 # =============================================================================
 # CTest fixtures: databases owned by a single binary
 #
