@@ -1625,6 +1625,48 @@ TEST_CASE ("radix sort works in the memory its caller sized", "[radix_sort]")
 	  }
       }
   }
+
+  SECTION ("a run takes one record at the least, the placeholder of a key wider than the buffer")
+  {
+    /* a sort buffer of three 16KB pages, aligned as the sorter expects, and a BIT key of 50,000 bytes */
+    std::vector<double> buffer (3 * 16384 / sizeof (double));
+    char *base = (char *) buffer.data ();
+    char *top = base + buffer.size () * sizeof (double);
+    TP_DOMAIN domain = bit_domain (400000, false);
+    RADIX_KEY_ENCODING encoding = bit_encoding (400000, false);
+    /* the placeholder of a record of the multipage file: a header and the VPID of the record */
+    const int placeholder = BTSORT_REC_HEADER_SIZE + (int) sizeof (VPID);
+    BTSORT_RUN run;
+    char *rec;
+    int room = 0;
+
+    REQUIRE (encoding.min_key_length > top - base);
+
+    BTSORT_RUN_INIT (&run, base, top, NULL, NULL);
+    btsort_radix_sorter.init (&run, &domain);
+
+    /* the empty run offers the placeholder a place, so the loader learns the key is wider than the buffer */
+    rec = btsort_radix_sorter.reserve (&run, placeholder, &room);
+    REQUIRE (rec == base);
+    REQUIRE (room == placeholder);
+
+    memset (rec, 0, (size_t) placeholder);
+    BTSORT_REC_HDR (rec)->length = placeholder;
+    BTSORT_REC_HDR (rec)->is_bigone = 1;
+    btsort_radix_sorter.accept (&run, placeholder);
+    REQUIRE (run.numrecs == 1);
+
+    /* and the run is full at the one record its stack is sized for */
+    REQUIRE (btsort_radix_sorter.reserve (&run, placeholder, &room) == NULL);
+    REQUIRE (room == 0);
+
+    REQUIRE (btsort_radix_sorter.sort (NULL, &run) == NO_ERROR);
+    REQUIRE (btsort_radix_sorter.next (&run) == rec);
+    REQUIRE (btsort_radix_sorter.next (&run) == NULL);
+
+    btsort_radix_sorter.reset (&run);
+    REQUIRE (btsort_radix_sorter.reserve (&run, placeholder, &room) == base);
+  }
 }
 
 /* the key table itself: what it accepts, what it refuses, and the widths it hands out */
