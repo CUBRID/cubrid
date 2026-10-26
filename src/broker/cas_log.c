@@ -1692,7 +1692,7 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
     }
 
   result = nmemb;
-  buf_overflow = (lfd->buf_used + (int) n > lfd->buf_capacity);
+  buf_overflow = ((INT64) lfd->buf_used + (INT64) n > (INT64) lfd->buf_capacity);
   oversized_log_data = ((INT64) n > (INT64) lfd->buf_capacity);
 
   CAS_LOG_WRITING_BEGIN ();
@@ -1874,6 +1874,7 @@ cas_fopen (CAS_LOG_FD * lfd, const char *path, const char *mode)
   lfd->file_buf_base = end;
   lfd->buf_used = 0;
   lfd->buf_flushed = 0;
+  CAS_LOG_COMPILER_BARRIER ();
   lfd->fd = fd;			/* fd last: no valid fd is visible with stale offsets */
 
   return lfd;
@@ -1932,6 +1933,7 @@ cas_fclose (CAS_LOG_FD * lfd)
     }
   fd = lfd->fd;
   lfd->fd = -1;			/* fd first: the handler must not write to a closed descriptor */
+  CAS_LOG_COMPILER_BARRIER ();
   lfd->buf_used = 0;
   lfd->buf_flushed = 0;
   lfd->file_buf_base = 0;

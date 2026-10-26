@@ -64,7 +64,7 @@
 #define IS_PWD_NEED_PASSWORD(pwd_info_ptr) ((EN_ADD_PWD_STRING)(((pwd_info_ptr)[1] >> 28) & 0x03))
 #define GET_END_PWD_OFFSET(pwd_info_ptr)   ((pwd_info_ptr)[0] + ((pwd_info_ptr)[1] & MAX_PWD_LENGTH))
 
-static void write_replace_newline (void *log_fd, const char *str,
+static void write_replace_newline (void *log_fd, const char *str, int str_len,
 				   void (*write_func) (void *log_fd, const char *ptr, int len));
 
 class hide_password
@@ -212,8 +212,8 @@ hide_password::get_token (char *&in, int &len)
 	case '/':
 	  if (in[0] == in[1] || (in[0] == '/' && in[1] == '*'))
 	    {
-	      in = skip_comment_string (in);
-	      continue;
+	      len = (int) (in - ps);
+	      return ps;
 	    }
 	  break;
 
@@ -624,17 +624,14 @@ hide_password::find_password_positions_internal (char *query, HIDE_PWD_INFO_PTR 
 	    {
 	      /* write the text before the password, then the mask in its place */
 	      int pwd_info[2];
-	      char chbk = *ps;
 	      const char *mask;
 
 	      pwd_info[0] = start;
 	      pwd_info[1] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, en_add_pwd_string);
 
-	      *ps = '\0';
-	      write_replace_newline (log_fd, qryptr, write_func);
+	      write_replace_newline (log_fd, qryptr, (int) (ps - qryptr), write_func);
 	      mask = get_password_string (qryptr, pwd_info);
 	      write_func (log_fd, mask, (int) strlen (mask));
-	      *ps = chbk;
 
 	      qryptr = newptr;
 	    }
@@ -645,7 +642,7 @@ hide_password::find_password_positions_internal (char *query, HIDE_PWD_INFO_PTR 
 
   if (hide_pwd_ptr == NULL)
     {
-      write_replace_newline (log_fd, qryptr, write_func);
+      write_replace_newline (log_fd, qryptr, (int) strlen (qryptr), write_func);
     }
 }
 
@@ -811,17 +808,26 @@ password_fprintf (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
 }
 
 /*
- * write_replace_newline () - write str with each CR and LF replaced by a space, as fprintf_replace_newline () does.
+ * write_replace_newline () - write the first str_len bytes of str with each CR and LF replaced by a space,
+ *   as fprintf_replace_newline () does.
  *
  * NOTE:
  *   Unlike fprintf_replace_newline (), it writes each piece by its length without printf, leaving str unchanged.
  */
 static void
-write_replace_newline (void *log_fd, const char *str, void (*write_func) (void *log_fd, const char *ptr, int len))
+write_replace_newline (void *log_fd, const char *str, int str_len,
+		       void (*write_func) (void *log_fd, const char *ptr, int len))
 {
-  while (*str)
+  const char *end = str + str_len;
+
+  while (str < end)
     {
-      int len = (int) strcspn (str, "\r\n");
+      int len = 0;
+
+      while (str + len < end && str[len] != '\r' && str[len] != '\n')
+	{
+	  len++;
+	}
 
       if (len == 0)
 	{
