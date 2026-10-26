@@ -4783,12 +4783,25 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
  *
  * Note: Half of the buffers go to the input files, one page each at full fan-in, and the other half to the output
  *       section; so a merge pass reads from as many files as half the sort buffer holds pages, but from at least
- *       BTSORT_MIN_HALF_FILES (fewer files cannot merge). There is no upper limit: one, or a parameter, would go here.
+ *       BTSORT_MIN_HALF_FILES (fewer files cannot merge). The leader of a parallel sort has its own bound,
+ *       BTSORT_PX_LEADER_FANIN.
+ *
+ *       index_build_merge_fanin caps the count; 0, the default, sets no cap. A cap changes nothing while the runs are
+ *       no more than the cap. Beyond it, the merge takes one more pass, which writes and reads the sort data once more,
+ *       and in exchange each input of the first pass reads more pages at a time.
  */
 static int
 btsort_get_num_half_tmpfiles (int tot_buffers)
 {
-  return MAX (BTSORT_MIN_HALF_FILES, tot_buffers / 2);
+  int half_files = tot_buffers / 2;
+  int fanin_limit = prm_get_integer_value (PRM_ID_INDEX_BUILD_MERGE_FANIN);
+
+  if (fanin_limit > 0)
+    {
+      half_files = MIN (half_files, fanin_limit);
+    }
+
+  return MAX (BTSORT_MIN_HALF_FILES, half_files);
 }
 
 /*

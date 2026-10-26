@@ -788,6 +788,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
 #define PRM_NAME_PARALLEL_MERGE_JOIN "parallel_merge_join"
 #define PRM_NAME_INDEX_SORT_METHOD "index_sort_method"
+#define PRM_NAME_INDEX_BUILD_MERGE_FANIN "index_build_merge_fanin"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
@@ -5275,6 +5276,24 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = INDEX_SORT_METHOD_COMPARE}},
 #endif
    {false, {.i = INDEX_SORT_METHOD_COMPARE}}, {false, {.i = INDEX_SORT_METHOD_AUTO}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* CBRD-27236: the most temp files a merge pass of the index build sort reads from, which is otherwise half the
+   * sort buffer in pages. 0, the default, sets no cap: a cap only adds a pass, which writes and reads the sort data
+   * once more, and the many runs it avoids reading by turns cost a SATA SSD nothing measurable. Set it for a device
+   * whose reads slow down to a third or less when thousands of runs are read by turns, such as a volume of about
+   * 1,000 read IOPS (see btsort_get_num_half_tmpfiles ()). Changeable on-line, for the CREATE INDEX statements that
+   * follow. */
+  {PRM_ID_INDEX_BUILD_MERGE_FANIN,
+   PRM_NAME_INDEX_BUILD_MERGE_FANIN,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
