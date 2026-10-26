@@ -6493,7 +6493,7 @@ la_record_end_is_stale (void)
 {
   const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
 
-  return la_is_done_state (log_hdr->ha_server_state) && LSA_GT (&log_hdr->eof_lsa, &la_Info.final_lsa);
+  return la_is_done_state (log_hdr->ha_server_state) && la_Info.final_lsa < log_hdr->eof_lsa;
 }
 
 static int
@@ -8714,8 +8714,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
 	    {
+	      const LOG_LSA eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
+
 	      er_log_debug (ARG_FILE_LINE, "record end %lld|%d is short of the copied log eof %lld|%d",
-			    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&la_Info.act_log.log_hdr->eof_lsa));
+			    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&eof_lsa));
 	      la_Info.is_end_of_record = false;
 	    }
 
