@@ -181,7 +181,8 @@ btsort_radix_sorter_init (BTSORT_RUN *run, const TP_DOMAIN *key_domain)
 
   /* a slot is a 32-bit offset into a buffer under 2GB */
   assert (max_records <= (size_t) INT_MAX);
-  ctx->max_records = (int) max_records;
+  /* an empty run takes the BIGONE placeholder of a key wider than the buffer */
+  ctx->max_records = (int) std::max (max_records, (size_t) 1);
 
   ctx->stack_bytes = radix_sort_stack_bytes (&ctx->key_encoding, ctx->max_records);
   ctx->stack_area = ctx_low - DB_ALIGN (ctx->stack_bytes, DOUBLE_ALIGNMENT);
