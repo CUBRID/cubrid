@@ -239,6 +239,7 @@ namespace parallel_index_scan
     key_val_range *all_ranges = m_ranges->get_key_val_ranges ();
     int num_ranges = m_ranges->get_num_key_ranges ();
 
+retry:
     /* target = m_current_range_idx + 1, or 0 on first descent. Skip NA_NA (dedup'd duplicate ranges). */
     if (!m_descent_done || m_leaf_ended)
       {
@@ -283,6 +284,12 @@ namespace parallel_index_scan
 	m_leaf_ended = VPID_ISNULL (&next);
 	m_descent_done = true;
 	m_current_range_idx = target;
+	if (remember_dispatched_leaf (thread_p, leaf, true) != NO_ERROR)
+	  {
+	    pgbuf_unfix (thread_p, leaf);
+	    m_leaf_ended = true;
+	    return S_ERROR;
+	  }
 
 	out_page = leaf;
 	if (out_slot_hint != nullptr)
@@ -297,9 +304,20 @@ namespace parallel_index_scan
       }
 
     /* Chain-walk branch: fix current leaf vpid, advance pointer, return -1 sentinel for range_idx. */
-    VPID ret_vpid = m_current_leaf_vpid;
-    PAGE_PTR page = pgbuf_fix (thread_p, &ret_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    if (page == nullptr)
+    PAGE_PTR page = nullptr;
+    INT16 slot_hint = NULL_SLOTID;
+    int err = fix_linked_next_leaf (thread_p, page);
+    if (err == NO_ERROR && page == nullptr)
+      {
+	/* last dispatched leaf changed after its worker released it; m_current_leaf_vpid may be merged and freed. */
+	err = relocate_past_resume_key (thread_p, worker_scan_id, page, &slot_hint);
+	if (err == NO_ERROR && page == nullptr)
+	  {
+	    /* nothing left on the relocated leaf; the cursor moved past it */
+	    goto retry;
+	  }
+      }
+    if (err != NO_ERROR)
       {
 	m_leaf_ended = true;
 	return S_ERROR;
@@ -323,13 +341,225 @@ namespace parallel_index_scan
 	m_current_leaf_vpid = next;
       }
 
+    if (remember_dispatched_leaf (thread_p, page, false) != NO_ERROR)
+      {
+	pgbuf_unfix (thread_p, page);
+	m_leaf_ended = true;
+	return S_ERROR;
+      }
+
     out_page = page;
+    if (out_slot_hint != nullptr)
+      {
+	*out_slot_hint = slot_hint;
+      }
     /* sync worker range_idx; stale value drops OIDs at new-range leaf boundary. */
     if (out_range_idx != nullptr)
       {
 	*out_range_idx = m_current_range_idx;
       }
     return S_SUCCESS;
+  }
+
+  void
+  leaf_page_dispatcher::clear_resume_key ()
+  {
+    if (m_resume_key_valid && m_resume_key_clear)
+      {
+#if defined (SERVER_MODE)
+	HL_HEAPID old_heap = db_private_set_heapid_to_thread (NULL, 0);
+#endif
+	pr_clear_value (&m_resume_key);
+#if defined (SERVER_MODE)
+	(void) db_private_set_heapid_to_thread (NULL, old_heap);
+#endif
+      }
+    db_make_null (&m_resume_key);
+    m_resume_key_valid = false;
+    m_resume_key_clear = false;
+  }
+
+  int
+  leaf_page_dispatcher::remember_dispatched_leaf (THREAD_ENTRY *thread_p, PAGE_PTR leaf, bool new_range)
+  {
+    pgbuf_get_vpid (leaf, &m_last_vpid);
+    m_last_lsa = *pgbuf_get_lsa (leaf);
+    if (new_range)
+      {
+	/* keys of the previous range do not bound this one */
+	clear_resume_key ();
+      }
+
+    bool use_desc_index = m_ranges->is_desc_index ();
+    int key_cnt = btree_node_number_of_keys (thread_p, leaf);
+    for (int i = 0; i < key_cnt; i++)
+      {
+	INT16 slot_id = (INT16) (use_desc_index ? (i + 1) : (key_cnt - i));
+	RECDES rec;
+	rec.data = NULL;
+	rec.area_size = -1;
+	if (spage_get_record (thread_p, leaf, slot_id, &rec, PEEK) != S_SUCCESS)
+	  {
+	    assert_release (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	    return ER_FAILED;
+	  }
+	if (btree_leaf_record_is_fence (&rec))
+	  {
+	    continue;
+	  }
+
+	DB_VALUE key;
+	LEAF_REC leaf_rec_info;
+	bool clear_key = false;
+	int offset = 0;
+	db_make_null (&key);
+#if defined (SERVER_MODE)
+	/* any worker may replace or free this key; a private-heap copy freed by another thread aborts */
+	HL_HEAPID old_heap = db_private_set_heapid_to_thread (NULL, 0);
+#endif
+	int err = btree_read_record (thread_p, m_ranges->get_btid_int (), leaf, &rec, &key, &leaf_rec_info,
+				     BTREE_LEAF_NODE, &clear_key, &offset, COPY, NULL);
+#if defined (SERVER_MODE)
+	(void) db_private_set_heapid_to_thread (NULL, old_heap);
+#endif
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	clear_resume_key ();
+	m_resume_key = key;
+	m_resume_key_clear = clear_key;
+	m_resume_key_valid = true;
+	return NO_ERROR;
+      }
+    /* no live key on this leaf: the previous resume key still bounds what was handed out */
+    return NO_ERROR;
+  }
+
+  int
+  leaf_page_dispatcher::fix_linked_next_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
+  {
+    PAGE_PTR last = NULL;
+    PAGE_PTR next = NULL;
+    int err = NO_ERROR;
+
+    out_page = nullptr;
+    if (!m_ranges->is_desc_index ())
+      {
+	/* left to right like serial scans: an unchanged left leaf still links to and pins its right leaf */
+	err = pgbuf_fix_if_not_deallocated (thread_p, &m_last_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &last);
+	if (err != NO_ERROR || last == NULL)
+	  {
+	    return err;
+	  }
+	if (PGBUF_IS_PAGE_CHANGED (last, &m_last_lsa))
+	  {
+	    pgbuf_unfix (thread_p, last);
+	    return NO_ERROR;
+	  }
+	next = pgbuf_fix (thread_p, &m_current_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	pgbuf_unfix (thread_p, last);
+	if (next == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	    return err;
+	  }
+	out_page = next;
+	return NO_ERROR;
+      }
+
+    /* descending walk goes to the left leaf: fix it before the last leaf to keep the left-to-right latch order */
+    err = pgbuf_fix_if_not_deallocated (thread_p, &m_current_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+					&next);
+    if (err != NO_ERROR || next == NULL)
+      {
+	return err;
+      }
+    err = pgbuf_fix_if_not_deallocated (thread_p, &m_last_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &last);
+    if (err != NO_ERROR || last == NULL || PGBUF_IS_PAGE_CHANGED (last, &m_last_lsa))
+      {
+	if (last != NULL)
+	  {
+	    pgbuf_unfix (thread_p, last);
+	  }
+	pgbuf_unfix (thread_p, next);
+	return err;
+      }
+    pgbuf_unfix (thread_p, last);
+    out_page = next;
+    return NO_ERROR;
+  }
+
+  int
+  leaf_page_dispatcher::relocate_past_resume_key (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
+      INT16 *out_slot_hint)
+  {
+    out_page = nullptr;
+    *out_slot_hint = NULL_SLOTID;
+
+    if (!m_resume_key_valid)
+      {
+	/* no live key handed out in this range yet: restart the range */
+	VPID leaf_vpid;
+	PAGE_PTR leaf = nullptr;
+	SCAN_CODE sc = descend_to_first_leaf (thread_p, worker_scan_id, m_current_range_idx, leaf, &leaf_vpid,
+					      out_slot_hint);
+	if (sc != S_SUCCESS || leaf == nullptr)
+	  {
+	    if (leaf != nullptr)
+	      {
+		pgbuf_unfix (thread_p, leaf);
+	      }
+	    int err = er_errid ();
+	    return (err != NO_ERROR) ? err : ER_FAILED;
+	  }
+	out_page = leaf;
+	return NO_ERROR;
+      }
+
+    VPID leaf_vpid;
+    INT16 slot_id = NULL_SLOTID;
+    bool found = false;
+    PAGE_PTR leaf = NULL;
+    int err = btree_locate_key (thread_p, m_ranges->get_btid_int (), &m_resume_key, &leaf_vpid, &slot_id, &leaf, &found);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+
+    bool use_desc_index = m_ranges->is_desc_index ();
+    int key_cnt = btree_node_number_of_keys (thread_p, leaf);
+    /* slot_id = key slot if found, else slot of the next bigger key (0 / key_cnt + 1 at the index edges) */
+    int start = use_desc_index ? (slot_id - 1) : (found ? (slot_id + 1) : ((slot_id < 1) ? 1 : slot_id));
+    if (start >= 1 && start <= key_cnt)
+      {
+	out_page = leaf;
+	*out_slot_hint = (INT16) start;
+	return NO_ERROR;
+      }
+
+    /* nothing past the resume key on this leaf: continue the chain from it */
+    BTREE_NODE_HEADER *hdr = btree_get_node_header (thread_p, leaf);
+    if (hdr == NULL)
+      {
+	pgbuf_unfix (thread_p, leaf);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	return ER_FAILED;
+      }
+    VPID next = use_desc_index ? hdr->prev_vpid : hdr->next_vpid;
+    m_last_vpid = leaf_vpid;
+    m_last_lsa = *pgbuf_get_lsa (leaf);
+    pgbuf_unfix (thread_p, leaf);
+    if (VPID_ISNULL (&next))
+      {
+	m_leaf_ended = true;
+      }
+    else
+      {
+	m_current_leaf_vpid = next;
+      }
+    return NO_ERROR;
   }
 
   /* completed = last_local_idx - 1; monotonic max so next fetch target = idx + 1. */
