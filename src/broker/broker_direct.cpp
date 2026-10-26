@@ -1494,22 +1494,17 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE *job)
       return;
     }
 
-  /* the ack the CAS used to send before reading db_info
-   * (cas_common_main.c:179) now comes from the broker (B1-D7) */
-  int zero = 0;
-  if (send_all (clt_sock_fd, &zero, sizeof (int)) != 0)
-    {
-      close (clt_sock_fd);
-      return;
-    }
-  m->shm->brd_num_accepted++;	/* receiver thread only (#116 D10) */
-
   if (IS_SSL_CLIENT (job->driver_info))
     {
       /* an SSL client's db_info is encrypted — no peek is possible.  Route
        * to the configured DIRECT_HANDOFF_SSL_DB with a synthesized db_info
        * (dbname only); the server terminates TLS and reads the real packet
-       * itself (B2-D9).  Health checks are absorbed server-side too. */
+       * itself (B2-D9).  Health checks are absorbed server-side too.
+       * No connect ack here: the driver starts TLS on the ack and gives the
+       * ServerHello one second (JDBC BrokerHandler.TIMEOUT_UNIT), so acking
+       * before admission fails every SSL client that waits for a slot.
+       * brd_dispatch_job acks once the server holds the connection, as the
+       * CAS did right before its SSL_accept (cas_common_main.c:179). */
       if (m->ssl_db.empty ())
 	{
 	  /* conf validation prevents this; fail the connect cleanly */
@@ -1527,6 +1522,17 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE *job)
       park_complete (*m, ssl_pc);
       return;
     }
+
+  /* the ack the CAS used to send before reading db_info
+   * (cas_common_main.c:179) now comes from the broker (B1-D7) */
+  int zero = 0;
+  if (send_all (clt_sock_fd, &zero, sizeof (int)) != 0)
+    {
+      close (clt_sock_fd);
+      return;
+    }
+  /* counted where the ack is delivered (SSL: brd_dispatch_job), so two threads */
+  __atomic_add_fetch (&m->shm->brd_num_accepted, 1, __ATOMIC_RELAXED);
 
   int flags = fcntl (clt_sock_fd, F_GETFL, 0);
   (void) fcntl (clt_sock_fd, F_SETFL, flags | O_NONBLOCK);
@@ -1754,6 +1760,16 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 	  adopt::resync_token_body ack;
 	  std::memcpy (&ack, reply_body, sizeof (ack));
 	  brd_debug ("handoff db=%s: token=%u admitted (clt_port=%u)", db_name, ack.token, (unsigned) ack.client_port);
+	  if (IS_SSL_CLIENT (job->driver_info))
+	    {
+	      /* the deferred connect ack (brd_park_client): the driver's TLS
+	       * handshake starts now, against the session that owns the fd */
+	      int zero = 0;
+	      if (send_all (job->clt_sock_fd, &zero, sizeof (int)) == 0)
+		{
+		  __atomic_add_fetch (&m->shm->brd_num_accepted, 1, __ATOMIC_RELAXED);
+		}
+	    }
 	  close (job->clt_sock_fd);	/* the server owns the connection now */
 	  return;
 	}
