@@ -63,7 +63,7 @@ class au_auth_accessor
     int create_new_auth ();
     int set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_object, MOP grantor, MOP user, MOP object_of, DB_AUTH auth_type,
 		      bool grant_option);
-    int get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
+    int find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
 
   public:
     explicit au_auth_accessor ();

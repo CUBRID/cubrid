@@ -284,7 +284,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
 }
 
 int
-au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type)
+au_auth_accessor::find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type)
 {
   int error = NO_ERROR, save, i = 0;
   DB_VALUE val[COUNT_FOR_VARIABLES];
@@ -473,7 +473,7 @@ au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
     {
       if (auth_type & index)
 	{
-	  error = get_new_auth (obj_type, grantor, user, obj_mop, (DB_AUTH) index);
+	  error = find_auth (obj_type, grantor, user, obj_mop, (DB_AUTH) index);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -513,7 +513,7 @@ au_auth_accessor::delete_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
     {
       if (auth_type & index)
 	{
-	  error = get_new_auth (obj_type, grantor, user, obj_mop, (DB_AUTH) index);
+	  error = find_auth (obj_type, grantor, user, obj_mop, (DB_AUTH) index);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
