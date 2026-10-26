@@ -3603,6 +3603,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
 
+	case PT_ALTER_SYNONYM:
+	case PT_CREATE_SYNONYM:
+	case PT_DROP_SYNONYM:
+	case PT_RENAME_SYNONYM:
+
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
 	  break;
@@ -3863,6 +3868,30 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_ALTER_SERVER:
 	  error = do_alter_server (parser, statement);
+	  break;
+
+	case PT_VACUUM:
+	  error = do_vacuum (parser, statement);
+	  break;
+
+	case PT_KILL_STMT:
+	  error = do_kill (parser, statement);
+	  break;
+
+	case PT_ALTER_SYNONYM:
+	  error = do_alter_synonym (parser, statement);
+	  break;
+
+	case PT_CREATE_SYNONYM:
+	  error = do_create_synonym (parser, statement);
+	  break;
+
+	case PT_DROP_SYNONYM:
+	  error = do_drop_synonym (parser, statement);
+	  break;
+
+	case PT_RENAME_SYNONYM:
+	  error = do_rename_synonym (parser, statement);
 	  break;
 
 	default:
