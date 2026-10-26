@@ -48,7 +48,7 @@ static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE *
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
 				      PROJECTION_INFO * projection_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
-static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
+static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist, int parallelism);
 
 static XASL_NODE *check_merge_xasl (QO_ENV * env, XASL_NODE * xasl);
 static XASL_NODE *check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl);
@@ -79,7 +79,7 @@ static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset, bool c
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
 				XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl);
-static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *, XASL_NODE *, XASL_NODE *);
+static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *, XASL_NODE *, XASL_NODE *, int);
 static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl);
 
 static int is_normal_access_term (QO_TERM *);
@@ -865,11 +865,20 @@ error_exit:
  *   env(in): The optimizer environment
  *   namelist(in): The list of names to use as input to and output from this
  *		   node
+ *   parallelism(in): The parallelism of the new node; a temp list build inherits it from the enclosing xasl
  */
 static XASL_NODE *
-make_buildlist_proc (QO_ENV * env, PT_NODE * namelist)
+make_buildlist_proc (QO_ENV * env, PT_NODE * namelist, int parallelism)
 {
-  return pt_skeleton_buildlist_proc (QO_ENV_PARSER (env), namelist);
+  XASL_NODE *xasl;
+
+  xasl = pt_skeleton_buildlist_proc (QO_ENV_PARSER (env), namelist);
+  if (xasl != NULL)
+    {
+      xasl->parallelism = parallelism;
+    }
+
+  return xasl;
 }
 
 /*
@@ -2448,7 +2457,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  else
 	    {
-	      listfile = make_buildlist_proc (env, namelist);
+	      listfile = make_buildlist_proc (env, namelist, xasl->parallelism);
 	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 	      if (listfile != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
@@ -2573,7 +2582,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   * by single scan due to key filtering, and null records can be returned
 	   * by scan_handle_single_scan. It might lead to making a wrong result.
 	   */
-	  scan = gen_inner (env, inner, &predset, &new_subqueries, inner_scans, fetches);
+	  scan = gen_inner (env, inner, &predset, &new_subqueries, inner_scans, fetches, xasl->parallelism);
 	  if (scan)
 	    {
 	      if (IS_OUTER_JOIN_TYPE (join_type))
@@ -2715,8 +2724,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
-	    left_xasl = make_buildlist_proc (env, left_list);
-	    left_xasl->parallelism = xasl->parallelism;
+	    left_xasl = make_buildlist_proc (env, left_list, xasl->parallelism);
 	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -2729,8 +2737,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
-	    rght_xasl = make_buildlist_proc (env, rght_list);
-	    rght_xasl->parallelism = xasl->parallelism;
+	    rght_xasl = make_buildlist_proc (env, rght_list, xasl->parallelism);
 	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -3057,12 +3064,11 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   final_info = &projection_info.final;
 
   /* outer_xasl */
-  outer_xasl = make_buildlist_proc (env, outer_info->expr_name_list);
+  outer_xasl = make_buildlist_proc (env, outer_info->expr_name_list, parallelism);
   if (outer_xasl == NULL)
     {
       goto error_exit;
     }
-  outer_xasl->parallelism = parallelism;
 
   outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl);
   if (outer_xasl == NULL)
@@ -3072,12 +3078,11 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   outer_xasl->orderby_list = NULL;
 
   /* inner_xasl */
-  inner_xasl = make_buildlist_proc (env, inner_info->expr_name_list);
+  inner_xasl = make_buildlist_proc (env, inner_info->expr_name_list, parallelism);
   if (inner_xasl == NULL)
     {
       goto error_exit;
     }
-  inner_xasl->parallelism = parallelism;
 
   inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl);
   if (inner_xasl == NULL)
@@ -3144,10 +3149,11 @@ error_exit:
  *		      scan_ptr list
  *   fetches(in): A list of fetch procs to be run every time plan produces
  *		  a new row
+ *   parallelism(in): The enclosing xasl's parallelism, inherited by a temp list build
  */
 static XASL_NODE *
 gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, XASL_NODE * inner_scans,
-	   XASL_NODE * fetches)
+	   XASL_NODE * fetches, int parallelism)
 {
   XASL_NODE *scan, *listfile, *fetch;
   PT_NODE *namelist;
@@ -3194,7 +3200,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
        * Now proceed on with inner generation, passing the augmented
        * list of fetch procs.
        */
-      scan = gen_inner (env, plan->plan_un.follow.head, &EMPTY_SET, &EMPTY_SET, inner_scans, fetch);
+      scan = gen_inner (env, plan->plan_un.follow.head, &EMPTY_SET, &EMPTY_SET, inner_scans, fetch, parallelism);
       break;
 #else
       /* Fall through */
@@ -3212,7 +3218,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP || plan->plan_un.sort.sort_type == SORT_DISTINCT);
 
       namelist = make_namelist_from_projected_segs (env, plan);
-      listfile = make_buildlist_proc (env, namelist);
+      listfile = make_buildlist_proc (env, namelist, parallelism);
       listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile);
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
@@ -5844,7 +5850,7 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
 
   statement->info.query.order_by = new_order_by;
 
-  listfile = make_buildlist_proc (env, node_list);
+  listfile = make_buildlist_proc (env, node_list, xasl->parallelism);
   listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
   listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 
