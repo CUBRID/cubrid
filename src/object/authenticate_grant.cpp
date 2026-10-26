@@ -52,6 +52,8 @@ static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_o
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
 static int au_lock_grantee (MOP user, MOP *auth);
+static int au_add_privileges (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, MOP grantor, DB_AUTH type,
+			      bool grant_option);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -147,10 +149,7 @@ static int
 au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
-  MOP auth;
-  DB_SET *grants;
-  DB_VALUE value;
-  int current, save = 0, gindex;
+  int save = 0;
   SM_CLASS *classobj;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_grant = 0;
   MOP *sub_partitions = NULL;
@@ -232,75 +231,9 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	{
 	  assert (grantor != NULL);
 
-	  if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	  error = au_add_privileges (DB_OBJECT_CLASS, user, class_mop, grantor, type, grant_option);
+	  if (error == NO_ERROR)
 	    {
-	      gindex = find_grant_entry (grants, class_mop, grantor);
-	      if (gindex == -1)
-		{
-		  current = AU_NO_AUTHORIZATION;
-		}
-	      else
-		{
-		  /* already granted, get current cache */
-		  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
-		  if (error != NO_ERROR)
-		    {
-		      set_free (grants);
-		      if (sub_partitions)
-			{
-			  free_and_init (sub_partitions);
-			}
-		      AU_RESTORE (save);
-		      return (error);
-		    }
-		  current = db_get_int (&value);
-		}
-
-#if defined(SA_MODE)
-	      if (catcls_Enable == true)
-#endif /* SA_MODE */
-		{
-		  au_auth_accessor accessor;
-		  DB_AUTH ins_bits, upd_bits;
-
-		  ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
-		  if (ins_bits)
-		    {
-		      error =
-			      accessor.insert_auth (DB_OBJECT_CLASS, grantor, user, class_mop, ins_bits,
-						    (grant_option) ? ins_bits : DB_AUTH_NONE);
-		    }
-		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
-		  if ((error == NO_ERROR) && upd_bits)
-		    {
-		      error =
-			      accessor.update_auth (DB_OBJECT_CLASS, grantor, user, class_mop, upd_bits,
-						    (grant_option || (current & (type << AU_GRANT_SHIFT))) ? upd_bits : DB_AUTH_NONE);
-		    }
-		}
-
-	      /* Fail to insert/update, never change the grant entry set. */
-	      if (error != NO_ERROR)
-		{
-		  set_free (grants);
-		  goto fail_end;
-		}
-
-	      current |= (int) type;
-	      if (grant_option)
-		{
-		  current |= ((int) type << AU_GRANT_SHIFT);
-		}
-
-	      db_make_int (&value, current);
-	      if (gindex == -1)
-		{
-		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, DB_OBJECT_CLASS, class_mop, grantor);
-		}
-	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
-	      set_free (grants);
-
 	      /*
 	       * clear the cache for this user/class pair to make sure we
 	       * recalculate it the next time it is referenced
@@ -333,10 +266,7 @@ static int
 au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
-  DB_VALUE value;
-  MOP auth;
-  DB_SET *grants;
-  int current, save = 0, gindex;
+  int save = 0;
   MOP grantor = NULL;
 
   assert (type == AU_EXECUTE);
@@ -379,80 +309,9 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	{
 	  assert (grantor != NULL);
 
-	  if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	  error = au_add_privileges (DB_OBJECT_PROCEDURE, user, obj_mop, grantor, type, false);
+	  if (error == NO_ERROR)
 	    {
-	      gindex = find_grant_entry (grants, obj_mop, grantor);
-	      if (gindex == -1)
-		{
-		  current = AU_NO_AUTHORIZATION;
-		}
-	      else
-		{
-		  /* already granted, get current cache */
-		  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
-		  if (error != NO_ERROR)
-		    {
-		      set_free (grants);
-		      AU_RESTORE (save);
-		      return (error);
-		    }
-		  current = db_get_int (&value);
-		}
-
-#if defined(SA_MODE)
-	      if (catcls_Enable == true)
-#endif /* SA_MODE */
-		{
-		  au_auth_accessor accessor;
-		  DB_AUTH ins_bits, upd_bits;
-
-		  ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
-		  if (ins_bits)
-		    {
-		      error =
-			      accessor.insert_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
-		    }
-
-		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
-		  if ((error == NO_ERROR) && upd_bits)
-		    {
-		      error =
-			      accessor.update_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
-		    }
-		}
-
-	      /* Fail to insert/update, never change the grant entry set. */
-	      if (error != NO_ERROR)
-		{
-		  set_free (grants);
-		  goto end;
-		}
-
-	      current |= (int) type;
-	      /* TODO: no grant option for procedure */
-	      /*
-	      if (grant_option)
-	        {
-	          current |= ((int) type << AU_GRANT_SHIFT);
-	        }
-	      */
-
-	      db_make_int (&value, current);
-	      if (gindex == -1)
-		{
-		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, DB_OBJECT_PROCEDURE, obj_mop, grantor);
-		}
-	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
-	      set_free (grants);
-
-	      /* Fail to insert/update, never change the grant entry set. */
-	      if (error != NO_ERROR)
-		{
-		  set_free (grants);
-		  goto end;
-		}
-
 	      /*
 	       * clear the cache for this user/procedure pair to make sure we
 	       * recalculate it the next time it is referenced
@@ -920,6 +779,94 @@ au_lock_grantee (MOP user, MOP *auth)
     }
 
   return obj_inst_lock (*auth, 1);
+}
+
+/*
+ * au_add_privileges - add privileges to the grantee's grant entry and its _db_auth rows
+ *   return: error code
+ *   obj_type(in): database object type
+ *   user(in): user receiving the grant
+ *   obj_mop(in): database object being granted
+ *   grantor(in): user recorded as the grantor
+ *   type(in): privileges to add
+ *   grant_option(in): true if the grant option is also being given
+ */
+static int
+au_add_privileges (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, MOP grantor, DB_AUTH type, bool grant_option)
+{
+  int error;
+  MOP auth;
+  DB_SET *grants;
+  DB_VALUE value;
+  int current, gindex;
+
+  if ((error = au_lock_grantee (user, &auth)) != NO_ERROR || (error = get_grants (auth, &grants, 1)) != NO_ERROR)
+    {
+      return error;
+    }
+
+  gindex = find_grant_entry (grants, obj_mop, grantor);
+  if (gindex == -1)
+    {
+      current = AU_NO_AUTHORIZATION;
+    }
+  else
+    {
+      /* already granted, get current cache */
+      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
+      if (error != NO_ERROR)
+	{
+	  set_free (grants);
+	  return error;
+	}
+      current = db_get_int (&value);
+    }
+
+#if defined(SA_MODE)
+  if (catcls_Enable == true)
+#endif /* SA_MODE */
+    {
+      au_auth_accessor accessor;
+      DB_AUTH ins_bits, upd_bits;
+
+      ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
+      if (ins_bits)
+	{
+	  error = accessor.insert_auth (obj_type, grantor, user, obj_mop, ins_bits,
+					(grant_option) ? ins_bits : DB_AUTH_NONE);
+	}
+      upd_bits = (DB_AUTH) (~ins_bits & (int) type);
+      if ((error == NO_ERROR) && upd_bits)
+	{
+	  error = accessor.update_auth (obj_type, grantor, user, obj_mop, upd_bits,
+					(grant_option || (current & (type << AU_GRANT_SHIFT)))
+					? upd_bits : DB_AUTH_NONE);
+	}
+    }
+
+  /* Fail to insert/update, never change the grant entry set. */
+  if (error != NO_ERROR)
+    {
+      set_free (grants);
+      return error;
+    }
+
+  current |= (int) type;
+  if (grant_option)
+    {
+      current |= ((int) type << AU_GRANT_SHIFT);
+    }
+
+  db_make_int (&value, current);
+  if (gindex == -1)
+    {
+      /* There is no grant entry, add a new one. */
+      gindex = add_grant_entry (grants, obj_type, obj_mop, grantor);
+    }
+  set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
+  set_free (grants);
+
+  return NO_ERROR;
 }
 
 /*
