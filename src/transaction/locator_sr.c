@@ -25,6 +25,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <utility>
 
 #include <stdlib.h>
 #include <string.h>
@@ -9054,6 +9055,15 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	      tdes = LOG_FIND_TDES (tran_index);
 
+/* *INDENT-OFF* */
+              /* Child record preparation and replication own separate publication state. Swap the whole queue
+               * so its consumed-head position remains paired with the suspended parent's OOS references. */
+              decltype (thread_p->oos_oids) preserved_oos_oids;
+              LOG_LSA_QUEUE preserved_oos_insert_lsa_queue;
+              preserved_oos_oids.swap (thread_p->oos_oids);
+              std::swap (preserved_oos_insert_lsa_queue, tdes->oos_insert_lsa_queue);
+/* *INDENT-ON* */
+
 	      if (pk_btid_index == i)
 		{
 		  /*
@@ -9066,16 +9076,24 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		}
 
 	      error_code = locator_check_primary_key_update (thread_p, index, old_key);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
+
+/* *INDENT-OFF* */
+              /* Restore the outer owner before either success or error cleanup. Child containers are released
+               * with these locals after the swap; they must never become the parent's replication input. */
+              preserved_oos_oids.swap (thread_p->oos_oids);
+              std::swap (preserved_oos_insert_lsa_queue, tdes->oos_insert_lsa_queue);
+/* *INDENT-ON* */
 
 	      if (pk_btid_index == i)
 		{
 		  /* restore repl_insert_lsa */
-		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
+		  assert (error_code != NO_ERROR || LSA_ISNULL (&tdes->repl_insert_lsa));
 		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
+		}
+
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
 		}
 	    }
 	}
