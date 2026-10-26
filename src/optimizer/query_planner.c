@@ -615,6 +615,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
+  plan->skip_groupby = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
@@ -1179,8 +1180,10 @@ qo_set_use_desc (QO_PLAN * plan)
  * return: nothing
  * plan(in):
  *
- * note: the function follows the outer plans as qo_set_use_desc () does, but
- *	 not through a sort plan, which re-orders the rows
+ * note: qo_search_planner () calls the function for the chosen join plan that
+ *	 qo_top_plan_new () judged to skip the group by. It follows the outer plans
+ *	 as qo_set_use_desc () does, but not through a sort plan, which re-orders
+ *	 the rows
  */
 static void
 qo_set_groupby_skip (QO_PLAN * plan)
@@ -1449,15 +1452,20 @@ qo_top_plan_new (QO_PLAN * plan)
 		      return plan;
 		    }
 		}
-	      /*
-	       * If all goes well, we have an indexed plan with group by skip!
-	       * Raise the flag of the outermost index scan, the one whose order supplies the GROUP BY order.
-	       * The flag is shared by every candidate plan using that index, but the executor reads it only
-	       * from the first access spec of the chosen plan (pt_to_index_info () copies it there).  This relies
-	       * on every plan that reads that index first through nested loops getting the same verdict; a plan
-	       * with a hash or merge join reads the join result through a list scan instead.
-	       */
-	      qo_set_groupby_skip (plan);
+	      /* if all goes well, we have an indexed plan with group by skip! */
+	      if (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index)
+		{
+		  plan->plan_un.scan.index->head->groupby_skip = true;
+		}
+	      else if (plan->plan_type == QO_PLANTYPE_JOIN)
+		{
+		  /*
+		   * The flag of an index is shared by every candidate plan using that index, and this plan may
+		   * not be chosen. Keep the verdict on the plan; qo_search_planner () raises the flag of its
+		   * outermost index scan once it is chosen, as it does use_descending for use_iscan_descending.
+		   */
+		  plan->skip_groupby = true;
+		}
 	    }
 	  else
 	    {
@@ -7276,8 +7284,9 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
     }
 
   /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan.
-   * The groupby_skip flag is only raised once a plan is top-rooted, so before that - while joins are still being
-   * enumerated - judge the plan by the candidate predicate instead, exactly as the ORDER BY branch above does.
+   * The groupby_skip flag is raised for a top-rooted single scan plan, and for a join plan only once it is chosen,
+   * so while joins are still being enumerated judge the plan by the candidate predicate instead, exactly as the
+   * ORDER BY branch above does.
    * Otherwise no group-by skip index scan could ever survive in a statement that has a join. */
   if (qo_is_iscan_from_groupby (plan)
       && !(plan->top_rooted ? plan->plan_un.scan.index->head->groupby_skip : qo_plan_is_groupby_skip_candidate (plan)))
@@ -10921,7 +10930,7 @@ qo_search_planner (QO_PLANNER * planner)
 {
   int i, j, nsegs;
   bool broken;
-  QO_PLAN *plan;
+  QO_PLAN *plan, *groupby_plan;
   QO_NODE *node;
   QO_INFO *info;
   BITSET_ITERATOR si;
@@ -11298,6 +11307,22 @@ qo_search_planner (QO_PLANNER * planner)
   if (plan == NULL)
     {
       goto end;
+    }
+
+  /* a join plan judged to skip the group by keeps the verdict on the plan (see qo_top_plan_new ()); raise the
+   * groupby_skip flag of its outermost index scan now that it is chosen. Step over the ORDER BY / DISTINCT sorts
+   * added after the GROUP BY step. This must come before qo_set_use_desc (), which reads the flag. */
+  groupby_plan = plan;
+  while (groupby_plan->plan_type == QO_PLANTYPE_SORT
+	 && (groupby_plan->plan_un.sort.sort_type == SORT_ORDERBY
+	     || groupby_plan->plan_un.sort.sort_type == SORT_DISTINCT))
+    {
+      groupby_plan = groupby_plan->plan_un.sort.subplan;
+    }
+
+  if (groupby_plan->skip_groupby)
+    {
+      qo_set_groupby_skip (groupby_plan);
     }
 
   if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
@@ -15435,9 +15460,10 @@ cleanup:
  * plan (in) : plan to verify
  *
  * note: This is the GROUP BY counterpart of qo_plan_is_orderby_skip_candidate ().
- *	 It is needed because the groupby_skip flag on the index entry is only raised
- *	 by qo_top_plan_new () once a plan covers the whole query, so during join
- *	 enumeration the flag is still down and cannot be used to admit a candidate.
+ *	 It is needed because the groupby_skip flag on the index entry is raised only
+ *	 for a single scan plan covering the whole query (qo_top_plan_new ()) or for
+ *	 the chosen join plan (qo_search_planner ()), so during join enumeration the
+ *	 flag is still down and cannot be used to admit a candidate.
  */
 static bool
 qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
