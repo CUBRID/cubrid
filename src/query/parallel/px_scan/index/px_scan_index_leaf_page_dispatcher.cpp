@@ -34,25 +34,6 @@
 
 namespace parallel_index_scan
 {
-  /* the scan's table lock keeps the index file alive: skip pgbuf_fix_if_not_deallocated's sector check, which fixes
-   * the volume header on every call (two more fetches per dispatched leaf) */
-  static int
-  fix_leaf_if_not_deallocated (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_PTR &out_page)
-  {
-    out_page = pgbuf_fix (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    if (out_page == NULL)
-      {
-	int err = er_errid ();
-	if (err != NO_ERROR && err != ER_PB_BAD_PAGEID)
-	  {
-	    return err;
-	  }
-	/* deallocated */
-	er_clear ();
-      }
-    return NO_ERROR;
-  }
-
   /* closed-bound via btree_locate_key; open-bound via boundary-leaf path (btree.c:15077). */
   SCAN_CODE
   leaf_page_dispatcher::descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx,
@@ -237,9 +218,48 @@ namespace parallel_index_scan
     return S_SUCCESS;
   }
 
+  /* never wait for m_leaf_mutex holding a leaf that is not the frontier: the holder may descend from root behind a
+   * writer waiting for that leaf. The frontier's holder only waits for a chain walk to its right leaf (left to right,
+   * like splits and merges). */
+  std::unique_lock<std::mutex>
+  leaf_page_dispatcher::lock_holding (THREAD_ENTRY *thread_p, PAGE_PTR &held_leaf)
+  {
+    std::unique_lock<std::mutex> lock (m_leaf_mutex, std::defer_lock);
+    while (held_leaf != nullptr && !lock.try_lock ())
+      {
+	if (m_frontier.load (std::memory_order_acquire) != held_leaf)
+	  {
+	    pgbuf_unfix_and_init (thread_p, held_leaf);
+	    break;
+	  }
+	std::this_thread::yield ();
+      }
+    if (!lock.owns_lock ())
+      {
+	lock.lock ();
+      }
+    if (held_leaf != nullptr && m_frontier.load (std::memory_order_relaxed) != held_leaf)
+      {
+	pgbuf_unfix_and_init (thread_p, held_leaf);
+      }
+    return lock;
+  }
+
+  SCAN_CODE
+  leaf_page_dispatcher::get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &held_leaf,
+      PAGE_PTR &out_page, INT16 *out_slot_hint, int *out_range_idx)
+  {
+    std::unique_lock<std::mutex> lock = lock_holding (thread_p, held_leaf);
+    SCAN_CODE sc = dispatch_next_leaf (thread_p, worker_scan_id, out_page, out_slot_hint, out_range_idx);
+    /* ascending: out_page stays latched by its worker until its right leaf is fixed */
+    bool chain_goes_on = sc == S_SUCCESS && !m_leaf_ended && !m_ranges->is_desc_index ();
+    m_frontier.store (chain_goes_on ? out_page : nullptr, std::memory_order_release);
+    return sc;
+  }
+
   /* out_range_idx: -1 on chain-walk (slot_iterator keeps local idx); target on descent (overwrites). */
   SCAN_CODE
-  leaf_page_dispatcher::get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
+  leaf_page_dispatcher::dispatch_next_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
       INT16 *out_slot_hint, int *out_range_idx)
   {
     out_page = nullptr;
@@ -251,8 +271,6 @@ namespace parallel_index_scan
       {
 	*out_range_idx = -1;
       }
-
-    std::unique_lock<std::mutex> lock (m_leaf_mutex);
 
     bool use_desc_index = m_ranges->is_desc_index ();
     key_val_range *all_ranges = m_ranges->get_key_val_ranges ();
@@ -303,7 +321,7 @@ retry:
 	m_leaf_ended = VPID_ISNULL (&next);
 	m_descent_done = true;
 	m_current_range_idx = target;
-	if (save_last_leaf (thread_p, leaf, true) != NO_ERROR)
+	if (use_desc_index && save_last_leaf (thread_p, leaf, true) != NO_ERROR)
 	  {
 	    pgbuf_unfix (thread_p, leaf);
 	    m_leaf_ended = true;
@@ -325,15 +343,28 @@ retry:
     /* Chain-walk branch: fix current leaf vpid, advance pointer, return -1 sentinel for range_idx. */
     PAGE_PTR page = nullptr;
     INT16 slot_hint = NULL_SLOTID;
-    int err = fix_next_leaf (thread_p, page);
-    if (err == NO_ERROR && page == nullptr)
+    int err = NO_ERROR;
+    if (!use_desc_index)
       {
-	/* last dispatched leaf changed after its worker released it; m_current_leaf_vpid may be merged and freed. */
-	err = resume_after_last_key (thread_p, worker_scan_id, page, &slot_hint);
+	/* the frontier is still latched by its worker, so vacuum cannot merge this right leaf into it and free it */
+	page = pgbuf_fix (thread_p, &m_current_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	if (page == nullptr)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	  }
+      }
+    else
+      {
+	err = fix_prev_leaf (thread_p, page);
 	if (err == NO_ERROR && page == nullptr)
 	  {
-	    /* nothing left past the last key on the located leaf; the cursor moved past it */
-	    goto retry;
+	    /* the left leaf no longer links to the last dispatched leaf; locate the next key again */
+	    err = resume_after_last_key (thread_p, worker_scan_id, page, &slot_hint);
+	    if (err == NO_ERROR && page == nullptr)
+	      {
+		/* nothing left past the last key on the located leaf; the cursor moved past it */
+		goto retry;
+	      }
 	  }
       }
     if (err != NO_ERROR)
@@ -360,7 +391,7 @@ retry:
 	m_current_leaf_vpid = next;
       }
 
-    if (save_last_leaf (thread_p, page, false) != NO_ERROR)
+    if (use_desc_index && save_last_leaf (thread_p, page, false) != NO_ERROR)
       {
 	pgbuf_unfix (thread_p, page);
 	m_leaf_ended = true;
@@ -409,11 +440,10 @@ retry:
 	clear_last_key ();
       }
 
-    bool use_desc_index = m_ranges->is_desc_index ();
+    /* descending walk order: the last live key is the smallest */
     int key_cnt = btree_node_number_of_keys (thread_p, leaf);
-    for (int i = 0; i < key_cnt; i++)
+    for (INT16 slot_id = 1; slot_id <= key_cnt; slot_id++)
       {
-	INT16 slot_id = (INT16) (use_desc_index ? (i + 1) : (key_cnt - i));
 	RECDES rec;
 	rec.data = NULL;
 	rec.area_size = -1;
@@ -456,51 +486,29 @@ retry:
     return NO_ERROR;
   }
 
+  /* like btree_range_scan_descending_fix_prev_leaf: the left leaf is still adjacent while it links to the last leaf.
+   * the scan's table lock keeps the index file alive, so skip pgbuf_fix_if_not_deallocated's sector check. */
   int
-  leaf_page_dispatcher::fix_next_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
+  leaf_page_dispatcher::fix_prev_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
   {
-    PAGE_PTR last = NULL;
-    PAGE_PTR next = NULL;
-    int err = NO_ERROR;
-
-    out_page = nullptr;
-    if (!m_ranges->is_desc_index ())
+    out_page = pgbuf_fix (thread_p, &m_current_leaf_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
+    if (out_page == nullptr)
       {
-	/* left to right like serial scans: an unchanged left leaf still links to and pins its right leaf */
-	err = fix_leaf_if_not_deallocated (thread_p, &m_last_leaf_vpid, last);
-	if (err != NO_ERROR || last == NULL)
+	int err = er_errid ();
+	if (err != NO_ERROR && err != ER_PB_BAD_PAGEID)
 	  {
 	    return err;
 	  }
-	if (PGBUF_IS_PAGE_CHANGED (last, &m_last_leaf_lsa))
-	  {
-	    pgbuf_unfix (thread_p, last);
-	    return NO_ERROR;
-	  }
-	next = pgbuf_fix (thread_p, &m_current_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	pgbuf_unfix (thread_p, last);
-	if (next == NULL)
-	  {
-	    ASSERT_ERROR_AND_SET (err);
-	    return err;
-	  }
-	out_page = next;
+	/* deallocated */
+	er_clear ();
 	return NO_ERROR;
       }
-
-    /* like btree_range_scan_descending_fix_prev_leaf: the left leaf is still adjacent while it links to the last leaf */
-    err = fix_leaf_if_not_deallocated (thread_p, &m_current_leaf_vpid, next);
-    if (err != NO_ERROR || next == NULL)
+    if (!BTREE_IS_PAGE_VALID_LEAF (thread_p, out_page)
+	|| !VPID_EQ (&btree_get_node_header (thread_p, out_page)->next_vpid, &m_last_leaf_vpid))
       {
-	return err;
+	pgbuf_unfix_and_init (thread_p, out_page);
       }
-    if (!BTREE_IS_PAGE_VALID_LEAF (thread_p, next)
-	|| !VPID_EQ (&btree_get_node_header (thread_p, next)->next_vpid, &m_last_leaf_vpid))
-      {
-	pgbuf_unfix (thread_p, next);
-	return NO_ERROR;
-      }
-    out_page = next;
     return NO_ERROR;
   }
 
@@ -543,15 +551,10 @@ retry:
 	return err;
       }
 
-    bool use_desc_index = m_ranges->is_desc_index ();
     int key_cnt = btree_node_number_of_keys (thread_p, leaf);
-    /* unchanged leaf was handed out whole; else slot_id = key slot if found, or slot of the next bigger key
-     * (0 / key_cnt + 1 at the index edges) */
-    int start = 0;
-    if (!leaf_unchanged)
-      {
-	start = use_desc_index ? (slot_id - 1) : (found ? (slot_id + 1) : ((slot_id < 1) ? 1 : slot_id));
-      }
+    /* unchanged leaf was handed out whole; else slot_id = key slot if found, or slot of the next bigger key, so the
+     * next smaller key is at slot_id - 1 */
+    int start = leaf_unchanged ? 0 : (slot_id - 1);
     if (start >= 1 && start <= key_cnt)
       {
 	out_page = leaf;
@@ -567,7 +570,7 @@ retry:
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
 	return ER_FAILED;
       }
-    VPID next = use_desc_index ? hdr->prev_vpid : hdr->next_vpid;
+    VPID next = hdr->prev_vpid;
     m_last_leaf_vpid = leaf_vpid;
     m_last_leaf_lsa = *pgbuf_get_lsa (leaf);
     pgbuf_unfix (thread_p, leaf);
@@ -585,9 +588,9 @@ retry:
   /* completed = last_local_idx - 1; monotonic max so next fetch target = idx + 1. */
   /* discard stale past_upper that lags authoritative cursor; otherwise skips in-progress chain. */
   void
-  leaf_page_dispatcher::signal_chain_ended (int last_local_idx)
+  leaf_page_dispatcher::signal_chain_ended (THREAD_ENTRY *thread_p, int last_local_idx, PAGE_PTR &held_leaf)
   {
-    std::unique_lock<std::mutex> lock (m_leaf_mutex);
+    std::unique_lock<std::mutex> lock = lock_holding (thread_p, held_leaf);
     int completed = last_local_idx - 1;
     if (completed < m_current_range_idx)
       {
@@ -598,5 +601,6 @@ retry:
 	m_current_range_idx = completed;
       }
     m_leaf_ended = true;
+    m_frontier.store (nullptr, std::memory_order_release);
   }
 }

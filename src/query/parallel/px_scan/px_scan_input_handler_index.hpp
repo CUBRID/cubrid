@@ -49,16 +49,17 @@ namespace parallel_scan
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
-      /* get_next_page_with_fix: worker_scan_id MUST be per-task; out_slot_hint = descent leaf-slot; out_range_idx = -1 sentinel on chain-walk. */
-      SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
-					INT16 *out_slot_hint = nullptr, int *out_range_idx = nullptr)
+      /* get_next_page_with_fix: worker_scan_id MUST be per-task; held_leaf = caller's current leaf (see leaf_page_dispatcher);
+       * out_slot_hint = descent leaf-slot; out_range_idx = -1 sentinel on chain-walk. */
+      SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &held_leaf,
+					PAGE_PTR &out_page, INT16 *out_slot_hint = nullptr, int *out_range_idx = nullptr)
       {
-	return m_leaf.get_next_page_with_fix (thread_p, worker_scan_id, out_page, out_slot_hint, out_range_idx);
+	return m_leaf.get_next_page_with_fix (thread_p, worker_scan_id, held_leaf, out_page, out_slot_hint, out_range_idx);
       }
 
-      void signal_chain_ended (int last_local_idx)
+      void signal_chain_ended (THREAD_ENTRY *thread_p, int last_local_idx, PAGE_PTR &held_leaf)
       {
-	m_leaf.signal_chain_ended (last_local_idx);
+	m_leaf.signal_chain_ended (thread_p, last_local_idx, held_leaf);
       }
 
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);

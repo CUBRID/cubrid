@@ -70,6 +70,12 @@ namespace parallel_index_scan
 	return m_page != nullptr;
       }
 
+      /* the leaf this worker holds until its next leaf is fixed; get_next_page_with_fix may release it. */
+      PAGE_PTR &held_leaf ()
+      {
+	return m_page;
+      }
+
       /* Sole resetter of m_current_range_idx — called by slot_iterator only on fetch's descent branch (range_idx >= 0). */
       void set_range_idx (int idx)
       {
