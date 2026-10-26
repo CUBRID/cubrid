@@ -2964,6 +2964,9 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
       /* set result cache */
       prepare_info.do_cache = prepared_stmt->info.query.flag.do_cache;
+
+      /* set click counter */
+      prepare_info.is_click_counter = prepared_stmt->flag.is_click_counter;
     }
 
   err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
@@ -3099,6 +3102,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   statement->info.execute.recompile = prepare_info.recompile;
   statement->info.execute.do_cache = prepare_info.do_cache;
   statement->info.execute.oids_included = prepare_info.oids_included;
+  statement->flag.is_click_counter = prepare_info.is_click_counter;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
 

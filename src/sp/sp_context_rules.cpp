@@ -41,6 +41,8 @@ sp_stmt_category_of (const PT_NODE *statement, int stmt_type)
     case PT_COMMIT_WORK:
     case PT_ROLLBACK_WORK:
     case PT_SAVEPOINT:
+    case PT_PREPARE_TO_COMMIT:
+    case PT_2PC_ATTACH:
       return SP_STMT_TCL;
 
     case PT_ALTER:
@@ -105,6 +107,10 @@ sp_stmt_entry_name (sp_stmt_category stmt_category, int stmt_type)
       return "ROLLBACK";
     case CUBRID_STMT_SAVEPOINT:
       return "SAVEPOINT";
+    case CUBRID_STMT_PREPARE:
+      return "PREPARE TO COMMIT";
+    case CUBRID_STMT_ATTACH:
+      return "ATTACH";
     default:
       return stmt_category == SP_STMT_DDL ? "DDL" : "the statement";
     }

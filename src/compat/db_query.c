@@ -419,6 +419,7 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->auto_param_count = 0;
   info->recompile = 0;
   info->oids_included = 0;
+  info->is_click_counter = 0;
   info->into_list = NULL;
   info->into_count = 0;
 
@@ -476,6 +477,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   packed_size += OR_INT_SIZE;
   /* oids included */
   packed_size += OR_INT_SIZE;
+  /* click counter */
+  packed_size += OR_INT_SIZE;
   /* into list length */
   packed_size += OR_INT_SIZE;
   /* into list names */
@@ -522,6 +525,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   ptr = or_pack_int (ptr, info->do_cache);
   /* oids included */
   ptr = or_pack_int (ptr, info->oids_included);
+  /* click counter */
+  ptr = or_pack_int (ptr, info->is_click_counter);
   /* into list length */
   ptr = or_pack_int (ptr, info->into_count);
   for (i = 0; i < info->into_count; i++)
@@ -593,6 +598,8 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
   ptr = or_unpack_int (ptr, &info->do_cache);
   /* oids included */
   ptr = or_unpack_int (ptr, &info->oids_included);
+  /* click counter */
+  ptr = or_unpack_int (ptr, &info->is_click_counter);
   /* unpack into list length */
   ptr = or_unpack_int (ptr, &info->into_count);
   if (info->into_count > 0)

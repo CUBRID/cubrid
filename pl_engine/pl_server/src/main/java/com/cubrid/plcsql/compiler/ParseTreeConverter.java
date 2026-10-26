@@ -2550,8 +2550,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 new StmtExecImme(
                         ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
         if (loopOptimizables != null) {
-            if (dynSql instanceof ExprStr) {
-                // only when it is a fixed string.
+            if (dynSql instanceof ExprStr
+                    && !patternExecutePrepared.matcher(((ExprStr) dynSql).val).find()) {
+                // only when it is a fixed string, and not EXECUTE of a statement prepared by name
                 loopOptimizables.sqlUses.add(ret);
             }
         }
@@ -2656,6 +2657,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private static String regexId =
             "^[A-Za-z_\uAC00-\uD7A3][A-Za-z_0-9\uAC00-\uD7A3]*$"; // \uAC00-\uD7A3: Korean
     private static Pattern patternId = Pattern.compile(regexId);
+
+    private static final Pattern patternExecutePrepared =
+            Pattern.compile("^\\s*execute\\s", Pattern.CASE_INSENSITIVE);
 
     private static final int ID_LEN_MAX = 222; // see User Manual
 

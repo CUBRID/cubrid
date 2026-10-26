@@ -160,6 +160,7 @@ extern "C"
     int recompile;		/* statement should be recompiled */
     int do_cache;		/* statement uses result cache */
     int oids_included;
+    int is_click_counter;	/* INCR/DECR (click counter) */
     char **into_list;		/* names of the "into" variables */
     int into_count;		/* count of elements from the into array */
 
