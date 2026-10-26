@@ -149,14 +149,16 @@ la_worker_start_session (LA_WORKER_SESSION *session, int sub_index)
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   memset (session, 0, sizeof (*session));
 
+  /* db_shutdown_sub must follow db_restart_sub whether it succeeds or not: a failed restart keeps the
+   * thread's error context so that the caller can report the error, and only db_shutdown_sub releases it */
+  session->client_context_started = true;
+
   error = db_restart_sub (sub_index);
   if (error != NO_ERROR)
     {
       pthread_mutex_unlock (&la_Worker_session_mutex);
       return error;
     }
-
-  session->client_context_started = true;
 
   tr_init ();
   (void) db_disable_trigger ();
@@ -231,6 +233,8 @@ la_worker_main (void *arg)
     {
       exit_reason = "start_session_failed";
       la_worker_startup_failed (worker, exit_reason, error);
+      /* reported above while the failed sub-client still holds the error context; now close it */
+      la_worker_end_session (&session);
       goto end;
     }
 
