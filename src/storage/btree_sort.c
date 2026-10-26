@@ -267,13 +267,6 @@ struct btsort_param
 #endif
 };
 
-typedef struct btsort_rec_list BTSORT_REC_LIST;
-struct btsort_rec_list
-{
-  struct btsort_rec_list *next;	/* next sorted record item */
-  int rec_pos;			/* record position */
-};				/* Sort record list */
-
 /* One input section of the external merge phase: a window of in_sectsize pages over the run being consumed from
  * one input file, and the smallest record that window currently exposes */
 typedef struct btsort_merge_input BTSORT_MERGE_INPUT;
@@ -316,8 +309,8 @@ struct btsort_merge_ctx
 
   int file_next_page[BTSORT_MAX_TOT_FILES];	/* page of each temp file the pass reads or writes next */
 
-  BTSORT_REC_LIST sr_list[BTSORT_MAX_HALF_FILES];	/* inputs ordered by their smallest record */
-  BTSORT_REC_LIST *min_p;	/* head of sr_list: the input holding the minimum record */
+  int heap[BTSORT_MAX_HALF_FILES];	/* min-heap of the active inputs, ordered by their smallest records; heap[0]
+					 * is the input holding the minimum record */
   RECDES tail_long_rec;		/* long record behind the last record of the min input's page when that record is
 				 * a BIGONE placeholder; grown and reused like the inputs' long_rec */
   bool page_tail_is_min;	/* false: must find the min record; true: the last record of the min input's page is
@@ -408,10 +401,18 @@ static void btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx);
 static int btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int in_idx)
   __attribute__ ((noinline));
 static int btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int in_idx, bool * run_done);
-static int btsort_merge_cmp_inputs (const BTSORT_MERGE_CTX * ctx, int a, int b);
-static void btsort_merge_order_inputs (BTSORT_MERGE_CTX * ctx);
-static int btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx);
-static void btsort_merge_sink_min (BTSORT_MERGE_CTX * ctx);
+static int btsort_merge_cmp_inputs (const BTSORT_MERGE_INPUT * in, int a, int b, BTSORT_CMP_FUNC * cmp_fn,
+				    void *cmp_arg);
+STATIC_INLINE void btsort_merge_heap_sift_down (const BTSORT_MERGE_INPUT * in, int *heap, int heap_n, int pos,
+						BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg)
+  __attribute__ ((ALWAYS_INLINE));
+static int btsort_merge_heap_second (const BTSORT_MERGE_INPUT * in, const int *heap, int heap_n,
+				     BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg);
+static void btsort_merge_heap_build (const BTSORT_MERGE_INPUT * in, int *heap, int heap_n, BTSORT_CMP_FUNC * cmp_fn,
+				     void *cmp_arg);
+static int btsort_merge_heap_replace_top (const BTSORT_MERGE_INPUT * in, int *heap, int heap_n, int second,
+					  BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg);
+static int btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int min, int second);
 static int btsort_merge_put_to_caller (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int in_idx);
 static int btsort_merge_flush_out_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int num_pages);
 static int btsort_merge_append_to_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int in_idx);
@@ -2573,51 +2574,146 @@ btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
 /*
  * btsort_merge_cmp_inputs () - Compare the smallest records of two inputs
  *   return: the comparison result of cmp_fn
- *   ctx(in): merge state
+ *   in(in): input sections
  *   a(in), b(in): input section indexes
+ *   cmp_fn(in), cmp_arg(in): the comparison function and its argument
+ *
+ * Note: cmp_fn and cmp_arg come as arguments rather than from the merge state so that the merge loop can keep them
+ *       in registers across the calls.
  */
 static int
-btsort_merge_cmp_inputs (const BTSORT_MERGE_CTX * ctx, int a, int b)
+btsort_merge_cmp_inputs (const BTSORT_MERGE_INPUT * in, int a, int b, BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg)
 {
-  return (*ctx->sort_param->cmp_fn) (btsort_merge_resolve_rec (&ctx->in[a].rec, &ctx->in[a].long_rec)->data,
-				     btsort_merge_resolve_rec (&ctx->in[b].rec, &ctx->in[b].long_rec)->data,
-				     ctx->sort_param->cmp_arg);
+  return (*cmp_fn) (btsort_merge_resolve_rec (&in[a].rec, &in[a].long_rec)->data,
+		    btsort_merge_resolve_rec (&in[b].rec, &in[b].long_rec)->data, cmp_arg);
 }
 
 /*
- * btsort_merge_order_inputs () - Link sr_list over the active inputs and order it by their smallest records
+ * btsort_merge_heap_sift_down () - Sink a heap entry until neither of its children compares smaller
  *   return: void
- *   ctx(in/out): merge state; min_p is set to the head of the list
+ *   in(in): input sections
+ *   heap(in/out): min-heap of input indexes
+ *   heap_n(in): entries in the heap
+ *   pos(in): position of the entry to sink
+ *   cmp_fn(in), cmp_arg(in): the comparison function and its argument
  *
- * Note: Exchange sort over every pair that swaps only when the earlier record compares greater.
+ * Note: Always inlined: the merge loop comes here whenever the minimum input changes, and at a small fan-in the
+ *       call would cost more than the loop.
+ */
+STATIC_INLINE void
+btsort_merge_heap_sift_down (const BTSORT_MERGE_INPUT * in, int *heap, int heap_n, int pos, BTSORT_CMP_FUNC * cmp_fn,
+			     void *cmp_arg)
+{
+  int child;
+  int tmp;
+
+  for (;;)
+    {
+      child = 2 * pos + 1;
+      if (child >= heap_n)
+	{
+	  break;
+	}
+
+      if (child + 1 < heap_n && btsort_merge_cmp_inputs (in, heap[child + 1], heap[child], cmp_fn, cmp_arg) < 0)
+	{
+	  child++;
+	}
+
+      if (btsort_merge_cmp_inputs (in, heap[pos], heap[child], cmp_fn, cmp_arg) <= 0)
+	{
+	  break;
+	}
+
+      tmp = heap[pos];
+      heap[pos] = heap[child];
+      heap[child] = tmp;
+      pos = child;
+    }
+}
+
+/*
+ * btsort_merge_heap_second () - Find the smaller child of the heap root: the input holding the second smallest record
+ *   return: its heap position, 1 or 2; 0 when the root has no child
+ *   in(in): input sections
+ *   heap(in): min-heap of input indexes
+ *   heap_n(in): entries in the heap
+ *   cmp_fn(in), cmp_arg(in): the comparison function and its argument
+ */
+static int
+btsort_merge_heap_second (const BTSORT_MERGE_INPUT * in, const int *heap, int heap_n, BTSORT_CMP_FUNC * cmp_fn,
+			  void *cmp_arg)
+{
+  if (heap_n < 2)
+    {
+      return 0;
+    }
+
+  if (heap_n > 2 && btsort_merge_cmp_inputs (in, heap[2], heap[1], cmp_fn, cmp_arg) < 0)
+    {
+      return 2;
+    }
+
+  return 1;
+}
+
+/*
+ * btsort_merge_heap_build () - Put the active inputs into the heap, ordered by their smallest records
+ *   return: void
+ *   in(in): input sections
+ *   heap(out): min-heap of input indexes; heap[0] is the input holding the minimum record
+ *   heap_n(in): active inputs, the entries of the heap
+ *   cmp_fn(in), cmp_arg(in): the comparison function and its argument
+ *
+ * Note: Floyd's bottom-up construction: at most 2 * heap_n comparisons.
  */
 static void
-btsort_merge_order_inputs (BTSORT_MERGE_CTX * ctx)
+btsort_merge_heap_build (const BTSORT_MERGE_INPUT * in, int *heap, int heap_n, BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg)
 {
-  BTSORT_REC_LIST *s, *p;
-  int tmp_pos;
   int i;
 
-  for (i = 0; i < ctx->act_infiles; i++)
+  for (i = 0; i < heap_n; i++)
     {
-      ctx->sr_list[i].next = (i + 1 < ctx->act_infiles) ? &ctx->sr_list[i + 1] : NULL;
-      ctx->sr_list[i].rec_pos = i;
+      heap[i] = i;
     }
 
-  for (s = ctx->sr_list; s; s = s->next)
+  for (i = heap_n / 2 - 1; i >= 0; i--)
     {
-      for (p = s->next; p; p = p->next)
-	{
-	  if (btsort_merge_cmp_inputs (ctx, s->rec_pos, p->rec_pos) > 0)
-	    {
-	      tmp_pos = s->rec_pos;
-	      s->rec_pos = p->rec_pos;
-	      p->rec_pos = tmp_pos;
-	    }
-	}
+      btsort_merge_heap_sift_down (in, heap, heap_n, i, cmp_fn, cmp_arg);
+    }
+}
+
+/*
+ * btsort_merge_heap_replace_top () - Restore the heap after the smallest record of the root input changed
+ *   return: the heap position of the smaller child of the root afterwards (see btsort_merge_heap_second)
+ *   in(in): input sections
+ *   heap(in/out): min-heap of input indexes
+ *   heap_n(in): entries in the heap
+ *   second(in): the heap position of the smaller child of the root before the change
+ *   cmp_fn(in), cmp_arg(in): the comparison function and its argument
+ *
+ * Note: The children of the root are as they were, so the new record is compared with the known smaller child
+ *       first: one comparison settles the usual case where the root input still holds the minimum. Otherwise the
+ *       root sinks from that child's position and the smaller child is found again.
+ */
+static int
+btsort_merge_heap_replace_top (const BTSORT_MERGE_INPUT * in, int *heap, int heap_n, int second,
+			       BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg)
+{
+  int tmp;
+
+  if (second == 0 || btsort_merge_cmp_inputs (in, heap[0], heap[second], cmp_fn, cmp_arg) <= 0)
+    {
+      /* the root input still holds the minimum record */
+      return second;
     }
 
-  ctx->min_p = ctx->sr_list;
+  tmp = heap[0];
+  heap[0] = heap[second];
+  heap[second] = tmp;
+  btsort_merge_heap_sift_down (in, heap, heap_n, second, cmp_fn, cmp_arg);
+
+  return btsort_merge_heap_second (in, heap, heap_n, cmp_fn, cmp_arg);
 }
 
 /*
@@ -2626,20 +2722,21 @@ btsort_merge_order_inputs (BTSORT_MERGE_CTX * ctx)
  *   return: NO_ERROR, or error code
  *   ctx(in/out): merge state; page_tail_is_min is set when the last record of the min input's current page
  *                does not compare greater than the second smallest input's record
+ *   min(in): the input holding the minimum record
+ *   second(in): the input holding the second smallest record, or -1 when min is the only input left
  *
  * Note: Only raises page_tail_is_min. The callers clear it when the min input leaves its page.
  */
 static int
-btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
+btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int min, int second)
 {
   BTSORT_PARAM *sort_param = ctx->sort_param;
-  BTSORT_MERGE_INPUT *min_in = &ctx->in[ctx->min_p->rec_pos];
-  BTSORT_REC_LIST *second = ctx->min_p->next;	/* the input holding the second smallest record */
+  BTSORT_MERGE_INPUT *min_in = &ctx->in[min];
   RECDES tail_rec = RECDES_INITIALIZER;
   char *tail_key, *second_key;
   int error;
 
-  if (second == NULL)
+  if (second < 0)
     {
       /* the min input is the only one left */
       return NO_ERROR;
@@ -2653,42 +2750,13 @@ btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
     }
 
   tail_key = btsort_merge_resolve_rec (&tail_rec, &ctx->tail_long_rec)->data;
-  second_key = btsort_merge_resolve_rec (&ctx->in[second->rec_pos].rec, &ctx->in[second->rec_pos].long_rec)->data;
+  second_key = btsort_merge_resolve_rec (&ctx->in[second].rec, &ctx->in[second].long_rec)->data;
   if ((*sort_param->cmp_fn) (tail_key, second_key, sort_param->cmp_arg) <= 0)
     {
       ctx->page_tail_is_min = true;
     }
 
   return NO_ERROR;
-}
-
-/*
- * btsort_merge_sink_min () - Sink the min input to its place after its smallest record changed
- *   return: void
- *   ctx(in/out): merge state
- *
- * Note: The rest of sr_list is still ordered, so one pass of adjacent swaps that stops at the first pair in
- *       order restores it.
- */
-static void
-btsort_merge_sink_min (BTSORT_MERGE_CTX * ctx)
-{
-  BTSORT_REC_LIST *s, *p;
-  int tmp_pos;
-
-  for (s = ctx->min_p; s->next != NULL; s = s->next)
-    {
-      p = s->next;
-      if (btsort_merge_cmp_inputs (ctx, s->rec_pos, p->rec_pos) <= 0)
-	{
-	  /* sr_list is completely sorted */
-	  break;
-	}
-
-      tmp_pos = s->rec_pos;
-      s->rec_pos = p->rec_pos;
-      p->rec_pos = tmp_pos;
-    }
 }
 
 /*
@@ -2878,8 +2946,8 @@ btsort_merge_copy_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int file
  *   return: NO_ERROR, or error code
  *   ctx(in/out): merge state
  *
- * Note: Loads the first pages of every input run, fetches their first records, orders the inputs, runs the page tail
- *       check for the min input and empties the output section.
+ * Note: Loads the first pages of every input run, fetches their first records and empties the output section. The
+ *       caller builds the heap over the inputs.
  */
 static int
 btsort_merge_start_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
@@ -2904,15 +2972,6 @@ btsort_merge_start_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
 	}
     }
 
-  btsort_merge_order_inputs (ctx);
-
-  ctx->page_tail_is_min = false;
-  error = btsort_merge_check_page_tail (thread_p, ctx);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
   btsort_merge_reset_out_section (ctx);
   ctx->out.run_written_pages = 0;
 
@@ -2932,6 +2991,13 @@ btsort_merge_start_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
 static int
 btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool put_to_caller)
 {
+  /* what the merge loop touches per record stays out of ctx, so that no call forces it to be read again */
+  BTSORT_CMP_FUNC *cmp_fn = ctx->sort_param->cmp_fn;
+  void *cmp_arg = ctx->sort_param->cmp_arg;
+  BTSORT_MERGE_INPUT *in = ctx->in;
+  int *heap = ctx->heap;
+  int heap_n;			/* inputs in the heap: those whose run still holds a record */
+  int second;			/* heap position (1 or 2) of the input holding the second smallest record; 0 when none */
   bool run_done;
   int min_in_idx;
   int error;
@@ -2942,10 +3008,22 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
       return error;
     }
 
+  heap_n = ctx->act_infiles;
+  btsort_merge_heap_build (in, heap, heap_n, cmp_fn, cmp_arg);
+  second = btsort_merge_heap_second (in, heap, heap_n, cmp_fn, cmp_arg);
+
+  /* page tail check */
+  ctx->page_tail_is_min = false;
+  error = btsort_merge_check_page_tail (thread_p, ctx, heap[0], (second > 0) ? heap[second] : -1);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   for (;;)
     {
       /* Output the minimum record */
-      min_in_idx = ctx->min_p->rec_pos;
+      min_in_idx = heap[0];
       if (put_to_caller)
 	{
 	  error = btsort_merge_put_to_caller (thread_p, ctx, min_in_idx);
@@ -2968,12 +3046,14 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
 
       if (run_done)
 	{
-	  /* drop the exhausted input from the list; the next one holds the minimum record */
-	  ctx->min_p = ctx->min_p->next;
-	  if (ctx->min_p == NULL)
+	  /* drop the exhausted input from the heap: the last entry takes the root and sinks to its place */
+	  heap[0] = heap[--heap_n];
+	  if (heap_n == 0)
 	    {
 	      break;
 	    }
+	  btsort_merge_heap_sift_down (in, heap, heap_n, 0, cmp_fn, cmp_arg);
+	  second = btsort_merge_heap_second (in, heap, heap_n, cmp_fn, cmp_arg);
 	  continue;
 	}
 
@@ -2988,11 +3068,11 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
       /* Find the new minimum record */
       if (!ctx->page_tail_is_min)
 	{
-	  btsort_merge_sink_min (ctx);
-	  if (ctx->in[ctx->min_p->rec_pos].cur_slotid == 0)
+	  second = btsort_merge_heap_replace_top (in, heap, heap_n, second, cmp_fn, cmp_arg);
+	  if (in[heap[0]].cur_slotid == 0)
 	    {
 	      /* new input page is entered */
-	      error = btsort_merge_check_page_tail (thread_p, ctx);
+	      error = btsort_merge_check_page_tail (thread_p, ctx, heap[0], (second > 0) ? heap[second] : -1);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -3027,7 +3107,7 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
 static int
 btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
-  BTSORT_MERGE_CTX ctx;		/* input/output sections and the order of the inputs' smallest records */
+  BTSORT_MERGE_CTX ctx;		/* input/output sections and the heap of the inputs' smallest records */
   int pre_act_infiles;		/* active input files before the recount of the last run */
   int num_runs;			/* output runs of this pass */
   bool very_last_run;		/* this pass produces the final run of the sort */
