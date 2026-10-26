@@ -6472,7 +6472,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
        */
       if (isold_object == true && has_index)
 	{
-	  /* if MVCC then delete before updating index */
+#if defined (SERVER_MODE)
+	  /* MVCC keeps the deleted version readable while indexes are updated. In standalone mode,
+	   * heap deletion eagerly reclaims OOS values, so defer it until index and partition work finish. */
 	  if (!mvcc_is_mvcc_disabled_class (&class_oid))
 	    {
 	      HEAP_OPERATION_CONTEXT delete_context;
@@ -6499,6 +6501,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
 	      deleted = true;
 	    }
+#endif /* SERVER_MODE */
 
 	  if (idx_action_flag == FOR_INSERT_OR_DELETE)
 	    {
