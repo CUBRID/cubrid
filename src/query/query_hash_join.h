@@ -34,17 +34,6 @@
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*
- * Debug Macros
- */
-
-#define HASHJOIN_PROFILE_TIME 0
-#define HASHJOIN_COLLISION_RATE 0
-#define HASHJOIN_DUMP_PARTITION 0
-#define HASHJOIN_DUMP_HASH_TABLE 0
-#define HASHJOIN_DUMP_BUILD 0
-#define HASHJOIN_DUMP_PROBE 0
-
-/*
  * Forward Declarations
  */
 
@@ -82,30 +71,6 @@ typedef enum hashjoin_merge_method
   HASHJOIN_MERGE_APPEND,
   HASHJOIN_MERGE_CONNECT
 } HASHJOIN_MERGE_METHOD;
-
-typedef enum hashjoin_profile_step
-{
-  HASHJOIN_PROFILE_NONE = 0,
-  HASHJOIN_PROFILE_BUILD_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_BUILD_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_BUILD_INSERT,	/* hjoin_build_key */
-  HASHJOIN_PROFILE_PROBE_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_PROBE_SEARCH,	/* hjoin_probe_key */
-  HASHJOIN_PROFILE_PROBE_MATCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_ADD,	/* hjoin_merge_tuple_to_list_id */
-  HASHJOIN_PROFILE_MERGE	/* hjoin_merge_qlist */
-} HASHJOIN_PROFILE_STEP;
-
-typedef enum hashjoin_print_step
-{
-  HASHJOIN_PRINT_NONE = 0,
-  HASHJOIN_PRINT_READ_KEY,
-  HASHJOIN_PRINT_NOT_MATCHED_KEY,
-  HASHJOIN_PRINT_NOT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_FILL_EMPTY_KEY
-} HASHJOIN_PRINT_STEP;
 
 /*
  * Struct & Typedef Definitions
@@ -190,43 +155,13 @@ typedef struct hashjoin_probe_stats : hashjoin_input_stats
 } HASHJOIN_PROBE_STATS;
 // *INDENT-ON*
 
-#if HASHJOIN_PROFILE_TIME
-typedef struct hashjoin_profile_stats
-{
-  struct
-  {
-    TSCTIMEVAL fetch;		/* hjoin_fetch_key */
-    TSCTIMEVAL hash;		/* qdata_hash_scan_key */
-    TSCTIMEVAL insert;		/* hjoin_build_key */
-  } build;
-
-  struct
-  {
-    TSCTIMEVAL fetch;		/* hjoin_fetch_key */
-    TSCTIMEVAL hash;		/* qdata_hash_scan_key */
-    TSCTIMEVAL search;		/* hjoin_probe_key */
-    TSCTIMEVAL match;		/* hjoin_fetch_key */
-    TSCTIMEVAL add;		/* hjoin_merge_tuple_to_list_id */
-  } probe;
-
-  struct
-  {
-    TSCTIMEVAL elapsed_time;	/* hjoin_fetch_key */
-    UINT64 fetches;
-    UINT64 ioreads;
-    UINT64 qualified_rows;
-  } merge;
-} HASHJOIN_PROFILE_STATS;
-#endif /* HASHJOIN_PROFILE_TIME */
-
 typedef struct hashjoin_start_stats
 {
   TSC_TICKS tick;
   UINT64 fetches;
   UINT64 ioreads;
-  HASHJOIN_PROFILE_STEP step;
 } HASHJOIN_START_STATS;
-#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, HASHJOIN_PROFILE_NONE }
+#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0 }
 
 typedef struct hashjoin_stats
 {
@@ -240,17 +175,10 @@ typedef struct hashjoin_stats
 
   bool swap_join_inputs;
 
-  double collision_rate;
-
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS parallel;
   HASHJOIN_BUILD_STATS build;
   HASHJOIN_PROBE_STATS probe;
-
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_INPUT_STATS merge;
-  HASHJOIN_PROFILE_STATS profile;
-#endif				/* HASHJOIN_PROFILE_TIME */
 } HASHJOIN_STATS;
 
 typedef struct hashjoin_stats_group
@@ -422,46 +350,7 @@ typedef struct hashjoin_manager
 
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
-
-#if HASHJOIN_DUMP_HASH_TABLE
-  pthread_mutex_t dump_hash_table_mutex;
-#endif				/* HASHJOIN_DUMP_HASH_TABLE */
 } HASHJOIN_MANAGER;
-
-/*
- * Macro Function Declarations
- */
-
-#if HASHJOIN_PROFILE_TIME
-#define HJOIN_PROFILE_START(thread_p, start_stats_p, step) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       hjoin_profile_start ((thread_p), (start_stats_p), (step)); \
-     }
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
-     }
-#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       assert ((step) == HASHJOIN_PROFILE_MERGE); \
-       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
-       (stats_p)->merge.qualified_rows = (rows); \
-     }
-#else
-#define HJOIN_PROFILE_START(thread_p, start_stats, step) ((void) 0)
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) ((void) 0)
-#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) ((void) 0)
-#endif /* HASHJOIN_PROFILE_TIME */
-
-#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-#define HJOIN_PRINT_TUPLE(list_id, tuple, step) \
-  hjoin_print_tuple ((list_id), (tuple), (step))
-#else
-#define HJOIN_PRINT_TUPLE(list_id, tuple, step) ((void) 0)
-#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /*
  * Function Declarations
@@ -504,12 +393,6 @@ void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_s
 
 UINT64 *hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index);
 void hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
-
-#if HASHJOIN_PROFILE_TIME
-void hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step);
-void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats, HASHJOIN_START_STATS * start_stats,
-			HASHJOIN_PROFILE_STEP step);
-#endif /* HASHJOIN_PROFILE_TIME */
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
