@@ -1502,6 +1502,7 @@ qo_check_nondeterministic_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	case PT_DRAND:
 	case PT_DRANDOM:
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
 	case PT_INST_NUM:
@@ -1559,6 +1560,34 @@ qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
+ *   return: false if the comparison may be done in an approximate numeric type
+ *   expr(in): expression compared with the constant
+ *   val(in): constant side of the comparison
+ *
+ * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
+ */
+static bool
+qo_is_exact_compare_const (PT_NODE * expr, PT_NODE * val)
+{
+  if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
+    {
+      return true;
+    }
+
+  switch (val->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_is_constant_order_expr () - is the ORDER BY expression fixed to a constant by a WHERE term?
  *   return: true if a top-level WHERE conjunct 'col = const' (or 'col range (const =)') exists
  *   parser(in): parser context
@@ -1571,7 +1600,7 @@ qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node)
 static bool
 qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * col)
 {
-  PT_NODE *term, *arg1, *arg2, *other;
+  PT_NODE *term, *arg1, *arg2, *other, *val, *col_next;
   const char *col_str, *other_str;
   bool nondeterministic = false;
 
@@ -1580,7 +1609,10 @@ qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * c
       return false;
     }
 
+  col_next = col->next;
+  col->next = NULL;
   (void) parser_walk_tree (parser, col, qo_check_nondeterministic_pre, &nondeterministic, NULL, NULL);
+  col->next = col_next;
   if (nondeterministic)
     {
       return false;
@@ -1613,10 +1645,12 @@ qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * c
 	  if (qo_is_reduceable_const (arg2))
 	    {
 	      other = arg1;
+	      val = arg2;
 	    }
 	  else if (qo_is_reduceable_const (arg1))
 	    {
 	      other = arg2;
+	      val = arg1;
 	    }
 	  else
 	    {
@@ -1631,8 +1665,14 @@ qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * c
 	      continue;
 	    }
 	  other = arg1;
+	  val = arg2->info.expr.arg1;
 	}
       else
+	{
+	  continue;
+	}
+
+      if (!qo_is_exact_compare_const (other, val))
 	{
 	  continue;
 	}
@@ -1669,6 +1709,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   bool need_merge_check;
   bool has_orderbynum_with_groupby;
   bool is_const_col;
+  bool with_rollup;
 
   /* do not reduce order by siblings */
   if (node->node_type != PT_SELECT || node->info.query.q.select.connect_by)
@@ -1732,6 +1773,9 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  /* a super-aggregate row of ROLLUP outputs NULL for the grouped expression, so it is not constant */
+  with_rollup = node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup;
+
   order_prev = NULL;
   for (order = node->info.query.order_by; order; order = order_next)
     {
@@ -1770,7 +1814,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  is_const_col = qo_is_constant_order_expr (parser, node->info.query.q.select.where, col);
+	  is_const_col = !with_rollup && qo_is_constant_order_expr (parser, node->info.query.q.select.where, col);
 	}
 
       if (is_const_col)
