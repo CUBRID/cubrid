@@ -8173,28 +8173,25 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 /*
  * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
- *   return: S_SUCCESS (the chunk is full -- cap rows, or exc_cap exceptions -- and the page may have
- *           more), S_END (the page has no more: *n_rows and *n_exc may be below their caps, even 0),
- *           or S_ERROR
+ *   return: S_SUCCESS (the chunk ends -- cap rows, or the record after its last row is one the page does not
+ *           answer for -- and the page may have more), S_END (the page has no more: *n_rows may be below cap, even
+ *           0), S_DOESNT_FIT (nothing collected: the next record is one the page does not answer for, and the row
+ *           path takes the page from it), or S_ERROR
  *   vpid(in): the page
  *   class_oid(in): the class scanned (the scan cache's)
  *   scan_cache(in/out): the scan cache; its watcher holds the page on return
  *   slot(in/out): the walk's position: 0 before the first call for the page; on S_SUCCESS the slot
- *                 the next call resumes after (the last row collected, or the slot before an
- *                 exception the full list could not take)
+ *                 the next call resumes after (the last row collected, or the slot before the record that
+ *                 ended the chunk)
  *   rows(out): cap slots, peeked, in slot order
  *   cap(in): at most so many rows
  *   n_rows(out): the rows collected
  *   repids(in): the representations the caller decodes (n_repids of them); a visible record of
  *               another one is an exception.  n_repids 0: not checked
  *   n_repids(in): their number
- *   unknown_repid(out): NULL_REPRID on entry; receives the representation of the first visible
- *                       record listed as an exception for its representation alone (the caller
- *                       may learn it for the next page).  NULL: not reported
- *   exc(out): exc_cap slots: the OIDs of the records this page alone does not answer for, in slot
- *             order; the caller fetches each on the row path once the chunk is consumed
- *   exc_cap(in): at most so many exceptions
- *   n_exc(out): the exceptions listed
+ *   unknown_repid(out): NULL_REPRID on entry; receives the representation of the visible record that ended
+ *                       the walk for its representation alone (the caller may learn it before the next
+ *                       call).  NULL: not reported
  *
  * The walk heap_next_1page () makes, record after record, made in runs: the same slots skipped
  * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
@@ -8204,31 +8201,29 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  * log walk heap_get_visible_version_from_log () would find nothing: skipped).  What is left is a
  * record whose answer is not in this page -- relocated or in overflow pages (the header is
  * elsewhere), too new for the snapshot with a previous version in the log, or visible but of a
- * representation the caller does not decode (one it has not learned yet) -- and such a record goes to the
- * exception list by its OID instead of stopping the walk: the rows around it still make the
- * chunk, and the caller fetches it by OID on the row path (heap_get_visible_version ()) once the
- * chunk is consumed and the page let go.  So a page holds the batch whatever a few of its records
- * are; the rows and the exceptions of one chunk come in slot order each, but the exceptions are
- * served after the rows, so the output order is not the heap order (no consumer of the batch
- * promises it: an aggregate or a hash GROUP BY does not care, and a projection has no ORDER BY).
+ * representation the caller does not decode (one it has not learned yet) -- and such a record ends
+ * the walk: the rows before it make the chunk, and the next call, with nothing collected, answers
+ * S_DOESNT_FIT, so the row path takes the page from that record as heap_next () walks it, with the
+ * page held.  The rows therefore come in the heap's order -- what a SUM's overflow point, a ROWNUM
+ * or a GROUP_CONCAT depends on -- and no record is fetched again by its OID after the page was let
+ * go: a relocated or overflow record that turns out deleted is skipped by the row path on the page
+ * it holds, never looked up on a page vacuum may be removing (heap_remove_page_on_vacuum ()).
  * A scan cache without a snapshot (an MVCC-disabled class) never gets here -- the batch refuses
  * those scans (scan_batch_open_internal ()) -- so the snapshot == NULL branch below is defensive.
  */
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
-			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid, OID * exc, int exc_cap,
-			   int *n_exc)
+			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid)
 {
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
   RECDES rec;
   OID oid;
   SCAN_CODE scan;
-  int n = 0, e = 0;
+  int n = 0;
 
   *n_rows = 0;
-  *n_exc = 0;
   /* A cached scan (HEAP_SCAN_IS_LOCAL_CACHE_READ) reads a copy of the page so that it holds no latch while its rows
    * are out; the callers that pass such a scan -- the filter iterator (scan_batch_open_filter ()) and the rows node
    * (scan_batch_open_rows (), scan_batch_rows_consume ()) -- keep that promise themselves: they copy the records of
@@ -8274,7 +8269,6 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
       if (scan == S_END)
 	{
 	  *n_rows = n;
-	  *n_exc = e;
 	  return S_END;
 	}
       if (scan != S_SUCCESS)
@@ -8345,16 +8339,11 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	}
       if (is_exception)
 	{
-	  if (e == exc_cap)
-	    {
-	      /* the list is full: the chunk ends before this record, which the next call sees first */
-	      *slot = oid.slotid - 1;
-	      *n_rows = n;
-	      *n_exc = e;
-	      return S_SUCCESS;
-	    }
-	  exc[e++] = oid;
-	  continue;
+	  /* the chunk ends before this record, which the next call sees first: with rows collected they go out now,
+	   * and with none the row path takes the page from here */
+	  *slot = oid.slotid - 1;
+	  *n_rows = n;
+	  return (n > 0) ? S_SUCCESS : S_DOESNT_FIT;
 	}
       rows[n].oid = oid;
       rows[n].recdes = rec;
@@ -8364,7 +8353,6 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	{
 	  *slot = oid.slotid;
 	  *n_rows = n;
-	  *n_exc = e;
 	  return S_SUCCESS;
 	}
     }

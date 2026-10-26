@@ -929,41 +929,6 @@ namespace parallel_scan
 		    stop = true;
 		    return S_ERROR;
 		  }
-		if (rc == EXPR_BATCH_FALLBACK)
-		  {
-		    /* the row loop walks the page from the chunk's first slot: it meets the chunk's exceptions itself */
-		    hsidp->batch_n_exc = 0;
-		  }
-		/* the chunk's exceptions (hsid.batch_exc): each fetched by OID on the row path -- the page let go first
-		 * by scan_batch_row_by_oid (), fixed again by the next chunk -- its values in the value list, then the
-		 * row loop's body, as a row the slot iterator qualified */
-		for (int k = 0; k < hsidp->batch_n_exc && !stop; k++)
-		  {
-		    SCAN_CODE row;
-
-		    if (on_trace)
-		      {
-			since = read_fixes (thread_ref);
-		      }
-		    row = scan_batch_row_by_oid (&thread_ref, m_scan_id, &hsidp->batch_exc[k]);
-		    if (on_trace)
-		      {
-			add_scan_fixes (thread_ref, since);
-		      }
-		    if (row == S_ERROR)
-		      {
-			m_err_messages->move_top_error_message_to_this ();
-			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			stop = true;
-			return S_ERROR;
-		      }
-		    if (row == S_SUCCESS && row_body (thread_ref, stop) == S_ERROR)
-		      {
-			return S_ERROR;
-		      }
-		  }
-		expr_batch_plan_note_rows_by_oid (hsidp->batch_plan, hsidp->batch_n_exc);
-		hsidp->batch_n_exc = 0;
 	      }
 	    while (scan_code == S_SUCCESS && rc == NO_ERROR && !stop);
 

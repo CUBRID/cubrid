@@ -250,11 +250,10 @@ extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * n
 				    EXPR_BATCH * batch);
 
 /* The representations the plan decodes (their ids, *n of them; NULL and 0 when it decodes no column): a page's
- * visible records of another one are fetched by OID on the row path (heap_page_collect_visible ()'s exceptions).
- * The first is the one the plan was built from; the scan adds the ones it meets with
- * expr_batch_plan_learn_repr (): NO_ERROR when the plan decodes that representation (its columns and keys sit in
- * it with the same type and domain), ER_FAILED when it does not (no error set); the records of a representation
- * it cannot learn keep going by OID. */
+ * visible record of another one ends the chunk before it (heap_page_collect_visible ()).  The first is the one the
+ * plan was built from; the scan adds the ones it meets with expr_batch_plan_learn_repr (): NO_ERROR when the plan
+ * decodes that representation (its columns and keys sit in it with the same type and domain), ER_FAILED when it
+ * does not (no error set); the row path takes a page from a record of a representation it cannot learn. */
 extern const REPR_ID *expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n);
 extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid);
 
@@ -263,7 +262,6 @@ extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN 
  * true from then on, and the scan's remaining pages go to the row path without a batch try. */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
 extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
-extern void expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);

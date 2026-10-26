@@ -434,7 +434,6 @@ struct expr_batch_plan
   int n_row_kids;
   INT64 pages;
   INT64 pages_fallback;
-  INT64 rows_by_oid;		/* rows a page skipped (heap_page_collect_visible ()), fetched by OID on the row path */
   const char *fallback_why;	/* the last chunk's cause for the row path */
   bool gave_up;			/* the rest of the scan goes to the row path (expr_batch_plan_note_page ()) */
 };
@@ -3861,8 +3860,8 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
 
 /* Each row's layout and representation, once a chunk: the row's record carries its representation
  * id, looked up among the ones the plan decodes (reprs[]); a record of one the plan has not learned
- * sends the chunk to the row path, which decodes it (the page collector lists such records as
- * exceptions instead, so this is a guard).  A plan that reads no column and no key has no
+ * sends the chunk to the row path, which decodes it (the page collector ends a chunk before such a
+ * record instead, so this is a guard).  A plan that reads no column and no key has no
  * representation to check: the layouts stay unread. */
 static int
 eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
@@ -5434,15 +5433,6 @@ expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan)
   return plan != NULL && plan->gave_up;
 }
 
-void
-expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n)
-{
-  if (plan != NULL)
-    {
-      plan->rows_by_oid += n;
-    }
-}
-
 const REPR_ID *
 expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n)
 {
@@ -5501,7 +5491,7 @@ eb_repr_attr (const OR_CLASSREP * rep, ATTR_ID attrid)
  * read a record of it as they read one of entry 0: then its locators make a new entry.  Anything else -- a column
  * the representation lacks (the row path supplies its default value), a column of another type or domain, the
  * table full, the representation unreadable -- rejects it, and the rejected id is remembered so it is not fetched
- * again (its records go by OID on the row path).  NO_ERROR when the representation is (now) decoded, ER_FAILED
+ * again (the row path takes a page from its first record).  NO_ERROR when the representation is (now) decoded, ER_FAILED
  * when it is not; no error is set either way (a capability, not a fault). */
 int
 expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid)
@@ -5648,11 +5638,10 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
     }
 
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
-	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld, rows by oid %lld%s%s%s)\n",
+	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld%s%s%s)\n",
 	   indent, ' ', plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
 	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
-	   (long long) plan->pages, (long long) plan->pages_fallback, (long long) plan->rows_by_oid,
-	   reprs,
+	   (long long) plan->pages, (long long) plan->pages_fallback, reprs,
 	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
   if (plan->n_proj > 0)
     {
@@ -5677,7 +5666,7 @@ expr_batch_reset (EXPR_BATCH * batch)
 }
 
 /* The plan's per-scan state, so that the next scan it serves counts from nothing: the trace's pages, the pages
- * handed back and the rows fetched by OID, the last chunk's fallback cause, the per-chunk decode marks and the mask
+ * handed back, the last chunk's fallback cause, the per-chunk decode marks and the mask
  * depth.  What the plan learned of the class stays -- the representations it decodes (reprs, repids) and the ones
  * it rejected -- and so does what it built from the clone: the arena and the lines carved from it, the columns,
  * the vectors and their sources, the steps, the leaves, the keys, the shared values, the projection columns, the
@@ -5689,7 +5678,6 @@ expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan)
 
   plan->pages = 0;
   plan->pages_fallback = 0;
-  plan->rows_by_oid = 0;
   plan->fallback_why = NULL;
   plan->mask_depth = 0;
   for (i = 0; i < plan->n_cols; i++)
