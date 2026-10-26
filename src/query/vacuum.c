@@ -366,6 +366,7 @@ struct vacuum_data
     int page_data_max_count;	/* Maximum data entries fitting one vacuum data page. */
 
     int log_block_npages;		/* The number of pages in a log block. */
+    VACUUM_LOG_BLOCKID interrupted_partial_blockid; /* Partial block whose later publication must retain retry safety. */
 
     bool is_loaded;		/* True if vacuum data is loaded. */
     vacuum_shutdown_sequence shutdown_sequence;
@@ -388,6 +389,7 @@ struct vacuum_data
       , last_page (NULL)
       , page_data_max_count (0)
       , log_block_npages (0)
+      , interrupted_partial_blockid (VACUUM_NULL_LOG_BLOCKID)
       , is_loaded (false)
       , shutdown_sequence ()
       , is_archive_removal_safe (false)
@@ -1092,8 +1094,10 @@ xvacuum (THREAD_ENTRY * thread_p)
 	{
 	  /* The saved LSA and MVCC bounds are unchanged; a later run must finish this partial block. */
 	  log_Gl.hdr.does_block_need_vacuum = true;
+	  vacuum_Data.interrupted_partial_blockid = partial_entry.get_blockid ();
 	  goto end;
 	}
+      vacuum_Data.interrupted_partial_blockid = VACUUM_NULL_LOG_BLOCKID;
     }
 
   /* All vacuum complete. */
@@ -1351,6 +1355,11 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+
+  /* A saved partial block may have been partly vacuumed by a previous standalone session. Preserve that hint if
+   * this session publishes it as a full block, including when standalone startup vacuum is skipped. */
+  vacuum_Data.interrupted_partial_blockid = log_Gl.hdr.does_block_need_vacuum
+    ? vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) : VACUUM_NULL_LOG_BLOCKID;
 
   /* first things first... load vacuum data and do some recovery if required */
   error_code = vacuum_data_load_and_recover (thread_p);
@@ -5492,6 +5501,12 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      LSA_COPY (&page_free_data->start_lsa, &consumed_data.start_lsa);
 	      page_free_data->newest_mvccid = consumed_data.newest_mvccid;
 	      page_free_data->oldest_visible_mvccid = consumed_data.oldest_visible_mvccid;
+	      if (next_blockid == vacuum_Data.interrupted_partial_blockid)
+		{
+		  /* Earlier partial work may already have vacuumed or deallocated heap pages in this block. */
+		  page_free_data->set_interrupted ();
+		  vacuum_Data.interrupted_partial_blockid = VACUUM_NULL_LOG_BLOCKID;
+		}
 	      assert (log_Gl.mvcc_table.get_global_oldest_visible () >= page_free_data->oldest_visible_mvccid);
 #if !defined (NDEBUG)
 	      /* Check that oldest_mvccid is not decreasing. */
@@ -7992,6 +8007,24 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
     }
 
   vacuum_data_load_first_and_last_page (thread_p);
+
+#if defined (SA_MODE)
+  if (!vacuum_Data.is_vacuum_complete)
+    {
+      /* A failed or skipped vacuum may leave full blocks, or a partial block published by later shutdown logging.
+       * Persist queued entries before log_final, and never reflect unfinished blocks as already covered. */
+      thread_type save_type;
+      vacuum_convert_thread_to_master (thread_p, save_type);
+      vacuum_Data.update ();
+      vacuum_restore_thread (thread_p, save_type);
+
+      if (!vacuum_Data.is_empty () || log_Gl.hdr.does_block_need_vacuum)
+	{
+	  vacuum_data_unload_first_and_last_page (thread_p);
+	  return;
+	}
+    }
+#endif /* SA_MODE */
 
   VACUUM_LOG_BLOCKID last_blockid = logpb_last_complete_blockid ();
 
