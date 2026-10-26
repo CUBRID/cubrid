@@ -600,13 +600,14 @@ struct btree_find_fk_object
   OID locked_object;
   LOCK lock_mode;
   BTREE_FK_SEARCH search;
+  MVCCID writer_before;		/* BTREE_FK_FIND_WRITER reports only a writer whose MVCCID precedes this */
   MVCCID writer_mvccid;		/* BTREE_FK_FIND_WRITER's answer */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL, MVCCID_NULL }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -6321,10 +6322,12 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
  * btid (in)	   : Foreign key's B-tree ID.
  * key (in)	   : Parent key.
  * class_oid (in)  : Child class OID.
+ * before (in)	   : Report only a transaction whose MVCCID precedes this.
  * writer (out)	   : That transaction's MVCCID, or MVCCID_NULL.
  */
 int
-btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, MVCCID * writer)
+btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, MVCCID before,
+			       MVCCID * writer)
 {
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
   int error_code;
@@ -6332,6 +6335,7 @@ btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
   *writer = MVCCID_NULL;
 #if defined (SERVER_MODE)
   find_fk_object.search = BTREE_FK_FIND_WRITER;
+  find_fk_object.writer_before = before;
   error_code = btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
   *writer = find_fk_object.writer_mvccid;
 #else /* !SERVER_MODE */
@@ -30487,7 +30491,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
 	if (find_fk_obj->search == BTREE_FK_FIND_WRITER)
 	  {
-	    if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid))
+	    if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid)
+		&& MVCC_ID_PRECEDES (fk_writer_mvccid, find_fk_obj->writer_before))
 	      {
 		find_fk_obj->writer_mvccid = fk_writer_mvccid;
 		bts->end_scan = true;

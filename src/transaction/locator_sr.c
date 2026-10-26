@@ -188,7 +188,7 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID 
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes,
-				      MVCCID * writer);
+				      MVCCID before, MVCCID * writer);
 static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p,
 										MVCC_REC_HEADER * rec_header,
 										MVCC_SNAPSHOT * snapshot);
@@ -4241,10 +4241,12 @@ error:
  *
  * return: NO_ERROR or error code
  *
+ *   before(in): only a transaction whose MVCCID precedes this counts
  *   writer(out): its MVCCID, or MVCCID_NULL when there is none or nothing references the class's primary key
  */
 static int
-locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes, MVCCID * writer)
+locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes, MVCCID before,
+			   MVCCID * writer)
 {
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
@@ -4289,7 +4291,8 @@ locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, 
 	}
       for (fkref = index->fk; fkref != NULL && *writer == MVCCID_NULL && error_code == NO_ERROR; fkref = fkref->next)
 	{
-	  error_code = btree_find_foreign_key_writer (thread_p, &fkref->self_btid, key, &fkref->self_oid, writer);
+	  error_code =
+	    btree_find_foreign_key_writer (thread_p, &fkref->self_btid, key, &fkref->self_oid, before, writer);
 	}
       if (key == &dbvalue)
 	{
@@ -13721,7 +13724,8 @@ error:
  * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
  *	 A row to delete whose key a child transaction is still writing under is given back and waited for: the
  *	 foreign key check takes no parent row lock, so that transaction may touch this parent again and must not find
- *	 it held by us while we wait for it.
+ *	 it held by us while we wait for it.  Only a transaction already writing when this call began counts, as a
+ *	 lock queue lets in only those ahead of us; a later one is waited for with the row held, which bounds the retries.
  */
 SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
@@ -13740,6 +13744,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   bool lock_acquired = false;	/* whether the internal call took the row lock */
   bool evaluated_false = false;
   MVCCID child_writer = MVCCID_NULL;
+  MVCCID writers_before = LOG_READ_NEXT_MVCCID;
   int err = NO_ERROR;
 
   if (recdes == NULL && mvcc_reev_data != NULL)
@@ -13859,7 +13864,7 @@ exit:
   if (deletes_row && lock_acquired && scan == S_SUCCESS && !evaluated_false && recdes != NULL
       && !OID_IS_ROOTOID (class_oid))
     {
-      if (locator_find_child_writer (thread_p, class_oid, oid, recdes, &child_writer) != NO_ERROR)
+      if (locator_find_child_writer (thread_p, class_oid, oid, recdes, writers_before, &child_writer) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}

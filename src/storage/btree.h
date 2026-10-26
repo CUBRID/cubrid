@@ -772,7 +772,7 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SC
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				   OID * found_oid);
 extern int btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-					  MVCCID * writer);
+					  MVCCID before, MVCCID * writer);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 extern void bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
