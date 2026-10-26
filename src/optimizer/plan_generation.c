@@ -3560,40 +3560,15 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_skip_groupby () - check whether the chosen plan delivers the rows
- *			     already grouped, so the group-by sort can be skipped
+ * qo_plan_skip_groupby () - check the plan info for order by
  *   return: true/false
- *   plan(in): QO_PLAN (top plan chosen by the planner)
- *
- * note: qo_top_plan_new () makes the verdict. For a single scan top plan it
- *	 raises the groupby_skip flag of the index entry, so the flag is simply
- *	 read back. For a join top plan it sets skip_groupby of the plan itself,
- *	 because the index entry is shared by every candidate plan on the node
- *	 while this verdict belongs to the chosen plan only.
- *	 The ORDER BY / DISTINCT sorts that qo_top_plan_new () appends after the
- *	 GROUP BY step are stepped over to reach the judged plan.
+ *   plan(in): QO_PLAN
  */
 bool
 qo_plan_skip_groupby (QO_PLAN * plan)
 {
-  if (plan == NULL)
-    {
-      return false;
-    }
-
-  /* a single scan top plan carries the flag raised by qo_top_plan_new () */
-  if (plan->plan_type == QO_PLANTYPE_SCAN)
-    {
-      return (plan->plan_un.scan.index && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
-    }
-
-  while (plan != NULL && plan->plan_type == QO_PLANTYPE_SORT
-	 && (plan->plan_un.sort.sort_type == SORT_ORDERBY || plan->plan_un.sort.sort_type == SORT_DISTINCT))
-    {
-      plan = plan->plan_un.sort.subplan;
-    }
-
-  return (plan != NULL && plan->skip_groupby) ? true : false;
+  return (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
 }
 
 /*
