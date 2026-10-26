@@ -2826,7 +2826,8 @@ revoke_all_from_user (DB_OBJECT * user)
     {
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      if (obj->class_mop == NULL || (is_class_entry (col, i) && db_is_system_class (obj)))
+      /* a system object entry has no object, and CM does not manage its privileges */
+      if (obj == NULL || obj->class_mop == NULL || (is_class_entry (col, i) && db_is_system_class (obj)))
 	{
 	  continue;
 	}
