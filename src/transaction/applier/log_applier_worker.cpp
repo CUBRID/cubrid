@@ -218,27 +218,34 @@ la_worker_main (void *arg)
   LA_WORKER *worker = (LA_WORKER *) arg;
   LA_WORKER_SESSION session;
   LA_APPLY_WORKER_CONTEXT worker_context;
+#if !defined(CS_MODE) || !defined(MULTI_CONN_TO_A_SERVER)
   cuberr::context *er_context_p = NULL;
+#endif
   bool session_started = false;
   bool worker_context_started = false;
   int error = NO_ERROR;
   unsigned long long worker_applied_item_count = 0;
   const char *exit_reason = "normal_shutdown";
 
+#if !defined(CS_MODE) || !defined(MULTI_CONN_TO_A_SERVER)
+  /* with sub-clients, db_restart_sub creates and registers this thread's error context, and db_shutdown_sub
+   * destroys it; a second one registered here would collide with it */
   er_context_p = new cuberr::context ();
   er_context_p->register_thread_local ();
+#endif
 
   error = la_worker_start_session (&session, worker->index);
+
+  /* closed at the end even when it failed to start; until then the failed sub-client keeps the error context
+   * the failure is reported through */
+  session_started = true;
   if (error != NO_ERROR)
     {
       exit_reason = "start_session_failed";
       la_worker_startup_failed (worker, exit_reason, error);
-      /* reported above while the failed sub-client still holds the error context; now close it */
-      la_worker_end_session (&session);
       goto end;
     }
 
-  session_started = true;
   error = la_worker_context_init (&worker_context, la_Worker_config.db_page_size, la_Worker_config.recdes_pool_size);
   if (error != NO_ERROR)
     {
@@ -274,8 +281,10 @@ end:
   /* The locator area cache is one per process and shared by every worker; it is released once by the
    * client finalization after all workers have been joined. */
 
+#if !defined(CS_MODE) || !defined(MULTI_CONN_TO_A_SERVER)
   er_context_p->deregister_thread_local ();
   delete er_context_p;
+#endif
 
   return NULL;
 }
