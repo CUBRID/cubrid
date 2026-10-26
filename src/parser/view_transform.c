@@ -219,6 +219,7 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
+static bool mq_is_attr_name_used (PT_NODE * attr_list, const char *name);
 static PT_NODE *mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						       PT_NODE * derived_table, PT_NODE ** new_spec);
@@ -1576,6 +1577,33 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
 }
 
 /*
+ * mq_is_attr_name_used () - check if a name is used by an attribute in the list
+ *   return: true if used
+ *   attr_list(in): attribute list
+ *   name(in): name to check
+ */
+static bool
+mq_is_attr_name_used (PT_NODE * attr_list, const char *name)
+{
+  PT_NODE *attr;
+
+  for (attr = attr_list; attr != NULL; attr = attr->next)
+    {
+      if (attr->node_type != PT_NAME)
+	{
+	  continue;
+	}
+      if ((attr->info.name.original != NULL && intl_identifier_casecmp (attr->info.name.original, name) == 0)
+	  || (attr->alias_print != NULL && intl_identifier_casecmp (attr->alias_print, name) == 0))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * mq_copy_select_list_as_attr_list () - copy the select list of a derived table as its attribute list (as_attr_list)
  *   return: attribute list
  *   parser(in):
@@ -1590,6 +1618,7 @@ static PT_NODE *
 mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec)
 {
   PT_NODE *attr_list, *attr, *prev, *name;
+  const char *generated_name;
   int i = 0;
 
   attr_list = parser_copy_tree_list (parser, select_list);
@@ -1601,7 +1630,14 @@ mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list
 	  continue;
 	}
 
-      name = pt_name (parser, mq_generate_name (parser, "a", &i));
+      /* the name must not be one of the attributes kept in the list (e.g. "a_1" of "select c as a_1 ... order by a_1") */
+      do
+	{
+	  generated_name = mq_generate_name (parser, "a", &i);
+	}
+      while (mq_is_attr_name_used (attr_list, generated_name));
+
+      name = pt_name (parser, generated_name);
       if (name == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
