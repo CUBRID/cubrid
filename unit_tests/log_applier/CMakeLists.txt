@@ -20,19 +20,22 @@ project (test_log_applier)
 
 # The coordinator's bookkeeping modules (in-flight list, gate, pending list, task and result queues) keep their
 # state in file statics and are not exported from cubridcs, so their sources are compiled into the test; cubridcs
-# supplies the error manager and the other client runtime they call. The workers and the coordinator itself
-# need a server connection and are not unit tested here.
+# supplies the error manager and the other client runtime they call. The worker module is compiled in too: its
+# sub-client calls (db_restart_sub, db_shutdown_sub) need a server, and test_log_applier_worker.cpp defines them
+# in place of cubridcs's. The coordinator itself needs a server connection and is not unit tested here.
 set (TEST_LOG_APPLIER_SRC
   test_main.cpp
   test_log_applier_inflight.cpp
   test_log_applier_gate.cpp
   test_log_applier_pending.cpp
   test_log_applier_queues.cpp
+  test_log_applier_worker.cpp
   ${APPLIER_DIR}/log_applier_inflight.cpp
   ${APPLIER_DIR}/log_applier_gate.cpp
   ${APPLIER_DIR}/log_applier_pending.cpp
   ${APPLIER_DIR}/log_applier_task_queue.cpp
   ${APPLIER_DIR}/log_applier_result_queue.cpp
+  ${APPLIER_DIR}/log_applier_worker.cpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
