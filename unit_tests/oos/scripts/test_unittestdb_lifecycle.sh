@@ -47,8 +47,11 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$OOS_FIXTURE_SANDBOX/commands"
 case "$1" in
   createdb)
-    [ "$(awk '$0 == "vacuum_log_block_pages=4" { count++ } END { print count + 0 }' \
-      "$CUBRID/conf/cubrid.conf")" -eq 1 ] || exit 96
+    # Only the shared fixture is created with its own configuration section.
+    if [ "$4" = unittestdb ]; then
+      [ "$(awk '$0 == "vacuum_log_block_pages=4" { count++ } END { print count + 0 }' \
+        "$CUBRID/conf/cubrid.conf")" -eq 1 ] || exit 96
+    fi
     name="$4"
     shift 4
     while [ "$1" != -F ]; do shift; done
@@ -78,7 +81,9 @@ CLI
 
 fixture ()
 {
-  PATH="$CUBRID/bin:$PATH" bash "$script_dir/$1" > "$OOS_FIXTURE_SANDBOX/$1.log" 2>&1
+  local script="$1"
+  shift
+  PATH="$CUBRID/bin:$PATH" bash "$script_dir/$script" "$@" > "$OOS_FIXTURE_SANDBOX/$script.log" 2>&1
 }
 
 check_conf ()
@@ -223,12 +228,95 @@ test_delete_retry ()
     || fail 'cleanup after deletion retry issued another lifecycle command'
 }
 
+# The isolated fixtures recreate their database on every setup, but only one they created.
+test_isolated_preexisting ()
+{
+  new_case isolated-preexisting
+  local dir="$CUBRID_DATABASES/oosnologdb"
+  mkdir -p "$dir"
+  printf 'developer database bytes\n' > "$dir/oosnologdb"
+  cp "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/original.data"
+  printf 'oosnologdb %s localhost %s\n' "$dir" "$dir" >> "$CUBRID_DATABASES/databases.txt"
+  cp "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/original.registry"
+
+  if fixture setup_isolated_db.sh oosnologdb; then
+    fail 'isolated setup replaced an unowned database'
+  fi
+  grep -q oosnologdb "$OOS_FIXTURE_SANDBOX/setup_isolated_db.sh.log" || fail 'isolated setup refusal did not name the database'
+  fixture cleanup_isolated_db.sh oosnologdb || fail 'isolated cleanup rejected an unowned database'
+  [ ! -s "$OOS_FIXTURE_SANDBOX/commands" ] || fail 'unowned database received a native lifecycle command'
+  cmp -s "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/original.data" || fail 'unowned data changed'
+  cmp -s "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/original.registry" || fail 'registry changed'
+  check_conf
+}
+
+test_isolated_owned_recreate ()
+{
+  new_case isolated-owned-recreate
+  local volume="$CUBRID_DATABASES/oosrecoverydb/oosrecoverydb"
+  fixture setup_isolated_db.sh oosrecoverydb || fail 'isolated creation failed'
+  printf 'left by the previous run\n' >> "$volume"
+  fixture setup_isolated_db.sh oosrecoverydb || fail 'isolated setup did not recreate its own database'
+  [ "$(cat "$volume")" = 'fixture database bytes' ] || fail 'isolated setup kept the previous run'
+  fixture cleanup_isolated_db.sh oosrecoverydb || fail 'owned isolated cleanup failed'
+  [ ! -e "$volume" ] || fail 'owned isolated database survived successful deletion'
+  check_unrelated_registration
+  cp "$OOS_FIXTURE_SANDBOX/commands" "$OOS_FIXTURE_SANDBOX/first-cleanup.commands"
+  fixture cleanup_isolated_db.sh oosrecoverydb || fail 'repeated isolated cleanup failed'
+  cmp -s "$OOS_FIXTURE_SANDBOX/commands" "$OOS_FIXTURE_SANDBOX/first-cleanup.commands" \
+    || fail 'repeated isolated cleanup issued another lifecycle command'
+  check_conf
+}
+
+test_isolated_replaced_volume ()
+{
+  new_case isolated-replaced-volume
+  local dir="$CUBRID_DATABASES/oosnologdb"
+  fixture setup_isolated_db.sh oosnologdb || fail 'isolated creation failed'
+  # Keep the old volume allocated so the replacement cannot reuse its inode.
+  mv "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/old-volume"
+  printf 'replacement database bytes\n' > "$dir/oosnologdb"
+  cp "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/replacement.data"
+  cp "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/replacement.registry"
+  : > "$OOS_FIXTURE_SANDBOX/commands"
+
+  fixture cleanup_isolated_db.sh oosnologdb || fail 'isolated cleanup rejected a replacement database'
+  if fixture setup_isolated_db.sh oosnologdb; then
+    fail 'isolated setup replaced a replacement database'
+  fi
+  [ ! -s "$OOS_FIXTURE_SANDBOX/commands" ] || fail 'replacement database received a native lifecycle command'
+  cmp -s "$dir/oosnologdb" "$OOS_FIXTURE_SANDBOX/replacement.data" || fail 'replacement data changed'
+  cmp -s "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/replacement.registry" \
+    || fail 'replacement registry changed'
+}
+
+test_isolated_failed_creation ()
+{
+  new_case isolated-failed-creation
+  touch "$OOS_FIXTURE_SANDBOX/fail-create"
+  if fixture setup_isolated_db.sh oosnologdb; then
+    fail 'injected isolated creation failure was hidden'
+  else
+    [ "$?" -eq 23 ] || fail 'native isolated creation failure status changed'
+  fi
+  cp "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/failed.registry"
+  : > "$OOS_FIXTURE_SANDBOX/commands"
+
+  fixture cleanup_isolated_db.sh oosnologdb || fail 'isolated cleanup rejected a failed creation'
+  [ ! -s "$OOS_FIXTURE_SANDBOX/commands" ] || fail 'failed isolated creation granted lifecycle authority'
+  [ -f "$CUBRID_DATABASES/oosnologdb/oosnologdb" ] || fail 'failed isolated creation lost partial data'
+  cmp -s "$CUBRID_DATABASES/databases.txt" "$OOS_FIXTURE_SANDBOX/failed.registry" \
+    || fail 'failed isolated creation lost its registration'
+}
+
 if [ "$#" -eq 0 ]; then
-  set -- preexisting replaced_volume owned_retry changed_registration failed_creation delete_retry
+  set -- preexisting replaced_volume owned_retry changed_registration failed_creation delete_retry \
+    isolated_preexisting isolated_owned_recreate isolated_replaced_volume isolated_failed_creation
 fi
 for test_name in "$@"; do
   case "$test_name" in
     preexisting|replaced_volume|owned_retry|changed_registration|failed_creation|delete_retry) ;;
+    isolated_preexisting|isolated_owned_recreate|isolated_replaced_volume|isolated_failed_creation) ;;
     *) fail "unknown case: $test_name" ;;
   esac
   "test_$test_name"

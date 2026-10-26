@@ -17,9 +17,10 @@
 #
 
 # Creates a database owned by one OOS test binary, always from scratch. Unlike the shared
-# unittestdb fixture this never preserves an existing database: the binaries that need an
+# unittestdb fixture this never reuses an existing database: the binaries that need an
 # isolated database also need to know that its disk layout is the one this build writes, and
-# they are the only owner, so recreating costs nothing but a createdb.
+# they are the only owner, so recreating costs nothing but a createdb. A database of the same
+# name that this fixture did not create belongs to someone else; setup refuses to touch it.
 
 set -euo pipefail
 
@@ -37,11 +38,20 @@ fi
 
 db_dir=$(oos_database_dir "$db_name")
 
-cubrid server stop "$db_name" 2>/dev/null || true
 if oos_database_exists "$db_name"; then
+  if ! oos_database_owned "$db_name"; then
+    printf 'refusing to recreate database %s: this fixture did not create it\n' "$db_name" >&2
+    printf 'if it is a leftover test database, delete it with: cubrid deletedb %s\n' "$db_name" >&2
+    exit 1
+  fi
+  cubrid server stop "$db_name" 2>/dev/null || true
   cubrid deletedb "$db_name"
 fi
 
 mkdir -p "$CUBRID_DATABASES"
+# A receipt for a vanished database cannot authorize a new, possibly failed creation.
+rm -f "$(oos_database_receipt "$db_name")"
 mkdir -p "$db_dir"
 cubrid createdb --db-volume-size=20M --log-volume-size=20M "$db_name" en_US.utf8 -F "$db_dir"
+
+oos_database_claim "$db_name"

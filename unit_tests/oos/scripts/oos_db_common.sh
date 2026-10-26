@@ -52,12 +52,13 @@ oos_database_exists ()
   awk -v db="$db_name" '$1 == db { found = 1 } END { exit found ? 0 : 1 }' "$databases_txt"
 }
 
-oos_unittestdb_receipt ()
+# A fixture owns a database only while this receipt matches the database's current identity.
+oos_database_receipt ()
 {
-  printf '%s/.oos-unittestdb.owner\n' "$CUBRID_DATABASES"
+  printf '%s/.oos-%s.owner\n' "$CUBRID_DATABASES" "$1"
 }
 
-oos_unittestdb_identity ()
+oos_database_identity ()
 {
   local databases_txt="$CUBRID_DATABASES/databases.txt"
   local registration
@@ -68,7 +69,7 @@ oos_unittestdb_identity ()
 
   [ -f "$databases_txt" ] || return 1
   # Ambiguous registrations must never grant deletion authority.
-  registration=$(awk -v db="$OOS_UNITTESTDB_NAME" '
+  registration=$(awk -v db="$1" '
     $1 == db { registration = $0; count++ }
     END { if (count != 1) exit 1; print registration }
   ' "$databases_txt") || return 1
@@ -78,6 +79,31 @@ oos_unittestdb_identity ()
   # volume's identity survives ordinary writes but changes when that volume is replaced.
   volume_identity=$(stat -Lc '%d:%i' -- "$data_dir/$db_name" 2>/dev/null) || return 1
   printf '%s\n%s\n' "$registration" "$volume_identity"
+}
+
+# Records ownership of a database the caller has just created.
+oos_database_claim ()
+{
+  local receipt
+  local receipt_tmp
+
+  receipt=$(oos_database_receipt "$1")
+  receipt_tmp=$(mktemp "${receipt}.XXXXXX")
+  if ! oos_database_identity "$1" > "$receipt_tmp"; then
+    rm -f "$receipt_tmp"
+    printf 'cannot identify created fixture database %s\n' "$1" >&2
+    return 1
+  fi
+  mv "$receipt_tmp" "$receipt"
+}
+
+oos_database_owned ()
+{
+  local receipt
+  local identity
+
+  receipt=$(oos_database_receipt "$1")
+  [ -f "$receipt" ] && identity=$(oos_database_identity "$1") && [ "$identity" = "$(cat "$receipt")" ]
 }
 
 oos_remove_fixture_sections ()

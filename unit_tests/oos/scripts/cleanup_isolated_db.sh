@@ -16,8 +16,9 @@
 #   limitations under the License.
 #
 
-# Removes a database owned by one OOS test binary. Only that database: the registry also holds
-# the shared fixture and whatever else the developer keeps there.
+# Removes a database owned by one OOS test binary. Only that database, and only when this
+# fixture created it: the registry also holds the shared fixture and whatever else the
+# developer keeps there.
 
 set -euo pipefail
 
@@ -33,7 +34,8 @@ if [ "$db_name" = "$OOS_UNITTESTDB_NAME" ]; then
   exit 1
 fi
 
-cubrid server stop "$db_name" 2>/dev/null || true
-if oos_database_exists "$db_name"; then
+if oos_database_owned "$db_name"; then
+  cubrid server stop "$db_name" 2>/dev/null || true
   cubrid deletedb "$db_name"
+  rm -f "$(oos_database_receipt "$db_name")"
 fi
