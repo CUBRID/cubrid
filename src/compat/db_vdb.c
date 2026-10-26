@@ -3534,6 +3534,11 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       /* set click counter */
       prepare_info.is_click_counter = prepared_stmt->flag.is_click_counter;
     }
+  else if (prepared_stmt->node_type == PT_METHOD_CALL)
+    {
+      /* set method call with a target */
+      prepare_info.is_method_on_target = (prepared_stmt->info.method_call.on_call_target != NULL);
+    }
 
   err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
   if (err != NO_ERROR)
@@ -3668,7 +3673,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   statement->info.execute.recompile = prepare_info.recompile;
   statement->info.execute.do_cache = prepare_info.do_cache;
   statement->info.execute.oids_included = prepare_info.oids_included;
-  statement->flag.is_click_counter = prepare_info.is_click_counter;
+  statement->info.execute.is_click_counter = prepare_info.is_click_counter;
+  statement->info.execute.is_method_on_target = prepare_info.is_method_on_target;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
 

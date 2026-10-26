@@ -731,7 +731,7 @@ namespace cubmethod
 	stmt_id = m_query_result.stmt_id;
       }
 
-    if (sp_check_statement_allowed ((sp_stmt_category) m_sp_stmt_category, m_stmt_type) != NO_ERROR)
+    if (sp_check_statement_allowed (m_sp_stmt_category, m_stmt_type) != NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	return ER_FAILED;
@@ -852,7 +852,8 @@ namespace cubmethod
       {
 	m_stmt_type = db_get_statement_type (m_session, stmt_id);
 	m_is_prepared = true;
-	m_sp_stmt_category = sp_stmt_category_of (db_get_statement (m_session, stmt_id - 1), m_stmt_type);
+	m_sp_stmt_category = sp_stmt_category_of (db_get_statement (m_session, stmt_id - 1),
+			     (PT_NODE_TYPE) m_stmt_type);
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);

@@ -3386,6 +3386,8 @@ struct pt_execute_info
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
+  int is_click_counter;		/* INCR/DECR (click counter) */
+  int is_method_on_target;	/* method call with a target (ON CLASS or the first argument) */
 };
 
 struct pt_stored_proc_param_info

@@ -8399,6 +8399,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
   const char *query_spec_string;
   int cascaded_check;
   int local_check;
+  bool spec_has_sp_call;
 
   if (db_is_class (class_object))
     {
@@ -8474,8 +8475,9 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
        * expressions in subqueries and improve performance, we put mq_push_paths as post function. */
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_push_paths, NULL);
       parser->flag.view_has_sp_call = 0;
+      spec_has_sp_call = query_spec->flag.has_sp_call;
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_translate_local, NULL);
-      if (local_query != NULL && (query_spec->flag.has_sp_call || parser->flag.view_has_sp_call))
+      if (local_query != NULL && (spec_has_sp_call || parser->flag.view_has_sp_call))
 	{
 	  /* this view, or a view it reads, calls a stored procedure: the root tells the statements that expand it */
 	  local_query->flag.has_sp_call = 1;

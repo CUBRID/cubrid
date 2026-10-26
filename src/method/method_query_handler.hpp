@@ -35,6 +35,7 @@
 #include "method_error.hpp"
 #include "method_query_result.hpp"
 #include "method_struct_query.hpp"
+#include "sp_context_rules.hpp"
 
 namespace cubmethod
 {
@@ -172,7 +173,7 @@ namespace cubmethod
       int m_stmt_type; /* statement type, CUBRID_STMT_TYPE or err_id */
       int m_prepare_flag;
       DB_SESSION *m_session;
-      int m_sp_stmt_category; /* TCL, DDL, DML or other, for sp_check_statement_allowed () */
+      sp_stmt_category m_sp_stmt_category; /* TCL, DDL, DML or other, for sp_check_statement_allowed () */
       bool m_is_prepared;
       bool m_use_plan_cache;
       int m_num_markers; /* # of input markers */

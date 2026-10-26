@@ -39,8 +39,8 @@
 enum sp_stmt_category
 {
   SP_STMT_OTHER,
-  SP_STMT_TCL,			/* COMMIT, ROLLBACK, SAVEPOINT, 2PC (PREPARE TO COMMIT, ATTACH) */
-  SP_STMT_DDL,
+  SP_STMT_TCL,			/* COMMIT, ROLLBACK, SAVEPOINT, 2PC (PREPARE TO COMMIT, ATTACH), SET (except SET @var) */
+  SP_STMT_DDL,			/* including a method call (ON CLASS or the target as the first argument) */
   SP_STMT_DML
 };
 
@@ -53,7 +53,7 @@ extern bool sp_Sa_query_request;
 #endif /* SA_MODE */
 
 /* The category of a statement a stored procedure asked this client to run; stmt_type is its CUBRID_STMT_TYPE. */
-extern sp_stmt_category sp_stmt_category_of (const PT_NODE *statement, int stmt_type);
+extern sp_stmt_category sp_stmt_category_of (const PT_NODE *statement, PT_NODE_TYPE stmt_type);
 
 /* Decides whether a statement of the category is allowed where the procedure is executing. Returns NO_ERROR or
  * sets and returns the error. */

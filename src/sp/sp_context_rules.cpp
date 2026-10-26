@@ -32,18 +32,26 @@ bool sp_Sa_query_request = false;
 #endif /* SA_MODE */
 
 sp_stmt_category
-sp_stmt_category_of (const PT_NODE *statement, int stmt_type)
+sp_stmt_category_of (const PT_NODE *statement, PT_NODE_TYPE stmt_type)
 {
-  /* a CUBRID_STMT_TYPE value is the PT_NODE_TYPE of the statement, which also covers the DDL without a
-   * CUBRID_STMT_TYPE of its own such as ALTER TRIGGER */
-  switch ((PT_NODE_TYPE) stmt_type)
+  switch (stmt_type)
     {
     case PT_COMMIT_WORK:
     case PT_ROLLBACK_WORK:
     case PT_SAVEPOINT:
     case PT_PREPARE_TO_COMMIT:
     case PT_2PC_ATTACH:
+    case PT_SET_XACTION:
+    case PT_SET_SYS_PARAMS:
+    case PT_SET_OPT_LVL:
+    case PT_SET_TRIGGER:
+    case PT_SET_NAMES:
+    case PT_SET_TIMEZONE:
       return SP_STMT_TCL;
+
+    case PT_SET_SESSION_VARIABLES:
+      /* SET @v only holds a value in the session, outside the transaction */
+      return SP_STMT_OTHER;
 
     case PT_ALTER:
     case PT_ALTER_INDEX:
@@ -80,6 +88,22 @@ sp_stmt_category_of (const PT_NODE *statement, int stmt_type)
     case PT_RENAME_SYNONYM:
       return SP_STMT_DDL;
 
+    case PT_METHOD_CALL:
+      if (statement != NULL && statement->node_type == PT_EXECUTE_PREPARE)
+	{
+	  /* EXECUTE of a prepared method call
+	   *   PREPARE s FROM 'CALL login (...) ON CLASS db_user';
+	   *   SELECT f () FROM t;   -- f runs EXECUTE IMMEDIATE 'EXECUTE s'
+	   */
+	  return statement->info.execute.is_method_on_target ? SP_STMT_DDL : SP_STMT_OTHER;
+	}
+      /* a method call run directly
+       *   SELECT f () FROM t;   -- f runs EXECUTE IMMEDIATE 'CALL add_user (''u'') ON CLASS db_user'
+       *                         --     or EXECUTE IMMEDIATE 'CALL add_user (CLASS db_user, ''u'')'
+       */
+      return (statement != NULL && statement->node_type == PT_METHOD_CALL
+	      && statement->info.method_call.on_call_target != NULL) ? SP_STMT_DDL : SP_STMT_OTHER;
+
     case PT_INSERT:
     case PT_UPDATE:
     case PT_DELETE:
@@ -88,7 +112,17 @@ sp_stmt_category_of (const PT_NODE *statement, int stmt_type)
       return SP_STMT_DML;
 
     case PT_SELECT:
-      /* INCR () and DECR () update the row they read */
+      if (statement != NULL && statement->node_type == PT_EXECUTE_PREPARE)
+	{
+	  /* EXECUTE of a prepared INCR
+	   *   PREPARE s FROM 'SELECT INCR (cnt) FROM t2';
+	   *   SELECT f () FROM t;   -- f runs EXECUTE IMMEDIATE 'EXECUTE s'
+	   */
+	  return statement->info.execute.is_click_counter ? SP_STMT_DML : SP_STMT_OTHER;
+	}
+      /* INCR run directly
+       *   SELECT f () FROM t;   -- f runs SELECT INCR (cnt) FROM t2
+       */
       return (statement != NULL && statement->flag.is_click_counter) ? SP_STMT_DML : SP_STMT_OTHER;
 
     default:
