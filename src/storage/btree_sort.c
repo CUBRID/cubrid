@@ -77,10 +77,6 @@
 #define BTSORT_BIGONE_REC_SIZE  (BTSORT_REC_HEADER_SIZE + (int) sizeof (VPID))
 #define BTSORT_BIGONE_VPID(rec) ((VPID *) BTSORT_REC_BODY (rec))
 
-/* Upper limit on the number of input (and of output) files of a merge pass, its fan-in; the temp file count
- * is twice this. */
-#define BTSORT_MAX_HALF_FILES      4
-
 /* Lower limit on the number of input (and of output) files of a merge pass; the temp file count is twice this.
  * Fewer than two input files cannot merge. */
 #define BTSORT_MIN_HALF_FILES      2
@@ -946,8 +942,9 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
       goto cleanup;
     }
 
-  /* Size estimate of an input temp file: a one-run share of the buffer. The files grow as runs
-   * are flushed. */
+  /* Size estimate of an input temp file: its share of one sort buffer, so that the input files together reserve
+   * no more than one buffer of pages however small their runs are. A file that receives full runs grows a sector
+   * at a time as they are flushed. */
   sort_param->tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, sort_param->half_files);
 
   sort_param->tde_encrypted = includes_tde_class;
@@ -1987,7 +1984,7 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
 	}
       px_sort_param[i].tot_buffers = sort_param->tot_buffers;	/* match allocated size (may be 8 for parallel) */
       /* the merge queue reuses these slots for up to 2 * BTSORT_PX_MERGE_FILES files, more than the worker's own
-       * when a sort buffer below 8 pages gave it fewer than BTSORT_MAX_HALF_FILES per half */
+       * when a sort buffer below 8 pages gives it fewer than BTSORT_PX_MERGE_FILES per half */
       error =
 	btsort_alloc_temp_slots (&px_sort_param[i], MAX (px_sort_param[i].tot_tempfiles, 2 * BTSORT_PX_MERGE_FILES));
       if (error != NO_ERROR)
@@ -3101,6 +3098,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int runs_left;		/* runs of the pass still to produce */
   int prev_in_half;		/* for the in/out half exchange */
   int i;
+  int num_files;		/* temp files in use, for the log */
   size_t arrays_size;		/* the block holding in, file_next_page and heap */
 
   error = NO_ERROR;
@@ -3155,6 +3153,16 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	{
 	  ASSERT_ERROR ();
 	  goto bailout;
+	}
+
+      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	{
+	  for (i = 0, num_files = 0; i < sort_param->tot_tempfiles; i++)
+	    {
+	      num_files += !VFID_ISNULL (&sort_param->temp[i]);
+	    }
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: btsort merge pass: fan-in %d, %d run(s)%s, %d temp files",
+			 ctx.act_infiles, num_runs, put_to_caller ? " to put_fn" : "", num_files);
 	}
 
       /* Produce the runs of the pass */
@@ -5081,29 +5089,17 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
 /*
  * btsort_get_num_half_tmpfiles () - Determines the number of temporary files to be used
  *                        during the sorting process
- *   return: half of the number of temporary files (the number of input files of a merge pass)
- *   tot_buffers(in): total number of buffers in the buffer pool area
+ *   return: half of the number of temporary files (the number of input files of a merge pass, its fan-in)
+ *   tot_buffers(in): total number of buffers in the sort buffer
  *
- * Note: Half of the buffers are given to input files, within
- *       [BTSORT_MIN_HALF_FILES, BTSORT_MAX_HALF_FILES] (too few files cannot merge the runs, too
- *       many saturate the buffer).
+ * Note: Half of the buffers go to the input files, one page each at full fan-in, and the other half to the output
+ *       section; so a merge pass reads from as many files as half the sort buffer holds pages, but from at least
+ *       BTSORT_MIN_HALF_FILES (fewer files cannot merge). There is no upper limit: one, or a parameter, would go here.
  */
 static int
 btsort_get_num_half_tmpfiles (int tot_buffers)
 {
-  int half_files = tot_buffers / 2;
-
-  if (half_files < BTSORT_MIN_HALF_FILES)
-    {
-      return BTSORT_MIN_HALF_FILES;
-    }
-
-  if (half_files < BTSORT_MAX_HALF_FILES)
-    {
-      return half_files;
-    }
-
-  return BTSORT_MAX_HALF_FILES;
+  return MAX (BTSORT_MIN_HALF_FILES, tot_buffers / 2);
 }
 
 /*
