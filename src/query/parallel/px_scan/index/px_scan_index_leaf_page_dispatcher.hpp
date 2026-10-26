@@ -81,6 +81,9 @@ namespace parallel_index_scan
       SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &held_leaf,
 					PAGE_PTR &out_page, INT16 *out_slot_hint, int *out_range_idx);
 
+      /* unfixes held_leaf when the scan stops early (error, interrupt, enough rows); ends the chain if it is the frontier. */
+      void release_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &held_leaf);
+
       /* monotonic-max merge with authoritative cursor; called on past_upper. held_leaf as in get_next_page_with_fix. */
       void signal_chain_ended (THREAD_ENTRY *thread_p, int last_local_idx, PAGE_PTR &held_leaf);
 

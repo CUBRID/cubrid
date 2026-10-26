@@ -65,6 +65,9 @@ namespace parallel_index_scan
       /* Reset page/key cursor; unfix m_page if still held. */
       void cleanup_on_reset (THREAD_ENTRY *thread_p);
 
+      /* unfixes m_page through the dispatcher, which must know when the frontier leaf goes away. */
+      void release_leaf (THREAD_ENTRY *thread_p);
+
       bool has_page () const
       {
 	return m_page != nullptr;

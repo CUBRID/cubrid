@@ -100,13 +100,26 @@ namespace parallel_index_scan
   }
 
   void
+  leaf_slot_walker::release_leaf (THREAD_ENTRY *thread_p)
+  {
+    if (m_page == nullptr)
+      {
+	return;
+      }
+    if (m_input_handler != nullptr)
+      {
+	m_input_handler->release_leaf (thread_p, m_page);
+      }
+    else
+      {
+	pgbuf_unfix_and_init (thread_p, m_page);
+      }
+  }
+
+  void
   leaf_slot_walker::cleanup_on_reset (THREAD_ENTRY *thread_p)
   {
-    if (m_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_page);
-	m_page = nullptr;
-      }
+    release_leaf (thread_p);
     if (m_slot_key_valid && m_slot_clear_key)
       {
 	pr_clear_value (&m_slot_key);

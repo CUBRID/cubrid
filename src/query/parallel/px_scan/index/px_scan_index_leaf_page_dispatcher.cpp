@@ -245,6 +245,25 @@ namespace parallel_index_scan
     return lock;
   }
 
+  void
+  leaf_page_dispatcher::release_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &held_leaf)
+  {
+    /* only the frontier needs care: an ascending walk never hands out a passed leaf again */
+    if (m_frontier.load (std::memory_order_acquire) != held_leaf)
+      {
+	pgbuf_unfix_and_init (thread_p, held_leaf);
+	return;
+      }
+    std::unique_lock<std::mutex> lock = lock_holding (thread_p, held_leaf);
+    if (held_leaf != nullptr)
+      {
+	/* still the frontier: end the chain so no worker fixes its right leaf unprotected */
+	m_leaf_ended = true;
+	m_frontier.store (nullptr, std::memory_order_release);
+	pgbuf_unfix_and_init (thread_p, held_leaf);
+      }
+  }
+
   SCAN_CODE
   leaf_page_dispatcher::get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &held_leaf,
       PAGE_PTR &out_page, INT16 *out_slot_hint, int *out_range_idx)

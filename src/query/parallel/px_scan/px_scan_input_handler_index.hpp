@@ -57,6 +57,11 @@ namespace parallel_scan
 	return m_leaf.get_next_page_with_fix (thread_p, worker_scan_id, held_leaf, out_page, out_slot_hint, out_range_idx);
       }
 
+      void release_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &held_leaf)
+      {
+	m_leaf.release_leaf (thread_p, held_leaf);
+      }
+
       void signal_chain_ended (THREAD_ENTRY *thread_p, int last_local_idx, PAGE_PTR &held_leaf)
       {
 	m_leaf.signal_chain_ended (thread_p, last_local_idx, held_leaf);
