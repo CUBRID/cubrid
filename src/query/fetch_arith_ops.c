@@ -67,7 +67,7 @@ STATIC_INLINE int fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB
   __attribute__ ((ALWAYS_INLINE));
 
 /*
- * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
+ * fetch_session_read_value () - CBRD-27583: a session variable read's value in the type the compilation gave
  *   the read: the type the statement's assignments give the variable, else the type of its value when the statement
  *   was compiled
  *   return: NO_ERROR, or ER_SES_VARIABLE_TYPE_FIXED for a value of another type
@@ -90,7 +90,7 @@ fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
   if (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (read_type)
       && db_get_string_codeset (value) == TP_DOMAIN_CODESET (type))
     {
-      /* D-40: a string of another collation or kind converts into the read's domain */
+      /* a string of another collation or kind converts into the read's domain */
       if ((value_type == read_type && db_get_string_collation (value) == TP_DOMAIN_COLLATION (type))
 	  || tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
 	{
@@ -2157,7 +2157,7 @@ fetch_op_like_lower_bound (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
-      /* CBRD-27583 (D-52, S3-21): the bound is the VARCHAR XASL generation typed the node with, which the function
+      /* CBRD-27583: the bound is the VARCHAR XASL generation typed the node with, which the function
        * makes itself (db_get_like_optimization_bounds) and casts nothing into */
       assert (DB_IS_NULL (arithptr->value) || DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_VARCHAR);
     }

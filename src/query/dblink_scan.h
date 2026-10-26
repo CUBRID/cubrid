@@ -74,7 +74,7 @@ struct dblink_scan_info
   int corr_key_count;		/* copy of spec->s.dblink_node.corr_key_count */
   struct regu_variable_list_node *corr_key_regu_list;	/* non-owning; same chain as in access spec */
   bool corr_skip_result_fetch;	/* corr key NULL — no cci_execute; scan_next returns S_END */
-  struct dblink_column_plan *col_plan;	/* CBRD-27583 (D-94): each column's conversion, planned at the open
+  struct dblink_column_plan *col_plan;	/* CBRD-27583: each column's conversion, planned at the open
 					 * (dblink_plan_columns); NULL until then, freed with the statement */
 };
 

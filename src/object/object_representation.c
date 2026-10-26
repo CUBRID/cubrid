@@ -5552,7 +5552,7 @@ or_unpack_key_val_range (char *ptr, void *key_val_range_ptr)
   ptr = or_unpack_int (ptr, (int *) &key_val_range->is_truncated);
   ptr = or_unpack_db_value (ptr, &key_val_range->key1);
   ptr = or_unpack_db_value (ptr, &key_val_range->key2);
-  /* CBRD-27583 (D-80): a key of the index's own domain */
+  /* CBRD-27583: a key of the index's own domain; a search key bound compares through btree_compare_bound_key */
   key_val_range->key1_bound = NULL;
   key_val_range->key2_bound = NULL;
 

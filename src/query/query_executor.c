@@ -4141,7 +4141,8 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
        * the limit's domain */
       const DB_TYPE planned =
 	xasl->orderby_limit->domain != NULL ? TP_DOMAIN_TYPE (xasl->orderby_limit->domain) : DB_TYPE_NULL;
-      /* a bind type signature's plan: the value has its regu's type (D-77's lookup below it is unreachable) */
+      /* a bind type signature's plan: the value has its regu's type, so the converter's lookup for another type is not
+       * reached */
       assert (DB_IS_NULL (dbvalp) || orig_type == planned);
       db_make_null (&limit_value);
       dom_status = tp_value_coerce_with_converter (dbvalp, &limit_value, domainp, planned, xasl->orderby_limit_conv);
@@ -13743,7 +13744,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       return error;
     }
 
-  /* CBRD-27583 (D-94): the converter the unpack found for the type XASL generation decided the generator makes */
+  /* CBRD-27583: the converter the unpack found for the type XASL generation decided the generator makes */
   assert (DB_IS_NULL (out_val) || DB_VALUE_DOMAIN_TYPE (out_val) == value_type);
   status = tp_value_cast_with_converter (out_val, out_val, attr->domain, false, value_type, conv);
   if (status != DOMAIN_COMPATIBLE)
@@ -14287,7 +14288,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  continue;
 	}
 
-      /* CBRD-27583 (D-94): the converter the unpack found for the type XASL generation decided the default is made
+      /* CBRD-27583: the converter the unpack found for the type XASL generation decided the default is made
        * in; a row default is still NULL here */
       assert (DB_IS_NULL (insert->vals[k]) || DB_VALUE_DOMAIN_TYPE (insert->vals[k]) == insert->default_types[k]);
       status = tp_value_cast_with_converter (insert->vals[k], insert->vals[k], attr->domain, false,
@@ -18382,7 +18383,7 @@ end:
   CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 #if !defined (NDEBUG)
-  /* CBRD-27583 (S3-13, design 5): the server does not change a bound value */
+  /* CBRD-27583: the server does not change a bound value */
   assert (qexec_bind_checksum (dbval_cnt, dbval_ptr) == bind_checksum);
 #endif
   return list_id;
@@ -22954,7 +22955,7 @@ qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 	}
       else
 	{
-	  /* CBRD-27583 (S3-13): a value the statement computed; a peeked bound value, literal or slot of another node is
+	  /* CBRD-27583: a value the statement computed; a peeked bound value, literal or slot of another node is
 	   * not the statement's to clear (the server does not change a bound value) */
 	  const REGU_DATATYPE type = valptr_p->value.type;
 	  if (dbval_p != NULL
@@ -23146,11 +23147,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	  if (gbstate.input_recs > 0)
 	    {
 	      /* compare old value with current total_order is 1. Then NULLs are equal. Both are the column's values,
-	       * which compare in its domain: a session variable column has its read's type (D-40) */
+	       * which compare in its domain: a session variable column has its read's type */
 	      int c;
 	      if (column == NULL || domain_is_variable (column))
 		{
-		  /* CBRD-27583 (S3-13): never seen in the gates (census "group by key by value") */
+		  /* CBRD-27583: not reached - XASL generation gives every GROUP BY key column a domain; a release build
+		   * compares the values */
 		  assert (false);
 		  c = tp_value_compare (&list_dbvals[i], &val, 1, 1);
 		}
@@ -24101,7 +24103,8 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  *
  * MEDIAN and PERCENTILE sort their operand after their PARTITION BY keys, one key the interpolation functions of a
  * state share (pt_metadomains_compatible). A string operand sorts in the function's type, the type its values
- * interpolate in, which XASL generation decided (DOUBLE for any string, spec change 3), before the first pair of
+ * interpolate in, which XASL generation decided (DOUBLE for any string, a CBRD-27583 specification change), before
+ * the first pair of
  * values the sort compares (qfile_compare_with_interpolation_domain), with the converter of the key's string type into
  * it. Any other key of the state - another function's
  * ORDER BY that shares the sort - compares in its own domain, the type its first value gives.
@@ -24122,7 +24125,7 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	  return;
 	}
       SUBKEY_INFO *subkey = &analytic_state->key_info.key[func_p->sort_prefix_size];
-      /* CBRD-27583 (D-94): the unpack's plan for the key (stx_plan_interpolation_sort_keys), of the same sort list */
+      /* CBRD-27583: the unpack's plan for the key (stx_plan_interpolation_sort_keys), of the same sort list */
       assert ((func_p->sort_key_cmp_dom != NULL) == TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)));
       if (func_p->sort_key_cmp_dom == NULL)
 	{
@@ -26037,9 +26040,9 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	      const DB_VALUE *current = &a_eval_list->current_values[sort_list_idx];
 	      const DB_VALUE *value = &a_eval_list->temp_values[sort_list_idx];
 	      const bool by_value = key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom);
-	      /* CBRD-27583 (S3-13): a key compares in its domain; by the values never seen in the gates (census
-	       * "analytic key by value"). Total order: NULL keys are equal and form one group, as they do after the
-	       * sort (CBRD-27469) */
+	      /* CBRD-27583: a key compares in its domain; a key without one is not reached (a release build compares
+	       * the values). Total order: NULL keys are equal and form one group, as they do after the sort
+	       * (CBRD-27469) */
 	      assert (!by_value);
 	      if ((by_value ? tp_value_compare (current, value, 1, 1)
 		   : domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 1)) != DB_EQ)
@@ -28666,8 +28669,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  *   sort_items(in): the ORDER BY list
  *   domains(out): one per sort item
  *
- * A key compares with its domain's cmpval; a session variable column has its read's type (D-40). A key whose domain
- * leaves its values' type to them, never seen in the gates (census "topn key by value", S3-13), gets none.
+ * A key compares with its domain's cmpval; a session variable column has its read's type. A key whose domain leaves
+ * its values' type to them, which XASL generation does not make, gets none.
  */
 static void
 qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
@@ -29302,8 +29305,8 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
  * thread_p	   : thread entry
  * pred (in)	   : orderby_num predicate
  * vd (in)	   : value descriptor
- * ubound (in/out) : upper bound, an INTEGER (CBRD-27583 (D-94))
- * unbounded (out) : CBRD-27583 (D-94): set by a bound INTEGER cannot hold, which leaves no top-N bound
+ * ubound (in/out) : upper bound, an INTEGER (CBRD-27583)
+ * unbounded (out) : CBRD-27583: set by a bound INTEGER cannot hold, which leaves no top-N bound
  */
 static int
 qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound,
@@ -29375,7 +29378,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
       if (op == R_LT)
 	{
 	  /* add 1 so we can use R_LE, after the subtraction's operand coercion the compiler decided for the bound's
-	   * type (S3-18) - a string as DOUBLE */
+	   * type - a string as DOUBLE */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
 	  assert (DB_IS_NULL (val) || DB_VALUE_DOMAIN_TYPE (val) == TP_DOMAIN_TYPE (rhs->domain));

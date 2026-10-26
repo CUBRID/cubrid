@@ -311,7 +311,7 @@ extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY
 						   int total_order, int num_index_term, int *start_colp,
 						   int *diff_column, bool * dom_is_desc, int *result_size);
 /* The comparison of two midxkey elements whose domains differ, when the caller decided it: an index scan's
- * comparisons of its search key bounds (CBRD-27583 D-80), with the caller's context (its column comparisons). */
+ * comparisons of its search key bounds (CBRD-27583), with the caller's context (its column comparisons). */
 typedef DB_VALUE_COMPARE_RESULT (*PR_MIDXKEY_ELEMENT_COMPARE) (const void *context, int column, DB_VALUE * value1,
 							       DB_VALUE * value2, int do_coercion, int total_order,
 							       bool * can_compare);

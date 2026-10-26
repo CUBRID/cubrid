@@ -815,6 +815,7 @@ fetch_set_fast_peek (REGU_VARIABLE * regu_var)
   REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 }
 
+/* mark every arithmetic, function and stored procedure regu of reguvar's tree not constant: it fetches again */
 // *INDENT-OFF*
 void
 fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
@@ -1523,7 +1524,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
   if (arithptr->fails != NO_ERROR)
     {
-      /* CBRD-27583 (spec 5): the operator rejects its operands' types; over values it raises the error, as it did at
+      /* CBRD-27583: the operator rejects its operands' types; over values it raises the error, as it did at
        * the row, and a NULL operand gives no value (the fetch skips the operands after a NULL one) */
       pr_clear_value (arithptr->value);
       const bool null_operand = (peek_left != NULL && DB_IS_NULL (peek_left))
@@ -1735,7 +1736,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       break;
 
     case TYPE_OID:		/* fetch object identifier value */
-      /* the row's object: not constant (develop's answers; before #8022 it was marked constant) */
+      /* the row's object: not constant, it changes with the row */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       *peek_dbval = &regu_var->value.dbval;
       db_make_oid (*peek_dbval, obj_oid);
@@ -2363,7 +2364,7 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
  */
 
 /*
- * key_limit_coerce () - CBRD-27583 (D-94): convert a key limit value by its regu's compiled type
+ * key_limit_coerce () - CBRD-27583: convert a key limit value by its regu's compiled type
  *   return: the conversion's status
  *   regu_var(in): the regu the value was fetched from
  *   value(in): the fetched value, of the regu's type (a bind type signature's plan)

@@ -620,7 +620,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
 
       /* copy value, converted to the function's domain with the converter planned at unpack (none for an argument of
-       * that type); any value it does not take is the function's error (spec change 3) */
+       * that type); any value it does not take is the function's error (a CBRD-27583 specification change) */
       pr_clear_value (func_p->value);
       if (DB_IS_NULL (&dbval))
 	{

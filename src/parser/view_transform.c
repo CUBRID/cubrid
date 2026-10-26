@@ -9569,7 +9569,7 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
   if (return_node != NULL && compiled_every_time)
     {
       ((PT_NODE *) return_node)->flag.cannot_prepare = 1;
-      /* CBRD-27583 (4.8): the types its session variable reads take, asked of the session now */
+      /* CBRD-27583: the types its session variable reads take, asked of the session now */
       if (pt_type_session_variables (parser, (PT_NODE *) return_node) != NO_ERROR)
 	{
 	  return_node = NULL;

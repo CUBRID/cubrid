@@ -11427,7 +11427,7 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       cte_def->info.cte.recursive_part = recursive_cte;
 
       /* a column the recursive part writes from a self reference the non-recursive part types NULL takes the
-       * unified domain (spec 27): the self reference names are typed by their columns and the parts unified again;
+       * unified domain: the self reference names are typed by their columns and the parts unified again;
        * a pass needs a newly typed name and a chain of columns typing each other is not longer than the columns */
       passes = pt_length_of_list (cte_def->info.cte.as_attr_list);
       do
@@ -11583,7 +11583,7 @@ pt_type_cte_null_self_reference_names (PARSER_CONTEXT * parser, PT_NODE * node, 
  *   cte_def(in): the CTE after its self references were typed
  *
  * Note: once its self references are typed, a NULL-typed item of the recursive part writes only NULL values, so the
- *	 non-recursive part's type is the unified domain of the column (spec 27)
+ *	 non-recursive part's type is the unified domain of the column
  */
 static bool
 pt_type_cte_null_columns (PARSER_CONTEXT * parser, PT_NODE * cte_def)

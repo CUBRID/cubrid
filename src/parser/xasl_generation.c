@@ -1358,7 +1358,7 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 
 /*
  * pt_bind_list_domain () - CBRD-27583: the domain of an ALL/SOME right side that a collection function builds from
- *   binds: its elements are the operands' values as the client bound them (a bind is never cast, D-65), so the element
+ *   binds: its elements are the operands' values as the client bound them (a bind is never cast), so the element
  *   domains are the operands' compiled domains - the bind type signature's - not the common type that type checking
  *   gave the list node (pt_coerce_range_expr_arguments), which converts only constant elements. Partition pruning
  *   (pt_list_element_domain) reads it.
@@ -4103,8 +4103,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  return NULL;
 		}
 
-	      /* CBRD-27583 (S3-22): a stored function's string argument comes in the declared type, which develop's list
-	       * column cast gave a grouped aggregate's */
+	      /* CBRD-27583: a stored function's string argument comes in the declared type, which the list column cast
+	       * used to give a grouped aggregate's */
 	      REGU_VARIABLE_LIST r = regu_constant_list, s = scan_regu_constant_list;
 	      for (PT_NODE * sp_arg = tree->info.function.arg_list; sp_arg != NULL && r != NULL && s != NULL;
 		   sp_arg = sp_arg->next, r = r->next, s = s->next)
@@ -6459,7 +6459,7 @@ failure:
 
 
 /*
- * pt_decide_position_collation () - CBRD-27583 (d1): the domain of a string position whose collation type checking left
+ * pt_decide_position_collation () - CBRD-27583: the domain of a string position whose collation type checking left
  *   to the value (LEAVE) or enforced over the value the client sends as it is (ENFORCE), as the server receives the
  *   value: an auto-parameter's literal, cast here, has its own domain (its session collation); the client casts a user
  *   or derived position's value into the position's domain - a string takes the position's type in the enforced
@@ -6532,7 +6532,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       if (regu->domain == NULL && node->info.host_var.index < parser->host_var_count
 	  && parser->host_var_compiled_domains == NULL && parser->flag.set_host_var == 1)
 	{
-	  /* CBRD-27583 (d1): a value-typed position compiled with its value but no bind type signature - a statement no
+	  /* CBRD-27583: a value-typed position compiled with its value but no bind type signature - a statement no
 	   * cache keeps compiles at each execution (do_statement): the value's own domain, the NULL type for a NULL */
 	  regu->domain = pt_host_var_value_domain (parser, node->info.host_var.index);
 	}
@@ -6657,16 +6657,16 @@ pt_spec_list_producer (const PT_NODE * spec)
     }
   /* only the recursive part being generated reads its CTE before the CTE's XASL is made (the WITH clause makes its
    * CTEs one at a time, pt_generate_ctes_and_derived_tables): it reads the non-recursive part's rows first, so they
-   * are its producer (D-34) */
+   * are its producer */
   assert (cte->info.cte.recursive_part != NULL && cte->info.cte.recursive_part->info.query.xasl == NULL);
   return cte->info.cte.non_recursive_part != NULL
     ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
 }
 
 /*
- * CBRD-27583 (S3-46): a regu a recursive CTE's recursive part reads its own column with, where the non-recursive part
+ * CBRD-27583: a regu a recursive CTE's recursive part reads its own column with, where the non-recursive part
  *   writes the column NULL-typed: generated with the column's NULL type, or with the self-reference's type from type
- *   checking, it takes the column's unified domain once pt_plan_cte decided it (D-90) - the type of the values it
+ *   checking, it takes the column's unified domain once pt_plan_cte decided it - the type of the values it
  *   reads, which unpack plans its conversions and comparisons from; the nodes over it keep what generation decided
  */
 typedef struct pt_cte_null_reader PT_CTE_NULL_READER;
@@ -6682,6 +6682,8 @@ struct pt_cte_null_reader
 /* the readers noted while parser_generate_xasl generates a statement */
 static PT_CTE_NULL_READER *pt_Cte_null_readers = NULL;
 
+/* note regu (and its value list slot) when it reads column pos of a CTE the recursive part is generating, a column
+ * the non-recursive part writes NULL-typed (pt_type_cte_null_readers types it later) */
 static void
 pt_note_cte_null_reader (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, REGU_VARIABLE * regu,
 			 QPROC_DB_VALUE_LIST slot)
@@ -6730,9 +6732,9 @@ pt_domain_in_collation (TP_DOMAIN * domain, const TP_DOMAIN * collation)
   return tp_domain_cache (copy);
 }
 
-/* CBRD-27583: the domain of a reader of another block's value (principle 1-6): a variable parse tree domain takes its
- * producer's; a fixed one is the producer's type already, but for a recursive CTE's self-reference, which type
- * checking typed before the cast of the non-recursive part (D-34); a string type whose collation type checking left
+/* CBRD-27583: the domain of a reader of another block's value, which is its producer's: a variable parse tree domain
+ * takes the producer's; a fixed one is the producer's type already, but for a recursive CTE's self-reference, which
+ * type checking typed before the cast of the non-recursive part; a string type whose collation type checking left
  * to the values takes the producer's collation */
 static TP_DOMAIN *
 pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
@@ -6798,11 +6800,11 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
 }
 
 /*
- * pt_set_sort_list_domains () - CBRD-27583 (D-64): a sort key sorts in the decided domain of the list column it sorts,
+ * pt_set_sort_list_domains () - CBRD-27583: a sort key sorts in the decided domain of the list column it sorts,
  *   which can differ from its parse tree domain (VARIABLE, a collation its values give, or a recursive CTE column
  *   the branches unify to BIGINT): the column of the output list output (a block's intermediate list), or of the list
  *   of the XASL node producer; a column left open keeps a decided key, and so does an object column: a view object
- *   (VOBJ) sorts in its object key's OID order, as develop sorts it (medium derpath)
+ *   (VOBJ) sorts in its object key's OID order
  */
 void
 pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OUTPTR_LIST * output)
@@ -6826,7 +6828,7 @@ pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OU
 }
 
 /*
- * pt_type_null_list_column () - CBRD-27583 (D-90): column pos of the list xasl makes takes the unified domain of a set
+ * pt_type_null_list_column () - CBRD-27583: column pos of the list xasl makes takes the unified domain of a set
  *   operation or a recursive CTE where a branch writes it as DB_TYPE_NULL (only NULLs), with the sort keys on it, so
  *   every list of the operation opens with that domain (qfile_unify_types checks it)
  */
@@ -6877,7 +6879,7 @@ pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE 
     {
       /* the semantic check's cast of an untyped NULL (CBRD-27668) fixed the type it knew then; the column unifies as
        * the NULL it is and the cast takes the unified domain (a recursive CTE's self reference names type after the
-       * check: spec 26) */
+       * check) */
       const bool null_cast[2] = { PT_IS_CAST_OF_UNTYPED_NULL (item[0]), PT_IS_CAST_OF_UNTYPED_NULL (item[1]) };
       const TP_DOMAIN *unified;
       const int error = domain_unify_list_column (null_cast[0] ? &tp_Null_domain : domain_list_column_of (first, pos),
@@ -6972,7 +6974,7 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
 	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row) && TP_DOMAIN_CODESET (head) != TP_DOMAIN_CODESET (row))
 	    {
-	      /* a row's string in another codeset than the first row's: develop's row check gave -1150 (fetch.c); another
+	      /* a row's string in another codeset than the first row's: the row check gave -1150 (fetch.c); another
 	       * collation of the codeset (a literal's COLLATE) takes the first row's, as the list column holds it */
 	      PT_ERRORmf (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR, "VALUES");
 	      return NULL;
@@ -7134,7 +7136,7 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
 }
 
 /*
- * pt_hash_key_domain () - CBRD-27583 (D-43): the domain a hash list scan hashes a build and a probe key's values in,
+ * pt_hash_key_domain () - CBRD-27583: the domain a hash list scan hashes a build and a probe key's values in,
  *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
  *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
  *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
@@ -7188,7 +7190,7 @@ pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, co
 }
 
 /*
- * pt_decide_hash_list_keys () - CBRD-27583 (D-43): each key pair of a hash list scan converted into the domain it
+ * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it
  *   hashes in (pt_hash_key_domain), on the key regus' fetch; a pair without one turns the scan's hash off
  *   spec(in/out): a list scan spec
  */
@@ -7270,7 +7272,7 @@ pt_decide_operand_coercion (ARITH_TYPE * arith)
 }
 
 /*
- * pt_decide_function_operands () - CBRD-27583 (4.7): an operand whose type an operator's body converted to compute
+ * pt_decide_function_operands () - CBRD-27583: an operand whose type an operator's body converted to compute
  *   in converts on its fetch instead, so that the server body never takes that branch (the client fold calls the body
  *   as it was). A string type checking could not type reaches here (a session variable's read; it casts a column):
  *   FLOOR, CEIL, ABS, a unary minus and MOD read it as DOUBLE (tp_value_str_auto_cast_to_number: tp_value_auto_cast's
@@ -7347,7 +7349,7 @@ pt_decide_function_operands (ARITH_TYPE * arith)
     }
 }
 
-/* CBRD-27583 (d1): the cast type checking wraps around an operand it could not type, into a string of the collation
+/* CBRD-27583: the cast type checking wraps around an operand it could not type, into a string of the collation
  * the other operand enforces */
 static bool
 pt_is_enforced_collation_cast (const PT_NODE * arg)
@@ -7357,7 +7359,7 @@ pt_is_enforced_collation_cast (const PT_NODE * arg)
 }
 
 /*
- * pt_operand_retyped () - CBRD-27583 (D-34): whether an operand regu of an operator node holds another type than
+ * pt_operand_retyped () - CBRD-27583: whether an operand regu of an operator node holds another type than
  *   type checking gave its argument: a recursive CTE's self-reference reads its producer's type, not the one before
  *   the non-recursive part's cast. The operands pair with the arguments in order; other shapes are not retyped.
  */
@@ -7401,7 +7403,7 @@ pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const 
   return false;
 }
 
-/* CBRD-27583 (4.8): the name a session variable read or assignment carries in its first argument */
+/* CBRD-27583: the name a session variable read or assignment carries in its first argument */
 static const char *
 pt_session_variable_name (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
@@ -7409,7 +7411,7 @@ pt_session_variable_name (PARSER_CONTEXT * parser, PT_NODE * expr)
   return name != NULL && DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR ? db_get_string (name) : NULL;
 }
 
-/* CBRD-27583 (4.8): a session variable's slot in the type table of the statement, -1 for none */
+/* CBRD-27583: a session variable's slot in the type table of the statement, -1 for none */
 static int
 pt_session_variable_index (const PARSER_CONTEXT * parser, const char *name)
 {
@@ -7424,7 +7426,7 @@ pt_session_variable_index (const PARSER_CONTEXT * parser, const char *name)
 }
 
 /*
- * pt_session_expr_domain () - CBRD-27583 (4.8): the domain of an expression a statement assigns a session variable,
+ * pt_session_expr_domain () - CBRD-27583: the domain of an expression a statement assigns a session variable,
  *   with the variables' reads in the types the table gives them so far: the type checking's type, or for an operator
  *   it left to a read or a bind the type rule over its operands' domains; NULL where neither gives one
  */
@@ -7532,7 +7534,7 @@ pt_session_expr_domain (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_session_stored_domain () - CBRD-27583 (4.8): the type a session variable takes from a value of a domain, as the
+ * pt_session_stored_domain () - CBRD-27583: the type a session variable takes from a value of a domain, as the
  *   server stores it (db_value_alloc_and_copy): a number its own, a string the variable-length string of its codeset
  *   and collation, a bit string its own, any other value a VARCHAR; NULL for a value that gives no type
  */
@@ -7552,7 +7554,7 @@ pt_session_stored_domain (const TP_DOMAIN * domain)
 			    TP_IS_CHAR_TYPE (type) ? TP_DOMAIN_COLLATION (domain) : LANG_SYS_COLLATION);
 }
 
-/* CBRD-27583 (4.8): the session's type of a session variable - its stored value's domain, a NULL of a variable that
+/* CBRD-27583: the session's type of a session variable - its stored value's domain, a NULL of a variable that
  * had a value carrying its type - asked once by the name a read or an assignment carries (the value SET and the row
  * send); NULL for a variable without one or not defined */
 static TP_DOMAIN *
@@ -7572,6 +7574,8 @@ pt_session_start_domain (PARSER_CONTEXT * parser, PT_NODE * expr)
   return domain;
 }
 
+/* walker of pt_type_session_variables: names each session variable once in the statement's type table and collects
+ * the assignments in the NULL-terminated array arg */
 static PT_NODE *
 pt_collect_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -7602,6 +7606,7 @@ pt_collect_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
   return node;
 }
 
+/* walker of pt_type_session_variables: counts the session variable reads and assignments into *(int *) arg */
 static PT_NODE *
 pt_count_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -7613,7 +7618,7 @@ pt_count_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   return node;
 }
 
-/* CBRD-27583 (D-40): one session variable type: the DB type, for a string its codeset (fetch_session_read_value) */
+/* CBRD-27583: one session variable type: the DB type, for a string its codeset (fetch_session_read_value) */
 static bool
 pt_session_same_type (const TP_DOMAIN * type, const TP_DOMAIN * other)
 {
@@ -7624,7 +7629,7 @@ pt_session_same_type (const TP_DOMAIN * type, const TP_DOMAIN * other)
   return TP_DOMAIN_TYPE (type) == TP_DOMAIN_TYPE (other);
 }
 
-/* CBRD-27583 (D-40): an assignment that gives a session variable another type than the statement's other assignments */
+/* CBRD-27583: an assignment that gives a session variable another type than the statement's other assignments */
 static int
 pt_session_variable_type_conflict (PARSER_CONTEXT * parser, PT_NODE * define, const TP_DOMAIN * type,
 				   const TP_DOMAIN * other)
@@ -7637,7 +7642,7 @@ pt_session_variable_type_conflict (PARSER_CONTEXT * parser, PT_NODE * define, co
 }
 
 /*
- * pt_type_session_variables () - CBRD-27583 (4.8, D-40): the type each session variable a statement compiled at every
+ * pt_type_session_variables () - CBRD-27583: the type each session variable a statement compiled at every
  *   execution reads or assigns has for the statement, which the reads take (T_EVALUATE_VARIABLE): the type the
  *   statement's assignments give it, its reads in the types found so far (@a := @a + 0.5 over an INTEGER @a makes it
  *   NUMERIC), else the session's - the domain of the variable's value (the last SET VARIABLE's or assignment's type; a
@@ -7731,7 +7736,7 @@ pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   return NO_ERROR;
 }
 
-/* CBRD-27583 (D-40): an assignment the parse tree gave no type (pt_session_expr_domain) gives its variable the type of
+/* CBRD-27583: an assignment the parse tree gave no type (pt_session_expr_domain) gives its variable the type of
  * its generated value unless another assignment of the statement gave it one or a read generated before took the
  * variable's type: a value of another type than that one is the error */
 static int
@@ -7766,7 +7771,7 @@ pt_type_session_variable_by_assignment (PARSER_CONTEXT * parser, PT_NODE * defin
 }
 
 /*
- * pt_session_variable_domain () - CBRD-27583 (4.8): the domain of a session variable read: its type in the statement's
+ * pt_session_variable_domain () - CBRD-27583: the domain of a session variable read: its type in the statement's
  *   table (pt_type_session_variables) - a read of a statement no table was made for asks the session - the NULL type
  *   for a variable without one
  */
@@ -7785,7 +7790,7 @@ pt_session_variable_domain (PARSER_CONTEXT * parser, PT_NODE * read)
 }
 
 /*
- * pt_incompatible_collation_domain () - CBRD-27583 (d1): the domain of a string node or function over operands whose
+ * pt_incompatible_collation_domain () - CBRD-27583: the domain of a string node or function over operands whose
  *   collations do not merge: the row raises the error where it computes it, so no value has this domain - the type
  *   checking's string type in the first string operand's collation
  */
@@ -7804,7 +7809,7 @@ pt_incompatible_collation_domain (const TP_DOMAIN * compiled, const DOMAIN_OPERA
 }
 
 /*
- * pt_merge_branch_collations () - CBRD-27583 (d1): the domain of a node whose value is one of its string branches, of
+ * pt_merge_branch_collations () - CBRD-27583: the domain of a node whose value is one of its string branches, of
  *   different domains (CASE, DECODE, IF; ELT over a computed index): the branches' merged collation, into which each
  *   branch converts; false for collations that do not merge (the execution
  *   rejects them) or a branch that converts for another consumer
@@ -7837,7 +7842,7 @@ pt_merge_branch_collations (REGU_VARIABLE * const *branch, int n_branches, const
 }
 
 /*
- * pt_session_read_value_type () - CBRD-27583 (4.8): the type the rule takes an operand as: a session variable read at a
+ * pt_session_read_value_type () - CBRD-27583: the type the rule takes an operand as: a session variable read at a
  *   value-dependent argument (domain_argument_type_depends_on_value) takes the class of the value the session holds
  *   for the statement compiled at its execution; a NULL or no value, and
  *   any other operand, its type
@@ -7865,10 +7870,10 @@ pt_session_read_value_type (const REGU_VARIABLE * operand, DOMAIN_CTX context, i
 
 /*
  * pt_decide_node_domain () - CBRD-27583: the domain of an operator node type checking left to its operands' values
- *   (a value-typed bind) or typed over an argument its operand regu retypes (D-34), resolved with the type rule module
+ *   (a value-typed bind) or typed over an argument its operand regu retypes, resolved with the type rule module
  *   from its operands' domains as the bind type signature fixes them, and the collation of a string type checking
- *   left to the values (LEAVE) or enforced over an operand it could not type (ENFORCE) ((d1)); a node whose operands'
- *   types the rule rejects gives no value and raises the rule's error where a row computes it (spec 5); a node over an
+ *   left to the values (LEAVE) or enforced over an operand it could not type (ENFORCE); a node whose operands'
+ *   types the rule rejects gives no value and raises the rule's error where a row computes it; a node over an
  *   operand of a type the compiler does not know, or one the rule does not resolve, is left VARIABLE: its values decide
  *   at the row
  */
@@ -7912,7 +7917,7 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
     {
       return;
     }
-  /* a rule that gives no value (a NULL operand) types the node NULL: every row gives NULL (D-25) */
+  /* a rule that gives no value (a NULL operand) types the node NULL: every row gives NULL */
   RESOLVED_DOMAIN result;
   bool needs_late_bind = false;
   int error = collation_variable
@@ -7933,8 +7938,7 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
   if (!needs_late_bind && (error == ER_QPROC_INVALID_DATATYPE || error == ER_QSTR_INVALID_DATA_TYPE
 			   || error == ER_QSTR_INCOMPATIBLE_CODE_SETS || error == ER_QSTR_INCOMPATIBLE_COLLATIONS))
     {
-      /* the operator rejects its operands' types: no value, and a row that computes it over values raises the error
-       * (spec 5) */
+      /* the operator rejects its operands' types: no value, and a row that computes it over values raises the error */
       arith->fails = error;
       result = RESOLVED_DOMAIN ();
       result.domain = &tp_Null_domain;
@@ -7956,7 +7960,7 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
 }
 
 /*
- * pt_nvl_node_domain () - CBRD-27583 (D-70): the domain an NVL, IFNULL, COALESCE or NVL2 node resolves to by the rule
+ * pt_nvl_node_domain () - CBRD-27583: the domain an NVL, IFNULL, COALESCE or NVL2 node resolves to by the rule
  *   pt_decide_node_domain resolves it with, its operand at slot j of domain at_j and the others as the plan reads them
  *   (a user or derived position's domain, any other operand's type); NULL when an operand's domain is not fixed
  */
@@ -8021,7 +8025,7 @@ pt_nvl_node_domain (PARSER_CONTEXT * parser, const PT_NODE * node, int j, const 
 }
 
 /*
- * pt_check_nvl_null_domain () - CBRD-27583 (D-72): an NVL family node whose operand position a NULL takes the plan of
+ * pt_check_nvl_null_domain () - CBRD-27583: an NVL family node whose operand position a NULL takes the plan of
  *   (PT_HOST_VAR_NULL_MATCHES) has the domain pt_check_null_takes_plan judged that by
  */
 static void
@@ -8061,7 +8065,7 @@ pt_check_nvl_null_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, c
 }
 
 /*
- * pt_check_cast_wrap_domain () - CBRD-27583 (D-75): a CAST_WRAP node's decided domain is of the type class type
+ * pt_check_cast_wrap_domain () - CBRD-27583: a CAST_WRAP node's decided domain is of the type class type
  *   checking declared the node with (a string for a string), or its source's type where the cast passes the value as
  *   it is (a collation-enforcing cast over a value that is no string and no ENUM)
  */
@@ -8090,10 +8094,10 @@ pt_check_cast_wrap_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, 
 }
 
 /*
- * pt_function_reader_domain () - CBRD-27583 (4.3): the domain a reader of an aggregate's or an analytic function's
+ * pt_function_reader_domain () - CBRD-27583: the domain a reader of an aggregate's or an analytic function's
  *   value takes: the decided one where type checking left the result type to the argument's value, the parse tree's
  *   string type in the decided collation where it left only the collation (GROUP_CONCAT over a bind), the parse
- *   tree's otherwise - an AVG over an INTEGER bind decides INTEGER and yields a DOUBLE, as develop did (D-36)
+ *   tree's otherwise - an AVG over an INTEGER bind decides INTEGER and yields a DOUBLE
  */
 static TP_DOMAIN *
 pt_function_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * decided)
@@ -8106,7 +8110,7 @@ pt_function_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * decided)
   return collated != NULL ? collated : parse_tree;
 }
 
-/* CBRD-27583 (D-34): a MIN / MAX over an operand its regu retyped, whose values the function keeps as they are */
+/* CBRD-27583: a MIN / MAX over an operand its regu retyped, whose values the function keeps as they are */
 static bool
 pt_extreme_operand_retyped (FUNC_CODE function, const TP_DOMAIN * compiled, const REGU_VARIABLE * operand)
 {
@@ -8116,11 +8120,11 @@ pt_extreme_operand_retyped (FUNC_CODE function, const TP_DOMAIN * compiled, cons
 }
 
 /*
- * pt_decide_function_domain () - CBRD-27583 (4.3): the domain of an aggregate or an analytic function that type
+ * pt_decide_function_domain () - CBRD-27583: the domain of an aggregate or an analytic function that type
  *   checking left to its argument's value - a variable domain or operand type, or a collation the values give - by
- *   the rule develop's first value typed it with, over its operand's domain
+ *   the rule its first value used to type it with at execution, over its operand's domain
  *   return: the decided domain; NULL keeps the compiled one (a fixed function over a retyped operand keeps it too: only
- *	     its accumulator follows the operand, D-36; but a MIN / MAX, whose accumulator is its domain: D-34)
+ *	     its accumulator follows the operand; but not a MIN / MAX, whose accumulator is its domain)
  */
 static TP_DOMAIN *
 pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * compiled, DB_TYPE opr_dbtype,
@@ -8147,7 +8151,7 @@ pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * c
     case NO_ERROR:
       return needs_late_bind ? NULL : (TP_DOMAIN *) result.domain;
     case ER_QPROC_INVALID_DATATYPE:
-      /* a SUM / AVG over a date or time: rejected before, as type checking rejects the literal (D-37) */
+      /* a SUM / AVG over a date or time: rejected before, as type checking rejects the literal */
       assert (false);
       return NULL;
     case ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN:
@@ -8158,7 +8162,7 @@ pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * c
     }
 }
 
-/* CBRD-27583 (D-37): the aggregate or analytic function of the parse tree that holds a value (PT_FUNCTION.etc);
+/* CBRD-27583: the aggregate or analytic function of the parse tree that holds a value (PT_FUNCTION.etc);
  * arg: { the value, the function found } */
 static PT_NODE *
 pt_find_function_of_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -8173,7 +8177,7 @@ pt_find_function_of_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
 }
 
 /*
- * pt_reject_unaddable_operand () - CBRD-27583 (D-37): a SUM or AVG over an operand of a date or time type - a
+ * pt_reject_unaddable_operand () - CBRD-27583: a SUM or AVG over an operand of a date or time type - a
  *   value-typed position, which type checking saw MAYBE (nvl (?, d) over a NULL bind) - is type checking's error for
  *   the literal: its type arrives at XASL generation
  *   return: NO_ERROR, or ER_FAILED with the error set on the function's argument
@@ -8223,7 +8227,7 @@ pt_cast_regu (REGU_VARIABLE * operand, TP_DOMAIN * domain)
 }
 
 /*
- * pt_cast_unnumbered_operand () - CBRD-27583 (D-46): a SUM or AVG over an operand of no number type - a session
+ * pt_cast_unnumbered_operand () - CBRD-27583: a SUM or AVG over an operand of no number type - a session
  *   variable read or a bind, which type checking saw MAYBE - reads it through a cast to DOUBLE, as type checking casts
  *   a typed argument; a collection under SUM, NULL and a type the compiler does not know keep theirs
  *   return: NO_ERROR, or ER_FAILED out of memory
@@ -8250,7 +8254,7 @@ pt_cast_unnumbered_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_C
 }
 
 /*
- * pt_set_interpolation_list_domain () - CBRD-27583 (4.3): the domain a MEDIAN / PERCENTILE list holds and its key
+ * pt_set_interpolation_list_domain () - CBRD-27583: the domain a MEDIAN / PERCENTILE list holds and its key
  *   sorts: the argument's where it is of the function's type (a NUMERIC column keeps its precision and scale), the
  *   function's otherwise - every value converts to the function's type before it goes into the list
  */
@@ -8268,7 +8272,7 @@ pt_set_interpolation_list_domain (AGGREGATE_TYPE * agg)
 }
 
 /*
- * pt_decide_aggregate_domains () - CBRD-27583 (4.3): a block's aggregates over their operands' domains: an operand
+ * pt_decide_aggregate_domains () - CBRD-27583: a block's aggregates over their operands' domains: an operand
  *   reading a slot of values takes the domain its writer fills it with, and a function type checking left to its
  *   argument's value takes its domain and operand type from it, before any reader of its value is generated
  *   return: NO_ERROR, or ER_FAILED for a SUM or AVG over a date or time (pt_reject_unaddable_operand) or out of memory
@@ -8301,7 +8305,7 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	}
       for (SORT_LIST * key = QPROC_IS_INTERPOLATION_FUNC (agg) ? NULL : agg->sort_list; key != NULL; key = key->next)
 	{
-	  /* a GROUP_CONCAT key sorts the list of its operand's values (qdata_aggregate_list_domain, D-64) */
+	  /* a GROUP_CONCAT key sorts the list of its operand's values (qdata_aggregate_list_domain) */
 	  if (!domain_is_variable (operand->domain) || domain_is_variable (key->pos_descr.dom))
 	    {
 	      key->pos_descr.dom = operand->domain;
@@ -8316,12 +8320,12 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	}
       if (agg->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg->domain) != TP_DOMAIN_COLL_NORMAL)
 	{
-	  /* a MEDIAN / PERCENTILE converts each value of its own type to the function's (develop's operand type) */
+	  /* a MEDIAN / PERCENTILE converts each value of its own type to the function's (the operand type) */
 	  agg->opr_dbtype = TP_DOMAIN_TYPE (QPROC_IS_INTERPOLATION_FUNC (agg) ? operand->domain : domain);
 	}
       if (TP_DOMAIN_TYPE (agg->domain) == DB_TYPE_VARIABLE)
 	{
-	  /* the accumulator starts in the decided type, as develop's first value did */
+	  /* the accumulator starts in the decided type, which its first value gave at execution before */
 	  regu_dbval_type_init (agg->accumulator.value, TP_DOMAIN_TYPE (domain));
 	}
       agg->domain = domain;
@@ -8333,7 +8337,7 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 }
 
 /*
- * pt_decide_analytic_domains () - CBRD-27583 (4.3): the analytic functions over their operands' domains, as
+ * pt_decide_analytic_domains () - CBRD-27583: the analytic functions over their operands' domains, as
  *   pt_decide_aggregate_domains; the readers of a function's value generated before (the initial outlist's column,
  *   the scan's load into the value list: readers) take the domain the rule gave a variable result type
  */
@@ -8368,8 +8372,8 @@ pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYT
 	}
       if (TP_DOMAIN_TYPE (func->domain) == DB_TYPE_VARIABLE || retyped)
 	{
-	  /* the value starts in the decided type, as develop's first binding did; a MIN / MAX copies its operand's
-	   * values into it by its type (qdata_evaluate_analytic_func) */
+	  /* the value starts in the decided type, which its first binding gave at execution before; a MIN / MAX
+	   * copies its operand's values into it by its type (qdata_evaluate_analytic_func) */
 	  regu_dbval_type_init (func->value, TP_DOMAIN_TYPE (domain));
 	}
       func->domain = domain;
@@ -8387,7 +8391,7 @@ pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYT
   return NO_ERROR;
 }
 
-/* CBRD-27583 (4.3): the aggregate of the block being generated whose value value is, NULL for none */
+/* CBRD-27583: the aggregate of the block being generated whose value value is, NULL for none */
 static const AGGREGATE_TYPE *
 pt_block_aggregate (const PARSER_CONTEXT * parser, const DB_VALUE * value)
 {
@@ -8442,7 +8446,7 @@ pt_decide_branch_casts (ARITH_TYPE * arith)
 }
 
 /*
- * pt_make_regu_arith_over_copies () - CBRD-27583 (d1, D-21 A4): a subtraction plan generation makes over regus another
+ * pt_make_regu_arith_over_copies () - CBRD-27583: a subtraction plan generation makes over regus another
  *   consumer reads as they are (a ROWNUM bound, the comparison's bind): the node reads second regus of its own, which
  *   convert for its operand coercion
  */
@@ -8821,9 +8825,9 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
       regu->domain->scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
-  /* CBRD-27583 (S3-22, D-84): the PL server's reply unpacks a string of either declared type as a VARCHAR of its
-   * codeset's binary collation (dbvalue_java::unpack); an operand reads that, as develop's did, and the readers that
-   * develop's column cast gave the declared type convert into it (pt_convert_sp_string) */
+  /* CBRD-27583: the PL server's reply unpacks a string of either declared type as a VARCHAR of its codeset's binary
+   * collation (dbvalue_java::unpack); an operand reads that, and the readers that the list column cast used to give
+   * the declared type convert into it (pt_convert_sp_string) */
   if (regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain)))
     {
       regu->domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL,
@@ -8834,8 +8838,8 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_convert_sp_string () - CBRD-27583 (S3-22, D-84): a stored function's string converted into the function's
- *   declared type, for a reader develop's column cast gave that type: an output column, an aggregate's argument
+ * pt_convert_sp_string () - CBRD-27583: a stored function's string converted into the function's declared type,
+ *   for a reader the list column cast used to give that type: an output column, an aggregate's argument
  *   return: false out of memory
  *   node(in): the stored function's call
  *   regu(in/out): the reader's regu of the call
@@ -8868,7 +8872,7 @@ pt_convert_sp_string (PARSER_CONTEXT * parser, PT_NODE * node, REGU_VARIABLE * r
  * Note :
  * currently only aggregate functions are known and handled
  */
-/* CBRD-27583 (d1): ELT's index under the cast to BIGINT the compiler may wrap it in */
+/* CBRD-27583: ELT's index under the cast to BIGINT the compiler may wrap it in */
 static const REGU_VARIABLE *
 pt_elt_index_source (const REGU_VARIABLE * index)
 {
@@ -8882,8 +8886,8 @@ pt_elt_index_source (const REGU_VARIABLE * index)
   return index;
 }
 
-/* CBRD-27583 (d1): whether ELT's index is a bind or a literal: its value picks the branch for every row of an
- * execution (domain_link_string_function) */
+/* CBRD-27583: whether ELT's index is a bind or a literal: its value picks the branch for every row of an
+ * execution */
 static bool
 pt_elt_index_is_value (const REGU_VARIABLE * index)
 {
@@ -8891,7 +8895,7 @@ pt_elt_index_is_value (const REGU_VARIABLE * index)
   return index->type == TYPE_DBVAL || index->type == TYPE_POS_VALUE;
 }
 
-/* CBRD-27583 (D-38): the value of ELT's index the plan is compiled for: a literal's, or a user position's, which the
+/* CBRD-27583: the value of ELT's index the plan is compiled for: a literal's, or a user position's, which the
  * bind type signature carries (PT_HOST_VAR_ELT_POSITION); PT_HOST_VAR_ELT_UNKNOWN for another position */
 static DB_BIGINT
 pt_elt_index_value (PARSER_CONTEXT * parser, const REGU_VARIABLE * index)
@@ -8912,11 +8916,11 @@ pt_elt_index_value (PARSER_CONTEXT * parser, const REGU_VARIABLE * index)
 }
 
 /*
- * pt_decide_function_collation () - CBRD-27583 (d1): a string function result whose collation type checking left to its
+ * pt_decide_function_collation () - CBRD-27583: a string function result whose collation type checking left to its
  *   string operands (LEAVE, ENFORCE) takes it from their domains; ELT's
  *   branches of different domains are merged where a row computes the index, and the one a bind or a literal picks
- *   types the result where the plan is compiled for that index value (D-38)
- *   return: ER_QSTR_INCOMPATIBLE_COLLATIONS for ELT branches a row picks among whose collations do not merge (4.7 (5):
+ *   types the result where the plan is compiled for that index value
+ *   return: ER_QSTR_INCOMPATIBLE_COLLATIONS for ELT branches a row picks among whose collations do not merge (raised
  *	     before any row), else NO_ERROR
  */
 static int
@@ -8958,7 +8962,7 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
   const REGU_VARIABLE *index = &regu->value.funcp->operand->value;
   if (error == ER_QPROC_DOMAIN_UNRESOLVED && elt && pt_elt_index_is_value (index))
     {
-      /* D-38: the index value the plan is compiled for picks the branch; a NULL or one out of the branches gives NULL */
+      /* the index value the plan is compiled for picks the branch; a NULL or one out of the branches gives NULL */
       const DB_BIGINT pick = pt_elt_index_value (parser, index);
       if (pick != PT_HOST_VAR_ELT_UNKNOWN)
 	{
@@ -9025,12 +9029,12 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->domain = pt_xasl_node_to_domain (parser, function);
-	      /* CBRD-27583 (4.3): a result type checking left to the argument's value takes the node's decision */
+	      /* CBRD-27583: a result type checking left to the argument's value takes the node's decision */
 	      const AGGREGATE_TYPE *agg = is_aggregate ? pt_block_aggregate (parser, dbval) : NULL;
 	      if (agg != NULL && (agg->function == PT_MIN || agg->function == PT_MAX)
 		  && TP_DOMAIN_TYPE (agg->domain) != TP_DOMAIN_TYPE (regu->domain))
 		{
-		  /* D-34: a MIN / MAX over a retyped operand yields its operand's values (pt_decide_function_domain) */
+		  /* a MIN / MAX over a retyped operand yields its operand's values (pt_decide_function_domain) */
 		  regu->domain = agg->domain;
 		}
 	      else if (agg != NULL && !pt_regu_domain_is_fixed_domain (regu->domain))
@@ -9705,7 +9709,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	  domain = tp_domain_resolve_value ((DB_VALUE *) node->etc, NULL);
 	}
 
-      /* CBRD-27583 (4.3): a reference into the analytic or the GROUP BY pass's values reads the domain their writer
+      /* CBRD-27583: a reference into the analytic or the GROUP BY pass's values reads the domain their writer
        * fills them with */
       const XASL_NODE *block = parser->parent_proc_xasl;
       QPROC_DB_VALUE_LIST slot = NULL;
@@ -10460,7 +10464,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_EVALUATE_VARIABLE:
-		  /* CBRD-27583 (4.8): the variable's type for the statement, not its value's at each row */
+		  /* CBRD-27583: the variable's type for the statement, not its value's at each row */
 		  domain = pt_session_variable_domain (parser, node);
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_EVALUATE_VARIABLE, domain);
 		  break;
@@ -12269,7 +12273,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		  regu_alloc (regu);
 		  if (regu)
 		    {
-		      /* CBRD-27583: the value is what the slot's writer put there (principle 1-6): an INSERT's or an
+		      /* CBRD-27583: the value is what the slot's writer put there: an INSERT's or an
 		       * UPDATE's constraint reads the selected value, not the target column's */
 		      TP_DOMAIN *slot = pt_index_value_domain (symbols->listfile_value_list, list_index);
 		      regu->domain = slot != NULL && TP_DOMAIN_TYPE (slot) != DB_TYPE_VARIABLE
@@ -12359,7 +12363,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		    {
 		      const int index = pt_find_attribute (parser, attr, table_info->attribute_list);
 		      regu->type = TYPE_CONSTANT;
-		      /* CBRD-27583 (D-35): the enclosing block made its derived tables before this subquery */
+		      /* CBRD-27583: the enclosing block made its derived tables before this subquery */
 		      regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
 		      pt_note_cte_null_reader (parser, table_info->class_spec, index, regu, NULL);
 		      dbval = pt_index_value (table_info->value_list, index);
@@ -14083,7 +14087,7 @@ error:
 }
 
 /*
- * pt_key_element_domain () - CBRD-27583 (4.4): the domain a search key element's values have on the server: a
+ * pt_key_element_domain () - CBRD-27583: the domain a search key element's values have on the server: a
  *   literal's value's own, which its regu's may widen, unless the fetch converts it or a COLLATE modifier gives it the
  *   regu's collation at the fetch; an OBJECT's are OIDs
  */
@@ -14099,8 +14103,8 @@ pt_key_element_domain (const REGU_VARIABLE * regu)
 }
 
 /*
- * pt_convert_key_element () - CBRD-27583 (4.4): a search key element converted into its index column's domain, or
- *   into the domain its comparison with the index keys converts it into (D-80): a literal here, any other element by
+ * pt_convert_key_element () - CBRD-27583: a search key element converted into its index column's domain, or
+ *   into the domain its comparison with the index keys converts it into: a literal here, any other element by
  *   its regu at each fetch
  *   return: false where the element keeps its value - a list column read into its slot, or a regu that converts already
  */
@@ -14138,7 +14142,7 @@ pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
 }
 
 /*
- * pt_decide_key_element () - CBRD-27583 (4.4): how one column of a search key bound takes its element's values
+ * pt_decide_key_element () - CBRD-27583: how one column of a search key bound takes its element's values
  *   (domain_key_rule from the element's domain and the column's)
  *   written(out): the domain the column is written with in a key that has a kept column
  *   kept(out): the column keeps its value's own domain
@@ -14164,7 +14168,7 @@ pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midx
   DOMAIN_KEY_RULE rule = domain_key_rule (element, column, midxkey);
   if (rule == DOMAIN_KEY_KEEP)
     {
-      /* D-80: a kept value that each comparison with the index keys would convert converts once, into the domain the
+      /* a kept value that each comparison with the index keys would convert converts once, into the domain the
        * comparison converts it into, and is a value of that domain from here: by the comparison's converter (no
        * conversion implicit coercion refuses), into a value that compares as the comparison compares (its collation,
        * no ENUM codeset), unless the index key converts first (its failure names the value's own type) */
@@ -14216,7 +14220,7 @@ pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midx
 }
 
 /*
- * pt_decide_key_bound () - CBRD-27583 (4.4): each column of a search key bound; a multi-column bound with a kept
+ * pt_decide_key_bound () - CBRD-27583: each column of a search key bound; a multi-column bound with a kept
  *   column gets the domain it is written with: each column's in its index column's direction - a kept or as-is
  *   column's value domain, the index's for a converted column, the skip value and every column after the elements
  *   written_domain(out): that domain; NULL for a key written with the index's
@@ -14296,7 +14300,7 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
 }
 
 /*
- * pt_decide_index_keys () - CBRD-27583 (4.4): how every search key bound of an index scan takes its values; the index
+ * pt_decide_index_keys () - CBRD-27583: how every search key bound of an index scan takes its values; the index
  *   skip scan's fetch range is the skip value alone, written with the index's domain
  */
 static int
@@ -14322,7 +14326,7 @@ pt_decide_index_keys (INDX_INFO * indx_infop)
   return pt_decide_key_compares (indx_infop);
 }
 
-/* CBRD-27583 (D-80): whether a domain fixes the type of its values and their collation */
+/* CBRD-27583: whether a domain fixes the type of its values and their collation */
 static bool
 pt_key_domain_is_fixed (const TP_DOMAIN * domain)
 {
@@ -14332,7 +14336,7 @@ pt_key_domain_is_fixed (const TP_DOMAIN * domain)
 }
 
 /*
- * pt_decide_key_compare () - CBRD-27583 (D-80): the comparison of a value of each of two domains, as the type rule
+ * pt_decide_key_compare () - CBRD-27583: the comparison of a value of each of two domains, as the type rule
  *   module decides it: comparison method VALUES for a side whose domain leaves its values' type or collation to the
  *   data; OBJECT keys (OIDs) by their own cmpval, as the B-tree compares them
  *   return: NO_ERROR, or the error of the type rule module
@@ -14370,7 +14374,7 @@ pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, DOMAIN_COMP
 }
 
 #if !defined (NDEBUG)
-/* CBRD-27583 (D-80): two decided comparisons are the same comparison */
+/* CBRD-27583: two decided comparisons are the same comparison */
 static bool
 pt_key_compares_equal (const DOMAIN_COMPARE * lhs, const DOMAIN_COMPARE * rhs)
 {
@@ -14383,7 +14387,7 @@ pt_key_compares_equal (const DOMAIN_COMPARE * lhs, const DOMAIN_COMPARE * rhs)
 }
 #endif
 
-/* CBRD-27583 (D-80): whether values of two fixed domains compare alike with any other: the type rule module decides a
+/* CBRD-27583: whether values of two fixed domains compare alike with any other: the type rule module decides a
  * comparison from the domains' type, codeset and collation alone */
 static bool
 pt_key_domains_alike (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
@@ -14404,7 +14408,7 @@ pt_key_domains_alike (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
 }
 
 /*
- * pt_decide_key_compares () - CBRD-27583 (D-80): how an index scan's search key bounds compare, decided from the
+ * pt_decide_key_compares () - CBRD-27583: how an index scan's search key bounds compare, decided from the
  *   domains their columns' values have (a multi-column bound's, those of the domain its key is written with; a
  *   single-column bound's, its element's) and the index's key domain: the comparison a predicate makes of the two
  *   return: NO_ERROR or an error code
@@ -14587,8 +14591,7 @@ pt_decide_key_compares (INDX_INFO * indx_infop)
 		  assert (pt_decide_key_compare (column, classes[c * n_bounds + own[c]], &reversed) == NO_ERROR
 			  && pt_key_compares_equal (&reversed, &mirrored));
 		}
-	      /* CBRD-27583 (S3-32): a kept bound converts once, here, not at each comparison (census "key bound
-	       * converts" 0) */
+	      /* CBRD-27583: a kept bound converts once, here, not at each comparison */
 	      assert (error != NO_ERROR || compares[c].conv[0] == NULL);
 #endif
 	      bound->merges = bound->merges || domain_key_compare_merges (&compares[c], column);
@@ -15103,7 +15106,7 @@ pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, P
 }
 
 /*
- * pt_regu_is_pruning_value () - CBRD-27583 (D-87): a regu partition pruning reads as a value before the scan, as
+ * pt_regu_is_pruning_value () - CBRD-27583: a regu partition pruning reads as a value before the scan, as
  *   partition_is_reguvar_const takes it: a constant, a bind, or an expression or a function of those
  */
 static bool
@@ -15141,7 +15144,7 @@ pt_regu_is_pruning_value (const REGU_VARIABLE * regu)
     }
 }
 
-/* CBRD-27583 (D-87): a domain a pruning conversion goes from or into: one of a type */
+/* CBRD-27583: a domain a pruning conversion goes from or into: one of a type */
 static bool
 pt_domain_takes_pruning_conversion (const TP_DOMAIN * domain)
 {
@@ -15149,7 +15152,7 @@ pt_domain_takes_pruning_conversion (const TP_DOMAIN * domain)
 }
 
 /*
- * pt_list_element_domain () - CBRD-27583 (D-87): the one domain of a list's elements, its NULLs aside (a NULL is equal
+ * pt_list_element_domain () - CBRD-27583: the one domain of a list's elements, its NULLs aside (a NULL is equal
  *   to no key), alone (a set domain's element domains link each other)
  *   return: the domain; NULL: none, or several
  */
@@ -15178,7 +15181,7 @@ pt_list_element_domain (const TP_DOMAIN * set)
 }
 
 /*
- * pt_comparison_keeps_key () - CBRD-27583 (D-87): whether a list's elements compare with a partition key as values of
+ * pt_comparison_keeps_key () - CBRD-27583: whether a list's elements compare with a partition key as values of
  *   the key's type - the comparison the type rule module decides for the two domains converts the element alone, into
  *   the key's type. Pruning converts the elements into the key's domain; where the comparison converts the key (a
  *   BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element), the converted element
@@ -15200,9 +15203,9 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
 }
 
 /*
- * pt_set_prune_domains () - CBRD-27583 (D-87): the domain into which a partitioned class's pruning converts a term's
- *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, where develop's
- *   pruning cast it at the scan (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
+ * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's
+ *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, not at the scan
+ *   (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
  *   elements have one domain, its NULLs aside, that compares with the key in the key's type (pt_comparison_keeps_key)
  */
 static void
@@ -17294,14 +17297,14 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      /* append to outlist */
 	      (*regulist)->value = *regu;
 
-	      /* CBRD-27583 (S3-22): a stored function's string column comes in the declared type, as develop's column
-	       * cast gave it */
+	      /* CBRD-27583: a stored function's string column comes in the declared type, as the column cast used to
+	       * give it */
 	      if (!pt_convert_sp_string (parser, col, &(*regulist)->value))
 		{
 		  goto exit_on_error;
 		}
 
-	      /* CBRD-27583 (4.6e): a constant column's value in its domain, converted here as the column's cast did at
+	      /* CBRD-27583: a constant column's value in its domain, converted here as the column's cast did at
 	       * the row - a folded ADDTIME of a zoned string is a DATETIMETZ its VARCHAR node takes */
 	      if (regu->type == TYPE_DBVAL && regu->domain != NULL && !DB_IS_NULL (&regu->value.dbval)
 		  && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_NULL && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE
@@ -17320,8 +17323,8 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		    }
 		}
 
-	      /* CBRD-27583 (4.6e): INDEX_PREFIX gives its CHAR first argument's type (a B-tree key's unique prefix): its
-	       * column takes the prefix's bytes into the node's VARCHAR, as develop's column cast did; an operand takes
+	      /* CBRD-27583: INDEX_PREFIX gives its CHAR first argument's type (a B-tree key's unique prefix): its
+	       * column takes the prefix's bytes into the node's VARCHAR, as the column cast used to; an operand takes
 	       * the CHAR. shortcut: a host variable first argument is MAYBE when PREPARE plans it (the optdebug column
 	       * check reports a CHAR prefix that reaches the column), plan it at execution if CHAR binds appear */
 	      if (regu->type == TYPE_INARITH && col->node_type == PT_EXPR && col->info.expr.op == PT_INDEX_PREFIX
@@ -19621,7 +19624,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->g_hk_scan_regu_list =
 	    pt_to_regu_variable_list (parser, group_out_list, UNBOX_AS_VALUE, buildlist->g_val_list, attr_offsets);
 
-	  /* CBRD-27583 (S3-22): a stored function's string key hashes in its list column's type, converted into its
+	  /* CBRD-27583: a stored function's string key hashes in its list column's type, converted into its
 	   * slot as the column's value is (pt_convert_sp_string) */
 	  REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list, column = xasl->outptr_list->valptrp;
 	  for (; key != NULL && column != NULL; key = key->next, column = column->next)
@@ -19973,8 +19976,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      goto analytic_exit_on_error;
 	    }
-	  /* CBRD-27583: the regu list reads the list the initial outlist writes (D-34), before the window list copies the
-	   * value list's domains; the functions over the operands it reads then type their own columns (4.3) */
+	  /* CBRD-27583: the regu list reads the list the initial outlist writes, before the window list copies the
+	   * value list's domains; the functions over the operands it reads then type their own columns */
 	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
 					buildlist->a_outptr_list_ex);
 	  {
@@ -20085,12 +20088,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	       * For example, index (c1, c2, c3) can satisfy sort_list (c1), (c1, c2), (c1, c2, c3), but not (c1, c3). */
 	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
 
-	      /* CBRD-27583 (D-49): the scan list is the intermediate file, whose column of an AVG's value the end
+	      /* CBRD-27583: the scan list is the intermediate file, whose column of an AVG's value the end
 	       * overwrites from the function's lists (qexec_analytic_update_group_result): a NULL of the column's domain,
 	       * as a sorted evaluation writes it, not the sum in the argument's type the scan fills.
 	       * shortcut: AVG only - the end of a skipped sort reads the column as the result of RANK, DENSE_RANK,
-	       * FIRST_VALUE and ROW_NUMBER (qexec_analytic_sort_key_header_load); widen it if another function shows in the
-	       * output column census */
+	       * FIRST_VALUE and ROW_NUMBER (qexec_analytic_sort_key_header_load); widen it if another function's column
+	       * fails the optdebug output column check (qdata_check_output_column) */
 	      for (ANALYTIC_TYPE * func = xasl->proc.buildlist.a_eval_list->head; func != NULL; func = func->next)
 		{
 		  for (REGU_VARIABLE_LIST out = buildlist->a_outptr_list_ex->valptrp;
@@ -20471,7 +20474,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       goto exit_on_error;
     }
 
-  /* CBRD-27583 (D-64): the sort keys over the block's lists, whose columns are decided by now */
+  /* CBRD-27583: the sort keys over the block's lists, whose columns are decided by now */
   pt_set_sort_list_domains (buildlist->groupby_list, NULL, xasl->outptr_list);
   for (ANALYTIC_EVAL_TYPE * eval = buildlist->a_eval_list; eval != NULL; eval = eval->next)
     {
@@ -20606,7 +20609,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val, qo_plan);
-  /* CBRD-27583 (4.3): decided before the output list reads them (pt_block_aggregate) */
+  /* CBRD-27583: decided before the output list reads them (pt_block_aggregate) */
   if (pt_decide_aggregate_domains (parser, select_node, aggregate, NULL) != NO_ERROR)
     {
       goto exit_on_error;
@@ -20948,7 +20951,7 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 }
 
 /*
- * pt_type_cte_null_readers () - CBRD-27583 (S3-46): the recursive part's readers of a column the non-recursive part
+ * pt_type_cte_null_readers () - CBRD-27583: the recursive part's readers of a column the non-recursive part
  *   writes NULL-typed (pt_note_cte_null_reader) take the column's unified domain. An operator or a scan reads the regu
  *   it was given; an output list holds a copy of its regus (pt_to_outlist), so the recursive part's columns, and the
  *   unification pt_check_list_branches made of them, do not change
@@ -22795,7 +22798,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
 }
 
 /*
- * pt_assigned_attribute_domain () - CBRD-27583 (D-45): the domain of an attribute an INSERT, UPDATE or MERGE assigns,
+ * pt_assigned_attribute_domain () - CBRD-27583: the domain of an attribute an INSERT, UPDATE or MERGE assigns,
  *   found as sm_att_id finds the attribute; the XASL streams it with the assignment
  *   return: the domain, NULL with the error set
  */
@@ -22816,7 +22819,7 @@ pt_assigned_attribute_domain (DB_OBJECT * class_obj, const char *name)
 }
 
 /*
- * pt_default_value_type () - CBRD-27583 (D-94): the type an omitted attribute's default is made in before the INSERT
+ * pt_default_value_type () - CBRD-27583: the type an omitted attribute's default is made in before the INSERT
  *   casts it into the attribute's domain (qexec_execute_insert, qexec_generate_row_default_expr): a date or time
  *   function's, UNIX_TIMESTAMP's INTEGER, USER's and SYS_GUID's VARCHAR, UUID's BIT; under TO_CHAR a VARCHAR, or a
  *   string attribute's type for the string it coerces; a default value's, the attribute's
@@ -26785,8 +26788,8 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 }
 
 /*
- * pt_generate_ctes_and_derived_tables () - CBRD-27583 (D-35): the XASL of the subqueries of a SELECT's FROM list, made
- *   before its select list, whose correlated subqueries read their columns' domains (principle 1-6), after the CTEs
+ * pt_generate_ctes_and_derived_tables () - CBRD-27583: the XASL of the subqueries of a SELECT's FROM list, made
+ *   before its select list, whose correlated subqueries read their columns' domains, after the CTEs
  *   of its WITH clause, which they may read; the walk then skips the WITH clause and their specs
  *   (parser_generate_xasl_pre)
  */
@@ -26859,7 +26862,7 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
       break;
 
     case PT_WITH_CLAUSE:
-      /* CBRD-27583 (D-35): made by its query's pre (pt_generate_ctes_and_derived_tables) */
+      /* CBRD-27583: made by its query's pre (pt_generate_ctes_and_derived_tables) */
       *continue_walk = PT_LIST_WALK;
       break;
 
@@ -26867,7 +26870,7 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
       if (node->info.spec.derived_table_type == PT_IS_SUBQUERY && node->info.spec.derived_table != NULL
 	  && node->info.spec.derived_table->info.query.xasl != NULL)
 	{
-	  /* CBRD-27583 (D-35): made by its SELECT's pre (pt_generate_ctes_and_derived_tables) */
+	  /* CBRD-27583: made by its SELECT's pre (pt_generate_ctes_and_derived_tables) */
 	  *continue_walk = PT_LIST_WALK;
 	}
       break;
@@ -32044,7 +32047,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
   /* order by items have been attached, now the arguments */
   regu_var->next = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
 
-  /* CBRD-27583 (S3-4): each hypothetical value compares in its ORDER BY item's domain, which a cast gives it (the
+  /* CBRD-27583: each hypothetical value compares in its ORDER BY item's domain, which a cast gives it (the
    * coercion the aggregate made at the group's first row) */
   for (REGU_VARIABLE_LIST item = regu_var_list, value = regu_var->next; item != regu_var->next && value != NULL;
        item = item->next, value = value->next)
@@ -32052,8 +32055,8 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
       TP_DOMAIN *domain = item->value.domain;
       if (value->value.type == TYPE_DBVAL && !DB_IS_NULL (&value->value.value.dbval))
 	{
-	  /* CBRD-27583 (S3-35): the literal holds the value semantic check coerced into the ORDER BY attribute's domain
-	   * (pt_check_cume_dist_percent_rank_order_by); its node keeps the literal's type as in develop (an INTEGER node
+	  /* CBRD-27583: the literal holds the value semantic check coerced into the ORDER BY attribute's domain
+	   * (pt_check_cume_dist_percent_rank_order_by); its node keeps the literal's type (an INTEGER node
 	   * holding a CHAR value), and this is the one place that makes that node a regu */
 	  value->value.domain = tp_domain_resolve_value (&value->value.value.dbval, NULL);
 	}

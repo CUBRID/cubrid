@@ -530,11 +530,11 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
 
 #if !defined (NDEBUG)
 /*
- * qdata_check_output_column () - CBRD-27583 (4.6e): an output column's value comes in the column's domain - its
+ * qdata_check_output_column () - CBRD-27583: an output column's value comes in the column's domain - its
  *   producer's, now that no column cast converts it; a NUMERIC domain of the default precision takes a NUMERIC of any
  *   precision and scale, as the cast into it kept them, and one of precision 0 too: the cast into it kept the default
- *   precision and the column reads as NULL (mr_data_readval_numeric, develop's defect workspace #444); a bound value
- *   comes as the client sent it, as before CBRD-27510 (D-65, D-66): of the column's type with its own precision, scale
+ *   precision and the column reads as NULL (mr_data_readval_numeric, a known long-standing behavior); a bound value
+ *   comes as the client sent it, as before CBRD-27510: of the column's type with its own precision, scale
  *   and collation (num_idx's UPDATE), or a string as CHAR or VARCHAR (cbrd_27615's MERGE)
  */
 static void
@@ -1920,8 +1920,8 @@ qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * r
 
 /*
  * qdata_add_sequence_to_dbval () - two collections added in domain_p: a sequence appended to a sequence, the union of
- *   sets or multisets. CBRD-27583 (S3-21): the first sequence converts into domain_p with the converter the plan found
- *   for a value of type planned (result_conv, S3-40b's - qdata_coerce_result_to_domain's)
+ *   sets or multisets. CBRD-27583: the first sequence converts into domain_p with the converter the plan found
+ *   for a value of type planned (result_conv, the one qdata_coerce_result_to_domain uses)
  */
 static int
 qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
@@ -2152,7 +2152,7 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALUE * r
 }
 
 /*
- * qdata_coerce_result_to_domain () - CBRD-27583 (S3-40b): an operator's value into the domain its node or its plan names
+ * qdata_coerce_result_to_domain () - CBRD-27583: an operator's value into the domain its node or its plan names
  *   (tp_value_coerce's coercion), by the converter the plan found before the rows for a value of the planned type
  *   return: NO_ERROR or ER_code
  *   domain_p(in): the domain; NULL none
@@ -2184,9 +2184,9 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
     }
   else
     {
-      /* a value of another type than planned, or a domain that leaves the value's type or collation to it, coerces as
-       * develop did: never seen in the gates nor in compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT /
-       * VARBIT results (CBRD-27583 S3-13, census "result coerce by value") */
+      /* CBRD-27583: not reached - a value of another type than planned, or a domain that leaves the value's type or
+       * collation to it (checked also for compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT
+       * results); a release build coerces it by its own type */
       assert (false);
       dom_status = tp_value_coerce (result_p, result_p, domain_p);
     }
@@ -2201,7 +2201,7 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
 
 /*
  * qdata_cast_to_domain () - a value cast into domain_p, with the converter unpack found for a value of type planned
- *   (conv; NULL none): CBRD-27583 (S3-21)
+ *   (conv; NULL none): CBRD-27583
  */
 static int
 qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
@@ -2702,7 +2702,7 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *   domain_p(in)	  : DB domain of result
  *   max_allowed_size(in) : max allowed size for result
  *   warning_context(in)  : used only to display truncation warning context
- *   planned(in), conv(in): the converter of a dbval2 of type planned into domain_p the plan found (CBRD-27583 S3-21,
+ *   planned(in), conv(in): the converter of a dbval2 of type planned into domain_p the plan found (CBRD-27583,
  *			    a GROUP_CONCAT's argument); NULL none
  *
  * Note: Concatenates a db_values to string db value.
@@ -2751,7 +2751,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      /* CBRD-27583 (S3-23): type checking coerced the separator and the function into the argument's collation, so a
+      /* CBRD-27583: type checking coerced the separator and the function into the argument's collation, so a
        * GROUP_CONCAT's accumulator and its values share it (db_string_concatenate merges nothing) */
       assert (!(TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
 	      || db_get_string_collation (dbval1_p) == db_get_string_collation (dbval2_p));
@@ -2808,7 +2808,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_ENUMERATION:
       {
 	TP_DOMAIN_STATUS err_dom;
-	/* CBRD-27583 (S3-21): a number, date, time or ENUM argument casts into the function's domain with the
+	/* CBRD-27583: a number, date, time or ENUM argument casts into the function's domain with the
 	 * converter the plan found (domain_plan_aggregate_accumulator); that VARCHAR is the accumulator's type */
 	assert (conv != NULL && DB_VALUE_DOMAIN_TYPE (dbval1_p) == TP_DOMAIN_TYPE (domain_p));
 	err_dom = tp_value_cast_with_converter (dbval2_p, &arg_val, domain_p, false, planned, conv);
@@ -4879,8 +4879,8 @@ qdata_assert_arith_value (const DOMAIN_ARITH * arith, const DB_VALUE * result_p)
  *   arith(in): the plan - a node's ARITH_TYPE.decided.arith (the unpack refuses a node it cannot decide), a SUM's or
  *	       AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE
  *   domain_p(in): the domain the result is coerced to; NULL none
- *   result_conv(in): the converter of a value of arith's type into domain_p the plan found (S3-40b,
- *		     qdata_coerce_result_to_domain); NULL converts nothing
+ *   result_conv(in): the converter of a value of arith's type into domain_p the plan found
+ *		     (qdata_coerce_result_to_domain); NULL converts nothing
  */
 int
 qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
@@ -5172,8 +5172,8 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     {
       cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
     }
-  /* CBRD-27583 (S3-32): XASL generation casts a concatenation's date or number operand to a string, so no row reaches
-   * the cast of a value by its type here (census "strcat cast by value" 0) */
+  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row reaches
+   * the cast of a value by its type here */
   assert (cast_dom1 == NULL && cast_dom2 == NULL);
 
   db_make_null (&cast_value1);
@@ -5224,7 +5224,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  || (DB_IS_NULL (dbval2_p) && QSTR_IS_ANY_CHAR_OR_BIT (type1)))
 	{
 	  /* CBRD-27583: the other operand is the value: one of another type than planned takes the node's domain by the
-	   * converter its operand's type found at unpack, as develop coerced it */
+	   * converter its operand's type found at unpack, as the row coerced it before */
 	  const int i = DB_IS_NULL (dbval1_p) ? 1 : 0;
 	  const DB_TYPE type = i == 0 ? type1 : type2;
 	  if (arith != NULL && domain_p == arith->domain && type != planned && type == arith->conv_type[i])
@@ -5548,7 +5548,7 @@ qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
  *       return a pointer to it.
  *
  * Note: Regulator variable should point to only constant values.
- *   CBRD-27583 (4.6e): the value comes in the column's domain - its producer's; no column cast converts it
+ *   CBRD-27583: the value comes in the column's domain - its producer's; no column cast converts it
  */
 static DB_VALUE *
 qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
@@ -6560,7 +6560,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	}
       else
 	{
-	  /* cast result to string; this call also allocates the container. CBRD-27583 (S3-21): the body converts
+	  /* cast result to string; this call also allocates the container. CBRD-27583: the body converts
 	   * the argument - the simple path reads the ancestor tuple's column, not the argument regu - with the converter
 	   * unpack found for the argument's type */
 	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain, arg_type, arg_conv) != NO_ERROR)
@@ -8046,7 +8046,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
       type = TP_DOMAIN_TYPE (*result_dom);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
-	  /* CBRD-27583 (S3-13): the compiler gives a value of no number or date type the function's DOUBLE, whose
+	  /* CBRD-27583: the compiler gives a value of no number or date type the function's DOUBLE, whose
 	   * conversion before the function raises the error */
 	  assert (false);
 	  error = qdata_update_interpolation_func_value_and_domain (f_value, result, result_dom);
@@ -8112,7 +8112,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       type = TP_DOMAIN_TYPE (*result_dom);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
-	  /* CBRD-27583 (S3-13): the compiler gives a value of no number or date type the function's DOUBLE, whose
+	  /* CBRD-27583: the compiler gives a value of no number or date type the function's DOUBLE, whose
 	   * conversion before the function raises the error */
 	  assert (false);
 	  /* try to coerce f_value to double, datetime then time and save domain for next coerce */

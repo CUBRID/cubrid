@@ -393,7 +393,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
       cnt++;
     }				/* for (i = ... ) */
   assert (cnt == ncols);
-  /* CBRD-27583 (D-64): the merge keys sort in their list columns' decided domains */
+  /* CBRD-27583: the merge keys sort in the domains XASL generation decided for their list columns */
   pt_set_sort_list_domains (left->orderby_list, left, NULL);
   pt_set_sort_list_domains (rght->orderby_list, rght, NULL);
 

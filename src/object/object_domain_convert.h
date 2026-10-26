@@ -108,7 +108,7 @@ tp_value_convert (TP_VALUE_CONVERTER converter, const TP_DOMAIN * target, const 
 /* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat */
 TP_VALUE_CONVERTER domain_enumeration_name_converter (void);
 
-/* INDEX_PREFIX's prefix of a CHAR -> VARCHAR of its bytes, the column of INDEX_PREFIX (workspace #445) */
+/* INDEX_PREFIX's prefix of a CHAR -> VARCHAR of its bytes, the column of INDEX_PREFIX (until CBRD-27694) */
 TP_VALUE_CONVERTER domain_char_prefix_converter (void);
 
 /* The IGNORE_TRAILING_SPACE value the first conversion of the process saw: the casts and the converters keep it.

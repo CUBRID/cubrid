@@ -12489,7 +12489,7 @@ heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
 }
 
 /*
- * heap_attrinfo_set_converted () - CBRD-27583 (D-45): set the value an INSERT, UPDATE or MERGE assigns to an
+ * heap_attrinfo_set_converted () - CBRD-27583: set the value an INSERT, UPDATE or MERGE assigns to an
  *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
  *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
  *   the match it tries first
@@ -12514,7 +12514,7 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
   const TP_DOMAIN *catalog = value->last_attrepr->domain;
   assert (TP_DOMAIN_TYPE (catalog) == TP_DOMAIN_TYPE (domain));
   const bool collection = TP_IS_SET_TYPE (pr_type->id) && !DB_IS_NULL (attr_val);
-  /* D-47: a compatible collection is stored as it is, as develop's heap_attrinfo_set does */
+  /* a compatible collection is stored as it is, as heap_attrinfo_set does */
   if (DB_IS_NULL (attr_val) || TP_DOMAIN_TYPE (catalog) == DB_TYPE_OBJECT
       || (collection && tp_domain_check (catalog, attr_val, TP_EXACT_MATCH) == DOMAIN_COMPATIBLE))
     {

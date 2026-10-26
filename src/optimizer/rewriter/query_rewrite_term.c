@@ -489,9 +489,9 @@ qo_is_reduceable_const (PT_NODE * expr)
 }
 
 /*
- * qo_bind_copy_user_position () - CBRD-27583 (Q6): the user position a bind's copies read: a user host variable's own,
+ * qo_bind_copy_user_position () - CBRD-27583: the user position a bind's copies read: a user host variable's own,
  *   or that of a bind copy a translation already positioned (a later translation, or a copy copied again); -1 for an
- *   auto-parameterized literal or another derived position, whose copies reduce as develop's
+ *   auto-parameterized literal or another derived position, whose copies share its value as a literal's do
  */
 static int
 qo_bind_copy_user_position (PARSER_CONTEXT * parser, PT_NODE * hv)
@@ -509,9 +509,9 @@ qo_bind_copy_user_position (PARSER_CONTEXT * parser, PT_NODE * hv)
 }
 
 /*
- * qo_bind_copy_domain () - CBRD-27583 (Q6, Q9, Q11, Q19): the domain the copies of a bind equal to CHAR column column
- *   read, the column's (length, codeset, collation), as the reduction of a literal casts it: develop's copy shares the
- *   bind and compares as c4 = vc does (c4 = vc and c4 = ? with 12 rejects vc = '12'). NULL when they cannot read it:
+ * qo_bind_copy_domain () - CBRD-27583: the domain the copies of a bind equal to CHAR column column read, the
+ *   column's (length, codeset, collation), as the reduction of a literal casts it, so a copy compares as c4 = vc does
+ *   (c4 = vc and c4 = ? with 12 rejects vc = '12'). NULL when they cannot read it:
  *   a value with no text (pt_cast_bind_copy_value refuses it: the terms stay unreduced), or a later translation that
  *   finds no such position of the first one
  */
@@ -530,7 +530,7 @@ qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
     {
       return NULL;
     }
-  /* without a value (a PREPARE without values, a NULL) the copies reduce as develop's: a later value with no text
+  /* without a value (a PREPARE without values, a NULL) the copies share the bind: a later value with no text
    * fails at its bind (pt_set_derived_host_variable) */
   const DB_VALUE *value = parser->host_variables != NULL ? &parser->host_variables[user] : NULL;
   if (value != NULL && !DB_IS_NULL (value))
@@ -604,7 +604,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
 
       col = NULL;		/* init - reserve for constant column of derived-table */
-      pad_domain = NULL;	/* CBRD-27583 (Q6): the CHAR(n) a bind's copies read, for an equality with a CHAR column */
+      pad_domain = NULL;	/* CBRD-27583: the CHAR(n) a bind's copies read, for an equality with a CHAR column */
       pad_user = -1;
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
@@ -670,12 +670,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	      if (arg2->node_type == PT_HOST_VAR && arg1->type_enum == PT_TYPE_CHAR
 		  && qo_bind_copy_user_position (parser, arg2) >= 0)
 		{
-		  /* CBRD-27583 (D-53, Q6): the client sends a VARCHAR bind of a CHAR column unpadded, so a plain copy
+		  /* CBRD-27583: the client sends a VARCHAR bind of a CHAR column unpadded, so a plain copy
 		   * would not compare as c4 = ? does (c4 = vc and c4 = ? must not become vc = ?), and a cast of the
 		   * copy would preset the position's domain for every use (PT_CAST type checking). The copies read
 		   * the column's CHAR(n), padded, from a derived position of their own; without a string value to
 		   * pad, or in a later translation the first one gave no such position, the terms stay as they are.
-		   * An auto-parameterized literal has its value: its copies reduce as develop's did */
+		   * An auto-parameterized literal has its value: its copies share it */
 		  pad_domain = qo_bind_copy_domain (parser, arg1, arg2);
 		  if (pad_domain == NULL)
 		    {
@@ -1031,7 +1031,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	      if (pad_domain != NULL && temp->node_type == PT_HOST_VAR)
 		{
-		  /* Q6: every copy reads the user value as arg1's CHAR(n), padded (pt_assign_host_var_position) */
+		  /* every copy reads the user value as arg1's CHAR(n), padded (pt_assign_host_var_position) */
 		  temp->info.host_var.index = pad_user;
 		  temp->info.host_var.pads_to = pad_domain;
 		}
@@ -2392,9 +2392,8 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
     }
   bound->info.expr.location = like->info.expr.location;
 
-  /* CBRD-27583 (D-52): the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), in the pattern's
-   * codeset and collation, not a CHAR pattern's CHAR: a key element of a CHAR column keeps its own domain, as develop's
-   * row kept it */
+  /* CBRD-27583: the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), in the pattern's
+   * codeset and collation, not a CHAR pattern's CHAR: a key element of a CHAR column keeps its own domain */
   bound->type_enum = pattern->type_enum == PT_TYPE_CHAR ? PT_TYPE_VARCHAR : pattern->type_enum;
 
   expr_pattern = parser_copy_tree (parser, pattern);

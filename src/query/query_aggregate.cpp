@@ -472,12 +472,12 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 }
 
 /*
- * qdata_copy_to_accumulator () - CBRD-27583 (4.3): a value copied into an aggregate's accumulator, in value_dom: with
+ * qdata_copy_to_accumulator () - CBRD-27583: a value copied into an aggregate's accumulator, in value_dom: with
  *   the converter the node planned for its argument's type (first_conv, tp_value_cast_force's conversion), a clone
  *   where it planned none
  *   return: NO_ERROR or the conversion's error
  *   is_acc_to_acc(in): an accumulator merged in, which comes in the type its state left it (a spilled partial):
- *		       tp_value_cast_force converts it, as develop did
+ *		       tp_value_cast_force converts it
  */
 int
 qdata_copy_to_accumulator (const cubxasl::aggregate_accumulator_domain *acc_dom, const DB_VALUE *value,
@@ -2752,7 +2752,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
       for (i = 0; i < nloops; i++)
 	{
 	  val_node_p = &info_p->const_array[i];
-	  /* in the ORDER BY item's domain: XASL generation cast the value into it (S3-4) */
+	  /* in the ORDER BY item's domain: XASL generation cast the value into it */
 	  if (fetch_peek_dbval (thread_p, &regu_var_node->value, val_desc_p, NULL, NULL, NULL, val_node_p) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -2814,7 +2814,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
       else
 	{
 	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into; a list column of a
-	   * variable domain (4.6) compares in its value's type */
+	   * variable domain compares in its value's type */
 	  const TP_DOMAIN *order_domain = regu_var_node->value.domain;
 	  pr_type_p = TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE ? order_domain->type
 		      : pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
@@ -3681,7 +3681,7 @@ qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_
  * qdata_update_agg_interpolation_func_value_and_domain () - a MEDIAN / PERCENTILE value converted to the function's
  *   domain before it goes into the function's list
  *   return: NO_ERROR, or ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN for any value the function's type does not take
- *	     (spec change 3)
+ *	     (a CBRD-27583 specification change)
  *   agg_p(in): the function; XASL generation decided its domain and its list's
  *   dbval(in/out): the value, replaced by its conversion
  *
@@ -3724,7 +3724,7 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
 }
 
 /*
- * qdata_group_concat_argument_type () - CBRD-27583 (S3-21): the type of a GROUP_CONCAT's argument, which the compiler
+ * qdata_group_concat_argument_type () - CBRD-27583: the type of a GROUP_CONCAT's argument, which the compiler
  *   planned the cast of a value into the function's domain for (accumulator_domain.operand_coercion.conv[1],
  *   domain_plan_aggregate_accumulator)
  */
@@ -3780,7 +3780,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
       agg_p->accumulator.value->domain.general_info.is_null = 0;
     }
 
-  /* concat the first value: CBRD-27583 (S3-21) a value that is not a string casts into the function's domain, which
+  /* concat the first value: CBRD-27583: a value that is not a string casts into the function's domain, which
    * its accumulator keeps (qdata_concatenate_dbval) */
   result_domain = domain;
 
@@ -3828,7 +3828,7 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
 
-  /* CBRD-27583 (S3-21): a value that is not a string casts into the function's domain (qdata_concatenate_dbval) */
+  /* CBRD-27583: a value that is not a string casts into the function's domain (qdata_concatenate_dbval) */
   result_domain = domain;
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);

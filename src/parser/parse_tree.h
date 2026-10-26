@@ -579,10 +579,10 @@ struct trace_json_t;
 #define PT_HOST_VAR_FORMAT_UNKNOWN 0xff
 #define PT_HOST_VAR_FORMAT_POSITION 0x100
 #define PT_HOST_VAR_FORMAT_CLASS(c_) ((c_) & 0xff)
-/* CBRD-27583 (D-38): host_var_format_classes' mark of an ELT index position, and host_var_elt_indexes' values of no index:
+/* CBRD-27583: host_var_format_classes' mark of an ELT index position, and host_var_elt_indexes' values of no index:
  * no value bound, a NULL, a value that is no BIGINT */
 #define PT_HOST_VAR_ELT_POSITION 0x200
-/* CBRD-27583 (D-70): the kind of every occurrence of a user position where a NULL cannot change the answer
+/* CBRD-27583: the kind of every occurrence of a user position where a NULL cannot change the answer
  * (pt_classify_host_var_positions; none for any other position): an IS [NOT] NULL / ISNULL operand, a comparison
  * operand whose mate holds no bind, an NVL / IFNULL / COALESCE / NVL2 operand; and for the last, whether a NULL takes
  * this compilation's plan (the node's domain is the one it has without the operand) */
@@ -591,8 +591,8 @@ struct trace_json_t;
 #define PT_HOST_VAR_CLASS_NVL_ARG 0xc00
 #define PT_HOST_VAR_CLASS(c_) ((c_) & 0xc00)
 #define PT_HOST_VAR_NULL_MATCHES 0x1000
-/* CBRD-27583 (D-76): a position that took its bind domain (host_var_bind_domains): the client converts its value into it
- * as develop's bind does, and the compilation planned it so (pt_take_host_var_bind_domains) */
+/* CBRD-27583: a position that took its bind domain (host_var_bind_domains): the client's bind converts its value into
+ * it, and the compilation planned it so (pt_take_host_var_bind_domains) */
 #define PT_HOST_VAR_BIND_DOMAIN 0x2000
 /* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
 #define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
@@ -2526,7 +2526,7 @@ struct pt_host_var_info
   PT_NODE *next;		/* for linking to same host_var indexes */
   bool rule_cast;		/* CBRD-27583: the expected domain is the type rule's target for a value-typed comparison
 				 * (pt_typed_bind_comparison), not the context's: the position keeps its compiled domain */
-  TP_DOMAIN *pads_to;		/* CBRD-27583 (Q6): of a bind copy an equality with a CHAR column made
+  TP_DOMAIN *pads_to;		/* CBRD-27583: of a bind copy an equality with a CHAR column made
 				 * (qo_reduce_equality_terms), the column's CHAR(n) it reads the value padded into; it
 				 * neither types nor presets its user position (type checking runs again on the copy) */
 };
@@ -4001,28 +4001,28 @@ struct parser_context
   int *host_var_format_classes;	/* CBRD-27583: [host_var_count] the STR_TO_DATE format class
 				 * (db_check_time_date_format) of the value a position was compiled with, in the
 				 * compilation of a bind type signature; PT_HOST_VAR_FORMAT_POSITION marks a position
-				 * a STR_TO_DATE typed its result by; D-70: PT_HOST_VAR_CLASS of its occurrences */
-  DB_BIGINT *host_var_elt_indexes;	/* CBRD-27583 (D-38): [host_var_count] the value a position was compiled
+				 * a STR_TO_DATE typed its result by; and the PT_HOST_VAR_CLASS of its occurrences */
+  DB_BIGINT *host_var_elt_indexes;	/* CBRD-27583: [host_var_count] the value a position was compiled
 					 * with as an ELT index (PT_HOST_VAR_ELT_*), in the compilation of a bind type
 					 * signature; PT_HOST_VAR_ELT_POSITION in host_var_format_classes marks an ELT's
 					 * index, whose value picks the branch the plan types the result by */
   int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
 				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
 				 * the user position whose value the client converts into it, else -1 */
-  bool *host_var_derived_pads;	/* CBRD-27583 (Q7): [host_var_count + auto_param_count] with host_var_derived_from:
+  bool *host_var_derived_pads;	/* CBRD-27583: [host_var_count + auto_param_count] with host_var_derived_from:
 				 * a derived position of a bind copy (PT_HOST_VAR_INFO.pads), whose CHAR(n) the client
 				 * fills a VARCHAR value padded into, unlike any other CHAR position (pt_set_host_variables) */
-  TP_DOMAIN **host_var_bind_domains;	/* CBRD-27583 (D-76): [host_var_count] in the compilation of a bind type
+  TP_DOMAIN **host_var_bind_domains;	/* CBRD-27583: [host_var_count] in the compilation of a bind type
 					 * signature, a position's bind domain: the last expected domain the first
-					 * translation's type checking gave a node of it (develop's pt_preset_hostvar
-					 * writes, not a rule cast's or the D-70 INTEGER), which develop casts the bound
-					 * value into; NULL for none */
+					 * translation's type checking gave a node of it (pt_preset_hostvar's writes,
+					 * not a rule cast's target or an AGNOSTIC position's INTEGER), which the bind
+					 * casts the bound value into; NULL for none */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
   int host_var_derived_count;	/* CBRD-27583: how many of the auto_param_count positions are derived positions */
-  int session_variable_count;	/* CBRD-27583 (4.8): the session variables the statement mq_translate translated last
+  int session_variable_count;	/* CBRD-27583: the session variables the statement mq_translate translated last
 				 * reads or assigns (pt_type_session_variables) */
   const char **session_variable_names;	/* [session_variable_count] their names */
   TP_DOMAIN **session_variable_domains;	/* [session_variable_count] the type each has for the statement: the
@@ -4106,15 +4106,15 @@ struct parser_context
     unsigned bind_signature_changed:1;	/* CBRD-27583: a value pushed into a value-typed position has another type
 					 * than the plan was compiled for: the statement needs the plan of the new
 					 * signature */
-    unsigned bind_domains_differ:1;	/* CBRD-27583 (D-76): this compilation of a bind type signature planned a
-					 * position with another type than develop's bind converts its value into: it
+    unsigned bind_domains_differ:1;	/* CBRD-27583: this compilation of a bind type signature planned a
+					 * position with another type than the bind converts its value into: it
 					 * made no plan, the text compiles again (pt_take_host_var_bind_domains) */
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
-    unsigned print_host_var_source:1;	/* CBRD-27583 (S3-45): a plan dump or trace print: a derived host variable
+    unsigned print_host_var_source:1;	/* CBRD-27583: a plan dump or trace print: a derived host variable
 					 * position prints as the user position it is derived from */
     unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or
 					 * not (the INSERT of CREATE ... AS SELECT): it makes the derived positions

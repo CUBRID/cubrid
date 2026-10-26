@@ -61,7 +61,7 @@ typedef enum pruning_op
   PO_IS_NULL
 } PRUNING_OP;
 
-/* CBRD-27583 (D-87): the predicate term a value to prune by comes from, with what XASL generation decided for it.
+/* CBRD-27583: the predicate term a value to prune by comes from, with what XASL generation decided for it.
  * Pruning without one (a row's or an index key's partition expression, an IN list's elements once converted, a
  * partition expression's result) prunes by values of the partition key's domain, compared by that domain. */
 typedef struct pruning_term PRUNING_TERM;
@@ -999,7 +999,7 @@ cleanup:
 }
 
 /*
- * partition_values_match () - CBRD-27583 (D-87): whether a constant of a predicate's expression is the partition
+ * partition_values_match () - CBRD-27583: whether a constant of a predicate's expression is the partition
  *   expression's: of its type (and collation) and equal by that type's cmpval; a constant of another type makes another
  *   expression
  */
@@ -1028,7 +1028,7 @@ partition_values_match (const DB_VALUE * left, const DB_VALUE * right)
 }
 
 /*
- * partition_types_agree () - CBRD-27583 (D-87): whether a value's type is a domain's, the string types counting as one
+ * partition_types_agree () - CBRD-27583: whether a value's type is a domain's, the string types counting as one
  *			      (fetch_convert_regu_value)
  */
 static bool
@@ -1119,7 +1119,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 }
 
 /*
- * partition_list_has () - CBRD-27583 (D-87): whether a list partition's values hold one equal to a value
+ * partition_list_has () - CBRD-27583: whether a list partition's values hold one equal to a value
  * return : DB_EQ if one is, DB_NE if none is, DB_UNK if a comparison has no answer (the term does not prune)
  * pinfo (in)	  : pruning context
  * term (in)	  : the term the value comes from (partition_compare_key)
@@ -1656,16 +1656,16 @@ partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRU
 }
 
 /*
- * partition_convert_value () - CBRD-27583 (D-87): a term's value (an IN list's element) in the type develop's pruning
- *				cast it into - the partition key's to hash it, an attribute's to evaluate a partition
+ * partition_convert_value () - CBRD-27583: a term's value (an IN list's element) in the type pruning casts it
+ *				into - the partition key's to hash it, an attribute's to evaluate a partition
  *				expression on it - by the conversion XASL generation decided for the term
  * return : the conversion's status; DOMAIN_COMPATIBLE with *result NULL where the term decided none for the value's
  *	    type: the term does not prune
  * term (in)	 : the term the value comes from; NULL: none
- * target (in)	 : the domain develop cast into
+ * target (in)	 : the domain pruning casts into
  * value (in)	 : the value
  * holder (in/out): a value holding nothing, *result where the value converts
- * result (out)	 : the value in the target's type: value itself where it has it (develop cast none), or holder
+ * result (out)	 : the value in the target's type: value itself where it has it (no cast), or holder
  */
 static TP_DOMAIN_STATUS
 partition_convert_value (const PRUNING_TERM * term, const TP_DOMAIN * target, const DB_VALUE * value,
@@ -1693,7 +1693,7 @@ partition_convert_value (const PRUNING_TERM * term, const TP_DOMAIN * target, co
 }
 
 /*
- * partition_compare_key () - CBRD-27583 (D-87): a range partition's bound or a list partition's value against the
+ * partition_compare_key () - CBRD-27583: a range partition's bound or a list partition's value against the
  *			      value a term prunes by, as the term's row compares its two sides (the comparison the
  *			      unpack decided, with the bound in the partition expression's place); without a term,
  *			      two values of the partition key's domain, by that domain's cmpval
@@ -1709,7 +1709,7 @@ partition_compare_key (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const
 {
   if (DB_IS_NULL (key) || DB_IS_NULL (value))
     {
-      /* the total order develop's comparison gave a NULL */
+      /* NULL first, the total order the comparison gave a NULL before */
       return DB_IS_NULL (key) ? (DB_IS_NULL (value) ? DB_EQ : DB_LT) : DB_GT;
     }
   if (term != NULL)
@@ -1736,7 +1736,7 @@ partition_compare_key (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const
 }
 
 /*
- * partition_term_value () - CBRD-27583 (D-87): a comparison term's value as its row reads it - through the value regu's
+ * partition_term_value () - CBRD-27583: a comparison term's value as its row reads it - through the value regu's
  *			     own conversion, which the read of a constant or a bind here skipped - where the term's
  *			     comparison can meet a range or list partition's values with it: the partition key in its
  *			     key side's place, a string key in its collation
@@ -1791,7 +1791,7 @@ partition_term_value (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const 
 }
 
 /*
- * partition_prune_elements () - CBRD-27583 (D-87): prune by an IN (SOME, ALL) list of values of one domain: its
+ * partition_prune_elements () - CBRD-27583: prune by an IN (SOME, ALL) list of values of one domain: its
  *				 elements converted into the partition key's type by the conversion XASL generation
  *				 decided, then pruned as values of the key's domain. A conversion that is not exact
  *				 changes nothing for an equality (the element is equal to no row's key); a list that
@@ -2255,7 +2255,7 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
 }
 
 /*
- * partition_comparison_term () - CBRD-27583 (D-87): a comparison term as the term a value to prune by comes from, with
+ * partition_comparison_term () - CBRD-27583: a comparison term as the term a value to prune by comes from, with
  *				  the partition expression (the attribute a partition expression is evaluated on) on
  *				  side key_side: the conversion of the value XASL generation decided for its other side
  * return : term

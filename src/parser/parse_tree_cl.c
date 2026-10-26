@@ -13521,7 +13521,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	      && parser->host_var_compiled_domains[index] != NULL
 	      && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[index]) == DB_TYPE_VARCHAR)
 	    {
-	      /* D-53: a CHAR position prints the VARCHAR the client sends as it is (any other value is cast into the CHAR) */
+	      /* a CHAR position prints the VARCHAR the client sends as it is (any other value is cast into the CHAR) */
 	      domain = parser->host_var_compiled_domains[index];
 	    }
 	}
@@ -13540,7 +13540,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[index] : NULL;
       if (domain != NULL && value != NULL && pt_host_var_is_leave_typed (domain))
 	{
-	  /* D-26: a LEAVE string position prints the value's codeset and collation, or the NULL type for a NULL */
+	  /* a LEAVE string position prints the value's codeset and collation, or the NULL type for a NULL */
 	  const int leave = pt_host_var_leave_collation (TP_DOMAIN_TYPE (value), value->collation_id);
 	  if (leave == -2)
 	    {
@@ -13559,7 +13559,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
       domain = parser->host_var_expected_domains[index];
       if (pt_host_var_is_char_typed (domain))
 	{
-	  /* D-53: the type the derived bind gives, as the regu takes it (pt_make_regu_hostvar) */
+	  /* the type the derived bind gives, as the regu takes it (pt_make_regu_hostvar) */
 	  domain = pt_host_var_sent_domain (parser, index, (TP_DOMAIN *) domain);
 	}
       type = TP_DOMAIN_TYPE (domain);
@@ -13620,7 +13620,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
   if (index < parser->host_var_count && parser->host_var_format_classes != NULL
       && (parser->host_var_format_classes[index] & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL)
     {
-      /* D-38: an ELT index: its value picks the branch that types the result */
+      /* an ELT index: its value picks the branch that types the result */
       const DB_BIGINT elt_index =
 	pt_elt_index_signature (parser->host_var_format_classes[index], parser->host_var_elt_indexes[index]);
       if (elt_index == PT_HOST_VAR_ELT_NULL)
@@ -13713,8 +13713,8 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  /* CBRD-27583 (S3-45): the plan dump and the trace show a derived position as the user position it is derived
-	   * from, which develop printed (D-31); any other text keeps its own number: the cache key's (spec 1), the
+	  /* CBRD-27583: the plan dump and the trace show a derived position as the user position it is derived
+	   * from, as they showed the user's ? before; any other text keeps its own number: the cache key's, the
 	   * internal texts parsed again (?:N reads the index back) and the texts compared by their print */
 	  const int index = parser->flag.print_host_var_source
 	    && pt_is_derived_host_var (parser, p->info.host_var.index)

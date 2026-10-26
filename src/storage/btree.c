@@ -1397,17 +1397,17 @@ static int btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTI
 						    MVCC_SNAPSHOT * mvcc_snapshot);
 static void btree_write_default_split_info (BTREE_NODE_SPLIT_INFO * info);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p, VPID * prev);
-static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
-STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_compare_bound_key (const BTID_INT * btid, DB_VALUE * bound_key,
-							       const DOMAIN_KEY_BOUND * bound,
-							       const DOMAIN_COMPARE * compares, DB_VALUE * key,
-							       int *start_colp) __attribute__ ((ALWAYS_INLINE));
 static DB_VALUE_COMPARE_RESULT btree_compare_own_values (DB_VALUE * value1, DB_VALUE * value2,
 							 const TP_DOMAIN * domain, int do_coercion, int total_order,
 							 bool * can_compare);
 static DB_VALUE_COMPARE_RESULT btree_compare_own_element (const void *key_domain, int column, DB_VALUE * value1,
 							  DB_VALUE * value2, int do_coercion, int total_order,
 							  bool * can_compare);
+STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_compare_bound_key (const BTID_INT * btid, DB_VALUE * bound_key,
+							       const DOMAIN_KEY_BOUND * bound,
+							       const DOMAIN_COMPARE * compares, DB_VALUE * key,
+							       int *start_colp) __attribute__ ((ALWAYS_INLINE));
+static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
 static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -2116,7 +2116,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * k
 
   pr_type = tp_domain->type;
 
-  /* CBRD-27583 (D-80): a key has its node's key domain - a non-leaf key the non-leaf one, which
+  /* CBRD-27583: a key has its node's key domain - a non-leaf key the non-leaf one, which
    * btree_get_prefix_separator makes (db_string_unique_prefix makes a BIT key's prefix VARBIT) */
   assert (DB_VALUE_DOMAIN_TYPE (key) == pr_type->id);
 
@@ -16279,7 +16279,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  || (btree_get_disk_size_of_key (next_key) >= BTREE_MAX_KEYLEN_INPAGE))
 	{
 	  /* if one of key is overflow key prefix key could be longer then max_key_len in page (that means insert could
-	   * be failed) so, in this case use next key itself as prefix key, in the non-leaf key domain (CBRD-27583 D-80: a
+	   * be failed) so, in this case use next key itself as prefix key, in the non-leaf key domain (CBRD-27583: a
 	   * BIT index's non-leaf keys are VARBIT, btree_generate_prefix_domain) */
 	  if (btid->nonleaf_key_type->type->setval (prefix_key, next_key, true) != NO_ERROR)
 	    {
@@ -22924,7 +22924,7 @@ btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 }
 
 /*
- * btree_compare_own_values () - CBRD-27583 (D-80): a B-tree comparison of two values of an index's own domain (keys it
+ * btree_compare_own_values () - CBRD-27583: a B-tree comparison of two values of an index's own domain (keys it
  *   holds or writes, a unique or foreign key check): values of its key types (TP_ARE_COMPARABLE_KEY_TYPES, the
  *   representations the index definition fixes: its non-leaf VARBIT keys, the OIDs of an OBJECT key, CHAR and VARCHAR)
  *   under one collation compare by the domain's cmpval; any other pair is not the index's
@@ -23076,7 +23076,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
 
 /*
- * btree_compare_bound_key () - CBRD-27583 (D-80): a B-tree comparison of a key with a search key bound's, by the
+ * btree_compare_bound_key () - CBRD-27583: a B-tree comparison of a key with a search key bound's, by the
  *   comparisons XASL generation decided for the bound's columns, side 0 the first key's (DOMAIN_KEY_BOUND compares,
  *   reversed or nonleaf_compares); without a bound, keys of the index's own domain (btree_compare_key)
  */

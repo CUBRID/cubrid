@@ -347,8 +347,8 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
       /* the key pair table reads the values' own keys */
       if (compare->method == DOMAIN_COMPARE_KEYS && et_comp != NULL)
 	{
-	  /* CBRD-27583 (S3-32, D-82): a filter or function index stream's side has values of its regu domain's type
-	   * (census "stream compare mismatch" 0) */
+	  /* CBRD-27583: a side of a filter or function index stream (stored in the catalog; its comparisons are decided
+	   * at unpack) has values of its regu domain's type */
 	  const REGU_VARIABLE *regu[2] = { et_comp->lhs, et_comp->rhs };
 	  const DB_VALUE *value[2] = { dbval1, dbval2 };
 	  for (int side = 0; side < 2; side++)

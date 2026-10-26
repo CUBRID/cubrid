@@ -113,7 +113,7 @@ struct expr_step
   {
     void *fn;			/* the generic step's operator body (FETCH_ARITH_OP, fetch_arith_ops.h) */
     TP_VALUE_CONVERTER result_conv;	/* an arithmetic kernel's: the node's converter of its value into domain
-					 * (CBRD-27583 S3-40b, ARITH_TYPE.result_conv); NULL: coerced as develop did */
+					 * (CBRD-27583, ARITH_TYPE.result_conv); NULL: coerced by the value's type */
   };
   int level;			/* the interpreter's frame depth of this step's node (1: a root node): the recursion-depth
 				 * check of a deep row (expr_run_range_checked) and the frames a body's interpreted calls see */

@@ -143,7 +143,7 @@ struct btree_keyrange
   DB_VALUE *lower_key;
   DB_VALUE *upper_key;
   int num_index_term;
-  /* CBRD-27583 (D-80): how lower_key and upper_key compare with the index keys (KEY_VAL_RANGE.key1_bound / key2_bound);
+  /* CBRD-27583: how lower_key and upper_key compare with the index keys (KEY_VAL_RANGE.key1_bound / key2_bound);
    * NULL for a key of the index's own domain */
   const DOMAIN_KEY_BOUND *lower_bound;
   const DOMAIN_KEY_BOUND *upper_bound;

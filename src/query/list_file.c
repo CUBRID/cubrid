@@ -898,10 +898,10 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
 }
 
 /*
- * qfile_unify_types () - CBRD-27583 (D-90): the two lists of a set operation or of a recursive CTE have one domain per
+ * qfile_unify_types () - CBRD-27583: the two lists of a set operation or of a recursive CTE have one domain per
  *   column - XASL generation gives a branch column of NULLs the unified domain (pt_type_null_list_column) - so their
  *   tuples are copied as they are. Two JSON domains of different schemas, or two variable strings of different
- *   precisions, are one column type whose values are written alike: type checking casts neither (as develop), so
+ *   precisions, are one column type whose values are written alike: type checking casts neither, so
  *   their domains stay apart and the first list's stands
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES / ER_QSTR_INCOMPATIBLE_COLLATIONS
  *   list_id1(in): Destination list identifier
@@ -4247,9 +4247,9 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
 
 #if !defined (NDEBUG)
 /*
- * qfile_sort_key_reads_column () - CBRD-27583 (D-64): a sort key reads its list column's values: the same type and
+ * qfile_sort_key_reads_column () - CBRD-27583: a sort key reads its list column's values: the same type and
  *   collation, and the same precision and scale where the disk length depends on them; an object column (a view
- *   object) keeps its object key, as develop sorts it
+ *   object) keeps its object key
  */
 static bool
 qfile_sort_key_reads_column (const TP_DOMAIN * key, const TP_DOMAIN * column)
@@ -4334,7 +4334,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
 
-	  /* XASL generation sorts each key in its list column's decided domain (D-64) */
+	  /* XASL generation sorts each key in its list column's decided domain */
 	  assert (TP_DOMAIN_TYPE (p->pos_descr.dom) != DB_TYPE_VARIABLE
 		  && TP_DOMAIN_COLLATION_FLAG (p->pos_descr.dom) == TP_DOMAIN_COLL_NORMAL);
 #if !defined (NDEBUG)
@@ -5620,7 +5620,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
       return false;
     }
 
-  /* CBRD-27583 (D-94): the keys of one hash table are bound to one XASL cache entry: its signature's comparisons */
+  /* CBRD-27583: the keys of one hash table are bound to one XASL cache entry: its signature's comparisons */
   const DOMAIN_COMPARE *compares = array1->compares != NULL ? array1->compares : array2->compares;
 
   for (i = 0, val1 = array1->vals, val2 = array2->vals; i < array1->size; i += 3, val1 += 3, val2 += 3)
@@ -5651,7 +5651,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 }
 
 /*
- * qfile_list_cache_values_equal () - CBRD-27583 (D-94): whether two values bound to position i of cached results are
+ * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
  *   equal: by the position's comparison, NULLs equal (total order), as mht_compare_dbvalues_are_equal compares them
  *   by their types without one
  */
@@ -5667,7 +5667,7 @@ qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_
 }
 
 /*
- * qfile_list_cache_key_of () - CBRD-27583 (D-94): the key the parameter values of an execution of the XASL cache
+ * qfile_list_cache_key_of () - CBRD-27583: the key the parameter values of an execution of the XASL cache
  *   entry look its cached results up and store them under
  *   return: false when the entry's cache key text did not name each value's type: its results are not cached
  */

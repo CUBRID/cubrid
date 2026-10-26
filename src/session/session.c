@@ -1353,7 +1353,7 @@ update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
   const DB_TYPE type = var->value != NULL ? DB_VALUE_DOMAIN_TYPE (var->value) : DB_TYPE_NULL;
   if (value != NULL && DB_IS_NULL (value) && type != DB_TYPE_NULL)
     {
-      /* CBRD-27583 (D-40): a NULL keeps the variable's type, its value's domain, as a NULL of it */
+      /* CBRD-27583: a session variable's type is its value's domain; assigning NULL keeps that type, as a NULL of it */
       db_value_domain_init (value, type, db_value_precision (var->value), db_value_scale (var->value));
       if (QSTR_IS_ANY_CHAR_OR_BIT (type))
 	{

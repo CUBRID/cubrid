@@ -542,14 +542,14 @@ out_of_mem:
 }
 
 /*
- * pt_type_union_bind () - CBRD-27583 (D-90, spec change 25): in the compilation of a bind type signature, a user host
+ * pt_type_union_bind () - CBRD-27583: in the compilation of a bind type signature, a user host
  *   variable a set operation's or a VALUES column leaves untyped (MAYBE) against a typed operand that is not a bind
  *   takes its value's type, so the column's common type and casts are a literal's of that type (a NULL's a NULL
  *   literal's); the position compiles as value-typed (pt_assign_host_var_positions records the value's domain).
- *   A bind its context types (expected domain, a PL static SQL bind's declared type: 4.9), a column of binds alone
- *   (D-63: binds of different types are -494), and a bind against a number or a string keep their compilation: a
- *   typed bind is fully coercible and would pass the collation check (spec 8), and a number's column is develop's
- *   (D-76) whether or not another column makes the statement compile a signature.
+ *   A bind its context types (expected domain, a PL static SQL bind's declared type), a column of binds alone
+ *   (binds of different types fail with -494), and a bind against a number or a string keep their compilation: a
+ *   typed bind is fully coercible and would pass the collation check, and a number's column keeps the type it has
+ *   without a signature, whether or not another column makes the statement compile a signature.
  */
 static void
 pt_type_union_bind (PARSER_CONTEXT * parser, PT_NODE * att, const PT_NODE * mate)

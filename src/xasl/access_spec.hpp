@@ -63,7 +63,7 @@ struct key_val_range
   DB_VALUE key2;
   bool is_truncated;
   int num_index_term;		/* #terms associated with index key range */
-  /* CBRD-27583 (D-80): how key1 and key2 compare with the index keys and with other bounds (their KEY_RANGE's); NULL
+  /* CBRD-27583: how key1 and key2 compare with the index keys and with other bounds (their KEY_RANGE's); NULL
    * for a key of the index's own domain */
   const DOMAIN_KEY_BOUND *key1_bound = nullptr;
   const DOMAIN_KEY_BOUND *key2_bound = nullptr;
@@ -75,10 +75,10 @@ struct key_range
   regu_variable_node *key1;		/* pointer to first key value */
   regu_variable_node *key2;		/* pointer to second key value */
   RANGE range;			/* range spec; GE_LE, GT_LE, GE_LT, GT_LT, GE_INF, GT_INF, INF_LT, INF_LE, INF_INF */
-  tp_domain *key1_domain;	/* CBRD-27583 (4.4): the domain a multi-column key1 is written with when a column keeps
+  tp_domain *key1_domain;	/* CBRD-27583: the domain a multi-column key1 is written with when a column keeps
 				 * its value's own domain (DOMAIN_KEY_KEEP); NULL: the index's */
   tp_domain *key2_domain;	/* the same for key2 */
-  /* CBRD-27583 (D-80): how key1's and key2's values compare with the index keys and with the scan's other bounds
+  /* CBRD-27583: how key1's and key2's values compare with the index keys and with the scan's other bounds
    * (INDX_INFO.key_bounds, decided by XASL generation); a bound without a key (infinite, an equality's key2) has its
    * range's other bound's */
   const DOMAIN_KEY_BOUND *key1_bound;
@@ -96,7 +96,7 @@ struct key_info
   bool is_user_given_keylimit;	/* true if user specifies key limit */
   regu_variable_node *key_limit_l;	/* lower key limit */
   regu_variable_node *key_limit_u;	/* upper key limit */
-  /* CBRD-27583 (D-94): the key limits' converters into BIGINT, found at unpack from their regus' domains (NULL for a
+  /* CBRD-27583: the key limits' converters into BIGINT, found at unpack from their regus' domains (NULL for a
    * BIGINT limit); not serialized */
   TP_VALUE_CONVERTER key_limit_l_conv;
   TP_VALUE_CONVERTER key_limit_u_conv;
@@ -121,7 +121,7 @@ struct indx_info
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
   int ils_prefix_len;		/* index loose scan prefix length */
   tp_domain *key_type;		/* the B-tree's key domain, its root header's */
-  /* CBRD-27583 (D-80): the comparisons of the scan's search key bounds, decided by XASL generation
+  /* CBRD-27583: the comparisons of the scan's search key bounds, decided by XASL generation
    * (pt_decide_key_compares): each distinct bound's with the index keys, which the key ranges point to, and those of
    * two bounds */
   DOMAIN_KEY_BOUND *key_bounds;

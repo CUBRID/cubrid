@@ -76,7 +76,7 @@ static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 /* error code specific to this file */
 static int xts_Xasl_errcode = NO_ERROR;
 
-/* CBRD-27583 (D-82): a filter index predicate, a function index or a partition expression stream is being packed - it
+/* CBRD-27583: a filter index predicate, a function index or a partition expression stream is being packed - it
  * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
 static bool xts_Index_stream = false;
 
@@ -2451,7 +2451,7 @@ end:
   return offset;
 }
 
-/* CBRD-27583 (D-45): an object domain keeps its class (include_classoids), as the catalog's does */
+/* CBRD-27583: an object domain keeps its class (include_classoids), as the catalog's does */
 static int
 xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 {
@@ -2810,7 +2810,7 @@ xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
-      /* CBRD-27583 (S3-25): the key positions' regu domains, which compare the keys (domain_key_values_equal) */
+      /* CBRD-27583: the key positions' regu domains, which compare the keys (domain_key_values_equal) */
       for (int i = 0; i < n_elements; i++)
 	{
 	  ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, sq_cache->sq_key_struct->domains[i], 0, 0);
@@ -2900,7 +2900,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* CBRD-27583 (S3-18): its upper bounds' subtractions */
+  /* CBRD-27583: its upper bounds' subtractions */
   ptr = xts_pack_orderbynum_bounds (ptr, xasl->ordbynum_pred);
 
   offset = xts_save_db_value (xasl->ordbynum_val);
@@ -2934,7 +2934,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, offset);
   if (xasl->limit_row_count != NULL)
     {
-      /* CBRD-27583 (D-81): qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
+      /* CBRD-27583: qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
       ptr = xts_pack_compare (ptr, xasl->limit_row_count->domain, &tp_Integer_domain);
       if (ptr == NULL)
 	{
@@ -3531,7 +3531,7 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* CBRD-27583 (D-83): the offset functions' conversions */
+  /* CBRD-27583: the offset functions' conversions */
   ptr = xts_pack_analytic_offsets (ptr, build_list_proc);
 
   offset = xts_save_regu_variable_list (build_list_proc->a_scan_regu_list);
@@ -3666,7 +3666,7 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
   ptr = xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
   if (ptr != NULL && merge_list_info->outer_xasl != NULL && merge_list_info->inner_xasl != NULL)
     {
-      /* CBRD-27583 (D-81): each merge column pair's comparison from the two lists' column domains */
+      /* CBRD-27583: each merge column pair's comparison from the two lists' column domains */
       for (int k = 0; k < merge_list_info->ls_merge.ls_column_cnt && ptr != NULL; k++)
 	{
 	  ptr = xts_pack_compare (ptr, domain_list_column_joined (merge_list_info->outer_xasl,
@@ -4661,10 +4661,10 @@ xts_process_comp_eval_term (char *ptr, const COMP_EVAL_TERM * comp_eval_term)
 
   if (!xts_Index_stream)
     {
-      /* CBRD-27583 (D-81): the comparison of the term's two values */
+      /* CBRD-27583: the comparison of the term's two values */
       ptr = xts_term_compares_values (comp_eval_term)
 	? xts_pack_compare (ptr, comp_eval_term->lhs->domain, comp_eval_term->rhs->domain) : or_pack_int (ptr, 0);
-      /* CBRD-27583 (D-87): a partitioned class's pruning conversion of the value - 0 none, or 1 + the value's side and
+      /* CBRD-27583: a partitioned class's pruning conversion of the value - 0 none, or 1 + the value's side and
        * the other side's domain */
       if (ptr != NULL)
 	{
@@ -4706,7 +4706,7 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
 
   if (!xts_Index_stream)
     {
-      /* CBRD-27583 (D-81): what the item compares with - 0 none (the values), 1 one comparison, 2 a collection's
+      /* CBRD-27583: what the item compares with - 0 none (the values), 1 one comparison, 2 a collection's
        * elements by the item key's row of the type pair comparison table */
       DOMAIN_COMPARE decided;
       DOMAIN_COMPARE_KEY item;
@@ -4726,7 +4726,7 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
 	  ptr = or_pack_int (ptr, item.codeset);
 	  ptr = or_pack_int (ptr, item.collation);
 	}
-      /* CBRD-27583 (D-87): a partitioned class's pruning conversion of the elements - 0 none, or 1 and the item's
+      /* CBRD-27583: a partitioned class's pruning conversion of the elements - 0 none, or 1 and the item's
        * domain and the elements' */
       ptr = or_pack_int (ptr, alsm_eval_term->prune_domain != NULL ? 1 : 0);
       if (alsm_eval_term->prune_domain != NULL)
@@ -4946,7 +4946,7 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
    * key values are OIDs) - so no OBJECT-to-OID packing here */
   ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
 
-  /* CBRD-27583 (4.4): each key range's written key domains, after a mask of the ones it has */
+  /* CBRD-27583: each key range's written key domains, after a mask of the ones it has */
   for (int i = 0; i < indx_info->key_info.key_cnt; i++)
     {
       const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
@@ -5804,7 +5804,7 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
   if (!xts_Index_stream && (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
 			    || arith->opcode == T_GREATEST))
     {
-      /* CBRD-27583 (D-81): the comparisons FIELD, NULLIF, LEAST and GREATEST make - FIELD its third operand (the
+      /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - FIELD its third operand (the
        * innermost node's, REGU_VARIABLE_FIELD_COMPARE) with the left and the right, the others their two operands */
       const bool field = arith->opcode == T_FIELD;
       const REGU_VARIABLE *const sides[2][2] = {
@@ -5820,7 +5820,7 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
 
   if (!xts_Index_stream && arith_decides_arith (arith))
     {
-      /* CBRD-27583 (D-83): what the operator makes of its operands */
+      /* CBRD-27583: what the operator makes of its operands */
       ptr = or_pack_int (ptr, xts_arith_decided (arith));
     }
 
@@ -5917,7 +5917,7 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
   ptr = or_pack_int (ptr, flagint);
   ptr = or_pack_int (ptr, offset);
 
-  /* CBRD-27583 (D-83): the accumulator's plan */
+  /* CBRD-27583: the accumulator's plan */
   DOMAIN_ACCUMULATOR_PLAN plan;
   xts_plan_aggregate (aggregate, &plan);
   return xts_pack_accumulator_plan (ptr, &plan);
@@ -6035,7 +6035,7 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
       ptr = or_pack_int (ptr, offset);
     }
 
-  /* CBRD-27583 (D-83): the accumulator's plan */
+  /* CBRD-27583: the accumulator's plan */
   DOMAIN_ACCUMULATOR_PLAN plan;
   xts_plan_analytic (analytic, &plan);
   return xts_pack_accumulator_plan (ptr, &plan);
@@ -7372,7 +7372,7 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 }
 
 /*
- * xts_pack_decided_compare () - CBRD-27583 (D-80): a comparison XASL generation decided: its method and the fields
+ * xts_pack_decided_compare () - CBRD-27583: a comparison XASL generation decided: its method and the fields
  *   of its outcome (DOMAIN_COMPARE), and the domain a converted side is converted into; stx_unpack_decided_compare
  *   looks its cmpval and converters up
  */
@@ -7405,7 +7405,7 @@ xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare)
 }
 
 /*
- * xts_pack_compare () - CBRD-27583 (D-81): the comparison of a value of each of two domains, decided where the compiler
+ * xts_pack_compare () - CBRD-27583: the comparison of a value of each of two domains, decided where the compiler
  *   serializes it, for an unpack that only looks its pointers up: an int (0: none, comparison method VALUES; 1:
  *   decided) and the decided comparison (xts_pack_decided_compare). The inputs are the final domains the server
  *   reads - a regu's after pt_set_operand_conversion, a list column's (domain_list_column_compared) - and packing
@@ -7440,7 +7440,7 @@ xts_sizeof_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
   return OR_INT_SIZE + (by_type ? xts_sizeof_decided_compare (&decided) : 0);
 }
 
-/* CBRD-27583 (D-81): a term that compares two values - not a set comparison, not a list side */
+/* CBRD-27583: a term that compares two values - not a set comparison, not a list side */
 static bool
 xts_term_compares_values (const COMP_EVAL_TERM * term)
 {
@@ -7462,7 +7462,7 @@ xts_term_compares_values (const COMP_EVAL_TERM * term)
 }
 
 /*
- * xts_decide_element_compare () - CBRD-27583 (D-81): what an ALL/SOME term compares its item with, from the domains: a
+ * xts_decide_element_compare () - CBRD-27583: what an ALL/SOME term compares its item with, from the domains: a
  *   list's column (its subquery's column 0, eval_some_list_eval) or a right side that is no collection by one
  *   comparison, a collection's elements - its data - by the item key's row of the type pair comparison table
  *   return: 0 none (the values decide), 1 decided, 2 item; ER_FAILED
@@ -7498,7 +7498,7 @@ xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decide
 }
 
 /*
- * xts_pack_hash_join_keys () - CBRD-27583 (D-81): a hash join's key column pairs, decided from the two inputs' column
+ * xts_pack_hash_join_keys () - CBRD-27583: a hash join's key column pairs, decided from the two inputs' column
  *   domains (domain_decide_hash_join_key): an int (0 none - a list whose column the execution fixes, decided by each
  *   execution; 1 decided), then per pair the two column domains, the sides' conversion kinds and whether a common
  *   domain holds the pair, that domain, and the comparison of the two values
@@ -7605,11 +7605,11 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
 }
 
 /*
- * CBRD-27583 (D-83): the plans of the server's arithmetic outside a node, decided where the compiler serializes them
+ * CBRD-27583: the plans of the server's arithmetic outside a node, decided where the compiler serializes them
  * (domain_plan_*) from the domains the server reads (an OBJECT as OID), for an unpack that only looks their converters
  * up. A conversion is an int (0 none; else 1 | mode << 4 | source type << 8) and its target domain; a coercion plan an
  * int (arith kind | type << 8), per side an int (1: an operand domain, 2: a conversion into it, | mode << 4 |
- * source type << 8) and that domain, and the conversion of its value into its holder's domain (S3-40b); an accumulator
+ * source type << 8) and that domain, and the conversion of its value into its holder's domain; an accumulator
  * plan an int (1: value_dom, 2: value2_dom, 4: accumulator_takes),
  * those domains, the operand, distinct and divide coercion plans and the first and final conversions.
  */
@@ -7698,6 +7698,7 @@ xts_argument_domain (const REGU_VARIABLE * operand)
     ? operand->value.arithptr->domain : operand->domain;
 }
 
+/* an aggregate's accumulator plan (domain_plan_aggregate_accumulator), from its domain and its argument's */
 static void
 xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan)
 {
@@ -7707,6 +7708,7 @@ xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * 
 				     plan);
 }
 
+/* an analytic function's accumulator plan (domain_plan_analytic_accumulator), from its domain and its argument's */
 static void
 xts_plan_analytic (const ANALYTIC_TYPE * analytic, DOMAIN_ACCUMULATOR_PLAN * plan)
 {
@@ -7715,7 +7717,7 @@ xts_plan_analytic (const ANALYTIC_TYPE * analytic, DOMAIN_ACCUMULATOR_PLAN * pla
 }
 
 /*
- * xts_arith_decided () - CBRD-27583 (D-83): what an addition, subtraction, multiplication or division makes of its
+ * xts_arith_decided () - CBRD-27583: what an addition, subtraction, multiplication or division makes of its
  *   operands' domains (domain_resolve_operand_coercion): an int, kind | type << 8; DOMAIN_ARITH_UNRESOLVED for an
  *   operand of no fixed domain, which unpack refuses
  */
@@ -7760,13 +7762,14 @@ xts_plan_analytic_offset (const ANALYTIC_TYPE * analytic, const REGU_VARIABLE_LI
 			       plan);
 }
 
+/* whether an analytic function has an offset and a default: LEAD, LAG, NTH_VALUE */
 static bool
 xts_analytic_is_offset (const ANALYTIC_TYPE * analytic)
 {
   return analytic->function == PT_LEAD || analytic->function == PT_LAG || analytic->function == PT_NTH_VALUE;
 }
 
-/* CBRD-27583 (D-83): each LEAD / LAG / NTH_VALUE's offset and default conversions, a coercion plan, in the order of
+/* CBRD-27583: each LEAD / LAG / NTH_VALUE's offset and default conversions, a coercion plan, in the order of
  * the analytic evaluations and their functions */
 static char *
 xts_pack_analytic_offsets (char *ptr, const BUILDLIST_PROC_NODE * node)
@@ -7805,7 +7808,7 @@ xts_sizeof_analytic_offsets (const BUILDLIST_PROC_NODE * node)
   return size;
 }
 
-/* CBRD-27583 (S3-18): the number of ORDERBY_NUM () < bound of the predicate (xasl_for_each_orderbynum_less_than) and
+/* CBRD-27583: the number of ORDERBY_NUM () < bound of the predicate (xasl_for_each_orderbynum_less_than) and
  * the operand coercion of bound - 1 of each, a coercion plan */
 static void
 xts_plan_orderbynum_bound (const REGU_VARIABLE * bound, DOMAIN_COERCION_PLAN * plan)
@@ -7853,9 +7856,10 @@ xts_sizeof_orderbynum_bounds (const PRED_EXPR * pred)
 }
 
 /*
- * xts_pack_key_compares () - CBRD-27583 (D-80): an index scan's search key bound comparisons (pt_decide_key_compares):
+ * xts_pack_key_compares () - CBRD-27583: an index scan's search key bound comparisons (pt_decide_key_compares):
  *   the number of distinct bounds; with any, the key columns, each column's classes and the comparisons of each
- *   ordered pair of them, each bound's flags (D-42 merges, a non-leaf comparison), comparisons with the index keys
+ *   ordered pair of them, each bound's flags (merges: the index-side conversion can make keys equal; a non-leaf
+ *   comparison), comparisons with the index keys
  *   and classes, then each key range's and the index skip scan's fetch range's bounds (key1 | key2 << 16, 0xFFFF none)
  */
 static char *

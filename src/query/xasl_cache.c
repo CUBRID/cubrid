@@ -320,7 +320,7 @@ static int xcache_param_count (const char *text);
 static int xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compare);
 static int xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * compares);
 
-/* CBRD-27583 (D-94): the suffix after which the cache key text counts its parameter positions (PT_PRINT_HOST_VAR_COUNT) */
+/* CBRD-27583: the suffix after which the cache key text counts its parameter positions (PT_PRINT_HOST_VAR_COUNT) */
 #define XCACHE_PARAM_COUNT_MARK ";bind_var_cnt="
 
 /*
@@ -1213,7 +1213,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
       goto error;
     }
   assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
-  /* CBRD-27583 (S3-32): the compiler leaves nothing without a domain (census "load undecided": all 0) */
+  /* CBRD-27583: the compiler leaves no regu, arithmetic or list position without a domain */
   assert (xclone->xasl_buf->n_undecided_regu == 0 && xclone->xasl_buf->n_undecided_arith == 0
 	  && xclone->xasl_buf->n_undecided_position == 0);
 
@@ -1517,7 +1517,7 @@ xcache_need_cleanup (void)
 }
 
 /*
- * xcache_skip_quoted () - CBRD-27583 (D-94): the last character of the quoted part of a cache key text that starts at
+ * xcache_skip_quoted () - CBRD-27583: the last character of the quoted part of a cache key text that starts at
  *   p - a string literal in single quotes, which doubles its quotes, or an identifier in brackets or double quotes -
  *   or p itself when none starts there
  */
@@ -1546,7 +1546,7 @@ xcache_skip_quoted (const char *p)
 }
 
 /*
- * xcache_param_count () - CBRD-27583 (D-94): the count of parameter positions a cache key text names after its
+ * xcache_param_count () - CBRD-27583: the count of parameter positions a cache key text names after its
  *   statement, 0 without the count
  */
 static int
@@ -1566,7 +1566,7 @@ xcache_param_count (const char *text)
 }
 
 /*
- * xcache_decide_param_compare () - CBRD-27583 (D-94): the comparison of two values of a parameter position's type
+ * xcache_decide_param_compare () - CBRD-27583: the comparison of two values of a parameter position's type
  *   return: NO_ERROR, or ER_FAILED for a type no domain has
  */
 static int
@@ -1587,7 +1587,7 @@ xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compa
 }
 
 /*
- * xcache_decide_param_compares () - CBRD-27583 (D-94): how the result cache compares the values bound to each
+ * xcache_decide_param_compares () - CBRD-27583: how the result cache compares the values bound to each
  *   parameter position of a statement: as values of the position's type, which the bind type signature of the cache
  *   key text names in each of the position's tokens (pt_print_host_var: " ?:N:type", a string's
  *   " ?:N:type.codeset.collation", then the signature's suffixes)
@@ -1664,7 +1664,7 @@ xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * comp
       if (named[i] == -1)
 	{
 	  /* a user position a QUERY_CACHE subquery reads only by its derived positions (do_subquery_derives_from) has
-	   * no token in the subquery's text: its values compare by their types, as develop compares them */
+	   * no token in the subquery's text: its values compare by their own types */
 	  const TP_DOMAIN *const none[2] = { NULL, NULL };
 	  bool by_type;
 	  (void) domain_decide_comparison (none, &compares[i], &by_type);
@@ -1753,7 +1753,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
     {
       sql_plan_text_len = strlen (context->sql_plan_text) + 1;
     }
-  /* CBRD-27583 (D-94): the result cache's comparisons of the parameter positions follow the texts */
+  /* CBRD-27583: the result cache's comparisons of the parameter positions follow the texts */
   n_param_compares = xcache_param_count (context->sql_hash_text);
   param_compares_offset = sql_hash_text_len + sql_user_text_len + sql_plan_text_len;
   param_compares_offset = (param_compares_offset + alignof (DOMAIN_COMPARE) - 1) / alignof (DOMAIN_COMPARE)

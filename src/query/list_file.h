@@ -80,7 +80,7 @@ struct qfile_page_header
 #define QFILE_PAGE_HEADER_INITIALIZER \
   { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID }
 
-/* CBRD-27583 (D-94): the key a query result is cached under: the parameter values bound to it and how each compares,
+/* CBRD-27583: the key a query result is cached under: the parameter values bound to it and how each compares,
  * the XASL cache entry's param_compares (NULL: by the values' types) */
 typedef struct qfile_list_cache_key QFILE_LIST_CACHE_KEY;
 struct qfile_list_cache_key

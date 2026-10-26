@@ -289,8 +289,8 @@ struct expr_build_ctx
  * result slot was made NULL when the step cleared it).
  ******************************************************************************/
 
-/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583 S3-40b) for a
- * value of the planned type, which the step compiler copied; a step without one coerces as develop did */
+/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583) for a
+ * value of the planned type, which the step compiler copied; a step without one coerces by the value's type */
 int
 expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
@@ -312,7 +312,7 @@ expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE
     }
   else
     {
-      /* exception: a step whose domain is not its node's (expr_compile_arith census "step result domain") */
+      /* no converter, or a value of another type than planned: coerce by the value's type */
       dom_status = tp_value_coerce (result_p, result_p, domain_p);
     }
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
@@ -2767,7 +2767,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    && !DB_IS_NULL (&et->rhs->value.dbval))
 	  {
 	    /* a literal right operand the term's comparison converts into the left side's type (CBRD-27583, the
-	     * compiler's decision, S3-39) - a number into the more general number ("n * m > 1"), a string into the
+	     * compiler's decision) - a number into the more general number ("n * m > 1"), a string into the
 	     * date/time it is compared with ("dt >= '2024-01-01'") - is converted once, by that comparison's converter,
 	     * into the leaf's own value; the leaf then compares same-typed sides. */
 	    const DOMAIN_COMPARE *compare = et->compare;
@@ -4044,7 +4044,8 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
 
   if (regu->value.arithptr->fails != NO_ERROR)
     {
-      /* CBRD-27583 (spec 5): a node that raises its rule's error has no kernel; the interpreter raises it */
+      /* CBRD-27583: a node that raises its rule's error (operand types the operator rejects) has no kernel; the
+       * interpreter raises it */
       return -1;
     }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
@@ -4825,11 +4826,11 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	   * skip the call; a wider domain and the parameterized NUMERIC (precision/scale) keep it */
 	  step->domain = result_domain;
 	  step->regu = regu;
-	  /* CBRD-27583 (S3-40b): the node's converter of its value into its domain, for the domain the step coerces into */
+	  /* CBRD-27583: the node's converter of its value into its domain, for the domain the step coerces into */
 	  step->result_conv = NULL;
 	  if (result_domain != NULL)
 	    {
-	      /* CBRD-27583 (S3-32): a step coerces into its node's domain type (census "step result domain" 0) */
+	      /* CBRD-27583: a step coerces into its node's domain type */
 	      assert (TP_DOMAIN_TYPE (result_domain) == TP_DOMAIN_TYPE (arith->domain));
 	      step->result_conv = arith->result_conv;
 	    }

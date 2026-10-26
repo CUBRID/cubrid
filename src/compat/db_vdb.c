@@ -83,6 +83,14 @@ static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
 static DB_SESSION *db_open_buffer_copy_local (const char *text, size_t len);
+static bool db_needs_bind_signature_plan (const DB_SESSION * session);
+static int db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values);
+static bool db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values);
+static bool db_compiles_at_execution (DB_SESSION * session, int stmt_ndx);
+static void db_swap_compilation (DB_SESSION * a, DB_SESSION * b);
+static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
+				      const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p);
+static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
@@ -96,17 +104,9 @@ static int do_process_prepare_statement (DB_SESSION * session, PT_NODE * stateme
 static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquery_num,
 					   DB_PREPARE_SUBQUERY_INFO ** subquery_info);
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
+static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
 static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
-static bool db_needs_bind_signature_plan (const DB_SESSION * session);
-static int db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values);
-static bool db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values);
-static bool db_compiles_at_execution (DB_SESSION * session, int stmt_ndx);
-static void db_swap_compilation (DB_SESSION * a, DB_SESSION * b);
-static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
-				      const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p);
-static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
-static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -764,7 +764,7 @@ int g_open_buffer_control_flags = 0;
  * are not repeated.
  *
  * A kept subsession carries the prepared name in `kept_stmt_name` and hangs on the client's
- * list db_Kept_trees (linked through the subsession's own `next`). CBRD-27583 (D-91): a
+ * list db_Kept_trees (linked through the subsession's own `next`). CBRD-27583: a
  * prepared name belongs to the server session, which outlives the client sessions (csql
  * opens one per statement, the CAS one per request), so the list is the client's, not a
  * session's: an entry carries the server session it was prepared in (`kept_session_id`) and
@@ -820,7 +820,7 @@ db_prepared_tree_close (DB_SESSION * kept)
  * name (in)  : prepared statement name
  * text (in)  : the statement text the server holds for the name
  *
- * Note: CBRD-27583 (D-91): a tree kept in another server session or for another text is closed
+ * Note: CBRD-27583: a tree kept in another server session or for another text is closed: the name was prepared again
  */
 static DB_SESSION *
 db_prepared_tree_lookup (const char *name, const char *text)
@@ -1080,7 +1080,7 @@ db_open_buffer_local (const char *buffer)
 
 /*
  * db_open_buffer_copy_local () - CBRD-27583: db_open_buffer_local of a copy of the text its parser owns: the session's
- *   statements point into their text, and a kept or signature compilation outlives the buffer it is opened from (D-91)
+ *   statements point into their text, and a kept or signature compilation outlives the buffer it is opened from
  * return: the session (its statements NULL when the text did not parse), NULL when it cannot be opened (er_errid ())
  */
 static DB_SESSION *
@@ -1461,7 +1461,8 @@ db_is_plan_statement (const PT_NODE * statement)
  * db_begin_signature_compile () - CBRD-27583: the values (or their types) of an execution are bound for the
  *   compilation of their bind type signature: the positions get their compiled domains from it
  *   (pt_typed_bind_comparison, db_set_host_var_compiled_domains), their STR_TO_DATE format classes from the values and
- *   their bind domains from type checking (D-76). A compilation without values has none.
+ *   their bind domains (the types the bind converts the values into) from type checking. A compilation without values
+ *   has none.
  */
 static int
 db_begin_signature_compile (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
@@ -1550,7 +1551,7 @@ db_has_untyped_host_var (const PARSER_CONTEXT * parser)
       if ((format_class & PT_HOST_VAR_ELT_POSITION)
 	  && (parser->host_var_elt_indexes == NULL || parser->host_var_elt_indexes[i] == PT_HOST_VAR_ELT_UNKNOWN))
 	{
-	  /* D-38: an ELT index position compiled without its value: the branch that types the result is not known */
+	  /* an ELT index position compiled without its value: which argument types the result is not known */
 	  return true;
 	}
     }
@@ -1735,13 +1736,15 @@ db_compile_statement_local (DB_SESSION * session)
       srand48 (seed = (long) time (NULL));
     }
 
-  /* CBRD-27583 (D-76): the second compilation of a signature takes the bind domains the first one differs from */
+  /* CBRD-27583: the second compilation of a signature types its positions with the bind domains the first one's plan
+   * differs from */
   if (session->bind_domains_from != NULL && n_markers > 0)
     {
       pt_take_host_var_bind_domains (parser, session->bind_domains_from);
     }
 
-  /* CBRD-27583 (D-70): the positions where a NULL cannot change the answer, before type checking types the binds */
+  /* CBRD-27583: mark the positions where a NULL cannot change the answer (any NULL value there shares one plan),
+   * before type checking types the binds */
   if (n_markers > 0)
     {
       pt_classify_host_var_positions (parser, statement);
@@ -1849,11 +1852,12 @@ db_compile_statement_local (DB_SESSION * session)
       db_set_host_var_compiled_domains (parser);
     }
 
-  /* CBRD-27583 (D-76): develop's bind converts a value into another type than this compilation planned its position
-   * with: no plan; the caller compiles the text once more, the positions taking their bind domains. Only where develop
-   * compiles before it binds and this compilation makes the plan: not a compilation that consumes the values
-   * (set_host_var), an EXECUTE's that binds them first (a subsession for a prepared statement: DML, a stored function,
-   * RECOMPILE), nor a statement its execution compiles with the values (cannot_prepare, D-73). */
+  /* CBRD-27583: the bind (do_cast_host_variables_to_expected_domain) converts a value into another type than this
+   * compilation planned its position with: no plan; the caller compiles the text once more, the positions taking their
+   * bind domains. Only where the statement is compiled before its values are bound and this compilation makes the
+   * plan: not a compilation that consumes the values (set_host_var), an EXECUTE's that binds them first (a subsession
+   * for a prepared statement: DML, a stored function, RECOMPILE), nor a statement its execution compiles with the
+   * values (cannot_prepare). */
   if (n_markers > 0 && parser->flag.set_host_var == 0 && !session->is_subsession_for_prepared
       && !statement->flag.cannot_prepare && pt_host_var_bind_domains_differ (parser))
     {
@@ -2785,7 +2789,7 @@ db_needs_bind_signature_plan (const DB_SESSION * session)
 /*
  * db_use_bind_signature_plan () - CBRD-27583: make the compilation of the pushed values' bind type signature the driver
  *   session's current one: the one it keeps for that signature, else a new one. Every execution of a signature the
- *   session compiled once, the same one or alternating types, costs one server request as in develop.
+ *   session compiled once, the same one or alternating types, costs one server request, as without signatures.
  */
 static int
 db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values)
@@ -2863,7 +2867,7 @@ db_swap_compilation (DB_SESSION * a, DB_SESSION * b)
 /*
  * db_compile_signature_text () - CBRD-27583: compile the driver session's statement text in a new session for the bind
  *   type signature of these values, as the SQL-level EXECUTE does (a SELECT sees the values' types only, DML the
- *   values); the second compilation of a signature takes the bind domains the first one found (D-76)
+ *   values); the second compilation of a signature takes the bind domains the first one found
  *   typed(out): the new session, which the caller closes
  */
 static int
@@ -2921,7 +2925,7 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
     }
   else
     {
-      /* DML compiles with the values bound, as develop does: a client-side trigger UPDATE evaluates them at compile */
+      /* DML compiles with the values bound: a client-side trigger UPDATE evaluates them at compile */
       pt_set_host_variables (typed->parser, count, values);
       typed->parser->flag.set_host_var = 0;
       db_untype_null_host_variables (typed->parser);
@@ -2946,8 +2950,8 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
 
 /*
  * db_recompile_for_bind_signature () - CBRD-27583: compile the driver session's statement text again for the bind
- *   type signature of the values just pushed (db_compile_signature_text; D-76: once more when develop's bind converts
- *   a value into another type than the compilation planned it with), and make that compilation the session's current
+ *   type signature of the values just pushed (db_compile_signature_text; once more when the bind converts a value into
+ *   another type than the compilation planned it with), and make that compilation the session's current
  *   one. The session keeps the compilation it replaces when that one has a plan (signature_plans): the driver keeps
  *   its handle and every later execution of either signature runs without compiling.
  */
@@ -2985,7 +2989,7 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
       err = ER_PT_SEMANTIC;
       goto end;
     }
-  /* the values a signature was compiled for take its plan (D-70: a NULL compiled as another type's value too) */
+  /* the values a signature was compiled for take its plan (a NULL too, where it was compiled as another type) */
   assert (!typed->parser->flag.bind_signature_changed);
 
 #if !defined (NDEBUG)
@@ -3463,9 +3467,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	{
 	  assert (parser->flag.set_host_var == 1);
 	}
-      /* CBRD-27583 (D-10): a session-variable statement compiled for this execution's bind type signature runs its
+      /* CBRD-27583: a session-variable statement compiled for this execution's bind type signature runs its
        * compilation: binding the values into the tree would type the binds as literals (their collation's
-       * coercibility, a compile-time collation error where develop's row gives -1150) */
+       * coercibility, a compile-time collation error where the row evaluation gives -1150) */
       const bool signature_compiled = parser->host_var_compiled_domains != NULL && db_is_plan_statement (statement)
 	&& pt_has_session_variable (parser, statement);
       if ((parser->host_var_count > 0 || parser->auto_param_count > 0) && !signature_compiled)
@@ -4290,7 +4294,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   parser->host_var_derived_from = prepare_info.host_var_derived_from;
   parser->host_var_derived_pads = prepare_info.host_var_derived_pads;
   parser->host_var_derived_count = prepare_info.host_var_derived_count;
-  /* D-70: an AGNOSTIC position binds whether its value is NULL */
+  /* an AGNOSTIC position (a NULL there cannot change the answer) binds only whether its value is NULL */
   parser->host_var_format_classes = prepare_info.host_var_format_classes;
   parser->host_var_count = prepare_info.host_variables.size - prepare_info.auto_param_count;
 
@@ -5020,7 +5024,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
 compile_text:
-  /* CBRD-27583 (D-91): a kept compilation outlives this statement's text */
+  /* CBRD-27583: a kept compilation outlives this statement's text, so it parses a copy */
   new_session =
     db_open_buffer_copy_local ((const char *) statement->info.execute.query->info.value.data_value.str->bytes,
 			       strlen ((const char *) statement->info.execute.query->info.value.data_value.str->bytes));
@@ -5031,9 +5035,9 @@ compile_text:
     }
 
   new_session->is_subsession_for_prepared = true;
-  /* CBRD-27583 (D-76): the second compilation of this signature, when develop's bind converts a value of the first one
-   * into another type than it planned the position with (the compile-first SELECT); the first one stays among the
-   * subsessions */
+  /* CBRD-27583: the second compilation of this signature, when the bind converts a value of the first one into another
+   * type than it planned the position with (a SELECT compiled before its values are bound); the first one stays among
+   * the subsessions */
   new_session->bind_domains_from = first != NULL ? first->parser : NULL;
 
   /* add the new session to the subsessions list */

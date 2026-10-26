@@ -1203,7 +1203,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   return NO_ERROR;
 }
 
-/* CBRD-27583 (D-94): a remote column's conversion into its declared column, decided once at the scan's open */
+/* CBRD-27583: a remote column's conversion into its declared column, decided once at the scan's open */
 typedef struct dblink_column_plan DBLINK_COLUMN_PLAN;
 struct dblink_column_plan
 {
@@ -1268,7 +1268,7 @@ dblink_value_type (T_CCI_U_TYPE utype)
 }
 
 /*
- * dblink_plan_columns () - CBRD-27583 (D-94): each column's conversion of the remote value into the declared column,
+ * dblink_plan_columns () - CBRD-27583: each column's conversion of the remote value into the declared column,
  *   from the column's driver type (col_info, fixed at the prepare) and the output value's domain, which the rows
  *   read every time before: the rows convert with it and look nothing up
  *   return: NO_ERROR or an error code
@@ -1593,7 +1593,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  const DBLINK_COLUMN_PLAN *plan;
 	  TP_DOMAIN_STATUS status;
 
-	  /* CBRD-27583 (D-94): the column's conversion planned at the open (dblink_plan_columns) */
+	  /* CBRD-27583: the column's conversion planned at the open (dblink_plan_columns) */
 	  assert (scan_info->col_plan != NULL);
 	  plan = &scan_info->col_plan[col_no - 1];
 	  status = tp_value_cast_with_converter (&cci_value, valptrp->val, plan->domain, false, plan->src_type,

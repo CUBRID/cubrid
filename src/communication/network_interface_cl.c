@@ -7386,6 +7386,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 }
 
 #if !defined (CS_MODE)
+/* free the values qmgr_server_db_values made */
 static void
 qmgr_free_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, DB_VALUE * server_db_values)
 {

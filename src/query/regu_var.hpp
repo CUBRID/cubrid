@@ -159,17 +159,17 @@ struct arith_list_node
   OPERATOR_TYPE opcode;		/* operator value */
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier and datetime extract field specifier */
   cubxasl::pred_expr *pred;		/* predicate expression */
-  /* CBRD-27583 (D-77): the casts the operator's kernel makes of a value of operand i (left, right, third; a
+  /* CBRD-27583: the casts the operator's kernel makes of a value of operand i (left, right, third; a
    * PREDICATE's truth value and a SYS_CONNECT_BY_PATH's path at 0): conv_type[i] the value's type, conv[i] its
    * converter into the domain the kernel casts it into, found at unpack (stx_arith_cast_target); NULL where the kernel
    * casts no value of operand i or the operand's domain is not fixed. Not serialized. */
   TP_VALUE_CONVERTER conv[3] = {};
   DB_TYPE conv_type[3] = {};
-  /* CBRD-27583 (spec 5): the error the operator raises where a row computes it over operands that are not NULL -
+  /* CBRD-27583: the error the operator raises where a row computes it over operands that are not NULL -
    * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
   int fails = NO_ERROR;
-  /* CBRD-27583: the decision the operator reads, which the compiler decided and the stream carries (D-81, D-83; a
-   * filter or function index stream's: the unpack's, D-82). The opcode picks the member (arith_decided_arith,
+  /* CBRD-27583: the decision the operator reads, which the compiler decided and the stream carries (a filter or
+   * function index stream, stored in the catalog: the unpack's). The opcode picks the member (arith_decided_arith,
    * arith_decided_compares):
    * - T_ADD, T_SUB, T_MUL, T_DIV: arith, what the operator makes of its operands' values, over the domains XASL
    *   generation gave them (d2, domain_resolve_operand_coercion);
@@ -180,7 +180,7 @@ struct arith_list_node
     DOMAIN_ARITH arith;
     const DOMAIN_COMPARE *compares;
   } decided = {};
-  /* CBRD-27583 (S3-40b): the converter of the operator's value into domain (qdata_coerce_result_to_domain) - an
+  /* CBRD-27583: the converter of the operator's value into domain (qdata_coerce_result_to_domain) - an
    * addition's, subtraction's, multiplication's or division's of decided.arith's type, a concatenation's of the
    * domain's type - found at unpack; NULL converts nothing. Not serialized. */
   TP_VALUE_CONVERTER result_conv = NULL;
@@ -398,7 +398,7 @@ arith_decided_compares (const arith_list_node *arith)
   return arith->decided.compares;
 }
 
-/* CBRD-27583 (S3-40b): the type of the value an operator coerces into its domain, which its result converter is found
+/* CBRD-27583: the type of the value an operator coerces into its domain, which its result converter is found
  * for (result_conv): an addition's, subtraction's, multiplication's or division's decided.arith type (a collection
  * operator's: its domain's), a concatenation's (T_CONCAT, T_CONCAT_WS, T_STRCAT) its domain's; DB_TYPE_NULL for an
  * operator that coerces no such value */

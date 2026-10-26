@@ -12601,7 +12601,7 @@ db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const
 }
 
 /*
- * db_to_char_with_converter () - db_to_char with CBRD-27583 (D-96): the converter unpack planned for a string
+ * db_to_char_with_converter () - db_to_char with CBRD-27583: the converter unpack planned for a string
  *   src_value's type into domain (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  */
 int
@@ -26267,7 +26267,7 @@ convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, con
  *  returns: error code or NO_ERROR
  *   param(in): parameter to turn to hex
  *   result(out): varchar db_value with hex representation
- *   param_conv_type(in), param_conv(in): CBRD-27583 (D-96): the converter unpack planned for param's type into the
+ *   param_conv_type(in), param_conv(in): CBRD-27583: the converter unpack planned for param's type into the
  *     type its branch casts it to (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note:
@@ -26699,7 +26699,7 @@ uuidv4_generate_bytes (unsigned char *out_bytes)
  *  returns: error code or NO_ERROR
  *   param(in): string
  *   result(out): smallint db_value of ASCII code
- *   param_conv_type(in), param_conv(in): CBRD-27583 (D-96): the converter unpack planned for a number's or a date's
+ *   param_conv_type(in), param_conv(in): CBRD-27583: the converter unpack planned for a number's or a date's
  *     type into CHAR (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note:
@@ -27341,7 +27341,7 @@ init_builtin_calendar_names (LANG_LOCALE_DATA * lld)
  * src (in)	    : source value
  * result (in/out)  : enumeration value
  * enum_domain (in) : enumeration domain
- * src_conv_type (in), src_conv (in): CBRD-27583 (D-96): the converter unpack planned for src's type into enum_domain
+ * src_conv_type (in), src_conv (in): CBRD-27583: the converter unpack planned for src's type into enum_domain
  *				       (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note: The result value will hold the index of the enum if src has a

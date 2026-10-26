@@ -465,10 +465,11 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	  size += or_packed_domain_size (info->host_var_expected_domains[i], 0);
 	}
       packed_size += size;
-      /* CBRD-27583 (D-70): and each one's class */
+      /* CBRD-27583: and each one's format class (PT_HOST_VAR_CLASS) */
       packed_size += OR_INT_SIZE * (info->host_variables.size - info->auto_param_count);
     }
-  /* CBRD-27583: the derived positions: count, then each one's index, user position, whether it pads (Q7) and domain */
+  /* CBRD-27583: the derived positions: count, then each one's index, user position, whether it reads the value padded
+   * to a CHAR column's length, and domain */
   packed_size += OR_INT_SIZE;
   for (i = info->host_variables.size - info->auto_param_count; info->host_var_derived_count > 0
        && i < info->host_variables.size; i++)

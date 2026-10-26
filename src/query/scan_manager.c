@@ -1459,7 +1459,7 @@ scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals,
  *   key_domain (in): the domain the key is written with: the index's, or the one XASL generation made for a bound
  *		      with a column that keeps its value's own domain (KEY_RANGE.key1_domain / key2_domain)
  *
- * XASL generation decided how each column takes its values (CBRD-27583 4.4): a converted column's regu converts them,
+ * XASL generation decided how each column takes its values (CBRD-27583): a converted column's regu converts them,
  * a kept or as-is column's arrive in its own domain. The range writes them under the key domain's columns, up to a
  * NULL that ends the key (an index skip scan's first column may be NULL) or a maximum string, after which
  * btree_coerce_key fills the index's columns.
@@ -1541,7 +1541,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
       if (!tp_valid_indextype (type))
 	{
-	  /* named with the index column's type, as develop does: a kept value's column has the value's own type */
+	  /* named with the index column's type: a kept value's column has the value's own type */
 	  assert (index_column != NULL);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		  pr_type_name (TP_DOMAIN_TYPE (index_column != NULL ? index_column : column)), pr_type_name (type));
@@ -1563,7 +1563,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  ret = domain_unresolved_error (-1, TP_DOMAIN_TYPE (column));
 	  goto err_exit;
 	}
-      /* CBRD-27583 (D-52): XASL generation planned the column's type for the value; a string of the other kind would
+      /* CBRD-27583: XASL generation planned the column's type for the value; a string of the other kind would
        * be written by the column's writer (a CHAR's pads to the value's precision) */
       assert (type == TP_DOMAIN_TYPE (column) || (type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT));
 
@@ -1683,7 +1683,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   assert ((key_ranges->range >= GE_LE && key_ranges->range <= INF_LT) || (key_ranges->range == EQ_NA));
   assert (!(key_ranges->key1 == NULL && key_ranges->key2 == NULL));
 
-  /* CBRD-27583 (D-80): how the bounds' values compare */
+  /* CBRD-27583: how the bounds' values compare */
   key_val_range->key1_bound = key_ranges->key1_bound;
   key_val_range->key2_bound = key_ranges->key2_bound;
 
@@ -1748,8 +1748,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
-	  /* develop's query start check (qexec_resolve_key_constant), at scan start: an unindexable value fails whatever
-	   * the rows, named value first as the B-tree compare does (a multi-column key's: scan_dbvals_to_midxkey) */
+	  /* at scan start, an unindexable value fails whatever the rows, named value first as the B-tree compare does
+	   * (a multi-column key's: scan_dbvals_to_midxkey) */
 	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),

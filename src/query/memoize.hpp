@@ -61,7 +61,7 @@ namespace memoize
       };
       struct equal
       {
-	/* the key positions' regu domains (storage::m_key_domains): CBRD-27583 (S3-25) */
+	/* the key positions' regu domains (storage::m_key_domains): CBRD-27583 */
 	const std::vector<const TP_DOMAIN *> *m_domains;
 	bool operator() (const key *k1, const key *k2) const;
       };

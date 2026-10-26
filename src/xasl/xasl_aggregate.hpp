@@ -79,8 +79,8 @@ namespace cubxasl
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
-  /* An aggregate's or an analytic function's accumulator domains, which the compiler plans (D-83:
-   * domain_plan_aggregate_accumulator, domain_plan_analytic_accumulator) and unpack looks the converters of up; the
+  /* An aggregate's or an analytic function's accumulator domains, which the compiler plans
+   * (domain_plan_aggregate_accumulator, domain_plan_analytic_accumulator) and unpack looks the converters of up; the
    * partitions and the rows read them. */
   struct aggregate_accumulator_domain
   {
@@ -128,11 +128,11 @@ namespace cubxasl
     aggregate_specific_function_info info;	/* variables for specific functions */
     aggregate_accumulator accumulator;	/* holds runtime values, only for evaluation */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3, D-83): the compiler's plan from the
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583: the compiler's plan from the
 							 * node's domain and its operand's
 							 * (domain_plan_aggregate_accumulator), its converters looked
 							 * up at unpack */
-    /* CBRD-27583 (D-94): a MIN / MAX's comparison of two accumulator values (value_dom with itself), by which a
+    /* CBRD-27583: a MIN / MAX's comparison of two accumulator values (value_dom with itself), by which a
      * partitioned class's extremes merge (qdata_evaluate_aggregate_hierarchy), decided at unpack; NULL for another
      * function and where value_dom leaves the comparison to the values */
     const DOMAIN_COMPARE *merge_compare;

@@ -116,16 +116,17 @@ namespace cubxasl
     REL_OP rel_op;
     DB_TYPE type;
     /* CBRD-27583: the comparison of the two sides' domains, which the compiler decided and the stream carries (a
-     * filter or function index stream's: the unpack's, D-82), in the unpack arena; NULL where a side's domain leaves
+     * filter or function index stream, stored in the catalog: the unpack's), in the unpack arena; NULL where a side's
+     * domain leaves
      * its values' type or collation to the data: the values decide (comparison method VALUES) */
     const DOMAIN_COMPARE *compare;
-    /* CBRD-27583 (S3-18): an ORDERBY_NUM upper bound `ORDERBY_NUM () < bound` (xasl_orderbynum_upper_bound): the
+    /* CBRD-27583: an ORDERBY_NUM upper bound `ORDERBY_NUM () < bound` (xasl_orderbynum_upper_bound): the
      * operand coercion of bound - 1, which the compiler decided (unpack arena); NULL for any other term */
     const DOMAIN_OPERAND_COERCION *bound_coercion;
-    /* CBRD-27583 (D-94): an ORDERBY_NUM upper bound's conversion into INTEGER (top-N) or an INST_NUM upper limit's into
+    /* CBRD-27583: an ORDERBY_NUM upper bound's conversion into INTEGER (top-N) or an INST_NUM upper limit's into
      * BIGINT, found by the unpack (unpack arena); NULL for any other term */
     const DOMAIN_BOUND_CONVERSION *bound_conversion;
-    /* CBRD-27583 (D-87): a partitioned class's term between a value (a constant, a bind) and what is not one: the
+    /* CBRD-27583: a partitioned class's term between a value (a constant, a bind) and what is not one: the
      * value's side (0 lhs, 1 rhs; -1 none) and the other side's domain, into which partition pruning converts the value
      * to hash it or to evaluate a partition expression on it (XASL generation, streamed), and the converter the unpack
      * found (unpack arena; NULL without prune_domain) */
@@ -148,7 +149,7 @@ namespace cubxasl
     int compare_row;
     const DOMAIN_COMPARE *compare;
     const DOMAIN_COMPARE *compare_each;
-    /* CBRD-27583 (D-87): a partitioned class's item against a list of values of one domain (prune_element): the item's
+    /* CBRD-27583: a partitioned class's item against a list of values of one domain (prune_element): the item's
      * domain, into which partition pruning converts each element (XASL generation, streamed; NULL none), and the
      * converter the unpack found (unpack arena) */
     tp_domain *prune_domain;

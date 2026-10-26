@@ -1016,7 +1016,8 @@ db_shutdown (void)
   int error = NO_ERROR;
 
   (void) db_end_session ();
-  /* CBRD-27583 (D-91): the kept trees of the prepared names (a kept session id outlives db_end_session) */
+  /* CBRD-27583: release the kept compilations of SQL-level prepared statements; they are keyed by the server session
+   * id, which db_end_session does not clear */
   db_prepared_tree_free_all ();
 
   error = boot_shutdown_client (true);
@@ -3119,7 +3120,7 @@ db_set_session_id (const SESSION_ID session_id)
 {
   if (session_id != db_Session_id)
     {
-      /* CBRD-27583 (D-91): the prepared names of the kept trees were the other server session's */
+      /* CBRD-27583: the kept compilations of prepared statements belong to the previous server session's names */
       db_prepared_tree_free_all ();
     }
   db_Session_id = session_id;

@@ -672,7 +672,7 @@ domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DO
 const DOMAIN_ARITH domain_arith_double = { DOMAIN_ARITH_NUMBER, DB_TYPE_DOUBLE };
 const DOMAIN_ARITH domain_arith_bigint = { DOMAIN_ARITH_NUMBER, DB_TYPE_BIGINT };
 
-/* CBRD-27583 (D-83): the conversion of a value of type source into target in a mode */
+/* CBRD-27583: the conversion of a value of type source into target in a mode, decided by the compiler */
 static DOMAIN_CONVERSION
 domain_conversion (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CONVERT_MODE mode)
 {
@@ -703,7 +703,8 @@ domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAI
       plan->operand_domain[i] = coercion.operand_domain[i];
       if (coercion.conv[i] != NULL)
 	{
-	  /* an ENUM's name into DOUBLE is a plus over a string, which no plan adds (D-46 casts such an operand) */
+	  /* an ENUM's name into DOUBLE is a plus over a string, which no plan adds (XASL generation casts an operand of
+	   * no number type into DOUBLE) */
 	  assert (coercion.conv[i] != domain_enumeration_name_converter ());
 	  plan->conv[i] = domain_conversion (domain_operand_type (&operands[i]), coercion.operand_domain[i],
 					     DOMAIN_CONVERT_ASSIGN);
@@ -713,11 +714,12 @@ domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAI
 
 /*
  * domain_plan_aggregate_accumulator () - an aggregate's accumulator domains, from its domain and its operand's, which
- *   XASL generation decided: the ones develop's first non-NULL value gave. A SUM or AVG also gets the operand coercion
+ *   XASL generation decided: the ones the first non-NULL value gave when the execution decided them. A SUM or AVG also
+ *   gets the operand coercion
  *   of a value it adds, the conversion of its first value and whether its typed accumulator takes the argument, the
  *   operand coercion of a DISTINCT list's second value, an AVG its division's and a SUM the conversion of its sum into
- *   its domain (4.6c); one whose argument is typed NULL sees only NULLs and gets none, and one over a date adds as
- *   develop did, raising the addition's error at its second value. A STDDEV / VARIANCE gets [1] the conversion of a
+ *   its domain; one whose argument is typed NULL sees only NULLs and gets none, and one over a date adds as before,
+ *   raising the addition's error at its second value. A STDDEV / VARIANCE gets [1] the conversion of a
  *   value into DOUBLE and its division's operand coercion, a MEDIAN / PERCENTILE [1] the conversion of its argument's
  *   type into its domain, which every value takes, a GROUP_CONCAT [1] the cast of a number, date, time or ENUM
  *   argument into its domain.
@@ -760,7 +762,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     case PT_MAX:
       plan->value_dom = domain;
       plan->value2_dom = &tp_Null_domain;
-      /* XASL generation gave MIN / MAX its argument's domain (D-36): a new extreme copies as it is (first_conv none) */
+      /* XASL generation gave MIN / MAX its argument's domain: a new extreme copies as it is (first_conv none) */
       assert (!argument_typed || domain_is_variable (domain) || TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (domain));
       break;
 
@@ -811,7 +813,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      /* a number or a date keeps the accumulator unset, as develop's first value left it */
+      /* a number or a date keeps the accumulator unset, as its first value left it before */
       if (!TP_IS_NUMERIC_TYPE (opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (opr_dbtype) && !domain_is_variable (domain)
 	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
 	{
@@ -836,8 +838,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
 	    /* an argument typed NULL sums nothing: the accumulator stays a NULL of the function's domain */
 	    plan->value_dom = domain;
 	    plan->value2_dom = &tp_Null_domain;
-	    /* CBRD-27583 (S3-32): the argument is typed NULL - XASL generation types every other (census "left untyped
-	     * sum" 0) */
+	    /* CBRD-27583: the argument is typed NULL - XASL generation types every other argument */
 	    assert (argument != NULL && !domain_is_variable (argument));
 	    break;
 	  }
@@ -853,10 +854,10 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
 	  }
 	else
 	  {
-	    /* a date the addition rejects: the accumulator holds the function's domain, as develop's first value did */
+	    /* a date the addition rejects: the accumulator holds the function's domain */
 	    plan->value_dom = domain;
 	  }
-	/* CBRD-27583 (S3-32): a typed argument leaves nothing to a later binding */
+	/* CBRD-27583: a typed argument leaves nothing to decide at execution */
 	assert (!needs_late_bind);
 	plan->value2_dom = &tp_Null_domain;
 	const DOMAIN_OPERAND add[2] = {
@@ -871,7 +872,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
 	    plan->first_conv = domain_conversion (TP_DOMAIN_TYPE (argument), plan->value_dom, DOMAIN_CONVERT_ASSIGN);
 	  }
 	plan->accumulator_takes = SUM_ACC_IS_AGG_SUPPORTED_TYPE (TP_DOMAIN_TYPE (argument));
-	/* CBRD-27583 (S3-32): XASL generation casts any other argument (D-46; census "unnumbered sum argument" 0) */
+	/* CBRD-27583: XASL generation casts an argument of any other type into DOUBLE */
 	assert (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) || TP_IS_SET_TYPE (TP_DOMAIN_TYPE (argument)));
 	const DOMAIN_OPERAND pair[2] = { operands[1], operands[1] };
 	domain_plan_operand_coercion (T_ADD, pair, &plan->distinct_coercion);
@@ -913,7 +914,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
  * STDDEV / VARIANCE accumulate in DOUBLE: [1] the conversion of the argument's type into DOUBLE (tp_value_coerce's
  * implicit mode), which runs at every value that is not a DOUBLE already; NTILE takes its bucket count into DOUBLE
  * the same way.
- * MIN / MAX copy a new extreme as it is: XASL generation gave the function its argument's domain (D-36).
+ * MIN / MAX copy a new extreme as it is: XASL generation gave the function its argument's domain.
  */
 void
 domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
@@ -966,7 +967,7 @@ domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * do
   const DB_TYPE argument_type = TP_DOMAIN_TYPE (argument);
   const DB_TYPE function_type = TP_DOMAIN_TYPE (domain);
   /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value or a
-   * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE (S3-17, D-46) */
+   * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE */
   assert (!TP_IS_CHAR_TYPE (argument_type));
   const DB_TYPE kept = function == PT_AVG ? argument_type : function_type;
   const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : domain;
@@ -1461,7 +1462,8 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	      && !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (start_domain)))
 	    {
 	      /* a typed value none of DOUBLE, DATETIME, TIME takes (a BIT, a LOB, a collection): as the aggregate's, the
-	       * function is DOUBLE and the conversion of its argument raises the error (spec change 4) */
+	       * function is DOUBLE and the conversion of its argument raises the error (a CBRD-27583 specification
+	       * change) */
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	  argument = final_domain != NULL ? final_domain
@@ -1709,7 +1711,7 @@ copy_operands:
  *
  * A branch without a value (a NULL, a NULL bind) takes the other's domain; one domain, or one variable string type,
  * keeps the first branch's. Two different domains are rejected before execution, and XASL generation gives a branch
- * column of NULLs the unified domain, so qfile_unify_types finds the branch lists agree (D-90).
+ * column of NULLs the unified domain, so qfile_unify_types finds the branch lists agree.
  */
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
@@ -1896,7 +1898,7 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
       return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL,
 				   is_char ? domain->collation_id : 0) == DB_EQ;
     }
-  /* only a collection key compares by its elements' values (S3-32) */
+  /* only a collection key compares by its elements' values; any other key comparison is decided by the compiler */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
 	  && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type);
   return tp_value_compare (value1, value2, 1, 1) == DB_EQ;
@@ -3021,7 +3023,7 @@ domain_compare_decided (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
     case DOMAIN_COMPARE_VALUES:
     case DOMAIN_COMPARE_OBJECT:
     case DOMAIN_COMPARE_KEYS:
-      /* CBRD-27583 (S3-32): a key comparison is decided before the rows (census "key compare by value" 0) */
+      /* CBRD-27583: not reached - a key comparison is decided before the rows; a release build compares the values */
       assert (false);
       return tp_value_compare_with_error (value1, value2, 1, 1, can_compare);
     default:
@@ -3243,8 +3245,8 @@ domain_list_column_compared (const XASL_NODE * xasl, int pos)
 
 /*
  * domain_list_column_joined () - CBRD-27583: a join key column's domain as domain_list_column_compared, but a NULL-typed
- *   column (a NULL bind under arithmetic, D-25) takes the other side's domain: its values match no row, and the pair
- *   is decided as that domain against itself (hjoin_init_domain_info of develop did this at each execution)
+ *   column (a NULL bind under arithmetic) takes the other side's domain: its values match no row, and the pair is
+ *   decided as that domain against itself (hjoin_init_domain_info used to do this at each execution)
  */
 TP_DOMAIN *
 domain_list_column_joined (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos)
@@ -3651,7 +3653,7 @@ domain_first_character_operand (const DOMAIN_OPERAND * operands, int n_operands)
 
 /* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal. ENFORCE coerces a character source
  * into the value it initialized with the target type and precision, under the target's collation (the domain it
- * then makes from the source gives the converter alone), and leaves any other value but an ENUM as it is (D-75);
+ * then makes from the source gives the converter alone), and leaves any other value but an ENUM as it is;
  * LEAVE makes the target type and precision under a character source's collation, or the target's own for any other
  * source. */
 static const TP_DOMAIN *
@@ -3661,8 +3663,8 @@ domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled
   const bool char_source = from != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (from));
   if (TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_ENFORCE)
     {
-      /* CBRD-27583 (D-75): an ENUM takes the cast's string, as type checking declares the node and develop decides
-       * every consumer by it (an ENUM value's domain keeps no elements) */
+      /* CBRD-27583: an ENUM takes the cast's string, as type checking declares the node and every consumer of the
+       * node reads it as that string (an ENUM value's domain keeps no elements) */
       if (!char_source && (from == NULL || TP_DOMAIN_TYPE (from) != DB_TYPE_ENUMERATION))
 	{
 	  return from;

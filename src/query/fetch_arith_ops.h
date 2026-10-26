@@ -62,7 +62,7 @@ typedef int (*FETCH_ARITH_OP) (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a);
 
 extern FETCH_ARITH_OP fetch_arith_op (OPERATOR_TYPE opcode);
 
-/* CBRD-27583 (D-77): the cast an operator's kernel makes of a value: tp_value_cast, tp_value_cast_force or
+/* CBRD-27583: the cast an operator's kernel makes of a value: tp_value_cast, tp_value_cast_force or
  * tp_value_auto_cast */
 enum arith_cast_kind
 {
@@ -72,7 +72,7 @@ enum arith_cast_kind
 };
 
 /*
- * arith_cast_value () - CBRD-27583 (D-77): an operator kernel's cast of a value of operand i into domain, the cast it
+ * arith_cast_value () - CBRD-27583: an operator kernel's cast of a value of operand i into domain, the cast it
  *   makes (kind), with the converter unpack found (ARITH_TYPE.conv[i]) when domain is the one it was found for
  *   (planned); another domain or a value of another type looks its converter up, as the cast did at every row
  */

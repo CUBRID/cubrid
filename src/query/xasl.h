@@ -263,10 +263,10 @@ struct update_assignment
   DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
   REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
   bool clear_value_at_clone_decache;	/* true, if need to clear constant db_value at clone decache */
-  TP_DOMAIN *domain;		/* CBRD-27583 (D-45): the attribute's domain, which the value converts into */
+  TP_DOMAIN *domain;		/* CBRD-27583: the attribute's domain, which the value converts into */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  DB_TYPE value_type;		/* CBRD-27583 (D-45): the type the value comes in, chosen at unpack */
-  TP_VALUE_CONVERTER conv;	/* CBRD-27583 (D-45): value_type into domain (ASSIGN), chosen at unpack */
+  DB_TYPE value_type;		/* CBRD-27583: the type the value comes in, chosen at unpack */
+  TP_VALUE_CONVERTER conv;	/* CBRD-27583: value_type into domain (ASSIGN), chosen at unpack */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
@@ -449,14 +449,14 @@ struct insert_proc_node
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
   char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
-  TP_DOMAIN **att_domains;	/* CBRD-27583 (D-45): the domain of each attribute, in att_id order */
-  int *default_types;		/* CBRD-27583 (D-94): the DB_TYPE each of the first num_default_expr attributes' default
+  TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
+  int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
 				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  DB_TYPE *value_types;		/* CBRD-27583 (D-45): the type each value comes in - per row of values and
+  DB_TYPE *value_types;		/* CBRD-27583: the type each value comes in - per row of values and
 				 * attribute, a single row for a SELECT - chosen at unpack */
-  TP_VALUE_CONVERTER *convs;	/* CBRD-27583 (D-45): each value_types entry into its attribute's domain */
-  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583 (D-94): each default_types entry into its attribute's domain */
+  TP_VALUE_CONVERTER *convs;	/* CBRD-27583: each value_types entry into its attribute's domain */
+  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583: each default_types entry into its attribute's domain */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
@@ -646,7 +646,7 @@ struct cte_proc_node
    || ((func_p)->function == PT_PERCENTILE_CONT))
 
 /*
- * CBRD-27583 (S3-18): the terms an ORDERBY_NUM predicate's upper bound comes from (qexec_get_orderbynum_upper_bound):
+ * CBRD-27583: the terms an ORDERBY_NUM predicate's upper bound comes from (qexec_get_orderbynum_upper_bound):
  * the comparisons of its AND tree's leaves of ORDERBY_NUM () (a constant) with a value, a host variable or an
  * expression, on either side. xasl_orderbynum_upper_bound gives the bound and the relation with the bound on the
  * right, NULL for another term or relation than < and <=. The compiler decides the operand coercion of bound - 1 of
@@ -1240,7 +1240,7 @@ struct xasl_node
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583 (D-94): orderby_limit's converter into INTEGER, found at
+  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into INTEGER, found at
 						 * unpack from its domain; not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */

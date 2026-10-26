@@ -101,11 +101,11 @@ namespace cubxasl
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3, D-83): a SUM / AVG's or STDDEV /
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583: a SUM / AVG's or STDDEV /
 							 * VARIANCE's, the compiler's plan
 							 * (domain_plan_analytic_accumulator), its converters looked
 							 * up at unpack */
-    /* CBRD-27583 (D-94): a MEDIAN / PERCENTILE whose sorted operand is a string: the domain its sort compares the
+    /* CBRD-27583: a MEDIAN / PERCENTILE whose sorted operand is a string: the domain its sort compares the
      * operand in (the function's type) and the converter into it, found at unpack from the sort list's domain of the
      * operand's key; NULL otherwise */
     tp_domain *sort_key_cmp_dom;

@@ -1741,7 +1741,7 @@ stx_domain_is_fixed (const TP_DOMAIN * domain)
 /*
  * stx_decide_compare () - CBRD-27583: the comparison of a value of each of two domains, as the type rule module
  *   picks it before any row - a pair implicit coercion refuses keeps its failing converter, which the row raises as
- *   tp_value_compare_with_error does (spec 9: a constant fails where a row compares it)
+ *   tp_value_compare_with_error does (a constant fails only where a row compares it)
  *   return: NO_ERROR, or the error of the type rule module
  *   by_type(out): false for a side whose domain leaves its values' type or collation to the data (none, VARIABLE,
  *		   a collation LEAVE or ENFORCE); *decided is comparison method VALUES then, tp_value_compare_with_error on
@@ -1864,7 +1864,7 @@ stx_decide_stream_compare (const char *site, const REGU_VARIABLE * lhs, const RE
 }
 
 /*
- * stx_unpack_decided_compare () - CBRD-27583 (D-80): a comparison XASL generation decided (xts_pack_decided_compare):
+ * stx_unpack_decided_compare () - CBRD-27583: a comparison XASL generation decided (xts_pack_decided_compare):
  *   its fields, the cmpval of the first value's type once converted and the converter of each converted side, looked
  *   up; nothing is decided here
  */
@@ -1909,7 +1909,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
 }
 
 /*
- * stx_unpack_compare () - CBRD-27583 (D-81): a comparison the compiler decided (xts_pack_compare): none - comparison
+ * stx_unpack_compare () - CBRD-27583: a comparison the compiler decided (xts_pack_compare): none - comparison
  *   method VALUES - or the decided comparison, whose cmpval, converters and operator functions are looked up
  *   by_type(out): decided
  */
@@ -1934,7 +1934,7 @@ stx_unpack_compare (char *ptr, DOMAIN_COMPARE * compare, bool * by_type)
 }
 
 /*
- * CBRD-27583 (D-83): a plan of the server's arithmetic outside a node, as the compiler decided it
+ * CBRD-27583: a plan of the server's arithmetic outside a node, as the compiler decided it
  *   (xts_pack_conversion, xts_pack_coercion_plan, xts_pack_accumulator_plan): its fields and domains; the converters
  *   are looked up (domain_find_conversion), nothing is decided here
  */
@@ -1955,6 +1955,7 @@ stx_unpack_conversion (char *ptr, DOMAIN_CONVERSION * conversion)
   return ptr;
 }
 
+/* a coercion plan xts_pack_coercion_plan packed */
 static char *
 stx_unpack_coercion_plan (char *ptr, DOMAIN_COERCION_PLAN * plan)
 {
@@ -2014,7 +2015,7 @@ stx_unpack_accumulator_domain (char *ptr, cubxasl::aggregate_accumulator_domain 
 }
 
 /*
- * stx_build_analytic_offsets () - CBRD-27583 (D-83): each LEAD / LAG / NTH_VALUE's offset and default conversions
+ * stx_build_analytic_offsets () - CBRD-27583: each LEAD / LAG / NTH_VALUE's offset and default conversions
  *   (xts_pack_analytic_offsets), in the order of the analytic evaluations and their functions
  */
 static char *
@@ -2036,7 +2037,7 @@ stx_build_analytic_offsets (char *ptr, BUILDLIST_PROC_NODE * node)
 }
 
 /*
- * stx_plan_interpolation_sort_keys () - CBRD-27583 (D-94): a MEDIAN / PERCENTILE whose sorted operand is a string
+ * stx_plan_interpolation_sort_keys () - CBRD-27583: a MEDIAN / PERCENTILE whose sorted operand is a string
  *   compares it in the function's type: that domain and the converter into it, from the domain of the operand's key
  *   in its group's sort list (qexec_initialize_analytic_state sets them on the key)
  */
@@ -2071,7 +2072,7 @@ stx_plan_interpolation_sort_keys (BUILDLIST_PROC_NODE * node)
 }
 
 /*
- * stx_build_orderbynum_bounds () - CBRD-27583 (S3-18): the operand coercion of bound - 1 of each ORDERBY_NUM () < bound
+ * stx_build_orderbynum_bounds () - CBRD-27583: the operand coercion of bound - 1 of each ORDERBY_NUM () < bound
  *   of the predicate (xts_pack_orderbynum_bounds), set on its term
  */
 static char *
@@ -2277,14 +2278,14 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
-  /* CBRD-27583 (S3-18): its upper bounds' subtractions */
+  /* CBRD-27583: its upper bounds' subtractions */
   ptr = stx_build_orderbynum_bounds (thread_p, ptr, xasl->ordbynum_pred);
   if (ptr == NULL)
     {
       return NULL;
     }
   {
-    /* CBRD-27583 (D-94): each upper bound's conversion into INTEGER, which a top-N takes (qexec_setup_topn_proc): of
+    /* CBRD-27583: each upper bound's conversion into INTEGER, which a top-N takes (qexec_setup_topn_proc): of
      * the bound's type, or for a < of the type bound - 1 comes out in (qdata_coerce_result_to_domain: the bound's
      * domain when the plan converts the difference, else the difference's) */
     bool planned = true;
@@ -2365,7 +2366,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
-      /* CBRD-27583 (D-81): qexec_check_limit_clause runs the query only for a row count greater than an INT 0, by the
+      /* CBRD-27583: qexec_check_limit_clause runs the query only for a row count greater than an INT 0, by the
        * comparison the compiler decided */
       DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
       bool by_type;
@@ -2374,7 +2375,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  return NULL;
 	}
       ptr = stx_unpack_compare (ptr, compare, &by_type);
-      /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+      /* CBRD-27583: the compiler decides the comparison from the domains */
       assert (by_type);
       xasl->limit_compare = compare;
     }
@@ -2575,7 +2576,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
-      /* CBRD-27583 (D-94): an INST_NUM () < or <= limit's conversion into BIGINT, which a parallel scan's limit takes
+      /* CBRD-27583: an INST_NUM () < or <= limit's conversion into BIGINT, which a parallel scan's limit takes
        * (resolve_instnum_limit; get_instnum_upper_limit_rhs picks this term) */
       if (xasl->instnum_pred->type == T_EVAL_TERM && xasl->instnum_pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
 	{
@@ -3081,7 +3082,7 @@ stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
 	}
 
       new_sq_cache->sq_key_struct->n_elements = n_elements;
-      /* CBRD-27583 (S3-25): the key positions' regu domains (xts_process_sq_cache) */
+      /* CBRD-27583: the key positions' regu domains (xts_process_sq_cache) */
       new_sq_cache->sq_key_struct->domains =
 	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * n_elements);
       if (new_sq_cache->sq_key_struct->domains == NULL)
@@ -3529,7 +3530,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	  goto error;
 	}
     }
-  /* CBRD-27583 (D-83): a LEAD / LAG / NTH_VALUE's offset and default, read through a_regu_list */
+  /* CBRD-27583: a LEAD / LAG / NTH_VALUE's offset and default, read through a_regu_list */
   ptr = stx_build_analytic_offsets (ptr, stx_build_list_proc);
   stx_plan_interpolation_sort_keys (stx_build_list_proc);
 
@@ -3763,7 +3764,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
       return NULL;
     }
 
-  /* CBRD-27583 (D-81): each merge column pair's comparison the compiler decided from the two lists' column domains */
+  /* CBRD-27583: each merge column pair's comparison the compiler decided from the two lists' column domains */
   if (merge_list_info->ls_merge.ls_column_cnt > 0 && merge_list_info->outer_xasl != NULL
       && merge_list_info->inner_xasl != NULL)
     {
@@ -3777,7 +3778,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
 	{
 	  bool by_type;
 	  ptr = stx_unpack_compare (ptr, &compares[k], &by_type);
-	  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+	  /* CBRD-27583: the compiler decides the comparison from the domains */
 	  assert (by_type);
 	}
       merge_list_info->merge_compares = compares;
@@ -3917,7 +3918,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       node_p->domain_info.outer.compares = compares;
       node_p->domain_info.inner.compares = compares;
 
-      /* CBRD-27583 (D-81): the join columns' decisions the compiler made from the inputs' column domains
+      /* CBRD-27583: the join columns' decisions the compiler made from the inputs' column domains
        * (xts_pack_hash_join_keys), looked up; a column whose domain the execution fixes leaves them to each execution
        * (hjoin_init_domain_info) */
       int decided;
@@ -3938,8 +3939,8 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	  converters[domain_cnt + i] =
 	    hjoin_key_converter ((kinds >> 8) & 0xFF, TP_DOMAIN_TYPE (all_domains[domain_cnt + i]), common);
 	  ptr = stx_unpack_decided_compare (ptr, &compares[i]);
-	  /* CBRD-27583 (S3-32): a key coerced at the row is a JSON side (exception, the data carries the type: 2-7); no
-	   * common domain leaves its collation to the values (census "hash key coerced" 0) */
+	  /* CBRD-27583: only a JSON key is coerced at the row (an exception: a JSON value carries its own type); no
+	   * common domain leaves its collation to the values */
 	  assert (((kinds & 0xFF) != DOMAIN_HASH_KEY_COERCED || TP_DOMAIN_TYPE (all_domains[i]) == DB_TYPE_JSON)
 		  && (((kinds >> 8) & 0xFF) != DOMAIN_HASH_KEY_COERCED
 		      || TP_DOMAIN_TYPE (all_domains[domain_cnt + i]) == DB_TYPE_JSON));
@@ -3947,7 +3948,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       node_p->domain_info.decided = decided != 0;
       if (!decided)
 	{
-	  /* CBRD-27583 (S3-32): XASL generation decides every hash join's keys (census "left hash join" 0) */
+	  /* CBRD-27583: XASL generation decides every hash join's keys; one left undecided is its defect */
 	  error = domain_unresolved_error (-1, DB_TYPE_VARIABLE);
 	  stx_set_xasl_errcode (thread_p, error);
 	  goto exit_on_error;
@@ -4791,7 +4792,7 @@ error:
   return NULL;
 }
 
-/* CBRD-27583 (D-45): the type a value of the domain comes in, VARIABLE for one the compiler does not know */
+/* CBRD-27583: the type a value of the domain comes in, VARIABLE for one the compiler does not know */
 static DB_TYPE
 stx_value_type_of (const TP_DOMAIN * domain)
 {
@@ -4799,7 +4800,7 @@ stx_value_type_of (const TP_DOMAIN * domain)
 }
 
 /*
- * stx_plan_assignment () - CBRD-27583 (D-45): an assignment's converter of the type its value comes in into the
+ * stx_plan_assignment () - CBRD-27583: an assignment's converter of the type its value comes in into the
  *   attribute's domain (ASSIGN); none for NULL and for a type the compiler does not know, whose rows look it up
  */
 static void
@@ -4811,7 +4812,7 @@ stx_plan_assignment (UPDATE_ASSIGNMENT * assign, DB_TYPE value_type)
 }
 
 /*
- * stx_plan_limit_converter () - CBRD-27583 (D-94): the converter of a limit's values of type - a key limit, a sort
+ * stx_plan_limit_converter () - CBRD-27583: the converter of a limit's values of type - a key limit, a sort
  *   limit, an ORDERBY_NUM or INST_NUM bound, of its regu's type - into the integer domain its reader coerces it into
  *   (IMPLICIT, as tp_value_coerce); none for a limit of that type and for a type the compiler does not know
  */
@@ -4823,7 +4824,7 @@ stx_plan_limit_converter (DB_TYPE type, const TP_DOMAIN * target)
 }
 
 /*
- * stx_plan_bound_conversion () - CBRD-27583 (D-94): an upper bound term's conversion of its bound, of type source,
+ * stx_plan_bound_conversion () - CBRD-27583: an upper bound term's conversion of its bound, of type source,
  *   into target (an ORDERBY_NUM bound into INTEGER, an INST_NUM limit into BIGINT), set on the term
  *   return: false with the unpack error set
  */
@@ -4844,7 +4845,7 @@ stx_plan_bound_conversion (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * term, DB_TY
 }
 
 /*
- * stx_plan_update_assignments () - CBRD-27583 (D-45): an UPDATE's converters, from the domains of the slots of the
+ * stx_plan_update_assignments () - CBRD-27583: an UPDATE's converters, from the domains of the slots of the
  *   node's value list its scan of the SELECT's list fills - after the OID - class OID pairs of its classes and of
  *   the other classes its MVCC reevaluation reads, and a MERGE's should_delete, as qexec_execute_update walks them -
  *   or of a constant
@@ -4887,9 +4888,9 @@ stx_plan_update_assignments (XASL_NODE * xasl, bool has_delete)
 }
 
 /*
- * stx_plan_insert_assignments () - CBRD-27583 (D-45): an INSERT's converters of each value into its attribute's
+ * stx_plan_insert_assignments () - CBRD-27583: an INSERT's converters of each value into its attribute's
  *   domain: a default value comes in the attribute's domain, a row of values from its regus, a SELECT's (and a
- *   MERGE's) from the slots of the node's value list its scan fills; (D-94) and each default's, from the type XASL
+ *   MERGE's) from the slots of the node's value list its scan fills; and each default's, from the type XASL
  *   generation decided it is made in, into its attribute's domain
  *   return: NO_ERROR, or ER_FAILED out of memory
  */
@@ -5311,9 +5312,10 @@ stx_term_compares_values (const COMP_EVAL_TERM * term)
 }
 
 /*
- * stx_build_term_compare () - CBRD-27583: the comparison of a term's two values - the one the compiler decided (D-81,
- *   xts_pack_compare), looked up; a filter or function index stream's, which carries none (D-82), from the two sides'
- *   domains and literals here (a bind arrives in its regu's domain: the client cast it before it sent it; a value
+ * stx_build_term_compare () - CBRD-27583: the comparison of a term's two values - the one the compiler decided
+ *   (xts_pack_compare), looked up; a filter or function index stream's, which carries none (it is stored in the
+ *   catalog), from the two sides' domains and literals here (a bind arrives in its regu's domain: the client cast it
+ *   before it sent it; a value
  *   pointer or a list position reads what its producer wrote in the domain XASL generation took from it). No
  *   comparison for a term that compares no two values.
  *   return: the stream after it; NULL with the unpack error set
@@ -5332,7 +5334,8 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * ter
     }
   else if (compares_values)
     {
-      /* D-82: a filter or function index stream's domains decide only what compares as it is or converts */
+      /* a filter or function index stream (stored in the catalog) carries no decision: its domains decide only what
+       * compares as it is or converts */
       const TP_DOMAIN *domain[2] = { term->lhs->domain, term->rhs->domain };
       int error = stx_decide_compare (domain, &decided, &by_type);
       if (error == NO_ERROR
@@ -5350,7 +5353,7 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * ter
     }
   if (!by_type)
     {
-      /* a term that compares no values; never one by the values in the gates (CBRD-27583 S3-32, census "by value" 0) */
+      /* a term that compares no values; the compiler decides every term that compares two (CBRD-27583) */
       assert (!compares_values);
       return ptr;
     }
@@ -5366,9 +5369,9 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * ter
 }
 
 /*
- * stx_unpack_prune_conversion () - CBRD-27583 (D-87): the conversion a partitioned class's pruning puts a term's value
+ * stx_unpack_prune_conversion () - CBRD-27583: the conversion a partitioned class's pruning puts a term's value
  *   (an IN list's elements) through: the domain XASL generation decided, and the converter from the value's domain
- *   into it, looked up here (none for the same type, as develop's pruning cast none)
+ *   into it, looked up here (none for the same type, which pruning does not cast)
  *   return: ptr past it, NULL on error
  *   from(in): the domain the value is read in
  */
@@ -5444,7 +5447,7 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
     {
       return ptr;
     }
-  /* CBRD-27583 (D-87): 0 none, or 1 + the value's side and the other side's domain */
+  /* CBRD-27583: 0 none, or 1 + the value's side and the other side's domain */
   ptr = or_unpack_int (ptr, &tmp);
   if (tmp == 0)
     {
@@ -5503,11 +5506,12 @@ stx_constant_elements_compare (int row, REGU_VARIABLE * elemset)
 
 /*
  * stx_build_element_compares () - CBRD-27583: what an ALL/SOME term compares its item with - the compiler's decision
- *   (D-81, xts_decide_element_compare), looked up: a list's column or a right side that is no collection by one
- *   comparison (ALSM_EVAL_TERM.compare), a collection's elements - its data, a constant's too (spec 9: an element
- *   fails where a row compares it) - by the item's row of the type pair comparison table (compare_row), a constant's
- *   of one key by that key's cell of the row (compare_each, stx_constant_elements_compare); a filter or
- *   function index stream's, which carries none (D-82), here: a literal item by its value's row, any other by the two
+ *   (xts_decide_element_compare), looked up: a list's column or a right side that is no collection by one
+ *   comparison (ALSM_EVAL_TERM.compare), a collection's elements - its data, a constant's too (an element fails
+ *   only where a row compares it) - by the item's row of the type pair comparison table (compare_row), a constant's
+ *   of one key by that key's cell of the row (compare_each, stx_constant_elements_compare); a filter or function
+ *   index stream's, which carries none (it is stored in the catalog), here: a literal item by its value's row, any
+ *   other by the two
  *   values' keys
  *   return: the stream after it; NULL with the unpack error set
  */
@@ -5568,7 +5572,7 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
 	  term->compare_each = stx_constant_elements_compare (term->compare_row, term->elemset);
 	}
     }
-  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0), but for a NULL item or a NULL column,
+  /* CBRD-27583: the compiler decides the comparison, but for a NULL item or a NULL column,
    * which compares nothing: the term is UNKNOWN, or an empty subquery decides it (CBRD-27574) */
 #if !defined (NDEBUG)
   const TP_DOMAIN *column = term->elemset == NULL ? NULL : term->elemset->type == TYPE_LIST_ID
@@ -5636,7 +5640,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
     {
       return ptr;
     }
-  /* CBRD-27583 (D-87): 0 none, or 1 and the item's domain and the elements' */
+  /* CBRD-27583: 0 none, or 1 and the item's domain and the elements' */
   ptr = or_unpack_int (ptr, &tmp);
   if (tmp == 0)
     {
@@ -5954,7 +5958,7 @@ error:
 }
 
 /*
- * stx_build_key_compares () - CBRD-27583 (D-80): an index scan's search key bound comparisons, as XASL generation
+ * stx_build_key_compares () - CBRD-27583: an index scan's search key bound comparisons, as XASL generation
  *   decided them (xts_pack_key_compares); each bound's with an index key first is its comparisons' mirror
  *   (domain_compare_mirror)
  *   return: the stream after them; NULL with the unpack error set
@@ -6108,7 +6112,7 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
   /* the B-tree's key domain */
   ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
 
-  /* CBRD-27583 (4.4): each key range's written key domains */
+  /* CBRD-27583: each key range's written key domains */
   for (int i = 0; i < indx_info->key_info.key_cnt; i++)
     {
       KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
@@ -7215,7 +7219,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 }
 
 /*
- * stx_arith_cast_target () - CBRD-27583 (D-77): the domain an operator's kernel casts a value of operand i into
+ * stx_arith_cast_target () - CBRD-27583: the domain an operator's kernel casts a value of operand i into
  *   (fetch_arith_ops.c, expr_compile.c)
  *   return: the domain; NULL where the kernel casts no value of operand i
  *   src_type(in): the value's type: the operand's, or the value the kernel makes (a PREDICATE's truth value, a
@@ -7275,17 +7279,17 @@ stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
     case T_RIGHT:
       return i == 1 ? &tp_Integer_domain : NULL;
     case T_HEX:
-      /* D-96: a number's digits are its BIGINT's, a value neither a number nor a string its CHAR's (db_hex) */
+      /* a number's digits are its BIGINT's, a value neither a number nor a string its CHAR's (db_hex) */
       return i != 1 || TP_IS_CHAR_TYPE (src_type) || TP_IS_BIT_TYPE (src_type) ? NULL
 	: TP_IS_NUMERIC_TYPE (src_type) ? &tp_Bigint_domain : &tp_Char_domain;
     case T_ASCII:
-      /* D-96: a number's or a date's first character is its CHAR's (db_ascii) */
+      /* a number's or a date's first character is its CHAR's (db_ascii) */
       return i == 1 && (TP_IS_NUMERIC_TYPE (src_type) || TP_IS_DATE_OR_TIME_TYPE (src_type)) ? &tp_Char_domain : NULL;
     case T_TO_CHAR:
-      /* D-96: a string is coerced into the result's domain (db_to_char_with_converter) */
+      /* a string is coerced into the result's domain (db_to_char_with_converter) */
       return i == 0 && TP_IS_CHAR_TYPE (src_type) ? arith->domain : NULL;
     case T_TO_ENUMERATION_VALUE:
-      /* D-96: the value assigned to an ENUM is cast into its domain (db_value_to_enumeration_value) */
+      /* the value assigned to an ENUM is cast into its domain (db_value_to_enumeration_value) */
       return i == 1 ? arith->domain : NULL;
     default:
       return NULL;
@@ -7394,7 +7398,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
     arith_type->domain != NULL && TP_DOMAIN_TYPE (arith_type->domain) == DB_TYPE_VARIABLE;
 #endif
 
-  /* CBRD-27583 (D-77): NVL, IFNULL, COALESCE, NVL2, NULLIF, LEAST and GREATEST cast the operand a row picks into
+  /* CBRD-27583: NVL, IFNULL, COALESCE, NVL2, NULLIF, LEAST and GREATEST cast the operand a row picks into
    * the node's domain, which XASL generation fixed; a node of no fixed domain is the generation's defect, refused here
    * rather than given the common domain of each row's values */
   switch (arith_type->opcode)
@@ -7417,7 +7421,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
       break;
     }
 
-  /* CBRD-27583 (D-77): the converters of the casts the operator's kernel makes, from its operands' domains, as an
+  /* CBRD-27583: the converters of the casts the operator's kernel makes, from its operands' domains, as an
    * assignment; a value of another type or a domain not fixed looks its converter up at the row (arith_cast_value) */
   for (int i = 0; i < 3; i++)
     {
@@ -7460,7 +7464,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	}
     }
 
-  /* CBRD-27583 (d2): an addition, subtraction, multiplication or division computes over its operands' domains, which
+  /* CBRD-27583: an addition, subtraction, multiplication or division computes over its operands' domains, which
    * XASL generation fixed (an operand of another type converts at its regu); an operand of no fixed domain is the
    * generation's defect, refused here rather than decided at each row.
    * The reset zeroes the whole union: FIELD, NULLIF, LEAST and GREATEST set compares below, any other node keeps NULL */
@@ -7480,14 +7484,14 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
       };
       if (xasl_unpack_info->index_stream)
 	{
-	  /* D-82: a filter or function index stream carries no decision */
+	  /* a filter or function index stream carries no decision */
 	  DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
 	  domain_resolve_operand_coercion (arith_type->opcode, operands, &coercion);
 	  arith_type->decided.arith = coercion.arith;
 	}
       else
 	{
-	  /* D-83: the compiler's decision (xts_arith_decided) */
+	  /* the compiler's decision (xts_arith_decided) */
 	  int decided;
 	  ptr = or_unpack_int (ptr, &decided);
 	  arith_type->decided.arith.kind = (DOMAIN_ARITH_KIND) (decided & 0xFF);
@@ -7495,8 +7499,8 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	}
     }
 
-  /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - the compiler's (D-81, xts_process_arith_type),
-   * a filter or function index stream's by stx_decide_stream_compare (D-82) */
+  /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - the compiler's (xts_process_arith_type),
+   * a filter or function index stream's by stx_decide_stream_compare */
   if (arith_type->opcode == T_FIELD || arith_type->opcode == T_NULLIF || arith_type->opcode == T_LEAST
       || arith_type->opcode == T_GREATEST)
     {
@@ -7517,7 +7521,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	  bool by_type = true;
 	  if (xasl_unpack_info->index_stream)
 	    {
-	      /* D-82: a filter or function index stream carries no decision */
+	      /* a filter or function index stream carries no decision */
 	      const int error = stx_decide_stream_compare ("arith", sides[k][0], sides[k][1], &compares[k]);
 	      if (error != NO_ERROR)
 		{
@@ -7527,16 +7531,16 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	    }
 	  else
 	    {
-	      /* D-81: the compiler's decision, looked up */
+	      /* the compiler's decision, looked up */
 	      ptr = stx_unpack_compare (ptr, &compares[k], &by_type);
 	    }
-	  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+	  /* CBRD-27583: the compiler decides the comparison from the domains */
 	  assert (by_type);
 	}
       arith_type->decided.compares = compares;
     }
 
-  /* CBRD-27583 (S3-40b): the converter of the operator's value into the node's domain (qdata_coerce_result_to_domain),
+  /* CBRD-27583: the converter of the operator's value into the node's domain (qdata_coerce_result_to_domain),
    * looked up for the type the value has (arith_result_type) */
   {
     const DB_TYPE planned = arith_result_type (arith_type);
@@ -7723,7 +7727,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   ptr = or_unpack_int (ptr, &offset);
   aggregate->is_ended = false;
 
-  /* CBRD-27583 (D-83): the accumulator's plan, which the compiler decided */
+  /* CBRD-27583: the accumulator's plan, which the compiler decided */
   ptr = stx_unpack_accumulator_domain (ptr, &aggregate->accumulator_domain);
   /* the accumulator starts in its domain's type (qdata_initialize_aggregate_list keeps the value's) */
   if (aggregate->accumulator.value != NULL && aggregate->accumulator_domain.value_dom != NULL
@@ -7740,7 +7744,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 				   TP_DOMAIN_TYPE (aggregate->accumulator_domain.value2_dom), DB_DEFAULT_PRECISION,
 				   DB_DEFAULT_SCALE);
     }
-  /* CBRD-27583 (D-94): the comparison a MIN / MAX merges a partitioned class's extremes by */
+  /* CBRD-27583: the comparison a MIN / MAX merges a partitioned class's extremes by */
   aggregate->merge_compare = NULL;
   if ((aggregate->function == PT_MIN || aggregate->function == PT_MAX)
       && aggregate->accumulator_domain.value_dom != NULL
@@ -8029,7 +8033,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
       ;
     }
 
-  /* CBRD-27583 (D-83): the accumulator's plan, which the compiler decided */
+  /* CBRD-27583: the accumulator's plan, which the compiler decided */
   ptr = stx_unpack_accumulator_domain (ptr, &analytic->accumulator_domain);
 
   return ptr;

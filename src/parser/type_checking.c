@@ -230,7 +230,7 @@ static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, 
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node);
-static void pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool develop);
+static void pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool record_bind_domain);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -4651,7 +4651,7 @@ pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, 
  * pt_typed_bind_comparison () - CBRD-27583: a user host variable compared with an operand of a known type, in the
  *   compilation of a bind type signature (its value, or the NULL carrying only the value's type that the SELECT
  *   compilation binds; never under set_host_var, the compilation that consumes values), takes the type of its value
- *   (D-70: a NULL at a COMPARE position its mate's, pt_host_var_stand_in), and pt_bind_comparison_target decides the
+ *   (a NULL at a COMPARE position its mate's, pt_host_var_stand_in), and pt_bind_comparison_target decides the
  *   pair: when the rule converts the bind side, the node's expected domain is the target (a rule cast:
  *   pt_assign_host_var_positions moves the node to a derived position of the target, which the client fills); else
  *   the term converts the other side. Either way the position stays value-typed and records the value's domain: a
@@ -4684,7 +4684,7 @@ pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * paren
 	  || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE || mate->type_enum == PT_TYPE_NULL
 	  || !pt_host_var_stand_in (parser, index, pt_xasl_node_to_domain (parser, mate))))
     {
-      /* D-70: a comparison operand's NULL compiles as a value of its mate's domain, unless no client binds one */
+      /* a comparison operand's NULL compiles as a value of its mate's domain, unless no client binds one */
       return false;
     }
   TP_DOMAIN *source = pt_host_var_value_domain (parser, index);
@@ -4716,10 +4716,10 @@ pt_type_bind_by_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * par
 }
 
 /*
- * pt_collation_rule_cast () - CBRD-27583 (D-30): a value-typed string bind of a bind type signature coerced into
+ * pt_collation_rule_cast () - CBRD-27583: a value-typed string bind of a bind type signature coerced into
  *   another collation or string type (pt_coerce_node_collation: the common collation of its operation) takes it by a
  *   rule cast - its node targets the expected string type (else the value's) in that collation, a derived position
- *   the client fills - as develop's ENFORCE domain converted the value at the bind. Returns false when this is not
+ *   the client fills - as an ENFORCE expected domain converts the value at the bind. Returns false when this is not
  *   such a bind: the caller coerces it as before.
  */
 static bool
@@ -4733,7 +4733,7 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
       return false;
     }
   const TP_DOMAIN *value = pt_host_var_value_domain (parser, hv->info.host_var.index);
-  /* develop's bind gave a CHAR value an expected VARCHAR's type even in its own collation, and kept a VARCHAR value */
+  /* the bind gives a CHAR value an expected VARCHAR's type even in its own collation, and keeps a VARCHAR value */
   DB_TYPE type = TP_DOMAIN_TYPE (value);
   if (type != DB_TYPE_VARCHAR && hv->expected_domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (hv->expected_domain)))
     {
@@ -4759,7 +4759,7 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
   target->collation_flag = TP_DOMAIN_COLL_NORMAL;
   if (hv->expected_domain != NULL)
     {
-      /* D-76: develop writes the domain it coerced the bind into */
+      /* the position's bind domain is the one the bind is coerced into */
       pt_record_host_var_bind_domain (parser, hv);
     }
   hv->expected_domain = tp_domain_cache (target);
@@ -4768,10 +4768,10 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
 }
 
 /*
- * pt_type_null_signature_binds () - CBRD-27583 (D-70): before an operator node types its operands, an operand of an
+ * pt_type_null_signature_binds () - CBRD-27583: before an operator node types its operands, an operand of an
  *   AGNOSTIC position (pt_classify_host_var_positions) is the INTEGER of whether its value is NULL; and in the
  *   compilation of a bind type signature, the NULL bound at an operand of an NVL_ARG position compiles as a value of
- *   the domain the node has with it NULL (pt_host_var_stand_in), of the types D-72 allows
+ *   the domain the node has with it NULL (pt_host_var_stand_in), of a type whose NULL plans the node as a value does
  */
 static void
 pt_type_null_signature_binds (PARSER_CONTEXT * parser, PT_NODE * node)
@@ -4804,7 +4804,7 @@ pt_type_null_signature_binds (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  const TP_DOMAIN *domain = pt_nvl_node_domain (parser, node, j, &tp_Null_domain);
 	  const DB_TYPE type = domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL;
-	  /* D-72: only where a client's value plans the node as the NULL does; a NUMERIC's precision, a CHAR's or BIT's
+	  /* only where a client's value plans the node as the NULL does; a NUMERIC's precision, a CHAR's or BIT's
 	   * length, a TIMESTAMP's zone, an ENUM's elements ... are the value's own */
 	  if ((type == DB_TYPE_SHORT || type == DB_TYPE_INTEGER || type == DB_TYPE_BIGINT || type == DB_TYPE_FLOAT
 	       || type == DB_TYPE_DOUBLE || type == DB_TYPE_DATE || type == DB_TYPE_TIME || type == DB_TYPE_DATETIME
@@ -8452,7 +8452,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       break;
 
     case PT_NAME:
-      /* a key limit bind is a BIGINT position (principle 2-3-1): the token, the plan and the bound value agree */
+      /* a key limit bind is always a BIGINT position, so the token, the plan and the bound value agree */
       for (PT_NODE * limit = node->info.name.indx_key_limit; limit != NULL; limit = limit->next)
 	{
 	  if (limit->node_type == PT_HOST_VAR && limit->type_enum == PT_TYPE_MAYBE && limit->expected_domain == NULL)
@@ -8919,7 +8919,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
 }
 
 /*
- * pt_record_host_var_bind_domain () - CBRD-27583 (D-76): the expected domain develop's type checking gives a user host
+ * pt_record_host_var_bind_domain () - CBRD-27583: the expected domain type checking gives a user host
  *   variable node is its position's bind domain (host_var_bind_domains), the last one of the first translation; not a
  *   rule cast's target. The second compilation of a signature keeps the one the first converted the value into.
  */
@@ -8937,27 +8937,28 @@ pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node
 
 /*
  * pt_preset_hostvar_domain () - the expected domain of a host variable node is its position's
- *   develop(in): CBRD-27583 (D-76): a write develop makes too (pt_record_host_var_bind_domain); not the D-70 INTEGER
- *		  or the BIGINT of a key limit
+ *   record_bind_domain(in): CBRD-27583: the domain is also the position's bind domain
+ *			     (pt_record_host_var_bind_domain); false for an AGNOSTIC position's INTEGER or a key
+ *			     limit's BIGINT
  */
 static void
-pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool develop)
+pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool record_bind_domain)
 {
   pt_hv_consistent_data_type_with_domain (parser, hv_node);
   if (parser->host_var_count <= hv_node->info.host_var.index || hv_node->info.host_var.pads_to != NULL)
     {
-      /* automated parameters are not needed an expected domain; a bind copy (Q6) does not type its user position:
+      /* automated parameters are not needed an expected domain; a bind copy does not type its user position:
        * the type checking that runs again after the rewrites types it in its new comparison */
       return;
     }
 
-  /* CBRD-27583 (S3-31): a position's domain is what the client sends, set once when the first translation assigns the
+  /* CBRD-27583: a position's domain is what the client sends, set once when the first translation assigns the
    * positions (pt_assign_host_var_positions); a later translation's node keeps its expected domain to itself */
   if (parser->host_var_derived_from == NULL)
     {
       parser->host_var_expected_domains[hv_node->info.host_var.index] = hv_node->expected_domain;
     }
-  if (develop)
+  if (record_bind_domain)
     {
       pt_record_host_var_bind_domain (parser, hv_node);
     }
@@ -9489,8 +9490,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       /* Check if arguments have been handled by PT_LIKE and only the result type needs to be set */
       if (arg1->type_enum == PT_TYPE_MAYBE && arg1->expected_domain)
 	{
-	  /* CBRD-27583 (D-52): the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), not its
-	   * pattern's CHAR: a key element of a CHAR column keeps its own domain, as develop's row kept it. It is in the
+	  /* CBRD-27583: the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), not its
+	   * pattern's CHAR: a key element of a CHAR column keeps its own domain. It is in the
 	   * pattern's codeset and collation (DOMAIN_CHAR_FIRST), not the system's */
 	  node->type_enum = PT_TYPE_VARCHAR;
 	  PT_NODE *bound_type = TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (arg1->expected_domain))
@@ -12880,7 +12881,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (fcode == F_ELT)
     {
-      /* CBRD-27583 (D-38): a bound index picks the branch that types the result: the bind type signature carries it */
+      /* CBRD-27583: a bound index picks the branch that types the result: the bind type signature carries it */
       const PT_NODE *index = arg_list;
       if (index->node_type == PT_EXPR && index->info.expr.op == PT_CAST && index->info.expr.arg1 != NULL)
 	{
@@ -22481,9 +22482,10 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	  arg = node->info.function.arg_list;
 	  while (arg != NULL)
 	    {
-	      /* shortcut: CBRD-27583 (D-76) records no bind domain for the ENFORCE domain develop writes below for a bind
-	       * without one that the rule cast takes instead, so a ?:N reused in an IN collection and in a string context
-	       * can answer unlike develop; record it (pt_record_host_var_bind_domain) when such a case is met */
+	      /* shortcut: CBRD-27583 records no bind domain for the ENFORCE domain written below for a bind without one
+	       * that the rule cast takes instead, so a ?:N reused in an IN collection and in a string context can be
+	       * converted unlike its bind converts it; record it (pt_record_host_var_bind_domain) when such a case is
+	       * met */
 	      if (arg->node_type != PT_HOST_VAR || pt_collation_rule_cast (parser, arg, coll_id, codeset))
 		{
 		  arg = arg->next;
