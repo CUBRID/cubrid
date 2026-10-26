@@ -3829,6 +3829,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = jsp_drop_stored_procedure (parser, statement);
 	  break;
 
+	case PT_SET_SESSION_VARIABLES:
+	  error = do_set_session_variables (parser, statement);
+	  break;
+
+	case PT_DROP_SESSION_VARIABLES:
+	  error = do_drop_session_variables (parser, statement);
+	  break;
+
 	case PT_SET_NAMES:
 	  error = do_set_names (parser, statement);
 	  break;
