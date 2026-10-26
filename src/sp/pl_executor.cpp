@@ -25,6 +25,7 @@
 // runtime
 #include "dbtype.h"
 
+#include "method_error.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_query.hpp"
 #include "method_struct_value.hpp"
@@ -337,13 +338,34 @@ exit:
     int error = NO_ERROR;
     int is_restore = (auth_name == NULL) ? 1 : 0;
 
+    // wait until CAS finishes changing the user. Otherwise, the objects CAS fetches for it
+    // are locked by another server thread while this thread keeps working on the same transaction.
+    auto get_change_rights_result = [&] (const cubmem::block & b)
+    {
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+
+      int res_code;
+      unpacker.unpack_int (res_code);
+
+      if (res_code != METHOD_RESPONSE_SUCCESS)
+	{
+	  cubmethod::error_context error_ctx;
+	  error_ctx.unpack (unpacker);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_ctx.get_error_msg ().c_str ());
+	  return ER_SP_EXECUTE_ERROR;
+	}
+
+      return NO_ERROR;
+    };
+
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
+	error = m_stack->send_data_to_client_recv (get_change_rights_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
+		std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client_recv (get_change_rights_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
       }
 
     if (error != NO_ERROR)

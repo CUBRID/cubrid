@@ -1031,9 +1031,16 @@ exit:
 	au_perform_pop_user ();
       }
 
-    // no response
-
-    return error;
+    // the server waits for this response not to work on the transaction while the user is changed
+    if (error != NO_ERROR)
+      {
+	m_error_ctx.set_error (error, "failed to change execution rights", __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+    else
+      {
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
+      }
   }
 
 //////////////////////////////////////////////////////////////////////////
