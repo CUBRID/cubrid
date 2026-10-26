@@ -4109,6 +4109,9 @@ struct parser_context
     unsigned bind_domains_differ:1;	/* CBRD-27583 (D-76): this compilation of a bind type signature planned a
 					 * position with another type than develop's bind converts its value into: it
 					 * made no plan, the text compiles again (pt_take_host_var_bind_domains) */
+    unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
+					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
+					 * that execution only */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
     unsigned print_host_var_source:1;	/* CBRD-27583 (S3-45): a plan dump or trace print: a derived host variable

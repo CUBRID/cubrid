@@ -2777,7 +2777,9 @@ db_needs_bind_signature_plan (const DB_SESSION * session)
     {
       return false;
     }
-  return parser->flag.bind_signature_changed || db_has_untyped_host_var (parser);
+  /* a compilation made while execution was skipped has no plan: the next executed one compiles its own */
+  return parser->flag.bind_signature_changed || db_has_untyped_host_var (parser)
+    || (parser->flag.plan_only_signature && !qo_need_skip_execution ());
 }
 
 /*
@@ -2901,6 +2903,7 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
   typed->parser->flag.is_xasl_pinned_reference = old_parser->flag.is_xasl_pinned_reference;
   typed->parser->flag.recompile_xasl_pinned = old_parser->flag.recompile_xasl_pinned;
   typed->parser->flag.is_system_generated_stmt = old_parser->flag.is_system_generated_stmt;
+  typed->parser->flag.plan_only_signature = qo_need_skip_execution ();
 
   err = db_begin_signature_compile (typed->parser, count, values);
   if (err != NO_ERROR)
@@ -3002,7 +3005,7 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
 #endif
   db_swap_compilation (session, typed);
   if (typed->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (typed->parser)
-      && !typed->statements[0]->flag.cannot_prepare)
+      && !typed->statements[0]->flag.cannot_prepare && !typed->parser->flag.plan_only_signature)
     {
       /* the replaced compilation is the plan of its own signature: kept, the least recently used one beyond
        * DB_MAX_SIGNATURE_PLANS closed */
@@ -6159,6 +6162,36 @@ db_check_single_query (DB_SESSION * session)
 {
   if (session->dimension > 1)
     {
+      return ER_IT_MULTIPLE_STATEMENT;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_check_driver_multiple_statements () - CBRD-27583: several statements a driver prepares at once share one bind
+ *   type signature, and a statement reading or assigning a session variable compiles at every execution: such a text
+ *   with host variables or session variables is refused (sets the error)
+ * return : NO_ERROR or ER_IT_MULTIPLE_STATEMENT
+ * session(in) : the parsed statements
+ */
+int
+db_check_driver_multiple_statements (DB_SESSION * session)
+{
+  if (session->dimension < 2)
+    {
+      return NO_ERROR;
+    }
+
+  /* shortcut: until CBRD-27763 decides how a driver prepares several statements */
+  bool refused = session->parser->host_var_count > 0;
+  for (int i = 0; i < session->dimension && !refused; i++)
+    {
+      refused = session->statements[i] != NULL && pt_has_session_variable (session->parser, session->statements[i]);
+    }
+  if (refused)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
       return ER_IT_MULTIPLE_STATEMENT;
     }
 
