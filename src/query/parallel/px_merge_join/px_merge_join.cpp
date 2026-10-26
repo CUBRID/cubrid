@@ -192,7 +192,7 @@ namespace parallel_query
 	  /* every range is an identical file-backed list so any of them can become the result: qfile_connect_list
 	   * splices page chains, which membuf pages cannot join. The caller's result-file flag is not needed because
 	   * the result cache duplicates a chained list anyway */
-	  int out_flag = QFILE_FLAG_ALL | (ls_flag & QFILE_FLAG_BACKWARD) | QFILE_NOT_USE_MEMBUF;
+	  int out_flag = QFILE_FLAG_ALL | (ls_flag & QFILE_FLAG_BACKWARD) | QFILE_FLAG_NO_MEMBUF;
 	  manager.m_outputs[i] = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id,
 						  out_flag, NULL);
 	  if (manager.m_outputs[i] == NULL)

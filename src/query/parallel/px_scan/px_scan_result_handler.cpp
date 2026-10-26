@@ -246,7 +246,7 @@ namespace parallel_scan
 	      return;
 	    }
 	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id,
-				     QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | XASL_LIST_BACKWARD_FLAG (curr_xasl), NULL);
+				     QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF | XASL_LIST_BACKWARD_FLAG (curr_xasl), NULL);
 	  if (!list_id)
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
@@ -1414,7 +1414,7 @@ namespace parallel_scan
 	  {
 	    if (agg_node->option == Q_DISTINCT)
 	      {
-		int ls_flag = QFILE_FLAG_DISTINCT | QFILE_NOT_USE_MEMBUF;
+		int ls_flag = QFILE_FLAG_DISTINCT | QFILE_FLAG_NO_MEMBUF;
 		QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 		type_list.type_cnt = 1;
 		type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
@@ -1439,7 +1439,7 @@ namespace parallel_scan
 	if constexpr (F == PT_MEDIAN || F == PT_PERCENTILE_CONT || F == PT_PERCENTILE_DISC)
 	  {
 	    /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: open list_id for value accumulation */
-	    int ls_flag = QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF;
+	    int ls_flag = QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF;
 	    QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 	    type_list.type_cnt = 1;
 	    type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
@@ -1466,7 +1466,7 @@ namespace parallel_scan
 	    if (agg_node->sort_list != NULL)
 	      {
 		/* GROUP_CONCAT(ORDER BY): open list_id for value accumulation */
-		int ls_flag = QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF;
+		int ls_flag = QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF;
 		QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 		type_list.type_cnt = 1;
 		type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));

@@ -29621,7 +29621,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   REGU_VARIABLE_LIST regu_list;
   AGGREGATE_TYPE *agg_list;
   int value_count = 0, i = 0, error_code = NO_ERROR;
-  int open_list_flag = not_use_membuf ? QFILE_NOT_USE_MEMBUF : 0;
+  int open_list_flag = not_use_membuf ? QFILE_FLAG_NO_MEMBUF : 0;
 
   if (!proc->g_hash_eligible)
     {

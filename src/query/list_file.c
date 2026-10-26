@@ -1196,7 +1196,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
-  else if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
     }
