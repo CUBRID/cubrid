@@ -34,6 +34,25 @@
 
 namespace parallel_index_scan
 {
+  /* the scan's table lock keeps the index file alive: skip pgbuf_fix_if_not_deallocated's sector check, which fixes
+   * the volume header on every call (two more fetches per dispatched leaf) */
+  static int
+  fix_leaf_if_not_deallocated (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_PTR &out_page)
+  {
+    out_page = pgbuf_fix (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    if (out_page == NULL)
+      {
+	int err = er_errid ();
+	if (err != NO_ERROR && err != ER_PB_BAD_PAGEID)
+	  {
+	    return err;
+	  }
+	/* deallocated */
+	er_clear ();
+      }
+    return NO_ERROR;
+  }
+
   /* closed-bound via btree_locate_key; open-bound via boundary-leaf path (btree.c:15077). */
   SCAN_CODE
   leaf_page_dispatcher::descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx,
@@ -448,8 +467,7 @@ retry:
     if (!m_ranges->is_desc_index ())
       {
 	/* left to right like serial scans: an unchanged left leaf still links to and pins its right leaf */
-	err = pgbuf_fix_if_not_deallocated (thread_p, &m_last_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-					    &last);
+	err = fix_leaf_if_not_deallocated (thread_p, &m_last_leaf_vpid, last);
 	if (err != NO_ERROR || last == NULL)
 	  {
 	    return err;
@@ -471,8 +489,7 @@ retry:
       }
 
     /* like btree_range_scan_descending_fix_prev_leaf: the left leaf is still adjacent while it links to the last leaf */
-    err = pgbuf_fix_if_not_deallocated (thread_p, &m_current_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-					&next);
+    err = fix_leaf_if_not_deallocated (thread_p, &m_current_leaf_vpid, next);
     if (err != NO_ERROR || next == NULL)
       {
 	return err;
