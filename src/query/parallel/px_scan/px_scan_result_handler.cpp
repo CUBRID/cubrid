@@ -1390,7 +1390,23 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    return rehome_agg_list (thread_p, agg_rehome_dir::RESTORE);
+    if (rehome_agg_list (thread_p, agg_rehome_dir::RESTORE) == S_ERROR)
+      {
+	return S_ERROR;
+      }
+
+    /* read_initialize () and the worker merge leave the lists closed, but a partitioned scan may scan its next
+     * partition serially on this thread and append to them. */
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	if (orig_agg_p->list_id != nullptr && orig_agg_p->list_id->tuple_cnt > 0
+	    && qfile_reopen_list_as_append_mode (thread_p, orig_agg_p->list_id) != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+      }
+
+    return S_END;
   }
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_finalize (THREAD_ENTRY *thread_p)
