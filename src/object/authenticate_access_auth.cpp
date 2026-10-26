@@ -180,6 +180,64 @@ find_object_of (DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP *object_of)
   return NO_ERROR;
 }
 
+/*
+ * execute_internal_query - run sql and close its session
+ *   return: the number of rows (NO_ERROR if result is NULL), or an error code if negative
+ *   sql(in): the query
+ *   values(in): its host variables
+ *   count(in): the number of values
+ *   result(out): the result for the caller to end with db_query_end, or NULL to end it here
+ */
+static int
+execute_internal_query (const char *sql, DB_VALUE *values, int count, DB_QUERY_RESULT **result)
+{
+  DB_SESSION *session;
+  DB_QUERY_RESULT *query_result = NULL;
+  STATEMENT_ID stmt_id;
+  int error;
+
+  session = db_open_buffer_local (sql);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_push_values (session, count, values);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &query_result);
+  if (result != NULL)
+    {
+      *result = query_result;
+    }
+  else if (error >= 0)
+    {
+      error = db_query_end (query_result);
+    }
+
+exit:
+  db_close_session (session);
+
+  return error;
+}
+
 int
 au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP object_of,
 				DB_AUTH auth_type, bool grant_option)
@@ -578,59 +636,15 @@ au_delete_auth_of_dropping_user (MOP user)
   int error = NO_ERROR, save;
   const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au] WHERE [au].[grantee] = ?;";
   DB_VALUE val;
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
-
-  db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
   AU_SAVE_AND_DISABLE (save);
 
   assert (user != NULL);
 
-  session = db_open_buffer_local (sql_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
   db_make_object (&val, user);
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
+  error = execute_internal_query (sql_query, &val, 1, NULL);
 
-  error = db_execute_statement_local (session, stmt_id, &result);
-  if (error < 0)
-    {
-      goto release;
-    }
-
-  error = db_query_end (result);
-
-release:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
-exit:
   pr_clear_value (&val);
 
   AU_RESTORE (save);
@@ -650,9 +664,6 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
   int error = NO_ERROR, save;
   const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[object_of] IN (%s);";
   DB_VALUE val;
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
   char obj_fetch_query[256];
 
   db_make_null (&val);
@@ -676,46 +687,8 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
   db_make_string (&val, name);
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
-  if (error < 0)
-    {
-      goto release;
-    }
-
-  error = db_query_end (result);
-
-release:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
+  error = execute_internal_query (obj_fetch_query, &val, 1, NULL);
 
 exit:
   pr_clear_value (&val);
@@ -736,59 +709,15 @@ au_delete_authorizartion_of_dropping_user (MOP user)
   int error = NO_ERROR, save;
   const char *sql_query = "DELETE FROM [" CT_AUTHORIZATION_NAME "] [au] WHERE [au].[owner] = ?;";
   DB_VALUE val;
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
-
-  db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
   AU_SAVE_AND_DISABLE (save);
 
   assert (user != NULL);
 
-  session = db_open_buffer_local (sql_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
   db_make_object (&val, user);
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
+  error = execute_internal_query (sql_query, &val, 1, NULL);
 
-  error = db_execute_statement_local (session, stmt_id, &result);
-  if (error < 0)
-    {
-      goto release;
-    }
-
-  error = db_query_end (result);
-
-release:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
-exit:
   pr_clear_value (&val);
 
   AU_RESTORE (save);
@@ -813,8 +742,6 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   DB_VALUE val[2];
   DB_VALUE grantee_value, object_of_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
   int row_count = -1;
   char obj_fetch_query[256];
   const char *sql_query =
@@ -849,26 +776,6 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (grantor_mop, "name", &val[0]);
   if (error != NO_ERROR)
@@ -885,14 +792,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 
   db_make_string (&val[1], unique_name);
 
-  error = db_push_values (session, 2, val);
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto exit;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = execute_internal_query (obj_fetch_query, val, 2, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -999,10 +899,6 @@ exit:
     {
       db_query_end (result);
     }
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
 
   AU_RESTORE (save);
 
@@ -1042,8 +938,6 @@ au_user_revoke_all_privileges (MOP user_mop)
   DB_VALUE name;
   DB_VALUE grantee_value, object_type_value, object_of_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
   int row_count = -1;
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_type, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
@@ -1061,26 +955,6 @@ au_user_revoke_all_privileges (MOP user_mop)
   /* Disable the checking for internal authorization object access */
   AU_SAVE_AND_DISABLE (save);
 
-  session = db_open_buffer_local (sql_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (user_mop, "name", &name);
   if (error != NO_ERROR)
@@ -1095,14 +969,7 @@ au_user_revoke_all_privileges (MOP user_mop)
       goto exit;
     }
 
-  error = db_push_values (session, 1, &name);
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto exit;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = execute_internal_query (sql_query, &name, 1, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -1233,10 +1100,6 @@ exit:
     {
       db_query_end (result);
     }
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
 
   AU_RESTORE (save);
 
@@ -1334,8 +1197,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	  " WHERE [au].[object_of] = (%s)"
 	  " GROUP BY [au].grantee";
   DB_VALUE val, element, grantee_value, object_of_value;
-  DB_SESSION *session = NULL;
-  int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   MOP grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL, auth = NULL;
   DB_SET *grants = NULL;
@@ -1369,37 +1230,10 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
   /* Prepare DB_VALUEs for host variables */
   db_make_string (&val, unique_name);
 
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = execute_internal_query (obj_fetch_query, &val, 1, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -1556,10 +1390,6 @@ exit:
     {
       db_query_end (result);
     }
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
 
   pr_clear_value (&val);
   pr_clear_value (&element);
@@ -1592,16 +1422,12 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	  "SELECT [au].object, [au].grantor, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM ["
 	  CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[object_of] = (%s)";
-  DB_SESSION *session = NULL;
-  int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE val, db_auth_object_value, grantor_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
   MOP db_auth_object_mop = NULL, grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL;
   const char *auth_type_char;
   DB_AUTH db_auth = DB_AUTH_NONE;
   int is_grantable = -1;
-  MOP auth;
-  size_t au_db_auth_size;
   au_auth_accessor accessor;
   std::unordered_map<AuthKey, int, tuple_hash<AuthKey>, tuple_equal<AuthKey>> auth_unordered_map;
   AuthKey key;
@@ -1632,37 +1458,10 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
   /* Prepare DB_VALUEs for host variables */
   db_make_string (&val, unique_name);
 
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = execute_internal_query (obj_fetch_query, &val, 1, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -1857,10 +1656,6 @@ exit:
   if (result != NULL)
     {
       db_query_end (result);
-    }
-  if (session != NULL)
-    {
-      db_close_session (session);
     }
 
   db_value_clear (&val);
