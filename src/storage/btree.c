@@ -589,7 +589,6 @@ bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 typedef enum
 {
   BTREE_FK_FIND_CHILD,		/* lock a committed child, waiting out the ones still being written */
-  BTREE_FK_WAIT_WRITERS,	/* pass committed children; wait out the ones still being written */
   BTREE_FK_FIND_WRITER		/* pass committed children; report one still being written, without waiting */
 } BTREE_FK_SEARCH;
 
@@ -6312,26 +6311,6 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   error_code = btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
   COPY_OID (found_oid, &find_fk_object.found_oid);
   return error_code;
-}
-
-/*
- * btree_wait_for_foreign_key_writers () - Wait until no transaction is still inserting or deleting a child of key.
- *
- * return	   : Error code.
- * thread_p (in)   : Thread entry.
- * btid (in)	   : Foreign key's B-tree ID.
- * key (in)	   : Parent key.
- * class_oid (in)  : Child class OID.
- */
-int
-btree_wait_for_foreign_key_writers (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid)
-{
-  BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
-
-#if defined (SERVER_MODE)
-  find_fk_object.search = BTREE_FK_WAIT_WRITERS;
-#endif /* SERVER_MODE */
-  return btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
 }
 
 /*

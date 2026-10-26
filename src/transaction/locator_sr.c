@@ -187,7 +187,6 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID 
 				      ATTR_ID * att_id, int n_att_id);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
-static int locator_wait_for_child_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes,
 				      MVCCID * writer);
 static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p,
@@ -4238,29 +4237,6 @@ error:
 }
 
 /*
- * locator_wait_for_child_writers () - wait out the transactions still writing a child of key, before key is
- *				       delete-marked
- *
- * return: NO_ERROR or error code
- *
- * The foreign key check takes no parent row lock, so once the key carries our mark a child transaction that checks
- * this parent again waits for us; were we waiting for it then, the two would deadlock.
- */
-static int
-locator_wait_for_child_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key)
-{
-  OR_FOREIGN_KEY *fkref;
-  int error_code = NO_ERROR;
-
-  for (fkref = index->fk; fkref != NULL && error_code == NO_ERROR; fkref = fkref->next)
-    {
-      error_code = btree_wait_for_foreign_key_writers (thread_p, &fkref->self_btid, key, &fkref->self_oid);
-    }
-
-  return error_code;
-}
-
-/*
  * locator_find_child_writer () - find a transaction still inserting or deleting a child of the row's primary key
  *
  * return: NO_ERROR or error code
@@ -4868,6 +4844,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   DB_VALUE parent_key;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  LOG_LSA preserved_repl_lsa;
 
 
   oid_list.oidp = NULL;
@@ -4879,6 +4857,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
       return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
   child_snapshot.snapshot_fnc = locator_satisfies_child_of_locked_parent;
+
+  /* The children's changes would take the updated row's replication LSA. No need to consider in-place update
+   * (repl_update_lsa), which updates the index before the heap. */
+  LSA_COPY (&preserved_repl_lsa, &tdes->repl_insert_lsa);
+  LSA_SET_NULL (&tdes->repl_insert_lsa);
 
   parent_key = *key;
 
@@ -5172,6 +5155,11 @@ end:
   if (keys_prefix_length)
     {
       db_private_free_and_init (thread_p, keys_prefix_length);
+    }
+  if (error_code == NO_ERROR)
+    {
+      assert (LSA_ISNULL (&tdes->repl_insert_lsa));
+      LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
     }
 
   return error_code;
@@ -8408,7 +8396,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		    {
 		      if (!locator_Dont_check_foreign_key && index->type == BTREE_PRIMARY_KEY && index->fk)
 			{
-			  error_code = locator_wait_for_child_writers (thread_p, index, key_dbvalue);
+			  /* before the mark as well, so that a child's writer is waited for while its checks of this parent
+			   * still pass */
+			  error_code = (idx_action_flag == FOR_MOVE
+					? locator_check_primary_key_update (thread_p, index, key_dbvalue)
+					: locator_check_primary_key_delete (thread_p, index, key_dbvalue));
 			  if (error_code != NO_ERROR)
 			    {
 			      goto error;
@@ -8453,8 +8445,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    }
 	  else
 	    {
-	      /* Scan for children only after btree_mvcc_delete () above delete-marked the key: a child's foreign-key
-	       * check takes no lock on this row and must meet that mark. */
+	      /* Again after btree_mvcc_delete () above delete-marked the key: a child's foreign-key check takes no lock
+	       * on this row, so a child added since the pass before the mark either meets that mark or is met here. */
 	      if (idx_action_flag == FOR_MOVE)
 		{
 		  /* This delete is caused by 'UPDATE ... SET ...' between partitioned tables. It first delete a
@@ -8752,7 +8744,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   bool is_started = false;
 #endif /* ENABLE_SYSTEMTAP */
   LOG_TDES *tdes;
-  LOG_LSA preserved_repl_lsa;
   int tran_index;
 
   assert_release (class_oid != NULL);
@@ -8768,8 +8759,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       mvccid = logtb_get_current_mvccid (thread_p);
     }
 #endif /* SERVER_MODE */
-
-  LSA_SET_NULL (&preserved_repl_lsa);
 
   db_make_null (&new_dbvalue);
   db_make_null (&old_dbvalue);
@@ -9025,7 +9014,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       if (!locator_Dont_check_foreign_key && !same_key && index->type == BTREE_PRIMARY_KEY && index->fk && found_btid
 	  && mvccid != MVCCID_NULL)
 	{
-	  error_code = locator_wait_for_child_writers (thread_p, index, old_key);
+	  /* before the mark as well: see locator_add_or_remove_index_internal () */
+	  error_code = locator_check_primary_key_update (thread_p, index, old_key);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -9177,32 +9167,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	    {
 	      assert (do_insert_only == false && do_delete_only == false);
 
-	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	      tdes = LOG_FIND_TDES (tran_index);
-
-	      if (pk_btid_index == i)
-		{
-		  /*
-		   * save lsa before it is overwritten by FK action. No need
-		   * to consider in-place update (repl_update_lsa) since it updates
-		   * index first and then updates heap
-		   */
-		  LSA_COPY (&preserved_repl_lsa, &tdes->repl_insert_lsa);
-		  LSA_SET_NULL (&tdes->repl_insert_lsa);
-		}
-
 	      /* The old key is already delete-marked: see locator_add_or_remove_index_internal () for the order. */
 	      error_code = locator_check_primary_key_update (thread_p, index, old_key);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
-		}
-
-	      if (pk_btid_index == i)
-		{
-		  /* restore repl_insert_lsa */
-		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
-		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
 		}
 	    }
 	}
