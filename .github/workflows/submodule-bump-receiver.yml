@@ -27,6 +27,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 env:
   BASE_BRANCH: develop
@@ -241,6 +242,7 @@ jobs:
           echo "$SUB: $OLD -> $TARGET ($COUNT commit(s), mode=$MODE)"
 
       - name: Create PR
+        id: cpr
         if: steps.pin.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
@@ -269,3 +271,27 @@ jobs:
           labels: Submodule Auto Update
           assignees: ${{ steps.pin.outputs.author }}
           delete-branch: true
+
+      - name: Run CI
+        if: contains(fromJSON('["created", "updated"]'), steps.cpr.outputs.pull-request-operation)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR:  ${{ steps.cpr.outputs.pull-request-number }}
+          SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
+          NEW: ${{ steps.pin.outputs.new_short }}
+        run: |
+          set -euo pipefail
+          # Dispatched runs are grouped by SHA, so a new head would not cancel the previous run.
+          for id in $(gh run list --repo "$PARENT" --workflow gha-ci.yml --event workflow_dispatch --limit 100 \
+                        --json databaseId,status,displayTitle \
+                        --jq ".[] | select(.status != \"completed\" and (.displayTitle | startswith(\"PR #$PR \"))) | .databaseId" || true); do
+            gh run cancel "$id" --repo "$PARENT" || true
+          done
+          OUT=$(gh workflow run gha-ci.yml --repo "$PARENT" --ref "$BASE_BRANCH" -f pr="$PR" -f sha="$SHA" -f suite=all 2>&1)
+          echo "$OUT"
+          URL=$(grep -oE 'https://[^[:space:]]+/actions/runs/[0-9]+' <<<"$OUT" || true)
+          RERUN="/run rerun ${URL##*/}"
+          [ -n "$URL" ] || RERUN='/run rerun <실행 ID>'
+          printf 'CI를 자동으로 시작했습니다 (`/run all`과 같음, `%s` `%s` 기준)%s\n\n실행 중에는 `/run all`을 따로 달지 말아 주세요. 끝난 뒤 실패한 것만 `%s`로 다시 돌리면 됩니다.\n' \
+            "$SUB" "$NEW" "${URL:+: $URL}" "$RERUN" \
+            | gh pr comment "$PR" --repo "$PARENT" --body-file -
