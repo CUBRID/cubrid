@@ -1053,13 +1053,10 @@ PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
 #define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
   (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
 
-/* number of private list bcb's targeted by victim flush: zone three bcb's beyond 90% of quota */
-#define PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET(list) \
-  MIN (PGBUF_LRU_LIST_COUNT (list) - (int) ((list)->quota * 0.9), (list)->count_lru3)
 /* victim flush targets the list and may turn its zone three non-candidates (e.g. dirty) into victims */
 #define PGBUF_LRU_LIST_HAS_VICTIM_FLUSH_TARGET(list) \
   ((list)->count_lru3 > (list)->count_vict_cand \
-   && (PGBUF_IS_SHARED_LRU_INDEX ((list)->index) || PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (list) > 0))
+   && (PGBUF_IS_SHARED_LRU_INDEX ((list)->index) || pgbuf_lru_get_private_victim_flush_target (list) > 0))
 
 #define PBGUF_BIG_PRIVATE_MIN_SIZE 100
 
@@ -1257,6 +1254,8 @@ static const char *pgbuf_zone_str (PGBUF_ZONE zone);
 static const char *pgbuf_consistent_str (int consistent);
 
 static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
+STATIC_INLINE int pgbuf_lru_get_private_victim_flush_target (const PGBUF_LRU_LIST * lru_list)
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
@@ -14198,6 +14197,23 @@ exit:
 }
 
 /*
+ * pgbuf_lru_get_private_victim_flush_target () - number of private list bcb's targeted by victim flush: zone three
+ *                                                 bcb's beyond 90% of quota
+ *
+ * return        : number of target bcb's (zero or negative if none)
+ * lru_list (in) : private lru list
+ */
+STATIC_INLINE int
+pgbuf_lru_get_private_victim_flush_target (const PGBUF_LRU_LIST * lru_list)
+{
+  int target;
+
+  target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+
+  return MIN (target, lru_list->count_lru3);
+}
+
+/*
  * pgbuf_compute_lru_vict_target () -
  *
  * lru_sum_flush_priority(out) : sum of all flush priorities of all LRUs
@@ -14243,7 +14259,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
        * (I tried), because you may find yourself in the peculiar case where quota's are on par with list size, while
        * shared are right below minimum desired size... and flush will not find anything.
        */
-      this_prv_target = PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (lru_list);
+      this_prv_target = pgbuf_lru_get_private_victim_flush_target (lru_list);
       if (this_prv_target > 0)
 	{
 	  total_prv_target += this_prv_target;
@@ -14305,7 +14321,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	      else
 		{
 		  /* use bcb's over 90% of quota as flush target */
-		  this_prv_target = PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (lru_list);
+		  this_prv_target = pgbuf_lru_get_private_victim_flush_target (lru_list);
 		}
 	      if (this_prv_target > 0)
 		{
