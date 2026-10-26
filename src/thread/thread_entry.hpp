@@ -266,9 +266,11 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-      bool force_latch_wait;	/* while true, page latches ignore the transaction's no-wait setting. set only
-				 * around the disk manager's volume header and sector table fixes; see
-				 * pgbuf_set_force_latch_wait () for why this lives here and not in LOG_TDES. */
+      int wait_msecs_override;	/* lock and page latch waiting time of this thread alone, or LK_WAIT_NOT_OVERRIDDEN
+				 * to wait as its transaction does. a task changes it through
+				 * logtb_set_thread_wait_msecs () and restores it before it ends; the constructor and
+				 * entry_manager (recycle_context, retire_context) reset it. see
+				 * logtb_set_thread_wait_msecs () for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 
@@ -300,6 +302,7 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
@@ -307,6 +310,7 @@ namespace cubthread
       /* for supplemental log */
       bool no_supplemental_log;
       bool trigger_involved;
+      bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb

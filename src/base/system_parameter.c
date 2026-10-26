@@ -47,7 +47,6 @@
 
 #include "porting.h"
 #include "chartype.h"
-#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -563,6 +562,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
@@ -762,7 +762,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD "vacuum_ovfp_check_threshold"
 
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
-#define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
 
 #define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
@@ -802,6 +801,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
+#define PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS "send_queue_room_wait_msecs"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -820,6 +820,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
+
+#define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
+#define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
+#define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
+#define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
+#define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
 // #endregion
 
@@ -4955,27 +4962,16 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* The DEDUPLICATE index feature was removed; the value is accepted and ignored. */
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
-   // It is not specified in the manual that it can be changed in the session.
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_DEPRECATED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PRINT_INDEX_DETAIL,
-   PRM_NAME_PRINT_INDEX_DETAIL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = 14}},
+   {false, {.i = -1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5402,6 +5398,20 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   /* 1 s: normal waits under a starved drain measured 0.6-10.8 ms */
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
+   /* connection_timeout's default: the waiter may hold a heap page latch, so it should not outwait a stalled peer */
+   {false, {.i = 5000}},
+   {false, {.i = 0}},		/* 0: close the connection at once, without waiting */
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS,
    PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -5582,6 +5592,97 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* Optimizer cost unit prices (CBRD-27126). The optimizer runs on the client, so these are
+   * PRM_FOR_CLIENT and take effect from the next compilation after SET SYSTEM PARAMETERS.
+   * PRM_FOR_QRY_STRING puts a tuned value into the XASL cache key (like max_hash_list_scan_size):
+   * without it a session that changes a price keeps hitting plans another session -- or its own
+   * past -- compiled under the old prices, and a new session inherits them. Only values that
+   * differ from the default are appended, so an untouched configuration keeps its cache keys.
+   * Every default is the literal query_planner.c used to hard-code, so an untouched
+   * configuration prices plans exactly as before. cost_seq_page is the unit of the model
+   * (one sequential page read = 1.0); tune the others as ratios to it. The per-tuple CPU
+   * price is an integer reciprocal, cost_cpu_tuples_per_page = 400 ("one page read costs as
+   * much as handling 400 tuples"), because the former literal 0.0025 has no exact float and
+   * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
+   * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
+   * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
+   * free; the Mackert-Lohman formula degrades safely to "no caching" when
+   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
+   * default equals the former 32768 on every page size. */
+  {PRM_ID_COST_SEQ_PAGE,
+   PRM_NAME_COST_SEQ_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_RANDOM_PAGE,
+   PRM_NAME_COST_RANDOM_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_CPU_TUPLES_PER_PAGE,
+   PRM_NAME_COST_CPU_TUPLES_PER_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 400}},
+   {false, {.i = 400}},
+   {false, {.i = 100000000}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
+   PRM_NAME_COST_EFFECTIVE_CACHE_PAGES,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32768}},
+   {false, {.i = 32768}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_HEAP_FETCH_PER_OID,
+   PRM_NAME_COST_HEAP_FETCH_PER_OID,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 100000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* bind-value plan variants (CBRD-27490): how many distinct plans a query may learn for its
+   * bind values; 0 turns the feature off. The client-side compile chooses among them. */
+  {PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+   PRM_NAME_PLAN_CACHE_BIND_VARIANTS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -5598,7 +5699,7 @@ static_assert (PRM_ID_INTL_DATE_LANG == 194, "update SysParam.java");
 static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
 static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
-static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 354, "update SysParam.java");
+static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
@@ -7865,7 +7966,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_INT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -7960,7 +8061,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_FLOAT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8086,7 +8187,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.i;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8181,7 +8282,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.f;
 
 	  if (PRM_DIFFERENT_UNIT (prm))

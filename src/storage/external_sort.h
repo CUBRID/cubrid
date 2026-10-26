@@ -125,6 +125,10 @@ struct SUBKEY_INFO
   int is_nulls_first;
 
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
+
+  bool cmp_dom_session_read;	/* cmp_dom rests on a session variable read: the type holds for the statement, a value
+				 * of another type converts to it or fails; the optdebug cross-check, which compares
+				 * with the type each value gives, skips it */
 };
 
 struct SORTKEY_INFO
@@ -168,7 +172,6 @@ struct sort_listfile_px_arg
 {
   SORTKEY_INFO *key_info;	/* points to the caller's key_info — read-only, shared across workers */
   QFILE_LIST_ID *input_list;	/* points to the input list file scanned by all workers */
-  int hash_eligible;		/* GROUP_BY only: if non-zero, parallelism must be skipped (0 otherwise) */
   void *stats;			/* GROUPBY_STATS* or ANALYTIC_STATS* in xasl node for trace output */
   int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };

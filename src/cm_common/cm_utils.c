@@ -87,8 +87,8 @@ kill (int pid, int signo)
 
 #if defined(WINDOWS)
 int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
-	   int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file, const char *stdout_file,
+	   const char *stderr_file, int *exit_status)
 {
   int new_pid;
   STARTUPINFO start_info;
@@ -232,8 +232,8 @@ _reap_child_async (void *arg)
 }
 
 int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
-	   int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file, const char *stdout_file,
+	   const char *stderr_file, int *exit_status)
 {
   int pid;
 
@@ -838,7 +838,7 @@ make_temp_filename (char *tempfile, const char *prefix, int size)
 }
 
 int
-make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
+make_temp_filepath (char *tempfile, const char *tempdir, const char *prefix, int task_code, int size)
 {
   struct timeval current_time;
 

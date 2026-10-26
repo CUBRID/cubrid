@@ -40,6 +40,7 @@ set(SA_MODE_TESTS
   test_byte_span_writer
   test_oos_tde_gate
   test_oos_boundaries
+  test_oos_workspace
 )
 
 foreach(test_name ${SA_MODE_TESTS})
@@ -190,10 +191,11 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
-# Real-vacuum E2E test polls the vacuum master daemon — needs extra headroom.
+# Ten real-vacuum cases each allow up to 60 seconds for asynchronous reclamation.
+# Cover those deadlines plus setup, teardown, and Debug diagnostic overhead.
 set_tests_properties(
   test_oos_real_vacuum_server
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 120
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 720
 )
 
 # Note: add_test vs. gtest_discover_tests
@@ -202,3 +204,8 @@ set_tests_properties(
 # - Since we do not need isolation here, we use add_test above.
 
 add_subdirectory(sql)
+
+# Real standalone loader/workspace routes require installed utilities, like the DB fixtures.
+# Each GoogleTest case owns a private registry and database; never use shared unittestdb here.
+add_test(NAME test_oos_workspace COMMAND test_oos_workspace)
+set_tests_properties(test_oos_workspace PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)

@@ -718,7 +718,7 @@ $ LOADDB
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
 647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
+648 Backup (release "%3$s") is incompatible with current "%1$s" release "%2$s".
 649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
 650 Cannot create enough threads for 'max_clients=%1$d'.
 651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
@@ -1485,22 +1485,30 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1379 CDC: the extraction position (%1$lld|%2$d) handed to the client keeps archive log volume %3$d.
 
-1380 A stored procedure/function declared PARALLEL_ENABLE cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
+1380 A stored procedure/function declared PARALLEL_ENABLE or running in a parallel query worker cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
 
 1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
 1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
 
-1383 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
 
-1385 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+1385 Invalid username or password.
 
-1386 Internal error: invalid out-of-row storage argument.
+1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
+1387 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
 
-1388 Last Error
+1388 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+
+1389 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+
+1390 Internal error: invalid out-of-row storage argument.
+
+1391 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
+
+1392 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1666,7 +1674,6 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
 
