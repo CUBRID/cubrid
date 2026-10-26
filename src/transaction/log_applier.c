@@ -259,6 +259,7 @@ struct la_item
 typedef struct la_oos_cache_entry LA_OOS_CACHE_ENTRY;
 struct la_oos_cache_entry
 {
+  bool consumed;		/* decoded by the heap item; retain until its retry decision */
   LA_OOS_CACHE_ENTRY *next;
   TRANID tranid;		/* tx scope guard against cross-tx OID reuse across SYSOP_END */
   OID head_oid;			/* hash key: master's chunk_index=0 OID */
@@ -439,8 +440,9 @@ LA_RECDES_POOL la_recdes_pool;
 
 /* OOS sql.log value cache: one entry per OOS column value, keyed by master's
  * head OID (chunk_index=0).  Linked list owns memory; hash gives O(1) lookup.
- * Lazily allocated; cleared (not destroyed) on tx boundaries so the bucket
- * array survives.  Single-threaded — see CBRD-26618 TODO below for parallel
+ * Decoded payloads are released when their heap item retires; unresolved
+ * values survive until consumed or batch cleanup. The hash table is kept
+ * across transactions. Single-threaded — see CBRD-26618 TODO below for parallel
  * applylogdb migration plan.  Cache miss is treated as an invariant
  * violation: la_resolve_oos_value_for_sql_log returns ER_FAILED so the
  * operator sees a loud error rather than a silently synthesized placeholder. */
@@ -3699,6 +3701,46 @@ la_lookup_oos_value (const OID * head_oid)
 }
 
 static void
+la_release_consumed_oos_values (void)
+{
+  LA_OOS_CACHE_ENTRY *entry = la_oos_cache_head;
+  LA_OOS_CACHE_ENTRY *prev_entry = NULL;
+  LA_OOS_CACHE_ENTRY *next_entry;
+
+  while (entry != NULL)
+    {
+      next_entry = entry->next;
+      if (!entry->consumed)
+	{
+	  prev_entry = entry;
+	  entry = next_entry;
+	  continue;
+	}
+
+      /* A later admission may have replaced this OID's key and data. Remove
+       * only this owner's mapping, before freeing the embedded OID key. */
+      if (mht_get (la_oos_cache_hash, &entry->head_oid) == entry)
+	{
+	  (void) mht_rem (la_oos_cache_hash, &entry->head_oid, NULL, NULL);
+	}
+      if (prev_entry == NULL)
+	{
+	  la_oos_cache_head = next_entry;
+	}
+      else
+	{
+	  prev_entry->next = next_entry;
+	}
+      if (la_oos_cache_tail == entry)
+	{
+	  la_oos_cache_tail = prev_entry;
+	}
+      free_and_init (entry);
+      entry = next_entry;
+    }
+}
+
+static void
 la_clear_oos_cache (void)
 {
   LA_OOS_CACHE_ENTRY *entry = la_oos_cache_head;
@@ -3867,10 +3909,11 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
   entry->tranid = la_oos_current_tranid;
   entry->head_oid = *head_oid;
   entry->length = payload_length;
+  entry->consumed = false;
   memcpy (entry->data, payload, payload_length);
 
   /* mht_put overwrites a stale mapping for the same OID (cross-tx OID reuse).
-   * The previous owner's entry stays in the linked list until next clear,
+   * The previous owner stays in the list until retirement or full cleanup,
    * but is no longer reachable via lookup. */
   if (mht_put (la_oos_cache_hash, &entry->head_oid, entry) == NULL)
     {
@@ -3907,6 +3950,7 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
 {
   LA_OOS_CACHE_ENTRY *entry;
   OR_BUF buf;
+  int error;
 
   entry = la_lookup_oos_value (head_oid);
   if (entry == NULL)
@@ -3923,8 +3967,81 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
     }
 
   or_init (&buf, entry->data, entry->length);
-  return att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+  error = att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+  if (error == NO_ERROR)
+    {
+      /* copy=true makes the decoded value independent of the cache. The same
+       * entry remains available to later attributes and retries of this item. */
+      entry->consumed = true;
+    }
+  return error;
 }
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+bridge_la_oos_cache_store (TRANID tranid, const OID * oid, const char *data, int length)
+{
+  la_oos_current_tranid = tranid;
+  return la_cache_oos_value (oid, data, length);
+}
+
+int
+bridge_la_oos_cache_resolve (TRANID tranid, const OID * oid, int length, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  SM_ATTRIBUTE att;
+
+  la_oos_current_tranid = tranid;
+  memset (&att, 0, sizeof (att));
+  att.domain = domain;
+  att.type = domain->type;
+  return la_resolve_oos_value_for_sql_log (oid, length, &att, value);
+}
+
+bool
+bridge_la_oos_cache_contains (TRANID tranid, const OID * oid)
+{
+  la_oos_current_tranid = tranid;
+  return la_lookup_oos_value (oid) != NULL;
+}
+
+void
+bridge_la_oos_cache_retire (void)
+{
+  la_release_consumed_oos_values ();
+}
+
+void
+bridge_la_oos_cache_clear (void)
+{
+  la_clear_oos_cache ();
+}
+
+size_t
+bridge_la_oos_cache_bytes (void)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+  size_t bytes = 0;
+
+  for (entry = la_oos_cache_head; entry != NULL; entry = entry->next)
+    {
+      bytes += entry->length;
+    }
+  return bytes;
+}
+
+int
+bridge_la_oos_cache_count (void)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+  int count = 0;
+
+  for (entry = la_oos_cache_head; entry != NULL; entry = entry->next)
+    {
+      ++count;
+    }
+  return count;
+}
+#endif
 
 /*
  * la_get_current()
@@ -6867,6 +6984,17 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	    }
 	}
 
+      /* INSERT/UPDATE SQL decoding has finished and the item will not retry.
+       * The current protocol publishes fresh OOS values before each heap row;
+       * no later row consumes these decoded entries. Shared-chain reuse would
+       * need an explicit remaining-consumer protocol before using this rule.
+       * Unresolved entries remain available to pending rows across SYSOP_END. */
+      if (item->log_type == LOG_REPLICATION_DATA
+	  && (item->item_type == RVREPL_DATA_INSERT || item->item_type == RVREPL_DATA_UPDATE
+	      || item->item_type == RVREPL_DATA_UPDATE_START || item->item_type == RVREPL_DATA_UPDATE_END))
+	{
+	  la_release_consumed_oos_values ();
+	}
       next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa);
       la_free_repl_item (apply, item);
       item = next_item;

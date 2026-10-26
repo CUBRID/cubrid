@@ -50,6 +50,14 @@ foreach(test_name ${SA_MODE_TESTS})
   target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
 endforeach()
 
+# Native SQL-log cache/decoder lifetime tests require neither a database nor WAL replay.
+add_executable(test_oos_sql_log_cache test_oos_sql_log_cache.cpp)
+target_link_libraries(test_oos_sql_log_cache PRIVATE ${EP_LIBS} cubridcs GTest::gtest)
+target_compile_definitions(test_oos_sql_log_cache PRIVATE ${COMMON_DEFS} CS_MODE)
+target_include_directories(test_oos_sql_log_cache PRIVATE ${TEST_INCLUDES})
+add_test(NAME test_oos_sql_log_cache COMMAND test_oos_sql_log_cache)
+set_tests_properties(test_oos_sql_log_cache PROPERTIES TIMEOUT 30)
+
 # =============================================================================
 # SERVER_MODE tests (linked to cubrid, in-process server with MVCC/threading)
 # =============================================================================
