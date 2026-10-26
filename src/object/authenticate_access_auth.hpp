@@ -54,7 +54,7 @@ class au_auth_accessor
     {
       INDEX_FOR_GRANTEE_NAME = 0,
       INDEX_FOR_GRANTOR_NAME = 1,
-      INDEX_FOR_OBJECT_NAME = 2,
+      INDEX_FOR_OBJECT = 2,
       INDEX_FOR_AUTH_TYPE = 3,
       /* Total count for the above */
       COUNT_FOR_VARIABLES

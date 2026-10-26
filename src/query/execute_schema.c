@@ -2096,7 +2096,15 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
+	  if (statement->info.grant.system_object != DB_OBJECT_UNKNOWN)
+	    {
+	      error = au_grant (statement->info.grant.system_object, user_obj, NULL, db_auth, false);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	  else if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);
@@ -2204,7 +2212,15 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
+	  if (statement->info.revoke.system_object != DB_OBJECT_UNKNOWN)
+	    {
+	      error = au_revoke (statement->info.revoke.system_object, user_obj, NULL, db_auth, NULL);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	  else if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);

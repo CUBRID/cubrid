@@ -48,9 +48,11 @@
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
 static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
+static int au_grant_system_object (const AU_SYSTEM_OBJECT *sys_obj, MOP user, DB_AUTH type);
 
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
+static int au_revoke_system_object (const AU_SYSTEM_OBJECT *sys_obj, MOP user, DB_AUTH type);
 static int au_lock_grantee (MOP user, MOP *auth);
 static int au_add_privileges (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, MOP grantor, DB_AUTH type,
 			      bool grant_option);
@@ -107,11 +109,11 @@ au_find_system_object (DB_OBJECT_TYPE obj_type)
 
 /*
  * au_grant - This is the primary interface function for granting authorization
- *            on database objects.
+ *            on database and system objects.
  *   return: error code
- *   obj_type(in): database object type to be granted
+ *   obj_type(in): object type to be granted
  *   user(in): user receiving the grant
- *   class_mop(in): class being authorized
+ *   class_mop(in): object being granted; NULL for a system object
  *   type(in): type of authorization
  *   grant_option(in): non-zero if grant option is also being given
  */
@@ -119,6 +121,8 @@ int
 au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
+  const AU_SYSTEM_OBJECT *sys_obj;
+
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
@@ -129,6 +133,13 @@ au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool g
       error = au_grant_procedure (user, class_mop, type, grant_option);
       break;
     default:
+      sys_obj = au_find_system_object (obj_type);
+      if (sys_obj != NULL)
+	{
+	  error = au_grant_system_object (sys_obj, user, type);
+	  break;
+	}
+
       error = ER_FAILED;
       assert (false);
       break;
@@ -333,11 +344,53 @@ end:
 }
 
 /*
- * au_revoke - This is the primary interface function for
- *             revoking authorization
+ * au_grant_system_object - grant privileges on a system object
  *   return: error code
+ *   sys_obj(in): system object
+ *   user(in): user receiving the grant
+ *   type(in): privileges to grant, or DB_AUTH_ALL
+ *
+ * Note: A system object is owned by the DBA: only a DBA group member grants, the grantor is the DBA so that dropping
+ *       the executing user keeps the grant, and granting to the DBA fails.
+ */
+static int
+au_grant_system_object (const AU_SYSTEM_OBJECT *sys_obj, MOP user, DB_AUTH type)
+{
+  int error, save;
+
+  if (!au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "grant");
+      return error;
+    }
+
+  if (ws_is_same_object (user, Au_user))
+    {
+      return NO_ERROR;
+    }
+
+  if (ws_is_same_object (user, Au_dba_user))
+    {
+      error = ER_AU_CANT_GRANT_OWNER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, sys_obj->name);
+      return error;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  error = au_add_privileges (sys_obj->type, user, NULL, Au_dba_user, (DB_AUTH) (sys_obj->privileges & type), false);
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * au_revoke - This is the primary interface function for
+ *             revoking authorization on database and system objects
+ *   return: error code
+ *   obj_type(in): object type to be revoked
  *   user(in): user being revoked
- *   class_mop(in): class being revoked
+ *   obj_mop(in): object being revoked; NULL for a system object
  *   type(in): type of authorization being revoked
  *   drop_user(in) : used when executing the drop user statement
  *
@@ -353,6 +406,8 @@ int
 au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 {
   int error = NO_ERROR;
+  const AU_SYSTEM_OBJECT *sys_obj;
+
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
@@ -363,6 +418,13 @@ au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP dro
       error = au_revoke_procedure (user, obj_mop, type, drop_user);
       break;
     default:
+      sys_obj = au_find_system_object (obj_type);
+      if (sys_obj != NULL)
+	{
+	  error = au_revoke_system_object (sys_obj, user, type);
+	  break;
+	}
+
       error = ER_FAILED;
       assert (false);
       break;
@@ -752,6 +814,93 @@ fail_end:
 }
 
 /*
+ * au_revoke_system_object - revoke privileges on a system object
+ *   return: error code
+ *   sys_obj(in): system object
+ *   user(in): user being revoked
+ *   type(in): privileges to revoke, or DB_AUTH_ALL
+ *
+ * Note: Without the grant option nothing propagates.
+ */
+static int
+au_revoke_system_object (const AU_SYSTEM_OBJECT *sys_obj, MOP user, DB_AUTH type)
+{
+  au_auth_accessor accessor;
+  DB_VALUE value;
+  MOP auth;
+  DB_SET *grants;
+  int bits = sys_obj->privileges & type;
+  int current = AU_NO_AUTHORIZATION;
+  int error, save, gindex;
+
+  if (!au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "revoke");
+      return error;
+    }
+
+  if (ws_is_same_object (user, Au_user))
+    {
+      error = ER_AU_CANT_REVOKE_SELF;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  if (ws_is_same_object (user, Au_dba_user))
+    {
+      error = ER_AU_CANT_REVOKE_OWNER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, sys_obj->name);
+      return error;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+
+  if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+    {
+      gindex = find_grant_entry (grants, sys_obj->type, NULL, Au_dba_user);
+      if (gindex != -1)
+	{
+	  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
+	  if (error == NO_ERROR)
+	    {
+	      current = db_get_int (&value);
+	    }
+	}
+
+      if (error == NO_ERROR && (current & bits) == 0)
+	{
+	  error = ER_AU_GRANT_NOT_FOUND;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      if (error == NO_ERROR)
+	{
+	  error = accessor.delete_auth (sys_obj->type, Au_dba_user, user, NULL, (DB_AUTH) (current & bits));
+	}
+
+      if (error == NO_ERROR)
+	{
+	  current &= ~bits;
+	  if (current)
+	    {
+	      db_make_int (&value, current);
+	      error = set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
+	    }
+	  else
+	    {
+	      drop_grant_entry (grants, gindex);
+	    }
+	}
+
+      set_free (grants);
+    }
+
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
  * au_lock_grantee - get the grantee's authorization object locked for update, so that GRANT and REVOKE
  *                   statements on one user run one after the other
  *   return: error code
@@ -784,9 +933,9 @@ au_lock_grantee (MOP user, MOP *auth)
 /*
  * au_add_privileges - add privileges to the grantee's grant entry and its _db_auth rows
  *   return: error code
- *   obj_type(in): database object type
+ *   obj_type(in): object type
  *   user(in): user receiving the grant
- *   obj_mop(in): database object being granted
+ *   obj_mop(in): object being granted; NULL for a system object
  *   grantor(in): user recorded as the grantor
  *   type(in): privileges to add
  *   grant_option(in): true if the grant option is also being given
@@ -1112,13 +1261,13 @@ map_grant_list (AU_GRANT *grants, MOP grantor)
 }
 
 /*
- * add_grant_entry - This adds a grant on a database object from a particular user to
+ * add_grant_entry - This adds a grant on an object from a particular user to
  *                   a sequence of grant elemetns.
  *                   It returns the index of the new grant element.
  *   return: sequence index to new grant entry
  *   grants(in): grant sequence to extend
- *   db_obj_type(in): database object type
- *   obj_mop(in): database object being granted
+ *   obj_type(in): object type
+ *   obj_mop(in): object being granted; NULL for a system object
  *   grantor(in): user doing the granting
  */
 int
@@ -1169,11 +1318,11 @@ drop_grant_entry (DB_SET *grants, int index)
 
 /*
  * find_grant_entry -  This searches a sequence of grant elements looking for
- *                     a grant	from a particular user on a particular database object.
+ *                     a grant	from a particular user on a particular object.
  *   return: sequence index to grant entry
  *   grants(in): sequence of grant information
  *   obj_type(in): object type of the entry
- *   obj_mop(in): database object to look for
+ *   obj_mop(in): object to look for; NULL for a system object
  *   grantor(in): user who made the grant
  *
  * Note: It returns the index into the sequence where the grant information

@@ -142,7 +142,7 @@ au_auth_accessor::create_new_auth ()
  * find_object_of - find the value of _db_auth.object_of
  *   return: error code
  *   obj_type(in): the object type
- *   obj_mop(in): the class, or the _db_stored_procedure row
+ *   obj_mop(in): the class, the _db_stored_procedure row, or NULL for a system object
  *   object_of(out): obj_mop; for a procedure, the same row looked up again by its unique name
  */
 static int
@@ -172,8 +172,12 @@ find_object_of (DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP *object_of)
 	}
       break;
     default:
-      assert (false);
-      return ER_FAILED;
+      if (au_find_system_object (obj_type) == NULL)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+      break;
     }
 
   *object_of = inst_mop;
@@ -293,7 +297,7 @@ au_auth_accessor::find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP
   const char *sql_query =
 	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
-	  " AND [au].[object_of] = (%s) AND [au].[auth_type] = ?";
+	  " AND %s AND [au].[auth_type] = ?";
   char obj_fetch_query[256];
   const char *class_unique_name = NULL;
   char sp_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -321,8 +325,9 @@ au_auth_accessor::find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP
 	  goto exit;
 	}
 
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_unique_name);
+      sprintf (obj_fetch_query, sql_query,
+	       "[au].[object_of] = (SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?)");
+      db_make_string (&val[INDEX_FOR_OBJECT], class_unique_name);
       break;
     case DB_OBJECT_PROCEDURE:
       if (jsp_get_unique_name (obj_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
@@ -333,10 +338,19 @@ au_auth_accessor::find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP
 	  goto exit;
 	}
 
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], sp_unique_name);
+      sprintf (obj_fetch_query, sql_query,
+	       "[au].[object_of] = (SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?)");
+      db_make_string (&val[INDEX_FOR_OBJECT], sp_unique_name);
       break;
     default:
+      if (au_find_system_object (obj_type) != NULL)
+	{
+	  /* a system object has no object_of, so its rows are found by the type */
+	  sprintf (obj_fetch_query, sql_query, "[au].[object_type] = ?");
+	  db_make_int (&val[INDEX_FOR_OBJECT], obj_type);
+	  break;
+	}
+
       assert (false);
       error = ER_UNEXPECTED;
       snprintf (error_msg, sizeof (error_msg) - 1, "unknown database object id: %d.", obj_type);
