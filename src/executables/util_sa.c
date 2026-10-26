@@ -60,6 +60,7 @@
 #include "util_func.h"
 #include "transform.h"
 #include "csql.h"
+#include "execute_schema.h"
 #include "locator_cl.h"
 #include "network_interface_cl.h"
 #include "locale_support.h"
@@ -1476,6 +1477,56 @@ error_exit:
 }
 
 /*
+ * optimizedb_update_class_statistics () - update one class the way UPDATE STATISTICS ON <class> does
+ *   return: NO_ERROR or error code
+ *   class_mop(in): the class to update
+ *   no_histogram(in): true iff --no-histogram; the class statistics are updated and the existing
+ *                     histograms are left as they are
+ *
+ * Mirrors the single-class branch of do_update_stats () -- keep the two in step. The all-columns
+ * histogram build refreshes the class statistics from its own scan (a class without a histogrammable
+ * column is handled inside the helper and still returns NO_ERROR), so it runs first and the plain
+ * statistics update is used only WITH NO HISTOGRAM. ER_OBJ_INVALID_ARGUMENTS is tolerated for parity
+ * with do_update_stats (); the all-columns path does not return it today.
+ */
+static int
+optimizedb_update_class_statistics (DB_OBJECT * class_mop, bool no_histogram)
+{
+  int error = NO_ERROR;
+
+  if (!no_histogram)
+    {
+      PT_HISTOGRAM_INFO histogram_info;
+      int hist_skipped = 0;
+      int save;
+
+      histogram_info.target_table_spec = NULL;
+      histogram_info.target_columns = NULL;
+      histogram_info.bucket_count = -1;	/* default_histogram_bucket_count */
+      histogram_info.with_fullscan = false;	/* STATS_WITH_SAMPLING, as optimizedb always did */
+      histogram_info.random_seed = 0;
+
+      AU_SAVE_AND_DISABLE (save);
+      error = update_or_drop_histogram_helper (NULL, class_mop, true /* quiet */ , &histogram_info,
+					       DO_HISTOGRAM_CREATE, &hist_skipped);
+      AU_RESTORE (save);
+
+      if (error == NO_ERROR)
+	{
+	  /* the histogram scan refreshed the class statistics as well */
+	  return NO_ERROR;
+	}
+      if (error != ER_OBJ_INVALID_ARGUMENTS)
+	{
+	  return error;
+	}
+      /* parity with do_update_stats (): fall through to the plain statistics update */
+    }
+
+  return sm_update_statistics (class_mop, STATS_WITH_SAMPLING);
+}
+
+/*
  * optimizedb() - optimizedb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
@@ -1486,8 +1537,16 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *class_name;
-  int status;
-  DB_OBJECT *class_mop;
+  const char *skip_list;
+  const char *names;
+  bool no_histogram;
+  char *names_buf = NULL;
+  DB_OBJECT **class_mops = NULL;
+  int n_classes = 0;
+  int n_max;
+  int i;
+  char *name;
+  char *next;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1496,13 +1555,28 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     }
 
   class_name = utility_get_option_string_value (arg_map, OPTIMIZE_CLASS_NAME_S, 0);
+  no_histogram = utility_get_option_bool_value (arg_map, OPTIMIZE_NO_HISTOGRAM_S);
+  skip_list = utility_get_option_string_value (arg_map, OPTIMIZE_NO_HISTOGRAM_CLASSES_S, 0);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_optimize_usage;
     }
 
-  status = NO_ERROR;
+  if (class_name != NULL && class_name[0] == '\0')
+    {
+      class_name = NULL;
+    }
+  if (skip_list != NULL && skip_list[0] == '\0')
+    {
+      goto print_optimize_usage;
+    }
+  /* --no-histogram-classes only has a meaning for the histogram pass of the all-classes run, which
+   * -n replaces by a single class and --no-histogram turns off altogether */
+  if (skip_list != NULL && (class_name != NULL || no_histogram))
+    {
+      goto print_optimize_usage;
+    }
 
   if (check_database_name (db_name))
     {
@@ -1522,48 +1596,118 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (class_name != NULL && class_name[0] != 0)
+  /* resolve the class names given on the command line: the -n class, taken as one name as before (an
+   * identifier may itself contain a comma, e.g. [a,b]), or the comma-separated classes to leave out of
+   * the histogram build. Both follow the -n rules (owner-qualified name, dba's system classes by their
+   * bare name) and an unknown name is an error, not a silent skip */
+  names = (class_name != NULL) ? class_name : skip_list;
+  if (names != NULL)
     {
-      const char *class_name_p = NULL;
-      const char *class_name_only = NULL;
-      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-
-      if (utility_check_class_name (class_name) != NO_ERROR)
+      n_max = 1;
+      for (const char *p = names; *p != '\0'; p++)
 	{
-	  db_shutdown ();
-	  goto error_exit;
+	  if (*p == ',')
+	    {
+	      n_max++;
+	    }
 	}
 
-      sm_qualifier_name (class_name, owner_name, DB_MAX_USER_LENGTH);
-      class_name_only = sm_remove_qualifier_name (class_name);
-      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+      names_buf = strdup (names);
+      class_mops = (DB_OBJECT **) malloc (sizeof (DB_OBJECT *) * n_max);
+      if (names_buf == NULL || class_mops == NULL)
 	{
-	  class_name_p = class_name_only;
-	}
-      else
-	{
-	  class_name_p = class_name;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (strlen (names) + 1 + sizeof (DB_OBJECT *) * n_max));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit_shutdown;
 	}
 
-      if ((class_mop = db_find_class (class_name_p)) == NULL
-	  || (db_is_class (class_mop) && sm_update_statistics (class_mop, STATS_WITH_SAMPLING) != NO_ERROR))
+      for (name = names_buf; name != NULL; name = next)
+	{
+	  const char *class_name_p = NULL;
+	  const char *class_name_only = NULL;
+	  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+	  char *comma = (skip_list != NULL) ? strchr (name, ',') : NULL;
+
+	  next = NULL;
+	  if (comma != NULL)
+	    {
+	      *comma = '\0';
+	      next = comma + 1;
+	    }
+	  if (name[0] == '\0')
+	    {
+	      /* "a,,b" or a trailing comma */
+	      db_shutdown ();
+	      goto print_optimize_usage;
+	    }
+
+	  if (utility_check_class_name (name) != NO_ERROR)
+	    {
+	      goto error_exit_shutdown;
+	    }
+
+	  sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH);
+	  class_name_only = sm_remove_qualifier_name (name);
+	  if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	    {
+	      class_name_p = class_name_only;
+	    }
+	  else
+	    {
+	      class_name_p = name;
+	    }
+
+	  assert (n_classes < n_max);
+	  class_mops[n_classes] = db_find_class (class_name_p);
+	  if (class_mops[n_classes] == NULL)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit_shutdown;
+	    }
+	  if (skip_list != NULL && !db_is_class (class_mops[n_classes]))
+	    {
+	      /* a view (or any non-class) has no histogram to leave out; -n keeps its old lenient behaviour */
+	      PRINT_AND_LOG_ERR_MSG ("%s: not a class\n", name);
+	      goto error_exit_shutdown;
+	    }
+	  /* the same class listed twice counts once, or the not-top-level warning would over-report */
+	  for (i = 0; i < n_classes; i++)
+	    {
+	      if (OID_EQ (WS_OID (class_mops[i]), WS_OID (class_mops[n_classes])))
+		{
+		  break;
+		}
+	    }
+	  if (i == n_classes)
+	    {
+	      n_classes++;
+	    }
+	}
+    }
+
+  if (class_name != NULL)
+    {
+      /* one class: same order as UPDATE STATISTICS ON <class> [WITH NO HISTOGRAM] */
+      if (db_is_class (class_mops[0]) && optimizedb_update_class_statistics (class_mops[0], no_histogram) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
+	  goto error_exit_shutdown;
 	}
     }
   else
     {
-      if (sm_update_all_statistics (STATS_WITH_SAMPLING, 0, 0) != NO_ERROR)
+      /* all classes: class statistics for every class, histograms for all but the excluded ones */
+      if (sm_update_all_statistics (STATS_WITH_SAMPLING, 0, no_histogram, class_mops, n_classes) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
+	  goto error_exit_shutdown;
 	}
     }
   db_commit_transaction ();
   db_shutdown ();
+  free_and_init (names_buf);
+  free_and_init (class_mops);
 
   return EXIT_SUCCESS;
 
@@ -1571,8 +1715,14 @@ print_optimize_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_OPTIMIZEDB, OPTIMIZEDB_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+  goto error_exit;
+
+error_exit_shutdown:
+  db_shutdown ();
 
 error_exit:
+  free_and_init (names_buf);
+  free_and_init (class_mops);
   return EXIT_FAILURE;
 }
 

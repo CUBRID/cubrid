@@ -20,7 +20,7 @@ public class SysParam implements UnPackableObject, PackableObject {
     public static final int INTL_COLLATION = 206;
     public static final int TIMEZONE = 249;
     public static final int ORACLE_COMPAT_NUMBER_BEHAVIOR = 334;
-    public static final int STORED_PROCEDURE_DUMP_ICODE = 354;
+    public static final int STORED_PROCEDURE_DUMP_ICODE = 353;
 
     // PL session specific parameters
     public static final int PL_SESSION_PARAM_START = 100000;

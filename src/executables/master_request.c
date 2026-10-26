@@ -38,6 +38,7 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <ifaddrs.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #endif /* ! WINDOWS */
@@ -2023,15 +2024,64 @@ css_master_request_is_local (SOCKET fd)
 	struct sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
 	return (ntohl (addr_in->sin_addr.s_addr) == INADDR_LOOPBACK);
       }
-    case AF_INET6:
-      {
-	struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) &addr;
-	return (IN6_IS_ADDR_LOOPBACK (&addr_in6->sin6_addr) != 0);
-      }
     default:
       return false;
     }
 }
+
+#if !defined(WINDOWS)
+/*
+ * css_peer_is_local_host () - is the request peer the same host as the master?
+ *   return: true for a unix-domain-socket peer, a loopback TCP peer, or a TCP
+ *           peer whose address is one of this host's own interface addresses.
+ *   fd(in): the accepted connection socket
+ *
+ * Note: unlike css_master_request_is_local () (loopback/unix only, used for the
+ *   admin commands commdb issues over localhost), a co-located cub_server
+ *   registers with cub_master by connecting to the resolved local host name
+ *   (master::connector::connect_to_master () -> GETHOSTNAME ()), so its source
+ *   address may be a non-loopback interface address of this same host. This
+ *   accepts those while still rejecting a genuinely remote peer. The master
+ *   only listens on AF_INET and AF_UNIX sockets, so there is no IPv6 peer.
+ */
+bool
+css_peer_is_local_host (SOCKET fd)
+{
+  struct sockaddr_storage peer;
+  socklen_t peer_len = sizeof (peer);
+  struct in_addr peer_addr;
+  struct ifaddrs *ifaddr, *ifa;
+  bool is_local = false;
+
+  /* a unix-domain or loopback peer */
+  if (css_master_request_is_local (fd))
+    {
+      return true;
+    }
+
+  /* otherwise accept only an IPv4 peer whose address is one of this host's own */
+  if (getpeername (fd, (struct sockaddr *) &peer, &peer_len) < 0 || peer.ss_family != AF_INET)
+    {
+      return false;
+    }
+  peer_addr = ((struct sockaddr_in *) &peer)->sin_addr;
+
+  if (getifaddrs (&ifaddr) != 0)
+    {
+      return false;
+    }
+  for (ifa = ifaddr; ifa != NULL && !is_local; ifa = ifa->ifa_next)
+    {
+      if (ifa->ifa_addr != NULL && ifa->ifa_addr->sa_family == AF_INET
+	  && ((struct sockaddr_in *) ifa->ifa_addr)->sin_addr.s_addr == peer_addr.s_addr)
+	{
+	  is_local = true;
+	}
+    }
+  freeifaddrs (ifaddr);
+  return is_local;
+}
+#endif /* ! WINDOWS */
 
 /*
  * css_process_info_request() - information server main loop

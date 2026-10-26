@@ -416,7 +416,10 @@ optimizedb: Optimize a database.\n\
 usage: %1$s optimizedb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n
+  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n\
+      --no-histogram           update the class statistics only; histograms are neither built nor dropped\n\
+      --no-histogram-classes=NAME[,NAME...]\n\
+                               do not build histograms for the NAME classes; every other class is updated as usual\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
@@ -571,7 +574,6 @@ valid options:\n\
   -C, --CS-mode               client-server mode execution\n\
       --datafile-per-class    create a object file for each class; default: disabled\n\
       --split-schema-files    Split schema information by object and generate each file; Default: generate one schema file with all objects\n\
-      --skip-index-detail     Do not print the specified WITH clause options when creating the index; default: disabled\n\
       --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 
@@ -920,12 +922,14 @@ valid options:\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file '%1$s'\n
+16 ERROR: --drop-clone and --drop cannot be used together.\n
 59 plandump cannot run as standalone mode.\n
 60 \
 plandump: Display or control cached query plans.\n\
 usage: %1$s plandump [OPTION] database-name\n\
 \n\
 valid options:\n\
+  -c, --drop-clone             drop XASL clones of the cached plans, keeping the plans; with -s, of the sha1 plan only\n\
   -d, --drop                   drop all plans in the server's cache\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
   -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n

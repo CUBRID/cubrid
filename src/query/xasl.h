@@ -440,6 +440,9 @@ struct insert_proc_node
   REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
+  char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -548,9 +551,12 @@ struct cte_proc_node
 #define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
+#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
+/* driven per outer row instead of by the scan block iterator: a NL semi/anti inner and every scan proc after it */
+#define XASL_IS_PER_OUTER_ROW(x)    (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN | XASL_NL_FOLLOWING_JOIN)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -628,8 +634,7 @@ struct cte_proc_node
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
 #define	PCOL_ISLEAF_TUPLE_OFFSET	2
 #define	PCOL_LEVEL_TUPLE_OFFSET		3
-#define	PCOL_INDEX_STRING_TUPLE_OFFSET	4
-#define	PCOL_PARENTPOS_TUPLE_OFFSET	5
+#define	PCOL_PARENTPOS_TUPLE_OFFSET	4
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
 /* XASL FILE IDENTIFICATION */
