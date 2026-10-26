@@ -264,6 +264,9 @@ struct groupby_state
   QFILE_TUPLE_RECORD input_tpl;
   QFILE_TUPLE_RECORD *output_tplrec;
   INT64 input_recs;
+  INT64 merged_recs;		/* the rows of the groups the hash merge wrote itself (qexec_gby_merge_write (),
+				 * qexec_gby_px_finish ()): not input_recs, whose 0 tells qexec_gby_put_next () that
+				 * the sort that may follow has not started a group yet */
 
   bool with_rollup;
   GROUPBY_DIMENSION *g_dim;	/* dimensions for Data Cube */
@@ -4502,6 +4505,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_lis
   gbstate->output_tplrec = NULL;
   gbstate->input_tpl = QFILE_TUPLE_RECORD_INITIALIZER;
   gbstate->input_recs = 0;
+  gbstate->merged_recs = 0;
 
   gbstate->g_hk_regu_list = g_hk_regu_list;
   gbstate->hash_eligible = hash_eligible;
@@ -6329,7 +6333,7 @@ qexec_gby_merge_write (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_G
       qdata_load_agg_hvalue_in_agg_list (value, gbstate->g_dim[0].d_agg_list, false);
       qexec_gby_agg_tuple (thread_p, gbstate, &value->first_tuple, PEEK);
       (void) qexec_gby_finalize_group_dim (thread_p, gbstate, NULL);
-      gbstate->input_recs += value->tuple_count + 1;
+      gbstate->merged_recs += value->tuple_count + 1;
     }
   qexec_gby_mtable_rewind (thread_p, t);
   /* SORT_PUT_STOP: the group count limit was reached, the caller stops */
@@ -7346,7 +7350,7 @@ qexec_gby_px_finish (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIS
 	  break;
 	}
       (void) qexec_gby_finalize_group_dim (thread_p, gbstate, NULL);
-      gbstate->input_recs += ctx->temp_part_value->tuple_count + 1;
+      gbstate->merged_recs += ctx->temp_part_value->tuple_count + 1;
     }
   if (sc == S_ERROR && rc == NO_ERROR)
     {
@@ -8346,7 +8350,8 @@ wrapup:
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP) ? NO_ERROR : ER_FAILED;
 
     /* check merge result */
-    if (result == NO_ERROR && XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
+    if (result == NO_ERROR && XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY)
+	&& list_id->tuple_cnt != gbstate.input_recs + gbstate.merged_recs)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;
@@ -8360,7 +8365,7 @@ wrapup:
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
-	xasl->groupby_stats.read_rows = gbstate.input_recs;
+	xasl->groupby_stats.read_rows = gbstate.input_recs + gbstate.merged_recs;
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {
