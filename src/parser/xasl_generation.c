@@ -648,7 +648,6 @@ static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * coveri
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
-static bool pt_cond_spans_multiple_specs (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * assign_list);
 static int pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser, PT_NODE * spec_assign,
@@ -659,9 +658,6 @@ static PT_NODE *pt_translate_dml_query_unbound (PARSER_CONTEXT * parser, PT_NODE
 static int pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * where_key_part,
 					QO_XASL_INDEX_INFO * index_pred, PRED_EXPR ** where_range,
 					REGU_VARIABLE_LIST * regu_attributes_range, HEAP_CACHE_ATTRINFO ** cache_range);
-static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
@@ -24805,72 +24801,154 @@ pt_reev_reads_no_spec (PT_NODE * spec_list)
 }
 
 /*
- * pt_cond_numbers_rows () - does a search condition count the rows it lets through?
- *   return: true when INST_NUM () or ROWNUM appears in it
+ * pt_reev_check_row_local () - can the force phase evaluate this node again from the row alone?
+ *   return: node
  *   parser(in): parser context
- *   cond(in): a list of AND-ed conditions, or NULL
+ *   node(in): a node of a condition or an assignment
+ *   arg(in/out): a bool, cleared at the first node that cannot
+ *   continue_walk(in/out): walk type
+ *
+ * Note: the node types let through are listed.  Everything else stops the walk: a subquery or a path expression,
+ *	 which reads rows other than the target's; an aggregate or analytic function and row numbering, which depend on
+ *	 the other rows; a serial value or a session variable assignment, which changes when evaluated again; a method
+ *	 or stored procedure call.
  */
-static bool
-pt_cond_numbers_rows (PARSER_CONTEXT * parser, PT_NODE * cond)
+static PT_NODE *
+pt_reev_check_row_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool inst_num = false;
+  bool *row_local = (bool *) arg;
 
-  if (cond != NULL)
+  switch (node->node_type)
     {
-      (void) parser_walk_tree (parser, cond, pt_check_instnum_pre, NULL, pt_check_instnum_post, &inst_num);
+    case PT_NAME:
+    case PT_VALUE:
+    case PT_HOST_VAR:
+    case PT_DATA_TYPE:
+      return node;
+
+    case PT_EXPR:
+      switch (node->info.expr.op)
+	{
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_NEXT_VALUE:
+	case PT_CURRENT_VALUE:
+	case PT_DEFINE_VARIABLE:
+	  break;
+	default:
+	  return node;
+	}
+      break;
+
+    case PT_FUNCTION:
+      if (!PT_IS_ANALYTIC_NODE (node) && !pt_is_aggregate_function (parser, node)
+	  && node->info.function.function_type != PT_GROUPBY_NUM)
+	{
+	  return node;
+	}
+      break;
+
+    default:
+      break;
     }
 
-  return inst_num;
+  *row_local = false;
+  *continue_walk = PT_STOP_WALK;
+  return node;
 }
 
 /*
- * pt_cond_spans_multiple_specs () - does any single conjunct reference more than one spec?
- *   return: true if some term relates two or more specs
+ * pt_upd_del_reevaluates_at_force () - may a DELETE or an UPDATE leave its rows unlocked at select?
+ *   return: true when the force phase can re-check every row the select phase picked against its latest version
  *   parser(in): parser context
- *   spec_list(in): the statement's spec list
- *   cond(in): a list of AND-ed conditions, or NULL
+ *   statement(in): the DELETE or the UPDATE
+ *   aptr_statement(in): the SELECT generated for it
+ *   has_partitioned(in): a class it changes is partitioned
+ *   has_lob(in): a class it deletes from has a BLOB or CLOB attribute
  *
- *  Note: reevaluation re-checks each spec against its own filters, which cannot carry another spec's row.
+ * Note: a statement qualifies only by the shape tested here: one plain class read by itself, every row it picks a row
+ *	 it acts on, and conditions and assignments the force phase can evaluate again from that row alone.  Reevaluation
+ *	 replays one spec's own range, key and data filters against one row, and this is the shape where they are the
+ *	 whole statement.  Any other statement locks its rows at select, as every DELETE and UPDATE did before.  Widen it
+ *	 only with a scenario that shows the force phase re-checks the new shape.
  */
 static bool
-pt_cond_spans_multiple_specs (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond)
+pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
+				 bool has_partitioned, bool has_lob)
 {
-  PT_NODE *term, *spec, *node, *real_refs, *saved_next;
-  int nspecs;
-  bool spans = false;
+  PT_NODE *spec, *select_spec, *where, *limit, *assignments = NULL;
+  bool row_local = true;
 
-  if (spec_list == NULL || cond == NULL)
+  if (statement->node_type == PT_DELETE)
+    {
+      spec = statement->info.delete_.spec;
+      where = statement->info.delete_.search_cond;
+      limit = statement->info.delete_.limit;
+
+      /* qexec_execute_delete () schedules the removal of a row's LOB files before the force phase re-checks it */
+      if (has_lob)
+	{
+	  return false;
+	}
+    }
+  else
+    {
+      assert (statement->node_type == PT_UPDATE);
+      spec = statement->info.update.spec;
+      where = statement->info.update.search_cond;
+      limit = statement->info.update.limit;
+      assignments = statement->info.update.assignment;
+
+      if (statement->info.update.order_by != NULL || statement->info.update.check_where != NULL
+	  || statement->info.update.do_class_attrs)
+	{
+	  return false;
+	}
+    }
+
+  /* one plain class, read by itself */
+  select_spec = aptr_statement->info.query.q.select.from;
+  if (has_partitioned || spec == NULL || spec->next != NULL || select_spec == NULL || select_spec->next != NULL
+      || aptr_statement->info.query.upd_del_class_cnt != 1)
+    {
+      return false;
+    }
+  if (spec->info.spec.derived_table != NULL || spec->info.spec.path_entities != NULL
+      || spec->info.spec.flat_entity_list == NULL || spec->info.spec.flat_entity_list->next != NULL
+      || select_spec->info.spec.derived_table != NULL || select_spec->info.spec.path_entities != NULL)
     {
       return false;
     }
 
-  for (term = cond; term != NULL && !spans; term = term->next)
+  /* every row it picks is a row it acts on: a row rejected at force is not replaced by another */
+  if (limit != NULL || aptr_statement->info.query.q.select.group_by != NULL)
     {
-      saved_next = term->next;
-      term->next = NULL;
-
-      nspecs = 0;
-      for (spec = spec_list; spec != NULL; spec = spec->next)
-	{
-	  real_refs = spec->info.spec.referenced_attrs;
-	  spec->info.spec.referenced_attrs = NULL;
-	  node = mq_get_references (parser, term, spec);
-	  spec->info.spec.referenced_attrs = real_refs;
-	  if (node != NULL)
-	    {
-	      parser_free_tree (parser, node);
-	      nspecs++;
-	    }
-	}
-
-      term->next = saved_next;
-      if (nspecs > 1)
-	{
-	  spans = true;
-	}
+      return false;
     }
 
-  return spans;
+  (void) parser_walk_tree (parser, where, pt_reev_check_row_local, &row_local, NULL, NULL);
+  if (row_local)
+    {
+      (void) parser_walk_tree (parser, aptr_statement->info.query.q.select.where, pt_reev_check_row_local, &row_local,
+			       NULL, NULL);
+    }
+  if (row_local)
+    {
+      (void) parser_walk_tree (parser, assignments, pt_reev_check_row_local, &row_local, NULL, NULL);
+    }
+  if (!row_local)
+    {
+      return false;
+    }
+
+  /* a condition that flags no spec leaves no row to re-check it against */
+  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (spec))
+    {
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -25532,117 +25610,6 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 }
 
 /*
- * pt_delete_must_abort_reevaluation () - can the delete phase re-check this statement's predicate?
- *   return: true when it cannot, so reevaluation is abandoned for the statement
- *   parser(in): context
- *   statement(in): delete parse tree
- *   aptr_statement(in/out): the SELECT generated for it; flagged for locking where one is needed
- *   from(in): the DELETE's own spec list
- *   where(in): the DELETE's search condition
- *   has_partitioned(in): a class being deleted from is partitioned
- *   has_lob(in): a class being deleted from has a BLOB or CLOB attribute
- *
- * Note: each test is a statement shape that reevaluation, one spec against its own filters, cannot re-check.
- */
-static bool
-pt_delete_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
-				   PT_NODE * from, PT_NODE * where, bool has_partitioned, bool has_lob)
-{
-  PT_NODE *cl_name_node = NULL;
-
-  /* the rows are already locked at select */
-  if (aptr_statement->info.query.q.select.group_by != NULL)
-    {
-      return true;
-    }
-
-  /* qexec_execute_delete () schedules the removal of a row's LOB files before the force phase asks whether the row
-   * still qualifies, so a row skipped there would stay and lose its files.
-   *   DELETE FROM lob_t WHERE v = 1; */
-  if (has_lob)
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* a partitioned class is never flagged, and a predicate under a subquery is not a scan filter.
-   *   DELETE FROM part_t WHERE pk = 1;
-   *   DELETE FROM t WHERE pk IN (SELECT k FROM side_t WHERE k = 1); */
-  if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* a row rejected at force is not replaced, so LIMIT or a user's ROWNUM would act on fewer rows than qualify.
-   *   DELETE FROM t WHERE pk > 0 LIMIT 1;
-   *   DELETE FROM t WHERE v = 1 AND ROWNUM <= 3; */
-  if (statement->info.delete_.limit != NULL || pt_cond_numbers_rows (parser, where)
-      || pt_cond_numbers_rows (parser, aptr_statement->info.query.q.select.where))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* a derived table has no heap to re-read.  Test for it, not the flag, which the rewrite that adds one drops.
-   *   DELETE FROM t WHERE t = :obj;
-   *   DELETE a FROM t a, (SELECT 1 AS k) x WHERE a.pk = x.k; */
-  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
-    {
-      if (cl_name_node->info.spec.derived_table != NULL)
-	{
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  return true;
-	}
-    }
-
-  /* a spec over a class and its subclasses reports OIDs no single spec carries, so
-   * qexec_upddel_mvcc_set_filters () cannot resolve them back to an access spec.
-   *   DELETE FROM ALL h_base WHERE v = 1; */
-  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
-    {
-      if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
-	{
-	  continue;
-	}
-      if (cl_name_node->info.spec.flat_entity_list != NULL && cl_name_node->info.spec.flat_entity_list->next != NULL)
-	{
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  return true;
-	}
-    }
-
-  /* no per-scan filter can carry the other spec's row.
-   *   DELETE a FROM t a, side_t b WHERE a.pk = b.k; */
-  if (pt_cond_spans_multiple_specs (parser, from, where))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* the delete phase re-checks one class at a time and skips a class on its own, so with two targets it could apply
-   * to one and not the other.
-   *   DELETE a, b FROM t a, side_t b WHERE a.pk = 1 AND b.k = 1; */
-  if (aptr_statement->info.query.upd_del_class_cnt > 1)
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* a condition that flags no spec has no row to re-check, and qexec_execute_delete () takes "no reevaluation class"
-   * to mean the statement reads no row of its own.  The flagging pass reads only the statement's WHERE, so the
-   * generated SELECT's is asked too.
-   *   DELETE FROM t WHERE ? = 1; */
-  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (from))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  return false;
-}
-
-/*
  * pt_to_delete_xasl () - Converts an delete parse tree to
  *                        an XASL graph for an delete
  *   return:
@@ -25811,10 +25778,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       abort_reevaluation =
-	pt_delete_must_abort_reevaluation (parser, statement, aptr_statement, from, where, has_partitioned, has_lob);
+	!pt_upd_del_reevaluates_at_force (parser, statement, aptr_statement, has_partitioned, has_lob);
 
       if (abort_reevaluation)
 	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+
 	  /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, delete and
 	   * select statements) */
 	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
@@ -25832,8 +25801,6 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* In case of locking at select stage add flag used at SELECT ... FOR UPDATE clause to each spec from which rows
        * will be deleted. This will ensure that rows will be locked at SELECT stage. */
-      /* a statement that gives up reevaluation locks its rows at select */
-      assert (!abort_reevaluation || PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED));
       if (PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
 	{
 	  pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_DELETE,
@@ -26200,105 +26167,6 @@ error_return:
   return xasl;
 }
 
-/*
- * pt_has_reev_in_subquery_pre - increments subquery level and check for
- *				 reevaluation spec in subquery
- *  returns: unmodified tree
- *  parser(in): parser context
- *  tree(in): tree that can be a subquery
- *  arg(in/out): a pointer to an integer which represents the subquery level
- *  continue_walk(in/out): walk type
- *
- *  Note: used by pt_has_reev_in_subquery
- */
-static PT_NODE *
-pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  int level = *(int *) arg;
-
-  if (level < 0)
-    {
-      return tree;
-    }
-
-  if (PT_IS_QUERY (tree))
-    {
-      level++;
-    }
-  else if (tree->node_type == PT_SPEC && level > 1)
-    {
-      /* Any spec below a subquery, flagged or not.  Reevaluation flags are only ever set on the
-       * statement's own spec list (pt_mvcc_flag_specs_cond_reev walks `from`), so a spec down here
-       * can never carry one -- testing for the flag would make this unreachable.
-       *
-       * Do not try to spare the uncorrelated ones.  It looks safe -- a subquery that does not read
-       * the current row is evaluated once and its result stands for the statement -- and it does
-       * open the constant-scalar-assignment case.  But x18, x22 and r5, all WHERE k IN (SELECT ...),
-       * fail with it: the materialized list lives in the select's scan state and the force phase
-       * cannot re-check the predicate against it.  Correlation is not the property that decides. */
-      level = -1;
-      *continue_walk = PT_STOP_WALK;
-    }
-
-  /* the walk carries the level through arg; without this the local copy is discarded on
-   * every node, level never leaves 0, and the level > 1 test above can never be reached */
-  *(int *) arg = level;
-
-  return tree;
-}
-
-/*
- * pt_has_reev_in_subquery_post - decrements subquery level
- *  returns: unmodified tree
- *  parser(in): parser context
- *  tree(in): tree that can be a subquery
- *  arg(in/out): a pointer to an integer which represents the subquery level
- *  continue_walk(in/out): walk type
- *
- *  Note: used by pt_has_reev_in_subquery
- */
-static PT_NODE *
-pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  int level = *(int *) arg;
-
-  if (level < 0)
-    {
-      return tree;
-    }
-
-  if (PT_IS_QUERY (tree))
-    {
-      level--;
-    }
-
-  *(int *) arg = level;
-
-  return tree;
-}
-
-/*
- * pt_has_reev_in_subquery () - Checks if the statement has a subquery with
- *				specs involved in reevaluation
- *   return:
- *   parser(in): context
- *   statement(in): statement to be checked
- */
-static bool
-pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  int level = 0;
-
-  (void) parser_walk_tree (parser, statement, pt_has_reev_in_subquery_pre, &level, pt_has_reev_in_subquery_post,
-			   &level);
-  if (level < 0)
-    {
-      return true;
-    }
-
-  return false;
-}
-
 static PT_NODE *
 pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -26361,102 +26229,6 @@ pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return;
-}
-
-/*
- * pt_update_must_abort_reevaluation () - can the update phase re-check this statement's predicate?
- *   return: true when it cannot, so reevaluation is abandoned for the statement
- *   parser(in): context
- *   statement(in): update parse tree
- *   aptr_statement(in/out): the SELECT generated for it; flagged for locking where one is needed
- *   from(in): the UPDATE's own spec list
- *   where(in): the UPDATE's search condition
- *   has_partitioned(in): a class being updated is partitioned
- *
- * Note: the tests of pt_delete_must_abort_reevaluation (), with the assignments counted as terms: an UPDATE
- *	 recomputes them, and an assignment reads rows as a predicate term does.
- */
-static bool
-pt_update_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
-				   PT_NODE * from, PT_NODE * where, bool has_partitioned)
-{
-  PT_NODE *cl_name_node = NULL;
-
-  /* pt_to_upd_del_query () locked the rows at select where it added the GROUP BY */
-  if (aptr_statement->info.query.q.select.group_by != NULL)
-    {
-      return true;
-    }
-
-  /*   UPDATE part_t SET v = 1 WHERE pk = 1;
-   *   UPDATE t SET v = 1 WHERE pk IN (SELECT k FROM side_t WHERE k = 1); */
-  if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /*   UPDATE t SET v = 1 WHERE pk > 0 LIMIT 1;
-   *   UPDATE t SET v = 2 WHERE v = 1 AND ROWNUM <= 3; */
-  if (statement->info.update.limit != NULL || pt_cond_numbers_rows (parser, where)
-      || pt_cond_numbers_rows (parser, aptr_statement->info.query.q.select.where))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* a derived table has no heap to re-read; see pt_delete_must_abort_reevaluation ().
-   *   UPDATE t SET v = 1 WHERE t = :obj;
-   *   UPDATE t a, (SELECT 1 AS k) x SET a.v = 1 WHERE a.pk = x.k; */
-  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
-    {
-      if (cl_name_node->info.spec.derived_table != NULL)
-	{
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  return true;
-	}
-    }
-
-  /*   UPDATE ALL h_base SET v = 2 WHERE v = 1; */
-  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
-    {
-      if (!(cl_name_node->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)))
-	{
-	  continue;
-	}
-      if (cl_name_node->info.spec.flat_entity_list != NULL && cl_name_node->info.spec.flat_entity_list->next != NULL)
-	{
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  return true;
-	}
-    }
-
-  /* the assignments count as terms.  Only a two-target join UPDATE gets here: one target took the GROUP BY above.
-   *   UPDATE t a, side_t b SET a.v = 1, b.v = 1 WHERE a.pk = b.k;
-   *   UPDATE t a, side_t b SET a.v = b.v, b.v = 1 WHERE a.pk = 1 AND b.k = 1; */
-  if (pt_cond_spans_multiple_specs (parser, from, where)
-      || pt_cond_spans_multiple_specs (parser, from, statement->info.update.assignment))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /*   UPDATE t a, side_t b SET a.v = 1, b.v = 1 WHERE a.pk = 1 AND b.k = 1; */
-  if (aptr_statement->info.query.upd_del_class_cnt > 1)
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  /* an assignment that reads a spec flags it and one that does not is a constant, so they need no test here.
-   *   UPDATE t SET v = 1 WHERE ? = 1; */
-  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (from))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
-  return false;
 }
 
 /*
@@ -26669,11 +26441,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
-  abort_reevaluation =
-    pt_update_must_abort_reevaluation (parser, statement, aptr_statement, from, where, has_partitioned);
+  abort_reevaluation = !pt_upd_del_reevaluates_at_force (parser, statement, aptr_statement, has_partitioned, false);
 
   if (abort_reevaluation)
     {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+
       /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, update and
        * select statements) */
       for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
@@ -26690,8 +26463,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   /* In case of locking at select stage add flag used at SELECT ... FOR UPDATE clause to each spec from which rows will
    * be updated. This will ensure that rows will be locked at SELECT stage. */
-  /* a statement that gives up reevaluation locks its rows at select */
-  assert (!abort_reevaluation || PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED));
   if (PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
       pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_UPDATE, PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
