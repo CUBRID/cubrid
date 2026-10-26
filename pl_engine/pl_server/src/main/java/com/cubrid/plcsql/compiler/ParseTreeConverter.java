@@ -1121,7 +1121,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     || fieldName.equals("CURRVAL")
                     || fieldName.equals("NEXTVAL")) {
 
-                connectionRequired = true;
+                setConnectionRequired(ctx);
 
                 String recordText = Misc.getNormalizedText(ctx.record);
                 // do not push a symbol table: no nested structure
@@ -1160,7 +1160,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 // This has an owner name and the target function is not the SP being defined
                 // Take this as a global function call.
-                connectionRequired = true;
+                setConnectionRequired(ctx);
 
                 String uniqName = owner + '.' + name;
                 ExprGlobalFuncCall ret =
@@ -1175,7 +1175,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
 
-            connectionRequired = true;
+            setConnectionRequired(ctx);
 
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
             addToSqlUses(ret);
@@ -1190,7 +1190,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             name + " must be used without parentheses");
                 }
 
-                connectionRequired = true;
+                setConnectionRequired(ctx);
                 ExprBuiltinFuncCall ret =
                         new ExprBuiltinFuncCall(ctx, name, args, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -1226,7 +1226,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_cast(Syntaxed_call_castContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         Expr arg = visitExpression(ctx.argument());
         TypeSpec tySpec = (TypeSpec) visitType_spec(ctx.type_spec());
@@ -1238,7 +1238,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_chr(Syntaxed_call_chrContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         Expr arg = visitExpression(ctx.argument());
         boolean isUtf8 = ctx.UTF8() != null;
@@ -1250,7 +1250,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_adddate(Syntaxed_call_adddateContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
@@ -1264,7 +1264,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_subdate(Syntaxed_call_subdateContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
@@ -1278,7 +1278,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_extract(Syntaxed_call_extractContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         String timeField = ctx.time_field().getText();
         Expr arg = visitExpression(ctx.argument());
@@ -1291,7 +1291,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_position(Syntaxed_call_positionContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         Expr sub = visitExpression(ctx.sub);
         Expr whole = visitExpression(ctx.whole);
@@ -1304,7 +1304,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_trim(Syntaxed_call_trimContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         String trimDir = ctx.trim_dir() == null ? null : ctx.trim_dir().getText();
         Expr trimStr = ctx.trim_str == null ? null : visitExpression(ctx.trim_str);
@@ -1593,7 +1593,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         }
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         TypeSpec recordTypeSpec = null;
         StaticSql staticSql = null;
@@ -1824,7 +1824,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // this is possibly a global function call
 
-            connectionRequired = true;
+            setConnectionRequired(ctx);
 
             Expr ret = null;
 
@@ -1893,7 +1893,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return new ExprId(ctx, name, scope, (DeclId) decl);
             } else if (decl instanceof DeclFunc) {
                 if (decl.scope.level == SymbolStack.LEVEL_PREDEFINED) {
-                    connectionRequired = true;
+                    setConnectionRequired(ctx);
                     ExprBuiltinFuncCall ret =
                             new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
                     addToSqlUses(ret);
@@ -1923,7 +1923,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             if (decl.scope.level == SymbolStack.LEVEL_PREDEFINED) {
-                connectionRequired = true;
+                setConnectionRequired(ctx);
                 ExprBuiltinFuncCall ret =
                         new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -2187,7 +2187,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         symbolStack.pushSymbolTable("for_cursor_loop", null);
 
@@ -2265,7 +2265,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
 
@@ -2470,7 +2470,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtStaticSql visitStatic_sql(Static_sqlContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
+
         SqlSemantics sws = getSqlSemanticsFromServer(ctx);
         assert sws != null;
         StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx);
@@ -2491,7 +2492,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitClose_statement(Close_statementContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
@@ -2509,7 +2510,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitOpen_statement(Open_statementContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
@@ -2552,7 +2553,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
@@ -2591,7 +2592,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtOpenFor visitOpen_for_statement(Open_for_statementContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         ExprId refCursor = visitNonFuncIdentifier(ctx.identifier()); // s040: undeclared id ...
         if (!refCursor.isAssignableTo()) {
@@ -2638,14 +2639,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
-        connectionRequired = true;
+        setConnectionRequired(ctx);
         setSqlDataAccess(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
         return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
-        connectionRequired = true;
+        setConnectionRequired(ctx);
         setSqlDataAccess(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
         return new StmtRollback(ctx);
     }
@@ -2675,7 +2676,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 // This has an owner name and the target procedure is not the SP being defined
                 // Take this as a global procedure call.
-                connectionRequired = true;
+                setConnectionRequired(ctx);
 
                 String uniqName = owner + '.' + name;
                 StmtGlobalProcCall ret =
@@ -2688,6 +2689,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (ctx.proc_call_name().DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
+
+            if (parallelEnabled) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx),
+                        "Stored functions declared with PARALLEL_ENABLE cannot use DBMS_OUTPUT package");
+            }
+
             // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
             // migration from Oracle.
             // NOTE: users cannot define a procedure of this name because of '$'
@@ -2697,7 +2705,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
 
-            connectionRequired = true;
+            setConnectionRequired(ctx);
 
             StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
             addToSqlUses(ret);
@@ -2734,7 +2742,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtExecImme visitExecute_immediate(Execute_immediateContext ctx) {
 
-        connectionRequired = true;
+        setConnectionRequired(ctx);
 
         Expr dynSql = visitExpression(ctx.dyn_sql().expression());
 
@@ -2981,6 +2989,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private int exHandlerDepth;
 
     private boolean connectionRequired = false;
+    private boolean parallelEnabled = false;
 
     private boolean controlFlowBlocked;
 
@@ -2990,6 +2999,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private int getSqlSerialNo() {
         return sqlSerialNo++;
+    }
+
+    private void setConnectionRequired(ParserRuleContext ctx) {
+        if (parallelEnabled) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx),
+                    "Stored functions declared with PARALLEL_ENABLE cannot use a feature that calls DB server");
+        }
+
+        connectionRequired = true;
     }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
@@ -3143,10 +3162,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
                             "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
                 }
-                if (ctx.authid_spec() != null) {
+                if (!ctx.authid_spec().isEmpty()) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
+                            Misc.getLineColumnOf(ctx.authid_spec().get(0)), // s084
                             "illegal keyword AUTHID for a local procedure/function");
+                }
+                if (!ctx.parallel_enable_spec().isEmpty()) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.parallel_enable_spec().get(0)), // s440
+                            "illegal keyword PARALLEL_ENABLE for a local procedure/function");
                 }
                 if (ctx.uniq_name().owner != null) {
                     throw new SemanticError(
@@ -3169,6 +3193,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
+
+                if (!ctx.parallel_enable_spec().isEmpty()) {
+                    parallelEnabled = true;
+                }
+            }
+
+            // The option list accepts the specifications in any order and any number, so reject
+            // repetitions here. Placed after the branch above on purpose: a local routine rejects
+            // AUTHID and PARALLEL_ENABLE outright there, and what is left for it to check is a
+            // repeated DETERMINISTIC.
+            if (ctx.authid_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.authid_spec().get(1)), // s441
+                        "AUTHID is specified more than once");
+            }
+            if (ctx.deterministic_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.deterministic_spec().get(1)), // s442
+                        "DETERMINISTIC is specified more than once");
+            }
+            if (ctx.parallel_enable_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.parallel_enable_spec().get(1)), // s443
+                        "PARALLEL_ENABLE is specified more than once");
             }
 
             // push a temporary symbol table, in order not to corrupt the current symbol table with
@@ -3180,11 +3228,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             int directive = 0;
             {
                 // authid
-                if (ctx.authid_spec() != null && ctx.authid_spec().authid_caller() != null) {
+                if (!ctx.authid_spec().isEmpty() && ctx.authid_spec(0).authid_caller() != null) {
                     directive |= DeclRoutine.DIRECTIVE_AUTHID_CALLER;
                 }
                 // deterministic or not
-                if (ctx.deterministic_spec() != null && ctx.deterministic_spec().NOT() == null) {
+                if (!ctx.deterministic_spec().isEmpty()
+                        && ctx.deterministic_spec(0).NOT() == null) {
                     directive |= DeclRoutine.DIRECTIVE_DETERMINISTIC;
                 }
             }
@@ -3281,20 +3330,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private String getColumnNameInSelectList(ColumnInfo ci) {
         String colName = ci.colName;
         assert colName != null;
-
-        int dotIdx = colName.lastIndexOf(".");
-        if (dotIdx > 0
-                && dotIdx < colName.length() - 1
-                && ci.className != null
-                && ci.className.length() > 0
-                && ci.attrName != null) {
-
-            String afterDot = colName.substring(dotIdx + 1);
-            if (afterDot.equalsIgnoreCase(ci.attrName)) {
-                // In this case, colName must be of the form <table name alias>.<attr name>
-                colName = ci.attrName;
-            }
-        }
 
         Matcher matcher = patternId.matcher(colName);
         return matcher.matches() ? colName : null;

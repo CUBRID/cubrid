@@ -46,6 +46,7 @@
 
 #include "error_manager.h"
 #include "db.h"
+#include "boot.h"		/* BOOT_CSQL_CLIENT_TYPE */
 #include "dbi.h"
 #include "dbtype.h"
 #include "parser.h"
@@ -65,7 +66,7 @@
 #include "server_interface.h"
 #include "transaction_cl.h"
 #include "object_print.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "jsp_cl.h"
 #include "optimizer.h"
 #include "memory_alloc.h"
@@ -1190,6 +1191,24 @@ update_auto_increment_error:
 }
 
 /*
+ * do_flush_serial_restart () - write a _db_serial row that restarts the serial
+ *   return: Error code
+ *   serial_object(in): the row, its current_val and started set by the restart
+ *
+ * Without the flag the server keeps the current_val and started on the page (serial_row_write_keep_value ()).
+ */
+static int
+do_flush_serial_restart (MOP serial_object)
+{
+  int error;
+
+  serial_object->serial_restart = 1;
+  error = locator_flush_instance (serial_object);
+  serial_object->serial_restart = 0;
+  return error;
+}
+
+/*
  * do_reset_auto_increment_serial() -
  *   return: Error code
  *   serial_obj(in/out):
@@ -1211,6 +1230,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
 
   db_make_null (&start_value);
   db_make_null (&started_flag);
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the reset value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
   if (error_code != NO_ERROR)
@@ -1250,15 +1274,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
   assert (edit_serial_object == serial_object);
   obj_tmpl = NULL;
 
-  error_code = locator_flush_instance (edit_serial_object);
+  error_code = do_flush_serial_restart (edit_serial_object);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial does not serve
-   * stale values after TRUNCATE-reset (do_alter_serial / do_drop_serial already decache). */
-  (void) serial_decache (ws_oid (serial_object));
 
   db_value_clear (&start_value);
   db_value_clear (&started_flag);
@@ -1316,6 +1336,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the rebase value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   db_make_null (&max_val);
   db_make_null (&new_val);
@@ -1424,15 +1449,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
   assert (edit_serial_object == serial_object);
   obj_tmpl = NULL;
 
-  error_code = locator_flush_instance (edit_serial_object);
+  error_code = do_flush_serial_restart (edit_serial_object);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial reflects the new
-   * base after ALTER ... AUTO_INCREMENT = n (matches do_alter_serial / do_drop_serial). */
-  (void) serial_decache (ws_oid (serial_object));
 
   goto normal_exit;
 
@@ -1576,8 +1597,11 @@ do_get_serial_cached_num (int *cached_num, MOP serial_obj)
 {
   DB_VALUE cached_num_val;
   int error;
+  int save;
 
+  AU_SAVE_AND_DISABLE (save);
   error = db_get (serial_obj, SERIAL_ATTR_CACHED_NUM, &cached_num_val);
+  AU_RESTORE (save);
   if (error != NO_ERROR)
     {
       return error;
@@ -2353,8 +2377,10 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 
   /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
    * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
-   * cached path. A column whose whole range holds fewer values than one block goes uncached: the
-   * parameter is a global default, so it cannot fail the DDL the way CREATE SERIAL ... CACHE n does. */
+   * cached path. A column whose whole range holds fewer values than one block goes uncached - the
+   * parameter is a default this column did not spell out, so it cannot fail the DDL the way
+   * CREATE SERIAL ... CACHE n does. It is a session parameter, and a serial keeps the size it was
+   * created with. */
   cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
   if (cached_num > 1)
     {
@@ -2472,6 +2498,10 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
    */
   assert (WS_ISDIRTY (serial_mop) == false);
 
+  /* as in do_alter_serial: decache before the refetch takes the write lock; under it the write-back would be
+   * skipped with HA, and the template's block end would overwrite it at commit */
+  (void) serial_decache ((OID *) (&serial_obj_id));
+
   ws_decache (serial_mop);
 
   /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */
@@ -2480,6 +2510,9 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     {
       goto end;
     }
+
+  AU_SAVE_AND_DISABLE (save);
+  au_disable_flag = true;
 
   /* get current value */
   error = db_get (serial_mop, SERIAL_ATTR_CURRENT_VAL, &current_val);
@@ -2536,9 +2569,6 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     }
 
   /* update serial object in _db_serial */
-  AU_SAVE_AND_DISABLE (save);
-  au_disable_flag = true;
-
   obj_tmpl = dbt_edit_object (serial_mop);
   if (obj_tmpl == NULL)
     {
@@ -2694,6 +2724,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
+
+  /* Drop the server-side cache before the refetch below takes the write lock, so the value this
+   * statement reads, checks its invariants against and writes back is the last one actually issued
+   * rather than the block end. At the end label instead, the template is already filled from the
+   * block end and its stale cur_val overwrites the write-back when the ALTER commits. */
+  (void) serial_decache (&serial_obj_id);
 
   ws_decache (serial_object);
 
@@ -3280,6 +3316,15 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* obj_tmpl has been released by dbt_finish_object */
   obj_tmpl = NULL;
+
+  if (cur_val_change)
+    {
+      error = do_flush_serial_restart (serial_object);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
 
 end:
   if (!OID_ISNULL (&serial_obj_id))
@@ -4835,7 +4880,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
 					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
 					statement->info.update_stats.random_seed,
-					statement->info.update_stats.no_histogram);
+					statement->info.update_stats.no_histogram, NULL, 0);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -5220,7 +5265,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
   switch (cst_item.item)
     {
     case CST_NOBJECTS:
-      db_make_int (db_val, class_statsp->heap_num_objects);
+      db_make_bigint (db_val, class_statsp->heap_num_objects);
       break;
     case CST_NPAGES:
       db_make_int (db_val, class_statsp->heap_num_pages);
@@ -5283,7 +5328,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	}
       else
 	{
-	  db_make_int (db_val, bt_statsp->keys);
+	  db_make_bigint (db_val, bt_statsp->keys);
 	}
       break;
     default:
@@ -7342,16 +7387,6 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = (void *) value;
 #endif
 
-  if (smclass != NULL && smclass->users != NULL && TM_TRAN_ISOLATION () < TRAN_REP_READ)
-    {
-      /* We have to flush the newly created trigger if the class it belongs to has subclasses. This is because the same
-       * trigger is assigned to the whole hierarchy and we have to make sure it does not remain a temporary object when
-       * it is first compiled. Since the class that this trigger belongs to might also be a temporary object, we
-       * actually have to flush the whole workspace. No need to flush in isolation levels >= repeatable read since
-       * already flushed in tr_create_trigger */
-      error = locator_all_flush ();
-    }
-
   return error;
 }
 
@@ -7873,6 +7908,7 @@ static int update_check_for_constraints (PARSER_CONTEXT * parser, int *has_uniqu
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment);
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
+static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -9947,6 +9983,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err = do_append_bind_variant_key (parser, contextp, statement);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -9971,6 +10012,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   *  build UPDATE_PROC XASL
 	   */
 
+	  /* the plan about to be looked up or compiled says again whether the statement is a target */
+	  statement->flag.bind_watch_candidate = 0;
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
@@ -9999,6 +10042,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * driver-neutral recording as do_prepare_select ()) */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (err == NO_ERROR && stream.xasl_id != NULL && (xasl_header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  /* the cached plan passed target selection for bind-value plan variants */
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -10017,6 +10065,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  /* freshly compiled with unbound host-variable markers */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  statement->flag.bind_watch_candidate = 1;
 		}
 	      AU_RESTORE (au_save);
 
@@ -11329,6 +11381,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err = do_append_bind_variant_key (parser, contextp, statement);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -11345,6 +11402,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	      break;
 	    }
 
+	  /* the plan about to be looked up or compiled says again whether the statement is a target */
+	  statement->flag.bind_watch_candidate = 0;
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
@@ -11372,6 +11431,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		   * driver-neutral recording as do_prepare_select ()) */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (err == NO_ERROR && stream.xasl_id != NULL && (xasl_header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  /* the cached plan passed target selection for bind-value plan variants */
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -11389,6 +11453,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  /* freshly compiled with unbound host-variable markers */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  statement->flag.bind_watch_candidate = 1;
 		}
 	      AU_RESTORE (au_save);
 
@@ -14678,19 +14746,23 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* for dblink: no need to check xasl_id is NULL */
-  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
+  if (statement->xasl_id == NULL)
     {
-      if (statement->xasl_id == NULL)
+      /* Nothing to execute for a remote target, e.g. false where or not prepared correctly -- the same as
+       * do_execute_delete (). The do_insert () fallback below is for local targets only. */
+      if (statement->info.insert.spec->info.spec.remote_server_name != NULL)
 	{
-	  /* check if it is not necessary to execute this statement */
-	  if (qo_need_skip_execution ())
-	    {
-	      statement->etc = NULL;
-	      return NO_ERROR;
-	    }
-	  return do_insert (parser, statement);
+	  statement->etc = NULL;
+	  return NO_ERROR;
 	}
+
+      /* check if it is not necessary to execute this statement */
+      if (qo_need_skip_execution ())
+	{
+	  statement->etc = NULL;
+	  return NO_ERROR;
+	}
+      return do_insert (parser, statement);
     }
 
   query_flag = DEFAULT_EXEC_MODE;
@@ -15229,6 +15301,51 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * do_append_bind_variant_key () - name a bind-value plan variant: its key goes after the hash text
+ *   of the statement, so the variant is a cache entry of its own (bind_variant.h)
+ * return : error code
+ */
+static int
+do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
+{
+  const char *key = NULL;
+  size_t text_len, key_len;
+  char *variant_text;
+
+  if (PT_IS_QUERY (statement))
+    {
+      key = statement->info.query.bind_variant_key;
+    }
+  else if (statement->node_type == PT_UPDATE)
+    {
+      key = statement->info.update.bind_variant_key;
+    }
+  else if (statement->node_type == PT_DELETE)
+    {
+      key = statement->info.delete_.bind_variant_key;
+    }
+  if (key == NULL || contextp->sql_hash_text == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  text_len = strlen (contextp->sql_hash_text);
+  key_len = strlen (key);
+  variant_text = (char *) parser_alloc (parser, (int) (text_len + key_len + 1));
+  if (variant_text == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  memcpy (variant_text, contextp->sql_hash_text, text_len);
+  memcpy (variant_text + text_len, key, key_len + 1);
+  contextp->sql_hash_text = variant_text;
+  return NO_ERROR;
+}
+
+/*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
  *   return: Error code
@@ -15289,6 +15406,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
+  err = do_append_bind_variant_key (parser, contextp, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
   err =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 		 &contextp->sha1);
@@ -15304,6 +15426,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
+  /* the plan about to be looked up or compiled says again whether the statement is a target */
+  statement->flag.bind_watch_candidate = 0;
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
@@ -15351,6 +15475,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
 	      statement->flag.hv_pred_plan_unpeeked = 1;
 	    }
+	  if (stream.xasl_header->xasl_flag & BIND_WATCH_CANDIDATE)
+	    {
+	      /* the cached plan passed target selection for bind-value plan variants; record it so
+	       * the driver-neutral path chooses among the variants too */
+	      statement->flag.bind_watch_candidate = 1;
+	    }
 	}
     }
 
@@ -15372,6 +15502,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
 	  statement->flag.hv_pred_plan_unpeeked = 1;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+	{
+	  statement->flag.bind_watch_candidate = 1;
 	}
       AU_RESTORE (au_save);
 
@@ -15514,7 +15648,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      /* this scope operates on context, so alloc through it rather than parser.
+       * blocks added to context's string_blocks move to parser's own list
+       * after do_prepare_select, for parser_free_parser() to free later. */
+      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
@@ -15566,6 +15703,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   save_flag = stmt->info.query.is_subquery;
 
   err = do_prepare_select (&context, stmt);
+
+  /* move blocks context added into parser's own list to avoid leaking them. */
+  parser->string_blocks = context.string_blocks;
 
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
@@ -15626,11 +15766,11 @@ int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
   int i, q, err = NO_ERROR;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
 
   for (q = 0; q < num_query; q++)
     {
+      QUERY_ID query_id = NULL_QUERY_ID;
+      QFILE_LIST_ID *list_id = NULL;
       DB_VALUE *host_variables = NULL;
 
       if (info[q].host_var_count > 0)
@@ -15664,6 +15804,16 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	  free (host_variables);
 	}
 
+      if (list_id != NULL)
+	{
+	  cursor_free_self_list_id (list_id);
+	}
+
+      if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+	{
+	  qmgr_end_query (query_id);
+	}
+
       if (err != NO_ERROR)
 	{
 	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
@@ -15690,7 +15840,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 int
 do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  QUERY_ID query_id;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
@@ -15725,6 +15875,19 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  db_value_clear (&host_variables[i]);
 	}
       free (host_variables);
+    }
+
+  /* server already cached the result (RESULT_CACHE_REQUIRED); this only triggers that, does not read rows back. */
+  if (list_id != NULL)
+    {
+      cursor_free_self_list_id (list_id);
+    }
+
+  /* only unpins this query from the cache entry; the entry is not cleared and stays for reuse.
+   * skipping this leaks a query entry per call, exhausting max_query_per_tran and raising ER_QM_QENTRY_RUNOUT. */
+  if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+    {
+      qmgr_end_query (query_id);
     }
 
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
@@ -18346,7 +18509,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  server_op = (server_insert && server_update);
+  if (statement->info.merge.into->info.spec.remote_server_name)
+    {
+      /* A remote MERGE is sent to the remote server as one statement, so either WHEN clause
+       * alone is complete. With AND it would take the client path, which needs a local class
+       * (class_obj and flat are NULL here). */
+      server_op = (server_insert || server_update);
+    }
+  else
+    {
+      server_op = (server_insert && server_update);
+    }
 
   if (server_op)
     {
@@ -20642,10 +20815,14 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /*
  * do_set_query_trace() - Set query trace
- *   return: NO_ERROR
+ *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set statement
  *
+ * Note: The values go through db_set_system_parameters() rather than prm_set_*_value(),
+ *   because only the former also stores them in the server session state. A value set by
+ *   prm_set_*_value() lives in this client process alone, so it is lost once CAS restarts and
+ *   the driver reconnects with the same session id. SET NAMES and SET TIMEZONE do the same.
  */
 int
 do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -20653,25 +20830,25 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if defined(SA_MODE)
   return NO_ERROR;
 #else
+#define MAX_LEN  50
+  int error = NO_ERROR;
+  char sys_prm_chg[MAX_LEN];
+
   if (statement->info.trace.on_off == PT_TRACE_ON)
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+      const char *trace_format = (statement->info.trace.format == PT_TRACE_FORMAT_JSON) ? "json" : "text";
 
-      if (statement->info.trace.format == PT_TRACE_FORMAT_TEXT)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
-	}
-      else if (statement->info.trace.format == PT_TRACE_FORMAT_JSON)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
-	}
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=y; query_trace_format=%s", trace_format);
     }
   else
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=n");
     }
 
-  return NO_ERROR;
+  error = db_set_system_parameters (sys_prm_chg);
+
+#undef MAX_LEN
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 #endif /* SA_MODE */
 }
 
@@ -21273,6 +21450,15 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
     {
       *query_flag |= XASL_TRACE_JSON;
     }
+  /* a csql session that dumps its plans in detail (;plan detail sets the level's 0x200 bit) gets the compiled
+   * expression programs in its trace as well: the server cannot see the client's optimization level otherwise.
+   * Only csql: a CAS raises the level itself to log a query plan (cas_optimization.c, CCI_EXEC_QUERY_INFO), which
+   * must not switch the section on under a JDBC/CCI client (CTP's traced test answers, 2026-10-13). */
+  if (BOOT_CSQL_CLIENT_TYPE (db_get_client_type ())
+      && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
+    {
+      *query_flag |= XASL_TRACE_PLAN_DETAIL;
+    }
 }
 
 /*
@@ -21323,16 +21509,16 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
     }
   else if (format == QUERY_TRACE_JSON)
     {
-      json_t *jplan;
+      trace_json_t *jplan;
 
       if (parser->num_plan_trace > 1)
 	{
-	  jplan = json_array ();
+	  jplan = trace_json_array ();
 
 	  for (i = 0; i < parser->num_plan_trace; i++)
 	    {
 	      assert (parser->plan_trace[i].format == format);
-	      json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
+	      trace_json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
 	      parser->plan_trace[i].trace.json_plan = NULL;
 	    }
 	}
@@ -21342,10 +21528,9 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 	  parser->plan_trace[0].trace.json_plan = NULL;
 	}
 
-      plan_str = json_dumps (jplan, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      plan_str = trace_json_dumps (jplan);
 
-      json_object_clear (jplan);
-      json_decref (jplan);
+      trace_json_decref (jplan);
     }
 
   parser->num_plan_trace = 0;
@@ -22613,7 +22798,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 	    {
 	      goto err;
 	    }
-	  /* check if user is creator or DBA  */
+	  /* check if user is the owner, a member of the owning group, or a DBA */
 	  if (au_is_server_authorized_user (&values[1]))
 	    {
 	      rec_cnt++;
@@ -22633,7 +22818,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
       if (rec_cnt == 0)
 	{
-	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	  /* Treat "exists but not authorized" as missing - a distinct error would tell the caller that
+	   * this name is taken in another user's schema. The duplicate-name checks read a miss as "this
+	   * name is free", which holds because pt_check_server_owners () has authorized the caller for
+	   * the owner they look up. Query name resolution is what still arrives here unauthorized. */
+	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
 

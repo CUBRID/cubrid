@@ -164,12 +164,10 @@ fn_cgw_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   if (cgw_is_database_connected () < 0)
     {
-      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: cgw_is_database_connected()");
       return FN_CLOSE_CONN;
     }
   else if (restart_is_needed () || as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed() || reset_flag");
       return FN_KEEP_SESS;
     }
   return FN_KEEP_CONN;
@@ -458,8 +456,6 @@ fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
 	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
 	}
     }
-  cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
-		 forward_only_cursor ? "forward_only_cursor " : "");
 
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {

@@ -32,6 +32,7 @@
 #include "work_space.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
+#include "schema_manager.h"
 #include "authenticate.h"
 
 #define CT_DUAL_DUMMY   "dummy"
@@ -393,6 +394,43 @@ end:
   return error_code;
 }
 
+int
+catcls_rebuild_vclasses (void)
+{
+  int error_code = NO_ERROR;
+  int save;
+
+  using catalog_builder = cubschema::system_catalog_builder;
+
+  catcls_init ();
+  AU_SAVE_AND_DISABLE (save);
+
+  for (size_t i = 0; i < vclist.size () && error_code == NO_ERROR; i++)
+    {
+      /* the existing object, so build_vclass () redefines it in place and the OID survives */
+      MOP class_mop = db_find_class (vclist[i].name.c_str ());
+      if (class_mop == nullptr)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  break;
+	}
+
+      error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
+      if (error_code == NO_ERROR)
+	{
+	  /* a vclass holds no instance, so nothing needs the superseded representation */
+	  error_code = sm_destroy_representations (class_mop);
+	}
+    }
+
+  AU_RESTORE (save);
+
+  clist.clear ();
+  vclist.clear ();
+
+  return error_code;
+}
+
 namespace cubschema
 {
   /* ========================================================================== */
@@ -698,7 +736,7 @@ namespace cubschema
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
       {"status", "integer"},
-      {"referential_index", CT_INDEX_NAME},
+      {"referential_class", "object"},
       {"delete_rule", "integer"},
       {"update_rule", "integer"},
       {"referential_match_option", "integer"},
@@ -812,7 +850,9 @@ namespace cubschema
       {TR_ATT_UPDATED_TIME, "datetime"}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {TR_ATT_UNIQUE_NAME, nullptr}, false},
+    },
 // authorization
     {
       // owner, grants
@@ -1844,7 +1884,6 @@ namespace cubschema
       {"update_rule", format_varchar (32)},
       {"referential_match_option", format_varchar (7)},
       {"index_type", format_varchar (32)},
-      {"deduplicate_key_level", "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -2034,6 +2073,7 @@ namespace cubschema
       {"lang", format_varchar (16)},
       {"authid", format_varchar (16)},
       {"is_deterministic", format_varchar (3)},
+      {"is_parallel_enabled", format_varchar (3)},
       {"target", format_varchar (4096)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"code", format_varchar (1073741823)},
@@ -2242,7 +2282,6 @@ namespace cubschema
       {"groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
       /* kept for compatibility; always NULL in view */
       {"authorization", AU_AUTH_CLASS_NAME},
-      {"triggers", format_sequence ("object")},
       {"is_loginable", format_varchar (3)},
       {"is_system_created", format_varchar (3)},
       {"comment", format_varchar (1024)},
@@ -2410,16 +2449,19 @@ namespace cubschema
   system_catalog_definition
   system_catalog_initializer::get_view_db_histogram ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_HISTOGRAM_NAME,
 		   // columns
     {
-      {"class_name", "object"},
-      {"key_attr", format_varchar (255)},
-      {"with_fullscan", format_varchar (32)},
-      {"null_frequency", "double"},
+      /* the view domain overrides the query spec result type, so class_name must be declared as a string
+       * (it was "object") and null_frequency must match the NUMERIC (18, 12) the spec casts to (CBRD-27043) */
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"class_name", format_varchar (255)},
+      {"attr_name", format_varchar (255)},
+      {"scan_type", format_varchar (32)},
+      {"null_frequency", format_numeric (18, 12)},
+      // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_histogram_spec ()}
     },
 // constraint

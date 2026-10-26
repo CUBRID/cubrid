@@ -69,7 +69,7 @@ namespace lockfree
 
       reclaim_retired_list ();
 
-      node.m_retire_tranid = m_tranid;
+      node.m_retire_tranid = m_tranid.load (std::memory_order_relaxed);
       node.m_retired_next = NULL;
       // add to tail to keep delete ids ordered
       if (m_retired_tail == NULL)
@@ -95,7 +95,9 @@ namespace lockfree
     {
       if (!is_tran_started ())
 	{
-	  m_tranid = m_table->get_current_global_tranid ();
+	  /* seq_cst: the id has to be visible before whatever the pin protects is read, or a concurrent
+	   * reclaim scans past a reader that has already started. Old lf_tran spelled this _with_mb (). */
+	  m_tranid.store (m_table->get_current_global_tranid (), std::memory_order_seq_cst);
 	}
     }
 
@@ -104,35 +106,48 @@ namespace lockfree
     {
       if (!m_did_incr)
 	{
-	  m_tranid = m_table->get_new_global_tranid ();
+	  m_tranid.store (m_table->get_new_global_tranid (), std::memory_order_relaxed);
 	}
-      assert (m_tranid != INVALID_TRANID);
+      assert (m_tranid.load (std::memory_order_relaxed) != INVALID_TRANID);
     }
 
     bool
     descriptor::is_tran_started () const
     {
-      return m_tranid != INVALID_TRANID;
+      return m_tranid.load (std::memory_order_relaxed) != INVALID_TRANID;
     }
 
     void
     descriptor::end_tran ()
     {
       assert (is_tran_started ());
-      m_tranid = INVALID_TRANID;
+      /* release: reads this transaction protected must not sink past the id being cleared. */
+      m_tranid.store (INVALID_TRANID, std::memory_order_release);
       m_did_incr = false;
     }
 
     id
     descriptor::get_transaction_id () const
     {
-      return m_tranid;
+      /* seq_cst, pairing with start_tran (): a reader missing from this scan is one that had not started,
+       * not one whose store is still in flight. A seq_cst load is a plain move on x86. */
+      return m_tranid.load (std::memory_order_seq_cst);
     }
 
     void
     descriptor::reclaim_retired_list ()
     {
       id min_tran_id = m_table->get_min_active_tranid ();
+
+      // The cache behind get_min_active_tranid () refreshes once every MATI_REFRESH_INTERVAL global ids,
+      // and INVALID_TRANID - the largest id there is - authorizes reclaiming the whole list. A stale copy
+      // of that sentinel frees nodes a reader pinned since the refresh, so recompute before trusting it.
+      // A finite minimum needs no such care: ids only grow, so it already sits below every later reader.
+      if (min_tran_id == INVALID_TRANID)
+	{
+	  min_tran_id = m_table->refresh_min_active_tranid ();
+	}
+
       if (min_tran_id <= m_last_reclaim_minid)
 	{
 	  // nothing changed
@@ -147,7 +162,13 @@ namespace lockfree
 	  m_retired_tail = NULL;
 	}
 
-      m_last_reclaim_minid = min_tran_id;
+      // Do not record the sentinel: storing the largest id there is would make the early return above
+      // true forever and this descriptor would never reclaim again. Everything reclaimable was already
+      // reclaimed; only the high-water mark is left finite so later passes keep making progress.
+      if (min_tran_id != INVALID_TRANID)
+	{
+	  m_last_reclaim_minid = min_tran_id;
+	}
     }
 
     void

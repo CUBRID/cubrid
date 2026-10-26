@@ -230,6 +230,96 @@ qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * qo_check_nullable_op () - classifies whether an expression's operator can
+ *   be TRUE even when one of its operands is NULL, so it must never be
+ *   treated as proof that a key column is not NULL.
+ *   return: true if the operator is nullable-unsafe for 'node' as given
+ *   node(in): the expression node to classify
+ *
+ * Note: shared by qo_check_nullable_expr (), qo_check_nullable_expr_with_spec () and
+ *	 pt_where_rejects_column_null (), so the callers can never end up checking a different operator list.
+ */
+bool
+qo_check_nullable_op (PT_NODE * node)
+{
+  if (node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_IS_NULL:
+    case PT_CASE:
+    case PT_COALESCE:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_DECODE:
+    case PT_IF:
+    case PT_IFNULL:
+    case PT_ISNULL:
+    case PT_CONCAT_WS:
+    case PT_NULLSAFE_EQ:
+      /* NEED FUTURE OPTIMIZATION */
+      return true;
+
+    case PT_NOT:
+      /* NOT EXISTS may be true for NULL operands. */
+      return (node->info.expr.arg1 != NULL && node->info.expr.arg1->node_type == PT_EXPR
+	      && node->info.expr.arg1->info.expr.op == PT_EXISTS);
+
+    case PT_IS_NOT:
+      /* IS NOT TRUE/FALSE/UNKNOWN is true whenever the operand is UNKNOWN, which a NULL
+       * operand always is. */
+      return true;
+
+    case PT_IS:
+      /* IS UNKNOWN is true for a NULL operand; IS TRUE / IS FALSE are not. */
+      return (node->info.expr.arg2 != NULL && node->info.expr.arg2->node_type == PT_VALUE
+	      && node->info.expr.arg2->type_enum == PT_TYPE_NULL);
+
+    case PT_EQ_ALL:
+    case PT_NE_ALL:
+    case PT_GE_ALL:
+    case PT_GT_ALL:
+    case PT_LT_ALL:
+    case PT_LE_ALL:
+    case PT_IS_NOT_IN:
+      {
+	PT_NODE *arg2 = node->info.expr.arg2;
+
+	if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+	  {
+	    /* Strip a CAST wrapper so the underlying literal collection can be
+	     * checked below. */
+	    arg2 = arg2->info.expr.arg1;
+	  }
+
+	if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
+	  {
+	    return arg2->info.value.data_value.set == NULL;
+	  }
+
+	if (arg2 != NULL && arg2->node_type == PT_FUNCTION
+	    && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
+		|| arg2->info.function.function_type == F_SEQUENCE))
+	  {
+	    /*
+	     * ENUM comparison type checking may represent a literal collection as a
+	     * PT_FUNCTION.
+	     */
+	    return arg2->info.function.arg_list == NULL;
+	  }
+
+	return true;
+      }
+
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_check_nullable_expr () -
  *   return:
  *   parser(in):
@@ -242,28 +332,10 @@ qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   int *nullable_cntp = (int *) arg;
 
-  if (node->node_type == PT_EXPR)
+  /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
+  if (qo_check_nullable_op (node))
     {
-      /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
-      switch (node->info.expr.op)
-	{
-	case PT_IS_NULL:
-	case PT_CASE:
-	case PT_COALESCE:
-	case PT_NVL:
-	case PT_NVL2:
-	case PT_DECODE:
-	case PT_IF:
-	case PT_IFNULL:
-	case PT_ISNULL:
-	case PT_CONCAT_WS:
-	case PT_NULLSAFE_EQ:
-	  /* NEED FUTURE OPTIMIZATION */
-	  (*nullable_cntp)++;
-	  break;
-	default:
-	  break;
-	}
+      (*nullable_cntp)++;
     }
 
   return node;
@@ -316,7 +388,7 @@ qo_check_condition_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT_NODE *
 {
   PT_NODE *where;
   bool result = false;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
   if (query_where == NULL)
     {
@@ -358,31 +430,15 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 {
   SPEC_ID_INFO *info = (SPEC_ID_INFO *) arg;
 
-  if (node->node_type == PT_EXPR)
+  /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
+  if (qo_check_nullable_op (node))
     {
-      /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
-      switch (node->info.expr.op)
+      info->appears = false;
+      parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+      if (info->appears)
 	{
-	case PT_IS_NULL:
-	case PT_CASE:
-	case PT_COALESCE:
-	case PT_NVL:
-	case PT_NVL2:
-	case PT_DECODE:
-	case PT_IF:
-	case PT_IFNULL:
-	case PT_ISNULL:
-	case PT_CONCAT_WS:
-	  info->appears = false;
-	  parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
-	  if (info->appears)
-	    {
-	      info->nullable = true;
-	      *continue_walk = PT_STOP_WALK;
-	    }
-	  break;
-	default:
-	  break;
+	  info->nullable = true;
+	  *continue_walk = PT_STOP_WALK;
 	}
     }
 
@@ -471,6 +527,16 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
   while ((expr = *wherep))
     {
+      /* anti inner: reducing a term located in an ANTI ON condition can substitute the inner attr with a
+       * constant, turning the ON predicate into an outer-only sarg that drops the non-matching rows the
+       * anti-join must emit; leave ANTI ON terms as join predicates (SEMI is unaffected: first-match).
+       * the term is flagged at ON binding time in pt_bind_names() (PT_SPEC, PT_JOIN_ANTI). */
+      if (expr->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_ANTI_JOIN_ON))
+	{
+	  wherep = &(*wherep)->next;
+	  continue;
+	}
+
       col = NULL;		/* init - reserve for constant column of derived-table */
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
@@ -1480,8 +1546,8 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  continue;
 	}
 
-      /* search if there's a term that make this IS NULL/IS NOT NULL node meaningless; that is, a term that has the
-       * same attribute */
+      /* Find a sibling that proves this NULL test redundant or contradictory. Referencing the same
+       * attribute is not enough: a value function or NOT IN over an empty set may accept NULL. */
       found = false;
       for (sibling = *wherep; sibling; sibling = sibling->next)
 	{
@@ -1507,6 +1573,14 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  if (pt_check_path_eq (parser, node_prior, sibling_prior) == 0
 	      || pt_check_path_eq (parser, node_prior, sibling->info.expr.arg2) == 0)
 	    {
+	      if (sibling->info.expr.op != PT_IS_NULL && sibling->info.expr.op != PT_IS_NOT_NULL
+		  && sibling->info.expr.op != PT_NULLSAFE_EQ && qo_check_nullable_op (sibling))
+		{
+		  /* a NOT IN (subquery), a <> ALL (subquery), a IS NOT TRUE, ... can be TRUE for a NULL 'a', so they
+		   * say nothing about 'a IS NULL' or 'a IS NOT NULL'. */
+		  continue;
+		}
+
 	      found = true;
 	      break;
 	    }
@@ -4588,6 +4662,7 @@ qo_or_extract_is_cheap_restriction (PT_NODE * conjunct)
     case PT_BETWEEN:
     case PT_NOT_BETWEEN:
     case PT_LIKE:
+    case PT_IS_IN:
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
       break;
@@ -4616,6 +4691,22 @@ qo_or_extract_is_cheap_restriction (PT_NODE * conjunct)
 	{
 	  if (item->node_type != PT_EXPR || !qo_or_extract_is_constant_side (item->info.expr.arg1)
 	      || !qo_or_extract_is_constant_side (item->info.expr.arg2))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    }
+
+  if (conjunct->info.expr.op == PT_IS_IN)
+    {
+      /* the IN list: every element must be constant-like.  qo_rewrite_terms () then folds the
+       * derived copy into a RANGE term an index can adopt, exactly like a hand-written IN */
+      PT_NODE *item;
+
+      for (item = other; item != NULL; item = item->next)
+	{
+	  if (!qo_or_extract_is_constant_side (item))
 	    {
 	      return false;
 	    }
@@ -4784,12 +4875,15 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
  *	 part table gets no filter at all from the brand/container/size branches and every plan
  *	 has to carry the full table through the join.
  *
- *	 Because the derived factor is implied by the original one, it must not be counted a
- *	 second time in the row-count selectivity, and keeping it as a plain data filter only
- *	 pays off when it is no costlier than column-vs-constant compares.  Each derived factor
- *	 is therefore marked PT_EXPR_INFO_OR_DERIVED (plus _EXPENSIVE by shape); the marks reach
- *	 the plan as QO_TERM flags, where qo_node_add_sarg () skips the double count and
- *	 make_pred_from_plan () drops a costly copy that no index adopted.
+ *	 The derived factor's selectivity is counted at the node scan (qo_node_add_sarg ()), so
+ *	 the scan cardinality reflects the filter and the join order can react to it; to keep the
+ *	 join output estimate unchanged, the origin factor's join selectivity is discounted by
+ *	 the same share in qo_derived_term_compensate () -- the approach of PostgreSQL's
+ *	 consider_new_or_clause ().  Keeping the copy as a plain data filter only pays off when
+ *	 it is no costlier than column-vs-constant compares.  Each derived factor is therefore
+ *	 marked PT_EXPR_INFO_OR_DERIVED (plus _EXPENSIVE by shape); the marks reach the plan as
+ *	 QO_TERM flags, where qo_derived_term_origin () re-identifies the origin structurally
+ *	 and make_pred_from_plan () drops a costly copy that no index adopted.
  */
 void
 qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE ** wherep)
@@ -4953,9 +5047,9 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
       qo_rewrite_terms (parser, spec_list, &new_terms);
 
       /* mark what survived the rewrites: qo_analyze_term () carries the marks into the term
-       * flags, so the row-count selectivity skips these implied duplicates and
-       * make_pred_from_plan () drops the costly ones no index adopted.  Classify on the
-       * rewritten shape -- that is what a scan would actually evaluate */
+       * flags, so qo_derived_term_compensate () can pay the node-counted share back to the origin
+       * factor and make_pred_from_plan () can drop the costly ones no index adopted.  Classify
+       * on the rewritten shape -- that is what a scan would actually evaluate */
       for (derived = new_terms; derived != NULL; derived = derived->next)
 	{
 	  if (derived->node_type != PT_EXPR)
