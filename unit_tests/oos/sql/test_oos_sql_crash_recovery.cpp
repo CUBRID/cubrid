@@ -136,7 +136,7 @@ namespace
       }
     int representation_cache = -1;
     OR_CLASSREP *representation = heap_classrepr_get (thread, &class_oid, nullptr, NULL_REPRID,
-						     &representation_cache);
+				  &representation_cache);
     ASSERT_NE (representation, nullptr);
     struct representation_end
     {
@@ -200,7 +200,7 @@ namespace
       {
 	RECDES record = {static_cast<int> (bytes.size ()), 0, REC_HOME, bytes.data ()};
 	const SCAN_CODE code = heap_next (thread, &hfid, &class_oid, &oid, &record, &cache, COPY,
-					 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+					  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	if (code == S_END)
 	  {
 	    break;
@@ -715,7 +715,8 @@ TEST_F (OosCrashRecoveryTest, CommittedValuesSurviveCrashRedoThroughTheirPersist
   forget_database_error_logs ();
 
   snapshot before {};
-  ASSERT_EQ (crash_after_loading (table, before), 0) << "the loading child did not export its rows and reach its own crash";
+  ASSERT_EQ (crash_after_loading (table, before),
+	     0) << "the loading child did not export its rows and reach its own crash";
   expect_stored_rows ("crash_before", before);
 
   boot_and_record ("crash_recovery_reader");
