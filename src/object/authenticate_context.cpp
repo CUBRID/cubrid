@@ -36,6 +36,7 @@
 #include "schema_manager.h" /* sm_find_class() */
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
+#include "trigger_manager.h" /* tr_invalidate_user_cache () */
 
 bool use_console_password = false; // If true, allows password input from the console
 
@@ -187,17 +188,16 @@ authenticate_context::start (void)
       else
 	{
 	  /*
-	   * If you try to start the authorization system and
-	   * there is no user logged in, you will automatically be logged in
-	   * as "PUBLIC".  Optionally, we could get a name from the
-	   * cubrid.conf file or use the name of the current Unix user.
+	   * If you try to start the authorization system and there is no user logged in,
+	   * you will automatically be logged in as "PUBLIC".
+	   * Optionally, we could get a name from the cubrid.conf file or use the name of the current Unix user.
 	   */
 	  if (strlen (user_name) == 0)
 	    {
 	      strcpy (user_name, AU_PUBLIC_USER_NAME);
 	    }
 
-	  error = perform_login (user_name, user_password_sha2_512, false);
+	  error = perform_login (user_name, Au_user_encrypted_password, false);
 	}
     }
 
@@ -327,7 +327,6 @@ authenticate_context::install (void)
     {
       goto exit_on_error;
     }
-  smt_add_attribute (def, "triggers", "sequence of (string, object)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "charset", "integer", NULL);
   smt_add_attribute (def, "lang", "string", NULL);
   smt_add_attribute (def, "timezone_checksum", "string", NULL);
@@ -370,7 +369,6 @@ authenticate_context::install (void)
   smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
   smt_add_attribute (def, AU_USER_ATTR_IS_SYSTEM_CREATED, "integer", NULL);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
@@ -568,6 +566,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
   DB_VALUE value;
   const char *pass;
   char *dbuser = NULL, *dbpassword = NULL;
+  bool is_user_changed;
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
@@ -651,14 +650,23 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
 		  if (pass != NULL && strlen (pass))
 		    {
+		      DB_VALUE nm_value;
+		      if (obj_get (user, "name", &nm_value) != NO_ERROR)
+			{
+			  db_value_clear (&value);
+			  return er_errid ();
+			}
+
 		      /* the password is present and must match */
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
-			  || !match_password (dbpassword, db_get_string (&value)))
+			  || !match_password (db_get_string (&nm_value), dbpassword, db_get_string (&value)))
 			{
 			  use_console_password = (dbpassword == NULL || *dbpassword == '\0');
 			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
+
+		      db_value_clear (&nm_value);
 		    }
 		  else
 		    {
@@ -684,10 +692,18 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
 	      if (error == NO_ERROR)
 		{
+		  is_user_changed = !ws_is_same_object (user, current_user);
+
 		  error = set_user (user);
 
 		  /* necessary to invalidate vclass cache */
 		  sm_bump_local_schema_version ();
+
+		  /* the user trigger cache holds the triggers owned by the previous user */
+		  if (is_user_changed)
+		    {
+		      tr_invalidate_user_cache ();
+		    }
 		}
 	    }
 	}

@@ -172,7 +172,6 @@ struct sort_listfile_px_arg
 {
   SORTKEY_INFO *key_info;	/* points to the caller's key_info — read-only, shared across workers */
   QFILE_LIST_ID *input_list;	/* points to the input list file scanned by all workers */
-  int hash_eligible;		/* GROUP_BY only: if non-zero, parallelism must be skipped (0 otherwise) */
   void *stats;			/* GROUPBY_STATS* or ANALYTIC_STATS* in xasl node for trace output */
   int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };

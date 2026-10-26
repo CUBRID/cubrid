@@ -1529,7 +1529,6 @@ sm_define_view_user_spec (void)
 	  "(SELECT COALESCE (SUM (SET {[g].[name]}), SET {}) "
 	   "FROM TABLE ([u].[groups]) AS [t] ([g])) AS [groups], "
 	  "NULL AS [authorization], "
-	  "[u].[triggers] AS [triggers], "
 	  "CASE [u].[is_loginable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_loginable], "
 	  "CASE [u].[is_system_created] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_system_created], "
 	  "[u].[comment] AS [comment], "
@@ -1708,29 +1707,9 @@ sm_define_view_server_spec (void)
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[ds]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_SERVER_NAME,
 	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));

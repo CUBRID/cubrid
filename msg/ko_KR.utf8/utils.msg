@@ -415,7 +415,10 @@ optimizedb: 데이터베이스 최적화.\n\
 사용법: %1$s optimizedb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n
+  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n\
+      --no-histogram           클래스 통계만 갱신함; 히스토그램은 만들지도 지우지도 않음\n\
+      --no-histogram-classes=NAME[,NAME...]\n\
+                               해당 클래스들의 히스토그램 생성을 제외함; 나머지 클래스는 그대로 갱신\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
@@ -916,12 +919,14 @@ valid options:\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
+16 에러: --drop-clone과 --drop은 함께 사용할 수 없습니다.\n
 59 plandump는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 plandump: 쿼리 플랜 표시 및 관리\n\
 사용법: %1$s plandump [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
+  -c, --drop-clone             캐시된 플랜의 XASL clone 삭제(플랜은 유지); -s 와 함께 쓰면 sha1 플랜만\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
   -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n

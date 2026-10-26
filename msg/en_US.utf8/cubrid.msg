@@ -718,7 +718,7 @@ $ LOADDB
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
 647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
+648 Backup (release "%3$s") is incompatible with current "%1$s" release "%2$s".
 649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
 650 Cannot create enough threads for 'max_clients=%1$d'.
 651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
@@ -1496,11 +1496,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1385 Invalid username or password.
 
-1386 Cannot perform %1$s inside a query or DML statement.
-1387 Cannot perform %1$s in a trigger.
-1388 Cannot perform a DML operation inside a query or DML statement.
+1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1389 Last Error
+1387 Cannot perform %1$s inside a query or DML statement.
+1388 Cannot perform %1$s in a trigger.
+1389 Cannot perform a DML operation inside a query or DML statement.
+
+1390 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

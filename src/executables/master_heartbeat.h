@@ -377,6 +377,7 @@ struct hb_job
   HB_JOB_FUNC *job_funcs;
 
   bool shutdown;
+  int num_workers;		/* the number of worker threads of this queue that have not exited yet */
 };
 
 extern HB_CLUSTER *hb_Cluster;
