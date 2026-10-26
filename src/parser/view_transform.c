@@ -439,6 +439,8 @@ static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
+static int mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
+				   PT_NODE * old_select_list);
 
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -15822,10 +15824,34 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 static PT_NODE *
 mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list, PT_NODE * old_select_list)
 {
+  if (mq_update_analytic_pos (parser, new_select_list, new_select_list, old_select_list) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return new_select_list;
+}
+
+/*
+ * mq_update_analytic_pos() - update PT_VALUE located within the OVER clause of the analytic functions
+ *                            found in node_list.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   node_list(in): nodes in which analytic functions are searched for
+ *   new_select_list(in):
+ *   old_select_list(in):
+ *
+ * NOTE: An analytic function can be nested in an expression or a function (e.g. x - LAG (x) OVER (...)),
+ * so their arguments are also searched, in the same way as pt_to_analytic_final_node().
+ */
+static int
+mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
+			PT_NODE * old_select_list)
+{
   PT_NODE *partition_by, *order_by;
   PT_NODE *col, *link, *order_list, *order, *value;
 
-  for (col = new_select_list; col; col = col->next)
+  for (col = node_list; col; col = col->next)
     {
       if (PT_IS_ANALYTIC_NODE (col))
 	{
@@ -15871,14 +15897,14 @@ mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select
 		{
 		  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
 			      old_index);
-		  return NULL;
+		  return ER_FAILED;
 		}
 
 	      referenced_node = parser_copy_tree (parser, old_select_node);
 	      if (referenced_node == NULL)
 		{
 		  PT_ERRORm (parser, old_select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  return NULL;
+		  return ER_FAILED;
 		}
 
 	      for (new_select_node = new_select_list, index = 1; new_select_node;
@@ -15913,7 +15939,24 @@ mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select
 	      link->next = NULL;
 	    }
 	}
+      else if (PT_IS_EXPR_NODE (col))
+	{
+	  if (mq_update_analytic_pos (parser, col->info.expr.arg1, new_select_list, old_select_list) != NO_ERROR
+	      || mq_update_analytic_pos (parser, col->info.expr.arg2, new_select_list, old_select_list) != NO_ERROR
+	      || mq_update_analytic_pos (parser, col->info.expr.arg3, new_select_list, old_select_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (PT_IS_FUNCTION (col))
+	{
+	  if (mq_update_analytic_pos (parser, col->info.function.arg_list, new_select_list,
+				      old_select_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
     }
 
-  return new_select_list;
+  return NO_ERROR;
 }

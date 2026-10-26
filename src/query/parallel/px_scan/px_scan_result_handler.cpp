@@ -433,6 +433,11 @@ namespace parallel_scan
 	    {
 	      m_.hgby_results.push_back (context->part_list_id);
 	      context->part_list_id = NULL;
+	      /* a worker that read no rows neither kept nor gave up hashing */
+	      if (context->tuple_count > 0 && context->state > m_.hgby_state)
+		{
+		  m_.hgby_state = context->state;
+		}
 	    }
 
 	  m_.active_results--;
@@ -612,7 +617,11 @@ namespace parallel_scan
 	      {
 		qfile_destroy_list (thread_p, dest);
 	      }
-	    qfile_copy_list_id (dest, tmp_merged_list, true, QFILE_MOVE_DEPENDENT);
+	    if (qfile_copy_list_id (dest, tmp_merged_list, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+	      {
+		error = ER_FAILED;
+		qfile_destroy_list (thread_p, tmp_merged_list);
+	      }
 	    QFILE_FREE_AND_INIT_LIST_ID (tmp_merged_list);
 	  }
       }
@@ -722,8 +731,12 @@ namespace parallel_scan
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return S_ERROR;
 	      }
-	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
-	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
+	    /* trace 'hash: partial' once any worker gave up hashing, 'hash: true' only if all kept it; never moves back
+	     * (see qexec_hash_gby_agg_tuple) */
+	    if (m_.hgby_state > m_.orig_xasl->groupby_stats.groupby_hash)
+	      {
+		m_.orig_xasl->groupby_stats.groupby_hash = m_.hgby_state;
+	      }
 	  }
 
 	/* main heap empty under parallel concat; falls through to qexec_orderby_distinct_by_sorting on worker concat list_id at qexec_orderby_distinct:4049 (orderby_topnsort intentionally not set). */
