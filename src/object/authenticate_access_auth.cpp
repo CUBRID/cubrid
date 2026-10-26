@@ -290,9 +290,6 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   DB_VALUE val[COUNT_FOR_VARIABLES];
   DB_VALUE grant_value;
   DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  STATEMENT_ID stmt_id;
-  const char *name;
   const char *sql_query =
 	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
@@ -325,9 +322,9 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	}
 
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_unique_name);
       break;
     case DB_OBJECT_PROCEDURE:
-      sp_unique_name[0] = '\0';
       if (jsp_get_unique_name (obj_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
 	{
 	  assert (false);
@@ -337,73 +334,41 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	}
 
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], sp_unique_name);
       break;
     default:
       assert (false);
       error = ER_UNEXPECTED;
-      error_msg[0] = '\0';
       snprintf (error_msg, sizeof (error_msg) - 1, "unknown database object id: %d.", obj_type);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_msg);
       goto exit;
-    }
-
-  session = db_open_buffer_local (obj_fetch_query);
-  if (session == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id != 1)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
     }
 
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (user, "name", &val[INDEX_FOR_GRANTEE_NAME]);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
   else if (!DB_IS_STRING (&val[INDEX_FOR_GRANTEE_NAME]) || DB_IS_NULL (&val[INDEX_FOR_GRANTEE_NAME])
 	   || db_get_string (&val[INDEX_FOR_GRANTEE_NAME]) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
-      goto release;
+      error = ER_AU_MISSING_OR_INVALID_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
     }
 
   error = obj_get (grantor, "name", &val[INDEX_FOR_GRANTOR_NAME]);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
   else if (!DB_IS_STRING (&val[INDEX_FOR_GRANTOR_NAME]) || DB_IS_NULL (&val[INDEX_FOR_GRANTOR_NAME])
 	   || db_get_string (&val[INDEX_FOR_GRANTOR_NAME]) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
-      goto release;
-    }
-
-  switch (obj_type)
-    {
-    case DB_OBJECT_CLASS:
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_unique_name);
-      break;
-    case DB_OBJECT_PROCEDURE:
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], sp_unique_name);
-      break;
-    default:
-      assert (false);
-      error = ER_FAILED;
-      goto release;
+      error = ER_AU_MISSING_OR_INVALID_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
     }
 
   i = 0;
@@ -413,26 +378,19 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
     }
   db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
-  error = db_push_values (session, COUNT_FOR_VARIABLES, val);
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = execute_internal_query (obj_fetch_query, val, COUNT_FOR_VARIABLES, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
-      goto release;
+      goto exit;
     }
   else if (error < 0)
     {
       assert (er_errid () != NO_ERROR);
-      goto release;
+      goto exit;
     }
 
   error = NO_ERROR;
@@ -453,17 +411,12 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 
   assert (m_au_obj != NULL);
 
-release:
+exit:
   if (result != NULL)
     {
       db_query_end (result);
     }
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
 
-exit:
   AU_RESTORE (save);
 
   db_value_clear (&grant_value);
