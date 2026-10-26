@@ -2244,19 +2244,6 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
       br_info_p->keep_connection = keep_con;
       shm_as_p->keep_connection = keep_con;
     }
-  else if (strcasecmp (conf_name, "CACHE_USER_INFO") == 0)
-    {
-      int val;
-
-      val = conf_get_value_table_on_off (conf_value);
-      if (val < 0)
-	{
-	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	  goto set_conf_error;
-	}
-      br_info_p->cache_user_info = val;
-      shm_as_p->cache_user_info = val;
-    }
   else if (strcasecmp (conf_name, "SQL_LOG2") == 0)
     {
       int val, result;

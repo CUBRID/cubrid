@@ -390,6 +390,9 @@ static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
+static int do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement);
+static int do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor,
+					     INT64 * keys_compacted, INT64 * pages_freed, INT64 * pairs_skipped);
 
 int ib_thread_count = 0;
 
@@ -3264,33 +3267,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
-      bool has_deduplicate_key_col = false;
-
-      // Class or shared attributes are not considered. These are not indexed columns.
-      // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
-      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
-	{
-	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
-	    {
-	      ((PT_INDEX_INFO *) idx_info)->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
-	    }
-	  else
-	    {
-	      if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-		{
-		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
-		  t_info->deduplicate_level = param_dedup_level;
-		}
-
-	      if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
-		{
-		  has_deduplicate_key_col = true;
-		  nnames++;
-		}
-	    }
-	}
-
       attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
       if (attnames == NULL)
 	{
@@ -3328,10 +3304,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  c = c->next;
 	}
 
-      if (has_deduplicate_key_col)
-	{
-	  nnames--;		// get count of real columns, except hidden column
-	}
       attnames[i] = NULL;
 
       if (nnames == 1 && idx_info->prefix_length)
@@ -3355,25 +3327,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    {
 	      func_index_info->col_id = idx_info->func_pos;
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
-	    }
-	}
-
-      if (has_deduplicate_key_col)
-	{
-	  SM_CLASS *class_ = NULL;
-	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
-
-	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  if (class_->constraints == NULL
-	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
-	    {
-	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
-					    nnames, DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
 	    }
 	}
     }
@@ -4249,6 +4202,148 @@ error_exit:
 }
 
 /*
+ * do_alter_index_compact_one_class() - CBRD-27401: compact the overflow OID chains of the named index of one class
+ *				       (a plain class, or the root or one partition of a partitioned class).
+ *   return: Error code if it fails
+ *   class_mop(in): Class object
+ *   index_name(in): Index name
+ *   fill_factor(in): Target fill ratio in percent
+ *   keys_compacted(in/out): Accumulated number of keys whose chain lost at least one page
+ *   pages_freed(in/out): Accumulated number of overflow pages deallocated
+ *   pairs_skipped(in/out): Accumulated number of page pairs left alone because vacuum has not removed a reused
+ *			   OID's old versions yet (no OID boundary to split at)
+ */
+static int
+do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor, INT64 * keys_compacted,
+				  INT64 * pages_freed, INT64 * pairs_skipped)
+{
+  int error = NO_ERROR;
+  SM_CLASS *smcls = NULL;
+  SM_CLASS_CONSTRAINT *idx = NULL;
+  INT64 keys = 0, pages = 0, skipped = 0;
+
+  /* AU_FETCH_READ takes a SCH_S lock on the class for the rest of the transaction: DROP/ALTER of the index waits
+   * until compaction is over, while concurrent DML (IX) is not blocked -- this is what makes the command online. */
+  error = au_fetch_class (class_mop, &smcls, AU_FETCH_READ, AU_INDEX);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  idx = classobj_find_class_index (smcls, index_name);
+  if (idx == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_NO_INDEX, 1, index_name);
+      return ER_SM_NO_INDEX;
+    }
+  if (BTID_IS_NULL (&idx->index_btid))
+    {
+      /* Nothing built yet (e.g. an index still being loaded online). */
+      return NO_ERROR;
+    }
+
+  error = btree_compact_overflow (&idx->index_btid, fill_factor, &keys, &pages, &skipped);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  *keys_compacted += keys;
+  *pages_freed += pages;
+  *pairs_skipped += skipped;
+  return NO_ERROR;
+}
+
+/*
+ * do_alter_index_compact() - CBRD-27401: ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]. Compacts the overflow OID
+ *			     chains of a non-unique index online: no table lock, no sort, no rebuild. Only the leaf
+ *			     latch of the key being compacted is held on the server. Unique indexes are a no-op.
+ *			     For a partitioned class the index of every partition is compacted.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of an alter index statement
+ */
+static int
+do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  const char *index_name = NULL;
+  const char *class_name = NULL;
+  int fill_factor;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  MOP *partitions = NULL;
+  INT64 keys_compacted = 0, pages_freed = 0, pairs_skipped = 0;
+  int i;
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+  cls = statement->info.index.indexed_class ? statement->info.index.indexed_class->info.spec.flat_entity_list : NULL;
+  if (index_name == NULL || cls == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  fill_factor = statement->info.index.fill_factor;
+  if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
+    {
+      /* The grammar already rejects this; keep the server-side range check honest. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = do_alter_index_compact_one_class (obj, index_name, fill_factor, &keys_compacted, &pages_freed,
+					    &pairs_skipped);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = sm_partitioned_class_type (obj, &partition_type, NULL, &partitions);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+  if (partition_type == DB_PARTITIONED_CLASS && partitions != NULL)
+    {
+      for (i = 0; partitions[i] != NULL; i++)
+	{
+	  error = do_alter_index_compact_one_class (partitions[i], index_name, fill_factor, &keys_compacted,
+						    &pages_freed, &pairs_skipped);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+    }
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
+    }
+
+  if (error == NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "ALTER INDEX %s ON %s COMPACT (fill_factor=%d): %lld keys compacted, %lld overflow "
+		    "pages freed, %lld page pairs skipped (no OID boundary, vacuum pending)\n", index_name, class_name,
+		    fill_factor, (long long) keys_compacted, (long long) pages_freed, (long long) pairs_skipped);
+    }
+
+  return error;
+}
+
+/*
  * do_alter_index() - Alters an index on a class.
  *   return: Error code if it fails
  *   parser(in): Parser context
@@ -4278,6 +4373,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else if (statement->info.index.code == PT_CHANGE_INDEX_STATUS)
     {
       error = do_alter_index_status (parser, statement);
+    }
+  else if (statement->info.index.code == PT_COMPACT_INDEX)
+    {
+      error = do_alter_index_compact (parser, statement);
     }
   else
     {
@@ -4385,11 +4484,37 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
     {
       SM_ATTRIBUTE *att;
       int trace_n_histogrammable = 0, trace_n_skipped = 0, trace_n_dropped = 0;
+      int att_index, n_atts = 0;
+      char attname_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
 
       for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
 	{
+	  n_atts++;
+	}
 
-	  attname = (char *) att->header.name;
+      /* Walk the attributes by position, re-reading the list each time, and keep the name in a
+       * local buffer: the calls in the body are server round trips and one of them DECACHES the
+       * class -- sm_add_histogram () rolls its insert back to its own savepoint when another
+       * session created the same row first -- which frees the SM_ATTRIBUTEs (and the name) this
+       * loop would otherwise still point into.  db_get_attributes_force () recaches a decached
+       * class; if a concurrent DDL shortened the list, the walk ends early. */
+      for (att_index = 0; att_index < n_atts; att_index++)
+	{
+	  int i;
+
+	  att = (DB_ATTRIBUTE *) db_get_attributes_force (obj);
+	  for (i = 0; i < att_index && att != NULL; i++)
+	    {
+	      att = db_attribute_next (att);
+	    }
+	  if (att == NULL)
+	    {
+	      break;
+	    }
+
+	  strncpy (attname_buf, (const char *) att->header.name, sizeof (attname_buf) - 1);
+	  attname_buf[sizeof (attname_buf) - 1] = '\0';
+	  attname = attname_buf;
 	  if (do_histogram == DO_HISTOGRAM_DROP)
 	    {
 	      error = sm_drop_histogram (obj, attname);
@@ -4473,7 +4598,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = store_collected_histograms (obj, &hist_collect);
+	      error = store_collected_histograms (obj, &hist_collect, with_fullscan);
 	    }
 	  histogram_collect_clear (&hist_collect);
 	  if (ndv_info.attr_ndv != NULL)
@@ -4510,6 +4635,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
 		}
 	    }
+	  /* the attribute list is read again here on purpose: the store step above can decache the
+	   * class (store_one_histogram () recreates a row a concurrent DROP HISTOGRAM removed, and
+	   * that goes through sm_add_histogram ()'s savepoint).  dump_histogram () itself only reads,
+	   * so the pointer stays valid for the rest of this walk. */
 	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); (!quiet || trace_on) && att != NULL;
 	       att = db_attribute_next (att))
 	    {
@@ -8521,58 +8650,6 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
       att_names[i++] = p->info.name.original;
     }
 
-  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
-    {
-      fk_info->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
-    }
-  else
-    {
-      if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-	{
-	  fk_info->deduplicate_level = param_dedup_level;
-	}
-
-      if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
-	{
-	  SM_CLASS *class_ = NULL;
-	  SM_CLASS_CONSTRAINT *free_cons = NULL;
-	  SM_CLASS_CONSTRAINT *check_cons;
-
-	  if (ctemplate->op != NULL)
-	    {
-	      error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
-	      check_cons = class_->constraints;
-	    }
-	  else
-	    {
-	      error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
-	      free_cons = check_cons;
-	    }
-
-	  att_names[i] = NULL;
-	  if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
-	    {
-	      // adjust for FK: add deduplicate_key_attr column
-	      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
-	    }
-
-	  if (free_cons != NULL)
-	    {
-	      classobj_free_class_constraints (free_cons);
-	    }
-	}
-    }
   att_names[i] = NULL;
 
   if (fk_info->referenced_attrs != NULL)
@@ -8654,9 +8731,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
   if (max_attrs > 0)
     {
-      // If there is an FK, one more space is allocated in advance because deduplicate_key_attr information will be added.
-      // max_attrs +  [ deduplicate_key_attr ] + NULL
-      buf_size = (max_attrs + 2) * sizeof (char *);
+      buf_size = (max_attrs + 1) * sizeof (char *);
 
       att_names = (char **) malloc (buf_size);
 
@@ -10131,14 +10206,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG)
-    {
-      if (sm_check_system_class_by_name (class_name))
-	{
-	  sm_mark_system_class (class_obj, 1);
-	}
-    }
-
   if (do_flush_class_mop == true)
     {
       assert (error == NO_ERROR);
@@ -10837,6 +10904,18 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		  error = do_recreate_filter_index_constr (parser, saved_constr->filter_predicate, alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
+		      PT_NODE *error_msg = parser->error_msgs;
+		      if (error_msg != NULL && error_msg->node_type == PT_ZZ_ERROR_MSG
+			  && error_msg->info.error_msg.error_message != NULL)
+			{
+			  /* the predicate recompiled under the changed column type: the user sees the ALTER statement, so
+			   * the message names the index whose predicate failed */
+			  char *message = pt_append_string (parser, NULL, "filter index '");
+			  message = pt_append_string (parser, message, saved_constr->name);
+			  message = pt_append_string (parser, message, "': ");
+			  error_msg->info.error_msg.error_message =
+			    pt_append_string (parser, message, error_msg->info.error_msg.error_message);
+			}
 		      goto exit;
 		    }
 		}
@@ -12257,6 +12336,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		{
 		  assert (attr_chg_properties->name_space == ID_ATTRIBUTE);
 
+		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
+	  else if (att->header.name_space == ID_ATTRIBUTE && SM_IS_CONSTRAINT_INDEX_FAMILY (sm_cls_constr->type)
+		   && sm_cls_constr->filter_predicate != NULL)
+	    {
+	      /* an index whose key does not hold the attribute but whose filter
+	       * predicate reads it keeps a predicate stream compiled against the attribute's type; saved, it is
+	       * compiled anew and rebuilt with the change, as an index over the attribute is */
+	      const SM_PREDICATE_INFO *pred = sm_cls_constr->filter_predicate;
+	      bool reads_attribute = false;
+	      for (int i = 0; i < pred->num_attrs && !reads_attribute; i++)
+		{
+		  reads_attribute = pred->att_ids[i] == att->id;
+		}
+	      if (reads_attribute)
+		{
 		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
 		  if (error != NO_ERROR)
 		    {
@@ -15602,7 +15702,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT_INFO * con
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   SM_FUNCTION_INFO *fi_info_ws = NULL;
   int error = NO_ERROR;
   const char *class_name = NULL;
@@ -15803,7 +15903,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
 {
   PT_NODE **stmt;
   PT_NODE *where_predicate;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PARSER_VARCHAR *filter_expr = NULL;
   PRED_EXPR_WITH_CONTEXT *filter_predicate;
   int error;

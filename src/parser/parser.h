@@ -31,7 +31,6 @@
 #include "system.h"
 #include "dbtype_def.h"
 #include "parse_tree.h"
-#include "deduplicate_key.h"
 
 #if defined (SERVER_MODE)
 #error Does not belong to server module
@@ -207,6 +206,7 @@ extern "C"
   extern PT_NODE *pt_add_row_classoid_name (PARSER_CONTEXT * parser, PT_NODE * statement, int server_op);
 
   extern PT_NODE *pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op,
 					   const char *name1, const char *name2, char **new_trigger_stmt,
@@ -518,6 +518,8 @@ extern "C"
   extern PT_NODE *pt_right_part (const PT_NODE * expr);
   extern PT_NODE *pt_get_end_path_node (PT_NODE * node);
   extern PT_NODE *pt_get_first_arg_ignore_prior (PT_NODE * node);
+  extern bool pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column,
+					    bool skip_subquery_terms);
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_get_subquery_of_insert_select (const PT_NODE * insert_statement);
@@ -721,6 +723,7 @@ extern "C"
 
   extern PT_NODE *pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
+  extern void pt_set_sp_owner_to_table_column_types (PT_NODE * sp_node);
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,17 +18,17 @@
 
 
 /*
- * cas_error_log.h -
+ * system_metadata_version.h - System metadata version constant.
+ *
+ * Increment on release when system metadata (system catalog, information_schema,
+ * etc.) changes. Stored in LOG_HEADER (UINT16); boot mismatch requires
+ * 'cubrid upgradedb'. Version 0 marks databases created before 11.5.0;
+ * they must be recreated.
  */
 
-#ifndef	_CAS_ERROR_LOG_H_
-#define	_CAS_ERROR_LOG_H_
+#ifndef _SYSTEM_METADATA_VERSION_H_
+#define _SYSTEM_METADATA_VERSION_H_
 
-#ident "$Id$"
+#define SYSTEM_METADATA_VERSION 1
 
-extern void cas_error_log_open (char *br_name);
-extern void cas_error_log_close (bool flag);
-extern void cas_error_log_write (int dbms_errno, const char *dbms_errmsg);
-extern char *cas_error_log_get_eid (char *buf, size_t bufsz);
-
-#endif /* _CAS_ERROR_LOG_H_ */
+#endif /* _SYSTEM_METADATA_VERSION_H_ */

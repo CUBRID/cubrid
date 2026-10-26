@@ -32,6 +32,7 @@
 #include "work_space.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
+#include "schema_manager.h"
 #include "authenticate.h"
 
 #define CT_DUAL_DUMMY   "dummy"
@@ -379,6 +380,43 @@ catcls_install (void)
     }
 
 end:
+  AU_RESTORE (save);
+
+  clist.clear ();
+  vclist.clear ();
+
+  return error_code;
+}
+
+int
+catcls_rebuild_vclasses (void)
+{
+  int error_code = NO_ERROR;
+  int save;
+
+  using catalog_builder = cubschema::system_catalog_builder;
+
+  catcls_init ();
+  AU_SAVE_AND_DISABLE (save);
+
+  for (size_t i = 0; i < vclist.size () && error_code == NO_ERROR; i++)
+    {
+      /* the existing object, so build_vclass () redefines it in place and the OID survives */
+      MOP class_mop = db_find_class (vclist[i].name.c_str ());
+      if (class_mop == nullptr)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  break;
+	}
+
+      error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
+      if (error_code == NO_ERROR)
+	{
+	  /* a vclass holds no instance, so nothing needs the superseded representation */
+	  error_code = sm_destroy_representations (class_mop);
+	}
+    }
+
   AU_RESTORE (save);
 
   clist.clear ();
@@ -806,7 +844,9 @@ namespace cubschema
       {TR_ATT_UPDATED_TIME, "datetime"}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {TR_ATT_UNIQUE_NAME, nullptr}, false},
+    },
 // authorization
     {
       // owner, grants
@@ -1656,7 +1696,6 @@ namespace cubschema
       {"update_rule", format_varchar (32)},
       {"referential_match_option", format_varchar (7)},
       {"index_type", format_varchar (32)},
-      {"deduplicate_key_level", "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -2055,7 +2094,6 @@ namespace cubschema
       {"groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
       /* kept for compatibility; always NULL in view */
       {"authorization", AU_AUTH_CLASS_NAME},
-      {"triggers", format_sequence ("object")},
       {"is_loginable", format_varchar (3)},
       {"is_system_created", format_varchar (3)},
       {"comment", format_varchar (1024)},
