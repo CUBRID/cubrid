@@ -15063,7 +15063,8 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
    * returned, which may be an uncommitted change of another transaction */
   scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
-  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       goto end;
     }
@@ -15206,7 +15207,8 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
    * is returned, which may be an uncommitted change of another transaction */
   scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
-  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       goto end;
     }
