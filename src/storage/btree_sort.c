@@ -99,9 +99,13 @@
  * only 8 bytes shorter. */
 #define BTSORT_MIN_REC_AREA  ((ssize_t) (BTSORT_REC_HEADER_SIZE + 2 * OR_OID_SIZE + (int) INT_ALIGNMENT))
 
-/* parallel merge: runs consumed per dispatched merge task */
-#define BTSORT_PX_MERGE_FILES	4
 #define BTSORT_MAX_PARALLEL	PRM_MAX_PARALLELISM
+/* Runs the main thread merges itself at the end of a parallel sort, at most. A worker leaves the runs of its last
+ * pass to that merge when their count times the number of workers is no more than this, so that all workers
+ * together never leave more, and merges them into one result run otherwise. Leaving saves the workers a pass over
+ * their runs; merging keeps the fan-in small on the one thread that builds the leaf level. With an int key and
+ * limited I/O, leaving was faster up to 47 runs, merging from 71 on. */
+#define BTSORT_PX_LEADER_FANIN	64
 #define BTSORT_IS_PARALLEL(t)	((t)->px_parallel_num > 1)
 
 // *INDENT-OFF*
@@ -160,13 +164,6 @@ enum btsort_parallel_type
 };
 typedef enum btsort_parallel_type BTSORT_PARALLEL_TYPE;
 
-typedef struct btsort_result_run BTSORT_RESULT_RUN;
-struct btsort_result_run
-{
-  VFID temp_file;
-  int num_pages;
-};
-
 typedef struct btsort_file_contents BTSORT_FILE_CONTENTS;
 struct btsort_file_contents
 {				/* runs of one temp file, in file order: a queue over a dynamic array */
@@ -218,8 +215,8 @@ struct btsort_param
   int tot_runs;			/* Total number of runs */
   int tot_buffers;		/* Size of internal memory used in terms of number of buffers it occupies */
   int tot_tempfiles;		/* Total number of temporary files */
-  int temp_slots;		/* Entries of temp, temp_cursor and file_contents (btsort_alloc_temp_slots): tot_tempfiles,
-				 * or more for a worker, whose slots the merge queue reuses */
+  int temp_slots;		/* Entries of temp, temp_cursor and file_contents: the tot_tempfiles the sort was set up
+				 * with (btsort_alloc_temp_slots) */
   int half_files;		/* Half number of temporary files */
   int in_half;			/* Which half of temp files is for input */
 
@@ -250,7 +247,8 @@ struct btsort_param
   THREAD_ENTRY *px_orig_thread_p;
   BTSORT_PARAM *ori_sort_param;
   int px_parallel_num;
-  BTSORT_RESULT_RUN *px_result_run;
+  bool px_leave_runs;		/* a worker leaves the runs of its last pass to the main thread's merge rather than
+				 * merging them into one result run (see BTSORT_PX_LEADER_FANIN) */
     parallel_query::worker_manager * px_worker_manager;
     cuberr::context * main_error_context;
   bool px_error_published;	/* first-error-wins guard: set (under px_mtx) by the first failing worker that
@@ -265,7 +263,8 @@ struct btsort_param
 };
 
 /* One input of the external merge phase: the first run of a temp file, a window of sectsize pages over it, and the
- * smallest record that window currently exposes */
+ * smallest record that window currently exposes. The file may belong to another sort's parameters: the main thread
+ * of a parallel sort merges the runs of the workers' files (btsort_merge_px_runs). */
 typedef struct btsort_merge_input BTSORT_MERGE_INPUT;
 struct btsort_merge_input
 {
@@ -302,8 +301,9 @@ typedef struct btsort_merge_ctx BTSORT_MERGE_CTX;
 struct btsort_merge_ctx
 {
   BTSORT_PARAM *sort_param;
-  int act_infiles;		/* input files that still hold a run: the first act_infiles of the input half */
-  BTSORT_MERGE_INPUT *in;	/* one per input file of the half; half_files entries */
+  int act_infiles;		/* inputs: in a pass, the input files that still hold a run, the first act_infiles of
+				 * the input half */
+  BTSORT_MERGE_INPUT *in;	/* the inputs; half_files entries in a pass */
 
   int out_half;			/* first output file of the pass: 0 or half_files */
   BTSORT_MERGE_OUTPUT out;	/* the output section */
@@ -336,9 +336,6 @@ typedef INT16 BTSORT_PAGE_SLOT;
  * (BTSORT_MAXREC_LENGTH) */
 static_assert (IO_MAX_PAGE_SIZE - sizeof (BTSORT_SPAGE_HEADER) - sizeof (BTSORT_PAGE_SLOT) <= BTSORT_REC_MAX_LENGTH,
 	       "the record of a full run page must fit in the length field of its header");
-
-/* parallel merge work queue (defined with the merge queue functions below) */
-typedef struct btsort_merge_queue_ctx BTSORT_MERGE_QUEUE_CTX;
 
 /************************************************************************/
 /* Run page and record section                                          */
@@ -431,24 +428,8 @@ static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_pa
 
 static int btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param,
 							   BTSORT_PARAM * sort_param, int parallel_num);
-static void btsort_merge_queue_enqueue (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_RESULT_RUN run);
-static BTSORT_RESULT_RUN btsort_merge_queue_dequeue (BTSORT_MERGE_QUEUE_CTX * qctx);
-static int btsort_merge_queue_acquire_ctx (BTSORT_MERGE_QUEUE_CTX * qctx);
-static void btsort_merge_queue_release_ctx (BTSORT_MERGE_QUEUE_CTX * qctx, int idx);
-static void btsort_merge_queue_setup_ctx (int pool_idx, BTSORT_MERGE_QUEUE_CTX * qctx, const BTSORT_RESULT_RUN * runs,
-					  int k);
-static void btsort_merge_queue_ctx_init (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * sort_param,
-					 BTSORT_PARAM * px_sort_param, int parallel_num);
-static void btsort_merge_queue_ctx_destroy (BTSORT_MERGE_QUEUE_CTX * qctx);
-static void btsort_merge_queue_enqueue_initial_runs (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * px_sort_param,
-						     int parallel_num);
-static int btsort_merge_queue_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_QUEUE_CTX * qctx);
-static void btsort_merge_queue_stage_final_run (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * dst);
-static void btsort_merge_queue_try_dispatch (BTSORT_MERGE_QUEUE_CTX * qctx);
-static void btsort_merge_nruns_queue_cb (cubthread::entry & thread_ref, BTSORT_PARAM * ctx,
-					 BTSORT_MERGE_QUEUE_CTX * qctx);
-static int btsort_merge_nruns (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
-static int btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int start_pagenum);
+static int btsort_merge_px_runs (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param,
+				 int parallel_num);
 
 /************************************************************************/
 /* Parallel index leaf build section                                    */
@@ -483,7 +464,7 @@ static BT_LOAD_PX_OUTCOME btsort_px_construct_index_leaf (THREAD_ENTRY * thread_
 /* Temp file and run list section                                       */
 /************************************************************************/
 
-static int btsort_alloc_temp_slots (BTSORT_PARAM * sort_param, int n_slots);
+static int btsort_alloc_temp_slots (BTSORT_PARAM * sort_param);
 static void btsort_free_temp_slots (BTSORT_PARAM * sort_param);
 static int btsort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor,
 				int file_pg_cnt_est, bool force_alloc, bool tde_encrypted);
@@ -904,6 +885,8 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 
   sort_param->tot_tempfiles = 0;
 
+  sort_param->px_leave_runs = false;
+
   /* initialize memory allocable fields */
   sort_param->temp = NULL;
   sort_param->temp_cursor = NULL;
@@ -940,7 +923,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->tot_tempfiles = sort_param->half_files * 2;
   sort_param->in_half = 0;
 
-  error = btsort_alloc_temp_slots (sort_param, sort_param->tot_tempfiles);
+  error = btsort_alloc_temp_slots (sort_param);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -1013,6 +996,10 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 	  goto cleanup;
 	}
 
+      /* the workers leave the runs of their last pass to the main thread's merge, unless a no-logging build needs
+       * one result run per worker to partition into key ranges (btsort_px_construct_index_leaf) */
+      sort_param->px_leave_runs = !bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
+
       /* parallel process */
       error = btsort_start_parallelism (thread_p, px_sort_param, sort_param);
       if (error != NO_ERROR)
@@ -1030,7 +1017,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 	  goto cleanup;
 	}
 
-      /* the merge queue / shard build own (and retire) the worker runs from here on */
+      /* the main thread's merge / shard build own (and retire) the worker runs from here on */
       px_runs_handed_over = true;
       error = btsort_end_parallelism (thread_p, px_sort_param, sort_param);
       if (error != NO_ERROR)
@@ -1987,10 +1974,7 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
 	  goto clear;
 	}
       px_sort_param[i].tot_buffers = sort_param->tot_buffers;	/* match allocated size (may be 8 for parallel) */
-      /* the merge queue reuses these slots for up to 2 * BTSORT_PX_MERGE_FILES files, more than the worker's own
-       * when a sort buffer below 8 pages gives it fewer than BTSORT_PX_MERGE_FILES per half */
-      error =
-	btsort_alloc_temp_slots (&px_sort_param[i], MAX (px_sort_param[i].tot_tempfiles, 2 * BTSORT_PX_MERGE_FILES));
+      error = btsort_alloc_temp_slots (&px_sort_param[i]);
       if (error != NO_ERROR)
 	{
 	  goto clear;
@@ -2025,7 +2009,8 @@ clear:
 }
 
 /*
- * btsort_listfile_execute () - Parallel worker body: sort this worker's heap sectors into one run
+ * btsort_listfile_execute () - Parallel worker body: sort this worker's heap sectors into one run, or into the few
+ *                             runs the main thread merges itself
  *   return: void (status is published through sort_param->px_status)
  *   thread_ref(in): worker thread
  *   sort_param(in): this worker's sort parameters (get_arg is a per-worker SORT_ARGS copy)
@@ -2100,10 +2085,10 @@ cleanup:
   bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
   bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
 
-  /* the files beyond the result run are dead here; main never retires worker temps on success */
+  /* the files that hold no run are dead here; the main thread consumes and retires the others */
   for (int k = 0; k < sort_param->tot_tempfiles; k++)
     {
-      if (k != sort_param->px_result_file_idx && !VFID_ISNULL (&sort_param->temp[k]))
+      if (btsort_run_count (&sort_param->file_contents[k]) == 0 && !VFID_ISNULL (&sort_param->temp[k]))
 	{
 	  (void) file_temp_retire (thread_p, &sort_param->temp[k]);
 	  VFID_SET_NULL (&sort_param->temp[k]);
@@ -2166,9 +2151,8 @@ btsort_end_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
  *   px_sort_param(in): worker parameters
  *   parallel_num(in): number of workers
  *
- * Note: Only while the workers still own their runs (before btsort_end_parallelism ()); afterwards
- *       a run may be staged into the main parameters or into the merge queue and retiring it here
- *       would retire it twice.
+ * Note: Before btsort_end_parallelism () only on a failure. Afterwards the main thread's merge or the shard build
+ *       retires the runs it consumed, and the leaf build retires them here when it fails before either starts.
  */
 static void
 btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, int parallel_num)
@@ -2468,7 +2452,8 @@ btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx)
  * btsort_merge_bind_input () - Point an input at the first run of a temp file
  *   return: void
  *   in(out): the input; its section is assigned separately
- *   owner(in): the sort parameters the file belongs to
+ *   owner(in): the sort parameters the file belongs to: this sort's, or a worker's when the main thread of a
+ *              parallel sort merges the workers' runs
  *   file_idx(in): the file, among the owner's temp files
  */
 static void
@@ -3092,7 +3077,8 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
  * Note: A pass merges the first runs of the active input files into one output run until the input runs are used
  *       up, deals the output runs to the output files in turn, and then exchanges the input and output halves.
  *       The pass that produces one run is the last: a serial merge hands its records to put_fn, a parallel merge
- *       leaves them in the file px_result_file_idx names for the parent thread.
+ *       leaves them in the file px_result_file_idx names for the main thread, or, when px_leave_runs allows,
+ *       leaves that pass to the main thread altogether, with its input runs where they are.
  */
 static int
 btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
@@ -3152,6 +3138,18 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       num_runs = btsort_merge_count_pass_runs (sort_param, ctx.act_infiles);
 
       very_last_run = (num_runs == 1);
+      if (very_last_run && BTSORT_IS_PARALLEL (sort_param) && sort_param->px_leave_runs
+	  && ctx.act_infiles * sort_param->px_parallel_num <= BTSORT_PX_LEADER_FANIN)
+	{
+	  /* the main thread merges the runs of this pass itself, with those of the other workers: leave them */
+	  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: btsort merge: %d run(s) left to the main thread",
+			     ctx.act_infiles);
+	    }
+	  break;
+	}
+
       put_to_caller = very_last_run && !BTSORT_IS_PARALLEL (sort_param);
       if (very_last_run && !put_to_caller)
 	{
@@ -3250,31 +3248,23 @@ bailout:
 /* Parallel merge section                                               */
 /************************************************************************/
 
-typedef struct btsort_merge_queue_ctx BTSORT_MERGE_QUEUE_CTX;
-struct btsort_merge_queue_ctx
-{
-  BTSORT_RESULT_RUN run_queue[BTSORT_MAX_PARALLEL];
-  int queue_head;
-  int queue_tail;
-  int queue_size;
-  int in_flight;
-  bool has_error;
-  pthread_mutex_t mtx;
-  pthread_cond_t done_cond;
-  BTSORT_PARAM *sort_param;
-  BTSORT_PARAM *px_sort_param;
-  int pool_size;
-  bool ctx_in_use[BTSORT_MAX_PARALLEL / 2 + 1];
-  BTSORT_RESULT_RUN ctx_results[BTSORT_MAX_PARALLEL / 2 + 1];
-};
-
+/*
+ * btsort_merge_run_for_parallel_index_leaf_build () - Build the leaf level from the runs the workers left
+ *   return: NO_ERROR, or error code
+ *   px_sort_param(in): worker parameters
+ *   sort_param(in): main sort parameters; put_fn builds the leaf level
+ *   parallel_num(in): number of workers
+ *
+ * Note: A no-logging build (loaddb --no-logging-index) partitions the workers' result runs into key ranges and
+ *       builds them in parallel (btsort_px_construct_index_leaf). Otherwise the main thread merges every run the
+ *       workers left in one pass and hands the records to put_fn, as the final pass of a serial sort does.
+ */
 static int
 btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param,
 						BTSORT_PARAM * sort_param, int parallel_num)
 {
   int error = NO_ERROR;
   int i;
-  BTSORT_MERGE_QUEUE_CTX qctx;
   SORT_ARGS *sort_args_p;
   LOAD_ARGS *load_args_p;
 
@@ -3282,9 +3272,6 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
     {
       return ER_FAILED;
     }
-
-  btsort_merge_queue_ctx_init (&qctx, sort_param, px_sort_param, parallel_num);
-  btsort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
 
   sort_args_p = (SORT_ARGS *) sort_param->get_arg;
   load_args_p = (LOAD_ARGS *) sort_param->put_arg;
@@ -3311,9 +3298,9 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
   {
     /*
      * Build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
-     * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
-     * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
-     * below: merge everything into a single run and put it serially.
+     * range of every run while putting, so the leaf level is built by several threads rather than by the main
+     * thread alone.  BT_PX_NOT_ATTEMPTED falls through to the legacy path below, where the main thread merges
+     * every run into put_fn (btsort_merge_px_runs).
      */
     BT_LOAD_PX_OUTCOME outcome = btsort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
     if (outcome != BT_PX_NOT_ATTEMPTED)
@@ -3338,34 +3325,8 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
 		  }
 	      }
 	  }
-	btsort_merge_queue_ctx_destroy (&qctx);
 	return outcome == BT_PX_TREE_DONE ? error : ER_FAILED;
       }
-  }
-
-  /* legacy single-run path: merge all runs into one, then put it serially from the temp file. */
-  if (qctx.queue_size >= 2)
-    {
-      error = btsort_merge_queue_run (thread_p, &qctx);
-      if (error != NO_ERROR)
-	{
-	  btsort_merge_queue_ctx_destroy (&qctx);
-	  return ER_FAILED;
-	}
-      btsort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
-    }
-  else if (qctx.queue_size == 1)
-    {
-      btsort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
-    }
-
-  {
-    int result_file_idx = px_sort_param[0].px_result_file_idx;
-    sort_param->px_result_file_idx = result_file_idx;
-    sort_param->file_contents[result_file_idx].num_pages[0] =
-      px_sort_param[0].file_contents[result_file_idx].num_pages[0];
-    sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
-    file_find_nth_cursor_reset (&sort_param->temp_cursor[result_file_idx]);
   }
 
   /* no-redo builds are restricted to genuinely parallel construction, so by construction we never
@@ -3382,419 +3343,136 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
     {
       ASSERT_ERROR ();
       log_sysop_abort (thread_p);
-      btsort_merge_queue_ctx_destroy (&qctx);
+      /* the runs are not merged: retire them here, as btsort_merge_px_runs would */
+      btsort_retire_px_temp_files (thread_p, px_sort_param, parallel_num);
       return ER_FAILED;
     }
 
   /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
   vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
-  if (btsort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
+  if (btsort_merge_px_runs (thread_p, px_sort_param, sort_param, parallel_num) != NO_ERROR)
     {
       /* A sysop is open here unconditionally (the create-file above), so the abort is unconditional. */
       log_sysop_abort (thread_p);
       error = ER_FAILED;
     }
 
-  btsort_merge_queue_ctx_destroy (&qctx);
-  return error;
-}
-
-static void
-btsort_merge_queue_enqueue (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_RESULT_RUN run)
-{
-  qctx->run_queue[qctx->queue_tail] = run;
-  qctx->queue_tail = (qctx->queue_tail + 1) % BTSORT_MAX_PARALLEL;
-  qctx->queue_size++;
-}
-
-static BTSORT_RESULT_RUN
-btsort_merge_queue_dequeue (BTSORT_MERGE_QUEUE_CTX * qctx)
-{
-  BTSORT_RESULT_RUN run = qctx->run_queue[qctx->queue_head];
-  qctx->queue_head = (qctx->queue_head + 1) % BTSORT_MAX_PARALLEL;
-  qctx->queue_size--;
-  return run;
-}
-
-static int
-btsort_merge_queue_acquire_ctx (BTSORT_MERGE_QUEUE_CTX * qctx)
-{
-  int i;
-  for (i = 0; i < qctx->pool_size; i++)
-    {
-      if (!qctx->ctx_in_use[i])
-	{
-	  qctx->ctx_in_use[i] = true;
-	  return i;
-	}
-    }
-  return -1;
-}
-
-static void
-btsort_merge_queue_release_ctx (BTSORT_MERGE_QUEUE_CTX * qctx, int idx)
-{
-  qctx->ctx_in_use[idx] = false;
-}
-
-static void
-btsort_merge_queue_setup_ctx (int pool_idx, BTSORT_MERGE_QUEUE_CTX * qctx, const BTSORT_RESULT_RUN * runs, int k)
-{
-  int j;
-  BTSORT_PARAM *ctx = &qctx->px_sort_param[pool_idx];
-
-  assert (k >= 2 && k <= BTSORT_PX_MERGE_FILES);
-  ctx->half_files = k;
-  ctx->tot_tempfiles = k * 2;
-  assert (ctx->tot_tempfiles <= ctx->temp_slots);
-  ctx->in_half = 0;
-  ctx->px_result_file_idx = 0;
-  for (j = 0; j < k; j++)
-    {
-      ctx->temp[j] = runs[j].temp_file;
-      file_find_nth_cursor_reset (&ctx->temp_cursor[j]);
-      ctx->file_contents[j].num_pages[0] = runs[j].num_pages;
-      ctx->file_contents[j].first_run = 0;
-      ctx->file_contents[j].last_run = 0;
-    }
-  for (j = k; j < k * 2; j++)
-    {
-      VFID_SET_NULL (&ctx->temp[j]);
-      file_find_nth_cursor_reset (&ctx->temp_cursor[j]);
-      ctx->file_contents[j].first_run = -1;
-      ctx->file_contents[j].last_run = -1;
-    }
-  ctx->px_result_run = &qctx->ctx_results[pool_idx];
-  /* Clear stale value from a previous merge that reused this pool slot, so the
-   * callback error branch can reliably detect whether btsort_merge_nruns produced
-   * an output run that needs to be retired. */
-  VFID_SET_NULL (&ctx->px_result_run->temp_file);
-  ctx->px_result_run->num_pages = 0;
-}
-
-static void
-btsort_merge_queue_ctx_init (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * sort_param,
-			     BTSORT_PARAM * px_sort_param, int parallel_num)
-{
-  memset (qctx, 0, sizeof (*qctx));
-  pthread_mutex_init (&qctx->mtx, NULL);
-  pthread_cond_init (&qctx->done_cond, NULL);
-  qctx->sort_param = sort_param;
-  qctx->px_sort_param = px_sort_param;
-  qctx->pool_size = parallel_num / BTSORT_PX_MERGE_FILES + 1;
-}
-
-static void
-btsort_merge_queue_ctx_destroy (BTSORT_MERGE_QUEUE_CTX * qctx)
-{
-  pthread_mutex_destroy (&qctx->mtx);
-  pthread_cond_destroy (&qctx->done_cond);
-}
-
-static void
-btsort_merge_queue_enqueue_initial_runs (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * px_sort_param, int parallel_num)
-{
-  int i;
-  for (i = 0; i < parallel_num; i++)
-    {
-      int npages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
-      if (npages > 0)
-	{
-	  BTSORT_RESULT_RUN run;
-	  run.temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
-	  run.num_pages = npages;
-	  btsort_merge_queue_enqueue (qctx, run);
-	}
-    }
-}
-
-/*
- * btsort_merge_queue_run () - drive the dispatcher + wait loop until all merges
- *   complete. On return the queue holds 0 or 1 run depending on input;
- *   the caller stages the final run.
- *
- *   On error, the queue is fully drained and every remaining run's temp file
- *   is retired. Workers do not retire temp[k] for BTSORT_PX_THREAD_IN_PARALLEL, so the
- *   queue is the sole owner of every enqueued run (initial or intermediate)
- *   once dispatch begins.
- */
-static int
-btsort_merge_queue_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_QUEUE_CTX * qctx)
-{
-  pthread_mutex_lock (&qctx->mtx);
-  while (qctx->queue_size >= 2)
-    {
-      btsort_merge_queue_try_dispatch (qctx);
-    }
-  /* On error path workers may still enqueue successful results, so queue_size > 1
-   * can persist after in_flight reaches 0. Drain in-flight only and ignore the
-   * queue when has_error is set to avoid deadlock. */
-  while (qctx->in_flight > 0 || (!qctx->has_error && qctx->queue_size > 1))
-    {
-      pthread_cond_wait (&qctx->done_cond, &qctx->mtx);
-    }
-
-  if (qctx->has_error)
-    {
-      /* Drain the queue and retire each remaining run's temp file. */
-      while (qctx->queue_size > 0)
-	{
-	  BTSORT_RESULT_RUN run = btsort_merge_queue_dequeue (qctx);
-	  if (!VFID_ISNULL (&run.temp_file))
-	    {
-	      (void) file_temp_retire (thread_p, &run.temp_file);
-	    }
-	}
-    }
-  pthread_mutex_unlock (&qctx->mtx);
-
-  /* Match BTSORT_WAIT_PARALLEL: ensure the worker pool drains any task accounting
-   * that may still be pending after the callback returned. in_flight reaches 0
-   * the moment a callback unlocks qctx->mtx, before the worker_manager fully
-   * retires the task. */
-  qctx->sort_param->px_worker_manager->wait_workers ();
-
-  return qctx->has_error ? ER_FAILED : NO_ERROR;
-}
-
-static void
-btsort_merge_queue_stage_final_run (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * dst)
-{
-  BTSORT_RESULT_RUN final_run = btsort_merge_queue_dequeue (qctx);
-  dst->px_result_file_idx = 0;
-  dst->temp[0] = final_run.temp_file;
-  file_find_nth_cursor_reset (&dst->temp_cursor[0]);
-  dst->file_contents[0].num_pages[0] = final_run.num_pages;
-  dst->file_contents[0].first_run = 0;
-  dst->file_contents[0].last_run = 0;
-}
-
-static void
-btsort_merge_queue_try_dispatch (BTSORT_MERGE_QUEUE_CTX * qctx)
-{
-  BTSORT_RESULT_RUN runs[BTSORT_PX_MERGE_FILES];
-  int k, j;
-  int pool_idx;
-  BTSORT_PARAM *ctx;
-  parallel_query::callable_task * task;
-
-  if (qctx->has_error)
-    {
-      if (qctx->in_flight == 0)
-	{
-	  pthread_cond_signal (&qctx->done_cond);
-	}
-      return;
-    }
-
-  if (qctx->queue_size >= 2)
-    {
-      /* Greedy k-way: consume up to BTSORT_PX_MERGE_FILES runs per merge to
-       * minimize merge-tree depth (= fan-in I/O). k=2 is the smallest valid
-       * merge and is used whenever the queue currently holds fewer than K. */
-      k = MIN (qctx->queue_size, BTSORT_PX_MERGE_FILES);
-      for (j = 0; j < k; j++)
-	{
-	  runs[j] = btsort_merge_queue_dequeue (qctx);
-	}
-      pool_idx = btsort_merge_queue_acquire_ctx (qctx);
-      /* pool_size = parallel_num/BTSORT_PX_MERGE_FILES + 1 bounds simultaneous
-       * merges, so acquire_ctx should never fail under the current invariant. */
-      assert (pool_idx >= 0);
-      btsort_merge_queue_setup_ctx (pool_idx, qctx, runs, k);
-      qctx->in_flight++;
-      ctx = &qctx->px_sort_param[pool_idx];
-      task = new parallel_query::callable_task (qctx->sort_param->px_worker_manager,
-						std::bind (btsort_merge_nruns_queue_cb,
-							   std::placeholders::_1, ctx, qctx));
-      qctx->sort_param->px_worker_manager->push_task (task);
-    }
-  else if (qctx->in_flight == 0)
-    {
-      pthread_cond_signal (&qctx->done_cond);
-    }
-}
-
-static void
-btsort_merge_nruns_queue_cb (cubthread::entry & thread_ref, BTSORT_PARAM * ctx, BTSORT_MERGE_QUEUE_CTX * qctx)
-{
-  THREAD_ENTRY *thread_p = &thread_ref;
-  int error;
-  int pool_idx;
-
-  thread_ref.tran_index = ctx->px_orig_thread_p->tran_index;
-  thread_ref.m_px_orig_thread_entry = ctx->px_orig_thread_p;
-  thread_ref.conn_entry = ctx->px_orig_thread_p->conn_entry;
-
-  thread_p->push_resource_tracks ();
-
-  if (thread_is_on_trace (ctx->px_orig_thread_p))
-    {
-      thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref);
-    }
-
-  error = btsort_merge_nruns (thread_p, ctx);
-
-  if (thread_is_on_trace (ctx->px_orig_thread_p))
-    {
-      perfmon_destroy_parallel_stats (&thread_ref);
-    }
-  thread_p->pop_resource_tracks ();
-
-  pthread_mutex_lock (&qctx->mtx);
-  if (error != NO_ERROR)
-    {
-      if (!qctx->has_error)
-	{
-	  qctx->has_error = true;
-	  ctx->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	}
-      /* The failed merge's result run is not enqueued; queue drain on error
-       * will not see it. Retire it here to avoid leaking the temp file. */
-      if (!VFID_ISNULL (&ctx->px_result_run->temp_file))
-	{
-	  (void) file_temp_retire (thread_p, &ctx->px_result_run->temp_file);
-	  VFID_SET_NULL (&ctx->px_result_run->temp_file);
-	}
-    }
-  else
-    {
-      BTSORT_RESULT_RUN result = *ctx->px_result_run;
-      btsort_merge_queue_enqueue (qctx, result);
-    }
-  pool_idx = (int) (ctx - qctx->px_sort_param);
-  btsort_merge_queue_release_ctx (qctx, pool_idx);
-  thread_ref.m_px_orig_thread_entry = NULL;
-  qctx->in_flight--;
-  btsort_merge_queue_try_dispatch (qctx);
-  pthread_mutex_unlock (&qctx->mtx);
-}
-
-/*
- * btsort_merge_nruns () - merge n run
- *   return: NO_ERROR
- *   px_sort_param(in):
- *   sort_param(in):
- *   parallel_num(in):
- */
-static int
-btsort_merge_nruns (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
-{
-  int error = NO_ERROR;
-  int i;
-
-  /* Merge the parallel processed results; the merge passes create the output temp files they write. */
-  error = btsort_exphase_merge (thread_p, sort_param);
-
-  if (error != NO_ERROR)
-    {
-      goto retire_all_on_error;
-    }
-
-  /* save result run */
-  sort_param->px_result_run->temp_file = sort_param->temp[sort_param->px_result_file_idx];
-  sort_param->px_result_run->num_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
-
-  /* retire temp file */
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
-    {
-      if (!VFID_ISNULL (&sort_param->temp[i]) && i != sort_param->px_result_file_idx)
-	{
-	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
-	  VFID_SET_NULL (&sort_param->temp[i]);
-	  file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
-	}
-    }
-  return NO_ERROR;
-
-retire_all_on_error:
-  /* On error: retire every allocated temp file — both the dequeued inputs
-   * (temp[0..half_files-1], already removed from the queue and no longer
-   * tracked there) and any output files allocated before the failure. The
-   * caller (btsort_merge_nruns_queue_cb) leaves px_result_run at its
-   * setup_ctx-initialized null VFID, so no separate result-file retire is
-   * needed here. */
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
-    {
-      if (!VFID_ISNULL (&sort_param->temp[i]))
-	{
-	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
-	  VFID_SET_NULL (&sort_param->temp[i]);
-	  file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
-	}
-    }
   return error;
 }
 
 /*
- * btsort_put_result_from_tmpfile () - Hand the records of the result file to put_fn
+ * btsort_merge_px_runs () - Merge the runs the workers left into put_fn in one pass
  *   return: NO_ERROR, or error code
- *   sort_param(in): sort parameters; px_result_file_idx names the file
- *   start_pagenum(in): first page of the file to read
+ *   px_sort_param(in): worker parameters; every temp file of theirs that holds a run is an input
+ *   sort_param(in): main sort parameters: the comparison and put functions
+ *   parallel_num(in): number of workers
+ *
+ * Note: A worker ends with one result run, or with the runs of its last pass when btsort_exphase_merge left them to
+ *       this merge (BTSORT_PX_LEADER_FANIN). The runs of a worker are read through its sort buffer, free once the
+ *       worker is done, divided into one input section per run. The workers' temp files are retired here, whether
+ *       the merge succeeds or not.
  */
 static int
-btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int start_pagenum)
+btsort_merge_px_runs (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param,
+		      int parallel_num)
 {
-  int tot_pages;
-  int current_pages = start_pagenum, read_pages = 0, cur_read_pages = 0;
-  int slot_num = 0;
-  char *cur_pgptr;
-  int result_file_idx = sort_param->px_result_file_idx;
-  RECDES record = RECDES_INITIALIZER;
-  RECDES long_record = RECDES_INITIALIZER;
+  BTSORT_MERGE_CTX ctx;
+  BTSORT_PARAM *px;
+  BTSORT_MERGE_INPUT *in;
+  int n_inputs = 0;
+  int runs;			/* runs one worker left */
+  int sectsize;			/* pages of each of its input sections */
+  size_t arrays_size;
   int error = NO_ERROR;
+  int w, k, j;
 
-  tot_pages = sort_param->file_contents[result_file_idx].num_pages[0];
-  while (tot_pages > 0)
+  for (w = 0; w < parallel_num; w++)
     {
-      read_pages = (tot_pages > sort_param->tot_buffers) ? sort_param->tot_buffers : tot_pages;
-
-      error =
-	btsort_read_area (thread_p, &sort_param->temp[result_file_idx], &sort_param->temp_cursor[result_file_idx],
-			  current_pages, read_pages, sort_param->internal_memory);
-      if (error != NO_ERROR)
+      for (k = 0; k < px_sort_param[w].tot_tempfiles; k++)
 	{
-	  goto bailout;
+	  n_inputs += btsort_run_count (&px_sort_param[w].file_contents[k]);
 	}
+    }
+  if (n_inputs == 0)
+    {
+      /* no records at all */
+      btsort_retire_px_temp_files (thread_p, px_sort_param, parallel_num);
+      return NO_ERROR;
+    }
 
-      cur_pgptr = sort_param->internal_memory;
-      cur_read_pages = read_pages;
-      while (cur_read_pages > 0)
+  memset (&ctx, 0, sizeof (ctx));
+  ctx.sort_param = sort_param;
+
+  /* the inputs and the heap over them, in one block; the inputs start zeroed so that no long record buffer is freed
+   * before it exists */
+  arrays_size = sizeof (BTSORT_MERGE_INPUT) * n_inputs + sizeof (int) * n_inputs;
+  ctx.in = (BTSORT_MERGE_INPUT *) calloc (1, arrays_size);
+  if (ctx.in == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, arrays_size);
+      btsort_retire_px_temp_files (thread_p, px_sort_param, parallel_num);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  ctx.heap = (int *) (ctx.in + n_inputs);
+
+  /* every run a worker left is an input; the runs of one worker share its sort buffer as their sections */
+  in = ctx.in;
+  for (w = 0; w < parallel_num; w++)
+    {
+      px = &px_sort_param[w];
+      runs = 0;
+      for (k = 0; k < px->tot_tempfiles; k++)
 	{
-	  /* read record from sort temp file */
-	  slot_num = btsort_spage_get_numrecs (cur_pgptr);
-	  for (int i = 0; i < slot_num; i++)
+	  runs += btsort_run_count (&px->file_contents[k]);
+	}
+      if (runs == 0)
+	{
+	  continue;
+	}
+      assert (runs <= px->tot_buffers);
+      sectsize = MAX (1, px->tot_buffers / runs);
+      for (k = 0, j = 0; k < px->tot_tempfiles; k++)
+	{
+	  if (btsort_run_count (&px->file_contents[k]) == 0)
 	    {
-	      error = btsort_merge_fetch_slot (thread_p, cur_pgptr, i, &record, &long_record);
-	      if (error != NO_ERROR)
-		{
-		  goto bailout;
-		}
-
-	      error =
-		(*sort_param->put_fn) (thread_p, btsort_merge_resolve_rec (&record, &long_record), sort_param->put_arg);
-	      if (error != NO_ERROR)
-		{
-		  goto bailout;
-		}
+	      continue;
 	    }
-
-	  /* Switch to the next page */
-	  cur_pgptr += DB_PAGESIZE;
-
-	  cur_read_pages--;
-	  current_pages++;
+	  /* a worker leaves the runs of one pass, one per file */
+	  assert (btsort_run_count (&px->file_contents[k]) == 1);
+	  btsort_merge_bind_input (in, px, k);
+	  in->sectaddr = px->internal_memory + ((size_t) j * sectsize * DB_PAGESIZE);
+	  in->sectsize = sectsize;
+	  in++;
+	  j++;
 	}
-      tot_pages -= read_pages;
+    }
+  ctx.act_infiles = n_inputs;
+
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: btsort main thread merge: fan-in %d from %d workers, to put_fn",
+		     n_inputs, parallel_num);
     }
 
-bailout:
-  if (long_record.data != NULL)
+  error = btsort_merge_produce_run (thread_p, &ctx, true);
+
+  for (k = 0; k < n_inputs; k++)
     {
-      free_and_init (long_record.data);
+      if (ctx.in[k].long_rec.data != NULL)
+	{
+	  free_and_init (ctx.in[k].long_rec.data);
+	}
     }
+  if (ctx.tail_long_rec.data != NULL)
+    {
+      free_and_init (ctx.tail_long_rec.data);
+    }
+  free_and_init (ctx.in);
+
+  /* the workers' runs are consumed, or abandoned on an error */
+  btsort_retire_px_temp_files (thread_p, px_sort_param, parallel_num);
+
   return error;
 }
 
@@ -4836,33 +4514,31 @@ cleanup:
 /*
  * btsort_alloc_temp_slots () - Allocate the per-temp-file arrays of a sort parameter
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
- *   sort_param(in/out): sort parameters; temp_slots is set to n_slots
- *   n_slots(in): entries of each array; at least tot_tempfiles
+ *   sort_param(in/out): sort parameters; tot_tempfiles says how many files, temp_slots is set to it
  *
  * Note: Every slot starts empty: a null file, a reset cursor and a zeroed run list with room for
  *       BTSORT_INITIAL_DYN_ARRAY_SIZE runs. A worker that receives no records makes no run, which the readers of
  *       its result run see as num_pages[0] = 0. On failure whatever was allocated is freed again.
  */
 static int
-btsort_alloc_temp_slots (BTSORT_PARAM * sort_param, int n_slots)
+btsort_alloc_temp_slots (BTSORT_PARAM * sort_param)
 {
+  int n = sort_param->tot_tempfiles;
   int i;
 
-  assert (n_slots >= sort_param->tot_tempfiles);
-
-  sort_param->temp = (VFID *) malloc ((size_t) n_slots * sizeof (VFID));
-  sort_param->temp_cursor = (FILE_FIND_NTH_CURSOR *) malloc ((size_t) n_slots * sizeof (FILE_FIND_NTH_CURSOR));
-  sort_param->file_contents = (BTSORT_FILE_CONTENTS *) calloc ((size_t) n_slots, sizeof (BTSORT_FILE_CONTENTS));
-  sort_param->temp_slots = n_slots;
+  sort_param->temp = (VFID *) malloc ((size_t) n * sizeof (VFID));
+  sort_param->temp_cursor = (FILE_FIND_NTH_CURSOR *) malloc ((size_t) n * sizeof (FILE_FIND_NTH_CURSOR));
+  sort_param->file_contents = (BTSORT_FILE_CONTENTS *) calloc ((size_t) n, sizeof (BTSORT_FILE_CONTENTS));
+  sort_param->temp_slots = n;
   if (sort_param->temp == NULL || sort_param->temp_cursor == NULL || sort_param->file_contents == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) n_slots * (sizeof (VFID) + sizeof (FILE_FIND_NTH_CURSOR) + sizeof (BTSORT_FILE_CONTENTS)));
+	      (size_t) n * (sizeof (VFID) + sizeof (FILE_FIND_NTH_CURSOR) + sizeof (BTSORT_FILE_CONTENTS)));
       btsort_free_temp_slots (sort_param);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  for (i = 0; i < n_slots; i++)
+  for (i = 0; i < n; i++)
     {
       /* the real file identifier is set by btsort_add_new_file () */
       VFID_SET_NULL (&sort_param->temp[i]);
