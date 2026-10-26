@@ -125,6 +125,7 @@ au_auth_accessor::create_new_auth ()
       if (m_au_class_mop == nullptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1, CT_CLASSAUTH_NAME);
+	  return ER_AU_MISSING_CLASS;
 	}
     }
 
@@ -132,26 +133,70 @@ au_auth_accessor::create_new_auth ()
   if (m_au_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
+      return er_errid ();
     }
-  return er_errid ();
+  return NO_ERROR;
+}
+
+/*
+ * find_object_of - find the value of _db_auth.object_of
+ *   return: error code
+ *   obj_type(in): the object type
+ *   obj_mop(in): the class, or the _db_stored_procedure row
+ *   object_of(out): obj_mop; for a procedure, the same row looked up again by its unique name
+ */
+static int
+find_object_of (DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP *object_of)
+{
+  MOP inst_mop = nullptr;
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      inst_mop = obj_mop;
+      break;
+    case DB_OBJECT_PROCEDURE:
+      // TODO: CBRD-24912
+      if (jsp_get_unique_name (obj_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      inst_mop = jsp_find_stored_procedure (unique_name, DB_AUTH_NONE);
+      if (inst_mop == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  *object_of = inst_mop;
+  return NO_ERROR;
 }
 
 int
-au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP obj_mop,
+au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP object_of,
 				DB_AUTH auth_type, bool grant_option)
 {
   DB_VALUE value;
-  MOP inst_mop = nullptr;
   DB_AUTH type;
   int i;
   int error = NO_ERROR;
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  unique_name[0] = '\0';
 
   m_au_obj = au_obj;
   if (m_au_obj == nullptr)
     {
       error = create_new_auth ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   db_make_object (&value, grantor);
@@ -160,33 +205,10 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   db_make_object (&value, user);
   obj_set (m_au_obj, AU_AUTH_ATTR_GRANTEE, &value);
 
-  if (obj_type == DB_OBJECT_CLASS)
-    {
-      inst_mop = obj_mop;
-    }
-  else
-    {
-      // TODO: CBRD-24912
-      if (jsp_get_unique_name (obj_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  pr_clear_value (&value);
-	  return er_errid ();
-	}
-
-      inst_mop = jsp_find_stored_procedure (unique_name, DB_AUTH_NONE);
-      if (inst_mop == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  pr_clear_value (&value);
-	  return er_errid ();
-	}
-    }
-
   db_make_int (&value, (int) obj_type);
   obj_set (m_au_obj, "object_type", &value);
 
-  db_make_object (&value, inst_mop);
+  db_make_object (&value, object_of);
   obj_set (m_au_obj, "object_of", &value);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++);
@@ -407,11 +429,18 @@ au_auth_accessor::insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 			       int grant_option)
 {
   int error = NO_ERROR;
+  MOP object_of = nullptr;
   for (int index = DB_AUTH_EXECUTE; index; index >>= 1)
     {
       if (auth_type & index)
 	{
-	  error = set_new_auth (obj_type, NULL, grantor, user, obj_mop, (DB_AUTH) index,
+	  error = find_object_of (obj_type, obj_mop, &object_of);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  error = set_new_auth (obj_type, NULL, grantor, user, object_of, (DB_AUTH) index,
 				((grant_option & index) ? true : false));
 	  if (error != NO_ERROR)
 	    {
@@ -428,6 +457,7 @@ au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 			       int grant_option)
 {
   int error = NO_ERROR;
+  MOP object_of = nullptr;
   for (int index = DB_AUTH_EXECUTE; index; index >>= 1)
     {
       if (auth_type & index)
@@ -446,7 +476,13 @@ au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 	      return error;
 	    }
 
-	  error = set_new_auth (obj_type, m_au_obj, grantor, user, obj_mop, (DB_AUTH) index,
+	  error = find_object_of (obj_type, obj_mop, &object_of);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  error = set_new_auth (obj_type, m_au_obj, grantor, user, object_of, (DB_AUTH) index,
 				((grant_option & index) ? true : false));
 	  if (error != NO_ERROR)
 	    {
