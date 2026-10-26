@@ -219,6 +219,7 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
+static PT_NODE *mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						       PT_NODE * derived_table, PT_NODE ** new_spec);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -1575,6 +1576,68 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
 }
 
 /*
+ * mq_copy_select_list_as_attr_list () - copy the select list of a derived table as its attribute list (as_attr_list)
+ *   return: attribute list
+ *   parser(in):
+ *   select_list(in): select list of the derived table
+ *   spec(in): spec of the derived table
+ *
+ * Note: an attribute list is a list of names, as it is printed as "spec (col1, col2)". When no column of the derived
+ *       table is referenced, the select list is reduced to a constant (e.g. "select 1" for count(*)), which is given a
+ *       generated name here. Otherwise the constant would be printed as "spec (1)", which can not be parsed again.
+ */
+static PT_NODE *
+mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec)
+{
+  PT_NODE *attr_list, *attr, *prev, *name;
+  int i = 0;
+
+  attr_list = parser_copy_tree_list (parser, select_list);
+
+  for (attr = attr_list, prev = NULL; attr != NULL; prev = attr, attr = attr->next)
+    {
+      if (attr->node_type == PT_NAME)
+	{
+	  continue;
+	}
+
+      name = pt_name (parser, mq_generate_name (parser, "a", &i));
+      if (name == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  parser_free_tree (parser, attr_list);
+	  return NULL;
+	}
+      name->line_number = attr->line_number;
+      name->column_number = attr->column_number;
+      name->info.name.meta_class = PT_NORMAL;
+      if (spec->info.spec.range_var != NULL)
+	{
+	  name->info.name.resolved = spec->info.spec.range_var->info.name.original;
+	}
+      name->info.name.spec_id = spec->info.spec.id;
+      name->type_enum = attr->type_enum;
+      name->data_type = parser_copy_tree (parser, attr->data_type);
+
+      /* replace attr with name */
+      name->next = attr->next;
+      attr->next = NULL;
+      parser_free_tree (parser, attr);
+      if (prev == NULL)
+	{
+	  attr_list = name;
+	}
+      else
+	{
+	  prev->next = name;
+	}
+      attr = name;
+    }
+
+  return attr_list;
+}
+
+/*
  * mq_remove_select_list_for_inline_view () - remove unnecessary select list
  *   return: PT_NODE *, statement
  *   parser(in): parser context
@@ -1726,7 +1789,11 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
     }
 
   /* copy select_list to as_attr_list before mq_lambda() */
-  as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
+  as_attr_list = mq_copy_select_list_as_attr_list (parser, tmp_query->info.query.q.select.list, spec);
+  if (as_attr_list == NULL && pt_has_error (parser))
+    {
+      goto exit_on_error;
+    }
   if (parser->flag.is_parsing_static_sql)
     {
       /* as_attr_list entries are bare column-name declarations for the derived table's exposed
@@ -5825,7 +5892,12 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
+      spec->info.spec.as_attr_list =
+	mq_copy_select_list_as_attr_list (parser, new_query->info.query.q.select.list, spec);
+      if (spec->info.spec.as_attr_list == NULL && pt_has_error (parser))
+	{
+	  return NULL;
+	}
       if (parser->flag.is_parsing_static_sql)
 	{
 	  /* as_attr_list entries are bare column-name declarations for the derived table's exposed
