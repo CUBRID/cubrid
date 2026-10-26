@@ -6859,25 +6859,24 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* this index is feasible to use if at least one attribute of index is specified(matched) */
 }
 
-/* walk argument for qo_seg_used_only_in_covering_func_index () */
 typedef struct qo_seg_fi_walk_arg QO_SEG_FI_WALK_ARG;
 struct qo_seg_fi_walk_arg
 {
-  PARSER_CONTEXT *parser;
-  const char *func_expr_str;	/* function expression string provided by the index */
-  UINTPTR spec_id;		/* spec id of the segment's column */
-  const char *col_name;		/* raw column name of the segment */
-  bool found_raw;		/* set if the column is used outside the covering function expression */
+  const char *func_expr_str;
+  UINTPTR spec_id;
+  const char *col_name;
+  bool in_subquery;
+  bool found_raw;
 };
 
 /*
- * qo_seg_used_raw_walk () - parse tree pre walk function that detects whether a column is referenced
- *   outside of the covering function index expression.
+ * qo_seg_used_raw_walk () - parse tree pre walk function that detects a reference to the column outside of the
+ *   function index expression
  *   return: PT_NODE *
- *
- * Note: Function index expressions that match the index expression are pruned (not descended into),
- *   because a covering scan materializes their precomputed result from the index key. Any bare
- *   reference to the column found elsewhere means the covering scan cannot reproduce it.
+ *   parser(in):
+ *   tree(in):
+ *   arg(in):
+ *   continue_walk(in):
  */
 static PT_NODE *
 qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -6892,13 +6891,27 @@ qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       return tree;
     }
 
-  if (pt_is_function_index_expr (parser, tree, false))
+  if (!info->in_subquery && PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      /* a subquery is evaluated from the raw column, not from the scan's routed function result */
+      PT_NODE *save_next = tree->next;
+
+      tree->next = NULL;
+      info->in_subquery = true;
+      (void) parser_walk_tree (parser, tree, qo_seg_used_raw_walk, info, NULL, NULL);
+      info->in_subquery = false;
+      tree->next = save_next;
+
+      *continue_walk = info->found_raw ? PT_STOP_WALK : PT_LIST_WALK;
+      return tree;
+    }
+
+  if (!info->in_subquery && pt_is_function_index_expr (parser, tree, false))
     {
       char *expr_str = parser_print_function_index_expr (parser, tree);
 
       if (expr_str != NULL && info->func_expr_str != NULL && !intl_identifier_casecmp (expr_str, info->func_expr_str))
 	{
-	  /* this projected function expression is provided by the index; do not descend into its arguments */
 	  *continue_walk = PT_LIST_WALK;
 	  return tree;
 	}
@@ -6915,16 +6928,12 @@ qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 }
 
 /*
- * qo_seg_used_only_in_covering_func_index () - check whether the (uncovered) segment appears in the
- *   query output only as an argument of a function index expression that this index provides.
+ * qo_seg_used_only_in_covering_func_index () - check whether a column missing from the index is used in the
+ *   query only as an argument of the function index expression
  *   return: bool
  *   env(in): the environment
- *   index_entry(in): the index entry (must be a function index)
- *   seg(in): the raw column segment that is not present in the index
- *
- * Note: When true, a covering scan is still correct because the executor materializes the precomputed
- *   function result stored in the index key (see btree_attrinfo_read_dbvalues) and the client routes the
- *   projected function expression to read that value directly instead of recomputing it from the column.
+ *   index_entry(in): the index entry
+ *   seg(in): the column segment not present in the index
  */
 static bool
 qo_seg_used_only_in_covering_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg)
@@ -6950,10 +6959,10 @@ qo_seg_used_only_in_covering_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_en
       return false;
     }
 
-  info.parser = parser;
   info.func_expr_str = index_entry->constraints->func_index_info->expr_str;
   info.spec_id = pt_seg->info.name.spec_id;
   info.col_name = pt_seg->info.name.original;
+  info.in_subquery = false;
   info.found_raw = false;
 
   (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_seg_used_raw_walk, &info, NULL, NULL);
@@ -7087,8 +7096,6 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	  continue;
 	}
 
-      /* Function index expression segments (e.g. sqrt(d1)) are computed results stored in the
-       * midxkey, not projected columns. Skip them from coverage requirement checks. */
       if (QO_SEG_FUNC_INDEX (seg))
 	{
 	  continue;
@@ -7106,22 +7113,12 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 
       if (!found)
 	{
-	  /* Segment is not one of the index columns. For a plain (non-function) index this means the index
-	   * cannot cover the query -- exactly develop's conservative behavior. For a function index, covering
-	   * is still possible ONLY if this segment is used solely as an argument of a function index expression
-	   * that the index provides (its precomputed result is then read from the index key). Any independent
-	   * use of the raw column -- in the output list, GROUP BY / HAVING / ORDER BY, a predicate term, or a
-	   * CONNECT BY / START WITH clause -- means the covered scan cannot reproduce it, so covering is unsafe.
-	   *
-	   * qo_seg_used_only_in_covering_func_index() returns false for a non-function index and for any raw
-	   * use of the column in the output/hierarchical clauses, so it captures all of the above except plain
-	   * predicate terms, which are checked separately below. */
+	  /* a function argument missing from the key is allowed only inside the indexed expression */
 	  if (!qo_seg_used_only_in_covering_func_index (env, index_entry, seg))
 	    {
 	      return false;
 	    }
 
-	  /* Used directly in a predicate term: the raw column value is needed, cannot cover. */
 	  {
 	    int t;
 	    for (t = 0; t < env->nterms; t++)
@@ -7133,12 +7130,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	      }
 	  }
 
-	  /* A projected function result read from the index key flows through the output value list. The
-	   * GROUP BY machinery builds its group value list / sort keys from the raw argument column rather
-	   * than this materialized result, so covering would produce incorrect groups. Likewise, aggregate
-	   * functions (buildvalue) evaluate their arguments from the raw argument column, which a covered scan
-	   * cannot provide. Fall back to a non-covering scan (which recomputes the function from the heap)
-	   * when the query groups or aggregates. */
+	  /* grouping and aggregation evaluate the function from the raw argument */
 	  {
 	    PT_NODE *qtree = QO_ENV_PT_TREE (env);
 
@@ -7148,19 +7140,21 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 		return false;
 	      }
 	  }
-
 	}
     }
 
-  /* pt_to_index_info later disables XASL coverage when an index attribute has a type that cannot support
-   * covering (TIMESTAMPTZ/DATETIMETZ) or a collation that forbids index optimization. For a function index the
-   * client has by then already routed the projected/key-filter expression to a sentinel attr id, which would
-   * flow into a non-covered heap scan and crash. Reflect both gates here so such a function index is never
-   * chosen as covering in the first place. Restricted to function indexes to avoid perturbing plain-index
-   * plan choices, whose develop-era covering-then-fallback path is harmless. */
+  /* pt_to_index_info drops coverage on these gates after the function result has already been routed */
   if (index_entry->constraints != NULL && index_entry->constraints->func_index_info != NULL)
     {
       COLL_OPT coll_opt;
+      const char *expr_str = index_entry->constraints->func_index_info->expr_str;
+      PT_NODE *spec = QO_NODE_ENTITY_SPEC (nodep);
+
+      /* lock-needed scans disable covering on the server and re-evaluate the key filter on the heap record */
+      if (spec != NULL && PT_SPEC_NEEDS_HEAP_REEVAL (spec))
+	{
+	  return false;
+	}
 
       if (!qo_check_type_index_covering (index_entry))
 	{
@@ -7170,6 +7164,28 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
       if (!coll_opt.allow_index_opt)
 	{
 	  return false;
+	}
+
+      /* join and subquery terms are evaluated from the raw argument, not from the routed result */
+      for (i = 0; i < env->nterms; i++)
+	{
+	  qo_termp = QO_ENV_TERM (env, i);
+	  if (bitset_is_empty (&(QO_TERM_SUBQUERIES (qo_termp)))
+	      && bitset_cardinality (&(QO_TERM_NODES (qo_termp))) <= 1)
+	    {
+	      continue;
+	    }
+
+	  for (j = 0; j < env->nsegs; j++)
+	    {
+	      seg = QO_ENV_SEG (env, j);
+	      if (seg != NULL && QO_SEG_FUNC_INDEX (seg) && QO_SEG_HEAD (seg) == nodep && QO_SEG_NAME (seg) != NULL
+		  && expr_str != NULL && !intl_identifier_casecmp (QO_SEG_NAME (seg), expr_str)
+		  && BITSET_MEMBER (QO_TERM_SEGS (qo_termp), j))
+		{
+		  return false;
+		}
+	    }
 	}
     }
 

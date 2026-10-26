@@ -10054,9 +10054,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	}
       else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
 	{
-	  /* Reserved id used by a covering function-index scan to carry the precomputed function result read
-	   * from the index key. There is no heap representation for it; its value and domain are filled
-	   * directly from the midxkey by btree_attrinfo_read_dbvalues, so just mark it as found here. */
+	  /* no heap representation; the value is filled from the index key */
 	  value->attr_type = HEAP_INSTANCE_ATTR;
 	  value->last_attrepr = NULL;
 	  value->read_attrepr = NULL;
@@ -10555,6 +10553,15 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     {
       /* In the case of deduplicate_key_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */
+      return NO_ERROR;
+    }
+
+  if (unlikely (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid)))
+    {
+      /* the function result exists only in the index key */
+      (void) pr_clear_value (&value->dbvalue);
+      db_make_null (&value->dbvalue);
+      value->state = HEAP_READ_ATTRVALUE;
       return NO_ERROR;
     }
 
@@ -11620,8 +11627,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
   if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrid))
     {
-      /* Reserved function-result attribute of a covering function-index scan: it has no heap representation
-       * (last_attrepr is NULL), so just store the given value directly. */
+      /* last_attrepr is NULL for the function result attribute */
       ret = pr_clear_value (&value->dbvalue);
       if (ret != NO_ERROR)
 	{

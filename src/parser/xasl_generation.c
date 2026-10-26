@@ -3654,7 +3654,6 @@ pt_symbol_info_alloc (void)
 
       symbols->query_node = NULL;
       symbols->func_idx_cover_list = NULL;
-      symbols->func_idx_result_cols = NULL;
     }
 
   return symbols;
@@ -7569,75 +7568,232 @@ pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_p
 }
 
 /*
- * pt_capture_first_name () - parse tree walk function capturing the first PT_NAME node found.
- *   return: PT_NODE *
+ * pt_func_index_missing_arg_cons () - get the function index of a scan plan whose function arguments are not all
+ *   regular key columns
+ *   return: the function index constraint, or NULL
+ *   plan(in): plan
  */
-static PT_NODE *
-pt_capture_first_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+static SM_CLASS_CONSTRAINT *
+pt_func_index_missing_arg_cons (QO_PLAN * plan)
 {
-  PT_NODE **result = (PT_NODE **) arg;
+  QO_INDEX_ENTRY *index_entry;
+  SM_CLASS_CONSTRAINT *cons;
+  SM_ATTRIBUTE **atts;
+  int arg_start, k, m;
+  bool found;
 
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (*result != NULL)
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->plan_un.scan.index == NULL)
     {
-      *continue_walk = PT_STOP_WALK;
-      return tree;
+      return NULL;
     }
 
-  if (tree->node_type == PT_NAME)
+  index_entry = plan->plan_un.scan.index->head;
+  if (index_entry == NULL || index_entry->constraints == NULL)
     {
-      *result = tree;
-      *continue_walk = PT_STOP_WALK;
+      return NULL;
     }
 
-  return tree;
-}
-
-typedef struct pt_capture_named_arg PT_CAPTURE_NAMED_ARG;
-struct pt_capture_named_arg
-{
-  const char *name;
-  PT_NODE *result;
-};
-
-static PT_NODE *
-pt_capture_named_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  PT_CAPTURE_NAMED_ARG *a = (PT_CAPTURE_NAMED_ARG *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (a->result != NULL)
+  cons = index_entry->constraints;
+  if (cons->func_index_info == NULL || cons->attributes == NULL)
     {
-      *continue_walk = PT_STOP_WALK;
-      return tree;
+      return NULL;
     }
 
-  if (tree->node_type == PT_NAME && tree->info.name.original != NULL && a->name != NULL
-      && intl_identifier_casecmp (tree->info.name.original, a->name) == 0)
+  atts = cons->attributes;
+  arg_start = cons->func_index_info->attr_index_start;
+  for (k = arg_start; atts[k] != NULL; k++)
     {
-      a->result = tree;
-      *continue_walk = PT_STOP_WALK;
+      found = false;
+      for (m = 0; m < arg_start && atts[m] != NULL; m++)
+	{
+	  if (atts[m]->id == atts[k]->id)
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+      if (!found)
+	{
+	  return cons;
+	}
     }
 
-  return tree;
+  return NULL;
 }
 
 /*
- * pt_collect_func_index_cover () - walk a chosen plan and register, for each covered function-index scan
- *   whose projected function result must be materialized from the index key, the routing information used
- *   later by pt_get_func_index_cover_arg () while building the output list.
+ * pt_is_func_index_missing_arg () - check whether an attribute is a function argument of the index that is not
+ *   stored in the key
+ *   return: bool
+ *   cons(in): function index constraint
+ *   attr(in): attribute
+ */
+static bool
+pt_is_func_index_missing_arg (SM_CLASS_CONSTRAINT * cons, PT_NODE * attr)
+{
+  SM_ATTRIBUTE **atts = cons->attributes;
+  int arg_start = cons->func_index_info->attr_index_start;
+  int k, m;
+  bool found;
+
+  CAST_POINTER_TO_NODE (attr);
+  if (attr == NULL || attr->node_type != PT_NAME || attr->info.name.original == NULL
+      || PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT))
+    {
+      return false;
+    }
+
+  for (k = arg_start; atts[k] != NULL; k++)
+    {
+      if (intl_identifier_casecmp (atts[k]->header.name, attr->info.name.original) != 0)
+	{
+	  continue;
+	}
+
+      found = false;
+      for (m = 0; m < arg_start && atts[m] != NULL; m++)
+	{
+	  if (atts[m]->id == atts[k]->id)
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+      return !found;
+    }
+
+  return false;
+}
+
+/*
+ * pt_add_func_index_result_attr () - append (once) a pseudo attribute for the function index result to the
+ *   table info of a spec, together with its value list slot
+ *   return: the pseudo attribute, or NULL
+ *   parser(in):
+ *   spec(in): scanned spec
+ *   cons(in): function index constraint
+ */
+static PT_NODE *
+pt_add_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * spec, SM_CLASS_CONSTRAINT * cons)
+{
+  TABLE_INFO *table_info;
+  PT_NODE *attr;
+  TP_DOMAIN *dom = cons->func_index_info->fi_domain;
+  const char *expr_str = cons->func_index_info->expr_str;
+  VAL_LIST *slot;
+  QPROC_DB_VALUE_LIST *tail;
+
+  if (parser->symbols == NULL || dom == NULL || expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  table_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
+  if (table_info == NULL || table_info->value_list == NULL)
+    {
+      return NULL;
+    }
+
+  for (attr = table_info->attribute_list; attr != NULL; attr = attr->next)
+    {
+      if (attr->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT)
+	  && !intl_identifier_casecmp (attr->info.name.original, expr_str))
+	{
+	  return attr;
+	}
+    }
+
+  attr = pt_name (parser, expr_str);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+  attr->info.name.spec_id = spec->info.spec.id;
+  attr->info.name.meta_class = PT_NORMAL;
+  if (spec->info.spec.flat_entity_list != NULL)
+    {
+      attr->info.name.resolved = spec->info.spec.flat_entity_list->info.name.original;
+    }
+  PT_NAME_INFO_SET_FLAG (attr, PT_NAME_INFO_FUNC_INDEX_RESULT);
+  attr->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  attr->data_type = pt_domain_to_data_type (parser, dom);
+
+  slot = pt_make_val_list (parser, attr);
+  if (slot == NULL || slot->valp == NULL)
+    {
+      return NULL;
+    }
+
+  /* table_info->attribute_list is shared with the spec's referenced_attrs; extend a copy */
+  table_info->attribute_list = parser_append_node (attr, parser_copy_tree_list (parser, table_info->attribute_list));
+
+  for (tail = &table_info->value_list->valp; *tail != NULL; tail = &(*tail)->next)
+    {
+      ;
+    }
+  *tail = slot->valp;
+  table_info->value_list->val_cnt++;
+
+  return attr;
+}
+
+/*
+ * pt_make_func_index_cover () - make the routing entry of a function index scan whose function arguments are not
+ *   all stored in the key, adding the pseudo result attribute to the spec
+ *   return: the entry, or NULL
+ *   parser(in):
+ *   plan(in): plan
+ */
+static PT_FUNC_INDEX_COVER *
+pt_make_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  QO_NODE *node;
+  PT_NODE *spec, *attr;
+  PT_FUNC_INDEX_COVER *entry;
+
+  cons = pt_func_index_missing_arg_cons (plan);
+  if (cons == NULL)
+    {
+      return NULL;
+    }
+
+  node = plan->plan_un.scan.node;
+  spec = (node != NULL) ? QO_NODE_ENTITY_SPEC (node) : NULL;
+  if (spec == NULL || spec->node_type != PT_SPEC || PT_SPEC_NEEDS_HEAP_REEVAL (spec))
+    {
+      return NULL;
+    }
+
+  attr = pt_add_func_index_result_attr (parser, spec, cons);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+
+  entry = (PT_FUNC_INDEX_COVER *) pt_alloc_packing_buf (sizeof (PT_FUNC_INDEX_COVER));
+  if (entry == NULL)
+    {
+      return NULL;
+    }
+  entry->next = NULL;
+  entry->expr_str = cons->func_index_info->expr_str;
+  entry->spec_id = spec->info.spec.id;
+  entry->result_attr = attr;
+
+  return entry;
+}
+
+/*
+ * pt_collect_func_index_cover () - register the covered function index scans of a plan whose function results
+ *   are routed to their pseudo result attribute
  *   return: void
  *   parser(in):
- *   plan(in): chosen optimizer plan (sub)tree
+ *   plan(in): plan
  */
 static void
 pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
 {
-  QO_INDEX_ENTRY *index_entry;
-  QO_NODE *node;
-  PT_NODE *spec;
   PT_FUNC_INDEX_COVER *entry;
 
   if (plan == NULL || parser->symbols == NULL)
@@ -7648,65 +7804,11 @@ pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      if (plan->plan_un.scan.index_cover == true && plan->plan_un.scan.index != NULL)
+      entry = pt_make_func_index_cover (parser, plan);
+      if (entry != NULL && plan->plan_un.scan.index_cover)
 	{
-	  /* Register a covered scan on a function index, projected or not: the output-list window uses the
-	   * entry only when the function result is projected, while the key-filter window
-	   * (pt_to_class_spec_list) needs it whenever the function expression appears in a key filter.
-	   *
-	   * Do NOT register when every function-argument column is itself a regular key column: the raw
-	   * argument is then available from the key, so evaluating the original expression is already exact,
-	   * and registering would make the argument column's own attribute regu read the function result
-	   * (pt_to_regu_attr_descr), corrupting a raw projection of that column. */
-	  index_entry = plan->plan_un.scan.index->head;
-	  if (index_entry != NULL && index_entry->constraints != NULL
-	      && index_entry->constraints->func_index_info != NULL && index_entry->constraints->attributes != NULL)
-	    {
-	      SM_ATTRIBUTE **atts = index_entry->constraints->attributes;
-	      int arg_start = index_entry->constraints->func_index_info->attr_index_start;
-	      bool arg_missing_from_key = false;
-	      const char *route_arg_name = NULL;
-	      int k, m;
-
-	      for (k = arg_start; atts[k] != NULL; k++)
-		{
-		  bool found_as_key_col = false;
-
-		  for (m = 0; m < arg_start && atts[m] != NULL; m++)
-		    {
-		      if (atts[m]->id == atts[k]->id)
-			{
-			  found_as_key_col = true;
-			  break;
-			}
-		    }
-		  if (!found_as_key_col)
-		    {
-		      arg_missing_from_key = true;
-		      route_arg_name = atts[k]->header.name;
-		      break;
-		    }
-		}
-
-	      if (!arg_missing_from_key)
-		{
-		  break;	/* argument available as a regular key column; no routing needed */
-		}
-	      node = plan->plan_un.scan.node;
-	      spec = (node != NULL) ? QO_NODE_ENTITY_SPEC (node) : NULL;
-	      if (spec != NULL && spec->node_type == PT_SPEC)
-		{
-		  entry = (PT_FUNC_INDEX_COVER *) pt_alloc_packing_buf (sizeof (PT_FUNC_INDEX_COVER));
-		  if (entry != NULL)
-		    {
-		      entry->expr_str = index_entry->constraints->func_index_info->expr_str;
-		      entry->spec_id = spec->info.spec.id;
-		      entry->arg_col_name = route_arg_name;
-		      entry->next = parser->symbols->func_idx_cover_list;
-		      parser->symbols->func_idx_cover_list = entry;
-		    }
-		}
-	    }
+	  entry->next = parser->symbols->func_idx_cover_list;
+	  parser->symbols->func_idx_cover_list = entry;
 	}
       break;
 
@@ -7729,19 +7831,17 @@ pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
 }
 
 /*
- * pt_get_func_index_cover_arg () - if the given expression is a projected function-index expression served
- *   by an active covered scan, return the (single) argument column node whose value list slot holds the
- *   precomputed function result. Otherwise return NULL.
- *   return: PT_NODE * (the argument column) or NULL
+ * pt_get_func_index_result_attr () - get the pseudo result attribute a function index expression is routed to
+ *   return: the pseudo attribute, or NULL
  *   parser(in):
- *   node(in): candidate function index expression
+ *   node(in): expression
  */
 static PT_NODE *
-pt_get_func_index_cover_arg (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_get_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_FUNC_INDEX_COVER *e;
+  UINTPTR spec_id = 0;
   char *expr_str;
-  PT_NODE *col = NULL;
 
   if (parser->symbols == NULL || parser->symbols->func_idx_cover_list == NULL || node == NULL
       || node->node_type != PT_EXPR)
@@ -7749,7 +7849,7 @@ pt_get_func_index_cover_arg (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-  if (!pt_is_function_index_expr (parser, node, false))
+  if (!pt_is_function_index_expr (parser, node, false) || pt_is_join_expr (node, &spec_id))
     {
       return NULL;
     }
@@ -7760,178 +7860,71 @@ pt_get_func_index_cover_arg (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-  (void) parser_walk_tree (parser, node->info.expr.arg1, pt_capture_first_name, &col, NULL, NULL);
-  if (col == NULL)
-    {
-      (void) parser_walk_tree (parser, node->info.expr.arg2, pt_capture_first_name, &col, NULL, NULL);
-    }
-  if (col == NULL)
-    {
-      (void) parser_walk_tree (parser, node->info.expr.arg3, pt_capture_first_name, &col, NULL, NULL);
-    }
-  if (col == NULL || col->node_type != PT_NAME)
-    {
-      return NULL;
-    }
-
   for (e = parser->symbols->func_idx_cover_list; e != NULL; e = e->next)
     {
-      if (e->expr_str != NULL && e->spec_id == col->info.name.spec_id
-	  && !intl_identifier_casecmp (expr_str, e->expr_str))
+      if (e->spec_id == spec_id && !intl_identifier_casecmp (expr_str, e->expr_str))
 	{
-	  /* Route the result to the argument column that is missing from the key (its value-list slot is free to
-	   * repurpose). The first PT_NAME may be a genuine key column also projected raw; repurposing that slot
-	   * would corrupt the raw projection (e.g. SELECT a, MOD(a,b) on index (a, MOD(a,b))). */
-	  if (e->arg_col_name != NULL)
+	  return e->result_attr;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_remove_func_index_attrs () - remove function index related attributes from an attribute list
+ *   return: void
+ *   parser(in):
+ *   cons(in): function index constraint
+ *   remove_result(in): true to remove the pseudo result attribute, false to remove the missing argument columns
+ *   attrs(in/out): attribute list
+ *   offsets(in/out): value list offsets of attrs
+ */
+static void
+pt_remove_func_index_attrs (PARSER_CONTEXT * parser, SM_CLASS_CONSTRAINT * cons, bool remove_result,
+			    PT_NODE ** attrs, int *offsets)
+{
+  PT_NODE *node, *real, *prev = NULL, *next;
+  int i = 0, kept = 0;
+  bool remove;
+
+  for (node = *attrs; node != NULL; node = next, i++)
+    {
+      next = node->next;
+      real = node;
+      CAST_POINTER_TO_NODE (real);
+
+      if (remove_result)
+	{
+	  remove = (real != NULL && real->node_type == PT_NAME
+		    && PT_NAME_INFO_IS_FLAGED (real, PT_NAME_INFO_FUNC_INDEX_RESULT));
+	}
+      else
+	{
+	  remove = pt_is_func_index_missing_arg (cons, real);
+	}
+
+      if (remove)
+	{
+	  if (prev == NULL)
 	    {
-	      PT_CAPTURE_NAMED_ARG na;
-
-	      na.name = e->arg_col_name;
-	      na.result = NULL;
-	      (void) parser_walk_tree (parser, node->info.expr.arg1, pt_capture_named_name, &na, NULL, NULL);
-	      if (na.result == NULL)
-		{
-		  (void) parser_walk_tree (parser, node->info.expr.arg2, pt_capture_named_name, &na, NULL, NULL);
-		}
-	      if (na.result == NULL)
-		{
-		  (void) parser_walk_tree (parser, node->info.expr.arg3, pt_capture_named_name, &na, NULL, NULL);
-		}
-	      if (na.result != NULL)
-		{
-		  return na.result;
-		}
+	      *attrs = next;
 	    }
-	  return col;
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  node->next = NULL;
+	  parser_free_node (parser, node);
+	  continue;
 	}
-    }
 
-  return NULL;
-}
-
-/*
- * pt_add_func_index_result_col () - remember (once) that the given argument column of a covered projected
- *   function-index expression must have its index-scan attribute regu request the reserved function-result
- *   attribute (FUNC_INDEX_RESULT_ATTRID) rather than the raw column. Also records the function result
- *   domain (which differs from the raw column domain, e.g. ln(int) -> double) so the materialized value is
- *   typed correctly in the covering list file.
- *   return: void
- *   parser(in):
- *   col(in): argument column PT_NAME
- *   func_expr(in): the projected function index expression (source of the result domain)
- */
-static void
-pt_add_func_index_result_col (PARSER_CONTEXT * parser, PT_NODE * col, PT_NODE * func_expr)
-{
-  PT_FUNC_INDEX_RESULT_COL *e;
-
-  if (parser->symbols == NULL || col == NULL || col->node_type != PT_NAME || col->info.name.original == NULL)
-    {
-      return;
-    }
-
-  for (e = parser->symbols->func_idx_result_cols; e != NULL; e = e->next)
-    {
-      if (e->spec_id == col->info.name.spec_id && e->col_name != NULL
-	  && !intl_identifier_casecmp (e->col_name, col->info.name.original))
+      if (offsets != NULL)
 	{
-	  return;		/* already recorded */
+	  offsets[kept] = offsets[i];
 	}
-    }
-
-  e = (PT_FUNC_INDEX_RESULT_COL *) pt_alloc_packing_buf (sizeof (PT_FUNC_INDEX_RESULT_COL));
-  if (e != NULL)
-    {
-      e->col_name = col->info.name.original;
-      e->spec_id = col->info.name.spec_id;
-      e->result_domain = pt_xasl_node_to_domain (parser, func_expr);
-      e->next = parser->symbols->func_idx_result_cols;
-      parser->symbols->func_idx_result_cols = e;
-    }
-}
-
-/*
- * pt_get_func_index_result_col () - if the given attribute is an argument column of a covered projected
- *   function-index expression (registered by pt_add_func_index_result_col ()), return its entry; such a
- *   column's scan attribute regu must read the precomputed function result from the index key.
- *   return: PT_FUNC_INDEX_RESULT_COL * or NULL
- *   parser(in):
- *   attr(in): attribute PT_NAME
- */
-static PT_FUNC_INDEX_RESULT_COL *
-pt_get_func_index_result_col (PARSER_CONTEXT * parser, PT_NODE * attr)
-{
-  PT_FUNC_INDEX_RESULT_COL *e;
-
-  if (parser->symbols == NULL || parser->symbols->func_idx_result_cols == NULL || attr == NULL
-      || attr->node_type != PT_NAME || attr->info.name.original == NULL)
-    {
-      return NULL;
-    }
-
-  for (e = parser->symbols->func_idx_result_cols; e != NULL; e = e->next)
-    {
-      if (e->spec_id == attr->info.name.spec_id && e->col_name != NULL
-	  && !intl_identifier_casecmp (e->col_name, attr->info.name.original))
-	{
-	  return e;
-	}
-    }
-
-  return NULL;
-}
-
-/*
- * pt_retype_func_index_result_slot () - retype the value list slot of a function-argument column to the
- *   function result domain. The slot carries the precomputed function result materialized by a covering
- *   scan, so its domain (used for the covering list file column type) must match the function result type
- *   rather than the raw column type.
- *   return: void
- *   parser(in):
- *   attr(in): the function-argument column PT_NAME
- *   result_domain(in): the function result domain
- */
-static void
-pt_retype_func_index_result_slot (PARSER_CONTEXT * parser, PT_NODE * attr, TP_DOMAIN * result_domain)
-{
-  SYMBOL_INFO *symbols = parser->symbols;
-  TABLE_INFO *table_info;
-  QPROC_DB_VALUE_LIST dbval_list;
-  int index;
-
-  if (symbols == NULL || attr == NULL || result_domain == NULL)
-    {
-      return;
-    }
-
-  table_info = pt_find_table_info (attr->info.name.spec_id, symbols->table_info);
-  if (table_info == NULL || table_info->value_list == NULL)
-    {
-      return;
-    }
-
-  index = pt_find_attribute (parser, attr, table_info->attribute_list);
-  if (index < 0)
-    {
-      return;
-    }
-
-  dbval_list = table_info->value_list->valp;
-  while (dbval_list != NULL && index > 0)
-    {
-      dbval_list = dbval_list->next;
-      index--;
-    }
-  if (dbval_list == NULL)
-    {
-      return;
-    }
-
-  dbval_list->dom = result_domain;
-  if (dbval_list->val != NULL)
-    {
-      (void) db_value_domain_init (dbval_list->val, TP_DOMAIN_TYPE (result_domain), result_domain->precision,
-				   result_domain->scale);
+      kept++;
+      prev = node;
     }
 }
 
@@ -8066,30 +8059,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	    case PT_EXPR:
 	      {
-		/* If this projected expression is a function index expression served by an active covered scan,
-		 * route it to read the precomputed function result already materialized in the argument column's
-		 * value list slot, instead of recomputing it from the (unavailable) argument. */
-		PT_NODE *fi_col = pt_get_func_index_cover_arg (parser, node);
+		PT_NODE *fi_attr = pt_get_func_index_result_attr (parser, node);
 
-		if (fi_col != NULL)
+		if (fi_attr != NULL)
 		  {
-		    /* remember this argument column so its index-scan attribute regu reads the precomputed
-		     * function result (FUNC_INDEX_RESULT_ATTRID) from the index key */
-		    pt_add_func_index_result_col (parser, fi_col, node);
 		    node->next = save_next;
-		    regu = pt_to_regu_variable (parser, fi_col, unbox);
-		    if (regu != NULL)
-		      {
-			/* the argument column's value list slot now holds the function result; present it with
-			 * the function result domain, not the raw column domain */
-			TP_DOMAIN *fdom = pt_xasl_node_to_domain (parser, node);
-
-			if (fdom != NULL)
-			  {
-			    regu->domain = fdom;
-			  }
-		      }
-		    return regu;
+		    return pt_to_regu_variable (parser, fi_attr, unbox);
 		  }
 	      }
 
@@ -10175,17 +10150,6 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
       if (*tail)
 	{
 	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, node);
-	  PT_NODE *real_node = node;
-	  PT_FUNC_INDEX_RESULT_COL *fresult;
-
-	  CAST_POINTER_TO_NODE (real_node);
-	  fresult = pt_get_func_index_result_col (parser, real_node);
-	  if (fresult != NULL && fresult->result_domain != NULL)
-	    {
-	      /* this column's covering list file slot holds the function result (see pt_to_regu_attr_descr),
-	       * so read it back with the function result domain rather than the raw column domain */
-	      domain = fresult->result_domain;
-	    }
 
 	  (*tail)->value.type = TYPE_POSITION;
 	  (*tail)->value.domain = domain;
@@ -10246,6 +10210,28 @@ pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object, HEAP_C
   REGU_VARIABLE *regu;
   ATTR_DESCR *attr_descr;
 
+  if (PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT))
+    {
+      TP_DOMAIN *dom = pt_xasl_node_to_domain (parser, attr);
+
+      if (dom == NULL)
+	{
+	  return NULL;
+	}
+      regu_alloc (regu);
+      if (regu == NULL)
+	{
+	  return NULL;
+	}
+      attr_descr = &regu->value.attr_descr;
+      attr_descr->reset ();
+      regu->type = TYPE_ATTR_ID;
+      regu->domain = dom;
+      attr_descr->id = FUNC_INDEX_RESULT_ATTRID;
+      attr_descr->cache_attrinfo = cache_attrinfo;
+      attr_descr->type = TP_DOMAIN_TYPE (dom);
+      return regu;
+    }
 
   if (sm_att_info (class_object, attr_name, &attr_id, &smdomain, &sharedp, attr->info.name.meta_class == PT_META_ATTR)
       != NO_ERROR)
@@ -10276,22 +10262,6 @@ pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object, HEAP_C
     {
       attr_descr->type = smdomain->type->id;
     }
-
-  {
-    PT_FUNC_INDEX_RESULT_COL *fresult = pt_get_func_index_result_col (parser, attr);
-
-    if (fresult != NULL && fresult->result_domain != NULL)
-      {
-	/* This column is only the argument of a covered projected function-index expression; its raw value
-	 * is not stored in the index. Request the precomputed function result (read from the index key at the
-	 * function column position) into this column's value list slot, and present it with the function
-	 * result domain (which may differ from the raw column domain, e.g. ln(int) -> double). */
-	attr_descr->id = FUNC_INDEX_RESULT_ATTRID;
-	regu->domain = fresult->result_domain;
-	attr_descr->type = fresult->result_domain->type->id;
-	pt_retype_func_index_result_slot (parser, attr, fresult->result_domain);
-      }
-  }
 
   return regu;
 }
@@ -12969,6 +12939,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      /* for index with prefix length */
 	      PT_NODE *where_part_save = NULL, *where_key_part_save = NULL;
 	      PT_NODE *ipl_where_part = NULL;
+	      PT_FUNC_INDEX_COVER *fi_cover = pt_make_func_index_cover (parser, plan);
+	      SM_CLASS_CONSTRAINT *fi_cons = NULL;
 
 	      if (index_pred->ni_entry && index_pred->ni_entry->head && qo_is_prefix_index (index_pred->ni_entry->head))
 		{
@@ -13014,6 +12986,29 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  return NULL;
 		}
 
+	      if (fi_cover != NULL)
+		{
+		  fi_cons = pt_func_index_missing_arg_cons (plan);
+		  if (where_key_part != NULL && key_offsets != NULL)
+		    {
+		      /* the key holds no raw argument; the key filter reads the routed result attribute instead */
+		      pt_remove_func_index_attrs (parser, fi_cons, false, &key_attrs, key_offsets);
+		      key_offsets[pt_length_of_list (key_attrs)] =
+			pt_find_attribute (parser, fi_cover->result_attr, table_info->attribute_list);
+		      key_attrs = parser_append_node (pt_point (parser, fi_cover->result_attr), key_attrs);
+		    }
+		  if (qo_is_index_covering_scan (plan))
+		    {
+		      pt_remove_func_index_attrs (parser, fi_cons, false, &rest_attrs, rest_offsets);
+		    }
+		  else
+		    {
+		      /* a non-covered scan reads rest/pred attributes from the heap, which has no function result */
+		      pt_remove_func_index_attrs (parser, fi_cons, true, &rest_attrs, rest_offsets);
+		      pt_remove_func_index_attrs (parser, fi_cons, true, &pred_attrs, pred_offsets);
+		    }
+		}
+
 	      symbols->current_class = class_;
 
 	      if (pt_get_mvcc_reev_range_data (parser, table_info, where_key_part, index_pred, &where_range,
@@ -13044,17 +13039,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      symbols->cache_attrinfo = cache_key;
 
 	      {
-		/* Route function-index expressions in the KEY FILTER of a covered function-index scan to the
-		 * reserved function-result attribute, so the filter compares the precomputed result read from
-		 * the index key directly. Evaluating the original expression over that result would apply the
-		 * function twice, which is wrong for non-idempotent functions (e.g. sqrt). The key RANGE
-		 * (pt_to_index_info) is built outside this window: range regus must keep the original
-		 * expression form (see validate_regu_key_function_index). */
+		/* key range regus (pt_to_index_info) must keep the original expression, so route only here */
 		PT_FUNC_INDEX_COVER *saved_func_idx_cover = symbols->func_idx_cover_list;
-		PT_FUNC_INDEX_RESULT_COL *saved_func_idx_result_cols = symbols->func_idx_result_cols;
 
-		symbols->func_idx_cover_list = NULL;
-		pt_collect_func_index_cover (parser, plan);
+		symbols->func_idx_cover_list = fi_cover;
 
 		where_key = pt_to_pred_expr (parser, where_key_part);
 
@@ -13062,10 +13050,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
 
 		symbols->func_idx_cover_list = saved_func_idx_cover;
-		/* Result-column registrations made while building the key filter are local to this window; drop
-		 * them so they cannot rewrite a later raw argument-column regu of the same spec to the sentinel
-		 * on non-buildlist XASL paths (UPDATE/DELETE), which do not restore this list themselves. */
-		symbols->func_idx_result_cols = saved_func_idx_result_cols;
 	      }
 
 	      symbols->cache_attrinfo = cache_pred;
@@ -16612,7 +16596,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   int i;
   REGU_VARIABLE_LIST regu_var_p;
   PT_FUNC_INDEX_COVER *saved_func_idx_cover = NULL;
-  PT_FUNC_INDEX_RESULT_COL *saved_func_idx_result_cols = NULL;
 
   assert (parser != NULL);
 
@@ -16678,17 +16661,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   unbox = UNBOX_AS_VALUE;
 
-  /* Register covered function-index scans so that projected function expressions in the output list are
-   * routed to the materialized function result rather than recomputed. Active only while the output list is
-   * built; restored before the access specs (and their key/filter regus) are generated. */
+  /* route function index expressions of covered scans while the output list is built */
   saved_func_idx_cover = symbols->func_idx_cover_list;
   symbols->func_idx_cover_list = NULL;
   pt_collect_func_index_cover (parser, qo_plan);
-
-  /* argument columns registered here (during output-list building) stay active through access-spec building
-   * so their scan attribute regus request the function result from the index key; restored on return. */
-  saved_func_idx_result_cols = symbols->func_idx_result_cols;
-  symbols->func_idx_result_cols = NULL;
 
   if (pt_has_aggregate (parser, select_node))
     {
@@ -17375,8 +17351,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
     }
 
-  /* output list is built; stop routing function-index expressions so that access spec key/filter regus are
-   * generated normally. */
   symbols->func_idx_cover_list = saved_func_idx_cover;
 
   /* the calls pt_to_out_list and pt_to_spec_list record information in the "symbol_info" structure used by subsequent
@@ -17648,7 +17622,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
-  symbols->func_idx_result_cols = saved_func_idx_result_cols;
 
   scan_check_parallel_heap_scan_possible (xasl);
 
@@ -17658,7 +17631,6 @@ exit_on_error:
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
-  symbols->func_idx_result_cols = saved_func_idx_result_cols;
 
   return NULL;
 }

@@ -607,10 +607,8 @@ typedef int ATTR_ID;		/* attribute identifier */
 #define NULL_REPRID       -1	/* Null Representation Identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
 
-/* Reserved (sentinel) attribute identifier used by a covering function-index scan to request the
- * precomputed function result stored in the index key (at the function column position) instead of a
- * real heap attribute. It must never collide with a real attribute id (>= 0), NULL_ATTRID (-1), or the
- * deduplicate-key reserved id range (around -1970566000). */
+/* reserved attribute id requesting the function result stored in a function index key;
+ * must not collide with real ids, NULL_ATTRID or the deduplicate key id range */
 #define FUNC_INDEX_RESULT_ATTRID   (-2100000000)
 #define IS_FUNC_INDEX_RESULT_ATTR_ID(id)   ((id) == FUNC_INDEX_RESULT_ATTRID)
 

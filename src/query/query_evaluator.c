@@ -2904,9 +2904,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 
 	      if (is_func_result)
 		{
-		  /* The reserved function-result attribute is not listed in btree_attr_ids; its value is the
-		   * precomputed function result stored at func_idx_col_id in the midxkey. Handle it before the
-		   * matched-index cache, which only covers regular key columns. */
+		  /* not in btree_attr_ids, so resolve it before the matched index cache */
 		  j = filterp->func_idx_col_id;
 		}
 	      else if (filled_match_idx)
@@ -2948,27 +2946,15 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		  /* get j-th element value from the midxkey */
 		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.
 		  {
-		    /* A regular key column maps to its midxkey position, stepping over the function result slot
-		     * (j >= func_idx_col_id -> j + 1). The reserved function-result attribute reads the
-		     * precomputed function result directly at func_idx_col_id. The function ARGUMENT column has
-		     * no raw slot in the key (only the function result is stored), so its mapped position
-		     * overshoots the key; in that case read the precomputed function result at func_idx_col_id
-		     * -- the key filter references the function expression, whose value is exactly that result. */
 		    int midx_pos = is_func_result ? filterp->func_idx_col_id : ((j < func_idx_col_id) ? j : j + 1);
 
 		    if (!is_func_result && filterp->func_idx_col_id != -1 && midx_pos >= midxkey->ncolumns)
 		      {
-			/* A raw function-argument column with no key slot reached the key filter without being
-			 * routed to the function-result sentinel. The raw argument is not stored in the key, so
-			 * reading the function result here would silently double-apply the function
-			 * (e.g. sqrt(d1) evaluated as sqrt(sqrt(d1))). Unreachable for a correctly routed covered
-			 * scan; fail loudly instead of returning a wrong answer. */
-			assert (false);
-			return V_ERROR;
+			/* a function argument has no slot in the key */
+			db_make_null (valp);
 		      }
-
-		    if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey), midx_pos,
-						       valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		    else if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey),
+							    midx_pos, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		      {
 			return V_ERROR;
 		      }

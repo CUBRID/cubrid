@@ -726,6 +726,11 @@ struct json_t;
 #define PT_SPEC_IS_CTE(spec_) \
   ((spec_)->info.spec.cte_pointer != NULL)
 
+/* the spec is scanned with locks, so its rows are read and re-evaluated from the heap */
+#define PT_SPEC_NEEDS_HEAP_REEVAL(spec) \
+  (((spec)->info.spec.flag & (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE \
+			      | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)) != 0)
+
 /* PT_SPEC node contains an entity spec */
 #define PT_SPEC_IS_ENTITY(spec_) \
   ((spec_)->info.spec.entity_name != NULL)
@@ -2650,11 +2655,12 @@ struct pt_name_info
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
+#define PT_NAME_INFO_FUNC_INDEX_RESULT 32768	/* pseudo attribute for a function index result read from the key */
 
-  short flag;
-#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
-#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
-#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
+  int flag;
+#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (int) (f))
+#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (int) (f)
+#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (int) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */

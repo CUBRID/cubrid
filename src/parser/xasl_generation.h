@@ -82,28 +82,13 @@ typedef enum
   UNBOX_AS_TABLE
 } UNBOX;
 
-/* one entry per covered function-index scan whose projected function expression must be routed to read the
- * precomputed function result materialized in the covering list file (instead of recomputing it) */
 typedef struct pt_func_index_cover PT_FUNC_INDEX_COVER;
 struct pt_func_index_cover
 {
   PT_FUNC_INDEX_COVER *next;
-  const char *expr_str;		/* function index expression string provided by the covered index */
-  UINTPTR spec_id;		/* spec id of the scanned table */
-  const char *arg_col_name;	/* argument column missing from the key: its value-list slot carries the result */
-};
-
-/* one entry per argument column of a covered projected function-index expression. The column's value list
- * slot carries the precomputed function result, so when the index-scan rest/pred attribute regu for this
- * column is built it must request FUNC_INDEX_RESULT_ATTRID (the reserved id read from the index key)
- * instead of the raw column, which is not stored in the index. */
-typedef struct pt_func_index_result_col PT_FUNC_INDEX_RESULT_COL;
-struct pt_func_index_result_col
-{
-  PT_FUNC_INDEX_RESULT_COL *next;
-  const char *col_name;		/* raw column name of the function argument */
-  UINTPTR spec_id;		/* spec id of the scanned table */
-  TP_DOMAIN *result_domain;	/* domain of the function result (differs from the raw column domain) */
+  const char *expr_str;
+  UINTPTR spec_id;
+  PT_NODE *result_attr;		/* pseudo attribute holding the function result read from the index key */
 };
 
 typedef struct symbol_info SYMBOL_INFO;
@@ -119,8 +104,7 @@ struct symbol_info
   int listfile_attr_offset;
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
-  PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* active covered function-index expressions to route in output */
-  PT_FUNC_INDEX_RESULT_COL *func_idx_result_cols;	/* argument columns whose scan regu reads the func result */
+  PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
