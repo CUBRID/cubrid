@@ -961,6 +961,9 @@ extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, vo
 
 extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_locate_key_from_saved_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					     const LOG_LSA * leaf_lsa, VPID * leaf_vpid, PAGE_PTR * leaf_page,
+					     INT16 * slot_id, bool * leaf_unchanged, bool * found);
 /* exposed for parallel index scan key-comparison descent */
 extern int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				      INT16 * slot_id, VPID * child_vpid, page_key_boundary * page_bounds);

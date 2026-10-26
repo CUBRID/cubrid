@@ -279,20 +279,6 @@
   (((mvcc_flags) & BTREE_OID_HAS_MVCC_INSID_AND_DELID) == BTREE_OID_HAS_MVCC_INSID_AND_DELID \
    ? 2 * OR_MVCCID_SIZE : ((mvcc_flags) == 0 ? 0 : OR_MVCCID_SIZE))
 
-/* Check if page is a valid b-tree leaf node. Usually called after unfix and
- * re-fix without validation.
- */
-/* TODO: Is this expensive? Can we find a faster way to check it?
- *	 (e.g. save last deallocation page LSA - it will be then enough to
- *	 compare with an LSA saved before unfixing).
- */
-#define BTREE_IS_PAGE_VALID_LEAF(thread_p, page) \
-  ((page) != NULL \
-   && pgbuf_get_page_ptype (thread_p, page) == PAGE_BTREE \
-   && spage_get_slot (page, HEADER) != NULL \
-   && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
-   && (btree_get_node_header (thread_p, page))->node_level == 1)
-
 typedef struct recset_header RECSET_HEADER;
 struct recset_header
 {				/* Recovery set of recdes structure */
@@ -18391,6 +18377,131 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
 }
 
 /*
+ * btree_locate_key_from_saved_leaf () - Locate key starting from a leaf node saved before it was unfixed. If the leaf
+ *					  is unchanged, it is returned as is. Otherwise the key is looked up in the
+ *					  same leaf and, if no longer there, from b-tree root.
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * btid_int (in)       : B-tree info.
+ * key (in)	       : Key to locate (not compressed).
+ * leaf_lsa (in)       : Page LSA of saved leaf when it was unfixed.
+ * leaf_vpid (in/out)  : Saved leaf (NULL to locate from root) / leaf where key is located.
+ * leaf_page (out)     : Leaf page, fixed with read latch.
+ * slot_id (out)       : Slot ID of key if found, or slot ID of key if it was to be inserted. Not set if leaf is
+ *			 unchanged.
+ * leaf_unchanged (out): True if saved leaf did not change since leaf_lsa.
+ * found (out)	       : True if key was found.
+ */
+int
+btree_locate_key_from_saved_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+				  const LOG_LSA * leaf_lsa, VPID * leaf_vpid, PAGE_PTR * leaf_page, INT16 * slot_id,
+				  bool * leaf_unchanged, bool * found)
+{
+  int error_code = NO_ERROR;
+  BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
+
+  *leaf_page = NULL;
+  *leaf_unchanged = false;
+  *found = false;
+
+  if (!VPID_ISNULL (leaf_vpid))
+    {
+      /* Try to resume from saved leaf node. */
+      error_code =
+	pgbuf_fix_if_not_deallocated (thread_p, leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, leaf_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (*leaf_page != NULL)
+	{
+	  if (LSA_EQ (leaf_lsa, pgbuf_get_lsa (*leaf_page)))
+	    {
+	      /* Leaf page suffered no changes since it was unfixed. */
+	      *leaf_unchanged = true;
+	      return NO_ERROR;
+	    }
+
+	  /* Page suffered some changes. */
+	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, *leaf_page))
+	    {
+	      /* Page is still a valid leaf page. Check if key still exists. */
+	      error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, key, &search_key);
+	      if (error_code != NO_ERROR)
+		{
+		  pgbuf_unfix_and_init (thread_p, *leaf_page);
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+	      if (search_key.result == BTREE_KEY_BETWEEN)
+		{
+		  /* We need to find slot of key. */
+		  error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, key, &search_key);
+		  if (error_code != NO_ERROR)
+		    {
+		      pgbuf_unfix_and_init (thread_p, *leaf_page);
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
+		  assert (search_key.result != BTREE_KEY_NOTFOUND);
+		}
+	      switch (search_key.result)
+		{
+		case BTREE_KEY_FOUND:
+		  /* Key was found. */
+		  *found = true;
+		  *slot_id = search_key.slotid;
+		  return NO_ERROR;
+
+		case BTREE_KEY_BETWEEN:
+		  /* Key should have been in this page, but it was removed. Slot is of the first bigger key. */
+		  assert (search_key.slotid >= 1
+			  && search_key.slotid <= btree_node_number_of_keys (thread_p, *leaf_page));
+		  *slot_id = search_key.slotid;
+		  return NO_ERROR;
+
+		case BTREE_KEY_SMALLER:
+		case BTREE_KEY_BIGGER:
+		case BTREE_KEY_NOTFOUND:
+		  /* Key is no longer in this leaf node. Locate key by advancing from root. */
+		  /* Fall through. */
+		  break;
+
+		default:
+		  /* Unexpected. */
+		  assert (false);
+		  pgbuf_unfix_and_init (thread_p, *leaf_page);
+		  return ER_FAILED;
+		}
+	    }
+	  else			/* !BTREE_IS_PAGE_VALID_LEAF (*leaf_page) */
+	    {
+	      /* Page must have been deallocated/reused for other purposes. */
+	      /* Fall through. */
+	    }
+	  pgbuf_unfix_and_init (thread_p, *leaf_page);
+	}
+      else
+	{
+	  /* Saved leaf was deallocated. We need to search the key again. Fall through. */
+	}
+    }
+
+  /* Couldn't resume from saved leaf node. Search key from top. */
+  error_code = btree_locate_key (thread_p, btid_int, key, leaf_vpid, slot_id, leaf_page, found);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  /* Safe guard. */
+  assert (btree_get_node_level (thread_p, *leaf_page) == 1);
+  return NO_ERROR;
+}
+
+/*
  * btree_find_lower_bound_leaf () -
  *   return: NO_ERROR
  *   BTS(in):
@@ -28692,7 +28803,7 @@ static int
 btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int error_code = NO_ERROR;
-  BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
+  bool leaf_unchanged = false;
   bool found = false;
 
   assert (bts->force_restart_from_root || !VPID_ISNULL (&bts->C_vpid));
@@ -28704,126 +28815,22 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
-  if (!bts->force_restart_from_root)
+  if (bts->force_restart_from_root)
     {
-      /* Try to resume from saved leaf node. */
-      error_code =
-	pgbuf_fix_if_not_deallocated (thread_p, &bts->C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-				      &bts->C_page);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-      if (bts->C_page != NULL)
-	{
-	  /* Try to resume from this page  */
-	  if (LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
-	    {
-	      /* Leaf page suffered no changes while range search was interrupted. Range search can be resumed using
-	       * current position. */
-	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
-	    }
-
-	  /* Page suffered some changes. */
-	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
-	    {
-	      /* Page is still a valid leaf page. Check if key still exists. */
-	      /* Is key still in this page? */
-	      error_code =
-		btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
-	      if (error_code != NO_ERROR)
-		{
-		  /* Error! */
-		  pgbuf_unfix_and_init (thread_p, bts->C_page);
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	      if (search_key.result == BTREE_KEY_BETWEEN)
-		{
-		  /* We need to find slot of key. */
-		  error_code =
-		    btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
-		  if (error_code != NO_ERROR)
-		    {
-		      /* Error! */
-		      pgbuf_unfix_and_init (thread_p, bts->C_page);
-		      ASSERT_ERROR ();
-		      return error_code;
-		    }
-		  assert (search_key.result != BTREE_KEY_NOTFOUND);
-		}
-	      switch (search_key.result)
-		{
-		case BTREE_KEY_FOUND:
-		  /* Key was found. Use this key. */
-		  bts->slot_id = search_key.slotid;
-		  return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
-
-		case BTREE_KEY_BETWEEN:
-		  /* Key should have been in this page, but it was removed. Proceed to next key. */
-		  if (bts->use_desc_index)
-		    {
-		      /* Use previous slot. */
-		      bts->slot_id = search_key.slotid - 1;
-		      assert (bts->slot_id >= 1 && bts->slot_id <= btree_node_number_of_keys (thread_p, bts->C_page));
-		    }
-		  else
-		    {
-		      /* Use next slotid. */
-		      bts->slot_id = search_key.slotid;
-		      assert (bts->slot_id >= 1 && bts->slot_id <= btree_node_number_of_keys (thread_p, bts->C_page));
-		    }
-		  bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
-		  return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
-
-		case BTREE_KEY_SMALLER:
-		case BTREE_KEY_BIGGER:
-		case BTREE_KEY_NOTFOUND:
-		  /* Key is no longer in this leaf node. Locate key by advancing from root. */
-		  /* Fall through. */
-		  break;
-
-		default:
-		  /* Unexpected. */
-		  assert (false);
-		  pgbuf_unfix_and_init (thread_p, bts->C_page);
-		  return ER_FAILED;
-		}
-	    }
-	  else			/* !BTREE_IS_PAGE_VALID_LEAF (bts->C_page) */
-	    {
-	      /* Page must have been deallocated/reused for other purposes. */
-	      /* Fall through. */
-	    }
-	  pgbuf_unfix_and_init (thread_p, bts->C_page);
-	}
-      else
-	{
-	  /* bts->C_Page is null because it was deallocated. we need to search the key again. fall through */
-	}
+      VPID_SET_NULL (&bts->C_vpid);
+      bts->force_restart_from_root = false;
     }
-  /* Couldn't resume from saved leaf node. */
-
-  /* No page should be fixed. */
-  assert (bts->C_page == NULL);
-
-  /* Reset bts->force_restart_from_root flag. */
-  bts->force_restart_from_root = false;
-
-  /* Search key from top. */
-  error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id,
-				 &bts->C_page, &found);
+  error_code =
+    btree_locate_key_from_saved_leaf (thread_p, &bts->btid_int, &bts->cur_key, &bts->cur_leaf_lsa, &bts->C_vpid,
+				      &bts->C_page, &bts->slot_id, &leaf_unchanged, &found);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
-  /* Safe guard. */
-  assert (btree_get_node_level (thread_p, bts->C_page) == 1);
-  if (found)
+  if (leaf_unchanged || found)
     {
-      /* Found key. Resume from here. */
+      /* Range search can be resumed using current position or found key. */
       return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
     }
   if (btree_node_number_of_keys (thread_p, bts->C_page) < 1)
@@ -28833,7 +28840,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       bts->end_scan = true;
       return NO_ERROR;
     }
-  /* Not found. */
+  /* Not found. Proceed to next key. */
   if (bts->use_desc_index)
     {
       bts->slot_id = bts->slot_id - 1;
