@@ -27364,16 +27364,9 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      return NO_ERROR;
 	    }
 
-	  if (find_unique_helper->fk_existence && satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS
-	      && !logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)))
-	    {
-	      /* The inserter just ended, so the verdict above is stale; re-read the key, which the lock path gets from
-	       * its page refix.  Our own insert falls through as present. */
-	      continue;
-	    }
-
 	  /* No writer left to wait out (our own insert, or one that just ended): lock the object as usual. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
+	  assert (find_unique_helper->fk_existence
+		  || !lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:

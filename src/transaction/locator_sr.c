@@ -13890,7 +13890,6 @@ exit:
 	      return S_ERROR;
 	    }
 	  lock_acquired = false;
-	  ev_res = V_UNKNOWN;
 	  goto retry;
 	}
     }
