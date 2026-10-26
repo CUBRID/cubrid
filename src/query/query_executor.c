@@ -6871,7 +6871,8 @@ fail:
   return false;
 }
 
-/* the leader's: the arrays are its own, the values a worker wrote into them cleared here */
+/* the leader's: the arrays are its own; a worker cleared the values it read into them before it ended
+ * (qexec_gby_px_worker ()), so what is cleared here is only what the leader's thread read itself */
 static void
 qexec_gby_px_reader_free (THREAD_ENTRY * thread_p, QEXEC_GBY_PX_READER * wr)
 {
@@ -7285,6 +7286,13 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
     {
       qdata_free_agg_hvalue (thread_p, wr->rd.temp_part_value);
       wr->rd.temp_part_value = NULL;
+    }
+  /* the values this worker read into the reader's cells go with it: fetch_val_list () decompresses a long compressed
+   * string into this thread's private heap, and the next round's worker or the leader (qexec_gby_px_reader_free ())
+   * would clear it through its own heap -- the arrays stay, as the leader's */
+  for (v = 0; wr->vals != NULL && v < wr->n_vals; v++)
+    {
+      pr_clear_value (&wr->vals[v]);
     }
   if (rc != NO_ERROR)
     {
