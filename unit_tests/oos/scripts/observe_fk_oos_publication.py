@@ -115,6 +115,8 @@ CREATE TABLE fk_oos07_restrict(id INTEGER PRIMARY KEY, parent_id INTEGER,
     gdb_python = r'''
 import gdb, json
 pending = []
+repl_names = ('RVREPL_DATA_UPDATE', 'RVREPL_OOS_INSERT', 'RVREPL_DUMMY_OOS_RECORD')
+repl_events = {int(gdb.parse_and_eval(name)): name for name in repl_names}
 def vector(value):
     impl = value['_M_impl']
     start, finish = impl['_M_start'], impl['_M_finish']
@@ -152,11 +154,12 @@ class Repl(gdb.Breakpoint):
     def stop(self):
         frame = gdb.newest_frame()
         code = int(frame.read_var('rcvindex'))
-        if code in (99,138,141):
+        if code in repl_events:
             thread = frame.read_var('thread_p').dereference()
             refs = [oid(v['oid']) for v in vector(thread['oos_oids'])]
             emit(dict(kind='repl', cls=oid(frame.read_var('class_oid').dereference()),
-                      oid=oid(frame.read_var('inst_oid').dereference()), code=code, refs=refs))
+                      oid=oid(frame.read_var('inst_oid').dereference()),
+                      event=repl_events[code], refs=refs))
         return False
 Before('locator_sr.c:BEFORE')
 After('locator_sr.c:AFTER')
@@ -210,7 +213,7 @@ print('FKOOS07 READY', flush=True)
         if event['kind'] != 'repl':
             continue
         pending.append(event)
-        if event['code'] == 99:
+        if event['event'] == 'RVREPL_DATA_UPDATE':
             publications.append(pending)
             pending = []
     parent_rows = [row for row in publications if row[-1]['cls'] == parent]
