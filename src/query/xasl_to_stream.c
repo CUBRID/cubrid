@@ -147,6 +147,7 @@ static char *xts_process_ls_merge_info (char *ptr, const QFILE_LIST_MERGE_INFO *
 static char *xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls);
 static char *xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign);
 static char *xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info);
+static char *xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink);
 static char *xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_proc);
 static char *xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_proc);
 static char *xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info);
@@ -209,6 +210,7 @@ static int xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls);
 static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
 static int xts_sizeof_odku_info (const ODKU_INFO * odku_info);
 static int xts_sizeof_update_proc (const UPDATE_PROC_NODE * ptr);
+static int xts_sizeof_remote_dml_sink (void);
 static int xts_sizeof_delete_proc (const DELETE_PROC_NODE * ptr);
 static int xts_sizeof_insert_proc (const INSERT_PROC_NODE * ptr);
 static int xts_sizeof_merge_proc (const MERGE_PROC_NODE * ptr);
@@ -1022,6 +1024,11 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
       goto end;
     }
   assert (buf <= buf_p + size);
+
+  /* xts_sizeof_arith_type reserves space for next, but xts_process_arith_type
+   * does not write it, leaving an unwritten tail. Zero only that tail to avoid
+   * copying uninitialized bytes. */
+  memset (buf, 0, size - (buf - buf_p));
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -2897,6 +2904,15 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (NULL -> offset 0);
+   * source-pointer dedup re-aliases it to the predicate regu on unpack. */
+  offset = xts_save_regu_variable (xasl->precomp_owner_regu);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, xasl->option);
 
   offset = xts_save_outptr_list (xasl->outptr_list);
@@ -4134,6 +4150,49 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   return ptr;
 }
 
+/*
+ * xts_process_remote_dml_sink () - pack the common DBLink remote push-sink fields (is_remote flag +
+ *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   return: advanced ptr, or NULL on failure
+ */
+static char *
+xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink)
+{
+  int offset;
+
+  ptr = or_pack_int (ptr, (int) sink->is_remote);
+
+  offset = xts_save_string (sink->url);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->user);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->pwd);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->table_name);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
 static char *
 xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 {
@@ -4141,10 +4200,19 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 
   ptr = or_pack_int (ptr, delete_info->num_classes);
 
-  offset = xts_save_upddel_class_info_array (delete_info->classes, delete_info->num_classes);
-  if (offset == ER_FAILED)
+  /* a remote DELETE + local subquery sink has no local classes (num_classes == 0); xts_save_upddel_class_info_array
+   * asserts nelements > 0, so pack offset 0 directly (stx_build_delete_proc already treats num_classes == 0 as NULL). */
+  if (delete_info->num_classes > 0)
     {
-      return NULL;
+      offset = xts_save_upddel_class_info_array (delete_info->classes, delete_info->num_classes);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      offset = 0;
     }
   ptr = or_pack_int (ptr, offset);
 
@@ -4167,6 +4235,27 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   else
     {
       offset = 0;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* remote DELETE + local subquery sink fields */
+  ptr = xts_process_remote_dml_sink (ptr, &delete_info->sink);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  offset = xts_save_string (delete_info->remote_key_col);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (delete_info->remote_op);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
@@ -4235,6 +4324,45 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  /* remote INSERT SELECT fields */
+  ptr = xts_process_remote_dml_sink (ptr, &insert_info->sink);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = or_pack_int (ptr, insert_info->remote_num_attrs);
+
+  for (i = 0; i < insert_info->remote_num_attrs; i++)
+    {
+      offset = xts_save_string (insert_info->remote_attr_names[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  ptr = or_pack_int (ptr, insert_info->remote_num_odku);
+
+  /* Column and value go out as a pair, so the two arrays cannot drift apart across the stream. */
+  for (i = 0; i < insert_info->remote_num_odku; i++)
+    {
+      offset = xts_save_string (insert_info->remote_odku_cols[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+
+      offset = xts_save_string (insert_info->remote_odku_exprs[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
 
   return ptr;
 }
@@ -4547,8 +4675,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
     {
       ptr = or_pack_int (ptr, 0);
     }
@@ -4677,6 +4804,10 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
   ptr = or_pack_int (ptr, indx_info->ils_prefix_len);
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
+
+  /* the B-tree's key domain: the server derives the key plan from it at load and matches it with the root
+   * header's, which keeps an OBJECT key as OBJECT (its key values are OIDs) - so no OBJECT-to-OID packing here */
+  ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
 
   if (indx_info->cov_list_id == NULL)
     {
@@ -5180,6 +5311,15 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, dblink_spec->corr_key_count);
+
+  offset = xts_save_regu_variable_list (dblink_spec->corr_key_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, dblink_spec->host_var_count);
   if (dblink_spec->host_var_count > 0)
     {
@@ -5267,8 +5407,6 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 
   ptr = or_pack_int (ptr, regu_var->type);
 
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
   ptr = or_pack_int (ptr, regu_var->flags);
 
   offset = xts_save_db_value (regu_var->vfetch_to);
@@ -5986,6 +6124,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
 
+  size += PTR_SIZE;		/* precomp_owner_regu offset */
+
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec; access_spec = access_spec->next)
     {
@@ -6444,6 +6584,21 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 }
 
 /*
+ * xts_sizeof_remote_dml_sink () - size of the common DBLink remote push-sink fields (is_remote flag +
+ *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   return:
+ */
+static int
+xts_sizeof_remote_dml_sink (void)
+{
+  return (OR_INT_SIZE		/* is_remote */
+	  + PTR_SIZE		/* url */
+	  + PTR_SIZE		/* user */
+	  + PTR_SIZE		/* pwd */
+	  + PTR_SIZE);		/* table_name */
+}
+
+/*
  * xts_sizeof_delete_proc () -
  *   return:
  *   ptr(in)    :
@@ -6459,7 +6614,10 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* no_logging */
 	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
-	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
+	   + PTR_SIZE		/* mvcc_cond_reev_classes */
+	   + xts_sizeof_remote_dml_sink ()	/* remote DELETE + local subquery sink fields */
+	   + PTR_SIZE		/* remote_key_col */
+	   + PTR_SIZE);		/* remote_op */
 
   return size;
 }
@@ -6488,7 +6646,12 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* pruning_type */
 	   + OR_INT_SIZE	/* num_val_lists */
 	   + PTR_SIZE		/* obj_oid */
-	   + (insert_info->num_val_lists * PTR_SIZE));	/* valptr_lists */
+	   + (insert_info->num_val_lists * PTR_SIZE)	/* valptr_lists */
+	   + xts_sizeof_remote_dml_sink ()	/* remote INSERT SELECT fields */
+	   + OR_INT_SIZE	/* remote_num_attrs */
+	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
+	   + OR_INT_SIZE	/* remote_num_odku */
+	   + (insert_info->remote_num_odku * 2 * PTR_SIZE));	/* remote_odku_cols + remote_odku_exprs */
 
   return size;
 }
@@ -6911,6 +7074,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* iss_range's range */
 	   + PTR_SIZE);		/* iss_range's key1 */
 
+  size += or_packed_domain_size (indx_info->key_type, 0);	/* key_type */
+
   return size;
 }
 
@@ -7055,6 +7220,8 @@ xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * dblink_spec)
 
   size += (PTR_SIZE		/* dblink_regu_list_pred */
 	   + PTR_SIZE		/* dblink_regu_list_rest */
+	   + OR_INT_SIZE	/* corr_key_count */
+	   + PTR_SIZE		/* corr_key_regu_list */
 	   + OR_INT_SIZE	/* host_var_count */
 	   + PTR_SIZE		/* host_var_index */
 	   + PTR_SIZE		/* conn_rul */

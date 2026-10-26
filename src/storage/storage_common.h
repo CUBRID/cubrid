@@ -312,6 +312,18 @@ struct lorecdes
 
 #define BTID_IS_NULL(btid)  (((btid)->vfid.fileid == NULL_FILEID) ? 1 : 0)
 
+/* CBRD-27401: ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]. Target fill ratio (percent) of the overflow OID data
+ * pages left behind by compaction. 100 would make the next scattered insert split the page again right away. The
+ * default matches PostgreSQL's B-tree fillfactor (90). It is a per-command argument for now; making it an index
+ * attribute shared with split and load is a separate issue. */
+#define BTREE_COMPACT_MIN_FILL_FACTOR 50
+#define BTREE_COMPACT_MAX_FILL_FACTOR 100
+#define BTREE_COMPACT_DEFAULT_FILL_FACTOR 90
+/* CBRD-27401: committed merges after which btree_ovf_compact_chain () stops so that the caller can yield the leaf
+ * WRITE latch to concurrent DML on that leaf and come back to the same key. Bounds the stall a very long chain would
+ * otherwise cause; re-walking the chain is idempotent. */
+#define BTREE_COMPACT_MERGES_PER_LATCH 64
+
 #define BTID_IS_EQUAL(b1,b2) \
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
    ((b1)->vfid.volid == (b2)->vfid.volid))
@@ -496,7 +508,6 @@ typedef enum
   HEAP_PAGE_INFO_CONT_FREE,
   HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA,
   HEAP_PAGE_INFO_IS_SAVING,
-  HEAP_PAGE_INFO_UPDATE_BEST,
 
   /* leave this last */
   HEAP_PAGE_INFO_COUNT,
@@ -608,7 +619,7 @@ typedef int ATTR_ID;		/* attribute identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
 
 /* reserved attribute id requesting the function result stored in a function index key;
- * must not collide with real ids, NULL_ATTRID or the deduplicate key id range */
+ * must not collide with real ids or NULL_ATTRID */
 #define FUNC_INDEX_RESULT_ATTRID   (-2100000000)
 #define IS_FUNC_INDEX_RESULT_ATTR_ID(id)   ((id) == FUNC_INDEX_RESULT_ATTRID)
 
@@ -815,6 +826,10 @@ typedef enum
   T_LOB_LENGTH,
   T_TYPEOF,
   T_INDEX_CARDINALITY,
+  T_ESTIMATED_TABLE_ROWS,
+  T_ESTIMATED_AVG_ROW_LENGTH,
+  T_ESTIMATED_DATA_LENGTH,
+  T_ESTIMATED_DATA_FREE,
   T_EVALUATE_VARIABLE,
   T_DEFINE_VARIABLE,
   T_PREDICATE,
@@ -840,6 +855,8 @@ typedef enum
   T_TO_BASE64,
   T_FROM_BASE64,
   T_SYS_GUID,
+  T_UUID,
+  T_UUID_FORMAT,
   T_SLEEP,
   T_DBTIMEZONE,
   T_SESSIONTIMEZONE,
@@ -855,6 +872,7 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
+  T_COLLECTION_TO_STRING,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/
@@ -966,6 +984,15 @@ typedef enum
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
 
+/* Scan mode of the show statements which acquire a class lock (SHOW HEAP HEADER/CAPACITY for now).
+ * It is passed as the last show argument; a request which does not carry it at all gets the
+ * default, EXACT. */
+typedef enum
+{
+  SHOWSTMT_SCAN_EXACT = 0,	/* S_LOCK: statistics consistent with the committed DML */
+  SHOWSTMT_SCAN_APPROX		/* IS_LOCK: concurrent with DML, but approximate */
+} SHOWSTMT_SCAN_MODE;
+
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
 
@@ -1028,8 +1055,7 @@ typedef enum
   SM_FK_INFO_REF_CLASS_PK_BTID_INDEX = 1,
   SM_FK_INFO_DELETE_ACTION_INDEX = 2,
   SM_FK_INFO_UPDATE_ACTION_INDEX = 3,
-  SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX = 4,
-  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 5,
+  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 4,
 
   SM_FK_INFO_SIZE
 } SM_FOREIGN_KEY_INFO_INDEX;
@@ -1081,7 +1107,8 @@ typedef enum
   SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_PARTITION_KEY = 1024,	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_INVISIBLE_COLUMN = 2048	/* attribute is invisible 0x800 */
 } SM_ATTRIBUTE_FLAG;
 
 /* delete or update action type for foreign key */

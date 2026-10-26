@@ -53,6 +53,7 @@ public class SqlSemantics {
 
     // for normal return
     public int kind;
+    public boolean hasTableAccess;
     public String rewritten;
     public List<PlParamInfo> hostExprs; // host variables and auto parameters
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
@@ -64,6 +65,7 @@ public class SqlSemantics {
     public SqlSemantics(
             int seqNo,
             int kind,
+            boolean hasTableAccess,
             String rewritten,
             List<PlParamInfo> hostExprs,
             List<ColumnInfo> selectList,
@@ -72,6 +74,7 @@ public class SqlSemantics {
 
         this.seqNo = seqNo;
         this.kind = kind;
+        this.hasTableAccess = hasTableAccess;
         this.rewritten = rewritten;
         this.hostExprs = hostExprs;
         this.selectList = selectList;
@@ -82,6 +85,7 @@ public class SqlSemantics {
     public SqlSemantics(CUBRIDUnpacker unpacker) {
         this.seqNo = unpacker.unpackInt();
         this.kind = unpacker.unpackInt();
+        this.hasTableAccess = (unpacker.unpackInt() == 1);
         this.rewritten = unpacker.unpackCString();
 
         if (this.kind < 0) {

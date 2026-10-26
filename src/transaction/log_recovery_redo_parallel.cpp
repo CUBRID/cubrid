@@ -661,7 +661,6 @@ namespace cublog
 
     m_worker_pool = thread_create_worker_pool (a_task_count, a_task_count, "recovery-redo",
 		    *m_pool_entry_manager.get ());
-    // m_log = false
   }
 
   void
@@ -675,7 +674,7 @@ namespace cublog
       {
 	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, a_do_monitor_unapplied_log_lsa,
 		    m_task_state_bookkeeping, copy_context);
-	m_worker_pool->execute (task.get ());
+	m_worker_pool->execute (task.get (), {});
 	m_redo_tasks.push_back (std::move (task));
       }
 

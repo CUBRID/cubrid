@@ -284,7 +284,21 @@
   /* cleanfiledb - hidden utility */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE) \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE)	// Debug only: unsafe, may break DB consistency
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE) /* Debug only: unsafe, may break DB consistency */ \
+  \
+  /* server-side full-scan reservoir histogram build */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR) \
+  \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_BTREE_COMPACT_OVERFLOW) \
+  \
+  /* bind-value plan variants of a cached query */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_BIND_VARIANT) \
+  \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_DROP_CLONES) \
+  \
+  /* cdc channel authentication - appended at the end so no existing request number moves */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_CHALLENGE) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE)
 
 enum net_server_request
 {

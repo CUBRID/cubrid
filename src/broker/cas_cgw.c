@@ -199,7 +199,7 @@ static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, 
 				 char *db_name, char *db_user, const char *url, bool is_new_connection);
 static void cgw_cleanup_session (void);
 
-static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+static void cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
 
 
@@ -218,17 +218,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_register_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cgw_cas_init () < 0)
@@ -259,7 +249,7 @@ main (int argc, char *argv[])
 static int
 cgw_cas_main (void)
 {
-  CGW_CONTEXT cgw_ctx = { 0 };
+  CGW_CONTEXT cgw_ctx = { };
   CAS_MAIN_OPS ops = {
     .init_specific = cgw_init,	/* CGW specific initialization */
     .pre_db_connect = cgw_pre_db_connect,
@@ -289,7 +279,7 @@ cgw_cas_main (void)
 }
 
 static void
-cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
+cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;
@@ -441,8 +431,8 @@ cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
 		    err_info.err_number, db_err_msg);
 	}
 
-      cas_log_write_and_end (0, false, msg_buf);
-      cas_slow_log_write_and_end (NULL, 0, msg_buf);
+      cas_log_write_and_end (0, false, "%s", msg_buf);
+      cas_slow_log_write_and_end (NULL, 0, "%s", msg_buf);
       cas_finish_session (client_sock_fd, ssl_client);
       return err_code;
     }
@@ -538,7 +528,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {
@@ -654,23 +648,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   server_fn = server_fn_table[func_code - 1];
 
-  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
-    {
-      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
-      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
-	{
-	  cas_log_debug (ARG_FILE_LINE,
-			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
-			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
-			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
-	}
-#endif /* end for debug */
-    }
-
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
   cas_send_result_flag = TRUE;
@@ -723,9 +700,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
     {
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
-
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
-		 err_info.err_number);
 
   if (con_status_to_restore != -1)
     {
@@ -837,15 +811,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
-      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
-#endif /* end for debug */
-
-
 
       *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
       memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);

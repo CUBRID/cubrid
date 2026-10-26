@@ -23,7 +23,9 @@
 #ifndef _IDENTIFIER_STORE_HPP_
 #define _IDENTIFIER_STORE_HPP_
 
+#include <string>
 #include <vector>
+#include <string>
 #include <string_view>
 
 #include "porting.h"

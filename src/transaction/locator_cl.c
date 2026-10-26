@@ -4148,10 +4148,10 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      int save;
 	      MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
 
-	      AU_DISABLE (save);
+	      AU_SAVE_AND_DISABLE (save);
 	      /* fetch to update catalog representation directory */
 	      error_code = au_fetch_class (mop, &smclass, AU_FETCH_READ, AU_SELECT);
-	      AU_ENABLE (save);
+	      AU_RESTORE (save);
 	    }
 	}
 
@@ -4809,6 +4809,11 @@ locator_mflush (MOP mop, void *mf)
   if (WS_IS_TRIGGER_INVOLVED (mop))
     {
       LC_ONEOBJ_SET_TRIGGER_INVOLVED (mflush->obj);
+    }
+
+  if (WS_IS_SERIAL_RESTART (mop))
+    {
+      LC_ONEOBJ_SET_SERIAL_RESTART (mflush->obj);
     }
 
   HFID_COPY (&mflush->obj->hfid, hfid);
@@ -5657,6 +5662,7 @@ locator_remove_class (MOP class_mop)
   SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
   bool lob_attr_exist = false;
   const char *classname;	/* The classname */
+  LC_FIND_CLASSNAME deleted;	/* Result of deleting the classname */
   int attrid_arr[1];
   int error_code = NO_ERROR;
 
@@ -5707,7 +5713,22 @@ locator_remove_class (MOP class_mop)
     }
 
   /* Delete the class name */
-  if (locator_delete_class_name (classname) == LC_CLASSNAME_DELETED || BOOT_IS_CLIENT_RESTARTED ())
+  deleted = locator_delete_class_name (classname);
+  if (deleted == LC_CLASSNAME_ERROR)
+    {
+      /*
+       * The request failed. BOOT_IS_CLIENT_RESTARTED () below cannot be relied on
+       * to catch this: when the server goes down, the failing request runs
+       * boot_server_die_or_changed (), which calls boot_client (NULL_TRAN_INDEX)
+       * and thus clears tm_Tran_index. Without this check the function returns
+       * NO_ERROR even though the transaction has already been aborted, and the
+       * caller keeps walking workspace structures that the abort has freed.
+       */
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
+
+  if (deleted == LC_CLASSNAME_DELETED || BOOT_IS_CLIENT_RESTARTED ())
     {
       ws_dirty (class_mop);
       ws_mark_deleted (class_mop);
@@ -6974,6 +6995,10 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       /* includes leading and trailing alignment */
       required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  required_length += repl_obj->packed_prior_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+	}
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
@@ -7012,6 +7037,15 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
 
+      /* the value a _db_serial write-back replaced follows the key, in the same form */
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+	  memcpy (ptr, repl_obj->packed_prior_value, repl_obj->packed_prior_value_length);
+	  ptr += repl_obj->packed_prior_value_length;
+	  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+	}
+
       key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
 
@@ -7030,9 +7064,14 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       mflush->mobjs->num_objs++;
       mflush->obj->operation = (LC_COPYAREA_OPERATION) repl_obj->operation;
+      mflush->obj->flag = 0;
       if (repl_obj->has_index == true)
 	{
 	  LC_ONEOBJ_SET_HAS_INDEX (mflush->obj);
+	}
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  LC_ONEOBJ_SET_HAS_PRIOR_VALUE (mflush->obj);
 	}
 
       COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);

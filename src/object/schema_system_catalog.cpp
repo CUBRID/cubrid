@@ -19,10 +19,17 @@
 #include "schema_system_catalog.hpp"
 
 #include "db.h"
+#include "authenticate_constants.h"
 #include "dbtype_function.h"
+#include "error_manager.h"
 #include "identifier_store.hpp"
 #include "oid.h"
+#include "schema_information_schema.hpp"
 #include "schema_system_catalog_constants.h"
+#if defined (SA_MODE)
+#include "authenticate.h"
+#include "schema_manager.h"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -45,9 +52,9 @@ namespace cubschema
      * AU_GRANT_CLASS_NAME
      */
     CT_ROOT_NAME,		// "db_root"
-    CT_USER_NAME,		// "db_user"
-    CT_PASSWORD_NAME,	// "db_password"
-    CT_AUTHORIZATION_NAME,		// "db_authorization"
+    CT_USER_NAME,		// "_db_user"
+    CT_PASSWORD_NAME,	// "_db_password"
+    CT_AUTHORIZATION_NAME,	// "_db_authorization"
 
     /* currently, not implemented */
     // AU_GRANT_CLASS_NAME,		// "db_grant"
@@ -79,39 +86,50 @@ namespace cubschema
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_TRIGGER_NAME,		// "_db_trigger"
-
-    /* currently, not implemented */
-    CT_RESOLUTION_NAME		// "_db_resolution"
+    CT_HISTOGRAM_NAME		// "_db_histogram"
   };
 
-  static const std::vector <std::string> sm_system_vclass_names =
+  static const std::vector <std::string> sm_system_vclass_names = []()
   {
-    /*
-     * catalog vclasses
-     */
-    CTV_CLASS_NAME,			// "db_class"
-    CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
-    CTV_VCLASS_NAME,			// "db_vclass"
-    CTV_ATTRIBUTE_NAME,		// "db_attribute"
-    CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
-    CTV_METHOD_NAME,			// "db_method"
-    CTV_METHARG_NAME,		// "db_meth_arg"
-    CTV_METHARG_SD_NAME,		// "db_meth_arg_setdomain_elm"
-    CTV_METHFILE_NAME,		// "db_meth_file"
-    CTV_INDEX_NAME,			// "db_index"
-    CTV_INDEXKEY_NAME,		// "db_index_key"
-    CTV_AUTH_NAME,			// "db_auth"
-    CTV_TRIGGER_NAME,		// "db_trigger"
-    CTV_PARTITION_NAME,		// "db_partition"
-    CTV_STORED_PROC_NAME,	// "db_stored_procedure"
-    CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
-    CTV_SERIAL_NAME,		// "db_serial"
-    CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
-    CTV_COLLATION_NAME,	// "db_collation"
-    CTV_CHARSET_NAME,		// "db_charset"
-    CTV_SERVER_NAME,		// "db_server"
-    CTV_SYNONYM_NAME			// "db_synonym"
-  };
+    std::vector<std::string> v =
+    {
+      /*
+       * catalog vclasses
+       */
+      CTV_CLASS_NAME,			// "db_class"
+      CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
+      CTV_VCLASS_NAME,			// "db_vclass"
+      CTV_ATTRIBUTE_NAME,		// "db_attribute"
+      CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
+      CTV_METHOD_NAME,			// "db_method"
+      CTV_METHARG_NAME,		// "db_meth_arg"
+      CTV_METHARG_SD_NAME,		// "db_meth_arg_setdomain_elm"
+      CTV_METHFILE_NAME,		// "db_meth_file"
+      CTV_INDEX_NAME,			// "db_index"
+      CTV_INDEXKEY_NAME,		// "db_index_key"
+      CTV_AUTH_NAME,			// "db_auth"
+      CTV_TRIGGER_NAME,		// "db_trigger"
+      CTV_PARTITION_NAME,		// "db_partition"
+      CTV_STORED_PROC_NAME,	// "db_stored_procedure"
+      CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
+      CTV_SERIAL_NAME,		// "db_serial"
+      CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
+      CTV_COLLATION_NAME,	// "db_collation"
+      CTV_USER_NAME,			// "db_user"
+      CTV_AUTHORIZATION_NAME,		// "db_authorization"
+      CTV_CHARSET_NAME,		// "db_charset"
+      CTV_SERVER_NAME,		// "db_server"
+      CTV_SYNONYM_NAME,			// "db_synonym"
+      CTV_HISTOGRAM_NAME		// "db_histogram"
+    };
+
+    const std::string prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
+    for (const auto &name : get_information_schema_view_names ())
+      {
+	v.emplace_back (prefix + name);
+      }
+    return v;
+  } ();
 
   static const identifier_store sm_catalog_class_names (sm_system_class_names, false);
   static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
@@ -133,3 +151,40 @@ bool sm_is_system_vclass (const std::string_view name)
 {
   return cubschema::sm_catalog_vclass_names.is_exists (name);
 }
+
+#if defined (SA_MODE)
+int
+sm_mark_system_classes (void)
+{
+  int error = NO_ERROR;
+  int au_save;
+
+  const std::vector<std::string> *name_lists[] =
+  { &cubschema::sm_system_class_names, &cubschema::sm_system_vclass_names };
+
+  AU_SAVE_AND_DISABLE (au_save);
+
+  for (const std::vector<std::string> *names : name_lists)
+    {
+      for (const std::string &name : *names)
+	{
+	  MOP class_mop = db_find_class (name.c_str ());
+	  if (class_mop == NULL)
+	    {
+	      er_clear ();
+	      continue;
+	    }
+
+	  error = sm_mark_system_class (class_mop, 1);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+end:
+  AU_RESTORE (au_save);
+  return error;
+}
+#endif

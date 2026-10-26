@@ -75,6 +75,16 @@ enum css_command_type
   MAX_REQUEST
 };
 
+#define CSS_CLIENT_TYPE_INFO_SIZE ((int) sizeof (int))
+#define CSS_SERVER_REQUEST_CODE_MASK 0x0000ffff
+#define CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT 16
+#define CSS_PACK_SERVER_REQUEST(request, client_type) \
+  ((((unsigned int) ((client_type) + 1)) << CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT) \
+   | ((unsigned int) (request) & CSS_SERVER_REQUEST_CODE_MASK))
+#define CSS_UNPACK_SERVER_REQUEST_CODE(request) ((int) ((unsigned int) (request) & CSS_SERVER_REQUEST_CODE_MASK))
+#define CSS_UNPACK_SERVER_REQUEST_CLIENT_TYPE(request) \
+  ((int) (((unsigned int) (request)) >> CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT) - 1)
+
 /*
  * These are the responses from the master to a server
  * when it is trying to connect and register itself.
@@ -371,6 +381,11 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
+/* CDC channel authentication (CBRD-27436): challenge is 16 random bytes in hex,
+ * response is a SHA-256 digest in hex. */
+#define CSS_CDC_AUTH_NONCE_SIZE         33
+#define CSS_CDC_AUTH_RESPONSE_SIZE      65
+
 #define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
 
@@ -448,6 +463,11 @@ struct css_conn_entry
   bool in_transaction;		/* this client is in-transaction or out-of- */
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
 
+  /* CDC channel authentication (CBRD-27436). The CDC log-server channel is not a
+   * booted client, so it has no server-verified identity; it proves one with a
+   * challenge-response of its own and the outcome is kept here. */
+  bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
+  volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */
@@ -504,7 +524,16 @@ struct css_conn_entry
   // working task count manipulation
   void add_working_task ();
   size_t end_working_task ();
+  bool has_working_task () const;
   void init_working_task ();
+
+#if defined(SERVER_MODE)
+  // method callback count manipulation
+  void begin_method_callback ();
+  void end_method_callback ();
+  bool has_outstanding_method_callback () const;
+  void init_method_callback ();
+#endif
 
   void release_packet (void *buffer);
 
@@ -514,6 +543,9 @@ private:
   // *INDENT-OFF*
   std::atomic<size_t> pending_request_count;
   std::atomic<size_t> working_task_count;
+#if defined(SERVER_MODE)
+  std::atomic<size_t> method_callback_count;
+#endif
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;

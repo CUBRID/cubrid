@@ -44,7 +44,12 @@
 
 #include "authenticate.h"
 #include "client_support.h"
+#include "authenticate_password.hpp"
+#include "crypt_opfunc.h"
+#include "connection_cl.h"
+#include "connection_list_cl.h"
 #include "cubrid_log.h"
+#include "error_code.h"
 #include "log_lsa.hpp"
 #include "network.h"
 #include "object_representation.h"
@@ -114,6 +119,9 @@ char **g_extraction_user;
 int g_extraction_user_count = 0;
 
 char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN + 1] = "";
+
+/* Authenticated db user, sent so the server can enforce DBA on the identity-less CDC channel. */
+char g_db_user[DB_MAX_USER_LENGTH + 1] = "";
 
 FILE *g_trace_log = NULL;
 char g_trace_log_base[PATH_MAX + 1] = ".";
@@ -504,6 +512,8 @@ cubrid_log_set_all_in_cond (int retrieve_all)
 int
 cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 {
+  uint64_t *new_extraction_table = NULL;
+
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
@@ -514,13 +524,19 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
       return CUBRID_LOG_INVALID_CLASSOID_ARR_SIZE;
     }
 
-  g_extraction_table = (uint64_t *) malloc (sizeof (uint64_t) * arr_size);
-  if (g_extraction_table == NULL)
+  if (arr_size > 0)
     {
-      return CUBRID_LOG_FAILED_MALLOC;
+      new_extraction_table = (uint64_t *) malloc (sizeof (uint64_t) * arr_size);
+      if (new_extraction_table == NULL)
+	{
+	  return CUBRID_LOG_FAILED_MALLOC;
+	}
+
+      memcpy (new_extraction_table, classoid_arr, arr_size * sizeof (uint64_t));
     }
 
-  memcpy (g_extraction_table, classoid_arr, arr_size * sizeof (uint64_t));
+  free_and_init (g_extraction_table);
+  g_extraction_table = new_extraction_table;
   g_extraction_table_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
@@ -535,7 +551,8 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 int
 cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 {
-  int i;
+  int i, j;
+  char **new_extraction_user = NULL;
 
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
@@ -547,17 +564,47 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
       return CUBRID_LOG_INVALID_USER_ARR_SIZE;
     }
 
-  g_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
-  if (g_extraction_user == NULL)
-    {
-      return CUBRID_LOG_FAILED_MALLOC;
-    }
-
   for (i = 0; i < arr_size; i++)
     {
-      g_extraction_user[i] = strdup (user_arr[i]);
+      if (user_arr[i] == NULL)
+	{
+	  return CUBRID_LOG_INVALID_USER;
+	}
     }
 
+  if (arr_size > 0)
+    {
+      new_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
+      if (new_extraction_user == NULL)
+	{
+	  return CUBRID_LOG_FAILED_MALLOC;
+	}
+
+      for (i = 0; i < arr_size; i++)
+	{
+	  new_extraction_user[i] = strdup (user_arr[i]);
+	  if (new_extraction_user[i] == NULL)
+	    {
+	      for (j = 0; j < i; j++)
+		{
+		  free_and_init (new_extraction_user[j]);
+		}
+	      free_and_init (new_extraction_user);
+	      return CUBRID_LOG_FAILED_MALLOC;
+	    }
+	}
+    }
+
+  if (g_extraction_user != NULL)
+    {
+      for (i = 0; i < g_extraction_user_count; i++)
+	{
+	  free_and_init (g_extraction_user[i]);
+	}
+      free_and_init (g_extraction_user);
+    }
+
+  g_extraction_user = new_extraction_user;
   g_extraction_user_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
@@ -632,7 +679,8 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 
 	  __gv_cvar.css_close_conn (g_conn_entry);
 
-	  g_conn_entry = __gv_cvar.css_server_connect_part_two (host, g_conn_entry, port_id, &rid);
+	  g_conn_entry = __gv_cvar.css_server_connect_part_two (host, g_conn_entry, port_id, &rid,
+								DB_CLIENT_TYPE_UNKNOWN);
 	  if (g_conn_entry == NULL)
 	    {
 	      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
@@ -702,6 +750,7 @@ cubrid_log_send_configurations (void)
   int err_code;
 
   request_size = OR_INT_SIZE * 5;
+  request_size += or_packed_string_length (g_db_user, NULL);
 
   for (i = 0; i < g_extraction_user_count; i++)
     {
@@ -719,7 +768,8 @@ cubrid_log_send_configurations (void)
 
   request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
 
-  ptr = or_pack_int (request, g_max_log_item);
+  ptr = or_pack_string (request, g_db_user);
+  ptr = or_pack_int (ptr, g_max_log_item);
   ptr = or_pack_int (ptr, g_extraction_timeout);
   ptr = or_pack_int (ptr, g_all_in_cond);
   ptr = or_pack_int (ptr, g_extraction_user_count);
@@ -794,11 +844,44 @@ cubrid_log_error:
   return err_code;
 }
 
+/* er_errid () is overwritten with ER_BO_CONNECT_FAILED at the end of every connect failure path
+ * (boot_client_initialize_css), so the cause of a db_restart () failure must be taken from its
+ * return value. The CUBRID_LOG_FAILED_CONNECT set mirrors the codes that boot_client_initialize_css
+ * classifies as connect errors. Unmapped errors keep CUBRID_LOG_FAILED_LOGIN so that authentication
+ * failures (e.g. ER_AU_INVALID_PASSWORD) are reported as before. */
+static int
+cubrid_log_map_connect_error (int error)
+{
+  switch (error)
+    {
+    case ERR_CSS_TCP_HOST_NAME_ERROR:
+      return CUBRID_LOG_INVALID_HOST;
+    case ER_BO_UNKNOWN_DATABASE:
+      return CUBRID_LOG_INVALID_DBNAME;
+    case ER_NET_SERVER_HAND_SHAKE:
+    case ER_NET_HS_UNKNOWN_SERVER_REL:
+    case ER_NET_DIFFERENT_RELEASE:
+    case ER_NET_NO_SERVER_HOST:
+    case ER_NET_CANT_CONNECT_SERVER:
+    case ER_NET_NO_MASTER:
+    case ER_NET_SERVER_CRASHED:
+    case ER_BO_CONNECT_FAILED:
+    case ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER:
+    case ERR_CSS_TCP_CONNECT_TIMEDOUT:
+    case ERR_CSS_ERROR_FROM_SERVER:
+    case ER_CSS_CLIENTS_EXCEEDED:
+      return CUBRID_LOG_FAILED_CONNECT;
+    default:
+      return CUBRID_LOG_FAILED_LOGIN;
+    }
+}
+
 static int
 cubrid_log_db_login (char *hostname, char *dbname, char *username, char *password)
 {
   MOP user;
   char dbname_at_hostname[CUB_MAXHOSTNAMELEN + CUBRID_LOG_MAX_DBNAME_LEN + 2] = { '\0', };
+  int restart_error, err_code;
 
   snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@%s", dbname, hostname);
 
@@ -808,11 +891,13 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
       goto error;
     }
 
-  if (db_restart ("cubrid_log_api", 0, dbname_at_hostname) != NO_ERROR)
+  restart_error = db_restart ("cubrid_log_api", 0, dbname_at_hostname);
+  if (restart_error != NO_ERROR)
     {
-      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
-			   "db_restart failed to connect to %s\n", dbname_at_hostname);
-      return CUBRID_LOG_FAILED_LOGIN;
+      err_code = cubrid_log_map_connect_error (restart_error);
+      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, err_code,
+			   "db_restart failed to connect to %s (error = %d)\n", dbname_at_hostname, restart_error);
+      return err_code;
     }
 
   user = au_find_user (username);
@@ -830,6 +915,11 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
       goto error;
     }
 
+  /* remember the account so cubrid_log_authenticate () can prove it to the server
+   * once the CDC channel is open */
+  strncpy (g_db_user, username, DB_MAX_USER_LENGTH);
+  g_db_user[DB_MAX_USER_LENGTH] = '\0';
+
   db_shutdown ();
 
   return CUBRID_LOG_SUCCESS;
@@ -839,6 +929,351 @@ error:
   db_shutdown ();
 
   return CUBRID_LOG_FAILED_LOGIN;
+}
+
+/* what the server sent for a challenge; returned as is with the answer */
+typedef struct cubrid_log_challenge CUBRID_LOG_CHALLENGE;
+struct cubrid_log_challenge
+{
+  int scheme;			/* form the stored password is kept in */
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE];
+  INT64 issued_at;
+  char tag[CSS_CDC_AUTH_RESPONSE_SIZE];	/* the server's signature over the challenge */
+};
+
+/*
+ * cubrid_log_copy_reply_string () - copy one length-prefixed string out of a
+ *   server reply, checking the prefix against the received size first so a
+ *   short or corrupt reply cannot be read past its end.
+ *   return: the position after the string, or NULL if it is malformed
+ *   out_len (in): exact length the string must have
+ */
+static char *
+cubrid_log_copy_reply_string (char *ptr, char *recv_data, int recv_data_size, char *out, int out_len)
+{
+  int declared_len;
+  char *after_len, *str = NULL;
+
+  if (recv_data_size - (int) (ptr - recv_data) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+  if (declared_len < 0 || declared_len > (recv_data_size - (int) (after_len - recv_data))
+      || memchr (after_len, '\0', declared_len) == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &str);
+  if (str == NULL || (int) strlen (str) != out_len)
+    {
+      return NULL;
+    }
+
+  memcpy (out, str, out_len + 1);
+  return ptr;
+}
+
+/*
+ * cubrid_log_request_challenge () - ask the server for a one-time challenge.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   timeout(in)    : how long to wait for the reply, in milliseconds
+ *   challenge(out) : scheme, nonce, issue time and the server's tag
+ */
+static int
+cubrid_log_request_challenge (int timeout, CUBRID_LOG_CHALLENGE * challenge)
+{
+  unsigned short rid = 0;
+
+  char *a_request = NULL;
+  char *request, *ptr;
+  int request_size;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_BIGINT_SIZE + CSS_CDC_AUTH_NONCE_SIZE + CSS_CDC_AUTH_RESPONSE_SIZE +
+		  2 * MAX_ALIGNMENT) a_challenge_reply;
+  char *challenge_reply = OR_ALIGNED_BUF_START (a_challenge_reply);
+
+  char *recv_data = NULL;
+  int recv_data_size;
+  int reply_code;
+
+  int err_code;
+
+  request_size = or_packed_string_length (g_db_user, NULL);
+
+  a_request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, "Failed to malloc for request. (size : %d)\n",
+				 request_size + MAX_ALIGNMENT);
+    }
+
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+  ptr = or_pack_string (request, g_db_user);
+  request_size = (int) (ptr - request);
+
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
+      (g_conn_entry, NET_SERVER_CDC_AUTH_CHALLENGE, &rid, request, request_size, challenge_reply,
+       OR_ALIGNED_BUF_SIZE (a_challenge_reply)) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+				 "Request(NET_SERVER_CDC_AUTH_CHALLENGE) failed. request size (%d)\n", request_size);
+    }
+
+  if (__gv_cvar.css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, timeout) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
+				 "receive data from the request(NET_SERVER_CDC_AUTH_CHALLENGE) failed. The server may "
+				 "predate CDC channel authentication. (timeout : %d sec)\n", timeout / 1000);
+    }
+
+  if (recv_data == NULL || recv_data_size < OR_INT_SIZE * 3)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "recv_data is %s, receive data size : %d\n",
+				 recv_data ? "not null" : "null", recv_data_size);
+    }
+
+  ptr = or_unpack_int (recv_data, &reply_code);
+  if (reply_code != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "reply code from server is %d\n", reply_code);
+    }
+
+  /* reply: code | scheme | nonce | issued_at | tag */
+  ptr = or_unpack_int (ptr, &challenge->scheme);
+  ptr = cubrid_log_copy_reply_string (ptr, recv_data, recv_data_size, challenge->nonce, CSS_CDC_AUTH_NONCE_SIZE - 1);
+  if (ptr == NULL || recv_data_size - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - recv_data) < OR_BIGINT_SIZE)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a malformed authentication challenge\n");
+    }
+  ptr = or_unpack_int64 (ptr, &challenge->issued_at);
+  if (cubrid_log_copy_reply_string (ptr, recv_data, recv_data_size, challenge->tag, CSS_CDC_AUTH_RESPONSE_SIZE - 1)
+      == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a malformed authentication challenge\n");
+    }
+
+  /* css_receive_data () hands back the caller's own buffer when the reply fits in it */
+  if (recv_data != challenge_reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  free_and_init (a_request);
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != challenge_reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
+
+  if (a_request != NULL)
+    {
+      free_and_init (a_request);
+    }
+
+  return err_code;
+}
+
+/*
+ * cubrid_log_make_auth_digest () - compute the answer to a challenge.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   password(in): the password the caller supplied, in plain text
+ *   scheme(in)  : the form the stored password is kept in
+ *   nonce(in)   : the challenge the server sent
+ *   digest(out) : the answer, released by the caller with db_private_free_and_init ()
+ *
+ * The password is first put into the same form the server has stored, so the
+ * digest matches the one the server computes without the password being sent.
+ */
+static int
+cubrid_log_make_auth_digest (char *password, int scheme, const char *nonce, char **digest)
+{
+  char encrypted[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  char plain_buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
+  int digest_len;
+  int err_code;
+
+  switch (scheme)
+    {
+    case ENCODE_PREFIX_DES:
+      encrypt_password (password, 1, encrypted);
+      break;
+    case ENCODE_PREFIX_SHA1:
+      encrypt_password_sha1 (password, 1, encrypted);
+      break;
+    case ENCODE_PREFIX_SHA2_512:
+      encrypt_password_sha2_512 (password, encrypted);
+      break;
+    default:
+      /* stored unencrypted, or the account has no password at all */
+      strncpy (encrypted, password, sizeof (encrypted) - 1);
+      break;
+    }
+
+  snprintf (plain_buffer, sizeof (plain_buffer), "%s%s", nonce, encrypted);
+
+  if (crypt_sha_two (NULL, plain_buffer, (int) strlen (plain_buffer), 256, digest, &digest_len, false) != NO_ERROR
+      || *digest == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Failed to compute the authentication response\n");
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
+/*
+ * cubrid_log_send_auth_response () - answer the challenge and read the verdict.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   challenge(in): what the server sent, returned as is
+ *   digest(in)   : the answer computed for it
+ *   timeout(in)  : how long to wait for the reply, in milliseconds
+ */
+static int
+cubrid_log_send_auth_response (const CUBRID_LOG_CHALLENGE * challenge, const char *digest, int timeout)
+{
+  unsigned short rid = 0;
+
+  char *a_request = NULL;
+  char *request, *ptr;
+  int request_size;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  char *recv_data = NULL;
+  int recv_data_size;
+  int reply_code;
+
+  int err_code;
+
+  /* request: user | nonce | issued_at | tag | answer */
+  request_size = or_packed_string_length (g_db_user, NULL) + or_packed_string_length (challenge->nonce, NULL)
+    + MAX_ALIGNMENT + OR_BIGINT_SIZE + or_packed_string_length (challenge->tag, NULL)
+    + or_packed_string_length (digest, NULL);
+
+  a_request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, "Failed to malloc for request. (size : %d)\n",
+				 request_size + MAX_ALIGNMENT);
+    }
+
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+  ptr = or_pack_string (request, g_db_user);
+  ptr = or_pack_string (ptr, challenge->nonce);
+  ptr = or_pack_int64 (ptr, challenge->issued_at);
+  ptr = or_pack_string (ptr, challenge->tag);
+  ptr = or_pack_string (ptr, digest);
+  request_size = (int) (ptr - request);
+
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
+      (g_conn_entry, NET_SERVER_CDC_AUTH_RESPONSE, &rid, request, request_size, reply,
+       OR_ALIGNED_BUF_SIZE (a_reply)) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+				 "Request(NET_SERVER_CDC_AUTH_RESPONSE) failed. request size (%d)\n", request_size);
+    }
+
+  if (__gv_cvar.css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, timeout) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
+				 "receive data from the request(NET_SERVER_CDC_AUTH_RESPONSE) failed. "
+				 "(timeout : %d sec)\n", timeout / 1000);
+    }
+
+  if (recv_data == NULL || recv_data_size != OR_INT_SIZE)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "recv_data is %s, receive data size : %d (should be %d)\n",
+				 recv_data ? "not null" : "null", recv_data_size, OR_INT_SIZE);
+    }
+
+  or_unpack_int (recv_data, &reply_code);
+  if (reply_code != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
+				 "The server did not accept %s on the CDC channel. reply code is %d\n", g_db_user,
+				 reply_code);
+    }
+
+  if (recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  free_and_init (a_request);
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
+
+  if (a_request != NULL)
+    {
+      free_and_init (a_request);
+    }
+
+  return err_code;
+}
+
+/*
+ * cubrid_log_authenticate () - prove to the server which account this channel runs as.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   password(in): the password the caller supplied, in plain text
+ *
+ * The CDC channel is opened after db_shutdown(), so the server sees no registered
+ * client on it and cannot tell who is asking. Two exchanges settle that: the
+ * server sends a signed one-time challenge together with the scheme its stored
+ * password uses, and this returns the challenge with a digest over it and the
+ * password in that same stored form. The password itself is never sent.
+ */
+static int
+cubrid_log_authenticate (char *password)
+{
+  CUBRID_LOG_CHALLENGE challenge;
+  char *digest = NULL;
+  int err_code;
+
+  /* A server that predates these requests answers with an error packet, which
+   * css_receive_data () does not recognise and simply keeps waiting through. The
+   * handshake is two small round trips on an already-open connection, so cap the
+   * wait well below the connect timeout to turn that into a prompt failure. */
+  int timeout = ((g_connection_timeout < 30) ? g_connection_timeout : 30) * 1000;
+
+  err_code = cubrid_log_request_challenge (timeout, &challenge);
+  if (err_code != CUBRID_LOG_SUCCESS)
+    {
+      return err_code;
+    }
+
+  err_code = cubrid_log_make_auth_digest (password, challenge.scheme, challenge.nonce, &digest);
+  if (err_code != CUBRID_LOG_SUCCESS)
+    {
+      return err_code;
+    }
+
+  err_code = cubrid_log_send_auth_response (&challenge, digest, timeout);
+
+  db_private_free_and_init (NULL, digest);
+
+  return err_code;
 }
 
 /*
@@ -880,7 +1315,7 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_HOST, "host must not be null\n");
     }
 
-  if (port < 0 || port > USHRT_MAX)
+  if (port <= 0 || port > USHRT_MAX)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT,
 				 "invalid port number : %d, port must be greater than 0 and less than %d\n", port,
@@ -897,9 +1332,10 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD, "password must not be null\n");
     }
 
-  if (cubrid_log_db_login (host, dbname, user, password) != CUBRID_LOG_SUCCESS)
+  err_code = cubrid_log_db_login (host, dbname, user, password);
+  if (err_code != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, NULL);
+      CUBRID_LOG_ERROR_HANDLING (err_code, NULL);
     }
 
   if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
@@ -912,6 +1348,12 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, NULL);
     }
 
+  err_code = cubrid_log_authenticate (password);
+  if (err_code != CUBRID_LOG_SUCCESS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (err_code, NULL);
+    }
+
   if (cubrid_log_send_configurations () != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, NULL);
@@ -922,6 +1364,15 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
+
+  /* a connection made above but refused later (authentication, configuration)
+   * is closed here: the stage stays CONFIGURATION, where cubrid_log_finalize ()
+   * is not callable, so nothing else could release it */
+  if (g_conn_entry != NULL)
+    {
+      __gv_cvar.css_free_conn (g_conn_entry);
+      g_conn_entry = NULL;
+    }
 
   return err_code;
 }
@@ -1036,7 +1487,8 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   if (g_trace_log_level == 1)
     {
-      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage, *timestamp);
+      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage,
+				 timestamp ? (long long) *timestamp : 0LL);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
@@ -1050,7 +1502,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP,
 				 "timestamp must be greater or equal than 0. Input timestamp is %s, and value is %lld\n",
-				 timestamp ? "not null" : "null", *timestamp);
+				 timestamp ? "not null" : "null", timestamp ? (long long) *timestamp : 0LL);
     }
 
   if (lsa == NULL)
@@ -1145,6 +1597,11 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA, "Input lsa is not valid (%lld|%d)\n", next_lsa->pageid,
 				     next_lsa->offset);
 	}
+      else
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT,
+				     "Failed to extract log info metadata. reply code from server is %d\n", reply_code);
+	}
     }
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
@@ -1157,8 +1614,16 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       free_and_init (recv_data);
     }
 
-  if (rc == CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
+  if (*num_infos < 0 || *total_length < 0 || (*num_infos > 0 && *total_length <= 0))
     {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT,
+				 "Invalid log info metadata. num_infos (%d), total_length (%d)\n", *num_infos,
+				 *total_length);
+    }
+
+  if (*num_infos == 0)
+    {
+      rc = CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
       goto cubrid_log_end;
     }
 
@@ -1207,6 +1672,15 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
 				     "receive data from the request(NET_SERVER_CDC_GET_LOGINFO) failed. (timeout : %d sec)\n",
 				     g_extraction_timeout);
+	}
+
+      /* CBRD-27436: the server rejects a caller that does not own the CDC
+       * session with an empty buffer, and reports why in the packet header
+       * (this reply has no error-code framing of its own). */
+      if (g_conn_entry->db_error == ER_AU_DBA_ONLY)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
+				     "this connection does not own the CDC session (DBA authorization required)\n");
 	}
 
       if (recv_data == NULL || recv_data_size != *total_length)
@@ -1268,6 +1742,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
   int err_code;
 
   ptr = *data_info;
+
+  dml->changed_column_index = NULL;
+  dml->changed_column_data = NULL;
+  dml->changed_column_data_len = NULL;
+  dml->cond_column_index = NULL;
+  dml->cond_column_data = NULL;
+  dml->cond_column_data_len = NULL;
 
   ptr = or_unpack_int (ptr, &dml->dml_type);
   ptr = or_unpack_int64 (ptr, (INT64 *) & dml->classoid);
@@ -1486,6 +1967,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 
 cubrid_log_error:
 
+  free_and_init (dml->changed_column_index);
+  free_and_init (dml->changed_column_data);
+  free_and_init (dml->changed_column_data_len);
+  free_and_init (dml->cond_column_index);
+  free_and_init (dml->cond_column_data);
+  free_and_init (dml->cond_column_data_len);
+
   return err_code;
 }
 
@@ -1605,6 +2093,8 @@ cubrid_log_error:
   return err_code;
 }
 
+static int cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item);
+
 static int
 cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
 {
@@ -1617,6 +2107,20 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
   if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] num_infos (%d), total_length (%d)\n", num_infos, total_length);
+    }
+
+  if (num_infos <= 0)
+    {
+      *log_item_list = NULL;
+      *list_size = 0;
+      return CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
+    }
+
+  if (total_length <= 0)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT,
+				 "Invalid log item list metadata. num_infos (%d), total_length (%d)\n", num_infos,
+				 total_length);
     }
 
   if (g_log_items_count < num_infos)
@@ -1642,8 +2146,16 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   for (i = 0; i < num_infos; i++)
     {
-      if ((rc = cubrid_log_make_log_item (&ptr, &g_log_items[i]) != CUBRID_LOG_SUCCESS))
+      if ((rc = cubrid_log_make_log_item (&ptr, &g_log_items[i])) != CUBRID_LOG_SUCCESS)
 	{
+	  int j;
+
+	  for (j = 0; j < i; j++)
+	    {
+	      (void) cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[j].data_item_type,
+						 &g_log_items[j].data_item);
+	    }
+
 	  CUBRID_LOG_ERROR_HANDLING (rc, NULL);
 	}
 
@@ -1683,11 +2195,6 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
   int err_code;
   int rc;
 
-  if (g_trace_log_level == 1)
-    {
-      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] current stage (%d), lsa (%lld)\n", g_stage, *lsa);
-    }
-
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE,
@@ -1703,16 +2210,27 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 				 list_size ? "not null" : "null");
     }
 
+  if (g_trace_log_level == 1)
+    {
+      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] current stage (%d), lsa (%lld)\n", g_stage, *lsa);
+    }
+
   memcpy (&g_next_lsa, lsa, sizeof (LOG_LSA));
 
   rc = cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length);
 
-  if (rc != CUBRID_LOG_SUCCESS)
+  if (rc != CUBRID_LOG_SUCCESS && rc != CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
     {
       CUBRID_LOG_ERROR_HANDLING (rc, NULL);
     }
 
-  if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) != CUBRID_LOG_SUCCESS)
+  if (rc == CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
+    {
+      *log_item_list = NULL;
+      *list_size = 0;
+    }
+  else if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) !=
+	   CUBRID_LOG_SUCCESS && rc != CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
     {
       CUBRID_LOG_ERROR_HANDLING (rc, NULL);
     }
@@ -1933,8 +2451,7 @@ cubrid_log_reset_globals (void)
 
   if (g_log_infos != NULL)
     {
-//      free (g_log_infos);
-      g_log_infos = NULL;
+      free_and_init (g_log_infos);
     }
 
   g_log_infos_size = 0;

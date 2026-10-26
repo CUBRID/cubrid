@@ -100,7 +100,7 @@ extern int net_client_ping_server_with_handshake (int client_type, bool check_ca
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void net_client_shutdown_server (void);
 #endif
-extern int net_client_init (const char *dbname, const char *hostname);
+extern int net_client_init (const char *dbname, const char *hostname, int client_type);
 #if defined(MULTI_CONN_TO_A_SERVER)
 extern int net_client_sub_init ();
 extern void net_client_sub_final ();

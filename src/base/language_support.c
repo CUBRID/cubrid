@@ -211,6 +211,7 @@ static LANG_LOCALE_DATA *find_lang_locale_data (const char *name, const INTL_COD
 static int register_lang_locale_data (LANG_LOCALE_DATA * lld);
 static void free_lang_locale_data (LANG_LOCALE_DATA * lld);
 static int register_collation (LANG_COLLATION * coll);
+static void lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll);
 
 static bool lang_is_codeset_allowed (const INTL_LANG intl_id, const INTL_CODESET codeset);
 static int lang_get_builtin_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id);
@@ -345,7 +346,8 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_en_cs
+  lang_init_coll_en_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 static void lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld);
@@ -376,7 +378,8 @@ static LANG_COLLATION coll_Iso88591_en_cs = {
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
   lang_mht2str_default,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 /* locale data */
@@ -549,7 +552,8 @@ static LANG_COLLATION coll_Utf8_ko_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_utf8,
-  lang_init_coll_en_cs
+  lang_init_coll_en_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 /* built-in support of Korean in UTF-8 : date-time conversions as in English
@@ -609,7 +613,8 @@ static LANG_COLLATION coll_Euckr_bin = {
   lang_next_alpha_char_ko,
   lang_split_key_euckr,
   lang_mht2str_ko,
-  lang_init_coll_en_cs
+  lang_init_coll_en_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 /* built-in support of Korean in EUC-KR : date-time conversions as in English
@@ -667,7 +672,8 @@ static LANG_COLLATION coll_Binary = {
   lang_next_alpha_char_iso88591,
   lang_split_key_binary,
   lang_mht2str_default,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_LOCALE_DATA lc_English_binary = {
@@ -709,7 +715,8 @@ static LANG_COLLATION coll_Iso_binary = {
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
   lang_mht2str_default,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Utf8_binary = {
@@ -730,7 +737,8 @@ static LANG_COLLATION coll_Utf8_binary = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Iso88591_en_ci = {
@@ -749,7 +757,8 @@ static LANG_COLLATION coll_Iso88591_en_ci = {
   lang_next_coll_byte,
   lang_split_key_byte,
   lang_mht2str_byte,
-  lang_init_coll_en_ci
+  lang_init_coll_en_ci,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Utf8_en_ci = {
@@ -768,7 +777,8 @@ static LANG_COLLATION coll_Utf8_en_ci = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_en_ci
+  lang_init_coll_en_ci,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Utf8_tr_cs = {
@@ -787,7 +797,8 @@ static LANG_COLLATION coll_Utf8_tr_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_utf8,
-  lang_init_coll_Utf8_tr_cs
+  lang_init_coll_Utf8_tr_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_LOCALE_DATA lc_Turkish_utf8 = {
@@ -869,6 +880,13 @@ lang_init_builtin (void)
   for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
     {
       (void) register_collation (built_In_collations[i]);
+    }
+
+  /* decide byte-lockstep LIKE eligibility only after all registrations : some built-in
+   * collations (e.g. utf8_bin) share weight arrays filled by another collation's init */
+  for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
+    {
+      lang_set_byte_lockstep_like (built_In_collations[i]);
     }
 
   /* register all built-in locales allowed in current charset Support for multiple locales is required for switching
@@ -1606,7 +1624,71 @@ register_collation (LANG_COLLATION * coll)
       coll->init_coll (coll);
     }
 
+  if (!coll->built_in)
+    {
+      /* loaded collations have complete weight data here; built-in ones are decided in lang_init_builtin () */
+      lang_set_byte_lockstep_like (coll);
+    }
+
   return NO_ERROR;
+}
+
+/*
+ * lang_set_byte_lockstep_like - decides which byte-lockstep LIKE matcher instance (kind)
+ *   this collation is eligible for; UTF-8 codeset with identity weights makes byte
+ *   equality collation equality
+ *   return: void
+ *   lang_coll(in/out): collation
+ */
+static void
+lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll)
+{
+  const COLL_DATA *coll;
+  int i;
+
+  assert (lang_coll != NULL);
+
+  coll = &(lang_coll->coll);
+  lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_NONE;
+
+  if (coll->uca_exp_num > 1 || coll->count_contr > 0)
+    {
+      return;
+    }
+
+  if (lang_coll->codeset == INTL_CODESET_BINARY)
+    {
+      /* raw-byte matcher : no weight table involved */
+      if (lang_coll->strmatch == lang_strmatch_binary)
+	{
+	  lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_BINARY;
+	}
+      return;
+    }
+
+  if (coll->w_count <= 0 || coll->weights == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < coll->w_count; i++)
+    {
+      if (coll->weights[i] != (unsigned int) i)
+	{
+	  /* non-identity weights (e.g. case folding) : byte equality is not
+	   * collation equality */
+	  return;
+	}
+    }
+
+  if (lang_coll->codeset == INTL_CODESET_UTF8 && lang_coll->strmatch == lang_strmatch_utf8)
+    {
+      lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_UTF8;
+    }
+  else if (lang_coll->codeset == INTL_CODESET_ISO88591 && lang_coll->strmatch == lang_strmatch_byte)
+    {
+      lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_SB;
+    }
 }
 
 /*
@@ -1683,7 +1765,7 @@ lang_get_collation_by_name (const char *coll_name)
 
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
-      if (strcmp (coll_name, lang_Collations[i]->coll.coll_name) == 0)
+      if (strcasecmp (coll_name, lang_Collations[i]->coll.coll_name) == 0)
 	{
 	  return lang_Collations[i];
 	}
@@ -2631,7 +2713,7 @@ lang_db_put_charset (void)
 
   server_lang = lang_id ();
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   db_make_string (&value, lang_get_lang_name_from_id (server_lang));
   if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
@@ -2647,7 +2729,7 @@ lang_db_put_charset (void)
       /* Error Setting the nchar codeset */
       assert (false);
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return NO_ERROR;
 }
@@ -6499,9 +6581,11 @@ lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match, const uns
 
       if (is_match && escape != NULL && c2 == *escape)
 	{
-	  str2++;
+	  /* a trailing escape is a normal character: step over the escape only when a character follows it,
+	   * otherwise the loop increment would move str2 past str2_end */
 	  if (!(has_last_escape && str2 + 1 >= str2_end))
 	    {
+	      str2++;
 	      c2 = *str2;
 	    }
 	}

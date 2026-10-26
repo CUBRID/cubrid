@@ -535,7 +535,6 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **a
   fk_info.delete_action = (SM_FOREIGN_KEY_ACTION) del_action;
   fk_info.update_action = (SM_FOREIGN_KEY_ACTION) upd_action;
   fk_info.is_dropped = false;
-  fk_info.index_catalog_of_ref_class = NULL;
   fk_info.ref_match_option = (SM_FOREIGN_KEY_MATCH_OPTION) SM_FK_MATCH_NONE;
 
   if (name == NULL)
@@ -686,11 +685,11 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
       oidp = ws_identifier (auto_increment_obj);
       COPY_OID (&serial_obj_id, oidp);
 
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
 
       error = obj_delete (auto_increment_obj);
 
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       if (error == NO_ERROR)
 	{
 	  (void) serial_decache (&serial_obj_id);

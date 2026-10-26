@@ -122,10 +122,10 @@ typedef struct
   int leafs;			/* number of leaf pages including overflow pages */
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
-  int keys;			/* number of keys */
+  INT64 keys;			/* number of keys */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
+  INT64 *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[key_size-1] -> # of {a, b, ..., x} */
   bool valid_limits;
   bool is_indexed;
@@ -176,9 +176,12 @@ struct projection_info
   PROJECTION_PART_INFO outer;
   PROJECTION_PART_INFO inner;
   PROJECTION_FINAL_INFO final;
+
+  /* eligible after-join predicates evaluated in the probe loop */
+  BITSET after_join_pred_set;
 };
 #define PROJECTION_INFO_INITIALIZER \
-  { PROJECTION_PART_INFO_INITIALIZER, PROJECTION_PART_INFO_INITIALIZER, PROJECTION_FINAL_INFO_INITIALIZER }
+  { PROJECTION_PART_INFO_INITIALIZER, PROJECTION_PART_INFO_INITIALIZER, PROJECTION_FINAL_INFO_INITIALIZER, EMPTY_SET }
 
 extern QO_NODE *lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity);
 
@@ -186,9 +189,9 @@ extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
 
 extern void qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result);
 
-extern void qo_get_optimization_param (void *, QO_PARAM, ...);
+extern void qo_get_optimization_param (void *, int, ...);
 extern bool qo_need_skip_execution (void);
-extern void qo_set_optimization_param (void *, QO_PARAM, ...);
+extern void qo_set_optimization_param (void *, int, ...);
 extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
 extern xasl_node *qo_to_xasl (QO_PLAN *, xasl_node *);
 extern void qo_plan_discard (QO_PLAN *);
@@ -210,6 +213,7 @@ extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
 extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+extern bool qo_check_nullable_op (PT_NODE * node);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0

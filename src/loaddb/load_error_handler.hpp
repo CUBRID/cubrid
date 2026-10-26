@@ -192,11 +192,14 @@ namespace cubload
   std::string
   error_handler::format (const char *fmt, Args &&... args)
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-security"
     // Determine required size
     int size = snprintf (NULL, 0, fmt, std::forward<Args> (args)...) + 1; // +1 for '\0'
     std::unique_ptr<char[]> msg (new char[size]);
 
     snprintf (msg.get (), (size_t) size, fmt, std::forward<Args> (args)...);
+#pragma GCC diagnostic pop
 
     return std::string (msg.get (), msg.get () + size - 1);
   }

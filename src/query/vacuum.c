@@ -32,6 +32,7 @@
 #include "boot_sr.h"
 #include "btree.h"
 #include "dbtype.h"
+#include "bestspace.hpp"
 #include "heap_file.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
@@ -57,6 +58,7 @@
 #include "thread_worker_pool_impl.hpp"
 #include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
+#include "tde.h"
 #include "util_func.h"
 
 #include <atomic>
@@ -939,7 +941,7 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_entry_manager *vacuum_Master_entry_manager = NULL;  // entry manager
 
 // vacuum worker globals
-static cubthread::stats_worker_pool_type *vacuum_Worker_threads = NULL;   // thread pool
+static worker_pool_type<cubthread::stats_t::on> *vacuum_Worker_threads = NULL;   // thread pool
 static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;	  // entry manager
 
 /* *INDENT-ON* */
@@ -1339,7 +1341,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
 
   // create thread pool
-  vacuum_Worker_threads = thread_create_stats_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
+  vacuum_Worker_threads = thread_create_worker_pool<cubthread::stats_t::on> (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
   // m_log = log_vacuum_worker_pool
 
   assert (vacuum_Worker_threads != NULL);
@@ -1375,7 +1377,9 @@ vacuum_stop_workers (THREAD_ENTRY * thread_p)
   if (vacuum_Worker_threads != NULL)
     {
 #if defined (SERVER_MODE)
+#if !defined (NDEBUG)
       vacuum_Worker_threads->er_log_stats ();
+#endif
       vacuum_Worker_threads->stop_execution ();
 #endif // SERVER_MODE
 
@@ -1614,6 +1618,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.forward_page = NULL;
   helper.n_vacuumed = 0;
   helper.n_bulk_vacuumed = 0;
+  helper.can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
 
@@ -1675,7 +1680,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 #endif /* !NDEBUG */
 
-  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
+  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page);
 
   if (HFID_IS_NULL (hfid))
     {
@@ -1855,16 +1860,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 		  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 		  goto end;
 		}
-	      else if (helper.home_page != NULL)
-		{
-		  /* Unfix page. */
-		  pgbuf_unfix_and_init (thread_p, helper.home_page);
-		}
-	      /* Fall through and go to end. */
 	    }
-	  else
+
+	  if (helper.home_page != NULL)
 	    {
-	      /* Finished vacuuming page. Unfix the page and go to end. */
+	      assert (!HFID_IS_NULL (&helper.hfid));
+	      heap_add_bestpage (thread_p, &helper.hfid, helper.home_page,
+				 helper.can_vacuum == VACUUM_RECORD_REMOVE ? 0 : helper.initial_home_free_space);
 	      pgbuf_unfix_and_init (thread_p, helper.home_page);
 	    }
 	  goto end;
@@ -2414,23 +2416,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
-      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-	{
-	  int freespace = spage_get_free_space_without_saving (thread_p, helper->forward_page, NULL);
-
-	  if (freespace > HEAP_DROP_FREE_SPACE)
-	    {
-	      /*
-	       * NOTE:
-	       * By checking the freespace > HEAP_DROP_FREE_SPACE condition, heap_Bestspace->bestspace_mutex contention is reduced
-	       * and the unnecessarily frequent extraction from heap_Bestspace->vpid_ht due to small free space is prevented in heap_stats_find_page_in_bestspace().
-	       * And Passing the prev_freespace argument to 0 is a trick to get heap_stats_add_bestspace() called from heap_stats_update().
-	       *
-	       * This part will be refactored right away in the related issue, at which time this comment will be removed.
-	       */
-	      heap_stats_update (thread_p, helper->forward_page, &helper->hfid, 0);
-	    }
-	}
+      /* add candidate page into bestspace candidates */
+      heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2587,6 +2574,9 @@ static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
 				bool unlatch_page)
 {
+  int bestspace_prev_freespace;
+  int i;
+
   assert (helper != NULL);
   assert (helper->home_page != NULL);
 
@@ -2610,8 +2600,18 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
    * OIDs and their statistics are updated in that context */
   if (update_best_space_stat == true && helper->initial_home_free_space != -1)
     {
+      bestspace_prev_freespace = helper->initial_home_free_space;
+      for (i = 0; i < helper->n_bulk_vacuumed; i++)
+	{
+	  if (helper->results[i] == VACUUM_RECORD_REMOVE)
+	    {
+	      bestspace_prev_freespace = 0;
+	      break;
+	    }
+	}
+
       assert (!HFID_IS_NULL (&helper->hfid));
-      heap_stats_update (thread_p, helper->home_page, &helper->hfid, helper->initial_home_free_space);
+      heap_add_bestpage (thread_p, &helper->hfid, helper->home_page, bestspace_prev_freespace);
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
@@ -3044,6 +3044,18 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   decrease_outstanding_job (m_cursor.force_data_update ());
 
+  /* any vacuum block may reference a TDE-encrypted log page. Keep its metadata persistent, but do not dispatch jobs
+   * until the cipher is available. The backlog is preserved and can be processed after restarting with the key. */
+  if (!tde_is_loaded ())
+    {
+      m_cursor.unload ();
+#if !defined (NDEBUG)
+      vacuum_verify_vacuum_data_page_fix_count (&thread_ref);
+#endif /* !NDEBUG */
+      PERF_UTIME_TRACKER_TIME (&thread_ref, &perf_tracker, PSTAT_VAC_MASTER);
+      return;
+    }
+
   vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
                  vacuum_job_cursor_print_args (m_cursor));
   for (; m_cursor.is_valid () && !should_interrupt_iteration (); m_cursor.increment_blockid ())
@@ -3118,14 +3130,14 @@ vacuum_master_task::is_cursor_entry_ready_to_vacuum () const
       return false;
     }
 
-  if (m_cursor.get_current_entry ().start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid)
+  if (m_cursor.get_current_entry ().start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.load ().pageid)
     {
       // too close to end of log; let more log be appended before trying to vacuum the block
       vacuum_er_log (VACUUM_ER_LOG_JOBS,
                        "Cannot generate job for " VACUUM_LOG_DATA_ENTRY_MSG ("entry") ". "
                        "log_Gl.append.prev_lsa.pageid = %d.",
                        VACUUM_LOG_DATA_ENTRY_AS_ARGS (&m_cursor.get_current_entry ()),
-                       (long long int) log_Gl.append.prev_lsa.pageid);
+                       (long long int) log_Gl.append.prev_lsa.load ().pageid);
       return false;
     }
 
@@ -4258,9 +4270,11 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	{
 	  // we can be here if log has not yet passed first block. one case may be soon after copydb.
 	  assert (log_blockid == VACUUM_NULL_LOG_BLOCKID);
+	  const LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
+
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 			 "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
-			 LSA_AS_ARGS (&log_Gl.append.prev_lsa));
+			 (long long int) prev_lsa.pageid, (int) prev_lsa.offset);
 	}
       else if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	{
@@ -6123,10 +6137,7 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return;
-    }
+  /* logged even when vacuum is disabled: vacuum_rv_notify_dropped_file () also ends the bestspace lifetime */
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file %d|%d.",
 		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);
@@ -6394,32 +6405,49 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   OID *class_oid;
   MVCCID mvccid;
   VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
-  /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
-   * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that
-   * have already committed which means their MVCCID will be less than current log_Gl.hdr.mvcc_next_id. 2. All changes
-   * on a new file that reused VFID must be done by transaction that start after this call, which means their MVCCID's
-   * will be at least equal to current log_Gl.hdr.mvcc_next_id. */
-
-  mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
-
-  /* Add dropped file to current list */
   rcv_data = (VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data;
-  error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
-  if (error != NO_ERROR)
+
+  /* With vacuum disabled there is no dropped-files list and no worker to synchronize with; only the cache cleanup
+   * below applies. */
+  if (!prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
-      return error;
+      /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id
+       * as borderline to distinguish this file from newer files. 1. All changes on this file must be done by
+       * transaction that have already committed which means their MVCCID will be less than current
+       * log_Gl.hdr.mvcc_next_id. 2. All changes on a new file that reused VFID must be done by transaction that start
+       * after this call, which means their MVCCID's will be at least equal to current log_Gl.hdr.mvcc_next_id. */
+
+      mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
+
+      /* Add dropped file to current list */
+      error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
+      if (error != NO_ERROR)
+	{
+	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free */
+	  vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES,
+			       "failed to add dropped file %d|%d; its bestspace entry is left behind",
+			       VFID_AS_ARGS (&rcv_data->vfid));
+	  return error;
+	}
+
+      // make sure vacuum workers will not access dropped file
+      vacuum_notify_all_workers_dropped_file (rcv_data->vfid, mvccid);
+    }
+  else
+    {
+      /* nothing else is logged here; add a log or else the end of logical system operation will complain */
+      log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
     }
 
-  // make sure vacuum workers will not access dropped file
-  vacuum_notify_all_workers_dropped_file (rcv_data->vfid, mvccid);
-
-  /* vacuum is notified of the file drop, it is safe to remove from cache */
+  /* vacuum is notified of the file drop (or disabled), it is safe to remove from cache */
   class_oid = &rcv_data->class_oid;
   if (!OID_ISNULL (class_oid))
     {
       (void) heap_delete_hfid_from_cache (thread_p, class_oid);
     }
+  cubstorage::bestspaces.destroy (&rcv_data->vfid);
 
   /* Success */
   return NO_ERROR;
@@ -7765,7 +7793,7 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "vacuum_sa_reflect_last_blockid: last_blockid=%lld, append_prev_pageid=%d\n",
-		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.pageid);
+		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.load ().pageid);
   if (last_blockid == VACUUM_NULL_LOG_BLOCKID)
     {
       vacuum_data_unload_first_and_last_page (thread_p);

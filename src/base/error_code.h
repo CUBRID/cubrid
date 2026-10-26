@@ -1757,8 +1757,38 @@
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
 
-#define ER_LAST_ERROR                               -1371
+#define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
 
+#define ER_METHOD_CALLBACK                          -1372
+
+#define ER_INVALID_SCALE                            -1373
+
+#define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
+
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1375
+
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
+
+#define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
+
+#define ER_AU_CANT_ALTER_LOGIN                      -1378
+
+#define ER_CDC_ARCHIVE_KEPT                         -1379
+
+#define ER_SP_PARALLEL_ENABLE_NO_SQL                -1380
+
+#define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
+#define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
+
+#define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
+
+#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+
+#define ER_AU_REJECT_LOGIN                          -1385
+
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
+
+#define ER_LAST_ERROR                               -1387
 
 
 /*

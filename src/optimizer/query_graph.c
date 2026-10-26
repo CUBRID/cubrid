@@ -31,6 +31,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <assert.h>
+#include <stdint.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -101,7 +102,7 @@
  * Figure out how many bytes a pkeys[] struct with n entries requires.
  */
 #define SIZEOF_ATTR_CUM_STATS_PKEYS(n) \
-    ((n) * sizeof(int))
+    ((n) * sizeof(INT64))
 
 #define NOMINAL_HEAP_SIZE(class)	200	/* pages */
 #define NOMINAL_OBJECT_SIZE(class)	 64	/* bytes */
@@ -151,6 +152,13 @@ struct walk_info
   QO_TERM *term;
 };
 
+typedef struct qo_implied_join_pair QO_IMPLIED_JOIN_PAIR;
+struct qo_implied_join_pair
+{
+  QO_SEGMENT *head_seg;
+  QO_SEGMENT *tail_seg;
+};
+
 double QO_INFINITY = 0.0;
 
 static QO_PLAN *qo_optimize_helper (QO_ENV * env);
@@ -184,7 +192,6 @@ static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * nod
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 static bool expr_is_mergable (PT_NODE * pt_expr);
-static bool qo_is_equi_join_term (QO_TERM * term);
 static void add_hint (QO_ENV * env, PT_NODE * tree);
 static void add_using_index (QO_ENV * env, PT_NODE * using_index);
 static int get_opcode_rank (PT_OP_TYPE opcode);
@@ -198,6 +205,8 @@ static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
+static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
+static void qo_derived_term_compensate (QO_ENV * env);
 
 static void qo_seg_free (QO_SEGMENT *);
 
@@ -230,8 +239,13 @@ static QO_ENV *qo_env_new (PARSER_CONTEXT *, PT_NODE *);
 static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
+static void qo_generate_implied_join_terms (QO_ENV *);
+static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
+static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
+static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
 static void qo_node_clear (QO_ENV *, int);
@@ -240,6 +254,7 @@ static void qo_free_index (QO_ENV * env, QO_INDEX *);
 static QO_INDEX *qo_alloc_index (QO_ENV * env, int);
 static void qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
+static DB_VALUE *qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
 static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_str);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
@@ -250,6 +265,11 @@ static int qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENT
 static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep, BITSET * order_nodes, BITSET * dep_nodes);
 static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node);
+static QO_TERM *qo_find_equi_join_term (QO_ENV * env, QO_SEGMENT * seg1, QO_SEGMENT * seg2);
+static int qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx,
+			       QO_SEGMENT ** fk_col_segs_out, QO_EQCLASS ** col_eqclasses_out,
+			       QO_TERM ** col_terms_out);
+static void qo_mark_fk_join_selectivity_floor (QO_ENV * env);
 static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p);
 
 /*
@@ -261,7 +281,7 @@ static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p
  *   ...(in): parameter-specific parameters
  */
 void
-qo_get_optimization_param (void *retval, QO_PARAM param, ...)
+qo_get_optimization_param (void *retval, int param, ...)
 {
   char *buf;
   va_list args;
@@ -308,7 +328,7 @@ qo_need_skip_execution (void)
  *   ...(in): parameter-specific parameters
  */
 void
-qo_set_optimization_param (void *retval, QO_PARAM param, ...)
+qo_set_optimization_param (void *retval, int param, ...)
 {
   va_list args;
   va_start (args, param);
@@ -533,6 +553,10 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
+  /* every WHERE term now has its selectivity: reconcile each derived duplicate with the
+   * predicate that implies it */
+  qo_derived_term_compensate (env);
+
   /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
     {
@@ -560,8 +584,31 @@ qo_optimize_helper (QO_ENV * env)
 	}
     }
 
+  /* a semi/anti join after a right outer join that fills a node its ON reads with NULL comes after that join */
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      if (!QO_NODE_IS_SEMI_ANTI_JOIN (node))
+	{
+	  continue;
+	}
+
+      for (k = 1; k < n; k++)
+	{
+	  p_node = QO_ENV_NODE (env, k);
+	  if (QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_RIGHT_OUTER
+	      && bitset_intersects (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node))))
+	    {
+	      QO_ADD_SEMI_ANTI_DEP_SET (node, p_node);
+	    }
+	}
+    }
+
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
+
+  /* classify ON-clause terms for anti join */
+  qo_classify_antijoin_terms (env);
 
   bitset_delset (&nodeset);
 
@@ -585,6 +632,12 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
+  /* Generate implied join terms from the union-find segment groups before
+   * qo_discover_edges() rearranges the term array.  New terms are appended at
+   * the end; qo_discover_edges() will fold them into the edge zone and sort.
+   */
+  qo_generate_implied_join_terms (env);
+
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -599,6 +652,7 @@ qo_optimize_helper (QO_ENV * env)
   qo_discover_indexes (env);
   qo_discover_partitions (env);
   qo_discover_sort_limit_nodes (env);
+  qo_mark_fk_join_selectivity_floor (env);
   /* now optimize */
 
   plan = qo_planner_search (env);
@@ -634,6 +688,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_ENV *env;
   int i;
+  int extra_term_cap;
   size_t size;
 
   if (query == NULL)
@@ -676,10 +731,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
+  /* Pre-allocate room for implied join terms (at most C(nnodes,2) extras per eqclass in
+   * practice).  Sufficient for typical queries; generation stops gracefully if exceeded.
+   * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
+  extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
   env->terms = NULL;
-  if (env->nterms > 0)
+  if (env->nterms + extra_term_cap > 0)
     {
-      size = sizeof (QO_TERM) * env->nterms;
+      size = sizeof (QO_TERM) * (env->nterms + extra_term_cap);
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
@@ -722,14 +781,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       qo_node_clear (env, i);
     }
 
-  for (i = 0; i < env->nterms; ++i)
+  for (i = 0; i < env->nterms + extra_term_cap; ++i)
     {
       qo_term_clear (env, i);
     }
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
-  env->Nterms = env->nterms;
+  env->Nterms = env->nterms + extra_term_cap;
   env->Neqclasses = MAX (env->nnodes, env->nterms) + env->nsegs;
 
   env->nnodes = 0;
@@ -912,6 +971,8 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
   switch (entity->info.spec.join_type)
     {
     case PT_JOIN_INNER:
+    case PT_JOIN_SEMI:		/* semi/anti are structurally inner joins (frozen NL inner) */
+    case PT_JOIN_ANTI:
       /* reserve dummy inner join term */
       env->nterms++;
       /* reserve additional always-false sarg */
@@ -1698,7 +1759,7 @@ qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       (void) set_seg_node (tree, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;
     }
-  else if ((tree->node_type == PT_DOT_))
+  else if (tree->node_type == PT_DOT_)
     {
       (void) set_seg_node (tree->info.dot.arg2, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;
@@ -1964,6 +2025,14 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
       break;
+    case PT_JOIN_SEMI:
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+      QO_ADD_SEMI_ANTI_DEP_SET (on_node, p_node);
+      break;
+    case PT_JOIN_ANTI:
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+      QO_ADD_SEMI_ANTI_DEP_SET (on_node, p_node);
+      break;
     default:
       /* this should not happen */
       assert (false);
@@ -2020,6 +2089,31 @@ qo_analyze_term (QO_TERM * term, int term_type)
   if (pt_expr->node_type != PT_EXPR)
     {
       goto wrapup;
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_DERIVED_RANGE))
+    {
+      /* keep real selectivity for index-access cost; flag so row-count skips it */
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_DERIVED_RANGE);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
+    {
+      /* the LIKE the range above was derived from */
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED))
+    {
+      /* counted at the node scan (qo_node_add_sarg ()); the origin factor is discounted in
+       * qo_derived_term_compensate () so the join output estimate stays unchanged */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED_EXPENSIVE))
+    {
+      /* make_pred_from_plan () drops it from the data filter unless an index adopted it */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED_EXPENSIVE);
     }
 
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
@@ -2612,7 +2706,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* The term might be a merge term (i.e., it uses '=' as the operator), but the expressions might not be
 	   * simple attribute references, and we mustn't try to establish equivalence classes in that case.
 	   */
-	  if (qo_is_equi_join_term (term))
+	  if (qo_is_equi_join_term (term)
+	      && !QO_NODE_IS_SEMI_ANTI_JOIN (head_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	    {
 	      qo_equivalence (head_seg, tail_seg);
 	      QO_TERM_NOMINAL_SEG (term) = head_seg;
@@ -2679,6 +2774,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 		}
+	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+		{
+		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+		  QO_ADD_SEMI_ANTI_DEP_SET (on_node, head_node);
+		}
 	    }
 	  else
 	    {
@@ -2689,6 +2789,39 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	      /* keep out from m-join edge */
 	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	    }
+	}
+    }
+
+  /* a node an ON-clause predicate reads must be joined before the node that owns the ON clause, or the predicate
+   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too */
+  if (QO_ON_COND_TERM (term))
+    {
+      int location = QO_TERM_LOCATION (term);
+      QO_NODE *on_node;
+
+      QO_ASSERT (env, location < env->nnodes);
+
+      on_node = QO_ENV_NODE (env, location);
+      QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
+
+      if (QO_NODE_IS_OUTER_JOIN (on_node) || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	{
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t != location)
+		{
+		  if (QO_NODE_IS_OUTER_JOIN (on_node))
+		    {
+		      QO_ASSERT (env, t < location);
+		      QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		    }
+		  else
+		    {
+		      /* relaxed for a SEMI node read with the duplicates removed (qo_node_can_be_placed ()) */
+		      QO_ADD_SEMI_ANTI_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		    }
+		}
 	    }
 	}
     }
@@ -2739,8 +2872,7 @@ wrapup:
 		    t_node = QO_TERM_TAIL (t_term);
 
 		    /* apply ordered dependency to the tail node */
-		    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (t_node)));
-		    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (t_node));
+		    QO_ADD_OUTER_DEP_SET (tail_node, t_node);
 		  }
 	      }
 	  }
@@ -2759,13 +2891,18 @@ wrapup:
 	{
 	  assert (QO_TERM_CLASS (term) == QO_TC_PATH);
 
-	  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
-	  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (head_node));
+	  QO_ADD_OUTER_DEP_SET (tail_node, head_node);
 	}
       break;
 
     case PREDICATE_TERM:
+      env->sel_hist_used = false;
+      env->sel_hist_fallback = false;
       QO_TERM_SELECTIVITY (term) = qo_expr_selectivity (env, pt_expr);
+      if (env->sel_hist_used && !env->sel_hist_fallback)
+	{
+	  QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_HISTOGRAM);
+	}
       break;
 
     default:
@@ -2773,6 +2910,17 @@ wrapup:
       QO_TERM_SELECTIVITY (term) = -1.0;
       break;
     }				/* switch (term_type) */
+
+  /* an OR-derived implied duplicate earns its keep only when it rejects most rows: when it does
+   * not, keep it out of key ranges/filters as well -- an index scan repeated per outer row over
+   * most of the index costs more than it saves, and an implied duplicate must never steer the
+   * plan by itself (make_pred_from_plan () applies the same bound to the data filter it may
+   * remain as) */
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5)
+    {
+      QO_TERM_SET_FLAG (term, QO_TERM_NON_IDX_SARG_COLL);
+      QO_TERM_CAN_USE_INDEX (term) = 0;
+    }
 
   bitset_delset (&lhs_segs);
   bitset_delset (&rhs_segs);
@@ -2913,6 +3061,11 @@ set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset)
        * for shared variables, and it doesn't really hurt anyone just
        * to ignore failures here.
        */
+      if (attr->node_type == PT_NAME)
+	{
+	  attr->info.name.histogram = seg->pt_node->info.name.histogram;
+	  attr->info.name.null_frequency = seg->pt_node->info.name.null_frequency;
+	}
       bitset_add (bitset, QO_SEG_IDX (seg));
     }
 
@@ -2957,7 +3110,7 @@ expr_is_mergable (PT_NODE * pt_expr)
  *   return: bool
  *   term(in):
  */
-static bool
+bool
 qo_is_equi_join_term (QO_TERM * term)
 {
   PT_NODE *pt_expr;
@@ -3372,6 +3525,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3390,9 +3544,14 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ENCRYPT:
     case PT_DECRYPT:
     case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:
+    case PT_UUID:
     case PT_SLEEP:
 
       return RANK_EXPR_HEAVY;
@@ -5080,13 +5239,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	    {
 	      attr_id = consp->attributes[0]->id;
 
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
-		{
-		  // If a function index is defined in the first position, the second position is the actual column.
-		  // ex) create index idx on tbl(abs(val));
-		  attr_id = consp->attributes[1]->id;
-		}
-
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
 		  if (attr_statsp->id == attr_id)
@@ -5135,7 +5287,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5158,6 +5310,71 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 }
 
 /*
+ * qo_copy_histogram_value () - parser-arena copy of a cached histogram blob
+ *   return: the copy, or NULL when there is nothing usable to copy
+ *   parser(in):
+ *   src(in): DB_VALUE owned by the workspace class cache (smclass->histogram)
+ *
+ * Note: PT_NAME.histogram used to alias the cache-owned blob directly, but the cache frees the
+ *	 blob on any statistics refresh or class decache (sm_get_class_with_statistics () when
+ *	 the server reports newer statistics, sm_get_statistics_force (),
+ *	 sm_update_statistics (), install_new_representation (), classobj_free_class ()) while
+ *	 the annotation is consumed only later, by the term analysis.  A self-join's later FROM
+ *	 entities re-fetch the very class the earlier entities annotated, so term selectivity
+ *	 read freed memory: usually a silently wrong join selectivity, and a crash when the
+ *	 block had been reused.  Copy the blob into the parser arena, whose lifetime covers the
+ *	 whole optimization, so the annotation owns what it points to.  The buffer is arena
+ *	 memory, so the copy carries no need_clear and is freed with the parser.
+ */
+static DB_VALUE *
+qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src)
+{
+  DB_VALUE *copy;
+  const char *src_buf;
+  char *buf;
+  int bit_len = 0, size;
+  DB_TYPE src_type;
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return NULL;
+    }
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (src_type != DB_TYPE_BIT && src_type != DB_TYPE_VARBIT)
+    {
+      /* not a histogram blob shape; annotating nothing beats annotating a guess */
+      return NULL;
+    }
+
+  src_buf = db_get_bit (src, &bit_len);
+  if (src_buf == NULL || bit_len <= 0)
+    {
+      return NULL;
+    }
+  size = (bit_len + 7) / 8;
+
+  copy = (DB_VALUE *) parser_alloc (parser, (int) sizeof (DB_VALUE));
+  buf = (char *) parser_alloc (parser, size);
+  if (copy == NULL || buf == NULL)
+    {
+      return NULL;		/* same effect as having no histogram */
+    }
+
+  memcpy (buf, src_buf, size);
+  if (src_type == DB_TYPE_BIT)
+    {
+      db_make_bit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  else
+    {
+      db_make_varbit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+
+  return copy;
+}
+
+/*
  * qo_get_attr_info () - Find the ATTR_STATS information about each actual
  *			 attribute that underlies this segment
  *   return: QO_ATTR_INFO *
@@ -5173,6 +5390,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int attr_id;
   QO_ATTR_CUM_STATS *cum_statsp;
   ATTR_STATS *attr_statsp;
+  int attr_hist_statsp_index = 0;
   BTREE_STATS *bt_statsp;
   int n_attrs;
   const char *name;
@@ -5181,6 +5399,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_unavail_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
+  HIST_STATS *hist_stats;
   bool is_reserved_name = false;
 
   if ((QO_SEG_PT_NODE (seg))->info.name.meta_class == PT_RESERVED)
@@ -5249,6 +5468,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
       stats = QO_GET_CLASS_STATS (class_info_entryp);
+      hist_stats = QO_GET_HIST_STATS (class_info_entryp);
       QO_ASSERT (env, stats != NULL);
       if (stats->attr_stats == NULL)
 	{
@@ -5270,8 +5490,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* search the attribute from the class information */
       attr_statsp = stats->attr_stats;
+      attr_hist_statsp_index = 0;
       n_attrs = stats->n_attrs;
-      for (j = 0; j < n_attrs; j++, attr_statsp++)
+      for (j = 0; j < n_attrs; j++, attr_statsp++, attr_hist_statsp_index++)
 	{
 	  if (attr_statsp->id == attr_id)
 	    {
@@ -5287,6 +5508,29 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
+
+      /* set histogram. hist_stats->histogram[] is filled in class attribute-list order, which is
+       * NOT the attr_stats order searched above (attr_stats loses id order on schema updates such
+       * as column drops), so match the slot by attribute id instead of reusing that index. */
+      QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+      QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+      if (hist_stats != NULL && hist_stats->attr_ids != NULL)
+	{
+	  int h;
+
+	  for (h = 0; h < hist_stats->n_attrs; h++)
+	    {
+	      if (hist_stats->attr_ids[h] == attr_id)
+		{
+		  /* own a copy: the cache-owned blob can be freed before the term analysis
+		   * consumes this annotation (see qo_copy_histogram_value ()) */
+		  QO_SEG_PT_NODE (seg)->info.name.histogram =
+		    qo_copy_histogram_value (QO_ENV_PARSER (env), hist_stats->histogram[h]);
+		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
+		  break;
+		}
+	    }
+	}
 
       if (cum_statsp->valid_limits == false)
 	{
@@ -5360,7 +5604,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		{
 		  free_and_init (cum_statsp->pkeys);	/* free alloced */
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5399,7 +5643,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      free_and_init (cum_statsp->pkeys);
 	    }
-	  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	  if (cum_statsp->pkeys == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5542,10 +5786,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
-		{
-		  attr_id = index_entryp->constraints->attributes[1]->id;
-		}
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)
@@ -5609,7 +5849,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5647,7 +5887,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		{
 		  free_and_init (cum_statsp->pkeys);
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5824,7 +6064,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    */
 
   statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->heap_num_objects = (statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_objects = ((INT64) statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 
@@ -5865,6 +6105,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->partitions = NULL;
   bitset_init (&(env->final_segs), env);
   env->tmp_bitset = NULL;
+  env->implied_pairs = NULL;
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
@@ -5875,8 +6116,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->flag.is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
-      || (query->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN))
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
       env->plan_dump_enabled = false;
     }
@@ -5885,6 +6125,10 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
       env->plan_dump_enabled = true;
     }
   env->multi_range_opt_candidate = false;
+  env->sel_hist_used = false;
+  env->sel_hist_fallback = false;
+  env->fk_join_info = NULL;
+  env->n_fk_join_info = 0;
 
   return env;
 }
@@ -5984,6 +6228,12 @@ qo_env_free (QO_ENV * env)
 	  free_and_init (env->terms);
 	}
 
+      /* Scratch pairs buffer that survived a longjmp out of qo_generate_implied_join_terms(). */
+      if (env->implied_pairs)
+	{
+	  free_and_init (env->implied_pairs);
+	}
+
       if (env->partitions)
 	{
 	  for (i = 0; i < env->npartitions; ++i)
@@ -6000,6 +6250,17 @@ qo_env_free (QO_ENV * env)
 	      qo_subquery_free (&env->subqueries[i]);
 	    }
 	  free_and_init (env->subqueries);
+	}
+
+      if (env->fk_join_info)
+	{
+	  for (i = 0; i < env->n_fk_join_info; ++i)
+	    {
+	      free_and_init (env->fk_join_info[i].fk_col_segs);
+	      free_and_init (env->fk_join_info[i].col_eqclasses);
+	      free_and_init (env->fk_join_info[i].col_terms);
+	    }
+	  free_and_init (env->fk_join_info);
 	}
 
       bitset_delset (&(env->final_segs));
@@ -6278,9 +6539,9 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* is inner join; no need to classify */
+	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -6394,7 +6655,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  continue;		/* no need to classify */
 	}
 
-      /* traverse outer-dep nodeset */
+      /* Predicate placement follows both kinds of join dependency in the original graph, regardless of
+       * whether the planner later reads a SEMI node with DISTINCT. */
 
       QO_ASSERT (env, nidx_self >= 0);
 
@@ -6412,7 +6674,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    {
 	      node = QO_ENV_NODE (env, n);
 
-	      if (bitset_intersects (&dep_set, &(QO_NODE_OUTER_DEP_SET (node))))
+	      if (bitset_intersects (&dep_set, &(QO_NODE_OUTER_DEP_SET (node)))
+		  || bitset_intersects (&dep_set, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
 		{
 		  bitset_add (&dep_set, QO_NODE_IDX (node));
 		}
@@ -6469,7 +6732,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  continue;		/* go ahead */
 	}
 
-      /* at here, found non-sargable node in outer-dep nodeset */
+      /* Found a non-sargable node among the join dependencies. */
 
       if (QO_ON_COND_TERM (term))
 	{
@@ -6492,6 +6755,53 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
   bitset_delset (&prev_dep_set);
   bitset_delset (&dep_set);
+}
+
+/*
+ * qo_classify_antijoin_terms () - classify the ON-clause terms of anti joins
+ *   return:
+ *   env(in):
+ *
+ * Note: qo_classify_outerjoin_terms () skips the ON-clause terms of semi/anti joins.
+ *   An anti join emits an outer row only when no inner row satisfies its whole ON clause,
+ *   so an ON-clause term that does not read the anti node must not become a sarg of an outer node.
+ *
+ * Term Classify Matrix (same notation as qo_classify_outerjoin_terms ())
+ * --+-----+---------------------+----------+---------------+------------------
+ * NO|Major|Minor                |nidx_self |dep_set        | Classify
+ * --+-----+---------------------+----------+---------------+------------------
+ * A1|ON   |TC_sarg(anti on)     |on_node   |-              |TC_sarg(ow TC_dj)
+ * A2|ON   |TC_other(anti on)    |-         |-              |TC_dj
+ * --+-----+---------------------+----------+---------------+------------------
+ */
+static void
+qo_classify_antijoin_terms (QO_ENV * env)
+{
+  QO_TERM *term;
+  QO_NODE *node;
+  int i;
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+
+      if (!QO_ON_COND_TERM (term))
+	{
+	  continue;
+	}
+
+      node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      if ((QO_TERM_CLASS (term) == QO_TC_SARG && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node)))
+	  || QO_TERM_CLASS (term) == QO_TC_OTHER)
+	{
+	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+	}
+    }
 }
 
 /*
@@ -7765,8 +8075,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
-			  size_t len = strlen (temp_name) + 1;
-			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
+			  index_entryp->statistics_attribute_name = strdup (temp_name);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {
 			      if (seg_idx != seg_idx_arr)
@@ -7774,10 +8083,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 				  free_and_init (seg_idx);
 				}
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-				      sizeof (char) * len);
+				      sizeof (char) * (strlen (temp_name) + 1));
 			      return;
 			    }
-			  strcpy (index_entryp->statistics_attribute_name, temp_name);
 			}
 		    }
 		}
@@ -7878,8 +8186,7 @@ qo_discover_indexes (QO_ENV * env)
 	   * sequential scan is needed).
 	   */
 	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |
-				     PT_SPEC_FLAG_SAMPLING_SCAN)))
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
@@ -8120,6 +8427,19 @@ qo_discover_partitions (QO_ENV * env)
        */
       if (bitset_cardinality (&(QO_PARTITION_NODES (part))) > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
 	{
+	  /* The join_info vector is indexed by a subset bitmask of the partition's nodes, so it holds
+	   * 2**nodes entries and its byte size stops fitting in a signed int past this many nodes.
+	   * Optimization gives up on the whole query here and the statement runs with the syntactic
+	   * join order, which is a legitimate fallback -- but it used to happen without a word to the
+	   * user, so a 28-table query silently lost cost-based join ordering and index selection while
+	   * a 27-table one kept it. Report it: the warning lands in the error log, and the plan dump
+	   * (SET OPTIMIZATION LEVEL) says the plan was not generated instead of printing nothing. */
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QO_SET_SIZE_EXCEEDED, 0);
+	  er_log_debug (ARG_FILE_LINE,
+			"cost-based optimization skipped: a join partition has %d tables, "
+			"more than the %d the join_info vector can index\n",
+			bitset_cardinality (&(QO_PARTITION_NODES (part))), _WORDSIZE - 2 - LOG2_SIZEOF_POINTER);
+
 	  if (buddy)
 	    {
 	      free_and_init (buddy);
@@ -8281,6 +8601,346 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
+ * qo_generate_implied_join_terms () - Generate implied join terms from
+ *   segment equivalence groups using transitive closure.
+ *   env(in):
+ *
+ * Note: Builds a segment union-find from unconditional inner-join equi-join edge terms
+ *   only, then appends join terms for every missing node pair of each group at the end
+ *   of env->terms; qo_discover_edges() — called right after — folds them into the edge zone.
+ */
+static void
+qo_generate_implied_join_terms (QO_ENV * env)
+{
+  int i;
+  QO_IMPLIED_JOIN_PAIR *pairs = NULL;
+  int pair_count = 0, pair_cap = 0;
+  PARSER_CONTEXT *parser;
+  int *root_arr = NULL;
+  int *segs_arr = NULL;
+
+  if (env->nsegs == 0)
+    {
+      return;
+    }
+
+  root_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (root_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      return;
+    }
+
+  segs_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (segs_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      free_and_init (root_arr);
+      return;
+    }
+
+  qo_build_implied_seg_roots (env, root_arr);
+
+  if (qo_collect_implied_join_pairs (env, root_arr, segs_arr, &pairs, &pair_count, &pair_cap) != 0 || pair_count == 0)
+    {
+      if (pairs)
+	{
+	  free_and_init (pairs);
+	}
+      free_and_init (root_arr);
+      free_and_init (segs_arr);
+      return;
+    }
+
+  /* No longer needed below; free before the qo_add_term() loop so that a longjmp
+   * from qo_abort() cannot bypass their cleanup. */
+  free_and_init (root_arr);
+  free_and_init (segs_arr);
+
+  /* Hand pairs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
+  env->implied_pairs = pairs;
+
+  parser = QO_ENV_PARSER (env);
+
+  for (i = 0; i < pair_count; i++)
+    {
+      QO_SEGMENT *head_seg = pairs[i].head_seg;
+      QO_SEGMENT *tail_seg = pairs[i].tail_seg;
+      PT_NODE *pt_expr;
+      QO_TERM *term;
+
+      /* Pre-allocated capacity (C(nnodes,2)) may be exhausted when the same node pair
+       * appears across multiple independent eqclasses.  Stop gracefully rather than overflow. */
+      if (env->nterms >= env->Nterms)
+	{
+	  break;
+	}
+
+      if (parser == NULL)
+	{
+	  continue;
+	}
+
+      pt_expr = parser_new_node (parser, PT_EXPR);
+      if (pt_expr == NULL)
+	{
+	  continue;
+	}
+
+      pt_expr->info.expr.op = PT_EQ;
+      pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
+      pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
+
+      if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
+	{
+	  parser_free_tree (parser, pt_expr);
+	  continue;
+	}
+      pt_expr->type_enum = PT_TYPE_LOGICAL;
+
+      term = qo_add_term (pt_expr, PREDICATE_TERM, env);
+      QO_TERM_SET_FLAG (term, QO_TERM_IMPLIED);
+      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+    }
+
+  env->implied_pairs = NULL;
+  free_and_init (pairs);
+}
+
+/*
+ * qo_build_implied_seg_roots () - Build the segment union-find used for
+ *   implied join term generation.
+ *   env(in):
+ *   root_arr(out): caller-allocated array of env->nsegs entries; on return,
+ *	  root_arr[i] is the canonical root of segment i.
+ *
+ * Note: Unions only unconditional inner-join equi-join edge terms.  Conditional
+ *   equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must not
+ *   seed the closure: an inner term derived across an outer-join boundary changes results.
+ */
+static void
+qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
+{
+  int ti, t;
+
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      root_arr[ti] = ti;
+    }
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      QO_TERM *jterm = QO_ENV_TERM (env, t);
+      QO_SEGMENT *s1, *s2;
+      PT_NODE *tpe;
+      int r1, r2;
+
+      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
+	{
+	  continue;
+	}
+      /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
+       * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
+      tpe = QO_TERM_PT_EXPR (jterm);
+      if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	{
+	  continue;
+	}
+      s1 = QO_TERM_SEG (jterm);
+      s2 = QO_TERM_OID_SEG (jterm);
+      if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s1)) || QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s2)))
+	{
+	  continue;
+	}
+      r1 = QO_SEG_IDX (s1);
+      while (root_arr[r1] != r1)
+	{
+	  root_arr[r1] = root_arr[root_arr[r1]];
+	  r1 = root_arr[r1];
+	}
+      r2 = QO_SEG_IDX (s2);
+      while (root_arr[r2] != r2)
+	{
+	  root_arr[r2] = root_arr[root_arr[r2]];
+	  r2 = root_arr[r2];
+	}
+      if (r1 != r2)
+	{
+	  root_arr[r1] = r2;
+	}
+    }
+
+  /* Flatten so root_arr[i] is the canonical root of segment i. */
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      int r = ti;
+      while (root_arr[r] != r)
+	{
+	  r = root_arr[r];
+	}
+      root_arr[ti] = r;
+    }
+}
+
+/*
+ * qo_collect_implied_join_pairs () - Collect candidate implied join
+ *   segment pairs using the caller-built segment union-find (root_arr).
+ *   return: 0 on success, -1 on memory allocation failure
+ *   env(in):
+ *   root_arr(in): Pre-built segment-to-root mapping (size env->nsegs); caller owns allocation.
+ *   segs_arr(in): Scratch buffer of size env->nsegs for collecting group segments; caller owns.
+ *   pairs_p(in/out): Pointer to the dynamically growing pairs array
+ *   count_p(in/out): Pointer to the current number of collected pairs
+ *   cap_p(in/out): Pointer to the current capacity of the pairs array
+ *
+ * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  Emits one pair per
+ *   node pair that shares a 3+ segment group but has no direct (or after/during-join) term.
+ */
+static int
+qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+			       QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p)
+{
+  int i, j, k, t;
+  int nsegs;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
+  QO_NODE *node1, *node2, *head_node, *tail_node;
+  QO_TERM *term;
+  bool already_has_term;
+
+  /* Process each segment that is its own root (i.e., the canonical root of a group). */
+  for (i = 0; i < env->nsegs; i++)
+    {
+      if (root_arr[i] != i)
+	{
+	  continue;
+	}
+
+      /* Collect all segments belonging to this group into the caller-provided scratch buffer. */
+      nsegs = 0;
+      for (j = 0; j < env->nsegs; j++)
+	{
+	  if (root_arr[j] != i)
+	    {
+	      continue;
+	    }
+	  segs_arr[nsegs++] = j;
+	}
+
+      /* A two-segment group is always united by the direct edge term that merged it,
+       * so no new implied pair can come out of it; require at least three segments. */
+      if (nsegs < 3)
+	{
+	  continue;
+	}
+
+      /* Emit one pair per (head_node, tail_node); also check already-collected pairs
+       * to avoid duplicates when the same node has multiple segments in the eqclass. */
+      int group_start_count = *count_p;
+      for (j = 0; j < nsegs; j++)
+	{
+	  for (k = j + 1; k < nsegs; k++)
+	    {
+	      seg1 = QO_ENV_SEG (env, segs_arr[j]);
+	      seg2 = QO_ENV_SEG (env, segs_arr[k]);
+	      node1 = QO_SEG_HEAD (seg1);
+	      node2 = QO_SEG_HEAD (seg2);
+
+	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
+		{
+		  continue;
+		}
+
+	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
+		{
+		  head_seg = seg1;
+		  tail_seg = seg2;
+		  head_node = node1;
+		  tail_node = node2;
+		}
+	      else
+		{
+		  head_seg = seg2;
+		  tail_seg = seg1;
+		  head_node = node2;
+		  tail_node = node1;
+		}
+
+	      already_has_term = false;
+	      for (t = 0; t < env->nterms; t++)
+		{
+		  term = QO_ENV_TERM (env, t);
+		  /* Also check AFTER/DURING_JOIN: QO_TC_JOIN terms reclassified by
+		   * qo_classify_outerjoin_terms retain NOMINAL_SEG/HEAD/TAIL. */
+		  if (!QO_IS_EDGE_TERM (term)
+		      && QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
+		    {
+		      continue;
+		    }
+		  /* DUMMY_JOIN carries no column equality; skip it. */
+		  if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+		    {
+		      continue;
+		    }
+		  nom = QO_TERM_NOMINAL_SEG (term);
+		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
+		    {
+		      continue;
+		    }
+		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
+		    {
+		      already_has_term = true;
+		      break;
+		    }
+		}
+
+	      if (!already_has_term)
+		{
+		  for (t = group_start_count; t < *count_p; t++)
+		    {
+		      if (QO_SEG_HEAD ((*pairs_p)[t].head_seg) == head_node
+			  && QO_SEG_HEAD ((*pairs_p)[t].tail_seg) == tail_node)
+			{
+			  already_has_term = true;
+			  break;
+			}
+		    }
+		}
+
+	      if (already_has_term)
+		{
+		  continue;
+		}
+
+	      if (*count_p >= *cap_p)
+		{
+		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
+		  QO_IMPLIED_JOIN_PAIR *np =
+		    (QO_IMPLIED_JOIN_PAIR *) realloc (*pairs_p, sizeof (QO_IMPLIED_JOIN_PAIR) * new_cap);
+		  if (np == NULL)
+		    {
+		      return -1;
+		    }
+		  *pairs_p = np;
+		  *cap_p = new_cap;
+		}
+
+	      (*pairs_p)[*count_p].head_seg = head_seg;
+	      (*pairs_p)[*count_p].tail_seg = tail_seg;
+	      (*count_p)++;
+	    }
+	}
+    }
+
+  return 0;
+}
+
+/*
  * qo_env_dump () -
  *   return:
  *   env(in):
@@ -8430,6 +9090,7 @@ qo_node_clear (QO_ENV * env, int idx)
   bitset_init (&(QO_NODE_SUBQUERIES (node)), env);
   bitset_init (&(QO_NODE_SEGS (node)), env);
   bitset_init (&(QO_NODE_OUTER_DEP_SET (node)), env);
+  bitset_init (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), env);
 
   QO_NODE_HINT (node) = PT_HINT_NONE;
 }
@@ -8448,6 +9109,7 @@ qo_node_free (QO_NODE * node)
   bitset_delset (&(QO_NODE_SEGS (node)));
   bitset_delset (&(QO_NODE_SUBQUERIES (node)));
   bitset_delset (&(QO_NODE_OUTER_DEP_SET (node)));
+  bitset_delset (&(QO_NODE_SEMI_ANTI_DEP_SET (node)));
   qo_free_class_info (QO_NODE_ENV (node), QO_NODE_INFO (node));
   if (QO_NODE_INDEXES (node))
     {
@@ -8457,6 +9119,226 @@ qo_node_free (QO_NODE * node)
     {
       free_and_init (QO_NODE_USING_INDEX (node));
     }
+}
+
+/*
+ * qo_derived_term_origin () - the predicate a derived restriction was extracted from
+ *   return: the origin term, or NULL when no candidate exists at all
+ *   env(in):
+ *   derived(in): a term flagged QO_TERM_OR_DERIVED or QO_TERM_LIKE_DERIVED_RANGE
+ *   idx(in): index of derived, so it cannot pair with itself
+ *   taken(in/out): bitset of terms already paired, so several derived terms spread over the
+ *		    origins available instead of piling onto the first one
+ *
+ * Note: the pairing is recovered structurally rather than carried on the parse nodes: the
+ *	 rewrite passes that run between the extraction and this point rebuild predicates
+ *	 without preserving annotations of their own.
+ *
+ *	 An OR-derived restriction comes from a multi-spec OR factor, so its origin is a
+ *	 disjunction spanning several specs whose segments cover the derived term's own -- the
+ *	 segments, not just the node, because a query can hold more than one such factor over
+ *	 the same tables and only the columns tell them apart.  A LIKE-derived range comes from
+ *	 the prefix of a LIKE on the same segment, which carries the paired
+ *	 QO_TERM_LIKE_HAS_DERIVED_RANGE flag; segments rather than identity because
+ *	 qo_apply_range_intersection () may fold several derived ranges into one term.
+ *
+ *	 Candidates can still tie -- two LIKEs on one column leave a single merged range that
+ *	 either could have produced.  Any of them may be taken: the compensation divides the
+ *	 derived selectivity out of exactly one origin, and since every consumer multiplies the
+ *	 terms, the product is the same whichever origin absorbs it.  Only the split across join
+ *	 levels differs, so the choice just has to be deterministic; preferring an origin no
+ *	 other derived term has taken keeps the division off a single term, where repeated
+ *	 divisions could reach the clamp and stop cancelling.
+ */
+static QO_TERM *
+qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken)
+{
+  int j;
+  QO_TERM *candidate, *origin = NULL;
+  PT_NODE *pt;
+
+  for (j = 0; j < env->nterms; j++)
+    {
+      candidate = QO_ENV_TERM (env, j);
+      if (j == idx)
+	{
+	  continue;
+	}
+
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_LIKE_DERIVED_RANGE))
+	{
+	  if (!QO_TERM_IS_FLAGED (candidate, QO_TERM_LIKE_HAS_DERIVED_RANGE)
+	      || !bitset_intersects (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
+	    {
+	      continue;
+	    }
+	}
+      else
+	{
+	  if (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED)
+	      || bitset_cardinality (&(QO_TERM_NODES (candidate))) < 2
+	      || !bitset_subset (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)))
+	      || !bitset_subset (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
+	    {
+	      continue;		/* the origin spans several specs and covers the derived one */
+	    }
+	  pt = QO_TERM_PT_EXPR (candidate);
+	  if (pt == NULL || pt->node_type != PT_EXPR || (pt->info.expr.op != PT_OR && pt->or_next == NULL))
+	    {
+	      continue;		/* the origin is a disjunction */
+	    }
+	}
+
+      if (origin == NULL || (BITSET_MEMBER (*taken, QO_TERM_IDX (origin)) && !BITSET_MEMBER (*taken, j)))
+	{
+	  origin = candidate;	/* first match, or one no other derived term has taken */
+	}
+    }
+
+  return origin;
+}
+
+/*
+ * qo_derived_term_compensate () - reconcile each derived duplicate with the predicate that
+ *				   implies it, so one constraint is counted once
+ *   env(in):
+ *
+ * Note: two rewrites add a term that is implied by a predicate already in the tree -- a
+ *	 single-spec restriction extracted from a multi-spec OR factor
+ *	 (qo_extract_or_restrictions ()) and the prefix range derived from a LIKE
+ *	 (qo_rewrite_like_for_index_scan ()).  Both are counted in their node's cardinality by
+ *	 qo_node_add_sarg (), which is what lets the plan react to the filtering; the origin
+ *	 predicate must then contribute only what it rejects ON TOP of the derived term, or the
+ *	 same constraint is charged twice.  That share is the conditional selectivity
+ *	 sel (origin) / sel (derived).
+ *
+ *	 Containment also bounds the estimates: the origin implies the derived term, so
+ *	 sel (origin) <= sel (derived) must hold.  A violation is an inconsistency between two
+ *	 estimates of the same rows, and the derived side is the one to correct -- it is a
+ *	 widened stand-in the estimator probes indirectly, whereas the origin is the predicate
+ *	 as written.  Measured: for `a LIKE 'aaa%9'` over 100k rows the LIKE was sized at 10
+ *	 rows (exact) while its prefix range collapsed to 1, so lowering the LIKE to the range
+ *	 would have thrown away the better estimate.
+ */
+static void
+qo_derived_term_compensate (QO_ENV * env)
+{
+  int i, j, n = env->nterms;
+  int *pair;			/* origin of each derived term, -1 when it has none */
+  double *implied;		/* per origin: product of the terms it implies, -1 when none */
+  double *before;		/* per origin: its selectivity before any division */
+  QO_TERM *derived, *origin;
+  BITSET taken;
+
+  if (n <= 0)
+    {
+      return;
+    }
+
+  pair = (int *) malloc (n * sizeof (int));
+  implied = (double *) malloc (n * sizeof (double));
+  before = (double *) malloc (n * sizeof (double));
+  if (pair == NULL || implied == NULL || before == NULL)
+    {
+      /* Out of memory: leave every duplicate inert rather than half-compensated.  A selectivity
+       * of 1 costs the plan the filter's benefit but can never charge it twice. */
+      for (i = 0; i < n; i++)
+	{
+	  derived = QO_ENV_TERM (env, i);
+	  if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED | QO_TERM_LIKE_DERIVED_RANGE))
+	    {
+	      QO_TERM_SELECTIVITY (derived) = 1.0;
+	    }
+	}
+      free (pair);
+      free (implied);
+      free (before);
+      return;
+    }
+
+  for (i = 0; i < n; i++)
+    {
+      pair[i] = -1;
+      implied[i] = -1.0;
+      before[i] = QO_TERM_SELECTIVITY (QO_ENV_TERM (env, i));
+    }
+
+  bitset_init (&taken, env);
+
+  /* pass 1: pair each derived term with the predicate that implies it, and collect what each
+   * origin is left accounting for */
+  for (i = 0; i < n; i++)
+    {
+      derived = QO_ENV_TERM (env, i);
+      if (!QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED | QO_TERM_LIKE_DERIVED_RANGE)
+	  || QO_TERM_SELECTIVITY (derived) <= 0.0)
+	{
+	  continue;		/* an empty derived range leaves nothing to divide by */
+	}
+
+      origin = qo_derived_term_origin (env, derived, i, &taken);
+      if (origin == NULL || QO_TERM_SELECTIVITY (origin) < 0.0)
+	{
+	  /* No predicate to charge this duplicate against -- its origin was reshaped or folded
+	   * away by a later rewrite.  Every consumer multiplies the terms it holds, so leaving a
+	   * real selectivity here would charge the constraint a second time wherever both are
+	   * counted.  A selectivity of 1 makes the term inert in each of those products; keep it
+	   * out of key ranges too, the same treatment an OR-derived duplicate gets when it
+	   * rejects too few rows to pay for itself. */
+	  QO_TERM_SELECTIVITY (derived) = 1.0;
+	  QO_TERM_SET_FLAG (derived, QO_TERM_NON_IDX_SARG_COLL);
+	  QO_TERM_CAN_USE_INDEX (derived) = 0;
+	  continue;
+	}
+
+      j = QO_TERM_IDX (origin);
+      pair[i] = j;
+      bitset_add (&taken, j);
+      implied[j] = (implied[j] < 0.0) ? QO_TERM_SELECTIVITY (derived) : implied[j] * QO_TERM_SELECTIVITY (derived);
+    }
+
+  /* pass 2: one division per origin, against everything it implies at once.  Per-derived
+   * division would compare the next derived term against a selectivity already divided down,
+   * and correct a deficit that is not there -- the containment bound holds between each derived
+   * term and the origin as it was, not as it is left mid-way. */
+  for (j = 0; j < n; j++)
+    {
+      if (implied[j] < 0.0 || before[j] <= 0.0)
+	{
+	  continue;
+	}
+
+      if (implied[j] < before[j])
+	{
+	  /* Containment says the origin's rows are a subset of what its derived terms match, so
+	   * together they cannot come out more selective than it.  An estimate that says
+	   * otherwise is wrong on the derived side -- the origin is the predicate as written,
+	   * while a derived term is a widened stand-in the estimator probes indirectly (a prefix
+	   * range collapsing to one row is the case seen in practice).  Correct the deficit on
+	   * the first term paired here, which also keeps the division below at or under 1. */
+	  for (i = 0; i < n; i++)
+	    {
+	      if (pair[i] == j)
+		{
+		  derived = QO_ENV_TERM (env, i);
+		  QO_TERM_SELECTIVITY (derived) *= before[j] / implied[j];
+		  implied[j] = before[j];
+		  break;
+		}
+	    }
+	}
+
+      QO_TERM_SELECTIVITY (QO_ENV_TERM (env, j)) = before[j] / implied[j];
+      if (QO_TERM_SELECTIVITY (QO_ENV_TERM (env, j)) > 1.0)
+	{
+	  QO_TERM_SELECTIVITY (QO_ENV_TERM (env, j)) = 1.0;
+	}
+    }
+
+  bitset_delset (&taken);
+  free (pair);
+  free (implied);
+  free (before);
 }
 
 /*
@@ -8471,6 +9353,10 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   double sel_limit;
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
+  /* Every sarg counts here, derived duplicates included: this node's cardinality is where the
+   * filtering informs the join order and the access path.  qo_derived_term_compensate () has
+   * already reduced each origin predicate to what it rejects on top of the term it implies, so
+   * counting both sides charges the constraint exactly once. */
   QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
   sel_limit = (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
   if (QO_NODE_SELECTIVITY (node) < sel_limit)
@@ -8562,6 +9448,12 @@ qo_node_dump (QO_NODE * node, FILE * f)
       bitset_print (&(QO_NODE_OUTER_DEP_SET (node)), f);
       fputs (")", f);
     }
+  if (!bitset_is_empty (&(QO_NODE_SEMI_ANTI_DEP_SET (node))))
+    {
+      fputs (" (semi-anti-dep-set ", f);
+      bitset_print (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), f);
+      fputs (")", f);
+    }
   if (!bitset_is_empty (&(QO_NODE_DEP_SET (node))))
     {
       fputs (" (dep-set ", f);
@@ -8644,6 +9536,7 @@ qo_seg_width (QO_SEGMENT * seg)
    */
   int size;
   DB_DOMAIN *domain;
+  double ratio;
 
   domain = pt_node_to_db_domain (QO_ENV_PARSER (QO_SEG_ENV (seg)), QO_SEG_PT_NODE (seg), NULL);
   if (domain)
@@ -8656,15 +9549,18 @@ qo_seg_width (QO_SEGMENT * seg)
       return sizeof (int);
     }
 
-  size = tp_domain_disk_size (domain);
   switch (TP_DOMAIN_TYPE (domain))
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-      /* do guessing for variable character type */
-      size = size * (2 / 3);
+      /* guessing for variable character type */
+      ratio = (domain->precision <= 32) ? 0.8 :
+	(domain->precision <= 128) ? 0.5 : (domain->precision <= 512) ? 0.3 : (domain->precision <= 4000) ? 0.2 : 0.1;
+      /* to avoid the issue of the variable character type precision being too large. */
+      size = MIN (domain->precision * ratio, 4000);
       break;
     default:
+      size = tp_domain_disk_size (domain);
       break;
     }
 
@@ -9860,6 +10756,13 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 	  continue;
 	}
 
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_IMPLIED))
+	{
+	  /* skip implied join terms; they add no independent constraints and must not
+	   * falsely invalidate the PK-FK full-join */
+	  continue;
+	}
+
       if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (pk_node)))
 	{
 	  continue;
@@ -9932,6 +10835,291 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
     }
 
   return true;
+}
+
+/*
+ * qo_match_fk_prefix () - match composite FK columns with the referenced PK
+ * return : number of leading columns matched
+ * env (in)              : environment
+ * fk_idx (in)           : FK index entry
+ * pk_idx (in)           : referenced PK index entry
+ * fk_col_segs_out (out) : matched FK-side segments
+ * col_eqclasses_out (out): matched equivalence classes, NULL where the column is matched by its term
+ * col_terms_out (out)   : matched SEMI/ANTI equalities, NULL where the column is matched by its equivalence class
+ *
+ * Note: matching is based on equivalence classes so that it remains valid
+ *  when redundant FK-PK join terms are removed by qo_check_skip_term().
+ *  A SEMI/ANTI equality is kept out of them (qo_analyze_term ()), so it is matched by the term itself.
+ *
+ * Note: a nullable FK column is matched the same as a NOT NULL one, with no separate NULL-ratio
+ *  correction applied to the floor. A correction would double-count against an explicit IS NOT
+ *  NULL (or similar) predicate elsewhere, since nothing here sees every predicate that may already
+ *  be pricing the same NULL rows out; leaving it out is a bounded overestimate instead.
+ */
+static int
+qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx, QO_SEGMENT ** fk_col_segs_out,
+		    QO_EQCLASS ** col_eqclasses_out, QO_TERM ** col_terms_out)
+{
+  int i, max_cols;
+  QO_SEGMENT *fk_seg, *pk_seg;
+  QO_EQCLASS *eqc;
+  QO_TERM *term;
+
+  max_cols = MIN (pk_idx->nsegs, fk_idx->nsegs);
+
+  for (i = 0; i < max_cols; i++)
+    {
+      if (fk_idx->seg_idxs[i] == -1 || pk_idx->seg_idxs[i] == -1)
+	{
+	  /* this constraint column is not referenced by the current query */
+	  break;
+	}
+
+      fk_seg = QO_ENV_SEG (env, fk_idx->seg_idxs[i]);
+      pk_seg = QO_ENV_SEG (env, pk_idx->seg_idxs[i]);
+
+      eqc = QO_SEG_EQCLASS (fk_seg);
+      term = NULL;
+      if (eqc == NULL || eqc == QO_UNORDERED || eqc != QO_SEG_EQCLASS (pk_seg))
+	{
+	  term = qo_find_equi_join_term (env, fk_seg, pk_seg);
+	  if (term == NULL)
+	    {
+	      break;
+	    }
+	  eqc = NULL;
+	}
+
+      fk_col_segs_out[i] = fk_seg;
+      col_eqclasses_out[i] = eqc;
+      col_terms_out[i] = term;
+    }
+
+  return i;
+}
+
+/*
+ * qo_find_equi_join_term () - find the equi-join term between two segments
+ * return : the term, NULL if there is none
+ * env (in)  : environment
+ * seg1 (in) : one segment
+ * seg2 (in) : the other segment
+ */
+static QO_TERM *
+qo_find_equi_join_term (QO_ENV * env, QO_SEGMENT * seg1, QO_SEGMENT * seg2)
+{
+  QO_TERM *term;
+  int t;
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      term = QO_ENV_TERM (env, t);
+      if (QO_TERM_CLASS (term) == QO_TC_JOIN && qo_is_equi_join_term (term)
+	  && BITSET_MEMBER (QO_TERM_SEGS (term), QO_SEG_IDX (seg1))
+	  && BITSET_MEMBER (QO_TERM_SEGS (term), QO_SEG_IDX (seg2)))
+	{
+	  return term;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_mark_fk_join_selectivity_floor () - record composite FK constraints
+ *					   whose join selectivity should be
+ *					   floored to 1 / (parent cardinality)
+ * return : void
+ * env (in) : environment
+ *
+ * Note: for a 2+ column PK-FK join, per-term selectivities are still
+ *  multiplied independently in planner_visit_node(), underestimating the
+ *  join by ignoring the correlation guaranteed by the constraint. This finds
+ *  every composite FK-PK column prefix (see qo_match_fk_prefix()) and
+ *  records it in env->fk_join_info, one entry per FK constraint - fk_node
+ *  and pk_node can be linked by more than one FK constraint (e.g. two
+ *  different FK's on fk_node both referencing pk_node's primary key), and
+ *  each is recorded separately rather than only the first one found.
+ *
+ *  Each entry's fk_col_segs and col_eqclasses are used to look up which
+ *  terms stand for its columns at the step that actually connects fk_node
+ *  and pk_node; the terms themselves are not tagged here. This is
+ *  necessary because qo_check_skip_term() may judge a literal edge
+ *  redundant and leave an eqclass-equivalent term on some other node pair
+ *  in its place (e.g. supplier-lineitem standing in for partsupp-lineitem),
+ *  so a fixed term set recorded here would miss that substitute. Single-
+ *  column FK joins are left as-is.
+ */
+static void
+qo_mark_fk_join_selectivity_floor (QO_ENV * env)
+{
+  int i, j, k, m, n_matched;
+  size_t n_pairs, cap, fi;
+  QO_NODE *node_i, *node_j, *fk_node, *pk_node;
+  QO_NODE_INDEX *fk_node_indexp, *pk_node_indexp;
+  QO_INDEX_ENTRY *fk_idx, *pk_idx;
+  QO_FK_JOIN_INFO *info_arr;
+  QO_SEGMENT **fk_col_segs;
+  QO_EQCLASS **col_eqclasses;
+  QO_TERM **col_terms;
+
+  info_arr = NULL;
+  cap = 0;
+  n_pairs = 0;
+
+  /* iterate every ordered pair, not just every unordered pair once: we don't know a priori which of the two
+   * nodes is the FK side, so (node_i, node_j) and (node_j, node_i) are both tried as separate iterations below */
+  for (i = 0; i < env->nnodes; i++)
+    {
+      node_i = QO_ENV_NODE (env, i);
+
+      for (j = 0; j < env->nnodes; j++)
+	{
+	  if (i == j)
+	    {
+	      continue;
+	    }
+	  node_j = QO_ENV_NODE (env, j);
+
+	  fk_node = node_i;
+	  pk_node = node_j;
+
+	  pk_node_indexp = QO_NODE_INDEXES (pk_node);
+	  if (pk_node_indexp == NULL)
+	    {
+	      continue;
+	    }
+
+	  fk_node_indexp = QO_NODE_INDEXES (fk_node);
+	  if (fk_node_indexp == NULL)
+	    {
+	      continue;
+	    }
+
+	  /* every FK constraint on fk_node that references pk_node's primary key gets its own entry - two
+	   * different constraints referencing the same parent PK must not be conflated into one, even if
+	   * qo_assign_eq_classes() ends up merging their columns into the same equivalence classes */
+	  for (k = 0; k < QO_NI_N (fk_node_indexp); k++)
+	    {
+	      fk_idx = QO_NI_ENTRY (fk_node_indexp, k)->head;
+	      if (fk_idx->constraints->type != SM_CONSTRAINT_FOREIGN_KEY)
+		{
+		  continue;
+		}
+
+	      pk_idx = NULL;
+	      for (m = 0; m < QO_NI_N (pk_node_indexp); m++)
+		{
+		  if (BTID_IS_EQUAL (&QO_NI_ENTRY (pk_node_indexp, m)->head->constraints->index_btid,
+				     &fk_idx->constraints->fk_info->ref_class_pk_btid))
+		    {
+		      pk_idx = QO_NI_ENTRY (pk_node_indexp, m)->head;
+		      break;
+		    }
+		}
+
+	      if (pk_idx == NULL || pk_idx->nsegs < 2 || QO_NODE_NCARD (pk_node) <= 0)
+		{
+		  continue;
+		}
+	      /* Only PRIMARY KEY reaches here. UNIQUE is considered for future FK support,
+	       * while REVERSE_UNIQUE does not reach this path. */
+	      assert (SM_IS_CONSTRAINT_UNIQUE_FAMILY (pk_idx->constraints->type));
+
+	      /* Secure room for one more entry before any per-candidate allocation below, so that a capacity
+	       * failure here never has to unwind a not-yet-owned temporary allocation - only already-registered
+	       * entries and info_arr itself (see the fk_join_info_fail cleanup). This also enforces that the
+	       * count never grows past what env->n_fk_join_info (an int) can hold. */
+	      if (n_pairs >= (size_t) INT_MAX)
+		{
+		  goto fk_join_info_fail;
+		}
+	      if (n_pairs >= cap)
+		{
+		  size_t new_cap;
+		  QO_FK_JOIN_INFO *new_info_arr;
+
+		  if (cap > SIZE_MAX / 2)
+		    {
+		      goto fk_join_info_fail;
+		    }
+		  new_cap = (cap == 0) ? 8 : cap * 2;
+
+		  if (new_cap > SIZE_MAX / sizeof (QO_FK_JOIN_INFO))
+		    {
+		      goto fk_join_info_fail;
+		    }
+		  new_info_arr = (QO_FK_JOIN_INFO *) realloc (info_arr, sizeof (QO_FK_JOIN_INFO) * new_cap);
+		  if (new_info_arr == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      sizeof (QO_FK_JOIN_INFO) * new_cap);
+		      goto fk_join_info_fail;
+		    }
+		  info_arr = new_info_arr;
+		  cap = new_cap;
+		}
+
+	      fk_col_segs = (QO_SEGMENT **) malloc (sizeof (QO_SEGMENT *) * pk_idx->nsegs);
+	      col_eqclasses = (QO_EQCLASS **) malloc (sizeof (QO_EQCLASS *) * pk_idx->nsegs);
+	      col_terms = (QO_TERM **) malloc (sizeof (QO_TERM *) * pk_idx->nsegs);
+	      if (fk_col_segs == NULL || col_eqclasses == NULL || col_terms == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  sizeof (QO_SEGMENT *) * pk_idx->nsegs);
+		  free_and_init (fk_col_segs);
+		  free_and_init (col_eqclasses);
+		  free_and_init (col_terms);
+		  goto fk_join_info_fail;
+		}
+
+	      n_matched = qo_match_fk_prefix (env, fk_idx, pk_idx, fk_col_segs, col_eqclasses, col_terms);
+	      if (n_matched < 2 || n_matched < MIN (pk_idx->nsegs, fk_idx->nsegs))
+		{
+		  /* single-column FK-PK join, or only a leading prefix of a composite FK/PK matched: a partial
+		   * key match does not guarantee each FK row matches exactly one parent row, so the floor must not
+		   * be applied; leave the ordinary per-term selectivity alone */
+		  free_and_init (fk_col_segs);
+		  free_and_init (col_eqclasses);
+		  free_and_init (col_terms);
+		  continue;
+		}
+
+	      /* room for this entry was already secured above */
+	      info_arr[n_pairs].fk_node = fk_node;
+	      info_arr[n_pairs].pk_node = pk_node;
+	      info_arr[n_pairs].floor_selectivity = 1.0 / QO_NODE_NCARD (pk_node);
+	      info_arr[n_pairs].fk_col_segs = fk_col_segs;
+	      info_arr[n_pairs].col_eqclasses = col_eqclasses;
+	      info_arr[n_pairs].col_terms = col_terms;
+	      info_arr[n_pairs].n_cols = n_matched;
+	      n_pairs++;
+	    }
+	}
+    }
+
+  if (n_pairs == 0)
+    {
+      free_and_init (info_arr);
+      return;
+    }
+
+  env->fk_join_info = info_arr;
+  env->n_fk_join_info = (int) n_pairs;
+  return;
+
+fk_join_info_fail:
+  /* overflow, count-limit, or realloc failure while growing info_arr: abandon the whole FK-floor
+   * optimization for this query rather than keep a partial, iteration-order-dependent subset. Nothing has
+   * been assigned to env->fk_join_info/env->n_fk_join_info yet, so the caller sees exactly the same "no FK
+   * floor info" state as if this function had found nothing to register at all. */
+  for (fi = 0; fi < n_pairs; fi++)
+    {
+      free_and_init (info_arr[fi].fk_col_segs);
+      free_and_init (info_arr[fi].col_eqclasses);
+      free_and_init (info_arr[fi].col_terms);
+    }
+  free_and_init (info_arr);
 }
 
 /*

@@ -30,9 +30,10 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <cstddef>		/* offsetof for paired pisid/isid layout asserts */
 #include <time.h>
 #if defined(SERVER_MODE)
-#include "jansson.h"
+#include "json_builder.h"
 #endif
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
@@ -57,8 +58,12 @@ struct regu_variable_list_node;
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
+struct domain_plan_index;
+struct RESOLVED_INDEX_KEYS;
+struct scan_key_state;
 
 // *INDENT-OFF*
+enum DOMAIN_SEARCH_KEYS : unsigned char;
 namespace cubxasl
 {
   struct pred_expr;
@@ -76,6 +81,8 @@ typedef enum
 {
   S_HEAP_SCAN = 1,
   S_PARALLEL_HEAP_SCAN,
+  S_PARALLEL_LIST_SCAN,
+  S_PARALLEL_INDEX_SCAN,
   S_CLASS_ATTR_SCAN,
   S_INDX_SCAN,
   S_LIST_SCAN,
@@ -89,8 +96,7 @@ typedef enum
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
-  S_DBLINK_SCAN,		/* scans dblink */
-  S_HEAP_SAMPLING_SCAN		/* scans sampling data */
+  S_DBLINK_SCAN			/* scans dblink */
 } SCAN_TYPE;
 
 typedef struct dblink_scan_id DBLINK_SCAN_ID;
@@ -117,10 +123,9 @@ struct heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
-  sampling_info sampling;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   enum class RESULT_TYPE;
   class accumulative_trace_storage;	// forward declaration
@@ -143,15 +148,29 @@ struct parallel_heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
-  sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
   #if !WINDOWS
-  parallel_heap_scan::RESULT_TYPE result_type;
+  parallel_scan::RESULT_TYPE result_type;
   void * manager;
-  parallel_heap_scan::accumulative_trace_storage * trace_storage;
+  parallel_scan::accumulative_trace_storage * trace_storage;
   #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
+
+typedef struct parallel_list_scan_id PARALLEL_LIST_SCAN_ID;
+struct parallel_list_scan_id
+{
+  // *INDENT-OFF*
+  #if !WINDOWS
+  parallel_scan::RESULT_TYPE result_type;
+  void * manager;
+  parallel_scan::accumulative_trace_storage * trace_storage;
+  #endif
+  // *INDENT-ON*
+};				/* List PARALLEL Scan Identifier */
+
+typedef struct parallel_index_scan_id PARALLEL_INDEX_SCAN_ID;
+/* INDX_SCAN_ID superset (mirrors PARALLEL_HEAP_SCAN_ID pattern); paired static_asserts pin layout */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
 struct heap_page_scan_id
@@ -193,7 +212,6 @@ typedef struct multi_range_opt MULTI_RANGE_OPT;
 struct multi_range_opt
 {
   bool use;			/* true/false */
-  bool has_null_domain;		/* true, if sort col has null domain */
   int cnt;			/* current number of entries */
   int size;			/* expected number of entries */
   int num_attrs;		/* number of order by attributes */
@@ -273,8 +291,104 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  TP_DOMAIN **prebuilt_midxkey_domains;
+  const domain_plan_index *key_plan;	/* the key plan the load derived, INDX_INFO.key_plan */
+  const RESOLVED_INDEX_KEYS *resolved_keys;	/* this execution's resolutions for it; NULL: the plan's alone */
+  scan_key_state *key_state;	/* the scan's key plan storage (mixed key domain caches, the search keys the B-tree
+				 * reads); NULL when the plan needs none */
+  /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
+   * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
+   * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
+   * the spec is not eligible for parallel index scan. Owned by the scan_id. */
+  void *parallel_pending;
 };
+
+struct parallel_index_scan_id
+{
+  /* mirror of INDX_SCAN_ID — keep in sync */
+  INDX_INFO *indx_info;		/* index information */
+  BTREE_TYPE bt_type;		/* index type */
+  int bt_num_attrs;		/* num of attributes of the index key */
+  ATTR_ID *bt_attr_ids;		/* attr id array of the index key */
+  int *bt_attrs_prefix_length;	/* attr prefix length */
+  ATTR_ID *vstr_ids;		/* attr id array of variable string */
+  int num_vstr;			/* num of variable string attrs */
+  BTREE_SCAN bt_scan;		/* index scan info. structure */
+  bool one_range;		/* a single range? */
+  int curr_keyno;		/* current key number */
+  int curr_oidno;		/* current oid number */
+  OID *curr_oidp;		/* current oid pointer */
+  char *copy_buf;		/* index key copy_buf pointer info */
+  BTREE_ISCAN_OID_LIST *oid_list;	/* list of object OID's */
+  int oids_count;		/* Generic value of OID count that should be common for all index scan types. */
+  OID cls_oid;			/* class object identifier */
+  int copy_buf_len;		/* index key copy_buf length info */
+  HFID hfid;			/* heap file identifier */
+  HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
+  SCAN_PRED key_pred;		/* key predicates(filters) */
+  SCAN_ATTRS key_attrs;		/* attr info from key filter */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  SCAN_ATTRS pred_attrs;	/* attr info from predicates */
+  SCAN_PRED range_pred;		/* range predicates */
+  SCAN_ATTRS range_attrs;	/* attr info from range predicates */
+  regu_variable_list_node *rest_regu_list;	/* regulator variable list */
+  SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
+  key_val_range *key_vals;	/* for eliminating duplicate ranges */
+  int key_cnt;			/* number of valid ranges */
+  bool iscan_oid_order;		/* index_scan_oid_order flag */
+  bool need_count_only;		/* get count only, no OIDs are copied */
+  bool caches_inited;		/* are the caches initialized?? */
+  bool scancache_inited;
+  DB_BIGINT key_limit_lower;	/* lower key limit */
+  DB_BIGINT key_limit_upper;	/* upper key limit */
+  INDX_COV indx_cov;		/* index covering information */
+  MULTI_RANGE_OPT multi_range_opt;	/* optimization for multiple range search */
+  INDEX_SKIP_SCAN iss;		/* index skip scan structure */
+  DB_VALUE **key_info_values;	/* Used for index key info scan */
+  regu_variable_list_node *key_info_regu_list;	/* regulator variable list */
+  bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
+				 * vacuumed. Used in checkdb. */
+  DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
+  const domain_plan_index *key_plan;	/* mirror of INDX_SCAN_ID::key_plan */
+  const RESOLVED_INDEX_KEYS *resolved_keys;	/* mirror of INDX_SCAN_ID::resolved_keys */
+  scan_key_state *key_state;	/* mirror of INDX_SCAN_ID::key_state */
+  void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
+  /* parallel-only fields (must follow all isid fields) */
+  // *INDENT-OFF*
+  #if !WINDOWS
+  parallel_scan::RESULT_TYPE result_type;
+  void * manager;
+  parallel_scan::accumulative_trace_storage * trace_storage;
+  #endif
+  // *INDENT-ON*
+};				/* Index PARALLEL Scan Identifier */
+
+// *INDENT-OFF*
+/* pin pisid/isid layout — drift fails build; offsetof on non-standard-layout is well-defined on GCC */
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+#endif
+static_assert (offsetof (INDX_SCAN_ID, indx_info)        == offsetof (PARALLEL_INDEX_SCAN_ID, indx_info),        "pisid mirror: indx_info");
+static_assert (offsetof (INDX_SCAN_ID, bt_scan)          == offsetof (PARALLEL_INDEX_SCAN_ID, bt_scan),          "pisid mirror: bt_scan");
+static_assert (offsetof (INDX_SCAN_ID, scan_cache)       == offsetof (PARALLEL_INDEX_SCAN_ID, scan_cache),       "pisid mirror: scan_cache");
+static_assert (offsetof (INDX_SCAN_ID, caches_inited)    == offsetof (PARALLEL_INDEX_SCAN_ID, caches_inited),    "pisid mirror: caches_inited");
+static_assert (offsetof (INDX_SCAN_ID, scancache_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, scancache_inited), "pisid mirror: scancache_inited");
+static_assert (offsetof (INDX_SCAN_ID, indx_cov)         == offsetof (PARALLEL_INDEX_SCAN_ID, indx_cov),         "pisid mirror: indx_cov");
+static_assert (offsetof (INDX_SCAN_ID, multi_range_opt)  == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),  "pisid mirror: multi_range_opt");
+static_assert (offsetof (INDX_SCAN_ID, iss)              == offsetof (PARALLEL_INDEX_SCAN_ID, iss),              "pisid mirror: iss");
+static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order)  == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),  "pisid mirror: iscan_oid_order");
+static_assert (offsetof (INDX_SCAN_ID, key_plan)         == offsetof (PARALLEL_INDEX_SCAN_ID, key_plan),         "pisid mirror: key_plan");
+static_assert (offsetof (INDX_SCAN_ID, resolved_keys)    == offsetof (PARALLEL_INDEX_SCAN_ID, resolved_keys),    "pisid mirror: resolved_keys");
+static_assert (offsetof (INDX_SCAN_ID, key_state)        == offsetof (PARALLEL_INDEX_SCAN_ID, key_state),        "pisid mirror: key_state");
+static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending), "pisid mirror: parallel_pending");
+#if !WINDOWS
+static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
+	       "pisid parallel-only fields must follow all isid fields");
+#endif
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+// *INDENT-ON*
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;
 struct index_node_scan_id
@@ -386,6 +500,7 @@ struct scan_id_struct
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
+  bool cached_scan;		/* cached (copy-to-local-cache) scan activation; persists across partition reopens */
   int grouped;			/* if true, the scan items are accessed group by group, instead of a whole single scan
 				 * from beginning to end. */
   int qualified_block;		/* scan block has qualified items, initially set to true */
@@ -402,6 +517,8 @@ struct scan_id_struct
     LLIST_SCAN_ID llsid;	/* List File Scan Identifier */
     HEAP_SCAN_ID hsid;		/* Regular Heap File Scan Identifier */
     PARALLEL_HEAP_SCAN_ID phsid;	/* Parallel Heap File Scan Identifier */
+    PARALLEL_LIST_SCAN_ID pllsid_parallel;	/* Parallel List File Scan Identifier */
+    PARALLEL_INDEX_SCAN_ID pisid;	/* Parallel Index Scan Identifier */
     HEAP_PAGE_SCAN_ID hpsid;	/* Scan heap pages without going through records */
     INDX_SCAN_ID isid;		/* Indexed Heap File Scan Identifier */
     INDEX_NODE_SCAN_ID insid;	/* Scan b-tree nodes */
@@ -437,7 +554,9 @@ extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
 				int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest,
 				SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-				regu_variable_list_node * regu_list_recordinfo, bool is_partition_table);
+				regu_variable_list_node * regu_list_recordinfo,
+				/* cached_scan: eligibility computed by caller (query_executor.c) */
+				bool cached_scan = false);
 extern int scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, val_list_node * val_list,
 				     val_descr * vd, OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type,
 				     DB_VALUE ** cache_page_info, regu_variable_list_node * regu_list_page_info);
@@ -480,6 +599,15 @@ extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * sc
 					   /* fields of INDX_SCAN_ID */
 					   indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
 					   regu_variable_list_node * node_info_regu_list);
+extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
+				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
+				       int key_range_idx);
+extern int scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
+					   DOMAIN_SEARCH_KEYS search_keys);
+extern DOMAIN_SEARCH_KEYS scan_index_search_keys (const INDX_SCAN_ID * isidp);
+extern BTREE_SEARCH_COMPARE scan_index_search_compare (const INDX_SCAN_ID * isidp);
+extern void scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
+
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
@@ -524,6 +652,7 @@ extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
@@ -540,7 +669,7 @@ extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 #if defined(SERVER_MODE)
-extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);
+extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
 

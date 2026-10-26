@@ -157,7 +157,6 @@ static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * lim
 					  bool add_offset);
 static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
-static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
 						bool add_as_attr);
 static PT_NODE *pt_process_spec_for_delete (PARSER_CONTEXT * parser, PT_NODE * spec);
@@ -171,6 +170,8 @@ static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser, const S
 static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
 static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
+/* defined next to the INSERT SELECT conversion that shares it */
+static PT_NODE *pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #define NULL_ATTRID -1
 
 /*
@@ -1964,7 +1965,7 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 PT_NODE *
 pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (node->node_type == PT_SELECT)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -1985,7 +1986,9 @@ pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   bool *has_subquery = (bool *) arg;
 
-  if (node->node_type == PT_SELECT)
+  /* a UNION / DIFFERENCE / INTERSECTION subquery is one query node too; PT_SELECT alone would let
+   * 'x IN (SELECT ... UNION SELECT ...)' pass undetected */
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       if (node->info.query.is_subquery == PT_IS_SUBQUERY)
 	{
@@ -2442,6 +2445,68 @@ pt_get_end_path_node (PT_NODE * node)
       node = node->info.dot.arg2;
     }
   return node;
+}
+
+/*
+ * pt_where_rejects_column_null () - true if some conjunct of the CNF WHERE list already rejects NULL
+ *     values of the given column, mirroring the criteria qo_fold_is_and_not_null () uses to fold a
+ *     user-written "col IS NOT NULL" away: a single-predicate term (no or_next) of the WHERE location
+ *     whose first argument or right-hand side is that column, with a comparison operator that cannot be true
+ *     on a NULL operand (qo_check_nullable_op ()).
+ *   return: bool
+ *   parser(in): context
+ *   where(in): CNF WHERE list
+ *   column(in): PT_NAME node of the column to prove non-NULL
+ *   skip_subquery_terms(in): true to ignore conjuncts holding a subquery, for a caller that rewrites
+ *     those away: "x NOT IN (...) rejects a NULL x" holds only while it is still a NOT IN.
+ */
+bool
+pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column, bool skip_subquery_terms)
+{
+  PT_NODE *term, *term_prior;
+  bool has_subquery;
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0)
+	{
+	  /* not a single-predicate conjunct of the WHERE proper: an OR-ed predicate
+	   * can still accept a NULL of the column through its other disjuncts */
+	  continue;
+	}
+
+      if (!pt_is_comp_op (term->info.expr.op) || qo_check_nullable_op (term))
+	{
+	  /* not a comparison, or one that can be true on a NULL operand */
+	  continue;
+	}
+
+      if (skip_subquery_terms)
+	{
+	  PT_NODE *save_next = term->next;
+
+	  /* this conjunct alone: the walk would otherwise run on through its siblings */
+	  term->next = NULL;
+	  has_subquery = false;
+	  (void) parser_walk_tree (parser, term, pt_check_subquery_pre, NULL, pt_check_subquery_post, &has_subquery);
+	  term->next = save_next;
+
+	  if (has_subquery)
+	    {
+	      continue;
+	    }
+	}
+
+      term_prior = pt_get_first_arg_ignore_prior (term);
+      if ((term_prior != NULL && pt_check_path_eq (parser, column, term_prior) == 0)
+	  || (term->info.expr.arg2 != NULL && pt_check_path_eq (parser, column, term->info.expr.arg2) == 0))
+	{
+	  /* a NULL column value makes this conjunct UNKNOWN, so the row cannot qualify */
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -7536,7 +7601,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
  *				 groups to which a DB user belongs to.
  *
  *    SELECT SUM(SET{t.g.name})
- *    FROM db_user U, TABLE(groups) AS t(g)
+ *    FROM _db_user U, TABLE(groups) AS t(g)
  *    WHERE U.name=<user_name>
  *
  *
@@ -7587,8 +7652,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   /* FROM : */
-  /* db_user U */
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* _db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query, CT_USER_NAME, "U", DB_AUTH_SELECT);
 
 
   {
@@ -7735,7 +7800,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -7762,7 +7827,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -7830,7 +7895,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
  *   continue_walk(in):
  *
  */
-static PT_NODE *
+PT_NODE *
 pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   UINTPTR spec_id = *(UINTPTR *) void_arg;
@@ -10070,6 +10135,12 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
 
+  if (size >= PARTITION_VARCHAR_LEN)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_NAME_TOO_LONG);
+      return NULL;
+    }
+
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)
     {
@@ -10471,6 +10542,11 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	  *next_len = 12;
 	  return DB_DEFAULT_SYSDATETIME;
 	}
+      if (str_size >= 10 && strncmp (str, "SYS_GUID()", 10) == 0)
+	{
+	  *next_len = 10;
+	  return DB_DEFAULT_SYSGUID;
+	}
       if (str_size >= 8)
 	{
 	  if (strncmp (str, "SYS_DATE", 8) == 0)
@@ -10522,6 +10598,16 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	{
 	  *next_len = 16;
 	  return DB_DEFAULT_UNIX_TIMESTAMP;
+	}
+      if (str_size >= 7 && strncmp (str, "UUID(4)", 7) == 0)
+	{
+	  *next_len = 7;
+	  return DB_DEFAULT_UUIDV4;
+	}
+      if (str_size >= 7 && strncmp (str, "UUID(7)", 7) == 0)
+	{
+	  *next_len = 7;
+	  return DB_DEFAULT_UUIDV7;
 	}
       if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
 	{
@@ -10586,6 +10672,65 @@ pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str,
 
       default_expr->default_expr_format = strndup (formatted_string, remaining_len);
     }
+}
+
+PT_NODE *
+pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_DEFAULT_EXPR * default_expr)
+{
+  PT_NODE *default_value = NULL;
+
+  assert (default_expr != NULL);
+  assert (default_expr->default_expr_type != DB_DEFAULT_NONE);
+
+  default_value = pt_make_expression_default_expr (parser, NULL, default_expr->default_expr_type);
+  if (default_value == NULL)
+    {
+      return NULL;
+    }
+
+  if (default_expr->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+    {
+      return default_value;
+    }
+
+  if (default_expr->default_expr_op == T_TO_CHAR)
+    {
+      PT_NODE *arg1, *arg2, *arg3;
+      bool has_user_format = (default_expr->default_expr_format != NULL);
+      const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+      int flag = 0;
+
+      arg1 = default_value;
+      arg2 = pt_make_string_value (parser, default_expr->default_expr_format);
+      if (arg2 == NULL)
+	{
+	  parser_free_tree (parser, default_value);
+	  return NULL;
+	}
+
+      arg3 = parser_new_node (parser, PT_VALUE);
+      if (arg3 == NULL)
+	{
+	  parser_free_tree (parser, default_value);
+	  parser_free_tree (parser, arg2);
+	  return NULL;
+	}
+
+      arg3->type_enum = PT_TYPE_INTEGER;
+      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+      arg3->info.value.data_value.i = (long) flag;
+
+      default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+      if (default_value == NULL)
+	{
+	  parser_free_tree (parser, arg1);
+	  parser_free_tree (parser, arg2);
+	  parser_free_tree (parser, arg3);
+	  return NULL;
+	}
+    }
+
+  return default_value;
 }
 
 /*
@@ -10844,12 +10989,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_CREATE_ENTITY:
       {
-	bool is_dba_group_member = au_is_dba_group_member (Au_user);
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node)))
+	    && !sm_is_catcls_disabled ())
 	  {
-	    int error = NO_ERROR;
-	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
-	    PT_ERRORc (parser, node, er_msg ());
+	    PT_ERROR (parser, node, "It is not allowed to create a table/view with a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -10858,9 +11001,9 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_RENAME:
       {
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))) && !sm_is_catcls_disabled ())
 	  {
-	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    PT_ERROR (parser, node, "It is not allowed to rename a table/view to a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -11024,6 +11167,53 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return pt_append_string (parser, NULL, qualifier_name);
+}
+
+/*
+ * pt_set_owner_to_table_column_type () - qualify the table name of <table>.<column>%TYPE with the owner
+ *   return: none
+ *   data_type(in/out): data type node
+ *   owner(in): owner name
+ */
+static void
+pt_set_owner_to_table_column_type (PT_NODE * data_type, const char *owner)
+{
+  if (data_type == NULL || data_type->type_enum != PT_TYPE_TABLE_COLUMN)
+    {
+      return;
+    }
+
+  PT_NODE *table_name = data_type->info.data_type.table_column->info.dot.arg1;
+  if (table_name->info.name.resolved == NULL && !sm_check_system_class_by_name (table_name->info.name.original))
+    {
+      table_name->info.name.resolved = owner;
+    }
+}
+
+/*
+ * pt_set_sp_owner_to_table_column_types () - qualify the table names of <table>.<column>%TYPE
+ *   in the parameter and return types with the owner of the stored procedure
+ *   return: none
+ *   sp_node(in/out): create procedure/function statement
+ *
+ * Without this, the unqualified table names are qualified with the current user later
+ * in pt_set_user_specified_name (), which is wrong when the SP owner is not the current user.
+ */
+void
+pt_set_sp_owner_to_table_column_types (PT_NODE * sp_node)
+{
+  const char *sp_owner = sp_node->info.sp.name->info.name.resolved;
+  if (sp_owner == NULL)
+    {
+      /* the SP owner is the current user, which is the same as the default qualification */
+      return;
+    }
+
+  for (PT_NODE * param = sp_node->info.sp.param_list; param; param = param->next)
+    {
+      pt_set_owner_to_table_column_type (param->data_type, sp_owner);
+    }
+  pt_set_owner_to_table_column_type (sp_node->info.sp.ret_data_type, sp_owner);
 }
 
 /*
@@ -11195,6 +11385,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   PARSER_VARCHAR *vq = NULL;
   char *name_ptr = NULL;
   char *owner_ptr = NULL;
+  bool owner_is_defaulted = false;
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
 
@@ -11266,51 +11457,87 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  for (int i = 0; i < snl->server_node_cnt; i++)
+
+  if (name_ptr == NULL)
     {
-      int node_cnt = 0;
+      return node;		/* no server name: nothing to compare against or to store */
+    }
 
-      if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
+  /* An unqualified server reference implicitly resolves to the current session user, the same way
+   * server_find() in execute_statement.c defaults an omitted owner at execution time, so "srv" and
+   * "dba.srv" name one server when dba is the current user.  Defaulting it once here, before the
+   * duplicate scan and before the reference is stored, normally leaves every stored entry
+   * owner-qualified, so that name and owner together decide a match.  It is only "normally"
+   * because au_get_current_user_name () can fail, and an entry defaulted by a failed call stays
+   * unqualified -- the loop below handles that.  The name is owned by this call from this point
+   * on and is released at "end", which every path below goes through. */
+  if (owner_ptr == NULL)
+    {
+      owner_ptr = (char *) au_get_current_user_name ();
+      owner_is_defaulted = (owner_ptr != NULL);
+    }
+
+  for (int i = 0; i < snl->stored_cnt; i++)
+    {
+      bool is_duplicate;
+
+      if (strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
 	{
-	  node_cnt++;
+	  continue;		/* different server name: keep scanning */
 	}
 
-      if (owner_ptr == NULL && snl->server[i]->next == NULL)
+      if (owner_ptr != NULL && snl->server[i]->next != NULL)
 	{
-	  snl->server_node_cnt += node_cnt;
-	  return node;
+	  is_duplicate = (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) == 0);
+	}
+      else
+	{
+	  /* One or both sides carry no owner, meaning the defaulting was a no-op there because the
+	   * current user name could not be resolved.  Two unqualified references still name one
+	   * server; when only one side is unqualified there is nothing left to compare it against,
+	   * so leave the pair distinct rather than guess. */
+	  is_duplicate = (owner_ptr == NULL && snl->server[i]->next == NULL);
 	}
 
-      if (owner_ptr && snl->server[i]->next)
+      if (is_duplicate)
 	{
-	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
-	    {
-	      node_cnt++;
-	    }
-	  snl->server_node_cnt += node_cnt;
-	  return node;
+	  goto end;
 	}
     }
 
-  if (name_ptr != NULL)
+  if (snl->stored_cnt >= (int) (sizeof (snl->server) / sizeof (snl->server[0])))
     {
-      new_name = parser_new_node (parser, PT_NAME);
-      new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
-      if (owner_ptr)
-	{
-	  new_owner = parser_new_node (parser, PT_NAME);
-	  new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
-	  new_name->next = new_owner;
+      /* slots full (3rd+ distinct remote): count only, no out-of-bounds store. Keep walking (not
+       * PT_STOP_WALK) so any local spec later in the same FROM-list is still visited and counted
+       * into local_cnt; otherwise pt_convert_dblink_dml_query's local_cnt>0 check is skipped and
+       * the wrong rejection message (multi-remote instead of local-mixed-remote) is raised. */
+      snl->distinct_cnt++;
+      goto end;
+    }
 
-	  vq = pt_append_nulstring (parser, vq, owner_ptr);
-	  vq = pt_append_bytes (parser, vq, ".", 1);
-	}
-      vq = pt_append_nulstring (parser, vq, name_ptr);
+  new_name = parser_new_node (parser, PT_NAME);
+  new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
+  if (owner_ptr)
+    {
+      new_owner = parser_new_node (parser, PT_NAME);
+      new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
+      new_name->next = new_owner;
 
-      snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
-      snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
-      snl->server[snl->server_node_cnt] = new_name;
-      snl->server_node_cnt++;
+      vq = pt_append_nulstring (parser, vq, owner_ptr);
+      vq = pt_append_bytes (parser, vq, ".", 1);
+    }
+  vq = pt_append_nulstring (parser, vq, name_ptr);
+
+  snl->len[snl->stored_cnt] = (int) strlen ((char *) vq->bytes);
+  snl->server_full_name[snl->stored_cnt] = (char *) vq->bytes;
+  snl->server[snl->stored_cnt] = new_name;
+  snl->stored_cnt++;
+  snl->distinct_cnt++;		/* a store always means exactly one new distinct server (lockstep) */
+
+end:
+  if (owner_is_defaulted)
+    {
+      db_string_free (owner_ptr);
     }
 
   return node;
@@ -11467,6 +11694,11 @@ find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
 #endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
+/* not migrated to stored_cnt/distinct_cnt (CBRD-26966): dead code, excluded from the build.
+ * if ever revived, its server_node_cnt uses below must become stored_cnt (array bound), and the
+ * server_full_name matching below must stop assuming the stored name is what the user typed:
+ * pt_get_server_name_list now defaults an omitted owner to the current user before storing, so
+ * "tbl@srv" is recorded as "U1.srv" and no longer matches the text that follows '@'. */
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
@@ -11731,10 +11963,70 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
+/* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
+ *
+ * Each value is printed into the statement as written, so only a literal the remote reads the same way is
+ * accepted.  Keeping a local table out of the clause is not this test's job: pt_convert_dblink_dml_query ()
+ * refuses one whatever this test answers, so widening it cannot let a local table through.
+ */
+static bool
+pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
+{
+  PT_NODE *assign, *lhs, *rhs;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
+	{
+	  return false;
+	}
+
+      lhs = assign->info.expr.arg1;
+      if (lhs == NULL || lhs->node_type != PT_NAME || lhs->info.name.original == NULL
+	  || lhs->info.name.original[0] == '\0')
+	{
+	  return false;
+	}
+
+      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
+      rhs = assign->info.expr.arg2;
+      if (rhs != NULL && rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_UNARY_MINUS)
+	{
+	  rhs = rhs->info.expr.arg1;
+	  if (rhs == NULL || !PT_IS_NUMERIC_TYPE (rhs->type_enum))
+	    {
+	      return false;
+	    }
+	}
+
+      if (rhs == NULL || rhs->node_type != PT_VALUE)
+	{
+	  return false;
+	}
+
+      /* a braced container and a parenthesized list are value nodes too, and their elements are
+       * ordinary expressions, so name the types that may go rather than the ones that may not */
+      if (!(PT_IS_NUMERIC_TYPE (rhs->type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (rhs->type_enum)
+	    || PT_IS_DATE_TIME_TYPE (rhs->type_enum) || rhs->type_enum == PT_TYPE_NULL))
+	{
+	  return false;
+	}
+
+      /* an introducer or a COLLATE modifier goes out as written, and the remote need not read it alike */
+      if (rhs->info.value.has_cs_introducer || rhs->info.value.print_charset || rhs->info.value.print_collation
+	  || rhs->info.value.coll_modifier != 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 static void
 pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  PT_NODE *insert, *spec;
+  PT_NODE *spec;
   int remote_ins = 0;
   bool is_insert = true;
 
@@ -11750,10 +12042,353 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       remote_ins = 1;
     }
 
+  /* remote INSERT / REPLACE SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
+   *
+   * REPLACE INTO ... SELECT takes the same sink. The sink sends one statement per source row and
+   * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
+   * dblink_dml_open prepares; the values travel the same way.
+   *
+   * ON DUPLICATE KEY UPDATE rides along when every assignment can be written out. One that cannot
+   * keeps the whole statement out of the sink, and it falls through to the mixed local/remote
+   * rejection. */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
+      && pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
+    {
+      snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
+    }
+
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
 
   return;
 }
+
+/* ==========================================================================================================
+ * remote DELETE + local subquery carve-out -- shape gate, same-server conversion, diagnostics.
+ * Entry: pt_dblink_delete_where_is_inscope (from pt_convert_dblink_delete_query),
+ *        pt_dblink_delete_settle_sink (from pt_convert_dblink_dml_query).
+ * ========================================================================================================== */
+
+/* true iff cond is a pushable subquery predicate: col IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp (subquery).
+ * Each admitted shape is satisfied by pushing the local values one at a time and letting the remote compare
+ * each; ALL is not (it needs a reduction ordered by the remote column, not visible here).
+ * Shape only; execution is in XASL gen. */
+static bool
+pt_dblink_delete_is_pushable_pred (PT_NODE * cond)
+{
+  PT_NODE *arg2;
+
+  if (cond == NULL || cond->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  switch (cond->info.expr.op)
+    {
+    case PT_IS_IN:		/* col IN (subquery) */
+    case PT_EQ_SOME:		/* col {= | <> | < | > | <= | >=} ANY (subquery) */
+    case PT_NE_SOME:
+    case PT_LT_SOME:
+    case PT_GT_SOME:
+    case PT_LE_SOME:
+    case PT_GE_SOME:
+    case PT_EQ:		/* scalar: col {= | <> | < | > | <= | >=} (subquery) */
+    case PT_NE:
+    case PT_LT:
+    case PT_GT:
+    case PT_LE:
+    case PT_GE:
+      break;
+    default:
+      return false;
+    }
+
+  arg2 = cond->info.expr.arg2;
+  if (arg2 == NULL || !PT_IS_QUERY (arg2))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_dblink_find_remote_spec () - walk pre: set *arg when a remote (tbl@srv) spec remains.
+ *   Same-server rewrite turns those into dblink derived tables. Name resolution leaves flat_entity_list /
+ *   spec.id unset on a spec expecting that rewrite, so a leftover reaches the optimizer half-built and crashes.
+ */
+static PT_NODE *
+pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SPEC && node->info.spec.remote_server_name != NULL)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_dblink_delete_target_range_name () - name the DELETE target can be qualified with: its alias when one is
+ *   declared, otherwise the table name (declaring an alias replaces the table name as the correlation name).
+ */
+static const char *
+pt_dblink_delete_target_range_name (PT_NODE * spec)
+{
+  if (spec == NULL)
+    {
+      return NULL;
+    }
+
+  if (spec->info.spec.range_var != NULL && spec->info.spec.range_var->node_type == PT_NAME)
+    {
+      return spec->info.spec.range_var->info.name.original;
+    }
+
+  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME)
+    {
+      return spec->info.spec.entity_name->info.name.original;
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_dblink_delete_check_qualifier () - true when the LHS is unqualified or names the DELETE target.
+ *   *bad_qualifier is the bad qualifier, or NULL for a nested a.b.c shape.
+ *
+ *   Name resolution cannot do this for a remote spec -- pt_find_name_in_spec() reports every name as found,
+ *   the local server holding no schema for the remote table -- while XASL keeps only the trailing attribute
+ *   of a dotted name. An unverified qualifier deletes against whatever that attribute happens to name.
+ */
+static bool
+pt_dblink_delete_check_qualifier (PT_NODE * node, const char **bad_qualifier)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+  PT_NODE *arg1, *qual;
+  const char *range_name;
+
+  *bad_qualifier = NULL;
+
+  /* The gate established a single pushable predicate, always a PT_EXPR. A mismatch means the gate and this
+   * check have drifted -- DBLINK_REMOTE_SINK_* leaves room for an UPDATE extension that would set the flag
+   * from a second site. Reject rather than skip: an unverified qualifier deletes remote rows the
+   * statement never named. */
+  assert (cond != NULL && cond->node_type == PT_EXPR);
+  if (cond == NULL || cond->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  arg1 = cond->info.expr.arg1;
+  if (arg1 == NULL || arg1->node_type != PT_DOT_)
+    {
+      return true;		/* unqualified -- nothing to compare */
+    }
+
+  qual = arg1->info.dot.arg1;
+  if (qual == NULL || qual->node_type != PT_NAME)
+    {
+      return false;		/* nested qualifier: not a plain name, cannot be verified */
+    }
+
+  *bad_qualifier = qual->info.name.original;
+
+  range_name = pt_dblink_delete_target_range_name (node->info.delete_.spec);
+  if (range_name != NULL && intl_identifier_casecmp (*bad_qualifier, range_name) == 0)
+    {
+      *bad_qualifier = NULL;
+      return true;
+    }
+
+  return false;
+}
+
+/* true iff DELETE WHERE is a single pushable predicate (see pt_dblink_delete_is_pushable_pred).
+ * Correlation / row subquery are not decided here (correlation_level is 0 on a DELETE WHERE subquery), but
+ * downstream: pt_dblink_delete_corr_ref() (semantic_check.c) rejects correlated ones,
+ * pt_to_delete_xasl_remote_subquery() (xasl_generation.c) rejects row/multi-column ones. */
+static bool
+pt_dblink_delete_where_is_inscope (PT_NODE * node)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+
+  if (cond == NULL || cond->next != NULL)
+    {
+      return false;		/* defensive: carve-out runs pre-CNF, so a cond->next list is unexpected here */
+    }
+
+  return pt_dblink_delete_is_pushable_pred (cond);
+}
+
+/* true when WHERE still holds an unrewritten remote (tbl@srv) spec. Re-checked (conversion changes it). */
+static bool
+pt_dblink_delete_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool found = false;
+
+  parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &found, NULL, NULL);
+
+  return found;
+}
+
+/* WHERE-subquery remote-server count delta (same sub_sel_server_cnt as INSERT SELECT).
+ * May overlap the caller's full walk. Harmless: server_cnt is only tested for having changed, local_cnt for
+ * being nonzero, and distinct_cnt (tested == 1) cannot be inflated -- pt_get_server_name_list skips the
+ * increment when the name is already stored. */
+static int
+pt_dblink_delete_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int server_cnt_before)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+
+  if (cond == NULL || cond->node_type != PT_EXPR)
+    {
+      return 0;
+    }
+
+  parser_walk_tree (parser, cond->info.expr.arg2, pt_get_server_name_list, snl, NULL, NULL);
+
+  return snl->server_cnt - server_cnt_before;
+}
+
+/* Same-server mixed WHERE subquery: rewrite embedded remote specs to dblink derived tables. No runtime
+ * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
+ * Same idea as INSERT SELECT; walk is WHERE subquery only. Clears sink_kind when not local-mixed. */
+static void
+pt_dblink_delete_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+  bool had_dblink_before;
+
+  if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1))
+    {
+      snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+      return;
+    }
+
+  had_dblink_before = snl->has_dblink_query;
+
+  if (cond != NULL && cond->node_type == PT_EXPR)
+    {
+      parser_walk_tree (parser, cond->info.expr.arg2, pt_check_sub_query_spec, snl, NULL, NULL);
+    }
+
+  /* Rewrite flips has_dblink_query (derived dblink looks like dblink()). Restore unless one was already present;
+   * DELETE is not exempt from the caller's has_dblink_query rejection (INSERT SELECT is). */
+  if (!had_dblink_before)
+    {
+      snl->has_dblink_query = false;
+    }
+}
+
+/* Post-confirmation rejects (LIMIT, bad qualifier). Not at shape gate (same-server all-remote shares that path).
+ * return: true if an error was raised */
+static bool
+pt_dblink_delete_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
+{
+  const char *bad_qualifier;
+  char errmsg[256];
+
+  if (node->info.delete_.limit != NULL)
+    {
+      /* Per-value remote DELETEs: no single statement to LIMIT; also invisible until semantic check. */
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery does not support LIMIT");
+      return true;
+    }
+
+  if (!pt_dblink_delete_check_qualifier (node, &bad_qualifier))
+    {
+      if (bad_qualifier != NULL)
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "dblink: remote DELETE with a local subquery requires the WHERE qualifier to name the "
+		    "delete target, but \"%s\" does not", bad_qualifier);
+	}
+      else
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "dblink: remote DELETE with a local subquery does not support a multi-part qualifier "
+		    "on the WHERE predicate");
+	}
+      /* PT_ERRORc, unlike the literal-message PT_ERROR above: errmsg carries bad_qualifier, and PT_ERROR
+       * would take it as the format string. A bracketed identifier may hold % directives. */
+      PT_ERRORc (parser, upd_spec, errmsg);
+      return true;
+    }
+
+  return false;
+}
+
+/* Carve-out decline reasons, ahead of the generic catch-all (caller requires local_cnt > 0).
+ * return: true if an error was raised */
+static bool
+pt_dblink_delete_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
+{
+  if (node->info.delete_.spec->next != NULL)
+    {
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery supports only a single " "FROM table");
+      return true;
+    }
+
+  if (pt_dblink_delete_has_remote_spec (parser, node))
+    {
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery only supports a WHERE "
+		"subquery that mixes local tables with a remote table on the delete target's own server");
+      return true;
+    }
+
+  return false;
+}
+
+/* Settle carve-out: convert same-server mix, keep sink only if no remote left, then diagnose.
+ * After counter walks, before generic local-mixed-remote rejection.
+ * return: true if an error was raised */
+static bool
+pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
+			      int sub_sel_server_cnt, int local_upd, int remote_upd)
+{
+  /* Same-server mixed WHERE subquery: convert the embedded remote specs first. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
+    {
+      pt_dblink_delete_convert_specs (parser, node, snl);
+    }
+
+  /* Keep carve-out only if no remote spec remains (same-server convert only). Else clear for
+   * all-remote (full pushdown) or multi-remote/dblink(). Counters alone are not enough -- walk WHERE. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+    {
+      /* Single FROM required (only set in pt_convert_dblink_delete_query); assert for a future second set site. */
+      assert (node->info.delete_.spec->next == NULL);
+
+      if (!pt_dblink_delete_has_remote_spec (parser, node) && snl->local_cnt > 0 && snl->distinct_cnt == 1
+	  && !snl->has_dblink_query)
+	{
+	  if (pt_dblink_delete_reject_confirmed (parser, node, upd_spec))
+	    {
+	      return true;
+	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+    }
+
+  /* Decline diagnostics ahead of the generic catch-all. */
+  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
+      && pt_dblink_delete_where_is_inscope (node) && pt_dblink_delete_reject_declined (parser, node, upd_spec))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/* ===== end of the remote DELETE carve-out helpers ===== */
 
 static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
@@ -11827,6 +12462,21 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       target = target->next;
     }
 
+  /* Optimistic sink: single remote DELETE target + in-scope WHERE. Refined in pt_convert_dblink_dml_query
+   * (local-only subquery keeps it; else cleared).
+   *
+   * spec->next == NULL is required too: the sink pushes a single-table DELETE, so a second FROM spec would be
+   * dropped silently and the remote rows deleted without the join the statement asks for.
+   *
+   * LIMIT and a mismatched WHERE qualifier are rejected in pt_convert_dblink_dml_query, not here: this gate
+   * cannot yet tell the local-subquery form from a same-server all-remote one, and both keep working through
+   * full pushdown, so diagnosing them here would break them. */
+  if (remote_del == 1 && local_del == 0 && node->info.delete_.spec->next == NULL
+      && pt_dblink_delete_where_is_inscope (node))
+    {
+      snl->sink_kind = DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ;
+    }
+
   pt_convert_dblink_dml_query (parser, node, local_del, remote_del, snl);
 
   return;
@@ -11889,6 +12539,13 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  spec->info.spec.meta_class = PT_CLASS;
 	  spec->info.spec.remote_server_name = list->info.spec.remote_server_name;
 	  spec->info.spec.entity_name = list->info.spec.entity_name;
+	  /* entity_name moves inside, so an unaliased spec would keep no name of its own and only answer to
+	   * the exposed name generated later. Anything resolving a qualifier reads range_var ?: entity_name,
+	   * so leave the table name there -- a copy, since the inner spec now owns the original. */
+	  if (list->info.spec.range_var == NULL)
+	    {
+	      list->info.spec.range_var = parser_copy_tree (parser, list->info.spec.entity_name);
+	    }
 	  list->info.spec.remote_server_name = NULL;
 	  list->info.spec.entity_name = NULL;
 	  sub_sel->info.query.q.select.from = spec;
@@ -11910,12 +12567,69 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+/*
+ * pt_setup_dblink_sink_spec () - Build PT_DBLINK_TABLE_DML sink on spec (INSERT SELECT / DELETE local-subq).
+ *   Allocates wrapper, peels owner (server->next), frees snl server nodes, re-resolves connection.
+ *   On missing remote_server_name sets a parser error and returns (every caller returns right after this).
+ */
+static void
+pt_setup_dblink_sink_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *server = spec->info.spec.remote_server_name;
+  PT_NODE *ct;
+  int i;
+
+  if (server == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+      return;
+    }
+  if (server->node_type == PT_DBLINK_TABLE_DML)
+    {
+      return;			/* already converted */
+    }
+
+  ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+  if (!ct)
+    {
+      PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      return;
+    }
+
+  ct->info.dblink_table.is_name = true;
+  ct->info.dblink_table.conn = server;
+  if (server->next)
+    {
+      assert (server->next->node_type == PT_NAME);
+      ct->info.dblink_table.owner_name = server->next;
+      server->next = NULL;
+    }
+
+  for (i = 0; i < snl->stored_cnt; i++)
+    {
+      if (snl->server[i]->next)
+	{
+	  parser_free_node (parser, snl->server[i]->next);
+	}
+      parser_free_node (parser, snl->server[i]);
+    }
+
+  spec->info.spec.remote_server_name = ct;
+  pt_resolve_server_names (parser, spec);
+}
+
+/*
+ * pt_convert_dblink_dml_query () - Classify remote-touching DML as local, value-push sink, or whole remote qstr.
+ *   Fits none -> reject. local_upd/remote_upd: 0/1 for INSERT/MERGE, counts for DELETE/UPDATE (hence checks vs 1).
+ */
 static void
 pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
+  int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
+  int odku_local_cnt = 0;	/* local table count found in the ON DUPLICATE KEY UPDATE clause */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -11940,10 +12654,31 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
 	    }
 	}
+      sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
+
+      /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
+       * Its local specs still go into local_cnt and are also counted on their own in odku_local_cnt: a sink
+       * statement reads a local source by design and so always has local_cnt above zero, so local_cnt alone
+       * cannot tell whether the ON DUPLICATE KEY UPDATE clause holds a local table too.  Walked after
+       * sub_sel_server_cnt so that count keeps meaning "remote servers in the SELECT source", and for remote
+       * targets only: the local-target callback rewrites specs rather than counting them, which would newly
+       * convert them. */
+      if (remote_upd > 0 && node->info.insert.odku_assignments)
+	{
+	  int local_cnt_before = snl->local_cnt;
+
+	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
+	  odku_local_cnt = snl->local_cnt - local_cnt_before;
+	}
+
       sub_sel = NULL;
       break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
+      if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+	{
+	  sub_sel_server_cnt = pt_dblink_delete_subq_servers (parser, node, snl, tmp_server_cnt);
+	}
       break;
     case PT_UPDATE:
       upd_spec = node->info.update.spec;
@@ -11956,11 +12691,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (local_upd > 0 && upd_spec)
-    {
-      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-
   if (into_spec)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11968,6 +12698,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (upd_spec)
     {
+      if (local_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
+	}
+      else if (remote_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 
@@ -11976,27 +12715,90 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0)
+  /* A remote SELECT source means this is not the remote<-local sink (CCI streaming) case.
+   * Drop the flag and defer to the serialized pushdown path below (qstr is set, then
+   * pt_to_xasl_for_dblink): a single shared remote server pushes the whole INSERT ... SELECT
+   * down to that server, while local-mixed and multi-remote sources fall through to their
+   * existing rejections. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT && sub_sel_server_cnt > 0)
     {
-      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
+      if (snl->local_cnt > 0 && snl->distinct_cnt == 1)
+	{
+	  /* Same-server mixed source (local + remote, all on the target server). Full pushdown is
+	   * impossible (the remote server has no local table) but the CCI sink can run it: rewrite
+	   * the remote source spec(s) into dblink scans. The derived sub-queries are marked as
+	   * sub-queries (so XASL generation gathers them into aptr_list and executes them) by the
+	   * canonical mq_translate run on the SELECT subquery in pt_semantic_check (semantic_check.c).
+	   * Cross-server / multi-remote mixed sources are left to the existing rejections below
+	   * (distinct_cnt >= 2). */
+	  PT_NODE *vlist;
+	  for (vlist = node->info.insert.value_clauses->info.node_list.list; vlist != NULL; vlist = vlist->next)
+	    {
+	      parser_walk_tree (parser, vlist, pt_check_sub_query_spec, snl, NULL, NULL);
+	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+    }
+
+  /* Settle the remote DELETE carve-out -- convert, keep or clear, and diagnose -- in one place, before the
+   * generic rejections below. */
+  if (pt_dblink_delete_settle_sink (parser, node, snl, upd_spec, sub_sel_server_cnt, local_upd, remote_upd))
+    {
+      return;
+    }
+
+  /* Two rejections share this message:
+   *   - odku_local_cnt > 0: a local table in the ON DUPLICATE KEY UPDATE clause, refused for every remote
+   *     target, sink or not -- the clause goes out as text and the remote would resolve that name against
+   *     its own tables.
+   *   - local_cnt > 0 without a sink: any other local reference -- a sink statement reads a local source by
+   *     design, so this one cannot apply to it. */
+  if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
+    {
+      PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
+		"dblink: this combination of local and remote references is not supported (some forms are, such "
+		"as INSERT ... SELECT into a remote table from local data, or a remote DELETE with a local "
+		"WHERE subquery)");
       return;
     }
 
   if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
     {
-      /* local update only */
+      /* local only -- reached after the mixed rejection above, which requires remote_upd > 0 */
       return;
     }
 
-  if (snl->has_dblink_query)
+  if (snl->has_dblink_query && snl->sink_kind != DBLINK_REMOTE_SINK_INSERT_SELECT)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: remote DML has DBLINK query is not allowed");
       return;
     }
 
-  if (snl->server_node_cnt >= 2 && remote_upd > 0)
+  if (snl->distinct_cnt >= 2)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: multi-remote DML is not allowed");
+      return;
+    }
+
+  /* remote DELETE + pure-local subquery: set up the value-push sink. Like the INSERT SELECT sink, skip the
+   * DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for XASL
+   * generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
+      return;
+    }
+
+  /* INSERT SELECT: skip DML text serialization; preserve value_clauses for XASL generation.
+   * Set up connection info (ct + pt_resolve_server_names) — runtime inserts via CCI bind. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, into_spec, snl);
       return;
     }
 
@@ -12140,9 +12942,9 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   ct->info.dblink_table.qstr = val;
 
-  for (i = 0; i < snl->server_node_cnt; i++)
+  for (i = 0; i < snl->stored_cnt; i++)
     {
-      if (snl->server_node_cnt != 1)
+      if (snl->stored_cnt != 1)
 	{
 	  if (ct->info.dblink_table.owner_list == NULL && snl->server[i]->next)
 	    {
@@ -12311,7 +13113,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       // Note that this is not the case for Static SQL SELECT statements.
       if (parser->flag.is_parsing_static_sql)
 	{
-	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	  if (snl.has_dblink_query || snl.distinct_cnt > 0)
 	    {
 	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
 	      return;
@@ -12341,7 +13143,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_CREATE_ENTITY:
     case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
-      if (snl.has_dblink_query || snl.server_node_cnt > 0)
+      if (snl.has_dblink_query || snl.distinct_cnt > 0)
 	{
 	  parser->flag.dblink_skip_implicit_serial_qualifier = 1;
 	}
@@ -12352,7 +13154,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return;
     }
 
-  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+  if (snl.has_dblink_query || snl.distinct_cnt > 0)
     {
       parser->flag.dblink_skip_implicit_serial_qualifier = 1;
     }
@@ -12382,9 +13184,11 @@ extern PT_NODE *
 pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
   PT_NODE *node = parser_new_node (parser, PT_DATA_DEFAULT);
+
   if (node)
     {
       PT_NODE *def;
+
       node->info.data_default.default_value = expr;
       node->info.data_default.shared = PT_DEFAULT;
 
@@ -12447,6 +13251,48 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      break;
 	    case PT_UNIX_TIMESTAMP:
 	      node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+	      break;
+	    case PT_SYS_GUID:
+	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSGUID;
+	      break;
+	    case PT_UUID:
+	      {
+		PT_NODE *uuid_arg = def->info.expr.arg1;
+
+		if (uuid_arg == NULL)
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+		  }
+		else if (uuid_arg->node_type == PT_VALUE && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
+		  {
+		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
+		      {
+			if (uuid_arg->info.value.data_value.i == 0 || uuid_arg->info.value.data_value.i == 4)
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+			  }
+			else if (uuid_arg->info.value.data_value.i == 7)
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
+			  }
+			else
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+			  }
+		      }
+		    else
+		      {
+			node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			PT_ERROR (parser, node, "UUID argument coercion error");
+		      }
+		  }
+		else
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+		  }
+	      }
 	      break;
 	    default:
 	      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;

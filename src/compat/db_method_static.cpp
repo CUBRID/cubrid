@@ -31,6 +31,7 @@
 #include "schema_manager.h" /* sm_issystem */
 #include "execute_schema.h"
 #include "execute_statement.h" /* do_get_serial_obj_id */
+#include "boot_cl.h" /* BOOT_IS_CLIENT_RESTARTED */
 #include "transaction_cl.h" /* tran_system_savepoint */
 #include "optimizer.h" /* qo_plan_set_cost_fn */
 #include "object_print.h" /* help_print_info */
@@ -569,9 +570,9 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE *returnval, DB_VALUE *pa
 	}
 
       /* in case of SHA2, prefix is not stripped */
-      if (string != NULL && IS_ENCODED_SHA2_512 (string))
+      if (string != NULL && (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA2_512_SALT (string)))
 	{
-	  error = au_set_password_encrypt (user, string + 1 /* 1 for prefix */, 0, ENCODE_PREFIX_SHA2_512);
+	  error = au_set_password_encrypt (user, string + 1 /* 1 for prefix */, 0, string[0]);
 	}
       else
 	{
@@ -685,6 +686,18 @@ au_login_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *user, DB_VALUE *p
 {
   int error = NO_ERROR;
   char *user_name;
+
+  /* Abort any in-flight transaction before switching user (same effect as ROLLBACK before login). */
+  if (BOOT_IS_CLIENT_RESTARTED () && db_commit_is_needed())
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD, 0);
+      error = db_abort_transaction ();
+      if (error != NO_ERROR)
+	{
+	  db_make_error (returnval, error);
+	  return;
+	}
+    }
 
   if (user != NULL)
     {
@@ -1103,7 +1116,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *serial_v
   DB_IDENTIFIER serial_obj_id;
   MOP owner_mop = NULL;
   const char *serial_name = NULL;
-  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char user_specified_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
@@ -1130,7 +1143,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *serial_v
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+  sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, sizeof (user_specified_serial_name));
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, user_specified_serial_name);
   if (serial_mop == NULL)
     {

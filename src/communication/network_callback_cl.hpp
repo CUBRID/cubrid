@@ -28,8 +28,9 @@
 #include "packer.hpp" /* packing_packer */
 
 #if defined (CS_MODE)
-void xs_set_conn_info (int idx, unsigned int rc);
-unsigned int xs_get_conn_info (int idx);
+bool xs_is_in_method_rids (unsigned short rid);
+void xs_set_method_eid (int idx, unsigned int eid);
+unsigned int xs_get_method_eid (int idx);
 int xs_queue_send ();
 #endif
 

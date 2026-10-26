@@ -186,7 +186,6 @@ extern int do_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * stateme
 
 extern int do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name);
 extern bool is_stmt_based_repl_type (const PT_NODE * node);
 
 extern int do_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -209,4 +208,8 @@ extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size);
 
+
+extern int do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key);
+extern int do_create_midxkey_from_values (const DB_VALUE * values[], int value_count, SM_CLASS_CONSTRAINT * constraint,
+					  DB_VALUE * key);
 #endif /* _EXECUTE_STATEMENT_H_ */

@@ -34,6 +34,14 @@
       }
     },
     {
+      "name": "optdebug",
+      "inherits": "default",
+      "description": "Optimized-debug build (release-level optimization with asserts enabled)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "OptDebug"
+      }
+    },
+    {
       "name": "coverage",
       "inherits": "default",
       "description": "Coverage build",
@@ -63,6 +71,10 @@
     {
       "name": "debug",
       "configurePreset": "debug"
+    },
+    {
+      "name": "optdebug",
+      "configurePreset": "optdebug"
     },
     {
       "name": "coverage",

@@ -45,7 +45,7 @@
 #include "misctype_def.h"
 
 // forward definitions
-struct json_t;
+struct trace_json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -101,7 +101,7 @@ struct json_t;
 					NULL); \
 	(parser)->jmp_env_active = 0; \
 	if ((parser)->au_save) \
-	    AU_ENABLE((parser)->au_save); \
+	    AU_RESTORE((parser)->au_save); \
 	return NULL; \
       } \
         else (parser)->jmp_env_active = 1; \
@@ -480,7 +480,8 @@ struct json_t;
            (n)->info.expr.op == PT_DRAND || \
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
-           (n)->info.expr.op == PT_SYS_GUID ))
+           (n)->info.expr.op == PT_SYS_GUID || \
+           (n)->info.expr.op == PT_UUID ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -496,6 +497,13 @@ struct json_t;
 
 #define PT_SET_VALUE_QUERY(n) \
           ((n)->flag.is_value_query = 1)
+
+/* the cast the semantic check keeps over an untyped NULL to give a set operation or VALUES column the type of the
+ * other rows; the column keeps the name the NULL gave it */
+#define PT_IS_CAST_OF_UNTYPED_NULL(n) \
+          ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_CAST \
+           && PT_EXPR_INFO_IS_FLAGED ((n), PT_EXPR_INFO_CAST_SHOULD_FOLD) && (n)->flag.do_not_fold \
+           && (n)->info.expr.arg1 != NULL && (n)->info.expr.arg1->type_enum == PT_TYPE_NULL)
 
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
@@ -964,6 +972,12 @@ enum pt_custom_print
   PT_PRINT_LOWER = (0x1 << 30)
 };
 
+/* Hide terms flagged PT_EXPR_INFO_DBLINK_PUSHED (already shipped into the DBLink conn_sql, not evaluated
+ * locally) when printing CNF lists.  Set only by the plan-dump printers: the XASL cache key print must keep
+ * the term, since two queries that differ only in the pushed term's outer side would otherwise collide.
+ * Defined outside enum pt_custom_print: (0x1 << 31) does not fit the enum's underlying int. */
+#define PT_PRINT_SUPPRESS_DBLINK_PUSHED (0x80000000U)
+
 /* all statement node types should be assigned their API statement enumeration */
 enum pt_node_type
 {
@@ -991,6 +1005,9 @@ enum pt_node_type
   PT_REVOKE = CUBRID_STMT_REVOKE,
   PT_UPDATE_STATS = CUBRID_STMT_UPDATE_STATS,
   PT_GET_STATS = CUBRID_STMT_GET_STATS,
+  PT_UPDATE_HISTOGRAM = CUBRID_STMT_UPDATE_HISTOGRAM,
+  PT_SHOW_HISTOGRAM = CUBRID_STMT_SHOW_HISTOGRAM,
+  PT_DROP_HISTOGRAM = CUBRID_STMT_DROP_HISTOGRAM,
   PT_INSERT = CUBRID_STMT_INSERT,
   PT_SELECT = CUBRID_STMT_SELECT,
   PT_UPDATE = CUBRID_STMT_UPDATE,
@@ -1161,6 +1178,12 @@ enum pt_type_enum
 
   PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
   /* which can be used only in SP parameter and return types */
+
+  PT_TYPE_SYS_REFCURSOR,	/* SYS_REFCURSOR — used only in PL/CSQL SP return types.
+				   It does not appear in the statements processing logic after parsing because
+				   it is replaced by PT_TYPE_RESULTSET after some checks during parsing.
+				 */
+
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1194,7 +1217,9 @@ typedef enum
   PT_JOIN_LEFT_OUTER = 0x08,	/* 0000 1000 */
   PT_JOIN_RIGHT_OUTER = 0x10,	/* 0001 0000 */
   PT_JOIN_FULL_OUTER = 0x20,	/* 0010 0000 -- not used */
-  PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
+  PT_JOIN_UNION = 0x40,		/* 0100 0000 -- not used */
+  PT_JOIN_SEMI = 0x80,		/* 1000 0000 -- first-match, single-fetch inner */
+  PT_JOIN_ANTI = 0x100		/* 1 0000 0000 -- zero-match */
 } PT_JOIN_TYPE;
 
 typedef UINT64 PT_HINT_ENUM;
@@ -1235,17 +1260,20 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED			(1ULL << 33)	/* do not push predicates */
 #define  PT_HINT_NO_MERGE			(1ULL << 34)	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN		(1ULL << 35)	/* do not eliminate join */
-#define  PT_HINT_SAMPLING_SCAN			(1ULL << 36)	/* SELECT sampling data instead of full data */
+#define  PT_HINT_NO_UNNEST			(1ULL << 36)	/* do not unnest a subquery into a SEMI / ANTI JOIN */
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
-#define  PT_HINT_NO_PARALLEL_HEAP_SCAN		(1ULL << 40)	/* disable parallel heap scan */
+#define  PT_HINT_NO_PARALLEL_SCAN		(1ULL << 40)	/* disable parallel scan */
 #define  PT_HINT_PARALLEL			(1ULL << 41)	/* parallel query execution threads */
 #define  PT_HINT_INLINE_CTE			(1ULL << 42)	/* inline CTE */
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
-#define  PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED	(1ULL << 46)	/* keep page fixed on nl join first table heap scan */
+#define  PT_HINT_BIND_SENSITIVE		(1ULL << 46)	/* replan this statement when the bound values fall in
+							 * different histogram territory (per-statement form of
+							 * plan_cache_bind_sensitivity) */
+#define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
 
 /* Codes for error messages */
 typedef enum
@@ -1303,6 +1331,7 @@ typedef enum
   PT_RENAME_INDEX,
 #endif
   PT_REBUILD_INDEX,
+  PT_COMPACT_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
   PT_CHANGE_COLUMN_COMMENT,
@@ -1479,6 +1508,10 @@ typedef enum
   PT_TYPEOF,
   PT_FUNCTION_HOLDER,		/* special operator : wrapper for PT_FUNCTION node */
   PT_INDEX_CARDINALITY,
+  PT_ESTIMATED_TABLE_ROWS,
+  PT_ESTIMATED_AVG_ROW_LENGTH,
+  PT_ESTIMATED_DATA_LENGTH,
+  PT_ESTIMATED_DATA_FREE,
   PT_DEFINE_VARIABLE,
   PT_EVALUATE_VARIABLE,
   PT_EXEC_STATS,
@@ -1512,6 +1545,8 @@ typedef enum
   PT_SLEEP,
 
   PT_SYS_GUID,
+  PT_UUID,
+  PT_UUID_FORMAT,
 
   PT_DBTIMEZONE,
   PT_SESSIONTIMEZONE,
@@ -1524,6 +1559,7 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_COLLECTION_TO_STRING,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1577,10 +1613,11 @@ typedef enum
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
-  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
+  /* 0x2000 was PT_SPEC_FLAG_SAMPLING_SCAN, removed with the query-based statistics sampling path */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
-  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000,	/* spec for not for parallel heap scan */
-  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000	/* spec for setted number of parallel query execution threads */
+  PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
+  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -1605,11 +1642,18 @@ typedef enum
  * Type definitions
  */
 
+typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree.c */
+
 typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
 
 typedef struct parser_node PT_NODE;
+
+/* node-cardinality watch state of a statement, defined in histogram_cl.hpp; the parse tree only
+ * carries the pointer (allocated with parser_alloc (), so it lives and dies with the parser). */
+struct bind_watch_state;
+typedef struct bind_watch_state BIND_WATCH_STATE;
 typedef struct pt_alter_info PT_ALTER_INFO;
 typedef struct pt_alter_user_info PT_ALTER_USER_INFO;
 typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
@@ -1621,6 +1665,7 @@ typedef struct pt_auth_cmd_info PT_AUTH_CMD_INFO;
 typedef struct pt_commit_work_info PT_COMMIT_WORK_INFO;
 typedef struct pt_create_entity_info PT_CREATE_ENTITY_INFO;
 typedef struct pt_index_info PT_INDEX_INFO;
+typedef struct pt_histogram_info PT_HISTOGRAM_INFO;
 typedef struct pt_create_user_info PT_CREATE_USER_INFO;
 typedef struct pt_create_trigger_info PT_CREATE_TRIGGER_INFO;
 typedef struct pt_cte_info PT_CTE_INFO;
@@ -1893,6 +1938,7 @@ struct pt_alter_user_info
   PT_NODE *comment;		/* PT_VALUE */
   PT_ALTER_CODE code;		/* PT_ADD_MEMBERS, PT_DROP_MEMBERS */
   PT_NODE *members;		/* PT_NAME list */
+  PT_MISC_TYPE login_capability;	/* PT_LOGIN, PT_NOLOGIN, PT_MISC_DUMMY */
 };
 
 /* Info for ALTER_TRIGGER */
@@ -1911,6 +1957,13 @@ struct pt_attach_info
   int trans_id;			/* transaction id */
 };
 
+typedef enum
+{
+  PT_ATTR_INVISIBLE_UNSET,
+  PT_ATTR_VISIBLE,
+  PT_ATTR_INVISIBLE
+} PT_ATTR_INVISIBLE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -1923,6 +1976,7 @@ struct pt_attr_def_info
   PT_MISC_TYPE attr_type;	/* PT_NORMAL or PT_META */
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
+  PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */
@@ -1980,6 +2034,16 @@ struct pt_create_entity_info
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
 };
 
+/* ANALYZE UPDATE/DROP HISTOGRAM INFO */
+struct pt_histogram_info
+{
+  PT_NODE *target_table_spec;	/* PT_SPEC */
+  PT_NODE *target_columns;	/* PT_COLUMN_LIST (PT_NAME) */
+  int bucket_count;		/* bucket count */
+  int with_fullscan;		/* with fullscan */
+  int random_seed;		/* 1 iff WITH RANDOM SEED */
+};
+
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
@@ -2002,7 +2066,7 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-  short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+  int fill_factor;		/* ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]: target overflow page fill ratio (%) */
 };
 
 /* CREATE USER INFO */
@@ -2013,6 +2077,7 @@ struct pt_create_user_info
   PT_NODE *groups;		/* PT_NAME list */
   PT_NODE *members;		/* PT_NAME list */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_MISC_TYPE login_capability;	/* PT_LOGIN, PT_NOLOGIN, PT_MISC_DUMMY */
 };
 
 /* CREATE TRIGGER INFO */
@@ -2096,6 +2161,8 @@ struct pt_parts_info
   PT_NODE *comment;		/* PT_VALUE */
 };
 #define PARTITIONED_SUB_CLASS_TAG "__p__"
+#define PARTITIONED_SUB_CLASS_TAG_LEN (sizeof(PARTITIONED_SUB_CLASS_TAG) - 1)
+
 
 /* Info for DATA_TYPE node */
 struct pt_data_type_info
@@ -2138,6 +2205,8 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2307,6 +2376,22 @@ struct pt_expr_info
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
 #define PT_EXPR_INFO_REMOVABLE 1048576	/* 0x100000, expression is removable */
+#define PT_EXPR_INFO_DBLINK_PUSHED 2097152	/* 0x200000, correlated equality shipped into the DBLink conn_sql
+						 * ("WHERE col = ?").  The term must stay in the tree - the planner
+						 * re-derives correlation by scanning the tree for outer references
+						 * (get_local_subqueries), and a subquery left with none is reset to
+						 * uncorrelated and pre-executed only once - but the term is excluded
+						 * from the local access_pred and hidden from the plan dump. */
+#define PT_EXPR_INFO_LIKE_DERIVED_RANGE 4194304	/* 0x400000, range derived from a prefix LIKE; excluded from row-count selectivity */
+#define PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE 8388608	/* 0x800000, the prefix LIKE a range was derived from; the pair
+							 * of PT_EXPR_INFO_LIKE_DERIVED_RANGE */
+#define PT_EXPR_INFO_OR_DERIVED 16777216	/* 0x1000000, single-spec restriction derived from a multi-spec OR
+						 * factor; implied by that factor, so excluded from row-count
+						 * selectivity */
+#define PT_EXPR_INFO_OR_DERIVED_EXPENSIVE 33554432	/* 0x2000000, an OR-derived restriction with a conjunct costlier
+							 * than a column-vs-constant compare; kept only when an index
+							 * adopts it */
+#define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
@@ -2506,7 +2591,6 @@ typedef enum
   RESERVED_P_CONT_FREE,
   RESERVED_P_OFFSET_TO_FREE_AREA,
   RESERVED_P_IS_SAVING,
-  RESERVED_P_UPDATE_BEST,
 
   /* Reserved key info names */
   RESERVED_KEY_VOLUMEID,
@@ -2535,7 +2619,7 @@ typedef enum
   RESERVED_LAST_RECORD_INFO = RESERVED_T_MVCC_PREV_VERSION_LSA,
 
   RESERVED_FIRST_PAGE_INFO = RESERVED_P_CLASS_OID,
-  RESERVED_LAST_PAGE_INFO = RESERVED_P_UPDATE_BEST,
+  RESERVED_LAST_PAGE_INFO = RESERVED_P_IS_SAVING,
 
   RESERVED_FIRST_KEY_INFO = RESERVED_KEY_VOLUMEID,
   RESERVED_LAST_KEY_INFO = RESERVED_KEY_OVERFLOW_OIDS,
@@ -2602,6 +2686,10 @@ extern PT_RESERVED_NAME pt_Reserved_name_table[];
       break;						      \
     default:						      \
       assert (0);					      \
+      /* leave an empty range so that a caller iterating from (first) to   \
+       * (last) does nothing instead of walking off the name table. */     \
+      (first) = 0;					      \
+      (last) = -1;					      \
       break;						      \
     }
 
@@ -2667,6 +2755,8 @@ struct pt_name_info
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
   size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
+  DB_VALUE *histogram;		/* histogram value */
+  double null_frequency;	/* null frequency value */
 };
 
 /*
@@ -2821,6 +2911,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
 #define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
+							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -2856,6 +2948,12 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned uncorr_hoisted:1;	/* correlation_level was 0 (uncorrelated) until pt_uncorr_post ()
+				 * hoisted this subquery into an enclosing aptr list, overwriting
+				 * the level. Lets a plan regeneration from the same tree (see
+				 * do_replan_statement_with_bind_peek ()) restore the level to 0
+				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
+				 * (uncorrelated, parallel-executable) marking. */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -2873,6 +2971,12 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
+  BIND_WATCH_STATE *bind_watch;	/* bind-value state of this prepared statement: the rows each
+				 * host-variable predicate was expected to scan under the current plan,
+				 * and the query's plan variants as last seen. NULL until the first
+				 * checked execution allocates it (parser lifetime). */
+  const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
+				 * (bind_variant.h); NULL = the query's base entry */
 };
 
 /* Info for Set Optimization Level statement */
@@ -2968,6 +3072,8 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2985,6 +3091,10 @@ struct pt_update_stats_info
   PT_NODE *class_list;		/* PT_NAME */
   int all_classes;		/* 1 iff ALL CLASSES */
   int with_fullscan;		/* 1 iff WITH FULLSCAN */
+  int random_seed;		/* 1 iff WITH RANDOM SEED */
+  int no_histogram;		/* 1 iff WITH NO HISTOGRAM: refresh base statistics only */
+  int drop_histogram;		/* 1 iff WITH DROP HISTOGRAM: drop histograms, then refresh base statistics */
+  int bucket_count;		/* histogram bucket count from WITH n BUCKETS; 0 means the default */
 };
 
 /* GET STATISTICS INFO */
@@ -3185,7 +3295,6 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
 };
 
 /* Info for the CONSTRAINT node */
@@ -3255,6 +3364,7 @@ struct pt_stored_proc_info
   PT_MISC_TYPE dtrm_type;	/* PT_NOT_DETERMINISTIC, PT_DETERMINISTIC */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
+  unsigned parallel_enable:1;	/* PARALLEL_ENABLE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
   int recompile;
@@ -3276,6 +3386,9 @@ struct pt_execute_info
   XASL_ID xasl_id;		/* XASL id */
   CUBRID_STMT_TYPE stmt_type;	/* statement type */
   int recompile;		/* not 0 if this statement should be recompiled */
+  int bind_before_compile;	/* not 0 when the recompile exists to adapt the plan to the bound
+				 * values (LIKE / MRO / SORT-LIMIT checks): compile after binding,
+				 * the way every recompile worked before the unpeeked-plan path */
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
@@ -3376,6 +3489,8 @@ typedef struct host_vars_info
   int *index;
 } PT_HOST_VAR_IDX_INFO;
 
+#define PT_DBLINK_MAX_CORR_KEYS 8	/* max correlated push-down keys; currently only [0] is used (single equality) */
+
 typedef struct pt_dblink_info
 {
   PT_NODE *conn;		/* name for DBLINK */
@@ -3395,6 +3510,21 @@ typedef struct pt_dblink_info
   PT_NODE *owner_list;
 
   void *remote_col_list;	/* remote table's column list */
+
+  /* Correlated equality push-down (single equality: count == 1).
+   * corr_key_col_names: stable copy for SQL; corr_key_outer_copy: owning copy for XASL (parser_copy_tree). */
+  int corr_key_count;
+  PT_NODE *corr_key_outer_copy[PT_DBLINK_MAX_CORR_KEYS];
+  const char *corr_key_col_names[PT_DBLINK_MAX_CORR_KEYS];
+
+  /* true once mq_dblink_append_corr_pred_sql has written "col = ?" into rewritten.
+   * Replaces the rewritten==NULL sentinel so the pure-corr check in
+   * mq_copypush_sargable_terms_helper does not depend on rewritten's NULL-ness. */
+  bool corr_sql_built;
+
+  /* true when pt_copypush_terms successfully appended " WHERE pushed_pred" to rewritten.
+   * mq_dblink_append_corr_pred_sql uses this to decide AND vs WHERE. */
+  bool rewritten_has_where;
 
 } PT_DBLINK_INFO;
 
@@ -3569,6 +3699,7 @@ union pt_statement_info
   PT_TUPLE_VALUE_INFO tuple_value;
   PT_UPDATE_INFO update;
   PT_UPDATE_STATS_INFO update_stats;
+  PT_HISTOGRAM_INFO histogram;
 #if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
 #endif
@@ -3708,6 +3839,15 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
+					 * target selection for bind-value plan variants, so its
+					 * executions choose among the query's plans by fingerprint */
+    unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
+					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
+					 * header), so the first execution must replan under the real values.
+					 * Set in do_prepare_select () -- the driver-neutral prepare path --
+					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
+					 * is not reached by CCI/JDBC prepared statements. */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -3754,7 +3894,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    struct json_t *json_plan;
+    struct trace_json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 
@@ -3784,6 +3924,7 @@ struct parser_context
   int stack_size;		/* total number of slots in node_stack */
   PT_NODE **node_stack;		/* the parser stack */
   PT_NODE *orphans;		/* list of parse tree fragments freed later */
+  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
 
   char *error_buffer;		/* for parse error messages */
 
@@ -3804,6 +3945,8 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  UINT64 bind_plan_sig;		/* signature of the plans chosen by this compile (bind_variant.h): two
+				 * compiles of one query got the same plan when these are equal */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */
@@ -3829,6 +3972,8 @@ struct parser_context
 
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
+  UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
+  UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;
@@ -3968,15 +4113,37 @@ enum cdc_ddl_object_type
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
+/* Which remote DML value-push sink (if any) a statement is routed to. A statement is exactly one of
+ * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
+ * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
+ * happen, and pt_convert_dblink_dml_query's "no sink" guard becomes a single ==NONE check instead of
+ * accumulating a !flag per sink kind as more are added (UPDATE to follow). */
+typedef enum dblink_remote_sink_kind
+{
+  DBLINK_REMOTE_SINK_NONE = 0,
+  DBLINK_REMOTE_SINK_INSERT_SELECT,	/* INSERT INTO remote SELECT ... FROM local */
+  DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ	/* DELETE FROM remote WHERE ... (local subquery) */
+    /* DBLINK_REMOTE_SINK_UPDATE_... to follow */
+} DBLINK_REMOTE_SINK_KIND;
+
 typedef struct
 {
   int local_cnt;
-  int server_cnt;
-  int server_node_cnt;
+  int server_cnt;		/* raw count of dblink spec nodes walked so far (no dedup); unrelated to
+				 * stored_cnt/distinct_cnt below, used only to detect whether a sub-walk
+				 * encountered any new dblink spec (before/after diff) */
+  /* invariant: 0 <= stored_cnt <= 2; server[i] (0 <= i < stored_cnt) is always non-NULL */
+  int stored_cnt;		/* # entries actually stored in server[]/len[]/server_full_name[];
+				 * the only bound used for indexing/iterating those arrays */
+  int distinct_cnt;		/* # distinct remote servers found so far; multi-remote decision only,
+				 * may exceed 2 (array capacity) on overflow */
   int len[2];
   char *server_full_name[2];
   PT_NODE *server[2];
   bool has_dblink_query;
+  DBLINK_REMOTE_SINK_KIND sink_kind;	/* which remote DML sink (if any) this statement is routed to;
+					 * eligibility is decided/cleared in pt_convert_dblink_dml_query
+					 * (parser_support.c) per sink kind */
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
@@ -3986,7 +4153,7 @@ void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 extern "C"
 {
 #endif
-  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  void *parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
 #ifdef __cplusplus

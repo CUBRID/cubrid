@@ -54,11 +54,12 @@ extern VOLID boot_User_volid;
 /* Server host connected */
 extern char boot_Host_connected[CUB_MAXHOSTNAMELEN];
 #endif /* CS_MODE */
-
+#if defined(SA_MODE)
 extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				   bool db_overwrite, const char *file_addmore_vols, DKNPAGES npages,
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
+#endif /* SA_MODE */
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern int boot_shutdown_client (bool is_er_final);
 extern void boot_donot_shutdown_client_at_exit (void);
@@ -75,13 +76,6 @@ extern const char *boot_get_lob_path (void);
 extern char *boot_get_host_name (void);
 extern char *boot_get_ip (void);
 
-#if defined(SA_MODE)
-extern int boot_build_catalog_classes (const char *dbname);
-extern int boot_destroy_catalog_classes (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int boot_rebuild_catalog_classes (const char *dbname);
-#endif /* ENABLE_UNUSED_FUNCTION */
-#endif /* SA_MODE */
 extern void boot_clear_host_connected (void);
 extern char *boot_get_server_session_key (void);
 extern void boot_set_server_session_key (const char *key);

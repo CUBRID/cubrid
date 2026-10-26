@@ -800,6 +800,13 @@ intl_prevchar_euc (const unsigned char *s, const unsigned char *s_start, int *pr
   assert (s != NULL);
   assert (s > s_start);
 
+  /* every byte of a multi-byte EUC char is 8-bit, so an ASCII byte is a char of its own */
+  if (!IS_8BIT (*(s - 1)))
+    {
+      *prev_char_length = 1;
+      return s - 1;
+    }
+
   if (s - 3 >= s_start && *(s - 3) == SS3)
     {
       *prev_char_length = 3;
@@ -3248,6 +3255,7 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
   int truncated_size = 0, original_size = 0, char_size = 0;
   const unsigned char *cname = (unsigned char *) name;
   INTL_CODESET codeset = lang_charset ();
+  int codeset_bytes = INTL_CODESET_MULT (codeset);
 
   assert (name != NULL);
 
@@ -3259,7 +3267,7 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
   assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH);
 
   original_size = strlen (name);
-  if (INTL_CODESET_MULT (codeset) == 1)
+  if (codeset_bytes == 1)
     {
       if (original_size > ident_max_size)
 	{
@@ -3268,14 +3276,14 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
       return NO_ERROR;
     }
 
-  assert (INTL_CODESET_MULT (codeset) > 1);
+  assert (codeset_bytes > 1);
 
   /* we do not check contents of non-ASCII if codeset is UTF-8 or EUC; valid codeset sequences are checked with
    * 'intl_check_string' when enabled */
 
 check_truncation:
   /* check if last char of identifier may have been truncated */
-  if (original_size + INTL_CODESET_MULT (codeset) > ident_max_size)
+  if (original_size + codeset_bytes > ident_max_size)
     {
       if (ident_max_size < original_size)
 	{
@@ -3294,7 +3302,7 @@ check_truncation:
        * otherwise assume the last character was truncated */
       if (truncated_size > original_size)
 	{
-	  assert (truncated_size < original_size + INTL_CODESET_MULT (codeset));
+	  assert (truncated_size < original_size + codeset_bytes);
 	  assert ((unsigned char) *(cname - char_size) > 0x80);
 	  /* truncate after the last full character */
 	  truncated_size -= char_size;
@@ -3316,8 +3324,8 @@ check_truncation:
       else
 	{
 	  /* decrease the initial allowed size and try again */
-	  ident_max_size -= INTL_CODESET_MULT (codeset);
-	  if (ident_max_size <= INTL_CODESET_MULT (codeset))
+	  ident_max_size -= codeset_bytes;
+	  if (ident_max_size <= codeset_bytes)
 	    {
 	      /* we make sure we have room for at least one character */
 	      return ER_GENERIC_ERROR;

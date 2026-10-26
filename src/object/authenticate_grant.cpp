@@ -158,7 +158,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	}
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
     {
       if (ws_is_same_object (user, Au_user))
@@ -232,7 +232,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 			{
 			  free_and_init (sub_partitions);
 			}
-		      AU_ENABLE (save);
+		      AU_RESTORE (save);
 		      return (error);
 		    }
 		  current = db_get_int (&value);
@@ -307,7 +307,7 @@ fail_end:
     {
       free_and_init (sub_partitions);
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -323,7 +323,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 
   assert (type == AU_EXECUTE);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   MOP sp_owner = jsp_get_owner (obj_mop);
 
   /*
@@ -386,7 +386,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		  if (error != NO_ERROR)
 		    {
 		      set_free (grants);
-		      AU_ENABLE (save);
+		      AU_RESTORE (save);
 		      return (error);
 		    }
 		  current = db_get_int (&value);
@@ -462,7 +462,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -566,7 +566,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 	}
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
     {
       error = ER_AU_CANT_REVOKE_SELF;
@@ -622,7 +622,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 		    {
 		      free_and_init (sub_partitions);
 		    }
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 		  return (error);
 		}
 	      current = db_get_int (&cache_element);
@@ -718,7 +718,7 @@ fail_end:
     {
       free_and_init (sub_partitions);
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -734,7 +734,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
   MOP sp_owner;
   MOP grantor = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
     {
       error = ER_AU_CANT_REVOKE_SELF;
@@ -813,7 +813,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 	      if (error != NO_ERROR)
 		{
 		  set_free (grants);
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 		  return (error);
 		}
 	      current = db_get_int (&cache_element);
@@ -905,7 +905,7 @@ fail_end:
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -1339,18 +1339,18 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
    * during future permission refactoring.
    *
    * The reason is that, in versions prior to 11.3v, when `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE`
-   * was granted and then deleted, the `owner` and `grants` rows in the `db_authorization` catalog
+   * was granted and then deleted, the `owner` and `grants` rows in the `_db_authorization` catalog
    * were set to `NULL`.
    *
    * However, following the fixes for issues CBRD-25486 and CBRD-25574,
    * all permissions are now revoked before `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE` is deleted.
-   * As a result, the `owner` and `grants` rows in the `db_authorization` catalog can no longer become `NULL`.
+   * As a result, the `owner` and `grants` rows in the `_db_authorization` catalog can no longer become `NULL`.
    *
    * That said, there are two possible reasons why the following code was originally implemented before 11.3v (guess):
    *
-   * Case 1) If the `owner` in the `db_authorization` catalog is `NULL` and `GRANT_ENTRY_CLASS` in `grants` is also `NULL`,
+   * Case 1) If the `owner` in the `_db_authorization` catalog is `NULL` and `GRANT_ENTRY_CLASS` in `grants` is also `NULL`,
    *         the corresponding element is deleted.
-   * Case 2) If the `owner` in the `db_authorization` catalog is `NULL`, but `GRANT_ENTRY_CLASS` in `grants` has an owner,
+   * Case 2) If the `owner` in the `_db_authorization` catalog is `NULL`, but `GRANT_ENTRY_CLASS` in `grants` has an owner,
    *         the `GRANT_ENTRY_CACHE(mask)` is merged into the owner’s entry, and the existing element is deleted.
    */
   if (!filter)
@@ -1988,9 +1988,9 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	  /*
 	   * This error condition occurs in the following two cases, both of which are considered as lacking authorization:
 	   * 1. gsize == 0: Indicates no prior authorization
-	   *    When the grants column in the db_authorization catalog is empty.
+	   *    When the grants column in the _db_authorization catalog is empty.
 	   * 2. db_get_object(&element) != obj_mop: Indicates that permissions exist for other objects but not for the current one
-	   *    When the grants column in the db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
+	   *    When the grants column in the _db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
 	   */
 	  if (error == NO_ERROR && *grantor == NULL)
 	    {
@@ -2039,7 +2039,7 @@ au_print_grants (MOP auth, FILE *fp)
     }
   else
     {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
+      fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
     }
 
   get_grants (auth, &grants, 1);
@@ -2121,10 +2121,17 @@ au_force_write_new_auth (void)
   int gindex, gsize;
   int save;
   int error = NO_ERROR;
+  au_auth_accessor accessor;
 
   list = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
+
+  error = accessor.delete_all_auth ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   au_class = sm_find_class (AU_AUTH_CLASS_NAME);
   if (au_class == NULL)
@@ -2162,7 +2169,6 @@ au_force_write_new_auth (void)
 
       gsize = set_size (grants);
 
-      au_auth_accessor accessor;
       for (gindex = 0; gindex < gsize; gindex += GRANT_ENTRY_LENGTH)
 	{
 	  error = set_get_element (grants, GRANT_ENTRY_TYPE (gindex), &type_val);
@@ -2208,7 +2214,7 @@ end:
       ml_ext_free (list);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }

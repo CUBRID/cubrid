@@ -24,6 +24,7 @@
 #define _QUERY_HASH_SCAN_H_
 
 #include "regu_var.hpp"
+#include "system.h"		/* HL_HEAPID */
 
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
 #define HASH_LIST_SCAN_DUMP_FILE_HASH 0
@@ -78,14 +79,10 @@ struct qfile_tuple_simple_pos
   int offset;			/* Tuple offset inside the page */
 };
 
-/* hash scan value */
-typedef union hash_scan_value HASH_SCAN_VALUE;
-union hash_scan_value
-{
-  void *data;			/* for free() */
-  QFILE_TUPLE_SIMPLE_POS *pos;	/* tuple position of temp file */
-  QFILE_TUPLE tuple;		/* tuple data */
-};
+/* The optimizer's hash-join spill cost (qo_hjoin_cost) uses this size as HJ_HASH_ENTRY_POS_SIZE,
+ * but cannot sizeof it because this struct is SERVER/SA-only. Guard against silent drift here. */
+static_assert (sizeof (QFILE_TUPLE_SIMPLE_POS) == 12,
+	       "QFILE_TUPLE_SIMPLE_POS size changed; update HJ_HASH_ENTRY_POS_SIZE in query_planner.c (qo_hjoin_cost)");
 
 /* hash scan key */
 typedef struct hash_scan_key HASH_SCAN_KEY;
@@ -106,6 +103,9 @@ struct file_hash_scan_id
   char alignment;		/* alignment value used on slots of bucket pages */
 };
 
+/* How the build keys of one scan open enter the hash table, resolved before the first build row: query_hash_scan.c */
+typedef struct hash_scan_key_plan HASH_SCAN_KEY_PLAN;
+
 /* hash list scan */
 typedef struct hash_list_scan HASH_LIST_SCAN;
 struct hash_list_scan
@@ -119,7 +119,7 @@ struct hash_list_scan
     struct
     {
       MHT_HLS_TABLE *hash_table;	/* memory hash table for hash list scan */
-      HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
+      MHT_HLS_ENTRY *curr_hash_entry;	/* resume handle for get_next (same-hash entry chain cursor) */
     } memory;
     struct
     {
@@ -131,24 +131,24 @@ struct hash_list_scan
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
+  HASH_SCAN_KEY_PLAN *key_plan;	/* need_coerce_type: each build key's copy or conversion */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
-HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
-HASH_SCAN_VALUE *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p);
+MHT_HLS_ENTRY *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl);
+MHT_HLS_ENTRY *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p);
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
-void qdata_free_hscan_value (THREAD_ENTRY * thread_p, HASH_SCAN_VALUE * value);
-int qdata_free_hscan_entry (const void *key, void *data, void *args);
 
 int qdata_hscan_key_eq (const void *key1, const void *key2);
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
-HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
-				     REGU_VARIABLE_LIST probe_regu_list, VAL_DESCR * vd);
+int qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
+			   REGU_VARIABLE_LIST producers);
+void qdata_free_hscan_key_plan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid);
 HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
-						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
+						   const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * new_key);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args);

@@ -58,6 +58,7 @@ class print_output;
 #define Au_user                         au_ctx ()->current_user
 #define Au_dba_user                     au_ctx ()->dba_user
 #define Au_public_user                  au_ctx ()->public_user
+#define Au_information_schema_user      au_ctx ()->information_schema_user
 #define Au_disable                      au_ctx ()->disable_auth_check
 
 #define Au_root_class                   au_ctx ()->root_class
@@ -71,6 +72,12 @@ class print_output;
 #define Au_user_password_des_oldstyle   au_ctx ()->user_password_des_oldstyle
 #define Au_user_password_sha1           au_ctx ()->user_password_sha1
 #define Au_user_password_sha2_512       au_ctx ()->user_password_sha2_512
+
+/* While start() always passes the Au_user_encrypted_password buffer with a pre-hashed password, 
+ * login() passes the input password as-is, allowing the two paths to be distinguished via pointer comparison. */
+#define Au_user_encrypted_password      au_ctx ()->user_password_sha2_512
+#define IS_USER_ENCRYPTED_PASSWORD(ptr) ((ptr) == Au_user_encrypted_password)
+
 
 #define Au_cache                        au_ctx ()->caches
 
@@ -101,20 +108,9 @@ class print_output;
 // AU_DISABLE_PASSWORDS () is called in serveral places without calling au_init ()
 #define AU_DISABLE_PASSWORDS()          au_ctx ()->disable_passwords ();
 
-#define AU_DISABLE(save) \
-  do \
-    { \
-      save = Au_disable ? 1 : 0; \
-      Au_disable = true; \
-    } \
-  while (0)
-#define AU_ENABLE(save) \
-  do \
-    { \
-      assert (save == 0 || save == 1); \
-      Au_disable = save; \
-    } \
-  while (0)
+/* Au_disable: true skips authorization checks, false performs them.
+   Pair every AU_SAVE_AND_* with AU_RESTORE on each exit path or the state leaks. */
+
 #define AU_SAVE_AND_ENABLE(save) \
   do \
     { \
@@ -167,8 +163,9 @@ extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
 extern int au_set_user_comment (MOP user, const char *comment);
-extern int au_set_user_timestamps (MOP user);
-extern int au_update_user_timestamp (MOP user);
+extern int au_set_user_loginable (MOP user, bool loginable);
+extern int au_set_new_timestamps (MOP obj);
+extern int au_update_timestamps (MOP obj);
 
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);

@@ -47,6 +47,7 @@
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
+#include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -112,6 +113,12 @@ struct qmgr_tran_entry
 
   OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
   pthread_mutex_t mutex;
+
+  bool is_dblink_autocommit;	/* for dblink autocommit check */
+  bool is_dblink_sink_aborted;	/* a remote DML sink statement failed on a connection without savepoint
+				 * support, so its whole remote transaction (including work done by earlier
+				 * statements) was rolled back. Committing would silently confirm that loss,
+				 * so the local transaction must be refused at commit time. */
 };
 
 typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
@@ -666,6 +673,8 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->free_query_entry_list_p = NULL;
   tran_entry_p->dblink_entry = NULL;
   tran_entry_p->modified_classes_p = NULL;
+  tran_entry_p->is_dblink_autocommit = true;
+  tran_entry_p->is_dblink_sink_aborted = false;
   pthread_mutex_init (&tran_entry_p->mutex, NULL);
 }
 
@@ -940,10 +949,6 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
   qfile_initialize ();
-
-#if defined (SERVER_MODE)
-  numeric_init_power_value_string ();
-#endif
 
   srand48 ((long) time (NULL));
 
@@ -1262,6 +1267,19 @@ end:
 
   if (xasl_buf_info)
     {
+      /* a one-shot XASL (not a cached clone): release what qexec_execute_query () keeps for a
+       * clone's next execution -- the compiled expression programs -- before the tree goes.
+       * This is the same two-pass contract xcache_clone_decache () applies to a clone (the
+       * final clear at the end of the execution, then a full clear with XASL_DECACHE_CLONE
+       * set when the clone is retired), so qexec_clear_xasl () already has to be safe to
+       * re-enter on a cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so
+       * it carries no CLEAR_AT_CLONE_DECACHE marks: the flagged pass touches only the programs,
+       * the status of the sub-XASLs and the disposable signatures, nothing the first pass freed. */
+      if (xasl_p != NULL)
+	{
+	  XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);
+	  (void) qexec_clear_xasl (thread_p, xasl_p, true, false);
+	}
       /* free the XASL tree */
       free_xasl_unpack_info (thread_p, xasl_buf_info);
     }
@@ -1347,6 +1365,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
 
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+  thread_p->trace_plan_detail = IS_XASL_TRACE_PLAN_DETAIL (*flag_p);
 
   is_xasl_pinned_reference = IS_XASL_CACHE_PINNED_REFERENCE (*flag_p);
 
@@ -1359,8 +1378,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -1478,7 +1498,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  if (cached_result)
 	    {
 	      /* found the cached result */
-	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	      if (server_cache_time_p != NULL)
+		{
+		  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+		}
 	    }
 	}
     }
@@ -1602,14 +1625,26 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      goto end;
 	    }
 
-	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
-	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
+	  /* list_id_p is a QFILE_SKIP_DEPENDENT clone, so a borrowed worker-page chain (qfile_connect_list) is only
+	   * visible on the query entry's original list. Cache entries outlive the query while those worker FILE_TEMP
+	   * files are retired at query end, so flatten whenever the base is not FILE_QUERY_AREA or a chain exists. */
+	  if (list_id_p->tfile_vfid != NULL
+	      && (list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA
+		  || (query_p->list_id != NULL && query_p->list_id->dependent_list_id != NULL)))
 	    {
 	      /* duplicate the list file */
 	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p, QFILE_FLAG_RESULT_FILE);
 	      if (tmp_list_id_p)
 		{
-		  qfile_destroy_list (thread_p, list_id_p);
+		  /* Retire the base and any borrowed worker files through the owner, then hand the duplicate to the
+		   * query entry: later page fetches go through query_p->list_id->tfile_vfid, and destroying a
+		   * FILE_QUERY_AREA base frees that struct. */
+		  qfile_destroy_list (thread_p, query_p->list_id);
+		  if (qfile_copy_list_id (query_p->list_id, tmp_list_id_p, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		    {
+		      QFILE_FREE_AND_INIT_LIST_ID (tmp_list_id_p);
+		      goto exit_on_error;
+		    }
 		  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
 		  list_id_p = tmp_list_id_p;
 		}
@@ -1662,7 +1697,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  /* record list cache entry into the query entry for qfile_end_use_of_list_cache_entry() */
 	  query_p->list_ent = list_cache_entry_p;
 
-	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	  if (server_cache_time_p != NULL)
+	    {
+	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	    }
 	}
     }
 
@@ -1699,6 +1737,13 @@ end:
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
       perfmon_start_watch (thread_p);
+    }
+
+  /* the trace is in the session by now; a flag left on would make the next requests of this thread count trace
+   * statistics. A nested query (a method query in SA_MODE) leaves the flag to the query it runs in */
+  if (thread_get_recursion_depth (thread_p) == 0)
+    {
+      thread_trace_off (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -1743,11 +1788,6 @@ exit_on_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (xasl_trace == true && saved_is_stats_on == false)
-    {
-      perfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -1866,6 +1906,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+  thread_p->trace_plan_detail = IS_XASL_TRACE_PLAN_DETAIL (*flag_p);
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
@@ -1876,8 +1917,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -2005,6 +2047,13 @@ end:
       perfmon_start_watch (thread_p);
     }
 
+  /* the trace is in the session by now; a flag left on would make the next requests of this thread count trace
+   * statistics. A nested query (a method query in SA_MODE) leaves the flag to the query it runs in */
+  if (thread_get_recursion_depth (thread_p) == 0)
+    {
+      thread_trace_off (thread_p);
+    }
+
 #if defined (SERVER_MODE)
   qmgr_reset_query_exec_info (tran_index);
 #endif
@@ -2034,11 +2083,6 @@ exit_on_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (xasl_trace == true && saved_is_stats_on == false)
-    {
-      perfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -2130,16 +2174,29 @@ xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xqmgr_drop_query_plans_by_sha1 () - Drop all the stored query plans
- *   return: NO_ERROR or ER_FAILED
+ * xqmgr_drop_query_plans_by_sha1 () - Drop the stored query plans of the sha1
+ *   return: NO_ERROR
  *
- * Note: Clear sha1 XASL/filter predicate cache entries out upon request of the client.
+ * Note: Clear sha1 XASL cache entries out upon request of the client.
  */
 int
-xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1)
+xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1)
 {
   xcache_remove_by_sha1 (thread_p, sha1);
   return NO_ERROR;
+}
+
+/*
+ * xqmgr_drop_query_clones () - Drop the XASL clones kept in the stored query plans
+ *   return: error code
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ *
+ * Note: The plans stay in the XASL cache.
+ */
+int
+xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  return xcache_drop_clones (thread_p, sha1);
 }
 
 /*
@@ -2226,23 +2283,57 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-  int rc = dblink_end_tran (tran_entry_p->dblink_entry, is_abort);
-
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
 
-  if (rc == ER_DBLINK_TRAN)
+  /* the transaction ends either way, so the mark never outlives it */
+  bool sink_aborted = tran_entry_p->is_dblink_sink_aborted;
+  tran_entry_p->is_dblink_sink_aborted = false;
+
+  if (!is_abort && sink_aborted)
     {
-      /* remote transactions will be rollbacked */
-      status = QMGR_TRAN_DBLINK_ABORTED;
-      er_log_debug (ARG_FILE_LINE, "dblink transaction is not completed !\n");
-    }
-  else if (rc != NO_ERROR)
-    {
-      /* error occurred while remote transaction is committed or rollbacked */
-      er_log_debug (ARG_FILE_LINE, "dblink transaction is completed with some errors !\n");
+      /* A sink statement failed on a connection that could not be rolled back statement by statement,
+       * so that connection's remote transaction - including what earlier statements wrote - is already
+       * gone. Committing here would report success for work that no longer exists, so refuse it and
+       * roll the remaining connections back as well, leaving local and remote both aborted. */
+      if (tran_entry_p->dblink_entry != NULL)
+	{
+	  (void) dblink_end_tran (tran_entry_p->dblink_entry, true);
+	  tran_entry_p->dblink_entry = NULL;
+	}
+
+      tran_entry_p->is_dblink_autocommit = true;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
+	      "a remote DML statement failed and its remote transaction was rolled back");
+
+      return QMGR_TRAN_DBLINK_ABORTED;
     }
 
-  tran_entry_p->dblink_entry = NULL;
+  /*
+   * End DBLink connections when:
+   *   (a) is_abort=true  - rollback ALL entries unconditionally; XA-prepare will not occur.
+   *   (b) is_abort=false, is_dblink_autocommit=true - commit SELECT-only entries (no 2PC participants).
+   * Skip when is_abort=false and is_dblink_autocommit=false: DML participants are committed
+   * through the 2PC path (dblink_2pc_send_prepare -> dblink_2pc_end_tran).
+   */
+  if (tran_entry_p->dblink_entry != NULL && (is_abort || tran_entry_p->is_dblink_autocommit))
+    {
+      int rc = dblink_end_tran (tran_entry_p->dblink_entry, is_abort);
+
+      if (rc == ER_DBLINK_TRAN)
+	{
+	  /* remote transactions will be rollbacked */
+	  status = QMGR_TRAN_DBLINK_ABORTED;
+	  er_log_debug (ARG_FILE_LINE, "dblink transaction is not completed !\n");
+	}
+      else if (rc != NO_ERROR)
+	{
+	  /* error occurred while remote transaction is committed or rollbacked */
+	  er_log_debug (ARG_FILE_LINE, "dblink transaction is completed with some errors !\n");
+	}
+
+      tran_entry_p->dblink_entry = NULL;
+      tran_entry_p->is_dblink_autocommit = true;
+    }
 
   return status;
 }
@@ -2287,6 +2378,15 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     }
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  /* The mark must not outlive the transaction that set it. qmgr_check_dblink_trans() clears it on the
+   * commit and abort paths that go through xtran_server_commit()/xtran_server_abort(), but a transaction
+   * can also end through log_abort() alone - log_2pc_attach_client() aborts the attaching client that
+   * way before freeing its index. Clearing it here covers that too, since log_abort_local() reaches this
+   * function, as do log_commit_local() and logtb_release_tran_index(). Without it the mark reaches
+   * whoever is assigned the index next. */
+  tran_entry_p->is_dblink_sink_aborted = false;
+
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
@@ -3765,6 +3865,9 @@ qmgr_reset_query_exec_info (int tran_index)
     {
       tdes_p->query_start_time = 0;
       XASL_ID_SET_NULL (&tdes_p->xasl_id);
+      /* Hand the deadline to the commit path, which runs after this reset and lets it wait for the
+       * 2PC decisions longer than its built-in bound when more than that is left. */
+      tdes_p->last_query_deadline = tdes_p->query_timeout;
       tdes_p->query_timeout = 0;
     }
 }
@@ -3901,6 +4004,7 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 	  if (set_participant)
 	    {
 	      dblink->is_2pc_participant = set_participant;
+	      tran_entry_p->is_dblink_autocommit = false;
 	    }
 	  conn_handle = dblink->conn_info.conn_handle;
 	  break;
@@ -3918,6 +4022,13 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  if (tran_entry_p->is_dblink_autocommit == true)
+    {
+      if (set_participant)
+	{
+	  tran_entry_p->is_dblink_autocommit = false;
+	}
+    }
 
   DBLINK_CONN_ENTRY *dblink_conn_entry;
 
@@ -3929,11 +4040,13 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
     }
 
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
+  dblink_conn_entry->conn_info.xa_unsupported = false;
   dblink_conn_entry->is_2pc_participant = set_participant;
+  dblink_conn_entry->has_uncommitted_dml = false;
 
-  strcpy (dblink_conn_entry->conn_info.conn_url, conn_url);
-  strcpy (dblink_conn_entry->conn_info.user_name, user_name);
-  strcpy (dblink_conn_entry->conn_info.password, password);
+  snprintf (dblink_conn_entry->conn_info.conn_url, sizeof (dblink_conn_entry->conn_info.conn_url), "%s", conn_url);
+  snprintf (dblink_conn_entry->conn_info.user_name, sizeof (dblink_conn_entry->conn_info.user_name), "%s", user_name);
+  snprintf (dblink_conn_entry->conn_info.password, sizeof (dblink_conn_entry->conn_info.password), "%s", password);
 
   dblink_conn_entry->next = tran_entry_p->dblink_entry;
 
@@ -3943,22 +4056,166 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 }
 
 DBLINK_CONN_ENTRY *
-qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p)
+qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p, bool * is_autocommit)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  *is_autocommit = tran_entry_p->is_dblink_autocommit;
 
   return tran_entry_p->dblink_entry;
 }
 
+int
+qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  int rc = NO_ERROR;
+
+  tran_entry_p->is_dblink_autocommit = true;
+
+  if (tran_entry_p->dblink_entry != NULL)
+    {
+      /* End and disconnect remaining entries (typically non-participant SELECT-only
+       * connections left after dblink_2pc_send_prepare removed participant entries). */
+      rc = dblink_end_tran (tran_entry_p->dblink_entry, !is_commit);
+      tran_entry_p->dblink_entry = NULL;
+    }
+
+  return rc;
+}
+
+/*
+ * qmgr_dblink_remove_conn_entry () - unlink and free the dblink entry whose conn_handle matches
+ *   return: NO_ERROR if removed, ER_FAILED if not found
+ *   thread_p(in):
+ *   conn_handle(in): connection handle of the entry to remove
+ *
+ * Note: Used by 2PC send-prepare: once a participant has been XA-prepared, the decision is owned by
+ *       the 2PC daemon (which holds the same conn_handle via the participant block copy), so the
+ *       entry must be dropped from the per-transaction list. The CCI connection is NOT touched here.
+ *       Also used by the remote DML sink abort path when its fallback tears the connection down.
+ *
+ *       Removing an entry can leave the transaction without any 2PC participant, so
+ *       is_dblink_autocommit is recomputed here. Left false with no participant left, nothing would
+ *       end the remaining (SELECT-only) connections: qmgr_check_dblink_trans() skips them while the
+ *       flag says the 2PC path owns them, and that path does not run without a participant.
+ */
+int
+qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+  DBLINK_CONN_ENTRY *prev = NULL;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  if (prev == NULL)
+	    {
+	      tran_entry_p->dblink_entry = dblink->next;
+	    }
+	  else
+	    {
+	      prev->next = dblink->next;
+	    }
+	  free_and_init (dblink);
+
+	  tran_entry_p->is_dblink_autocommit = true;
+	  for (dblink = tran_entry_p->dblink_entry; dblink != NULL; dblink = dblink->next)
+	    {
+	      if (dblink->is_2pc_participant)
+		{
+		  tran_entry_p->is_dblink_autocommit = false;
+		  break;
+		}
+	    }
+
+	  return NO_ERROR;
+	}
+      prev = dblink;
+      dblink = dblink->next;
+    }
+
+  return ER_FAILED;
+}
+
+/*
+ * qmgr_dblink_set_conn_dml () - record whether a connection carries uncommitted remote DML of this
+ *                               transaction
+ *   return: void
+ *   thread_p(in):
+ *   conn_handle(in): connection the DML ran on
+ *   has_dml(in): true once a remote DML statement of this transaction has changed rows on it. The
+ *                mark is not lowered again: an undo that leaves the connection clean tears it down
+ *                and drops its entry (dblink_dml_stmt_abort), so there is nothing left to clear
+ *
+ * Note: While the flag is set, rolling that connection's remote transaction back would discard work the
+ *       transaction still expects to commit.
+ */
 void
-qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
+qmgr_dblink_set_conn_dml (THREAD_ENTRY * thread_p, int conn_handle, bool has_dml)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  dblink->has_uncommitted_dml = has_dml;
+	  return;
+	}
+      dblink = dblink->next;
+    }
+}
+
+/*
+ * qmgr_dblink_conn_has_dml () - whether the connection already carries uncommitted remote DML
+ *   return: true if it does
+ *   thread_p(in):
+ *   conn_handle(in): connection to ask about
+ */
+bool
+qmgr_dblink_conn_has_dml (THREAD_ENTRY * thread_p, int conn_handle)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  return dblink->has_uncommitted_dml;
+	}
+      dblink = dblink->next;
+    }
+
+  return false;
+}
+
+/*
+ * qmgr_dblink_set_sink_aborted () - mark that a remote DML sink statement lost the transaction's
+ *                                   remote work
+ *   return: void
+ *   thread_p(in):
+ *
+ * Note: Set from the sink statement abort path when the failing statement could not be undone on its
+ *       own and its whole remote transaction had to be rolled back, taking the work of the earlier
+ *       statements with it. The flag records that the transaction's remote work is already gone;
+ *       qmgr_check_dblink_trans() then refuses the commit instead of reporting a success that
+ *       confirms the loss.
+ */
+void
+qmgr_dblink_set_sink_aborted (THREAD_ENTRY * thread_p)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
-  tran_entry_p->dblink_entry = NULL;
-
-  return;
+  tran_entry_p->is_dblink_sink_aborted = true;
 }

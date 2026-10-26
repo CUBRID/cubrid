@@ -19,6 +19,7 @@
 /*
  * authenticate_password.cpp -
  */
+#include <random>
 
 #include "authenticate_password.hpp"
 
@@ -126,10 +127,13 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
   else
     {
-      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len);
+      /* pass is a plaintext password: no context reuse, so that the digest context is
+       * cleansed as soon as the hash is done. */
+      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len, false);
       if (error_status == NO_ERROR)
 	{
 	  assert (result_strp != NULL);
+	  assert (result_len == ENCRYPT_SHA2_512_HEX_SIZE);
 
 	  memcpy (dest + 1, result_strp, result_len);
 	  dest[result_len + 1] = '\0';	/* null termination for match_password () */
@@ -144,10 +148,96 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
 }
 
+void
+encrypt_salt_generate (char *salt, int salt_size)
+{
+  char master_salt[ENCRYPT_SALT_SIZE + 1];
+  assert (salt != NULL && salt_size > (ENCRYPT_SALT_SIZE * 2));
+
+  if (crypt_generate_random_bytes (master_salt, ENCRYPT_SALT_SIZE) != NO_ERROR)
+    {
+      // fallback to generate salt using random_device
+      int i = 0;
+      size_t copy_size;
+      uint64_t random_val;
+      thread_local std::mt19937_64 engine (std::random_device{}());
+
+      while (i < ENCRYPT_SALT_SIZE)
+	{
+	  random_val = engine();
+	  copy_size = (ENCRYPT_SALT_SIZE - i) < (int)sizeof (uint64_t) ? (ENCRYPT_SALT_SIZE - i) : sizeof (uint64_t);
+	  memcpy (master_salt + i, &random_val, copy_size);
+	  i += copy_size;
+	}
+    }
+
+  str_to_hex_prealloced (master_salt, ENCRYPT_SALT_SIZE, salt, salt_size, HEX_UPPERCASE);
+  assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+}
+
+/*
+ * encrypt_password_sha2_512_salt -  hashing a password string using SHA2 512 with salt
+ *   return: none
+ *   name(in): user name
+ *   salt(in): salt string to encrypt
+ *   pass(in): string to encrypt
+ *   dest(out): destination buffer
+ *
+ *   Notice: If salt is null, pass is the user's raw input and a new salt is generated;
+ *           otherwise, pass is the user's raw input or formatted as ENCODE_PREFIX_SHA2_512.
+ */
+void
+encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest)
+{
+  char sha512[AU_MAX_PASSWORD_BUF + 4];
+  char salt_in[ENCRYPT_SALT_SIZE_HEX + 1];
+  char buf[AU_MAX_PASSWORD_BUF + 4];
+
+  assert (name != NULL && strlen (name) > 0);
+
+  if (pass == NULL)
+    {
+      strcpy (dest, "");
+      return;
+    }
+
+  if (salt == NULL)
+    {
+      encrypt_password_sha2_512 (pass, sha512);
+      encrypt_salt_generate (salt_in, sizeof (salt_in));
+      salt = salt_in;
+    }
+  else
+    {
+      assert (IS_ENCODED_SHA2_512 (pass) && strlen (pass + 1) == ENCRYPT_SHA2_512_HEX_SIZE);
+      strcpy (sha512, pass);
+    }
+
+  if (sha512[0] == '\0')
+    {
+      strcpy (dest, "");
+      return;
+    }
+
+  assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+  snprintf (buf, sizeof (buf), "%s%s%s", salt, sha512 + 1, name);
+  encrypt_password_sha2_512 (buf, sha512);
+  if (sha512[0] == '\0')
+    {
+      strcpy (dest, "");
+      return;
+    }
+
+  dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
+  dest++;
+  memcpy (dest, salt, ENCRYPT_SALT_SIZE_HEX);
+  strcpy (dest + ENCRYPT_SALT_SIZE_HEX, sha512 + 1);
+}
 
 /*
  * match_password -  This compares two passwords to see if they match.
  *   return: non-zero if the passwords match
+ *   name(in): user name(uppercase only)
  *   user(in): user supplied password
  *   database(in): stored database password
  *
@@ -157,7 +247,7 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
  *       in to an active session.
  */
 bool
-match_password (const char *user, const char *database)
+match_password (const char *name, const char *user, const char *database)
 {
   char buf1[AU_MAX_PASSWORD_BUF + 4];
   char buf2[AU_MAX_PASSWORD_BUF + 4];
@@ -173,7 +263,7 @@ match_password (const char *user, const char *database)
     {
       /* DB: DES */
       strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER : DES */
 	  strcpy (buf1, Au_user_password_des_oldstyle);
@@ -188,7 +278,7 @@ match_password (const char *user, const char *database)
     {
       /* DB: SHA1 */
       strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER:SHA1 */
 	  strcpy (buf1, Au_user_password_sha1);
@@ -203,7 +293,7 @@ match_password (const char *user, const char *database)
     {
       /* DB: SHA2 */
       strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER:SHA2 */
 	  strcpy (buf1, Au_user_password_sha2_512);
@@ -214,19 +304,52 @@ match_password (const char *user, const char *database)
 	  encrypt_password_sha2_512 (user, buf1);
 	}
     }
+  else if (IS_ENCODED_SHA2_512_SALT (database))
+    {
+      /* DB: SHA2 with salt */
+      char salt[ENCRYPT_SALT_SIZE_HEX + 1];
+
+      strcpy (buf2, database);
+
+      if (strlen (database + 1) != (ENCRYPT_SALT_SIZE_HEX + ENCRYPT_SHA2_512_HEX_SIZE))
+	{
+	  assert (false);
+	  return false;
+	}
+
+      memcpy (salt, database + 1, ENCRYPT_SALT_SIZE_HEX);
+      salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
+
+      /* Distinguish execution paths using pointer comparison:
+       * start() passes pre-hashed Au_user_password_sha2_512, whereas login() passes raw input. */
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
+	{
+	  encrypt_password_sha2_512_salt (name, salt, user, buf1);
+	}
+      else
+	{
+	  char user_sha512[AU_MAX_PASSWORD_BUF + 4];
+	  encrypt_password_sha2_512 (user, user_sha512);
+	  if (user_sha512[0] == '\0')
+	    {
+	      return false;
+	    }
+	  encrypt_password_sha2_512_salt (name, salt, user_sha512, buf1);
+	}
+    }
   else
     {
       /* DB:PLAINTEXT -> SHA2 */
       encrypt_password_sha2_512 (database, buf2);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
-	  /* USER : SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
+	  /* USER : SHA2 */
+	  strcpy (buf1, Au_user_password_sha2_512);
 	}
       else
 	{
-	  /* USER : PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
+	  /* USER : PLAINTEXT -> SHA2 */
+	  encrypt_password_sha2_512 (user, buf1);
 	}
     }
 
@@ -252,108 +375,130 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
   DB_VALUE value;
   MOP pass, pclass;
   int save, len;
+  bool is_new_pass = false;
   char pbuf[AU_MAX_PASSWORD_BUF + 4];
 
-  AU_DISABLE (save);
+  /* check if the current user has permission to change the password */
+  AU_SAVE_AND_DISABLE (save);
   if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
     {
       error = ER_AU_UPDATE_FAILURE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* convert empty password strings to NULL passwords */
+  if (password != NULL)
+    {
+      len = strlen (password);
+      if (len == 0)
+	{
+	  password = NULL;
+	}
+      /*
+       * check for large passwords, only do this
+       * if the encode flag is on !
+       */
+      else if (len > AU_MAX_PASSWORD_CHARS && encode)
+	{
+	  error = ER_AU_PASSWORD_OVERFLOW;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+    }
+
+  /* get the existing password object from the user */
+  error = obj_get (user, "password", &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* create a new password object and link it to the user */
+  pass = (DB_IS_NULL (&value)) ? NULL : db_get_object (&value);
+  if (pass == NULL)
+    {
+      is_new_pass = true;
+      pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
+      if (pclass == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      pass = obj_create (pclass);
+      if (pass == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      db_make_object (&value, pass);
+      error = obj_set (user, "password", &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* encrypt the password or attach the prefix depending on the encode flag */
+  if (password == NULL)
+    {
+      db_make_null (&value);
+    }
+  else if (encode)
+    {
+      DB_VALUE nm_value;
+      error = obj_get (user, "name", &nm_value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
+	{
+	  encrypt_password_sha2_512_salt (db_get_string (&nm_value), NULL, password, pbuf);
+	}
+      else
+	{
+	  assert_release (false);
+	  error = ER_AU_INVALID_USER_NAME;
+	  goto end;
+	}
+
+      db_value_clear (&nm_value);
+      db_make_string (&value, pbuf);
     }
   else
     {
-      /* convert empty password strings to NULL passwords */
-      if (password != NULL)
-	{
-	  len = strlen (password);
-	  if (len == 0)
-	    {
-	      password = NULL;
-	    }
-	  /*
-	   * check for large passwords, only do this
-	   * if the encode flag is on !
-	   */
-	  else if (len > AU_MAX_PASSWORD_CHARS && encode)
-	    {
-	      error = ER_AU_PASSWORD_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-      if (error == NO_ERROR)
-	{
-	  if ((error = obj_get (user, "password", &value)) == NO_ERROR)
-	    {
-	      if (DB_IS_NULL (&value))
-		{
-		  pass = NULL;
-		}
-	      else
-		{
-		  pass = db_get_object (&value);
-		}
-
-	      if (pass == NULL)
-		{
-		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
-		  if (pclass != NULL)
-		    {
-		      pass = obj_create (pclass);
-		      if (pass != NULL)
-			{
-			  db_make_object (&value, pass);
-			  error = obj_set (user, "password", &value);
-			}
-		      else
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		    }
-		  else
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		}
-
-	      if (error == NO_ERROR && pass != NULL)
-		{
-		  if (encode && password != NULL)
-		    {
-		      encrypt_password_sha2_512 (password, pbuf);
-		      db_make_string (&value, pbuf);
-		      error = obj_set (pass, "password", &value);
-		    }
-		  else
-		    {
-		      /*
-		       * always add the prefix, the unload process strips it out
-		       * so the password can be read by the csql interpreter
-		       */
-		      if (password == NULL)
-			{
-			  db_make_null (&value);
-			}
-		      else
-			{
-			  strcpy (pbuf + 1, password);
-			  pbuf[0] = encrypt_prefix;
-			  db_make_string (&value, pbuf);
-			}
-		      error = obj_set (pass, "password", &value);
-		    }
-		}
-	    }
-	}
+      strcpy (pbuf + 1, password);
+      pbuf[0] = encrypt_prefix;
+      db_make_string (&value, pbuf);
     }
 
-  if (error == NO_ERROR)
+  /* store the prepared password value into the password object */
+  error = obj_set (pass, "password", &value);
+  if (error != NO_ERROR)
     {
-      error = au_update_user_timestamp (user);
+      goto end;
     }
 
-  AU_ENABLE (save);
-  return (error);
+  /* update timestamps of the password object */
+  error = is_new_pass ? au_set_new_timestamps (pass) : au_update_timestamps (pass);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* update timestamps of the user object */
+  error = au_update_timestamps (user);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+end:
+  AU_RESTORE (save);
+  return error;
 }
 

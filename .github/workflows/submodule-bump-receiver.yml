@@ -1,0 +1,271 @@
+name: Submodule bump (receiver)
+
+on:
+  repository_dispatch:
+    types: [submodule-bump]
+  push:
+    branches: [develop]
+    paths:
+      - cubrid-jdbc
+      - cubrid-cci
+      - cubridmanager
+  workflow_dispatch:
+    inputs:
+      submodule_path:
+        description: "Target submodule"
+        required: true
+        type: choice
+        options: [cubrid-jdbc, cubrid-cci, cubridmanager]
+      target_sha:
+        description: "Submodule commit to pin: full 40-char SHA"
+        required: true
+      reanchor:
+        description: "Allow a non-fast-forward re-anchor after a submodule force-push"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  BASE_BRANCH: develop
+  FALLBACK_TAG: "[CBRD-0000]"
+  PARENT: ${{ github.repository }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.select.outputs.targets }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.SUBMODULE_BOT_APP_ID }}
+          private-key: ${{ secrets.SUBMODULE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Select submodules to process
+        id: select
+        env:
+          GH_TOKEN:      ${{ steps.app-token.outputs.token }}
+          EVENT:         ${{ github.event_name }}
+          DISPATCH_PATH: ${{ github.event.client_payload.submodule_path }}
+          INPUT_PATH:    ${{ inputs.submodule_path }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            workflow_dispatch)   CANDIDATES="$INPUT_PATH" ;;
+            repository_dispatch) CANDIDATES="$DISPATCH_PATH" ;;
+            *)                   CANDIDATES="cubrid-jdbc cubrid-cci cubridmanager" ;;
+          esac
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$PARENT/contents/.gitmodules?ref=$BASE_BRANCH" > gitmodules.ini
+          TARGETS='[]'
+          for p in $CANDIDATES; do
+            [ -n "$p" ] || continue
+            case "$p" in
+              cubrid-jdbc|cubrid-cci|cubridmanager) ;;
+              *) echo "::error::unknown submodule path '$p'"; exit 1 ;;
+            esac
+            if [ "$EVENT" != workflow_dispatch ]; then
+              SLUG=$(git config -f gitmodules.ini --get "submodule.$p.url" \
+                     | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
+              SUB_BRANCH=$(git config -f gitmodules.ini --get "submodule.$p.branch" || echo "$BASE_BRANCH")
+              PINNED=$(gh api "repos/$PARENT/contents/$p?ref=$BASE_BRANCH" --jq .sha)
+              TIP=$(gh api "repos/$SLUG/commits/$SUB_BRANCH" --jq .sha)
+              if [ "$PINNED" = "$TIP" ]; then
+                echo "$p: up to date ($PINNED)"
+                continue
+              fi
+            fi
+            TARGETS=$(jq -cn --argjson a "$TARGETS" --arg p "$p" '$a + [$p]')
+          done
+          echo "targets=$TARGETS"
+          echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
+
+  bump:
+    needs: plan
+    if: needs.plan.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sub: ${{ fromJSON(needs.plan.outputs.targets) }}
+    concurrency:
+      group: submodule-bump-${{ matrix.sub }}
+      cancel-in-progress: false
+    env:
+      SUB:  ${{ matrix.sub }}
+      MODE: ${{ github.event_name == 'workflow_dispatch' && 'at' || 'next' }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.SUBMODULE_BOT_APP_ID }}
+          private-key: ${{ secrets.SUBMODULE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Checkout parent
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check queue
+        id: queue
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          OPEN=$(gh pr list --repo "$PARENT" --state open --limit 100 --json number,headRefName \
+                 | jq -r --arg b "bump/$SUB" '.[] | select(.headRefName==$b) | .number')
+          # A just-merged PR can still read as open. This run is the only chance to
+          # advance, so decide on what the pin already holds, not on the reported state.
+          if [ -n "$OPEN" ]; then
+            HEAD_SHA=$(gh pr view "$OPEN" --repo "$PARENT" --json headRefOid --jq .headRefOid 2>/dev/null || true)
+            if [ -n "$HEAD_SHA" ]; then
+              PR_PIN=$(gh api "repos/$PARENT/contents/$SUB?ref=$HEAD_SHA" --jq .sha 2>/dev/null || true)
+              if [ "$PR_PIN" = "$(git rev-parse "HEAD:$SUB")" ]; then
+                echo "PR #$OPEN already matches the current pin; treating it as merged."
+                OPEN=""
+              fi
+            fi
+          fi
+          if [ -z "$OPEN" ]; then
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$MODE" = next ]; then
+            echo "queue busy: #$OPEN still open; not advancing $SUB."
+            echo "busy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "retargeting open PR #$OPEN for $SUB to the requested SHA."
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve and pin target
+        id: pin
+        if: steps.queue.outputs.busy != 'true'
+        env:
+          GH_TOKEN:  ${{ steps.app-token.outputs.token }}
+          INPUT_SHA: ${{ inputs.target_sha }}
+          REANCHOR:  ${{ inputs.reanchor }}
+        run: |
+          set -euo pipefail
+          die(){  echo "::error::$*" >&2; exit 1; }
+          noop(){ echo "$*"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          SUB_BRANCH=$(git config -f .gitmodules --get "submodule.$SUB.branch" || echo "$BASE_BRANCH")
+          REMOTE_BRANCH="origin/$SUB_BRANCH"
+          FF_REQUIRED=true
+
+          git submodule update --init -- "$SUB"
+          git -C "$SUB" fetch -q --no-tags origin "+refs/heads/$SUB_BRANCH:refs/remotes/origin/$SUB_BRANCH"
+
+          [ "$(git -C "$SUB" rev-parse --is-shallow-repository)" = false ] \
+            || die "'$SUB' is a shallow clone; ancestry guards cannot run"
+
+          OLD=$(git rev-parse --verify "HEAD:$SUB") || die "cannot read gitlink HEAD:$SUB"
+          git -C "$SUB" rev-parse --verify -q "$OLD^{commit}" >/dev/null \
+            || die "pinned commit $OLD not found in '$SUB'"
+
+          # Must run before resolution: an orphaned pin yields the same empty result as "already at tip".
+          if ! git -C "$SUB" merge-base --is-ancestor "$OLD" "$REMOTE_BRANCH"; then
+            [ "$MODE" = at ] && [ "$REANCHOR" = true ] \
+              || die "pinned commit $OLD is NOT an ancestor of $REMOTE_BRANCH in '$SUB'. History was rewritten or the pin is off-branch. Recover by running the workflow manually with an explicit target_sha and reanchor=true."
+            echo "::warning::pin $OLD is not on $REMOTE_BRANCH; re-anchoring by explicit request."
+            FF_REQUIRED=false
+          fi
+
+          case "$MODE" in
+            next)
+              # tail -n1, not head -n1 (SIGPIPE under pipefail), not --reverse -n1 (returns the tip).
+              TARGET=$(git -C "$SUB" rev-list --first-parent "$OLD..$REMOTE_BRANCH" | tail -n1)
+              [ -n "$TARGET" ] && [ "$TARGET" != "$OLD" ] \
+                || noop "$SUB already at $REMOTE_BRANCH tip ($OLD)"
+              STEP_PARENT=$(git -C "$SUB" rev-parse --verify -q "$TARGET^") \
+                || die "resolved target $TARGET has no parent"
+              [ "$STEP_PARENT" = "$OLD" ] \
+                || die "pin $OLD is not on the first-parent line of $REMOTE_BRANCH (next=$TARGET, its parent=$STEP_PARENT). Re-anchor deliberately by running the workflow manually with an explicit target_sha."
+              ;;
+            at)
+              INPUT_SHA=$(printf '%s' "$INPUT_SHA" | tr '[:upper:]' '[:lower:]')
+              [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] \
+                || die "target_sha must be a full 40-char lowercase commit SHA, got '$INPUT_SHA'"
+              TARGET=$(git -C "$SUB" rev-parse --verify --end-of-options "$INPUT_SHA^{commit}") \
+                || die "commit $INPUT_SHA not found in '$SUB'"
+              [ "$TARGET" = "$INPUT_SHA" ] || die "$INPUT_SHA is not a commit (peeled to $TARGET)"
+              [ "$TARGET" != "$OLD" ] || noop "$SUB already pinned at $TARGET"
+              ;;
+            *) die "unknown mode '$MODE' (expected next|at)" ;;
+          esac
+
+          if [ "$FF_REQUIRED" = true ]; then
+            git -C "$SUB" merge-base --is-ancestor "$OLD" "$TARGET" \
+              || die "refusing to move '$SUB' BACKWARD: $OLD -> $TARGET is not fast-forward"
+          fi
+          # A side-branch commit can be a descendant of OLD, so the guard above cannot catch it.
+          git -C "$SUB" merge-base --is-ancestor "$TARGET" "$REMOTE_BRANCH" \
+            || die "refusing to pin '$SUB' to $TARGET: not contained in $REMOTE_BRANCH"
+
+          git -C "$SUB" checkout -q --detach "$TARGET"
+          NEW=$(git -C "$SUB" rev-parse HEAD)
+          [ "$NEW" = "$TARGET" ] || die "post-condition failed: '$SUB' HEAD is $NEW, expected $TARGET"
+
+          SLUG=$(git config -f .gitmodules --get "submodule.$SUB.url" \
+                 | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
+          COUNT=$(git -C "$SUB" rev-list --count "$OLD..$TARGET")
+          TAG=$(git -C "$SUB" log --format=%s "$OLD..$TARGET" \
+                | grep -oE '^\[[A-Z]+-[0-9]+\]' | sed -n 1p || true)
+          [ -n "$TAG" ] || TAG="$FALLBACK_TAG"
+          AUTHOR=$(gh api "repos/$SLUG/commits/$TARGET" --jq '.author.login // ""' || true)
+
+          {
+            echo "changed=true"
+            echo "old_short=${OLD:0:7}"
+            echo "new_short=${TARGET:0:7}"
+            echo "count=$COUNT"
+            echo "compare=https://github.com/$SLUG/compare/$OLD...$TARGET"
+            echo "title=$TAG Update $SUB submodule to ${TARGET:0:7}"
+            echo "author=$AUTHOR"
+            echo "manifest<<__MANIFEST__"
+            # A bare #N would autolink to the parent repo, so qualify it with the submodule slug.
+            git -C "$SUB" log --no-decorate --reverse --format='- %s%n%w(0,2,2)%b%n' "$OLD..$TARGET" \
+              | sed -E "s@(^|[^[:alnum:]_/])#([0-9]+)@\1$SLUG#\2@g" \
+              | sed 's/[[:space:]]*$//' | cat -s
+            echo "__MANIFEST__"
+          } >> "$GITHUB_OUTPUT"
+          echo "$SUB: $OLD -> $TARGET ($COUNT commit(s), mode=$MODE)"
+
+      - name: Create PR
+        if: steps.pin.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: bump/${{ matrix.sub }}
+          base: ${{ env.BASE_BRANCH }}
+          title: ${{ steps.pin.outputs.title }}
+          commit-message: |
+            ${{ steps.pin.outputs.title }}
+
+            ${{ steps.pin.outputs.old_short }} -> ${{ steps.pin.outputs.new_short }} (${{ steps.pin.outputs.count }} commit(s))
+            ${{ steps.pin.outputs.compare }}
+
+            ${{ steps.pin.outputs.manifest }}
+          body: |
+            Automated submodule bump for `${{ matrix.sub }}`.
+
+            - `${{ steps.pin.outputs.old_short }}` -> `${{ steps.pin.outputs.new_short }}` (${{ steps.pin.outputs.count }} commit(s))
+            - Compare: ${{ steps.pin.outputs.compare }}
+
+            <details><summary>Included commits</summary>
+
+            ${{ steps.pin.outputs.manifest }}
+
+            </details>
+          labels: Submodule Auto Update
+          assignees: ${{ steps.pin.outputs.author }}
+          delete-branch: true

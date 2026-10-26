@@ -113,6 +113,8 @@ static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 #if !defined (SERVER_MODE)
 static void css_default_server_timeout_fn (void);
 static CSS_SERVER_TIMEOUT_FN css_server_timeout_fn = css_default_server_timeout_fn;
+static bool css_default_abort_server_wait_fn (void);
+static CSS_ABORT_SERVER_WAIT_FN css_abort_server_wait_fn = css_default_abort_server_wait_fn;
 static bool css_default_check_server_alive_fn (const char *db_name, const char *db_host);
 CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn = css_default_check_server_alive_fn;
 #endif /* !SERVER_MODE */
@@ -202,6 +204,13 @@ css_default_server_timeout_fn (void)
 {
   /* do nothing */
   return;
+}
+
+static bool
+css_default_abort_server_wait_fn (void)
+{
+  /* do nothing */
+  return false;
 }
 
 #elif defined(WINDOWS)
@@ -355,6 +364,7 @@ css_net_send_no_block (SOCKET fd, const char *buffer, int size)
 #endif /* WINDOWS */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
 /*
  * css_readn() - read "n" bytes from a descriptor.
  *   return: count of bytes actually read
@@ -375,14 +385,14 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
   struct pollfd po[1] = { {0, 0, 0} };
 #endif /* WINDOWS */
 
-  if (fd < 0)
+  if (unlikely (fd < 0))
     {
       er_log_debug (ARG_FILE_LINE, "css_readn: fd < 0");
       errno = EINVAL;
       return -1;
     }
 
-  if (nbytes <= 0)
+  if (unlikely (nbytes <= 0))
     {
       return 0;
     }
@@ -391,17 +401,31 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
   do
     {
 #if !defined (WINDOWS)
-      po[0].fd = fd;
-      po[0].events = POLLIN;
-      po[0].revents = 0;
-      n = poll (po, 1, timeout);
-      if (n == 0)
+      /* Try recv first without poll.
+       * MSG_DONTWAIT makes only this recv non-blocking, regardless of the socket mode.
+       * EAGAIN / EWOULDBLOCK falls through to the poll-based slow path below. */
+      n = recv (fd, ptr, nleft, MSG_DONTWAIT);
+
+      if (likely (n > 0))
 	{
-	  /* 0 means it timed out and no fd is changed. */
-	  errno = ETIMEDOUT;
-	  return -1;
+	  nleft -= n;
+	  ptr += n;
+	  continue;
 	}
-      else if (n < 0)
+
+      /* Graceful close (FIN) from peer.
+       * recv() returning 0 means neither "no data" nor "received all bytes requested".
+       * It is solely a peer-termination signal. */
+      if (unlikely (n == 0))
+	{
+	  break;
+	}
+
+      /* n < 0 */
+
+      /* EAGAIN / EWOULDBLOCK is the expected "no data yet" signal and is not an error.
+       * It falls through to the poll-based slow path below. */
+      if (unlikely (errno != EAGAIN && errno != EWOULDBLOCK))
 	{
 	  if (errno == EINTR)
 	    {
@@ -410,74 +434,132 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 		{
 		  css_server_timeout_fn ();
 		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
 #endif /* !SERVER_MODE */
+
 	      continue;
 	    }
-	  er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
-	  return -1;
-	}
-      else
-	{
-	  if (po[0].revents & POLLERR || ((po[0].revents & POLLHUP) && ! (po[0].revents & POLLIN)))
-	    {
-	      if (ioctl (fd, FIONREAD, &remains) >= 0)
-		{
-		  if (remains > 0)
-		    {
-		      er_log_debug (ARG_FILE_LINE, "%d bytes of data pending in buffer (fd = %d)\n", remains, fd);
-		    }
-		}
 
+	  /* ECONNRESET is the recv-side report of the same peer close
+	   * that poll reports as POLLERR / POLLHUP.
+	   * Return -1 without raising ER_CSS_RECV_OR_SEND. */
+	  if (errno == ECONNRESET)
+	    {
 	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
-			    strerror (errno));
+	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", "ECONNRESET", strerror (errno));
 	      return -1;
 	    }
+
+#if !defined (SERVER_MODE)
+	  css_set_networking_error (fd);
+#endif /* !SERVER_MODE */
+
+	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %s\n", n, strerror (errno));
+	  return n;
+	}
+
+      /* No data available yet (EAGAIN/EWOULDBLOCK), fall back to poll with timeout */
+      po[0].fd = fd;
+      po[0].events = POLLIN;
+      po[0].revents = 0;
+      n = poll (po, 1, timeout);
+
+      if (unlikely (n == 0))
+	{
+	  errno = ETIMEDOUT;
+	  return -1;
+	}
+
+      if (unlikely (n < 0))
+	{
+	  if (errno == EINTR)
+	    {
+#if !defined (SERVER_MODE)
+	      if (css_server_timeout_fn != NULL)
+		{
+		  css_server_timeout_fn ();
+		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
+#endif /* !SERVER_MODE */
+
+	      continue;
+	    }
+
+	  er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
+	  return -1;
+	}	/* if (n < 0) */
+
+      /* n > 0 */
+      if (unlikely (po[0].revents & POLLERR || ((po[0].revents & POLLHUP) && ! (po[0].revents & POLLIN))))
+	{
+	  if (ioctl (fd, FIONREAD, &remains) >= 0)
+	    {
+	      if (remains > 0)
+		{
+		  er_log_debug (ARG_FILE_LINE, "%d bytes of data pending in buffer (fd = %d)\n", remains, fd);
+		}
+	    }
+
+	  errno = EINVAL;
+	  er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
+			strerror (errno));
+	  return -1;
 	}
 #endif /* !WINDOWS */
 
 read_again:
       n = recv (fd, ptr, nleft, 0);
 
-      if (n == 0)
+      if (unlikely (n == 0))
 	{
 	  break;
 	}
 
-      if (n < 0)
+      if (unlikely (n < 0))
 	{
-#if !defined(WINDOWS)
-	  if (errno == EAGAIN)
+#if !defined (WINDOWS)
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
 	    {
 	      continue;
 	    }
+
 	  if (errno == EINTR)
 	    {
 	      goto read_again;
 	    }
-#else
+#else	/* !WINDOWS */
 	  winsock_error = WSAGetLastError ();
 
 	  /* In Windows 2003, pass large length (such as 120MB) to recv() will temporary unavailable by error number
 	   * WSAENOBUFS (10055) */
-	  if (winsock_error == WSAENOBUFS)
+	  if (winsock_error == WSAENOBUFS || winsock_error == WSAEINTR)
 	    {
-	      goto read_again;
+	      continue;
 	    }
+#endif	/* WINDOWS */
 
-	  if (winsock_error == WSAEINTR)
-	    {
-	      goto read_again;
-	    }
-#endif
+	  /* real error: common handling */
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
 
 	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %s\n", n, strerror (errno));
-
 	  return n;             /* error, return < 0 */
-	}
+	}	/* if (n < 0) */
+
+      /* n > 0 */
       nleft -= n;
       ptr += n;
     }
@@ -890,8 +972,9 @@ error:
 #endif
   return rc;
 }
+#endif /* WINDOWS */
 
-#else /* WINDOWS */
+#if !defined(WINDOWS)
 /*
  * css_vector_send() -
  *   return: size of sent if success, or error code
@@ -907,14 +990,17 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
   int i, n;
   struct pollfd po[1] = { {0, 0, 0} };
 
-  if (fd < 0)
+  if (unlikely (fd < 0))
     {
       er_log_debug (ARG_FILE_LINE, "css_vector_send: fd < 0");
       errno = EINVAL;
       return -1;
     }
 
-  if (bytes_written > 0)
+  /* Retry case: a prior call wrote only `bytes_written` bytes (partial writev).
+   * Advance the iovec by that amount so writev resumes from where it stopped.
+   * Rare on loopback / fast networks where writev typically sends everything in one shot. */
+  if (unlikely (bytes_written > 0))
     {
       er_log_debug (ARG_FILE_LINE, "css_vector_send: retry called for %d\n", bytes_written);
 
@@ -938,57 +1024,60 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 
   while (true)
     {
-      po[0].fd = fd;
-      po[0].events = POLLOUT;
-      po[0].revents = 0;
-      n = poll (po, 1, timeout);
-      if (n < 0)
-	{
-	  if (errno == EINTR)
-	    {
-	      continue;
-	    }
-
-	  er_log_debug (ARG_FILE_LINE, "css_vector_send: EINTR %s\n", strerror (errno));
-	  return -1;
-	}
-      else if (n == 0)
-	{
-	  /* 0 means it timed out and no fd is changed. */
-	  errno = ETIMEDOUT;
-	  return -1;
-	}
-      else
-	{
-	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
-	    {
-	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
-			    (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
-	      return -1;
-	    }
-	}
-
-write_again:
+      /* Try writev first without poll.
+       * Unlike recv(), writev() has no per-call non-blocking flag,
+       * so blocking follows the socket mode:
+       * a non-blocking socket returns EAGAIN here (-> poll slow path below);
+       * a blocking socket blocks here and the poll path is not reached --
+       * with timeout = -1 this makes no difference:
+       * both resume as soon as the send buffer drains, just without a time limit. */
       n = writev (fd, *vec, *len);
-      if (n > 0)
+
+      if (likely (n > 0))
 	{
 	  return n;
 	}
-      else if (n == 0)
+
+      if (unlikely (n == 0))
 	{
-	  return 0;             /* ??? */
+	  /* writev returns 0 only when total iov_len is 0 (empty iovec).
+	   * This does NOT mean "all bytes sent".
+	   * Completion is tracked by the caller via cumulative byte count, not by this 0 return. */
+	  return 0;
 	}
-      else
+
+      /* n < 0 */
+
+      /* EAGAIN / EWOULDBLOCK = "send buffer full"; not an error
+       * (a blocking socket never reaches here).
+       * It falls through to the poll-based slow path below. */
+      if (unlikely (errno != EAGAIN && errno != EWOULDBLOCK))
 	{
 	  if (errno == EINTR)
 	    {
-	      goto write_again;
-	    }
-	  if (errno == EAGAIN)
-	    {
+#if !defined (SERVER_MODE)
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
+#endif /* !SERVER_MODE */
+
 	      continue;
 	    }
+
+	  /* EPIPE / ECONNRESET is the writev-side report of the same peer close
+	   * that poll reports as POLLERR / POLLHUP.
+	   * Return -1 without raising ER_CSS_RECV_OR_SEND. */
+	  if (errno == EPIPE || errno == ECONNRESET)
+	    {
+	      const char *cause = (errno == ECONNRESET) ? "ECONNRESET" : "EPIPE";
+	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n", cause, strerror (errno));
+	      return -1;
+	    }
+
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
@@ -996,8 +1085,53 @@ write_again:
 	  er_log_debug (ARG_FILE_LINE, "css_vector_send: returning error n %d, errno %s\n", n, strerror (errno));
 	  return n;             /* error, return < 0 */
 	}
+
+      /* Send buffer full, fall back to poll before retry */
+      po[0].fd = fd;
+      po[0].events = POLLOUT;
+      po[0].revents = 0;
+      n = poll (po, 1, timeout);
+
+      if (likely (n > 0))
+	{
+	  if (unlikely (po[0].revents & POLLERR || po[0].revents & POLLHUP))
+	    {
+	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
+			    (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
+	      return -1;
+	    }
+
+	  /* poll succeeded with POLLOUT -- retry writev */
+	  continue;
+	}
+
+      if (unlikely (n == 0))
+	{
+	  errno = ETIMEDOUT;
+	  return -1;
+	}
+
+      /* n < 0 */
+      if (unlikely (errno == EINTR))
+	{
+#if !defined (SERVER_MODE)
+	  if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+	    {
+	      /* the client gave this wait up (e.g. it is shutting down) */
+	      errno = EINTR;
+	      return -1;
+	    }
+#endif /* !SERVER_MODE */
+
+	  continue;
+	}
+
+      er_log_debug (ARG_FILE_LINE, "css_vector_send: poll error %s\n", strerror (errno));
+      return -1;
     }
 
+  /* unreachable: while (true) never exits; kept to satisfy compiler control-flow analysis */
   return -1;
 }
 #endif /* !WINDOWS */
@@ -1848,6 +1982,18 @@ css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn)
 {
   css_server_timeout_fn = callback_fn;
 }
+
+/*
+ * css_register_abort_server_wait_fn () - regist the callback function
+ *   return: void
+ *   callback_fn(in): asked when a wait for the server is interrupted by a
+ *                    signal; returning true gives that wait up
+ */
+void
+css_register_abort_server_wait_fn (CSS_ABORT_SERVER_WAIT_FN callback_fn)
+{
+  css_abort_server_wait_fn = callback_fn;
+}
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -2274,7 +2420,6 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
   int i, attr_idx = -1;
   bool attr_info_inited;
   bool scan_cache_inited;
-  char *rec_attr_name_p = NULL, *string = NULL;
   const char *user_name = NULL;
   HFID hfid;
   OID inst_oid;
@@ -2307,55 +2452,24 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
       goto end;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
+  error = or_get_attrid (&recdes, "name", &attr_idx);
+  if (error != NO_ERROR)
     {
-      int alloced_string = 0;
-      bool set_break = false;
-      string = NULL;
-
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
-      rec_attr_name_p = string;
-
-      if (rec_attr_name_p == NULL)
-	{
-	  continue;
-	}
-
-      if (strcmp ("name", rec_attr_name_p) == 0)
-	{
-	  attr_idx = i;
-	  set_break = true;
-	  goto clean_string;
-	}
-
-clean_string:
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
-
-      if (set_break == true)
-	{
-	  break;
-	}
+      ASSERT_ERROR ();
+      goto end;
+    }
+  if (attr_idx == NULL_ATTRID)
+    {
+      assert (false);
+      error = ER_FAILED;
+      goto end;
     }
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  error = heap_get_class_hfid (thread_p, class_oid, &hfid, NULL);
   if (error != NO_ERROR)
     {
-      goto end;
-    }
-
-  if (HFID_IS_NULL (&hfid))
-    {
-      error = ER_FAILED;
       goto end;
     }
 
@@ -2835,11 +2949,47 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
    return --working_task_count;
  }
 
+ bool
+ css_conn_entry::has_working_task () const
+ {
+   return working_task_count > 0;
+ }
+
  void
  css_conn_entry::init_working_task ()
  {
    working_task_count = 0;
  }
+
+#if defined(SERVER_MODE)
+ void
+ css_conn_entry::begin_method_callback ()
+ {
+   ++method_callback_count;
+ }
+
+ void
+ css_conn_entry::end_method_callback ()
+ {
+   size_t count = method_callback_count.load ();
+   while (count > 0 && !method_callback_count.compare_exchange_weak (count, count - 1))
+     {
+     }
+   assert_release_error (count > 0);
+ }
+
+ bool
+ css_conn_entry::has_outstanding_method_callback () const
+ {
+   return method_callback_count.load () > 0;
+ }
+
+ void
+ css_conn_entry::init_method_callback ()
+ {
+   method_callback_count = 0;
+ }
+#endif
 
  void
  css_conn_entry::release_packet (void *buffer)

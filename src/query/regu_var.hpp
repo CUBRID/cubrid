@@ -23,6 +23,9 @@
 #ifndef _REGU_VAR_HPP_
 #define _REGU_VAR_HPP_
 
+struct domain_plan_item;
+struct DOMAIN_COMPARE_PLAN;
+
 #include "heap_attrinfo.h"
 #include "object_domain.h"
 #include "query_list.h"
@@ -81,12 +84,14 @@ struct attr_descr_node
   HEAP_CACHE_ATTRINFO *cache_attrinfo;	/* used to cache catalog info */
   DB_VALUE *cache_dbvalp;	/* cached value for particular attr */
   /* in cache_attrinfo */
+  struct heap_attrvalue *cache_slot;	/* slot owning cache_dbvalp; inline peeks its lazy state, no re-locate */
 
   void reset ()
   {
     id = -1;
     type = DB_TYPE_NULL;
     cache_dbvalp = NULL;
+    cache_slot = NULL;
   }
 };				/* Attribute Descriptor */
 
@@ -119,6 +124,29 @@ struct valptr_list_node
   REGU_VARIABLE_LIST valptrp;	/* value pointer list */
   int valptr_cnt;		/* value count */
 
+  /* compiled evaluation program covering the list's expressions (expr_compile.h).
+   * Server-side runtime state, never serialized; built lazily on the first evaluated
+   * row and owned by the XASL clone.  Columns the compiler cannot cover keep their
+   * per-column interpreted fetch (their eval_prog_idx entry is -1).
+   *
+   * Concurrency contract: these fields (and the program they point to) are written with
+   * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+   * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+   * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+   * -- do not add such a caller without making this state per-thread or synchronized. */
+  void *eval_prog;		/* EXPR_PROG * */
+  int *eval_prog_idx;		/* program root index per column, or -1 */
+  int eval_prog_state;		/* 0 = untried, 1 = active, 2 = disabled */
+  /* the program already holds the current row: set when the tuple-descriptor pass asks its
+   * caller to retry through qdata_copy_valptr_list_to_tuple (), consumed by the very next
+   * use of the list so that copy does not evaluate the same row a second time (see
+   * qdata_valptr_prog_ensure ()) */
+  bool eval_prog_row_ready;
+  /* the scan this list projects (ACCESS_SPEC_TYPE *) when it is the node's only heap scan,
+   * so the program may read values the scan's compiled data filter computes; NULL otherwise.
+   * Set by qexec_set_expr_share_spec () before the first row; runtime only. */
+  void *eval_prog_share_spec;
+
   valptr_list_node () = default;
 };
 
@@ -126,7 +154,7 @@ typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
-  TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
+  domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -163,12 +191,23 @@ const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; 
 						 * modifier */
 const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
 const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
-const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
-const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
+const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
+						 * at load for a stable regu */
+const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
+const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
+							 * key_limit_eval () computes these nodes on their operands */
+
+const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
+					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
+					 * execution (qexec_node_domain_is_set). Set exactly when the regu's plan item
+					 * carries DOMAIN_PLAN_VARIABLE or DOMAIN_PLAN_VARIABLE_POSITION (asserted when
+					 * stx_build_domain_plan publishes the item); regu_is_variable_pos () is the
+					 * compile-time view - a TYPE_POS_VALUE whose domain is DB_TYPE_VARIABLE -
+					 * which implies the flag for such a regu */
 
 class regu_variable_node
 {
@@ -177,7 +216,7 @@ class regu_variable_node
 
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
-    TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */
     union regu_data_value
@@ -249,6 +288,7 @@ inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
+inline bool regu_is_variable_pos (const regu_variable_node *regu);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -280,5 +320,13 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
       return TP_DOMAIN_TYPE (regu->domain);
     }
   return DB_TYPE_UNKNOWN;
+}
+
+/* A variable POS: a host variable position whose domain the compiler left VARIABLE. The execution takes its domain
+ * from the bound value before its first row. */
+bool
+regu_is_variable_pos (const regu_variable_node *regu)
+{
+  return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
 }
 #endif /* _REGU_VAR_HPP_ */

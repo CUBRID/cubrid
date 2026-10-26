@@ -74,6 +74,8 @@ namespace cubload
   int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_varbit_from_bin_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_varbit_from_hex_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_ext (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_int_generic (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -118,8 +120,8 @@ namespace cubload
 	setters_[set_type][LDR_DATETIME] = &to_db_datetime;
 	setters_[set_type][LDR_DATETIMELTZ] = &to_db_datetimeltz;
 	setters_[set_type][LDR_DATETIMETZ] = &to_db_datetimetz;
-	setters_[set_type][LDR_BSTR] = &to_db_varbit_from_bin_str;
-	setters_[set_type][LDR_XSTR] = &to_db_varbit_from_hex_str;
+	setters_[set_type][LDR_BSTR] = &to_db_varbit_from_bin_str_set;
+	setters_[set_type][LDR_XSTR] = &to_db_varbit_from_hex_str_set;
 	setters_[set_type][LDR_MONETARY] = &to_db_monetary;
 	setters_[set_type][LDR_ELO_EXT] = &to_db_elo_ext;
 	setters_[set_type][LDR_ELO_INT] = &to_db_elo_int;
@@ -335,9 +337,10 @@ namespace cubload
       {
 	DB_NUMERIC num;
 	DB_BIGINT tmp_bigint;
+	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf);
-	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
 	    return ER_IT_DATA_OVERFLOW;
@@ -472,10 +475,21 @@ namespace cubload
     int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-');
     int scale = (int) str_size - (int) strcspn (str, ".") - 1;
 
+    if (precision > DB_MAX_NUMERIC_PRECISION)
+      {
+	scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
+	precision = DB_MAX_NUMERIC_PRECISION;
+      }
+
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
     if (error_code != NO_ERROR)
       {
 	return error_code;
+      }
+
+    if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+      {
+	FIXED_TO_FLOAT_NUMERIC (val);
       }
 
     return db_value_put (val, DB_TYPE_C_CHAR, (void *) str, (int) str_size);
@@ -616,16 +630,20 @@ namespace cubload
       }
   }
 
-  int
-  to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  /*
+   * Build a bit string value of floating precision out of a B'..' or X'..' token.
+   * The value owns its buffer, so the caller has to release it with db_value_clear ().
+   */
+  static int
+  make_varbit_value (const char *str, const size_t str_size, bool from_hex, const attribute *attr, db_value *val)
   {
     int error_code = NO_ERROR;
-    char *bstring;
-    db_value temp;
-    std::size_t dest_size;
-    tp_domain temp_domain, *domain_ptr = NULL;
+    char *bstring = NULL;
+    std::size_t dest_size = from_hex ? (str_size + 1) / 2 : (str_size + 7) / 8;
+    int bit_length;
+    int converted;
 
-    dest_size = (str_size + 7) / 8;
+    db_make_null (val);
 
     bstring = (char *) db_private_alloc (NULL, dest_size + 1);
     if (bstring == NULL)
@@ -636,7 +654,18 @@ namespace cubload
 	return error_code;
       }
 
-    if (qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
+    if (from_hex)
+      {
+	bit_length = ((int) str_size) << 2;
+	converted = qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size);
+      }
+    else
+      {
+	bit_length = (int) str_size;
+	converted = qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size);
+      }
+
+    if (converted != (int) str_size)
       {
 	db_private_free_and_init (NULL, bstring);
 
@@ -647,14 +676,30 @@ namespace cubload
 	return error_code;
       }
 
-    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) str_size);
+    error_code = db_make_varbit (val, TP_FLOATING_PRECISION_VALUE, bstring, bit_length);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);
 	return error_code;
       }
 
-    temp.need_clear = true;
+    val->need_clear = true;
+
+    return NO_ERROR;
+  }
+
+  /* Convert a bit string token into the domain of the attribute it is assigned to.  */
+  static int
+  to_db_varbit (const char *str, const size_t str_size, bool from_hex, const attribute *attr, db_value *val)
+  {
+    db_value temp;
+    tp_domain temp_domain, *domain_ptr = NULL;
+
+    int error_code = make_varbit_value (str, str_size, from_hex, attr, &temp);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
 
     const tp_domain &domain = attr->get_domain ();
     error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
@@ -670,6 +715,7 @@ namespace cubload
     if (tp_value_cast (&temp, val, domain_ptr, false) != DOMAIN_COMPATIBLE)
       {
 	db_value_clear (val);
+	db_value_clear (&temp);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
@@ -677,76 +723,40 @@ namespace cubload
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;
       }
+
     db_value_clear (&temp);
 
-    return error_code;
+    return NO_ERROR;
+  }
+
+  int
+  to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return to_db_varbit (str, str_size, false, attr, val);
   }
 
   int
   to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    int error_code = NO_ERROR;
-    char *bstring = NULL;
-    db_value temp;
-    std::size_t dest_size;
-    tp_domain *domain_ptr, temp_domain;
+    return to_db_varbit (str, str_size, true, attr, val);
+  }
 
-    db_make_null (&temp);
+  /*
+   * Used within a collection. The attribute domain is the domain of the collection, not of the
+   * element, so it must not be used to coerce an element. The value is built with its natural type
+   * and set_add_element () coerces it into the element domain of the collection, the same way
+   * ldr_bstr_elem () / ldr_xstr_elem () of the SA loader do.
+   */
+  int
+  to_db_varbit_from_bin_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return make_varbit_value (str, str_size, false, attr, val);
+  }
 
-    dest_size = (str_size + 1) / 2;
-
-    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
-    if (bstring == NULL)
-      {
-	error_code = er_errid ();
-	assert (error_code != NO_ERROR);
-
-	return error_code;
-      }
-
-    if (qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
-      {
-	db_private_free_and_init (NULL, bstring);
-
-	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
-
-	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
-	return error_code;
-      }
-
-    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, ((int) str_size) * 4);
-    if (error_code != NO_ERROR)
-      {
-	db_private_free_and_init (NULL, bstring);
-	return error_code;
-      }
-
-    temp.need_clear = true;
-
-    const tp_domain &domain = attr->get_domain ();
-    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
-    if (error_code != NO_ERROR)
-      {
-	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
-	db_value_clear (&temp);
-	return error_code;
-      }
-
-    domain_ptr = tp_domain_resolve_value (val, &temp_domain);
-    if (tp_value_cast (&temp, val, domain_ptr, false))
-      {
-	db_value_clear (val);
-
-	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
-
-	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
-	return error_code;
-      }
-    db_value_clear (&temp);
-
-    return error_code;
+  int
+  to_db_varbit_from_hex_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return make_varbit_value (str, str_size, true, attr, val);
   }
 
   int
@@ -919,11 +929,18 @@ namespace cubload
       {
 	DB_NUMERIC num;
 	DB_BIGINT tmp_bigint;
+	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf);
-	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
-	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, (int) str_size, 0);
+	    int precision = (int) str_size - (str[0] == '+' || str[0] == '-');
+	    if (precision > DB_MAX_NUMERIC_PRECISION)
+	      {
+		precision = DB_MAX_NUMERIC_PRECISION;
+	      }
+
+	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();

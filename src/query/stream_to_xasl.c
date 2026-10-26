@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "stream_to_xasl.h"
+#include "domain_plan.h"
 
 #include "dbtype.h"
 #include "error_manager.h"
@@ -106,6 +107,7 @@ static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_
 static char *stx_build_update_class_info (THREAD_ENTRY * thread_p, char *tmp, UPDDEL_CLASS_INFO * ptr);
 static char *stx_build_update_assignment (THREAD_ENTRY * thread_p, char *tmp, UPDATE_ASSIGNMENT * ptr);
 static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp, UPDATE_PROC_NODE * ptr);
+static char *stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK * sink);
 static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_PROC_NODE * ptr);
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
@@ -136,6 +138,7 @@ static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_
 #endif
 static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
+static void stx_set_fast_peek (REGU_VARIABLE * regu_var);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
 static char *stx_build_pos_descr (char *tmp, QFILE_TUPLE_VALUE_POSITION * ptr);
 static char *stx_build_arith_type (THREAD_ENTRY * thread_p, char *tmp, ARITH_TYPE * ptr);
@@ -215,6 +218,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   char *p;
   int header_size;
   int offset;
+  int domain_plan_error = NO_ERROR;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
   XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
@@ -262,13 +266,51 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
+  domain_plan_error = stx_build_domain_plan (thread_p, xasl, unpack_info_p);
+  if (domain_plan_error != NO_ERROR)
+    {
+      stx_set_xasl_errcode (thread_p, domain_plan_error);
+      *xasl_tree = NULL;
+      *xasl_unpack_info_ptr = NULL;
+    }
 end:
+  /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
+  if (domain_plan_error != NO_ERROR)
+    {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+#if !defined (SERVER_MODE)
+      /* the stand-alone pointer is a global; a freed block must not stay behind it */
+      set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
+    }
 #if defined(SERVER_MODE)
   set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
+}
+
+/*
+ * stx_index_stream_rejected () - the unresolved-domain check (load) of a filter or function index stream
+ *   return: true when the stream is rejected (error set, unpack info freed)
+ *
+ * Such a stream is loaded and evaluated without resolve_domains, so a regu resolve_domains would resolve - a variable
+ * POS or node - has no resolution anywhere. The catalog streams carry none (no host variable reaches a stored
+ * predicate); one is refused rather than evaluated with a variable domain.
+ */
+static bool
+stx_index_stream_rejected (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * unpack_info_p)
+{
+  if (!unpack_info_p->index_stream_late_bind)
+    {
+      return false;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load", "", -1,
+	  pr_type_name (DB_TYPE_VARIABLE));
+  stx_set_xasl_errcode (thread_p, ER_QPROC_DOMAIN_UNRESOLVED);
+  free_xasl_unpack_info (thread_p, unpack_info_p);
+  return true;
 }
 
 /*
@@ -307,6 +349,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = true;
   unpack_info_p->track_allocated_bufers = 1;
+  unpack_info_p->index_stream = true;
 
   /* calculate offset to filter predicate in the stream buffer */
   p = or_unpack_int (pred_stream, &header_size);
@@ -319,6 +362,17 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (pwc == NULL)
     {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+      goto end;
+    }
+  if (stx_index_stream_rejected (thread_p, unpack_info_p))
+    {
+      goto end;
+    }
+  /* the predicate's comparisons, resolved from the stream's fixed domains */
+  if (domain_plan_stream_compares (thread_p, pwc->pred, NULL) != NO_ERROR)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
@@ -365,6 +419,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = false;
   unpack_info_p->track_allocated_bufers = 1;
+  unpack_info_p->index_stream = true;
 
   /* calculate offset to expr XASL in the stream buffer */
   p = or_unpack_int (xasl_stream, &header_size);
@@ -377,6 +432,17 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (p_xasl == NULL)
     {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+      goto end;
+    }
+  if (stx_index_stream_rejected (thread_p, unpack_info_p))
+    {
+      goto end;
+    }
+  /* the expression's comparisons, resolved from the stream's fixed domains */
+  if (domain_plan_stream_compares (thread_p, NULL, p_xasl->func_regu) != NO_ERROR)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
@@ -1730,6 +1796,8 @@ stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE_HEADER * xa
 static char *
 stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
+  xasl->domain_plan = NULL;
+  xasl->limit_compare = NULL;
   int offset;
   int tmp, i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
@@ -1893,6 +1961,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     }
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
+
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (offset 0 = none);
+   * offset-dedup aliasing restores the exact predicate regu. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->precomp_owner_regu = NULL;
+    }
+  else
+    {
+      xasl->precomp_owner_regu = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->precomp_owner_regu == NULL)
+	{
+	  goto error;
+	}
+    }
 
   ptr = or_unpack_int (ptr, &tmp);
   xasl->option = (QUERY_OPTIONS) tmp;
@@ -2247,7 +2331,12 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->sub_host_var_count);
   if (xasl->sub_host_var_count > 0)
     {
-      xasl->sub_host_var_index = (int *) malloc (sizeof (int) * xasl->sub_host_var_count);
+      xasl->sub_host_var_index = (int *) stx_alloc_struct (thread_p, sizeof (int) * xasl->sub_host_var_count);
+      if (xasl->sub_host_var_index == NULL)
+	{
+	  goto error;
+	}
+
       for (i = 0; i < xasl->sub_host_var_count; i++)
 	{
 	  ptr = or_unpack_int (ptr, &xasl->sub_host_var_index[i]);
@@ -3172,6 +3261,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
     }
 
   ptr = stx_build_ls_merge_info (thread_p, ptr, &merge_list_info->ls_merge);
+  merge_list_info->merge_compares = NULL;
 
   return ptr;
 
@@ -3833,6 +3923,27 @@ error:
   return NULL;
 }
 
+/*
+ * stx_restore_remote_dml_sink () - restore the common DBLink remote push-sink fields (is_remote flag +
+ *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   return: advanced ptr
+ */
+static char *
+stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK * sink)
+{
+  int is_remote;
+
+  ptr = or_unpack_int (ptr, &is_remote);
+  sink->is_remote = (bool) is_remote;
+
+  sink->url = stx_restore_string (thread_p, ptr);
+  sink->user = stx_restore_string (thread_p, ptr);
+  sink->pwd = stx_restore_string (thread_p, ptr);
+  sink->table_name = stx_restore_string (thread_p, ptr);
+
+  return ptr;
+}
+
 static char *
 stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * delete_info)
 {
@@ -3877,6 +3988,12 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
 	  goto error;
 	}
     }
+
+  /* remote DELETE + local subquery sink fields */
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &delete_info->sink);
+
+  delete_info->remote_key_col = stx_restore_string (thread_p, ptr);
+  delete_info->remote_op = stx_restore_string (thread_p, ptr);
 
   return ptr;
 
@@ -4013,6 +4130,53 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
       assert (insert_info->obj_oid->need_clear == false);
     }
 
+  /* remote INSERT SELECT fields */
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &insert_info->sink);
+
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_attrs);
+  if (insert_info->remote_num_attrs == 0)
+    {
+      insert_info->remote_attr_names = NULL;
+    }
+  else
+    {
+      insert_info->remote_attr_names =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_attrs);
+      if (insert_info->remote_attr_names == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_attrs; i++)
+	{
+	  insert_info->remote_attr_names[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  if (insert_info->remote_num_odku == 0)
+    {
+      insert_info->remote_odku_cols = NULL;
+      insert_info->remote_odku_exprs = NULL;
+    }
+  else
+    {
+      insert_info->remote_odku_cols =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      insert_info->remote_odku_exprs =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      if (insert_info->remote_odku_cols == NULL || insert_info->remote_odku_exprs == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_odku; i++)
+	{
+	  insert_info->remote_odku_cols[i] = stx_restore_string (thread_p, ptr);
+	  insert_info->remote_odku_exprs[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
   return ptr;
 
 error:
@@ -4113,6 +4277,12 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
+  outptr_list->eval_prog = NULL;
+  outptr_list->eval_prog_idx = NULL;
+  outptr_list->eval_prog_state = 0;
+  outptr_list->eval_prog_row_ready = false;
+  outptr_list->eval_prog_share_spec = NULL;
+
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4173,6 +4343,11 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
 
   ptr = or_unpack_int (ptr, &tmp);
   pred_expr->type = (TYPE_PRED_EXPR) tmp;
+
+  /* server-side only: compiled lazily on the first evaluation (eval_data_filter ()) */
+  pred_expr->scan_prog = NULL;
+  pred_expr->scan_prog_state = 0;
+  pred_expr->scan_prog_gen = 0;
 
   switch (pred_expr->type)
     {
@@ -4370,6 +4545,7 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
+  comp_eval_term->domain_compare = NULL;
 
   return ptr;
 }
@@ -4418,6 +4594,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
 
   ptr = or_unpack_int (ptr, &tmp);
   alsm_eval_term->item_type = (DB_TYPE) tmp;
+  alsm_eval_term->domain_compare = NULL;
 
   return ptr;
 }
@@ -4675,6 +4852,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   access_spec->grouped_scan = false;
   access_spec->fixed_scan = false;
+  access_spec->cached_scan = false;	/* runtime-only; recomputed at every open */
 
   ptr = or_unpack_int (ptr, &tmp);
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
@@ -4746,6 +4924,10 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
   ptr = or_unpack_int (ptr, &indx_info->ils_prefix_len);
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
+
+  /* the B-tree's key domain; the key plan is derived from it once the tree is loaded */
+  ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
+  indx_info->key_plan = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5391,6 +5573,23 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
 	}
     }
 
+  ptr = or_unpack_int (ptr, &dblink_spec->corr_key_count);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      dblink_spec->corr_key_regu_list = NULL;
+    }
+  else
+    {
+      dblink_spec->corr_key_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (dblink_spec->corr_key_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
   /* host variable count */
   ptr = or_unpack_int (ptr, &dblink_spec->host_var_count);
   if (dblink_spec->host_var_count > 0)
@@ -5424,6 +5623,8 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val_list->val_cnt);
+  /* the load gives it its block's scope, if any */
+  val_list->domain_scope = 0;
 
   value_list =
     (QPROC_DB_VALUE_LIST) stx_alloc_struct (thread_p, sizeof (struct qproc_db_value_list) * val_list->val_cnt);
@@ -5526,15 +5727,17 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
-  /* save the original domain */
-  regu_var->original_domain = regu_var->domain;
+  regu_var->plan_item = NULL;
 
   ptr = or_unpack_int (ptr, &tmp);
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+  if (xasl_unpack_info->index_stream && regu_is_variable_pos (regu_var))
+    {
+      /* a filter or function index stream has no resolve_domains to resolve it (stx_index_stream_rejected) */
+      xasl_unpack_info->index_stream_late_bind = true;
+    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5565,12 +5768,49 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
     }
 
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
+  if (ptr != NULL)
+    {
+      stx_set_fast_peek (regu_var);
+    }
 
   return ptr;
 
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
+}
+
+/*
+ * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load: a cached
+ *   attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its values. A bind
+ *   reference gets it with its plan item, and a regu with a variable domain gets it with its execution domain
+ *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation.
+ */
+static void
+stx_set_fast_peek (REGU_VARIABLE * regu_var)
+{
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->domain == NULL
+      || domain_is_variable (regu_var->domain))
+    {
+      return;
+    }
+  switch (regu_var->type)
+    {
+    case TYPE_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
+    case TYPE_DBVAL:
+      break;
+    case TYPE_CONSTANT:
+      if (regu_var->xasl != NULL || regu_var->value.dbvalptr == NULL)
+	{
+	  return;
+	}
+      break;
+    default:
+      return;
+    }
+  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 }
 
 static char *
@@ -5763,6 +6003,7 @@ stx_build_attr_descr (THREAD_ENTRY * thread_p, char *ptr, ATTR_DESCR * attr_desc
     }
 
   attr_descr->cache_dbvalp = NULL;
+  attr_descr->cache_slot = NULL;
 
   return ptr;
 }
@@ -5772,7 +6013,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
-  position_descr->original_domain = position_descr->dom;
+  position_descr->plan_item = NULL;
 
   return ptr;
 }
@@ -5784,8 +6025,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
-  /* save the original domain */
-  arith_type->original_domain = arith_type->domain;
+  arith_type->plan_item = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5891,12 +6131,23 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   assert (ptr != NULL && aggregate != NULL);
 
+  /* server-side runtime state, never part of the stream */
+  aggregate->operand_prog = NULL;
+  aggregate->operand_prog_idx = NULL;
+  aggregate->operand_prog_state = 0;
+  aggregate->operand_prog_base = -1;
+  aggregate->operand_prog_share_spec = NULL;
+  aggregate->operand_prog_link_stamp = 0;
+
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
-  aggregate->original_domain = aggregate->domain;
+  aggregate->plan_item = NULL;
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
+  /* execution-only fields are not part of the stream, so initialize them here */
+  aggregate->accumulator.shared_from = 0;
+  aggregate->accumulator.sum_acc.is_active = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5962,7 +6213,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp);
   aggregate->opr_dbtype = (DB_TYPE) tmp;
-  aggregate->original_opr_dbtype = aggregate->opr_dbtype;
 
   ptr = stx_build_regu_variable_list (thread_p, ptr, &aggregate->operands);
   if (ptr == NULL)
@@ -6044,9 +6294,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   ptr = or_unpack_int (ptr, &offset);
   aggregate->is_ended = false;
 
-  /* accumulator_domain */
-  aggregate->accumulator_domain.value_dom = NULL;
-  aggregate->accumulator_domain.value2_dom = NULL;
+  /* the accumulator domains are the execution's (domain_execution.accumulator_domains) */
 
   return ptr;
 
@@ -6167,7 +6415,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
-  analytic->original_domain = analytic->domain;
+  analytic->plan_item = NULL;
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);
@@ -6249,7 +6497,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->opr_dbtype = (DB_TYPE) tmp_i;
-  analytic->original_opr_dbtype = analytic->opr_dbtype;
 
   /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &analytic->operand);
@@ -6751,19 +6998,24 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       ptr = or_unpack_int (ptr, &tmp);
       regu->type = (REGU_DATATYPE) tmp;
       regu->domain = domain;
-      /* save te original domain */
-      regu->original_domain = domain;
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH && regu->type != TYPE_POS_VALUE)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
 	  goto error;
 	}
+      if (get_xasl_unpack_info_ptr (thread_p)->index_stream && regu_is_variable_pos (regu))
+	{
+	  /* the second maker of a REGU_VARIABLE checks as stx_build_regu_variable does: a filter or function index
+	   * stream has no resolve_domains to resolve it (stx_index_stream_rejected) */
+	  get_xasl_unpack_info_ptr (thread_p)->index_stream_late_bind = true;
+	}
       ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu);
       if (ptr == NULL)
 	{
 	  goto error;
 	}
+      stx_set_fast_peek (regu);
 
       regu_value_list->count += 1;
     }
@@ -6816,6 +7068,7 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
 {
   assert (regu);
 
+  regu->plan_item = NULL;
   regu->type = TYPE_POS_VALUE;
   regu->flags = 0;
   regu->value.val_pos = 0;

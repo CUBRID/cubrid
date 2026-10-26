@@ -200,7 +200,8 @@ struct qo_index
  */
 #define QO_GET_CLASS_STATS(entryp) \
        ((entryp)->self_allocated ? (entryp)->stats : (entryp)->smclass->stats)
-
+#define QO_GET_HIST_STATS(entryp) \
+       ((entryp)->smclass->histogram)
 /*
  *  This structure is the head of a list of QO_INDEX_ENTRY index structures.
  *  The purpose for this node is to have a place to store cumulative
@@ -370,7 +371,9 @@ struct qo_node
   QO_USING_INDEX *using_index;	/* indexes specified in USING INDEX clause */
   /* NULL if no USING INDEX clause in the query */
 
-  BITSET outer_dep_set;		/* outer join dependency; to preserve join sequence */
+  BITSET outer_dep_set;		/* outer join and hint dependencies; never relaxed by DISTINCT */
+  BITSET semi_anti_dep_set;	/* direct and inherited SEMI/ANTI dependencies; only a SEMI node's DISTINCT
+				 * alternative may precede these nodes */
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
   bool sort_limit_candidate;	/* whether this node is a candidate for a SORT_LIMIT plan */
@@ -394,6 +397,7 @@ struct qo_node
 #define QO_NODE_USING_INDEX(node)       (node)->using_index
 
 #define QO_NODE_OUTER_DEP_SET(node)     (node)->outer_dep_set
+#define QO_NODE_SEMI_ANTI_DEP_SET(node) (node)->semi_anti_dep_set
 #define QO_NODE_SARGABLE(node)          (node)->sargable
 
 #define QO_NODE_NAME(node)		(node)->class_name
@@ -422,16 +426,30 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
 
+#define QO_NODE_IS_SEMI_ANTI_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI       || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI)
+
 #define QO_NODE_IS_ANSI_JOIN(node) \
   (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_NATURAL     || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI         || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI         || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
 
+/* Propagate both kinds of dependency without mixing them. */
 #define QO_ADD_OUTER_DEP_SET(tail,head) \
    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \
+   bitset_union (&(QO_NODE_SEMI_ANTI_DEP_SET (tail)), &(QO_NODE_SEMI_ANTI_DEP_SET (head))); \
    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail)), QO_NODE_IDX (head));
+
+/* Keep inherited outer join dependencies mandatory even when the SEMI side is read with DISTINCT. */
+#define QO_ADD_SEMI_ANTI_DEP_SET(tail,head) \
+   bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \
+   bitset_union (&(QO_NODE_SEMI_ANTI_DEP_SET (tail)), &(QO_NODE_SEMI_ANTI_DEP_SET (head))); \
+   bitset_add (&(QO_NODE_SEMI_ANTI_DEP_SET (tail)), QO_NODE_IDX (head));
 
 struct qo_segment
 {
@@ -751,6 +769,12 @@ struct qo_term
 #define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
+#define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
+#define QO_TERM_SEL_FROM_HISTOGRAM  1024	/* selectivity computed from histograms only */
+#define QO_TERM_LIKE_DERIVED_RANGE  2048	/* range term derived from a prefix LIKE */
+#define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
+#define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
+#define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -846,6 +870,33 @@ typedef enum
 				 * limit */
 } QO_SORT_LIMIT_USE;
 
+struct qo_fk_join_info
+{
+  /*
+   * One composite FK constraint whose join selectivity should be floored to
+   * 1 / (pk_node's cardinality) instead of the product of its column
+   * selectivities. There is one entry per FK constraint, not per node pair,
+   * since the same two nodes can be linked by more than one FK constraint.
+   */
+
+  /* the two nodes this constraint joins */
+  QO_NODE *fk_node;
+  QO_NODE *pk_node;
+
+  /* precomputed 1 / QO_NODE_NCARD(pk_node) */
+  double floor_selectivity;
+
+  /* this constraint's own fk_node-side segment and equivalence class, per column;
+   * a SEMI/ANTI equality has no equivalence class, so the term itself is kept instead */
+  QO_SEGMENT **fk_col_segs;
+  QO_EQCLASS **col_eqclasses;
+  QO_TERM **col_terms;
+
+  /* number of entries in fk_col_segs and col_eqclasses */
+  int n_cols;
+};
+typedef struct qo_fk_join_info QO_FK_JOIN_INFO;
+
 struct qo_env
 {
   /*
@@ -879,6 +930,13 @@ struct qo_env
    * A temporary bitset.  This is needed for expr_segs() in build_query_graph
    */
   BITSET *tmp_bitset;
+
+  /*
+   * Scratch buffer of implied-join pairs owned by qo_generate_implied_join_terms().
+   * Held here only so qo_env_free() can release it if qo_add_term() longjmps out via qo_abort().
+   * (void * because QO_IMPLIED_JOIN_PAIR is private to query_graph.c.)
+   */
+  void *implied_pairs;
 
   /*
    * The final plan produced by the optimizer.
@@ -958,6 +1016,14 @@ struct qo_env
    * large, this is set to true.
    */
   bool multi_range_opt_candidate;
+
+  /* histogram provenance scratch for the term whose selectivity is being computed */
+  bool sel_hist_used;
+  bool sel_hist_fallback;
+
+  /* composite FK constraints eligible for the join selectivity floor; see qo_fk_join_info */
+  QO_FK_JOIN_INFO *fk_join_info;
+  int n_fk_join_info;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])
@@ -1039,6 +1105,7 @@ extern void qo_print_stats (FILE *);
 extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
 extern int qo_seg_width (QO_SEGMENT * seg);
+extern bool qo_is_equi_join_term (QO_TERM * term);
 extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt);

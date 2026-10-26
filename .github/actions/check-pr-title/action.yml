@@ -1,0 +1,17 @@
+# Replaces the unmaintained github.com/deepakputhraya/action-pr-title action.
+name: 'Check PR title'
+description: 'Fail the job if the pull request title does not match the required prefix'
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # event payload title is stale on re-run after a title edit; fetch the live title.
+        title=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" --jq '.title') \
+          || { echo "::error::Failed to fetch PR title via GitHub API"; exit 1; }
+        echo "PR title: $title"
+        # literal space, not [[:space:]] (also matches Unicode spaces, locale-dependent).
+        grep -qE '^\[[A-Z]+-[0-9]+\][ ].+' <<<"$title" \
+          || { echo "::error::PR title must match [PROJECT-1234] summary (e.g. [CBRD-12345] Fix ...)"; exit 1; }

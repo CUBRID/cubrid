@@ -155,6 +155,16 @@ struct coll_opt
 
 typedef struct lang_locale_data LANG_LOCALE_DATA;
 
+/* byte-lockstep LIKE matcher instance a collation is eligible for; NONE=0 so that
+ * zero-initialized collations are ineligible by default */
+typedef enum lang_lockstep_kind
+{
+  LANG_LOCKSTEP_NONE = 0,
+  LANG_LOCKSTEP_UTF8,
+  LANG_LOCKSTEP_SB,
+  LANG_LOCKSTEP_BINARY
+} LANG_LOCKSTEP_KIND;
+
 typedef struct lang_collation LANG_COLLATION;
 struct lang_collation
 {
@@ -184,6 +194,10 @@ struct lang_collation
   unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
+
+  /* byte-lockstep LIKE eligibility kind, computed at registration; NONE=0 is mandatory and the
+   * field must stay last (built-in collations use positional aggregate initializers) */
+  LANG_LOCKSTEP_KIND byte_lockstep_kind;
 };
 
 /* Language locale data */

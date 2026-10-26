@@ -481,7 +481,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     {
       ext_info.max_writesize_in_sec = 0;
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB,
+				     ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC));
     }
 
   volext_string_voltype = utility_get_option_string_value (arg_map, ADDVOL_VOLTYPE_S, 0);
@@ -631,7 +632,7 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	}
 
       OID_SET_NULL (&oids[i]);
-      if (table == NULL || table[0] == '\0')
+      if (table[0] == '\0')
 	{
 	  continue;
 	}
@@ -1069,11 +1070,13 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   /* print header */
   if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_PAGES));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_PAGES));
     }
   else
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_SIZE));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_SIZE));
     }
   /* print values. the format is:
    * type, purpose, used pages/size, free pages/size, total pages/size */
@@ -1093,16 +1096,17 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       MSGCAT_SPACEDB_MSG msg_vols_format;
 
       /* print title */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_TITLE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_TITLE));
       /* print header */
       if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
 	{
 	  fprintf (outfp,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_PAGES));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_PAGES));
 	}
       else
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_SIZE));
+	  fprintf (outfp, "%s",
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_SIZE));
 	}
 
       /* print each volume */
@@ -1138,17 +1142,18 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       /* print detailed files information */
 
       /* print title */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TITLE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TITLE));
       /* print header */
       if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
 	{
 	  fprintf (outfp,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_PAGES));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB,
+					 SPACEDB_MSG_FILES_HEADER_PAGES));
 	}
       else
 	{
 	  fprintf (outfp,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_SIZE));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_SIZE));
 	}
 
       /* the format is:
@@ -1467,8 +1472,8 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 	      if (num_valid == 0)
 		{
 		  /* Dump table header */
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 		}
 
 	      num_valid++;
@@ -1479,12 +1484,12 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 
   if (num_valid > 0)
     {
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
+      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
     }
   else
     {
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_NONE_TABLE_ENTRIES));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_NONE_TABLE_ENTRIES));
     }
 
   if (info != NULL && (dump_level == TRANDUMP_QUERY_INFO || dump_level == TRANDUMP_FULL_INFO))
@@ -1598,10 +1603,11 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 	  /*
 	   * display the transactin identifiers that we are about to kill
 	   */
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_READY_TO_KILL));
+	  fprintf (stdout, "%s",
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_READY_TO_KILL));
 
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 
 	  for (i = 0; i < info->num_trans; i++)
 	    {
@@ -1611,9 +1617,9 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 		  print_tran_entry (&info->tran[i], dump_level, false);
 		}
 	    }
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_VERIFY));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_VERIFY));
 	  fflush (stdout);
 
 	  ch = getc (stdin);
@@ -1646,10 +1652,12 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 		       */
 		      if (nfailures == 0)
 			{
-			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-							   KILLTRAN_MSG_KILL_FAILED));
-			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
-			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
+			  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+								 KILLTRAN_MSG_KILL_FAILED));
+			  fprintf (stdout, "%s",
+				   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
+			  fprintf (stdout, "%s",
+				   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 			}
 
 		      print_tran_entry (&info->tran[i], dump_level, false);
@@ -1670,7 +1678,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 
 	  if (nfailures > 0)
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
+	      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 	    }
 	}
     }
@@ -1819,7 +1827,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
     {
       char msg_buf[64];
 
-      if (error == ER_AU_INVALID_PASSWORD && password == NULL)
+      if ((error == ER_AU_REJECT_LOGIN && use_console_password) && password == NULL)
 	{
 	  /*
 	   * prompt for a valid password and try again, need a reusable
@@ -2031,7 +2039,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
-      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+      if ((error == ER_AU_REJECT_LOGIN && use_console_password) && (dba_password == NULL || strlen (dba_password) == 0))
 	{
 	  /*
 	   * prompt for a valid password and try again, need a reusable
@@ -2195,6 +2203,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   const char *output_file = NULL;
   char *sha1 = NULL;
   bool drop_flag = false;
+  bool drop_clone_flag = false;
   FILE *outfp = NULL;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -2206,9 +2215,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
   drop_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_S);
   output_file = utility_get_option_string_value (arg_map, PLANDUMP_OUTPUT_FILE_S, 0);
   sha1 = utility_get_option_string_value (arg_map, PLANDUMP_SHA1_S, 0);
+  drop_clone_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_CLONE_S);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
+      goto print_plandump_usage;
+    }
+
+  if (drop_clone_flag && drop_flag)
+    {
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PLANDUMP, PLANDUMP_MSG_BAD_OPTION));
       goto print_plandump_usage;
     }
 
@@ -2247,7 +2263,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sha1 != NULL)
+  if (drop_clone_flag)
+    {
+      if (qmgr_drop_query_clones (sha1) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+  else if (sha1 != NULL)
     {
       if (qmgr_drop_query_plans_by_sha1 (sha1) != NO_ERROR)
 	{
@@ -2336,7 +2361,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   if (ha_only_flag && exclude_ha_flag)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_BAD_OPTION));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_BAD_OPTION));
       goto print_dumpparam_usage;
     }
 
@@ -2402,7 +2428,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
     {
 #if defined(SA_MODE)
       fprintf (outfp,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP,
+				     PARAMDUMP_MSG_STANDALONE_PARAMETER));
       sysprm_dump_parameters (outfp, ' ', PRM_FOR_CLIENT | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
 			      PRM_OR_CONDITION, true);
 #else
@@ -2410,7 +2437,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 	{
 	  /* dump client's parameters */
 	  fprintf (outfp,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP,
+					 PARAMDUMP_MSG_CLIENT_PARAMETER));
 	  sysprm_dump_parameters (outfp, 'C', PRM_FOR_CLIENT | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
 				  PRM_OR_CONDITION, true);
 	  fprintf (outfp, "\n");
@@ -2427,7 +2455,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
     {
 
       /* dump client's parameters */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
       sysprm_dump_parameters (outfp, 'C', PRM_FOR_CLIENT | added_in_flags, PRM_AND_CONDITION, out_flags,
 			      PRM_OR_CONDITION, false);
       fprintf (outfp, "\n");
@@ -3522,7 +3551,8 @@ retry:
 
   if (HA_DISABLED ())
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_HA_MODE));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
       goto error_exit;
     }
@@ -4362,7 +4392,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
-      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+      if ((error == ER_AU_REJECT_LOGIN && use_console_password) && (dba_password == NULL || strlen (dba_password) == 0))
 	{
 	  /*
 	   * prompt for a valid password and try again, need a reusable
@@ -4650,6 +4680,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   int timeout = 0;
 
+  /* exit code returned via the error_exit cleanup path; EXIT_SUCCESS only for a clean non-interactive quit */
+  int exit_status = EXIT_FAILURE;
+
   time_t current_time = time (NULL);
 
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
@@ -4788,7 +4821,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
-      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+      if ((error == ER_AU_REJECT_LOGIN && use_console_password) && (dba_password == NULL || strlen (dba_password) == 0))
 	{
 	  /*
 	   * prompt for a valid password and try again, need a reusable
@@ -4924,7 +4957,15 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
       if (poll (&input_fd, 1, timeout * 1000))
 	{
-	  if (scanf ("%d", &trid) != 1)
+	  int scan_ret = scanf ("%d", &trid);
+	  if (scan_ret == EOF)
+	    {
+	      /* Non-interactive/EOF stdin (e.g. pipe or redirection): there is nothing to select, so quit
+	       * normally instead of looping forever. This is not an error, so return EXIT_SUCCESS. */
+	      exit_status = EXIT_SUCCESS;
+	      goto error_exit;
+	    }
+	  if (scan_ret != 1)
 	    {
 	      /* When non integer value is input, the input buffer must be flushed. */
 	      clean_stdin ();
@@ -5039,7 +5080,8 @@ error_exit:
       free_and_init (loginfo_list);
     }
 
-  return EXIT_FAILURE;
+  /* EXIT_FAILURE for every error path; EXIT_SUCCESS only when set for a clean non-interactive quit */
+  return exit_status;
 
 #else /* CS_MODE */
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NOT_IN_STANDALONE),
@@ -5138,7 +5180,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	    }
 	  goto error_exit;
 	}
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_DISABLE_SUCCESS));
+      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_DISABLE_SUCCESS));
       goto success_exit;
     }
 

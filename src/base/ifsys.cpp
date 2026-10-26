@@ -22,6 +22,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <cerrno>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -129,16 +130,36 @@ namespace cubbase
 
   int ifsys::write_text (const char *path, const char *text)
   {
-    FILE *file;
+    int saved_errno;
     int success;
+    FILE *file;
 
     file = fopen (path, "w");
     if (!file)
       {
 	return -1;
       }
-    success = (fprintf (file, "%s\n", text) >= 0) ? 0 : -1;
-    fclose (file);
+    saved_errno = 0;
+    if (fprintf (file, "%s\n", text) >= 0)
+      {
+	success = 0;
+      }
+    else
+      {
+	success = -1;
+	saved_errno = errno;
+      }
+
+    if (fclose (file) != 0 && success == 0)
+      {
+	success = -1;
+	saved_errno = errno;
+      }
+
+    if (success != 0)
+      {
+	errno = saved_errno;
+      }
     return success;
   }
 
@@ -498,12 +519,18 @@ namespace cubbase
 
     if (write_text (p1, mask) != 0)
       {
+	int saved_errno = errno;
+	free (mask);
+	errno = saved_errno;
 	return false;
       }
     /* TODO: is it better to turn this off? */
     //if (write_text (p2, "4096") != 0)
     if (write_text (p2, "0") != 0)
       {
+	int saved_errno = errno;
+	free (mask);
+	errno = saved_errno;
 	return false;
       }
     free (mask);
@@ -525,23 +552,21 @@ namespace cubbase
 
     if (write_text (path, mask) != 0)
       {
+	int saved_errno = errno;
+	free (mask);
+	errno = saved_errno;
 	return false;
       }
     free (mask);
     return true;
   }
 
-  void ifsys::maybe_set_rps_sock_flow_entries (int ncores)
+  bool ifsys::maybe_set_rps_sock_flow_entries (int ncores)
   {
     const char *path = "/proc/sys/net/core/rps_sock_flow_entries";
 
-    if (access (path, W_OK) != 0)
-      {
-	return;
-      }
     /* TODO: is it better to turn this off? */
     //write_int (path, (long long int) ncores * 4096);
-    write_int (path, 0);
+    return write_int (path, 0) == 0;
   }
 }
-

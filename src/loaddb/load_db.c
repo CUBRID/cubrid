@@ -68,7 +68,7 @@ struct t_schema_file_list_info
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_get_start_line_no (std::string & file_name);
-static void ldr_compat_serial_call_target (DB_SESSION * session);
+static void ldr_compat_call_target (DB_SESSION * session);
 static FILE *ldr_check_file (std::string & file_name, int &error_code);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
@@ -597,7 +597,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)
 	{
-	  if (error == ER_AU_INVALID_PASSWORD)
+	  if (error == ER_AU_REJECT_LOGIN && use_console_password)
 	    {
 	      /* prompt for password and try again */
 	      passwd =
@@ -839,6 +839,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "\nStart index loading.\n");
       logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_INDEX);
       logddl_set_load_filename (args.index_file.c_str ());
+      /* The flag is only a request; the server ignores it unless the client is a loaddb type.
+       * In SA mode the option is ignored and the ordinary logging build is used. */
+      btree_set_no_logging_index (args.no_logging_index);
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
@@ -850,12 +853,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  logddl_write_end ();
 	  goto error_return;
 	}
+      btree_set_no_logging_index (false);
 
       /* update catalog statistics */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       sm_update_catalog_statistics (CT_INDEX_NAME, STATS_WITH_FULLSCAN);
       sm_update_catalog_statistics (CT_INDEXKEY_NAME, STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
@@ -885,9 +889,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
 
       /* update catalog statistics */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       sm_update_catalog_statistics (CT_TRIGGER_NAME, STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
       db_commit_transaction ();
@@ -908,6 +912,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   return status;
 
 error_return:
+  /* The no-logging-index request flag may still be set when the index loading failed (the success path
+   * resets it right after ldr_exec_query_from_file).  Reset it idempotently on every failure path so a
+   * later session in this process can never inherit it. */
+  btree_set_no_logging_index (false);
   if (schema_file != NULL)
     {
       fclose_and_init (schema_file);
@@ -961,16 +969,17 @@ loaddb_user (UTIL_FUNCTION_ARG * arg)
 }
 
 /*
- * ldr_compat_serial_call_target - Compatibility fix for CALL ... ON CLASS db_serial statements
- *                                  unloaded from version 11.4 or earlier.
- *   In 11.5+, "db_serial" was renamed to a view (CTV_SERIAL_NAME) and "_db_serial" became
- *   the catalog table (CT_SERIAL_NAME). This function rewrites the ON CLASS target from the
- *   old name to the current one before compilation.
+ * ldr_compat_call_target - Compatibility fix for CALL ... ON CLASS statements
+ *                          unloaded from version 11.4 or earlier.
+ *   In 11.5+, view names (e.g. "db_serial", "db_user", "db_authorization") became
+ *   distinct from their underlying catalog tables ("_db_serial", "_db_user",
+ *   "_db_authorization"). This function rewrites the ON CLASS target from the
+ *   old view name to the current catalog table name before compilation.
  *   return: void
  *   session(in): current DB session
  */
 static void
-ldr_compat_serial_call_target (DB_SESSION * session)
+ldr_compat_call_target (DB_SESSION * session)
 {
   PT_NODE *statement = NULL;
   PT_NODE *on_call_target = NULL;
@@ -986,9 +995,33 @@ ldr_compat_serial_call_target (DB_SESSION * session)
   if (on_call_target != NULL && PT_IS_NAME_NODE (on_call_target))
     {
       origin_name = PT_NAME_ORIGINAL (on_call_target);
-      if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
+      assert (origin_name != NULL);
+
+      if (strcasecmp (origin_name, CTV_USER_NAME) == 0)
+	{
+	  /* db_user view supports find_user() and login() for backward compatibility.
+	   * See CTV_USER_NAME's definition in schema_system_catalog_install.cpp.
+	   */
+	  PT_NODE *method_name_node = PT_METHOD_CALL_NAME (statement);
+	  if (method_name_node == NULL)
+	    {
+	      return;
+	    }
+	  const char *method_name = PT_NAME_ORIGINAL (method_name_node);
+	  assert (method_name != NULL);
+
+	  if (strcasecmp (method_name, "find_user") != 0 && strcasecmp (method_name, "login") != 0)
+	    {
+	      on_call_target->info.name.original = CT_USER_NAME;
+	    }
+	}
+      else if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
 	{
 	  on_call_target->info.name.original = CT_SERIAL_NAME;
+	}
+      else if (strcasecmp (origin_name, CTV_AUTHORIZATION_NAME) == 0)
+	{
+	  on_call_target->info.name.original = CT_AUTHORIZATION_NAME;
 	}
     }
 }
@@ -1112,7 +1145,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
 	  if (statement_type == CUBRID_STMT_CALL)
 	    {
-	      ldr_compat_serial_call_target (session);
+	      ldr_compat_call_target (session);
 	    }
 
 	  stmt_id = db_compile_statement (session);
@@ -1131,7 +1164,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	      do
 		{
 		  session_error = db_get_next_error (session_error, &line, &col);
-
 		  if (line <= 0)
 		    {
 		      db_get_parser_line_col (session, &line, &col);	// current input line and column
@@ -1156,8 +1188,18 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
       if (error < 0)
 	{
-	  int line, col;
-	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  DB_SESSION_ERROR *session_error = db_get_errors (session);
+	  int line = -1, col;
+
+	  if (session_error != NULL)
+	    {
+	      db_get_next_error (session_error, &line, &col);
+	    }
+	  if (line <= 0)
+	    {
+	      db_get_parser_line_col (session, &line, &col);	// current input line and column
+	    }
+
 	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
@@ -1167,8 +1209,17 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       error = db_query_end (res);
       if (error < 0)
 	{
-	  int line, col;
-	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  DB_SESSION_ERROR *session_error = db_get_errors (session);
+	  int line = -1, col;
+
+	  if (session_error != NULL)
+	    {
+	      db_get_next_error (session_error, &line, &col);
+	    }
+	  if (line <= 0)
+	    {
+	      db_get_parser_line_col (session, &line, &col);	// current input line and column
+	    }
 	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
@@ -1299,6 +1350,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
   args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
   args->schema_file_list = schema_file_list ? schema_file_list : empty;
+  args->no_logging_index = utility_get_option_bool_value (arg_map, LOAD_NO_LOGGING_INDEX_S);
 }
 
 static void
@@ -1368,7 +1420,8 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
       print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
 	       last_stat.current_line.load ());
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
     }
 
   if (args->syntax_check)
@@ -1746,7 +1799,7 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
    */
   if (au_is_dba_group_member (Au_user))
     {
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_fp, &schema_file_start_line, &args) != NO_ERROR)
@@ -1758,20 +1811,24 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
       print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
 		     args.schema_file.c_str (), schema_file_start_line);
       logddl_write_end ();
+      if (au_is_dba_group_member (Au_user))
+	{
+	  AU_RESTORE (au_save);
+	}
       return status;
     }
 
   if (au_is_dba_group_member (Au_user))
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
 
   /* update catalog statistics */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   print_log_msg (1, "Statistics for Catalog classes have been updated.\n\n");
 

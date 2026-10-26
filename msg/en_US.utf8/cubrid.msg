@@ -142,7 +142,7 @@ $set 5 MSGCAT_SET_ERROR
 70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
 71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
 72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
-73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
+73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s. You are waiting for user(s) %7$s to finish.
 74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
 75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
 76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
@@ -718,7 +718,7 @@ $ LOADDB
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
 647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
+648 Backup (release "%3$s") is incompatible with current "%1$s" release "%2$s".
 649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
 650 Cannot create enough threads for 'max_clients=%1$d'.
 651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
@@ -1036,7 +1036,7 @@ $ LOADDB
 963 Broker error.
 964 The result set handle is closed.
 965 Cannot use duplicate attribute names in index key list. Attribute name '%1$s' listed more than once.
-966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
+966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
 969 Server bit platform (%1$d) is different from client bit platform (%2$d).
@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1324,7 +1324,7 @@ $ LOADDB
 1251 Error while TDE-encrypting.
 1252 Error while TDE-decrypting.
 1253 TDE Module is not loaded.
-1254 Cannot create a key.
+1254 Cannot create or verify a key.
 1255 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
 1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
@@ -1457,7 +1457,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1365 Only DBA and the owner can grant the %1$s privilege.
 
-1366 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
+1366 String representation of a default value of a Stored procedure/function parameter may not exceed %1$d characters.
 
 1367 DBLINK Transaction ABORTED: %1$s
 
@@ -1467,7 +1467,39 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1370 A class can have only one AUTO_INCREMENT attribute.
 
-1371 Last Error
+1371 A class "%1$s" cannot have all of its attributes defined as invisible. At least one visible attribute is required in the class.
+
+1372 Error occurred while handling a callback. code(%1$d), msg(%2$s)
+
+1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
+
+1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
+
+1375 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
+
+1376 The current transaction is implicitly aborted by the system for the execution of the login method.
+
+1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
+
+1378 Cannot change the login capability of user "%1$s".
+
+1379 CDC: the extraction position (%1$lld|%2$d) handed to the client keeps archive log volume %3$d.
+
+1380 A stored procedure/function declared PARALLEL_ENABLE or running in a parallel query worker cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
+
+1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
+
+1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+
+1385 Invalid username or password.
+
+1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
+
+1387 Last Error
+
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1633,8 +1665,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 FILL_FACTOR argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1969,10 +2001,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 328 Only trailing default parameter is allowed: invalid at '%1$s'.
 329 Grant option is not allowed for %1$s.
 
-330 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
+330 String representation of a default value of a Stored procedure/function parameter may not exceed %1$d characters.
 331 A host expression in a Static SQL must be a variable or record field: '%1$s'.
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
+
+334 An attribute of virtual class cannot set column's visibility.
+335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
+336 Numeric scale specifier is out of range -84 to 127
+337 The partition name is too long.
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
+342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
+343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 
 
 
@@ -2152,6 +2193,10 @@ $set 14 MSGCAT_SET_LOCK
 44 Index name: %1$s\n
 45 Object type: Generic object for Repeatable Read consistency.\n
 46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
+47 object %1$d|%2$d|%3$d
+48 class %1$s
+49 instance %1$d|%2$d|%3$d of class %4$s
+50 transaction MVCCID %1$llu
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
@@ -2260,6 +2305,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger

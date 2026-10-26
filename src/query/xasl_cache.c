@@ -24,6 +24,8 @@
 
 #include "xasl_cache.h"
 
+#include "bind_variant.h"
+
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
@@ -43,6 +45,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <time.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -66,6 +69,21 @@
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
 #define XCACHE_PTR_TO_ENTRY(ptr) ((XASL_CACHE_ENTRY *) ptr)
 
+/* the plan variants of one query, kept on its base entry (see bind_variant.h) */
+struct xcache_bind_dir
+{
+  int checks;			/* times a client found nothing suitable in its directory (statistics) */
+  int limit;			/* distinct plans the query may have: the first request's, for every client */
+  int plans;			/* registered variants: distinct plans */
+  int next_variant;		/* variants reserved so far: the compiles the query has made */
+  int n_records;
+  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_COMPILES];
+  bool registered[BIND_VARIANT_MAX_COMPILES];	/* the variant is a plan of the query */
+  bool resolved[BIND_VARIANT_MAX_COMPILES];	/* its compile came back, as a new plan or a known one */
+  UINT64 plan_sig[BIND_VARIANT_MAX_COMPILES];
+  time_t reserved_at[BIND_VARIANT_MAX_COMPILES];	/* when the compile was handed out */
+};
+
 /* xcache statistics. */
 typedef struct xcache_stats XCACHE_STATS;
 struct xcache_stats
@@ -86,6 +104,7 @@ struct xcache_stats
   INT64 rt_true;
 };
 #define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+
 
 
 typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
@@ -288,6 +307,9 @@ static void xcache_invalidate_entries (THREAD_ENTRY * thread_p,
 				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *), const void *arg);
 static INT32 xcache_entry_get_entrysize (XASL_CACHE_ENTRY * xcache_entry);
 static INT32 xcache_entry_get_clonesize (XASL_CACHE_ENTRY * xcache_entry);
+static void xcache_entry_add_mem_size (XASL_CACHE_ENTRY * xcache_entry, INT32 size);
+static void xcache_entry_sub_mem_size (XASL_CACHE_ENTRY * xcache_entry);
+static void xcache_stat_entry_deleted (THREAD_ENTRY * thread_p, bool at_cleanup);
 static INT32 xcache_entry_get_one_clonesize (XASL_CACHE_ENTRY * xcache_entry);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
@@ -348,6 +370,14 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Cleanup_array = (XCACHE_CLEANUP_CANDIDATE *) malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
   if (xcache_Cleanup_array == NULL)
     {
+      xcache_Hashmap.destroy ();
+
+      /* Use global heap */
+      save_heapid = db_change_private_heap (thread_p, 0);
+      bh_destroy (thread_p, xcache_Cleanup_bh);
+      xcache_Cleanup_bh = NULL;
+      (void) db_change_private_heap (thread_p, save_heapid);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -393,6 +423,11 @@ xcache_finalize (THREAD_ENTRY * thread_p)
     }
   (void) db_change_private_heap (thread_p, save_heapid);
 
+  if (xcache_Cleanup_array != NULL)
+    {
+      free_and_init (xcache_Cleanup_array);
+    }
+
   xcache_Enabled = false;
 }
 
@@ -400,12 +435,17 @@ xcache_finalize (THREAD_ENTRY * thread_p)
 xasl_cache_ent::xasl_cache_ent ()
 {
   pthread_mutex_init (&cache_clones_mutex, NULL);
+  bind_dir = NULL;
   init_clone_cache ();
 }
 
 xasl_cache_ent::~xasl_cache_ent ()
 {
   assert (cache_clones == NULL || cache_clones == &one_clone);
+  if (bind_dir != NULL)
+    {
+      free_and_init (bind_dir);
+    }
   pthread_mutex_destroy (&cache_clones_mutex);
 }
 
@@ -435,6 +475,7 @@ xcache_entry_alloc (void)
     }
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
+  xcache_entry->bind_dir = NULL;
 
   xcache_entry->list_ht_no = -1;
 
@@ -457,6 +498,10 @@ xcache_entry_free (void *entry)
       /* Should be already freed? */
       assert (false);
       free (xcache_entry->cache_clones);
+    }
+  if (xcache_entry->bind_dir != NULL)
+    {
+      free_and_init (xcache_entry->bind_dir);
     }
   pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
   free (entry);
@@ -487,10 +532,61 @@ xcache_entry_init (void *entry)
   xcache_entry->stream.buffer = NULL;
 
   xcache_entry->free_data_on_uninit = false;
+  xcache_entry->mem_size = 0;
+  xcache_entry->bind_dir = NULL;
   xcache_entry->initialized = true;
 
   assert (xcache_entry->n_cache_clones == 0);
   return NO_ERROR;
+}
+
+/*
+ * xcache_entry_add_mem_size () - Add bytes to this entry's memory size and to the global cache memory counter.
+ *
+ * return	     : Void.
+ * xcache_entry (in) : XASL cache entry.
+ * size (in)	     : Bytes to add.
+ */
+static void
+xcache_entry_add_mem_size (XASL_CACHE_ENTRY * xcache_entry, INT32 size)
+{
+  ATOMIC_INC_32 (&xcache_entry->mem_size, size);
+  ATOMIC_INC_32 (&xcache_Memory_usage_cache, size);
+}
+
+/*
+ * xcache_entry_sub_mem_size () - Subtract this entry's memory size from the global cache memory counter.
+ *
+ * return	     : Void.
+ * xcache_entry (in) : XASL cache entry.
+ */
+static void
+xcache_entry_sub_mem_size (XASL_CACHE_ENTRY * xcache_entry)
+{
+  /* Take and clear in one step; a concurrent fixer may still be adding to mem_size. */
+  ATOMIC_INC_32 (&xcache_Memory_usage_cache, -ATOMIC_TAS_32 (&xcache_entry->mem_size, 0));
+}
+
+/*
+ * xcache_stat_entry_deleted () - Update statistics when an entry is removed from the cache.
+ *
+ * return	     : Void.
+ * thread_p (in)     : Thread entry.
+ * at_cleanup (in)   : True if the entry was evicted by cleanup.
+ */
+static void
+xcache_stat_entry_deleted (THREAD_ENTRY * thread_p, bool at_cleanup)
+{
+  if (at_cleanup)
+    {
+      XCACHE_STAT_INC (deletes_at_cleanup);
+    }
+  else
+    {
+      XCACHE_STAT_INC (deletes);
+    }
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
+  ATOMIC_INC_32 (&xcache_Entry_count, -1);
 }
 
 /*
@@ -573,6 +669,11 @@ xcache_entry_uninit (void *entry)
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
       assert (xcache_entry->n_cache_clones == 0);
+    }
+  if (xcache_entry->bind_dir != NULL)
+    {
+      /* the query's plan variants go with its base entry: the next execution starts over */
+      free_and_init (xcache_entry->bind_dir);
     }
   xcache_entry->initialized = false;
   return NO_ERROR;
@@ -1054,6 +1155,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 	    {
 	      /* A clone is available. */
 	      *xclone = (*xcache_entry)->cache_clones[--(*xcache_entry)->n_cache_clones];
+	      ATOMIC_INC_32 (&xcache_Memory_usage_clone, -xcache_entry_get_one_clonesize (*xcache_entry));
 	      (void) pthread_mutex_unlock (&(*xcache_entry)->cache_clones_mutex);
 
 	      assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
@@ -1078,11 +1180,6 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
   error_code =
     stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.buffer,
 			    (*xcache_entry)->stream.buffer_size, &xclone->xasl_buf);
-  if (use_xasl_clone)
-    {
-      INT32 xasl_clone_size = xcache_entry_get_one_clonesize (*xcache_entry);
-      ATOMIC_INC_32 (&xcache_Memory_usage_clone, xasl_clone_size);
-    }
 
   if (save_heapid != 0)
     {
@@ -1199,15 +1296,24 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 
   if (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME)
     {
+      if ((cache_flag & XCACHE_ENTRY_FLAGS_MASK) != XCACHE_ENTRY_MARK_DELETED)
+	{
+	  /* Not counted yet; xcache_entry_mark_deleted counts the entries it marks. */
+	  xcache_stat_entry_deleted (thread_p, false);
+	}
+      xcache_entry_sub_mem_size (xcache_entry);
+
       /* I am last user after object was marked as deleted. */
       xcache_log ("delete entry from hash after unfix: \n"
 		  XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
 		  XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
-      /* No need to acquire the clone mutex, since I'm the unique user. */
+      /* Another thread may be freeing these clones in xcache_entry_mark_deleted at the same time. */
+      (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
       while (xcache_entry->n_cache_clones > 0)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
 	}
+      (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
       /* need to clear list-cache first */
       if (xcache_entry->list_ht_no >= 0)
@@ -1280,12 +1386,17 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	      XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
 	      XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-  XCACHE_STAT_INC (deletes);
-  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
-  ATOMIC_INC_32 (&xcache_Entry_count, -1);
+  xcache_stat_entry_deleted (thread_p, false);
+  xcache_entry_sub_mem_size (xcache_entry);
+
+  (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+  while (xcache_entry->n_cache_clones > 0)
+    {
+      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
+    }
+  (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
   /* The entry can be deleted if the only fixer is this transaction. */
-  ATOMIC_INC_32 (&xcache_Memory_usage_cache, -xcache_entry_get_entrysize (xcache_entry));
   return (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME);
 }
 
@@ -1516,7 +1627,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       if (*xcache_entry == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto error;
 	}
 
       /* Initialize xcache_entry stuff. */
@@ -1535,7 +1646,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 
       /* Now that new entry is initialized, we can try to insert it. */
 
-      int entry_size = xcache_entry_get_entrysize (*xcache_entry);
       inserted = xcache_Hashmap.insert_given (thread_p, xid, *xcache_entry);
       assert (*xcache_entry != NULL);
 
@@ -1544,9 +1654,12 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 
       if (inserted)
 	{
+	  INT32 entry_size = xcache_entry_get_entrysize (*xcache_entry);
+
 	  (*xcache_entry)->free_data_on_uninit = true;
-	  ATOMIC_INC_32 (&xcache_Memory_usage_cache, entry_size);
+	  xcache_entry_add_mem_size (*xcache_entry, entry_size);
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
+	  ATOMIC_INC_32 (&xcache_Entry_count, 1);
 	}
       else
 	{
@@ -1560,6 +1673,32 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 	  if (to_be_recompiled != NULL)
 	    {
 	      assert (context->recompile_xasl);
+	      /* Hand the result cache over to the new entry. Cached results are keyed by parameter
+	       * values and stay valid across a replan: the same statement text with the same
+	       * parameters yields the same rows whichever plan runs. Move instead of copy -
+	       * xcache_entry_free clears the list cache of every entry that still owns a hash
+	       * table, so the old entry has to let go of it.
+	       */
+	      if (to_be_recompiled->list_ht_no >= 0)
+		{
+		  assert ((*xcache_entry)->list_ht_no == -1);
+		  (*xcache_entry)->list_ht_no = to_be_recompiled->list_ht_no;
+		  to_be_recompiled->list_ht_no = -1;
+
+		  /* The cached results' back-pointers (xcache_entry, query_string) still
+		   * reference the entry being recompiled; they are set only at creation
+		   * (qfile_add_list_cache_entry) and the old entry is about to be freed --
+		   * without the reassignment every one of them dangles, and the eviction
+		   * path would write through them into recycled memory. */
+		  if (qfile_reassign_list_cache_owner (thread_p, (*xcache_entry)->list_ht_no, *xcache_entry)
+		      != NO_ERROR)
+		    {
+		      /* could not re-point the results: drop them instead of leaving
+		       * dangling owners */
+		      (void) qfile_clear_list_cache (thread_p, *xcache_entry, true);
+		      (*xcache_entry)->list_ht_no = -1;
+		    }
+		}
 	      /* Now that we inserted new cache entry, we can mark the old entry as recompiled. */
 	      do
 		{
@@ -1587,11 +1726,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 			  XCACHE_LOG_ENTRY_ARGS (to_be_recompiled), XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
-	    }
-	  else if (inserted)
-	    {
-	      /* new entry added */
-	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
@@ -1709,7 +1843,11 @@ error:
   ASSERT_ERROR ();
   if ((*xcache_entry) != NULL)
     {
-      xcache_Hashmap.freelist_retire (thread_p, *xcache_entry);
+      /* It is in hash and accounted for; remove it as any deleted entry. */
+      assert (inserted);
+      (void) xcache_entry_mark_deleted (thread_p, *xcache_entry);
+      xcache_unfix (thread_p, *xcache_entry);
+      *xcache_entry = NULL;
     }
   if (to_be_recompiled)
     {
@@ -1849,15 +1987,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	      /* Mark entry as deleted. */
 	      if (del_mark)
 		{
-		  /*
-		   * Successfully marked for delete. Save it to delete after the iteration.
-		   * No need to acquire the clone mutex, since I'm the unique user.
-		   */
-		  while (xcache_entry->n_cache_clones > 0)
-		    {
-		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones],
-					    xcache_entry);
-		    }
+		  /* Successfully marked for delete. Save it to delete after the iteration. */
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
@@ -2004,13 +2134,13 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
  *
  * return	     : True if entry is related, false otherwise.
  * xcache_entry (in) : XASL cache entry.
- * arg (in)	     : Pointer to OID.
+ * arg (in)	     : sha1 string.
  */
 static bool
 xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   char sha1_xasl[45];
-  const char *sha1 = (char *) arg;
+  const char *sha1 = (const char *) arg;
 
   assert (xcache_entry != NULL);
   assert (sha1 != NULL);
@@ -2066,6 +2196,65 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 
   xcache_log ("drop all queries \n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
   xcache_invalidate_entries (thread_p, NULL, NULL);
+}
+
+/*
+ * xcache_drop_clones () - Free the clones kept in XASL cache entries. The entries stay in cache.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * sha1 (in)	 : Free only the clones of the entries with this sha1. NULL for all entries.
+ */
+int
+xcache_drop_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+  XASL_CLONE *clones = NULL;
+  int n_clones = 0;
+  int i;
+
+  if (!xcache_Enabled || !xcache_uses_clones ())
+    {
+      return NO_ERROR;
+    }
+
+  /* Free the clones after unlocking cache_clones_mutex; executions of the query lock it to fetch a clone. */
+  clones = (XASL_CLONE *) malloc (xcache_Max_clones * sizeof (XASL_CLONE));
+  if (clones == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, xcache_Max_clones * sizeof (XASL_CLONE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  xcache_check_logging ();
+
+  xcache_log ("drop clones: \n" "\t sha1 = %s \n" XCACHE_LOG_TRAN_TEXT, sha1 != NULL ? sha1 : "(all)",
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+
+  while ((xcache_entry = iter.iterate ()) != NULL)
+    {
+      if (sha1 != NULL && !xcache_entry_is_related_to_sha1 (xcache_entry, sha1))
+	{
+	  continue;
+	}
+
+      (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+      assert (xcache_entry->n_cache_clones <= xcache_Max_clones);
+      n_clones = xcache_entry->n_cache_clones;
+      memcpy (clones, xcache_entry->cache_clones, n_clones * sizeof (XASL_CLONE));
+      xcache_entry->n_cache_clones = 0;
+      (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+
+      for (i = 0; i < n_clones; i++)
+	{
+	  xcache_clone_decache (thread_p, &clones[i], xcache_entry);
+	}
+    }
+
+  free_and_init (clones);
+  return NO_ERROR;
 }
 
 /*
@@ -2159,6 +2348,24 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	{
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
 	}
+      if (xcache_entry->bind_dir != NULL)
+	{
+	  pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+	  if (xcache_entry->bind_dir != NULL)
+	    {
+	      struct xcache_bind_dir *dir = xcache_entry->bind_dir;
+	      int v, pending = 0;
+
+	      for (v = 0; v < dir->next_variant; v++)
+		{
+		  pending += dir->resolved[v] ? 0 : 1;
+		}
+	      fprintf (fp, "  bind variants: plans = %d, compiles = %d, pending = %d, limit = %d, fingerprints = %d, "
+		       "server checks = %d \n", dir->plans, dir->next_variant, pending, dir->limit, dir->n_records,
+		       dir->checks);
+	    }
+	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+	}
       fprintf (fp, "  sql info: \n");
 
       qmgr_get_sql_id (thread_p, &sql_id, xcache_entry->sql_info.sql_hash_text,
@@ -2216,8 +2423,7 @@ static void
 xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone, XASL_CACHE_ENTRY * xcache_entry)
 {
 
-  INT32 xasl_clone_size = xcache_entry_get_one_clonesize (xcache_entry);
-  ATOMIC_INC_32 (&xcache_Memory_usage_clone, -xasl_clone_size);
+  ATOMIC_INC_32 (&xcache_Memory_usage_clone, -xcache_entry_get_one_clonesize (xcache_entry));
 
   HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
   XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
@@ -2243,8 +2449,19 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
   INT32 xasl_entry_size = xcache_entry_get_entrysize (xcache_entry);
   if (xcache_uses_clones ())
     {
+      INT32 clone_size = xcache_entry_get_one_clonesize (xcache_entry);
+
       pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
-      if (xcache_entry->n_cache_clones < xcache_Max_clones && xasl_entry_size < xcache_Max_plan_size)
+      /* Add the clone before reading the cache usage, so concurrent retirements and inserts cannot miss each other. */
+      INT32 memory_usage = ATOMIC_INC_32 (&xcache_Memory_usage_clone, clone_size);
+      memory_usage += xcache_Memory_usage_cache;
+      /* Limit the estimated memory of one entry's kept clones to (hard - soft).
+       * xcache_Max_plan_size is set to roughly fit one clone in (hard - soft). */
+      if (!(xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
+	  && xasl_entry_size < xcache_Max_plan_size
+	  && memory_usage < xcache_Soft_limit
+	  && xcache_entry->n_cache_clones < xcache_Max_clones
+	  && ((xcache_entry->n_cache_clones + 1) * clone_size) <= (xcache_Hard_limit - xcache_Soft_limit))
 	{
 	  if (xcache_entry->n_cache_clones == xcache_entry->cache_clones_capacity
 	      && xcache_entry->cache_clones_capacity < xcache_Max_clones)
@@ -2281,6 +2498,7 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
 		}
 	      xcache_entry->cache_clones = new_clones;
 	      xcache_entry->cache_clones_capacity = new_capacity;
+	      xcache_entry_add_mem_size (xcache_entry, (INT32) (sizeof (XASL_CLONE) * (new_capacity - old_capacity)));
 	    }
 	  assert (xcache_entry->cache_clones_capacity > xcache_entry->n_cache_clones);
 	  xcache_entry->cache_clones[xcache_entry->n_cache_clones++] = *xclone;
@@ -2297,6 +2515,14 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       return;
     }
 
+  /* Clones are off (max_plan_cache_clones = 0), so this tree was unpacked for this execution
+   * alone and goes away now.  Its compiled expression programs (see expr_compile.h) are
+   * allocations of their own -- they do not sit in the unpack buffer -- and the execution's
+   * final clear only released their slot values, keeping the programs for a next execution
+   * that will never come on this tree.  Release them the way xcache_clone_decache () does for
+   * a clone, or every execution leaks one set. */
+  XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
+  qexec_clear_xasl (thread_p, xclone->xasl, true, false);
   free_xasl_unpack_info (thread_p, xclone->xasl_buf);
   xclone->xasl = NULL;
 }
@@ -2482,10 +2708,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 		      XCACHE_LOG_XASL_ID_TEXT ("xasl id") XCACHE_LOG_TRAN_TEXT,
 		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-	  XCACHE_STAT_INC (deletes_at_cleanup);
-	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
-	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  ATOMIC_INC_32 (&xcache_Memory_usage_cache, -xcache_entry_get_entrysize (candidate.xcache));
+	  xcache_stat_entry_deleted (thread_p, true);
+	  xcache_entry_sub_mem_size (candidate.xcache);
 	  (void) pthread_mutex_lock (&candidate.xcache->cache_clones_mutex);
 	  while (candidate.xcache->n_cache_clones > 0)
 	    {
@@ -2682,4 +2906,202 @@ bool
 xcache_uses_clones (void)
 {
   return xcache_Max_clones > 0;
+}
+
+/*
+ * xcache_bind_variant () - find or reserve the plan variant of a query that suits a fingerprint
+ *   nothing in the client's directory suited, or register the plan a reserved variant compiled
+ *   to (see bind_variant.h)
+ * return	: error code
+ * thread_p (in): thread entry
+ * req (in)	: the request; req->sha1 and req->time_stored name the query's base entry
+ * reply (out)	: the outcome, how far the query has learned, and the whole directory
+ *
+ * A base entry of another generation (recompiled, or dropped and inserted again) is not the
+ * one the client's variants belong to: NOT_FOUND, and the client starts over.
+ */
+int
+xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
+{
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+  struct xcache_bind_dir *dir;
+  int error_code = NO_ERROR;
+  int limit, pending, i;
+  time_t now;
+
+  assert (req != NULL && reply != NULL);
+
+  reply->result = BIND_VARIANT_NOT_FOUND;
+  reply->variant = -1;
+  reply->state = BIND_VARIANT_STATE_WATCH;
+  reply->compiles = 0;
+  reply->plans = 0;
+  reply->n_records = 0;
+
+  if (!xcache_Enabled)
+    {
+      return NO_ERROR;
+    }
+
+  error_code = xcache_find_sha1 (thread_p, &req->sha1, XASL_CACHE_SEARCH_GENERIC, &xcache_entry, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (xcache_entry == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (!CACHE_TIME_EQ (&xcache_entry->xasl_id.time_stored, &req->time_stored))
+    {
+      xcache_unfix (thread_p, xcache_entry);
+      return NO_ERROR;
+    }
+
+  limit = req->limit;
+  if (limit > BIND_VARIANT_MAX_COMPILES)
+    {
+      limit = BIND_VARIANT_MAX_COMPILES;
+    }
+  if (limit < 1)
+    {
+      limit = 1;
+    }
+
+  pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+
+  dir = xcache_entry->bind_dir;
+  if (dir == NULL)
+    {
+      dir = (struct xcache_bind_dir *) malloc (sizeof (struct xcache_bind_dir));
+      if (dir == NULL)
+	{
+	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+	  xcache_unfix (thread_p, xcache_entry);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct xcache_bind_dir));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (dir, 0, sizeof (struct xcache_bind_dir));
+      /* the limit is the query's, not the session's: a session with another value of the
+       * parameter would otherwise end the learning early for itself, or carry it past the
+       * point where the others stopped */
+      dir->limit = limit;
+      xcache_entry->bind_dir = dir;
+    }
+  limit = dir->limit;
+
+  now = time (NULL);
+  pending = 0;
+  for (i = 0; i < dir->next_variant; i++)
+    {
+      if (!dir->resolved[i] && now - dir->reserved_at[i] >= BIND_VARIANT_RESERVE_TIMEOUT)
+	{
+	  /* the client the compile was handed to never came back (it died, or lost the
+	   * connection): the variant is given up, or the query would wait for it while its base
+	   * entry lives. A REGISTER that still arrives is taken as usual. */
+	  dir->resolved[i] = true;
+	}
+      if (!dir->resolved[i])
+	{
+	  pending++;
+	}
+    }
+
+  if (req->op == BIND_VARIANT_OP_CHECK)
+    {
+      double dist = DBL_MAX;
+      int nearest;
+
+      dir->checks++;
+      nearest = bind_variant_nearest (dir->records, dir->n_records, &req->fp, req->floor, &dist);
+      if (nearest >= 0 && dist < req->band)
+	{
+	  /* another client added the variant these values call for */
+	  reply->result = BIND_VARIANT_MATCH;
+	  reply->variant = dir->records[nearest].variant;
+	}
+      else if (dir->plans + pending < limit && dir->next_variant < BIND_VARIANT_MAX_COMPILES)
+	{
+	  /* still learning: compile. Compiles still in flight count as plans, so concurrent
+	   * clients cannot overshoot the limit together. */
+	  reply->result = BIND_VARIANT_COMPILE;
+	  reply->variant = dir->next_variant++;
+	  dir->reserved_at[reply->variant] = now;
+	  pending++;
+	}
+      else
+	{
+	  reply->result = BIND_VARIANT_FROZEN;
+	}
+    }
+  else if (req->op == BIND_VARIANT_OP_ABANDON && req->variant >= 0 && req->variant < dir->next_variant)
+    {
+      /* the compile failed on the client: the variant never becomes a plan */
+      dir->resolved[req->variant] = true;
+      reply->result = BIND_VARIANT_NOT_FOUND;
+    }
+  else if (req->op == BIND_VARIANT_OP_REGISTER && req->variant >= 0 && req->variant < dir->next_variant)
+    {
+      int same = -1;
+
+      dir->resolved[req->variant] = true;
+
+      for (i = 0; i < dir->next_variant; i++)
+	{
+	  if (dir->registered[i] && dir->plan_sig[i] == req->plan_sig)
+	    {
+	      same = i;
+	      break;
+	    }
+	}
+      if (same >= 0)
+	{
+	  /* the compile found a plan the query already has: no new variant, only another
+	   * fingerprint that reaches it */
+	  reply->result = BIND_VARIANT_SAME_PLAN;
+	  reply->variant = same;
+	}
+      else
+	{
+	  dir->registered[req->variant] = true;
+	  dir->plan_sig[req->variant] = req->plan_sig;
+	  dir->plans++;
+	  reply->result = BIND_VARIANT_NEW;
+	  reply->variant = req->variant;
+	}
+      if (dir->n_records < BIND_VARIANT_MAX_COMPILES)
+	{
+	  dir->records[dir->n_records].variant = reply->variant;
+	  dir->records[dir->n_records].fp = req->fp;
+	  dir->n_records++;
+	}
+    }
+
+  reply->compiles = dir->next_variant;
+  reply->plans = dir->plans;
+  reply->pending = 0;
+  for (i = 0; i < dir->next_variant; i++)
+    {
+      if (!dir->resolved[i])
+	{
+	  reply->pending++;
+	}
+    }
+  if ((dir->plans >= limit || dir->next_variant >= BIND_VARIANT_MAX_COMPILES) && reply->pending == 0)
+    {
+      /* done learning -- final only once every reserved variant came back: a client that
+       * settled while the last compile was in flight would never see that plan */
+      reply->state = (dir->plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
+    }
+  reply->n_records = dir->n_records;
+  for (i = 0; i < dir->n_records; i++)
+    {
+      reply->records[i] = dir->records[i];
+    }
+
+  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+  xcache_unfix (thread_p, xcache_entry);
+
+  return NO_ERROR;
 }

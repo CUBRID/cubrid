@@ -292,7 +292,14 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
-	  m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
+	  if (temp_domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      m_buf ("%s", ustr_upper (temp_buffer));
+	    }
+	  else
+	    {
+	      m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
+	    }
 	  break;
 
 	case DB_TYPE_SET:
@@ -499,6 +506,12 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
   /* could filter here but do in describe_domain */
   describe_domain (*attribute.domain, prt_type, force_print_collation);
 
+  // If the hidden column flag - 'system added invisible column' - is added to attribute.flags, the hidden column flag must be checked first.
+  if (attribute.flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      m_buf (" INVISIBLE");
+    }
+
   if (attribute.header.name_space == ID_SHARED_ATTRIBUTE)
     {
       m_buf (" SHARED ");
@@ -518,28 +531,33 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	  if (prt_type == class_description::SHOW_CREATE_TABLE)
 	    {
 	      DB_VALUE min_val, inc_val;
-	      char buff[DB_MAX_NUMERIC_PRECISION * 2 + 4];
+	      char buff[DB_MAX_FIXED_NUMERIC_PRECISION * 2 + 4];
 	      int offset;
+	      int save;
 
 	      assert (attribute.auto_increment != NULL);
 
 	      db_make_null (&min_val);
 	      db_make_null (&inc_val);
 
+	      AU_SAVE_AND_DISABLE (save);
 	      if (db_get (attribute.auto_increment, "min_val", &min_val) != NO_ERROR)
 		{
+		  AU_RESTORE (save);
 		  return;
 		}
 
 	      if (db_get (attribute.auto_increment, "increment_val", &inc_val) != NO_ERROR)
 		{
+		  AU_RESTORE (save);
 		  pr_clear_value (&min_val);
 		  return;
 		}
+	      AU_RESTORE (save);
 
-	      offset = snprintf (buff, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ",
+	      offset = snprintf (buff, DB_MAX_FIXED_NUMERIC_PRECISION + 3, "(%s, ",
 				 numeric_db_value_print (&min_val, str_buf));
-	      snprintf (buff + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val, str_buf));
+	      snprintf (buff + offset, DB_MAX_FIXED_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val, str_buf));
 	      m_buf (buff);
 
 	      pr_clear_value (&min_val);
@@ -642,7 +660,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
-  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -751,17 +768,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  break;
 	}
 
-      if (IS_DEDUPLICATE_KEY_ATTR_ID ((*attribute_p)->id))
-	{
-	  assert (k == (n_attrs - 1));
-	  int level = GET_DEDUPLICATE_KEY_ATTR_LEVEL ((*attribute_p)->id);
-	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), level);
-
-	  /* Since there is no hidden column in the contents to be described in the REFERENCE clause. */
-	  n_attrs--;
-	  break;
-	}
-
       if (k > 0)
 	{
 	  m_buf (", ");
@@ -794,12 +800,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   if (constraint.filter_predicate && constraint.filter_predicate->pred_string)
     {
       m_buf (" WHERE %s", constraint.filter_predicate->pred_string);
-    }
-
-  // In case of PK (Unique Key also), reserved_col_buf will be empty.
-  if (reserved_col_buf[0])
-    {
-      m_buf (" WITH %s", reserved_col_buf);
     }
 
   if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY && constraint.fk_info)

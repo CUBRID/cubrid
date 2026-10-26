@@ -33,7 +33,9 @@
 #include "dbtype_def.h"
 #include "external_sort.h"
 #if defined (SERVER_MODE)
+#include "file_manager.h"
 #include "log_comm.h"		// for TRAN_ISOLATION; todo - remove it.
+#include <vector>
 #endif // SERVER_MODE
 #include "query_list.h"
 #include "storage_common.h"
@@ -112,8 +114,29 @@ typedef enum
 {
   QFILE_PROHIBIT_DEPENDENT = 0,
   QFILE_SKIP_DEPENDENT = 1,
-  QFILE_MOVE_DEPENDENT = 2
+  QFILE_MOVE_DEPENDENT = 2,
+  QFILE_COPY_DEPENDENT = 3
 } QFILE_DEPENDENT_MODE;
+
+#if defined (SERVER_MODE)
+struct sort_px_list_state
+{
+  /* shared sector scan — owned by sort_param->px_sector_scan, freed after all workers finish */
+  QFILE_LIST_SECTOR_SCAN_INFO *sector_scan;
+  /* per-worker page iterator — encapsulates membuf CAS + atomic sector steal */
+  sector_page_iterator page_iter;
+  /* current active page — set when we land on a page, cleared after all tuples are consumed */
+  PAGE_PTR curr_page;
+  struct qmgr_temp_file *curr_tfile;	/* tfile for curr_page (membuf_tfile or disk tfile) */
+  VPID curr_vpid;		/* VPID of curr_page (used for sort key pageid/volid) */
+  int curr_tplno;		/* tuple index within curr_page */
+  int curr_offset;		/* byte offset of current tuple in curr_page */
+  QFILE_TUPLE_RECORD tplrec;	/* buffer for assembling overflow tuples */
+};
+
+extern SORT_STATUS qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg);
+extern void qfile_sort_px_state_free (THREAD_ENTRY * thread_p, sort_px_list_state * state);
+#endif /* SERVER_MODE */
 
 /* List manipulation routines */
 extern int qfile_initialize (void);
@@ -121,6 +144,8 @@ extern void qfile_finalize (void);
 extern void qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern int qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl);
+extern int qfile_add_tuple_to_list_from (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
+					 int src_hdr_size);
 extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
 					    QFILE_TUPLE_POSITION * tuple_pos);
 extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, PAGE_PTR ovfl_tpl_pg,
@@ -146,12 +171,14 @@ extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list, SORT_LIST * c
 /* Sorting related routines */
 extern SORT_STATUS qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * info, RECDES * key,
 					QFILE_LIST_SCAN_ID * input_scan, QFILE_TUPLE_RECORD * tplrec);
-extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes);
+extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes,
+					      QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
 extern int qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * listid, SORTKEY_INFO * info);
 extern SORTKEY_INFO *qfile_initialize_sort_key_info (SORTKEY_INFO * info, SORT_LIST * list,
 						     QFILE_TUPLE_VALUE_TYPE_LIST * types);
+extern void qfile_init_empty_sort_key_info (SORTKEY_INFO * info);
 extern void qfile_clear_sort_key_info (SORTKEY_INFO * info);
 extern QFILE_LIST_ID *qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 						 SORT_LIST * sort_list, QUERY_OPTIONS option, int ls_flag,
@@ -165,6 +192,7 @@ extern QFILE_LIST_ID *qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * 
 extern int qfile_initialize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_finalize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, bool invalidate);
+extern int qfile_reassign_list_cache_owner (THREAD_ENTRY * thread_p, int list_ht_no, XASL_CACHE_ENTRY * new_owner);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp);
 #if defined (CUBRID_DEBUG)
 extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
@@ -190,29 +218,34 @@ extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALU
 				       SORT_LIST * sort_list, QUERY_ID query_id, int flag,
 				       QFILE_LIST_ID * existing_list_id);
 extern int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
-extern int qfile_save_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, QFILE_TUPLE_TYPE tuple_type, char *page_p,
-			     int *tuple_length_p);
+extern QFILE_TUPLE_COL_SRC *qfile_tpl_descr_col_src (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n);
+extern int qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n);
+extern int qfile_save_tuple (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
+			     QFILE_TUPLE_TYPE tuple_type, char *out, int size);
 extern int qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE_TYPE tpl_type);
-extern int qfile_fast_intint_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int v1, int v2);
-extern int qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int v1, DB_VALUE * v2);
-extern int qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, DB_VALUE * val);
-extern int qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item, int item_size, QFILE_LIST_ID * list_id);
+extern int qfile_add_col_src_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int n);
+extern int qfile_add_values_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, DB_VALUE ** vals, int n);
+extern int qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
+				       QFILE_TUPLE_RECORD * outer_rec, QFILE_TUPLE_RECORD * inner_rec,
+				       QFILE_LIST_MERGE_INFO * merge_info_p, QFILE_TUPLE_RECORD * big_rec);
 extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file,
 					      QFILE_LIST_ID * rhs_file, int flag);
 extern int qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
 extern int qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
 extern int qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
-extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpl_descr,
-					    QFILE_TUPLE_RECORD * tplrec);
+extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, const QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+					    QFILE_TUPLE_DESCRIPTOR * tpl_descr, QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
-extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
+extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2, bool list1_empty);
 #if !defined(NDEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
 #endif
 extern QFILE_LIST_ID *qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int flag);
-extern int qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page, QFILE_TUPLE tuplep,
-			    QFILE_TUPLE_RECORD * tplrec, QFILE_LIST_ID * list_idp);
+extern int qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE src_tuple,
+			    QFILE_TUPLE_RECORD * dest_tplrec, QFILE_LIST_ID * list_id_p);
+extern int qfile_assemble_overflow_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
+					  QFILE_TUPLE_RECORD * tplrec, struct qmgr_temp_file *tfile_vfid_p);
 extern void qfile_save_current_scan_tuple_position (QFILE_LIST_SCAN_ID * s_id, QFILE_TUPLE_POSITION * ls_tplpos);
 extern SCAN_CODE qfile_jump_scan_tuple_position (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_id,
 						 QFILE_TUPLE_POSITION * ls_tplpos, QFILE_TUPLE_RECORD * tplrec,
@@ -227,12 +260,7 @@ extern void qfile_end_scan_fix (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_
 extern void qfile_close_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_id);
 
 /* Miscellaneous */
-extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
-extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
-extern int qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALUE_FLAG * flag);
 extern bool qfile_has_next_page (PAGE_PTR page_p);
-extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
-					      valptr_list_node * valptr_list_p);
 extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR curr_page_p,
 					 VPID * vpid_p, QFILE_TUPLE tuple_p, int col_num, DB_VALUE * value_p,
 					 TP_DOMAIN * domain);
@@ -246,5 +274,25 @@ extern bool qfile_has_no_cache_entries ();
 extern int qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 					   QFILE_LIST_SECTOR_INFO * sector_info);
 extern void qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * sector_info);
+extern int qfile_open_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+					QFILE_LIST_SECTOR_SCAN_INFO * sector_scan);
+extern void qfile_close_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_SCAN_INFO * sector_scan);
+
+#ifdef __cplusplus
+/* ctz on bitmap_inout: lowest set bit -> VPID; clears that bit. false = sector drained. */
+static inline bool
+qfile_sector_bitmap_next_vpid (const VSID * vsid, UINT64 * bitmap_inout, VPID * out_vpid)
+{
+  if (*bitmap_inout == 0)
+    {
+      return false;
+    }
+  int bit_pos = __builtin_ctzll (*bitmap_inout);
+  *bitmap_inout &= *bitmap_inout - 1;
+  out_vpid->volid = vsid->volid;
+  out_vpid->pageid = SECTOR_FIRST_PAGEID (vsid->sectid) + bit_pos;
+  return true;
+}
+#endif /* __cplusplus */
 
 #endif /* _LIST_FILE_H_ */

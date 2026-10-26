@@ -45,9 +45,8 @@ typedef enum
   IX_LOCK = 6,			/* Intention exclusive lock */
   BU_LOCK = 7,			/* Bulk Update Lock */
   SIX_LOCK = 8,			/* Shared and intention exclusive lock */
-  U_LOCK = 9,			/* Update lock */
-  X_LOCK = 10,			/* Exclusive lock */
-  SCH_M_LOCK = 11,		/* Schema Modification Lock */
+  X_LOCK = 9,			/* Exclusive lock */
+  SCH_M_LOCK = 10,		/* Schema Modification Lock */
 
   LOCK_COUNT			/* number of lock modes */
 } LOCK;
@@ -88,8 +87,6 @@ lock_to_lockmode_string (LOCK lock)
       return "IX_LOCK";
     case SIX_LOCK:
       return "SIX_LOCK";
-    case U_LOCK:
-      return "U_LOCK";
     case BU_LOCK:
       return "BU_LOCK";
     case SCH_S_LOCK:

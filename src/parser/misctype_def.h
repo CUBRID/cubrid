@@ -196,7 +196,10 @@ typedef enum
   PT_AUTHID_OWNER,
   PT_AUTHID_CALLER,
   PT_NOT_DETERMINISTIC,
-  PT_DETERMINISTIC
+  PT_DETERMINISTIC,
+
+  PT_LOGIN,			/* user login capability */
+  PT_NOLOGIN
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 

@@ -990,8 +990,9 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
   switch (left->type)
     {
     case TYPE_DBVAL:
-      /* use dbval */
-      if (tp_value_compare (&left->value.dbval, &right->value.dbval, 1, 0) != DB_EQ)
+      /* use dbval; a query's constant against the partition expression's: the key pair table's comparison of their
+       * types */
+      if (domain_compare_by_type_pair (&left->value.dbval, &right->value.dbval, 1, 0, NULL) != DB_EQ)
 	{
 	  return false;
 	}
@@ -1002,7 +1003,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_CONSTANT:
       /* use varptr */
-      if (tp_value_compare (left->value.dbvalptr, right->value.dbvalptr, 1, 1) != DB_EQ)
+      if (domain_compare_by_type_pair (left->value.dbvalptr, right->value.dbvalptr, 1, 1, NULL) != DB_EQ)
 	{
 	  return false;
 	}
@@ -1013,13 +1014,13 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_POS_VALUE:
       {
-	/* use val_pos for host variable references */
-	DB_VALUE *val_left, *val_right;
+	/* each reference reads its own value */
+	const DB_VALUE *val_left, *val_right;
 
-	val_left = (DB_VALUE *) pinfo->vd->dbval_ptr + left->value.val_pos;
-	val_right = (DB_VALUE *) pinfo->vd->dbval_ptr + right->value.val_pos;
+	val_left = REGU_RESOLVED_VALUE (pinfo->vd, left);
+	val_right = REGU_RESOLVED_VALUE (pinfo->vd, right);
 
-	if (tp_value_compare (val_left, val_right, 1, 1) != DB_EQ)
+	if (domain_compare_by_type_pair (val_left, val_right, 1, 1, NULL) != DB_EQ)
 	  {
 	    return false;
 	  }
@@ -1429,7 +1430,9 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	}
       else
 	{
-	  rmin = tp_value_compare (&min, val, 1, 1);
+	  /* the bounds are the partition expression's type, the catalog's and not the plan's: the key pair table's
+	   * comparison of the two types */
+	  rmin = domain_compare_by_type_pair (&min, val, 1, 1, NULL);
 	}
 
       if (DB_IS_NULL (&max))
@@ -1445,7 +1448,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	       * some limit cases like val > max-- which should not match any partition */
 	      (void) partition_decrement_value (&max);
 	    }
-	  rmax = tp_value_compare (val, &max, 1, 1);
+	  rmax = domain_compare_by_type_pair (val, &max, 1, 1, NULL);
 	}
 
       status = MATCH_OK;
@@ -1639,7 +1642,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_POS_VALUE:
       {
-	DB_VALUE *arg_val = (DB_VALUE *) pinfo->vd->dbval_ptr + regu->value.val_pos;
+	const DB_VALUE *arg_val = REGU_RESOLVED_VALUE (pinfo->vd, regu);
 	if (pr_clone_value (arg_val, value_p) != NO_ERROR)
 	  {
 	    goto error;
@@ -1798,8 +1801,8 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 
     case TYPE_POS_VALUE:
       {
-	/* use val_pos for host variable references */
-	DB_VALUE *val = (DB_VALUE *) pinfo->vd->dbval_ptr + key->value.val_pos;
+	/* each reference reads its own value */
+	const DB_VALUE *val = REGU_RESOLVED_VALUE (pinfo->vd, key);
 	error = pr_clone_value (val, attr_key);
 
 	*is_present = true;
@@ -2881,7 +2884,7 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
       return error;
     }
 
-  assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
+  assert (DB_IS_STRING (&val));
   // use const_cast since of a limitation of or_unpack_* functions which do not accept const
   expr_stream = CONST_CAST (char *, db_get_string (&val));
   stream_len = db_get_string_size (&val);
@@ -3021,6 +3024,7 @@ partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VALUE * val)
       /* Since partition key expression can only contain a single column,
        * we can skip checking attribute id and simply check if the value is cached. */
       var->value.attr_descr.cache_dbvalp = val;
+      var->value.attr_descr.cache_slot = NULL;
       break;
 
     case TYPE_INARITH:

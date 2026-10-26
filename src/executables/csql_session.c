@@ -679,7 +679,8 @@ csql_help_info (const char *command, int aucommit_flag)
       && (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") || !strcasecmp (tok, "deferred")
 	  || !strcasecmp (tok, "workspace") || !strcasecmp (tok, "lock") || !strcasecmp (tok, "stats")
 	  || !strcasecmp (tok, "logstat") || !strcasecmp (tok, "csstat") || !strcasecmp (tok, "plan")
-	  || !strcasecmp (tok, "qcache") || !strcasecmp (tok, "trantable") || !strcasecmp (tok, "ndv")))
+	  || !strcasecmp (tok, "qcache") || !strcasecmp (tok, "trantable") || !strcasecmp (tok, "ndv")
+	  || !strcasecmp (tok, "histogram")))
     {
       int result;
 
@@ -743,7 +744,7 @@ csql_dump_alltran (volatile TRANS_INFO * info)
     {
       p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
 
-      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
+      fprintf (p_stream, "%s", csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
       for (int i = 0; i < info->num_trans; i++)
 	{
 	  fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
@@ -799,7 +800,7 @@ csql_killtran (const char *argument)
 	{
 	  if (info->tran[i].tran_index == tran_index)
 	    {
-	      fprintf (csql_Output_fp, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
+	      fprintf (csql_Output_fp, "%s", csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
 	      fprintf (csql_Output_fp, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
 		       tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
 		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);

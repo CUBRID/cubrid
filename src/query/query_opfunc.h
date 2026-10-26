@@ -29,20 +29,27 @@
 #include "dbtype_def.h"
 #include "db_function.hpp"
 #include "query_list.h"
+#include "query_sum_accumulator.h"
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "thread_compat.hpp"
 
 // forward definitions
+namespace cubxasl
+{
+  struct aggregate_accumulator;
+  struct aggregate_list_node;
+}
 struct function_node;
 class regu_variable_node;
+struct DOMAIN_ARITH;
+struct RESOLVED_DOMAIN;
 struct tp_domain;
 struct val_descr;
 struct val_list_node;
 struct valptr_list_node;
 struct xasl_state;
 
-#define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
 
 #define BOUND(x) (! UNBOUND(x))
 
@@ -57,34 +64,50 @@ typedef enum
 extern void qdata_set_value_list_to_null (val_list_node * val_list);
 extern bool qdata_copy_db_value (DB_VALUE * dbval1, const DB_VALUE * dbval2);
 
-extern int qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval, char *tvalp, int *tval_size);
 extern int qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd,
-					    qfile_tuple_record * tplrec);
+					    qfile_tuple_value_type_list * type_list, qfile_tuple_record * tplrec);
 extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
 									valptr_list_node * valptr_list, val_descr * vd,
-									qfile_tuple_descriptor * tdp);
+									qfile_list_id * list_id);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
+extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list);
+extern void qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool is_final,
+					    bool free_it);
+extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,
+					    val_descr * val_desc_p);
 
-extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
+/* T_ADD, T_SUB, T_MUL or T_DIV over two values, as the plan resolved it before any row (DOMAIN_ARITH: a node's
+ * RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE); no
+ * value's type is read for the dispatch */
+extern int qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1, DB_VALUE * dbval2,
+			      DB_VALUE * res, tp_domain * domain_p);
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
 				    tp_domain * domain, const int max_allowed_size, const char *warning_context);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res, int incval);
-extern int qdata_subtract_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
-extern int qdata_multiply_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
-extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
-extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
+extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
+/* The error of an operand coercion that fails, as tp_value_auto_cast sets it */
+extern int qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target);
+/* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row
+ * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] and arith is what the operator
+ * makes of the coerced operands - a RESOLVED_DOMAIN's or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing;
+ * temporaries[i]: operand i converted once for its scope already */
+extern int qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
+					const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith,
+					DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
+					const DB_VALUE * const *temporaries = NULL);
 
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
-				       qfile_tuple_value_type_list * type_list);
+				       qfile_tuple_value_type_list * type_list, const val_descr * vd);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
-				    QFILE_TUPLE tpl);
+				    QFILE_TUPLE_RECORD * tplrec);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
 					 qfile_tuple_value_type_list * type_list);
-extern int qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_record * tplrec);
+extern int qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
+					 qfile_tuple_value_type_list * type_list, qfile_tuple_record * tplrec);
 extern int qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * type_list,
 				    qfile_tuple_record * tplrec, VAL_LIST * val_list);
 
@@ -113,8 +136,9 @@ extern int qdata_regu_list_to_regu_array (function_node * function_p, const int 
 					  regu_variable_node * regu_array[], int *num_regu);
 extern int qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VALUE * db_index_name,
 				  DB_VALUE * db_key_position, DB_VALUE * result_p);
+extern int qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p,
+					  OPERATOR_TYPE op);
 extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, qfile_tuple_descriptor * tuple, DB_VALUE ** values);
-extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
 extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
 							FUNC_CODE function);
 extern int qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, double row_num_d,
@@ -126,5 +150,23 @@ extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, qfi
 						    FUNC_CODE function);
 extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE * dest_val,
 							     tp_domain ** domain);
+
+/*
+ * The qdata_sum_acc_* family is the SUM/AVG accumulator's type-dispatch point.
+ *
+ * NUMERIC uses the word accumulator in numeric_opfunc.c. SHORT/INTEGER/BIGINT,
+ * DOUBLE, and FLOAT use the typed accumulator in query_opfunc.c. Typed modes
+ * reproduce the typed addition without per-row DB_VALUE dispatch.
+ *
+ * Integer modes preserve the input type's overflow semantics (for example,
+ * SUM(SHORT) overflows past 32767). DOUBLE uses the same IEEE operations, and
+ * FLOAT accumulates as DOUBLE before the final demotion.
+ */
+extern int qdata_sum_acc_accumulate (SUM_ACC * acc, bool is_first, const DB_VALUE * seed_from, const DB_VALUE * value);
+extern int qdata_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
+extern int qdata_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other);
+extern int qdata_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result);
+extern int qdata_sum_acc_finalize (SUM_ACC * acc, DB_VALUE * result);
+extern int qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result);
 
 #endif /* _QUERY_OPFUNC_H_ */

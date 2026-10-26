@@ -488,7 +488,6 @@ struct sm_foreign_key_info
   SM_FOREIGN_KEY_ACTION update_action;
   char *name;
   bool is_dropped;
-  MOP index_catalog_of_ref_class;
   SM_FOREIGN_KEY_MATCH_OPTION ref_match_option;
 };
 
@@ -568,18 +567,9 @@ struct sm_class_constraint
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
   SM_INDEX_TYPE index_type;
-  int options;			/* bits 0-3: deduplicate level (0-14), rest reserved */
+  int options;			/* reserved */
 };
 
-/* options macros */
-#define OPTION_DEDUPLICATE_MASK   0x0F
-#define OPTION_DEDUPLICATE_SHIFT  0
-#define SET_OPTION_DEDUPLICATE(opt, level) \
-  do { \
-    (opt) = ((opt) & ~OPTION_DEDUPLICATE_MASK) | ((level) & OPTION_DEDUPLICATE_MASK); \
-  } while (0)
-#define GET_OPTION_DEDUPLICATE(opt) \
-  (((opt) >> OPTION_DEDUPLICATE_SHIFT) & OPTION_DEDUPLICATE_MASK)
 
 /*
  *    Holds information about a method argument.  This will be used
@@ -783,6 +773,7 @@ struct sm_class
   SM_QUERY_SPEC *query_spec;	/* virtual class query_spec information */
   SM_TEMPLATE *new_;		/* temporary structure */
   CLASS_STATS *stats;		/* server statistics, loaded on demand */
+  HIST_STATS *histogram;	/* column histogram, loaded on demand */
 
   MOP owner;			/* authorization object */
   int collation_id;		/* class collation */
@@ -1119,9 +1110,6 @@ extern SM_DESCRIPTOR_LIST *classobj_make_desclist (MOP class_mop, SM_CLASS * cla
 extern void classobj_free_desclist (SM_DESCRIPTOR_LIST * dl);
 extern void classobj_free_descriptor (SM_DESCRIPTOR * desc);
 
-extern bool classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, char **att_names,
-						      SM_FUNCTION_INFO * func_index_info);
-
 /* Debug */
 #if defined (CUBRID_DEBUG)
 extern void classobj_print (SM_CLASS * class_);
@@ -1152,4 +1140,5 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
+extern int classobj_check_histogram_exist (SM_ATTRIBUTE * attributes, const char *attr_name);
 #endif /* _CLASS_OBJECT_H_ */

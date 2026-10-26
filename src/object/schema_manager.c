@@ -65,6 +65,7 @@
 #include "network_interface_cl.h"
 #include "parser.h"
 #include "trigger_manager.h"
+#include "oid.h"
 #include "storage_common.h"
 #include "transform.h"
 #include "system_parameter.h"
@@ -73,6 +74,7 @@
 #include "release_string.h"
 #include "execute_statement.h"
 #include "crypt_opfunc.h"
+#include "histogram_cl.hpp"
 
 #include "db.h"
 #include "object_accessor.h"
@@ -83,6 +85,8 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define SM_ADD_CONSTRAINT_SAVEPOINT_NAME "aDDcONSTRAINT"
+#define SM_ADD_HISTOGRAM_SAVEPOINT_NAME "aDDhISTOGRAM"
+#define SM_DROP_HISTOGRAM_SAVEPOINT_NAME "dELETEhISTOGRAM"
 #define SM_ADD_UNIQUE_CONSTRAINT_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
 #define SM_DROP_CLASS_MOP_SAVEPOINT_NAME "dELETEcLASSmOP"
 #define SM_TRUNCATE_SAVEPOINT_NAME "SmtRUnCATE"
@@ -394,7 +398,6 @@ static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_T
 static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
-static MOP find_index_catalog (const char *index_name);
 
 #if defined (WINDOWS)
 static void sm_method_final (void);
@@ -515,6 +518,20 @@ MOP
 sc_current_schema_owner (void)
 {
   return Current_Schema.owner;
+}
+
+/*
+ * sc_clear_current_schema()
+ *   return: void
+ *
+ * Note :
+ *   Clears the owner and name of the current schema.
+ */
+void
+sc_clear_current_schema (void)
+{
+  Current_Schema.owner = NULL;
+  Current_Schema.name[0] = '\0';
 }
 
 
@@ -2081,6 +2098,9 @@ sm_final ()
 {
   SM_DESCRIPTOR *d, *next;
 
+  /* Clear the current schema before ws_final () frees the owner MOP. */
+  sc_clear_current_schema ();
+
 #if defined(WINDOWS)
   /* unload any DLL's we may have opened for methods */
   sm_method_final ();
@@ -2285,13 +2305,13 @@ char *
 sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  char user_specified_name[DB_MAX_SERIAL_NAME_LENGTH];
+  char user_specified_name[DB_MAX_IDENTIFIER_LENGTH];
   int user_specified_name_len;
   const char *current_schema_name = NULL;
   int error = NO_ERROR;
 
   assert (buf != NULL);
-  assert (buf_size >= DB_MAX_SERIAL_NAME_LENGTH);
+  assert (buf_size >= DB_MAX_IDENTIFIER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
@@ -2311,7 +2331,7 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       assert (strchr (dot + 1, '.') == NULL);
 
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
-      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH);
 
       /*
        * e.g.   name: user_name.object_name
@@ -2320,11 +2340,11 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       return sm_downcase_name (name, buf, buf_size);
     }
 
-  /* If the length of the object name was not previously checked, it may exceed 482 bytes.
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
    * In this case, return only the object name without raising an error. And expect that the object is not found */
-  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH)
+  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH)
     {
-      assert (strlen (name) < DB_MAX_SERIAL_NAME_LENGTH);
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
 
       /*
        * e.g.   name: object_name (exceeds)
@@ -2972,7 +2992,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
     }
 
   /* rename related auto_increment serial obj name */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   is_au_disabled = true;
 
   for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
@@ -3009,7 +3029,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  db_value_clear (&value);
 	}
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   is_au_disabled = false;
 
   if (is_partition == DB_PARTITIONED_CLASS)
@@ -3041,7 +3061,7 @@ end:
 
   if (is_au_disabled)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;
@@ -3079,65 +3099,6 @@ sm_mark_system_class (MOP classop, int on_or_off)
 
   return error;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-#ifdef SA_MODE
-void
-sm_mark_system_class_for_catalog (void)
-{
-  MOP classmop;
-  SM_CLASS *class_;
-  int i;
-
-  const char *classes[] = {
-    CT_CLASS_NAME,
-    CT_ATTRIBUTE_NAME,
-    CT_DOMAIN_NAME,
-    CT_METHOD_NAME,
-    CT_METHSIG_NAME,
-    CT_METHARG_NAME,
-    CT_METHFILE_NAME,
-    CT_QUERYSPEC_NAME,
-    CT_INDEX_NAME,
-    CT_INDEXKEY_NAME,
-    CT_CLASSAUTH_NAME,
-    CT_DATATYPE_NAME,
-    CT_STORED_PROC_NAME,
-    CT_STORED_PROC_ARGS_NAME,
-    CT_PARTITION_NAME,
-    CTV_CLASS_NAME,
-    CTV_SUPER_CLASS_NAME,
-    CTV_VCLASS_NAME,
-    CTV_ATTRIBUTE_NAME,
-    CTV_ATTR_SD_NAME,
-    CTV_METHOD_NAME,
-    CTV_METHARG_NAME,
-    CTV_METHARG_SD_NAME,
-    CTV_METHFILE_NAME,
-    CTV_INDEX_NAME,
-    CTV_INDEXKEY_NAME,
-    CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME,
-    CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME,
-    CTV_PARTITION_NAME,
-    CT_COLLATION_NAME,
-    CT_SERVER_NAME,
-    CTV_SERVER_NAME,
-    NULL
-  };
-
-  for (i = 0; classes[i] != NULL; i++)
-    {
-      classmop = locator_find_class (classes[i]);
-      if (au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE) == NO_ERROR)
-	{
-	  class_->flags |= SM_CLASSFLAG_SYSTEM;
-	}
-    }
-}
-#endif /* SA_MODE */
-#endif
 
 /*
  * sm_set_class_flag() - This turns on or off the given flag.
@@ -3387,12 +3348,12 @@ sm_is_partitioned_class (MOP op)
     }
   if (result)
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
 	{
 	  result = (class_->partition != NULL);
 	}
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return result;
@@ -3423,17 +3384,17 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 
   *partition_type = DB_NOT_PARTITIONED_CLASS;
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   error = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       return error;
     }
   if (!smclass->partition)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       return NO_ERROR;
     }
 
@@ -3448,7 +3409,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	{
 	  *partition_type = DB_PARTITIONED_CLASS;
 	}
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       return NO_ERROR;
     }
 
@@ -3534,12 +3495,12 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	}
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return NO_ERROR;
 
 partition_failed:
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   if (subobjs)
     {
       free_and_init (subobjs);
@@ -4078,6 +4039,7 @@ sm_get_class_with_statistics (MOP classop)
 {
   SM_CLASS *class_ = NULL;
   int is_class = 0;
+  bool updated = false;
 
   /* only try to get statistics if we know the class has been flushed if it has a temporary oid, it isn't flushed and
    * there are no statistics */
@@ -4101,6 +4063,7 @@ sm_get_class_with_statistics (MOP classop)
       return NULL;
     }
 
+  /* get the statistics of the class */
   if (class_->stats == NULL)
     {
       /* it's first time to get the statistics of this class */
@@ -4131,10 +4094,51 @@ sm_get_class_with_statistics (MOP classop)
 	{
 	  stats_free_statistics (class_->stats);
 	  class_->stats = stats;
+	  updated = true;
 	}
       else if (err != NO_ERROR)
 	{
 	  return NULL;
+	}
+    }
+
+  /* get the histogram of the class */
+  if (class_->histogram == NULL)
+    {
+      if (!OID_ISTEMP (WS_OID (classop)))
+	{
+	  /* make sure the class is flushed before asking for statistics, this handles the case where an index
+	   * has been added to the class but the catalog & statistics do not reflect this fact until the class
+	   * is flushed.  We might want to flush instances as well but that shouldn't affect the statistics ? */
+	  if (locator_flush_class (classop) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	  int err = stats_get_histogram (classop, &class_->histogram);
+	  if (err != NO_ERROR)
+	    {
+	      /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE
+	       * rewriting _db_histogram) must not fail the query -- proceed without it */
+	      stats_free_histogram_and_init (class_->histogram);
+	      class_->histogram = NULL;
+	      er_clear ();
+	    }
+	}
+    }
+  else
+    {
+      if (updated)
+	{
+	  stats_free_histogram_and_init (class_->histogram);
+	  class_->histogram = NULL;
+	  int err = stats_get_histogram (classop, &class_->histogram);
+	  if (err != NO_ERROR)
+	    {
+	      /* optional; see above -- do not fail the query on a transient fetch error */
+	      stats_free_histogram_and_init (class_->histogram);
+	      class_->histogram = NULL;
+	      er_clear ();
+	    }
 	}
     }
 
@@ -4170,6 +4174,11 @@ sm_get_statistics_force (MOP classop)
 	      stats_free_statistics (class_->stats);
 	      class_->stats = NULL;
 	    }
+	  if (class_->histogram)
+	    {
+	      stats_free_histogram_and_init (class_->histogram);
+	      class_->histogram = NULL;
+	    }
 	  int err = stats_get_statistics (WS_OID (classop), 0, &stats);
 	  if (err == NO_ERROR)
 	    {
@@ -4198,7 +4207,7 @@ sm_get_statistics_force (MOP classop)
  *       "alter table ..." or "create index ...".
  */
 int
-sm_update_statistics (MOP classop, bool with_fullscan)
+sm_update_statistics (MOP classop, bool with_fullscan, struct class_attr_ndv *provided_ndv)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
@@ -4225,7 +4234,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (classop, with_fullscan);
+      error = stats_update_statistics (classop, with_fullscan, provided_ndv);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -4241,6 +4250,11 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      class_->stats = NULL;
 		    }
 
+		  if (class_->histogram != NULL)
+		    {
+		      stats_free_histogram_and_init (class_->histogram);
+		      class_->histogram = NULL;
+		    }
 		  /* make sure the class is flushed before acquiring stats, see comments above in
 		   * sm_get_class_with_statistics */
 		  if (locator_flush_class (classop) != NO_ERROR)
@@ -4338,11 +4352,16 @@ sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
  * sm_update_all_statistics() - Update the statistics for all classes
  * 			        in the database.
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   random_seed(in): sampling seed for the histogram build
+ *   no_histogram(in): true iff WITH NO HISTOGRAM - skip the histogram pass entirely
+ *   skip_histogram_mops(in): classes excluded from the histogram pass (optimizedb --no-histogram-classes);
+ *                            their class statistics are still updated. NULL if none
+ *   n_skip(in): number of entries in skip_histogram_mops
  *   return: NO_ERROR on success, non-zero for ERROR
  */
 
 int
-sm_update_all_statistics (bool with_fullscan)
+sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram, MOP * skip_histogram_mops, int n_skip)
 {
   int error = NO_ERROR;
   DB_OBJLIST *cl;
@@ -4355,36 +4374,48 @@ sm_update_all_statistics (bool with_fullscan)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan);
-  if (error == NO_ERROR)
+  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ );
+  if (error != NO_ERROR)
     {
-      /* Need to reset the statistics cache for all resident classes */
-      for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+      /* do not build histograms over a failed server-side statistics update */
+      return error;
+    }
+
+  /* Need to reset the statistics cache for all resident classes */
+  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+    {
+      if (!WS_IS_DELETED (cl->op))
 	{
-	  if (!WS_IS_DELETED (cl->op))
+	  /* uncache statistics only if object is cached - MOP trickery */
+	  class_ = (SM_CLASS *) cl->op->object;
+	  if (class_ != NULL && class_->class_type == SM_CLASS_CT)
 	    {
-	      /* uncache statistics only if object is cached - MOP trickery */
-	      class_ = (SM_CLASS *) cl->op->object;
-	      if (class_ != NULL && class_->class_type == SM_CLASS_CT)
+	      if (class_->stats != NULL)
 		{
-		  if (class_->stats != NULL)
-		    {
-		      stats_free_statistics (class_->stats);
-		      class_->stats = NULL;
-		    }
-		  /* make sure the class is flushed but quit if an error happens */
-		  if (locator_flush_class (cl->op) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      return (er_errid ());
-		    }
-		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
+		  stats_free_statistics (class_->stats);
+		  class_->stats = NULL;
+		}
+	      /* make sure the class is flushed but quit if an error happens */
+	      if (locator_flush_class (cl->op) != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return (er_errid ());
+		}
+	      error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
+	      if (error != NO_ERROR)
+		{
+		  return error;
 		}
 	    }
+	}
+    }
+
+  if (!no_histogram)
+    {
+      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip);
+      if (error != NO_ERROR)
+	{
+	  return error;
 	}
     }
 
@@ -4411,7 +4442,7 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
     CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
     CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
-    CT_SERVER_NAME, CT_SYNONYM_NAME, NULL
+    CT_SERVER_NAME, CT_SYNONYM_NAME, CT_HISTOGRAM_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -4978,7 +5009,7 @@ sm_get_class_name_internal (MOP op, bool return_null)
 
   if (op != NULL)
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
 	  if (class_)
@@ -4986,7 +5017,7 @@ sm_get_class_name_internal (MOP op, bool return_null)
 	      name = class_->header.name;
 	    }
 	}
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return (name ? name : (return_null ? NULL : ""));
@@ -5515,9 +5546,9 @@ sm_find_synonym (const char *name)
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
   db_make_string (&value, realname);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   synonym_obj = db_find_unique (synonym_class_obj, "unique_name", &value);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (synonym_obj == NULL)
     {
@@ -5558,9 +5589,9 @@ sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
   assert (buf != NULL);
   assert (buf_size > 0);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   db_get (synonym, "target_unique_name", &value);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   target_name = db_get_string (&value);
   len = db_get_string_size (&value);
@@ -6080,9 +6111,9 @@ sm_class_has_unique_constraint (MOBJ classobj, MOP classop, bool check_subclasse
     }
   else
     {
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       error = au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ, AU_SELECT);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       if (error != NO_ERROR)
 	{
@@ -9587,12 +9618,6 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
-		{
-		  assert (attrs[i + 1] == NULL);
-		  continue;
-		}
-
 	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
@@ -10021,7 +10046,6 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
-	      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10485,6 +10509,37 @@ mem_error:
 }
 
 /*
+ * sm_constraint_key_domain() - the key domain the B-tree of a constraint's index was allocated with (allocate_index)
+ *   return: a cached domain, or NULL on error
+ *   con(in): the constraint
+ *
+ * The query compiler streams it with an index scan when the index statistics carry no key type.
+ */
+TP_DOMAIN *
+sm_constraint_key_domain (const SM_CLASS_CONSTRAINT * con)
+{
+  const int *asc_desc = con->type == SM_CONSTRAINT_FOREIGN_KEY ? NULL : con->asc_desc;
+  const SM_FUNCTION_INFO *function_index = con->func_index_info;
+  int n_attrs = 0;
+
+  while (con->attributes[n_attrs] != NULL)
+    {
+      n_attrs++;
+    }
+  if (function_index != NULL)
+    {
+      if (function_index->attr_index_start == 0)
+	{
+	  /* a single column function index: the key domain is the domain of the function result */
+	  return function_index->fi_domain;
+	}
+      return construct_index_key_domain (function_index->attr_index_start, con->attributes, asc_desc,
+					 con->attrs_prefix_length, function_index->col_id, function_index->fi_domain);
+    }
+  return construct_index_key_domain (n_attrs, con->attributes, asc_desc, con->attrs_prefix_length, -1, NULL);
+}
+
+/*
  * collect_hier_class_info() - calling this function in which case *n_classes
  *   			       will equal to 1 upon entry.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -10780,10 +10835,20 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
       has_instances = 0;
       for (i = 0; i < n_classes; i++)
 	{
-	  if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	  if (HFID_IS_NULL (&hfids[i]))
 	    {
-	      /* in case of error and instances exist */
-	      has_instances = 1;
+	      continue;
+	    }
+
+	  has_instances = heap_has_instance (&hfids[i], &oids[i], false);
+	  if (has_instances < 0)
+	    {
+	      /* e.g. the server went down and the client workspace was cleared, so class_ and con may be freed */
+	      ASSERT_ERROR_AND_SET (error);
+	      goto gen_error;
+	    }
+	  else if (has_instances > 0)
+	    {
 	      break;
 	    }
 	}
@@ -10794,9 +10859,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error =
-	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
-			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -10920,19 +10983,27 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   TP_DOMAIN *domain = NULL;
   OID *cls_oid;
   HFID *hfid;
+  int has_instances;
 
   cls_oid = ws_oid (classop);
   hfid = sm_ch_heap ((MOBJ) class_);
 
-  if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
+  if (HFID_IS_NULL (hfid))
+    {
+      return NO_ERROR;
+    }
+
+  has_instances = heap_has_instance (hfid, cls_oid, 0);
+  if (has_instances < 0)
+    {
+      /* e.g. the server went down and the client workspace was cleared, so class_ and key_attrs may be freed */
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (has_instances > 0)
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
-
-      // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
-	{
-	  n_attrs--;
-	}
 
       domain = construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1, NULL);
       if (domain == NULL)
@@ -10976,12 +11047,12 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   MOP owner_clsop = NULL;
   int save, error;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -10991,7 +11062,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
       pk = classobj_find_cons_primary_key (ref_class_->constraints);
       if (pk == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
@@ -11005,7 +11076,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   template_ = dbt_edit_class (owner_clsop);
   if (template_ == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -11015,7 +11086,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11023,7 +11094,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11031,13 +11102,13 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   if (ref_clsop == NULL)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 }
 
@@ -11059,12 +11130,12 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   MOP owner_clsop = NULL;
   int save, error;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11074,7 +11145,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
       pk = classobj_find_cons_primary_key (ref_class_->constraints);
       if (pk == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
@@ -11088,7 +11159,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   template_ = dbt_edit_class (owner_clsop);
   if (template_ == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
 
@@ -11096,7 +11167,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11104,7 +11175,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11112,11 +11183,11 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   if (ref_clsop == NULL)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 }
 #endif
@@ -11249,35 +11320,6 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
   return NO_ERROR;
 }
 
-static MOP
-find_index_catalog (const char *index_name)
-{
-  assert (index_name != NULL);
-
-  MOP db_index_class = NULL;
-  DB_VALUE value;
-  MOP db_index_inst = NULL;
-  int save;
-
-  AU_DISABLE (save);
-
-  db_index_class = db_find_class (CT_INDEX_NAME);
-  if (db_index_class == NULL)
-    {
-      assert (false);
-      goto end;
-    }
-
-  db_make_string (&value, index_name);
-  db_index_inst = db_find_unique (db_index_class, "index_name", &value);
-
-end:
-  AU_ENABLE (save);
-
-  return db_index_inst;
-}
-
-
 /*
  * allocate_foreign_key() - Allocate index for foreign key
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -11349,19 +11391,6 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-    }
-
-  if (con->fk_info->index_catalog_of_ref_class == NULL)
-    {
-      SM_CLASS *ref_class = (classop == ref_clsop) ? class_ : (SM_CLASS *) ref_clsop->object;
-
-      pk = classobj_find_cons_primary_key (ref_class->constraints);
-      if (pk == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class));
-	  return ER_FK_REF_CLASS_HAS_NOT_PK;
-	}
-      con->fk_info->index_catalog_of_ref_class = find_index_catalog (pk->name);
     }
 
   return NO_ERROR;
@@ -11622,15 +11651,13 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * flat
   assert (class_ != NULL && class_->constraints != NULL && *cons != NULL);
 
   name_length = strlen ((*cons)->name) + 1;
-  saved_name = (char *) malloc (name_length);
+  saved_name = strdup ((*cons)->name);
   if (saved_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) name_length);
       goto end;
     }
-
-  strcpy (saved_name, (*cons)->name);
 
   /* Since the constraints may be reallocated during the following process, we have to mark a special status flag to be
    * used for identifying whether the instance will have been reallocated. */
@@ -11692,7 +11719,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
   SM_CLASS_CONSTRAINT *con;
   SM_FOREIGN_KEY_INFO *fk;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   ref_clsop = ws_mop (&cons->fk_info->ref_class_oid, NULL);
 
@@ -11723,7 +11750,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
       err = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
       if (err != NO_ERROR)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return err;
 	}
       if (ref_class_->inheritance != NULL)
@@ -11732,7 +11759,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
 	  pk = classobj_find_cons_primary_key (ref_class_->constraints);
 	  if (pk == NULL)
 	    {
-	      AU_ENABLE (save);
+	      AU_RESTORE (save);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
 	      return ER_FK_REF_CLASS_HAS_NOT_PK;
 	    }
@@ -11746,7 +11773,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
       refcls_template = dbt_edit_class (owner_clsop);
       if (refcls_template == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -11773,12 +11800,12 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
   dbt_abort_class (refcls_template);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err;
 }
@@ -12510,6 +12537,12 @@ install_new_representation (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       class_->stats = NULL;
     }
 
+  if (newrep && class_->histogram != NULL)
+    {
+      stats_free_histogram_and_init (class_->histogram);
+      class_->histogram = NULL;
+    }
+
   /* formerly had classop->no_objects = 1 here, why ? */
 
   /* now that we don't always load methods immediately after editing, must make sure that the methods_loaded flag is
@@ -13215,9 +13248,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   error = flatten_template (template_, NULL, &flat, auto_res);
   if (error != NO_ERROR)
     {
-      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED) then the class may no longer be in the
-       * workspace.  So make sure that the class exists before using it.  */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED or ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+       * then the class may no longer be in the workspace.  So make sure that the class exists before using it.  */
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13238,7 +13271,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	{
 	  classobj_free_template (flat);
 	  /* don't touch this class if we aborted ! */
-	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	    {
 	      class_->new_ = NULL;
 	    }
@@ -13261,7 +13294,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       classobj_free_template (flat);
 
       /* don't touch this class if we aborted ! */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13292,9 +13325,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    {
 	      SM_CLASS *super_class = NULL;
 	      int au_save;
-	      AU_DISABLE (au_save);
+	      AU_SAVE_AND_DISABLE (au_save);
 	      error = au_fetch_class (template_->inheritance->op, &super_class, AU_FETCH_READ, AU_SELECT);
-	      AU_ENABLE (au_save);
+	      AU_RESTORE (au_save);
 
 	      if (error != NO_ERROR)
 		{
@@ -13404,7 +13437,7 @@ error_return:
   classobj_free_template (flat);
 
   /* don't touch this class if we aborted ! */
-  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       class_->new_ = NULL;
     }
@@ -13593,6 +13626,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   char *fk_name = NULL;
   const char *table_name;
   MOP save_user, owner;
+  DB_OBJECT *histogram_obj = NULL;
+  int au_save;
   int save;
   bool is_au_disabled = false;
 
@@ -13695,8 +13730,40 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	}
     }
 
+  AU_SAVE_AND_DISABLE (au_save);
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+
+      /* class_of, key_attr */
+      if (class_->attributes == NULL)
+	{
+	  AU_RESTORE (au_save);
+	  goto end;
+	}
+
+      error = db_get_histogram (op, att->header.name, &histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  AU_RESTORE (au_save);
+	  goto end;
+	}
+
+      if (histogram_obj != NULL)
+	{
+	  error = db_drop (histogram_obj);
+	  histogram_obj = NULL;
+	  if (error != NO_ERROR)
+	    {
+	      AU_RESTORE (au_save);
+	      goto end;
+	    }
+
+	}
+    }
+  AU_RESTORE (au_save);
+
   /* remove auto_increment serial object if exist */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   is_au_disabled = true;
 
   for (att = class_->ordered_attributes; att; att = att->order_link)
@@ -13719,9 +13786,9 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 		  oidp = ws_identifier (att->auto_increment);
 		  COPY_OID (&serial_obj_id, oidp);
 
-		  AU_DISABLE (save);
+		  AU_SAVE_AND_DISABLE (save);
 		  error = obj_delete (att->auto_increment);
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 
 		  if (error == NO_ERROR)
 		    {
@@ -13737,7 +13804,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	    }
 	}
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   is_au_disabled = false;
 
   /* we don't really need this but some of the support routines use it */
@@ -13932,7 +13999,7 @@ end:
 
   if (is_au_disabled)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;
@@ -14257,7 +14324,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-      bool is_fk = false;
 
       switch (type)
 	{
@@ -14272,7 +14338,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-	  is_fk = true;
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14304,12 +14369,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
-	    {
-	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
-	      assert (i == n_attrs);
-	      break;
-	    }
 
 	  do_desc = false;	/* init */
 	  if (asc_desc)
@@ -15523,6 +15582,125 @@ error_exit:
   return error_code;
 }
 
+
+int
+sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool with_fullscan)
+{
+  bool set_savepoint = false;
+  int error = NO_ERROR;
+
+  if (attr_name == NULL)
+    {
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+
+  error = smt_check_histogram_exist (classop, attr_name);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_LC_CLASSNAME_EXIST)
+	{
+	  return error;
+	}
+      goto error_exit;
+    }
+
+  error = tran_system_savepoint (SM_ADD_HISTOGRAM_SAVEPOINT_NAME);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  set_savepoint = true;
+
+  error = smt_add_histogram (classop, attr_name, bucket_count, with_fullscan);
+  if (error == ER_BTREE_UNIQUE_FAILED)
+    {
+      /* Another session inserted this column's row while we were inserting ours.  The existence
+       * check above reads the latest committed version and takes no lock (CBRD-27369), so it
+       * cannot see a concurrent uncommitted insert -- this unique violation is the only place
+       * that race shows, and any two sessions first-collecting the same column reach it.  The
+       * unique insert waits for the other transaction, so by the time this error comes back that
+       * row is committed: the entry does exist, which is what the caller asked.  Undo our own
+       * attempt and report it as existing, so the caller stores its histogram into the row that
+       * is there instead of failing (before this, the caller printed the error, rolled the
+       * statement's histograms and statistics back to its own savepoint, and still reported
+       * success).  _db_histogram carries exactly one constraint -- UNIQUE (class_of, key_attr),
+       * see system_catalog_initializer::get_histogram () -- so this error cannot mean any other
+       * key. */
+      (void) tran_abort_upto_system_savepoint (SM_ADD_HISTOGRAM_SAVEPOINT_NAME);
+      er_clear ();
+      return ER_LC_CLASSNAME_EXIST;
+    }
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  return error;
+
+error_exit:
+  if (set_savepoint && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (SM_ADD_HISTOGRAM_SAVEPOINT_NAME);
+    }
+
+  return error;
+}
+
+
+int
+sm_drop_histogram (MOP classop, const char *attr_name)
+{
+  bool set_savepoint = false;
+  int error = NO_ERROR;
+  SM_CLASS *class_ = NULL;
+
+  if (attr_name == NULL)
+    {
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+  error = smt_check_histogram_exist (classop, attr_name);
+
+  if (error != ER_LC_CLASSNAME_EXIST)
+    {
+      return error;
+    }
+
+  error = tran_system_savepoint (SM_DROP_HISTOGRAM_SAVEPOINT_NAME);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  set_savepoint = true;
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = smt_check_histogram_exist_and_delete (classop, attr_name, false);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  return error;
+
+error_exit:
+  if (set_savepoint && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (SM_DROP_HISTOGRAM_SAVEPOINT_NAME);
+    }
+
+  return error;
+}
+
+
+
 /*
  * sm_save_function_index_info() - Saves the information necessary to recreate
  *			       a function index constraint
@@ -15745,6 +15923,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
   HFID prev_hfid;
+  HFID new_hfid;
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
@@ -15789,28 +15968,18 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   prev_hfid = *insts_hfid;
 
-  /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid, oid, true);
+  /* Create the new heap first and flush the class straight from the old HFID to the new one, so the class record
+   * never exposes a NULL HFID on disk; a concurrent lock-free reader caching that transient state aborted the
+   * server (CBRD-27286). The old heap is destroyed last - its destruction is postponed to commit time anyway, so
+   * the ordering does not change when the pages are actually freed. */
+  HFID_SET_NULL (&new_hfid);
+  error = heap_create (&new_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  HFID_SET_NULL (insts_hfid);
-  ws_dirty (class_mop);
-
-  error = locator_flush_class (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* Create a new heap */
-  error = heap_create (insts_hfid, oid, reuse_oid);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  *insts_hfid = new_hfid;
 
   /* Destroy and Create the lob dir if need */
   error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
@@ -15821,6 +15990,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Destroy the old heap */
+  error = heap_destroy_newly_created (&prev_hfid, oid, true);
 
 end:
   return error;
@@ -16699,4 +16875,19 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
+}
+
+/*
+ * sm_is_catcls_disabled () - check whether catalog class updates are disabled
+ *   return: true in SA_MODE when catcls_Enable is false
+ */
+bool
+sm_is_catcls_disabled (void)
+{
+#if defined(SA_MODE)
+  extern bool catcls_Enable;
+  return !catcls_Enable;
+#else
+  return false;
+#endif
 }

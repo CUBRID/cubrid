@@ -29,7 +29,6 @@ function lock_get_type:string(type) {
         if (type == 6) { return "IX_LOCK";}
         if (type == 7) { return "BU_LOCK";}
         if (type == 8) { return "SIX_LOCK";}
-        if (type == 9) { return "U_LOCK";}
-        if (type == 10) { return "X_LOCK";}
-        if (type == 11) { return "SCH_M_LOCK";}
+        if (type == 9) { return "X_LOCK";}
+        if (type == 10) { return "SCH_M_LOCK";}
 }

@@ -32,6 +32,7 @@
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
+#include <time.h>
 #if defined (WINDOWS)
 #include <winsock2.h>
 #else
@@ -55,6 +56,11 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/provider.h>
+#include <mutex>
+#endif
+#include <openssl/hmac.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -99,7 +105,7 @@ static const char lower_hextable[] = "0123456789abcdef";
 static const char upper_hextable[] = "0123456789ABCDEF";
 
 static int crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_FUNCTION sha_func,
-				char **dest_p, int *dest_len_p);
+				char **dest_p, int *dest_len_p, bool reuse_ctx);
 static int crypt_md5_buffer_binary (const char *buffer, size_t len, char *resblock);
 static void aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_len);
 
@@ -201,6 +207,264 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_
 }
 
 /*
+ * crypt_ensure_openssl_providers() - Activate the OpenSSL legacy provider.
+ *
+ *   Since OpenSSL 3.0, single-DES lives in the "legacy" provider, which is not
+ *   loaded by default. CUBRID still relies on DES-ECB for the legacy encrypted
+ *   string format (the DES_ECB case below, and crypt_encrypt_printable() in
+ *   encryption.c, which encrypt_password() runs on every login with a password),
+ *   so without this EVP_EncryptInit()/EVP_DecryptInit() fail for DES.
+ *
+ *   retain_fallbacks keeps the default provider auto-loading, which activating a
+ *   provider would otherwise switch off. A failure is not reported: everything
+ *   except DES lives in the default provider and keeps working, and DES then
+ *   fails at EVP_EncryptInit() where the error belongs. Providers are
+ *   process-global and reference-counted; once is enough.
+ */
+static void
+crypt_ensure_openssl_providers (void)
+{
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  // *INDENT-OFF*
+  static std::once_flag onetime_providers;
+  std::call_once (onetime_providers, [] ()
+    {
+      OSSL_PROVIDER_try_load (NULL, "legacy", 1 /* retain_fallbacks */);
+    });
+  // *INDENT-ON*
+#endif
+}
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+/* Names as the providers register them, see prov/names.h in the OpenSSL sources. */
+static const char *crypt_Md_name[CRYPT_MD_COUNT] = {
+  "MD5", "SHA1", "SHA2-224", "SHA2-256", "SHA2-384", "SHA2-512"
+};
+
+static const char *crypt_Cipher_name[CRYPT_CIPHER_COUNT] = {
+  "AES-128-ECB", "DES-ECB", "AES-256-CTR", "ARIA-256-CTR"
+};
+
+static EVP_MD *crypt_Md_cache[CRYPT_MD_COUNT] = { NULL, };
+static EVP_CIPHER *crypt_Cipher_cache[CRYPT_CIPHER_COUNT] = { NULL, };
+
+// *INDENT-OFF*
+static std::once_flag crypt_Md_onetime[CRYPT_MD_COUNT];
+static std::once_flag crypt_Cipher_onetime[CRYPT_CIPHER_COUNT];
+// *INDENT-ON*
+#endif
+
+/*
+ * crypt_md_static() - The static digest objects: used before OpenSSL 3.0, and as the
+ *                     fallback when a fetch fails.
+ */
+static const EVP_MD *
+crypt_md_static (CRYPT_MD_TYPE md_type)
+{
+  switch (md_type)
+    {
+    case CRYPT_MD_MD5:
+      return EVP_md5 ();
+    case CRYPT_MD_SHA1:
+      return EVP_sha1 ();
+    case CRYPT_MD_SHA224:
+      return EVP_sha224 ();
+    case CRYPT_MD_SHA256:
+      return EVP_sha256 ();
+    case CRYPT_MD_SHA384:
+      return EVP_sha384 ();
+    case CRYPT_MD_SHA512:
+      return EVP_sha512 ();
+    default:
+      assert (false);
+      return NULL;
+    }
+}
+
+/* The static cipher objects, see crypt_md_static(). */
+static const EVP_CIPHER *
+crypt_cipher_static (CRYPT_CIPHER_TYPE cipher_type)
+{
+  switch (cipher_type)
+    {
+    case CRYPT_CIPHER_AES_128_ECB:
+      return EVP_aes_128_ecb ();
+    case CRYPT_CIPHER_DES_ECB:
+      return EVP_des_ecb ();
+    case CRYPT_CIPHER_AES_256_CTR:
+      return EVP_aes_256_ctr ();
+    case CRYPT_CIPHER_ARIA_256_CTR:
+      return EVP_aria_256_ctr ();
+    default:
+      assert (false);
+      return NULL;
+    }
+}
+
+/*
+ * crypt_get_md() - Return a digest implementation fetched once per process.
+ *
+ *   Since OpenSSL 3.0 EVP_md5(), EVP_sha256() and friends return objects with no
+ *   provider, so every Init runs an implicit fetch, a fixed cost of about 100ns
+ *   per call. Reusing the context does not avoid it. Fetching once and passing the
+ *   result to Init does; fetched objects are immutable and reference counted, so
+ *   sharing them between threads is safe. The cache is never freed on purpose.
+ *
+ *   A failed fetch falls back to the static object, keeping the old behaviour.
+ */
+const struct evp_md_st *
+crypt_get_md (CRYPT_MD_TYPE md_type)
+{
+  if (md_type >= CRYPT_MD_COUNT)
+    {
+      assert (false);
+      return NULL;
+    }
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  // *INDENT-OFF*
+  std::call_once (crypt_Md_onetime[md_type], [md_type] ()
+    {
+      crypt_Md_cache[md_type] = EVP_MD_fetch (NULL, crypt_Md_name[md_type], "");
+    });
+  // *INDENT-ON*
+
+  if (crypt_Md_cache[md_type] != NULL)
+    {
+      return crypt_Md_cache[md_type];
+    }
+#endif
+
+  return crypt_md_static (md_type);
+}
+
+/*
+ * crypt_get_cipher() - Return a cipher implementation fetched once per process.
+ *   See crypt_get_md() for why the fetch is hoisted out of the per-call path.
+ */
+const struct evp_cipher_st *
+crypt_get_cipher (CRYPT_CIPHER_TYPE cipher_type)
+{
+  if (cipher_type >= CRYPT_CIPHER_COUNT)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  if (cipher_type == CRYPT_CIPHER_DES_ECB)
+    {
+      /* DES-ECB only exists in the legacy provider, so it has to be activated
+       * before the fetch, not just before the Init. */
+      crypt_ensure_openssl_providers ();
+    }
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  // *INDENT-OFF*
+  std::call_once (crypt_Cipher_onetime[cipher_type], [cipher_type] ()
+    {
+      crypt_Cipher_cache[cipher_type] = EVP_CIPHER_fetch (NULL, crypt_Cipher_name[cipher_type], "");
+    });
+  // *INDENT-ON*
+
+  if (crypt_Cipher_cache[cipher_type] != NULL)
+    {
+      return crypt_Cipher_cache[cipher_type];
+    }
+#endif
+
+  return crypt_cipher_static (cipher_type);
+}
+
+/*
+ * MD5(), SHA1() and SHA2() run once per row, and crypt_md5_buffer_hex() also runs
+ * once per statement for the SQL_ID, so the digest context is kept per thread and
+ * re-initialized instead of being allocated per call. Two allocations go away: the
+ * EVP_MD_CTX itself and, since OpenSSL 3.0, the provider side context that
+ * EVP_DigestInit_ex() builds with newctx().
+ *
+ * One slot per algorithm: EVP_DigestInit_ex() only keeps the existing algorithm
+ * context while ctx->digest is the same object, and a thread may hash with several
+ * algorithms. The contexts are freed when the thread exits.
+ *
+ * Final has to be EVP_DigestFinal_ex(): the plain EVP_DigestFinal() resets the
+ * context, which frees the algorithm context and defeats the reuse.
+ *
+ * SHA-384 and SHA-512 leave the tail of the last message in the context until the
+ * next Init, because sha512.c SHA512_Final() has no OPENSSL_cleanse() while the
+ * HASH_FINAL() of md32_common.h, used by the other four, has one. They are pooled
+ * anyway: what runs per row hashes a column, whose plaintext is in the page buffer
+ * for far longer, and a host variable is one call per statement, which the pool
+ * does not speed up. A caller hashing a secret opts out with reuse_ctx.
+ */
+
+// *INDENT-OFF*
+namespace
+{
+  class crypt_md_ctx_pool
+  {
+    public:
+      crypt_md_ctx_pool () = default;
+
+      ~crypt_md_ctx_pool ()
+      {
+	for (int i = 0; i < CRYPT_MD_COUNT; i++)
+	  {
+	    if (m_ctx[i] != NULL)
+	      {
+		EVP_MD_CTX_free (m_ctx[i]);
+		m_ctx[i] = NULL;
+	      }
+	  }
+      }
+
+      /* Returns a context initialized for md_type, or NULL on failure. */
+      EVP_MD_CTX *init (CRYPT_MD_TYPE md_type)
+      {
+	const EVP_MD *md;
+	EVP_MD_CTX *ctx;
+
+	assert (md_type < CRYPT_MD_COUNT);
+
+	ctx = m_ctx[md_type];
+	if (ctx == NULL)
+	  {
+	    if ((ctx = EVP_MD_CTX_new ()) == NULL)
+	      {
+		return NULL;
+	      }
+	    m_ctx[md_type] = ctx;
+	  }
+
+	md = crypt_get_md (md_type);
+	if (md == NULL || EVP_DigestInit_ex (ctx, md, NULL) != 1)
+	  {
+	    discard (md_type);
+	    return NULL;
+	  }
+	return ctx;
+      }
+
+      /* Drops the context so that a failed state is not carried into the next call. */
+      void discard (CRYPT_MD_TYPE md_type)
+      {
+	assert (md_type < CRYPT_MD_COUNT);
+
+	if (m_ctx[md_type] != NULL)
+	  {
+	    EVP_MD_CTX_free (m_ctx[md_type]);
+	    m_ctx[md_type] = NULL;
+	  }
+      }
+
+    private:
+      EVP_MD_CTX *m_ctx[CRYPT_MD_COUNT] = { NULL, };
+  };
+
+  thread_local crypt_md_ctx_pool crypt_Md_ctx_pool;
+}
+// *INDENT-ON*
+
+/*
  * crypt_default_encrypt() - like mysql's aes_encrypt. Use (AES-128/DES)/ECB/PKCS7 method.
  *   return:
  *   thread_p(in):
@@ -229,17 +493,19 @@ crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   int block_len;
   char new_key[AES128_KEY_LEN + 1];
   const char *key_arg = NULL;
+
   switch (enc_type)
     {
     case AES_128_ECB:
-      cipher = EVP_aes_128_ecb ();
+      cipher = crypt_get_cipher (CRYPT_CIPHER_AES_128_ECB);
       block_len = AES128_BLOCK_LEN;
       aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
       new_key[AES128_KEY_LEN] = '\0';
       key_arg = new_key;
       break;
     case DES_ECB:
-      cipher = EVP_des_ecb ();
+      /* crypt_get_cipher() activates the legacy provider that holds DES-ECB since 3.0. */
+      cipher = crypt_get_cipher (CRYPT_CIPHER_DES_ECB);
       block_len = DES_BLOCK_LEN;
       key_arg = key;
       break;
@@ -348,17 +614,19 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   int block_len;
   char new_key[AES128_KEY_LEN + 1];
   const char *key_arg = NULL;
+
   switch (enc_type)
     {
     case AES_128_ECB:
-      cipher = EVP_aes_128_ecb ();
+      cipher = crypt_get_cipher (CRYPT_CIPHER_AES_128_ECB);
       block_len = AES128_BLOCK_LEN;
       aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
       new_key[AES128_KEY_LEN] = '\0';
       key_arg = new_key;
       break;
     case DES_ECB:
-      cipher = EVP_des_ecb ();
+      /* crypt_get_cipher() activates the legacy provider that holds DES-ECB since 3.0. */
+      cipher = crypt_get_cipher (CRYPT_CIPHER_DES_ECB);
       block_len = DES_BLOCK_LEN;
       key_arg = key;
       break;
@@ -407,6 +675,17 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
+  /* The PKCS7 padding is added by crypt_default_encrypt() and removed below, so EVP
+   * must not remove it as well. Leaving it on worked up to OpenSSL 1.1.1, which wrote
+   * the held back block into the output buffer anyway, but a 3.x provider keeps that
+   * block to itself, so the tail of dest stayed unwritten and the check below read
+   * uninitialized bytes. */
+  if (EVP_CIPHER_CTX_set_padding (context.get (), 0) != 1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
   dest = (char *) db_private_alloc (thread_p, src_len * sizeof (char));
   if (dest == NULL)
     {
@@ -429,11 +708,13 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  /* PKCS7 */
+  /* PKCS7. The padding is the one crypt_default_encrypt() added, not OpenSSL's. */
   if (src_len != 0)
     {
-      pad = dest[src_len - 1];
-      if (pad > AES128_BLOCK_LEN)
+      /* Unsigned: as a signed char, 0x80 and above would pass the range check and
+       * give a negative pad_len, making dest_len larger than the buffer. */
+      pad = (unsigned char) dest[src_len - 1];
+      if (pad == 0 || pad > block_len)
 	{
 	  /* src is not a string encrypted by aes_default_encrypt, return NULL */
 	  db_private_free_and_init (thread_p, dest);
@@ -441,7 +722,7 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
 	}
       i = src_len - 2;
       pad_len = 1;
-      while ((i >= 0) && (dest[i] == pad))
+      while ((i >= 0) && ((unsigned char) dest[i] == pad))
 	{
 	  pad_len++;
 	  i--;
@@ -476,7 +757,8 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
 int
 crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p)
 {
-  return crypt_sha_functions (thread_p, src, src_len, SHA_ONE, dest_p, dest_len_p);
+  /* SQL SHA1() only: no secret input, so the per thread context is used. */
+  return crypt_sha_functions (thread_p, src, src_len, SHA_ONE, dest_p, dest_len_p, true);
 }
 
 /*
@@ -488,10 +770,14 @@ crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **des
  *   need_hash_len(in):
  *   dest_p(out)
  *   dest_len_p(out):
+ *   reuse_ctx(in): false when src is a secret, such as a plaintext password. With the
+ *                  384 and 512 bit digests a pooled context holds the tail of src
+ *                  until the next digest on that thread; see the context pool above.
  * Note:
  */
 int
-crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_hash_len, char **dest_p, int *dest_len_p)
+crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_hash_len, char **dest_p,
+	       int *dest_len_p, bool reuse_ctx)
 {
   SHA_FUNCTION sha_func;
 
@@ -513,15 +799,20 @@ crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_h
     default:
       return NO_ERROR;
     }
-  return crypt_sha_functions (thread_p, src, src_len, sha_func, dest_p, dest_len_p);
+  return crypt_sha_functions (thread_p, src, src_len, sha_func, dest_p, dest_len_p, reuse_ctx);
 }
 
 static int
 crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_FUNCTION sha_func, char **dest_p,
-		     int *dest_len_p)
+		     int *dest_len_p, bool reuse_ctx)
 {
   char *dest_hex = NULL;
   int dest_hex_len;
+  EVP_MD_CTX *context = NULL;
+  CRYPT_MD_TYPE md_type;
+  unsigned char hash[EVP_MAX_MD_SIZE];
+  unsigned int lengthOfHash = 0;
+
   assert (src != NULL);
 
 #if defined (SERVER_MODE)
@@ -533,8 +824,31 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
 
   *dest_p = NULL;
 
+  switch (sha_func)
+    {
+    case SHA_ONE:
+      md_type = CRYPT_MD_SHA1;
+      break;
+    case SHA_TWO_256:
+      md_type = CRYPT_MD_SHA256;
+      break;
+    case SHA_TWO_224:
+      md_type = CRYPT_MD_SHA224;
+      break;
+    case SHA_TWO_384:
+      md_type = CRYPT_MD_SHA384;
+      break;
+    case SHA_TWO_512:
+      md_type = CRYPT_MD_SHA512;
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
   // *INDENT-OFF*
-  deleted_unique_ptr<EVP_MD_CTX> context (EVP_MD_CTX_new (), [] (EVP_MD_CTX * ctxt_ptr)
+  /* Only set when reuse_ctx is false: the pooled context must not be freed here. */
+  deleted_unique_ptr<EVP_MD_CTX> own_context (reuse_ctx ? NULL : EVP_MD_CTX_new (), [] (EVP_MD_CTX * ctxt_ptr)
     {
       if (ctxt_ptr != NULL)
 	{
@@ -543,52 +857,37 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
     });
   // *INDENT-ON*
 
+  if (reuse_ctx)
+    {
+      context = crypt_Md_ctx_pool.init (md_type);
+    }
+  else
+    {
+      /* The caller hashes a secret: keep a context per call so that the provider
+       * cleanses it in freectx() as soon as the digest is done. */
+      context = own_context.get ();
+      if (context != NULL && EVP_DigestInit_ex (context, crypt_get_md (md_type), NULL) != 1)
+	{
+	  context = NULL;
+	}
+    }
+
   if (context == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  int rc;
-  switch (sha_func)
+  if (EVP_DigestUpdate (context, src, src_len) == 0)
     {
-    case SHA_ONE:
-      rc = EVP_DigestInit (context.get (), EVP_sha1 ());
-      break;
-    case SHA_TWO_256:
-      rc = EVP_DigestInit (context.get (), EVP_sha256 ());
-      break;
-    case SHA_TWO_224:
-      rc = EVP_DigestInit (context.get (), EVP_sha224 ());
-      break;
-    case SHA_TWO_384:
-      rc = EVP_DigestInit (context.get (), EVP_sha384 ());
-      break;
-    case SHA_TWO_512:
-      rc = EVP_DigestInit (context.get (), EVP_sha512 ());
-      break;
-    default:
-      assert (false);
-      return ER_FAILED;
-    }
-  if (rc == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED;
+      goto crypt_error;
     }
 
-  if (EVP_DigestUpdate (context.get (), src, src_len) == 0)
+  /* Final_ex keeps the algorithm context alive for the next call. On the non reuse
+   * path the context is freed right after, which cleanses it. */
+  if (EVP_DigestFinal_ex (context, hash, &lengthOfHash) == 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED;
-    }
-
-  unsigned char hash[EVP_MAX_MD_SIZE];
-  unsigned int lengthOfHash = 0;
-  if (EVP_DigestFinal (context.get (), hash, &lengthOfHash) == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED;
+      goto crypt_error;
     }
 
   dest_hex = str_to_hex (thread_p, (char *) hash, lengthOfHash, &dest_hex, &dest_hex_len, HEX_UPPERCASE);
@@ -601,44 +900,40 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
   *dest_len_p = dest_hex_len;
 
   return NO_ERROR;
+
+crypt_error:
+  if (reuse_ctx)
+    {
+      crypt_Md_ctx_pool.discard (md_type);
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+  return ER_ENCRYPTION_LIB_FAILED;
 }
 
 static int
 crypt_md5_buffer_binary (const char *buffer, size_t len, char *resblock)
 {
+  EVP_MD_CTX *context;
+
   if (buffer == NULL || resblock == NULL)
     {
       assert (false);
       return ER_FAILED;
     }
-  // *INDENT-OFF*
-  deleted_unique_ptr<EVP_MD_CTX> context (EVP_MD_CTX_new (), [] (EVP_MD_CTX *ctxt_ptr)
-    {
-      if (ctxt_ptr != NULL)
-	{
-	  EVP_MD_CTX_free (ctxt_ptr); 
-	}
-    });
-  // *INDENT-ON*
 
+  /* None of the callers hash a secret here: locale and timezone checksums, the
+   * class and index name hashes, the statement SQL_ID and the SQL MD5(). */
+  context = crypt_Md_ctx_pool.init (CRYPT_MD_MD5);
   if (context == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  if (EVP_DigestInit (context.get (), EVP_md5 ()) == 0)
+  if (EVP_DigestUpdate (context, buffer, len) == 0
+      || EVP_DigestFinal_ex (context, (unsigned char *) resblock, NULL) == 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED;
-    }
-  if (EVP_DigestUpdate (context.get (), buffer, len) == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED;
-    }
-  if (EVP_DigestFinal (context.get (), (unsigned char *) resblock, NULL) == 0)
-    {
+      crypt_Md_ctx_pool.discard (CRYPT_MD_MD5);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
@@ -688,6 +983,31 @@ crypt_crc32 (const char *src, int src_len, int *dest)
  *   length(in): the length of bytes to generate
  * Note:
  */
+/*
+ * crypt_hmac_sha256_hex () - HMAC-SHA256 of msg under key, as uppercase hex.
+ *   return: NO_ERROR, or ER_ENCRYPTION_LIB_FAILED
+ *   hex_out (out)    : 64 hex characters and a NUL
+ *   hex_out_size (in): size of hex_out, at least 65
+ */
+int
+crypt_hmac_sha256_hex (const char *key, int key_len, const char *msg, int msg_len, char *hex_out, int hex_out_size)
+{
+  unsigned char mac[EVP_MAX_MD_SIZE];
+  unsigned int mac_len = 0;
+
+  assert (key != NULL && msg != NULL && hex_out != NULL && hex_out_size >= 2 * SHA256_DIGEST_LENGTH + 1);
+
+  if (HMAC (EVP_sha256 (), key, key_len, (const unsigned char *) msg, (size_t) msg_len, mac, &mac_len) == NULL
+      || mac_len != SHA256_DIGEST_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  str_to_hex_prealloced ((const char *) mac, (int) mac_len, hex_out, hex_out_size, HEX_UPPERCASE);
+  return NO_ERROR;
+}
+
 int
 crypt_generate_random_bytes (char *dest, int length)
 {
@@ -719,11 +1039,11 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
 
   if (is_aes_algorithm)
     {
-      *cipher_type = EVP_aes_256_ctr ();
+      *cipher_type = crypt_get_cipher (CRYPT_CIPHER_AES_256_CTR);
     }
   else
     {
-      *cipher_type = EVP_aria_256_ctr ();
+      *cipher_type = crypt_get_cipher (CRYPT_CIPHER_ARIA_256_CTR);
     }
 
   if (*cipher_type == NULL)
@@ -895,6 +1215,9 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   unsigned char *enc_ptr = NULL;
   int enc_len = 0;
   unsigned char empty_str[4] = { 0x00, };
+  /* Thread-safe RNG seed (filler bytes only, not the cipher key). Mix the per-call time with the
+   * destination address so concurrent callers within the same microsecond do not correlate. */
+  unsigned int rand_seed = (unsigned int) tm ^ (unsigned int) (size_t) dest;
 
   assert (src != NULL && dest != NULL);
 
@@ -968,7 +1291,7 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   even = 0;
   for (i = enc_len + pk_len; i < dest_len; i++)
     {
-      dest[i] = hextable[rand () % hextable_mod];
+      dest[i] = hextable[(unsigned int) rand_r (&rand_seed) % hextable_mod];
       even += (dest[i] + i);
     }
   dest[i++] = ((even >> 8) % 26) + 'A';
@@ -1088,11 +1411,15 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
   unsigned char *p;
   unsigned char checksum;
   int tmpx_len = 90;		/* strlen(tmpx) */
+  unsigned int rand_seed;
 
   p = (unsigned char *) confused;
   pwdlen = (int) strlen (passwd);
 
   gettimeofday (chk_time, NULL);
+  /* Thread-safe RNG seed for the garbage filler (not the cipher key). Mix the per-call time with the
+   * buffer address so concurrent callers within the same microsecond do not correlate. */
+  rand_seed = (unsigned int) chk_time->tv_usec ^ (unsigned int) (size_t) confused;
   shift = (chk_time->tv_usec & 0x7FFF);
   memcpy (p, &shift, sizeof (int));
   p += sizeof (int);
@@ -1113,7 +1440,7 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
 
   for (i = 0; i < start; i++)
     {
-      p[i] = tmpx[rand () % tmpx_len];
+      p[i] = tmpx[(unsigned int) rand_r (&rand_seed) % tmpx_len];
     }
   p += start;
 
@@ -1234,4 +1561,160 @@ reverse_shake_dblink_password (char *confused, int length, char *passwd)
   while (++pwdlen % 3);
 
   return NO_ERROR;
+}
+
+/*
+ * crypt_dblink_password_encrypt ()  : Encrypt a raw dblink password into a self-contained cipher string.
+ *
+ * return	      : NO_ERROR or error code.
+ * passwd(in)         : Raw password (may be NULL/empty).
+ * cipher_buf(out)    : Buffer to receive the encrypted (printable) password string.
+ * cipher_buf_size(in): Size of cipher_buf; must be larger than DBLINK_PASSWORD_MAX_BUFSIZE.
+ *
+ * Remark:
+ *      The private key is derived from the creation time and embedded in the cipher string, so the
+ *      result is self-describing and can be decrypted by crypt_dblink_password_decrypt() alone.
+ *      This is the single source of truth shared by DDL handling (server objects) and the
+ *      _db_global_tran catalog for distributed-transaction recovery.
+ */
+int
+crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_buf_size)
+{
+  int err, length, max_len;
+  char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
+  char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  struct timeval check_time = { 0, 0 };
+  struct tm tm_buf;
+  time_t sec;
+  char empty_str[4] = { 0x00, };
+
+  if (cipher_buf == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* Adjust the length so that it is a multiple of 4. */
+  max_len = DBLINK_PASSWORD_MAX_BUFSIZE;
+  max_len >>= 2;
+  max_len <<= 2;
+  if (cipher_buf_size <= max_len)
+    {
+      return ER_TF_BUFFER_OVERFLOW;
+    }
+
+  /* Thread-safe: localtime_r writes into the caller's tm_buf instead of a
+   * process-wide static buffer, so concurrent calls from multiple worker
+   * threads (_db_global_tran insert path) cannot corrupt each other's keys.
+   * The filler RNG also uses rand_r (seeded per-call), not the global RNG. */
+
+  if (!passwd)
+    {
+      passwd = empty_str;
+    }
+
+  if (strlen (passwd) > DBLINK_PASSWORD_MAX_LENGTH)
+    {
+      return ER_DBLINK_PASSWORD_OVER_MAX_LENGTH;
+    }
+
+  length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
+  passwd = confused;
+
+  sec = (time_t) check_time.tv_sec;
+  if (localtime_r (&sec, &tm_buf) == NULL)
+    {
+      sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
+    }
+  else
+    {
+      if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+		    tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday, tm_buf.tm_hour, tm_buf.tm_min,
+		    tm_buf.tm_sec, check_time.tv_usec) >= (int) sizeof (private_key))
+	{
+	  assert_release (0);
+	  private_key[sizeof (private_key) - 1] = '\0';
+	}
+    }
+
+  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher, private_key);
+  if (err == NO_ERROR)
+    {
+      err = crypt_dblink_bin_to_str (cipher, length, newpwd, DBLINK_PASSWORD_MAX_BUFSIZE, private_key,
+				     (long) check_time.tv_usec);
+      if (err == NO_ERROR)
+	{
+	  // byte stream to hex string
+	  if ((int) strlen (newpwd) >= cipher_buf_size)
+	    {
+	      return ER_TF_BUFFER_OVERFLOW;
+	    }
+	  strcpy (cipher_buf, newpwd);
+	}
+    }
+
+  return err;
+}
+
+/*
+ * crypt_dblink_password_decrypt ()  : Decrypt a cipher string back to the raw dblink password.
+ *
+ * return	      : NO_ERROR or error code.
+ * cipher(in)         : Encrypted password produced by crypt_dblink_password_encrypt().
+ * raw_buf(out)       : Buffer to receive the decrypted raw password.
+ * raw_buf_size(in)   : Size of raw_buf.
+ */
+int
+crypt_dblink_password_decrypt (const char *cipher, char *raw_buf, int raw_buf_size)
+{
+  int err, length, new_length;
+  char bin[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+
+  if (raw_buf == NULL || raw_buf_size <= 0)
+    {
+      return ER_FAILED;
+    }
+  raw_buf[0] = '\0';
+
+  if (!cipher || !*cipher)
+    {
+      return NO_ERROR;
+    }
+
+  new_length = DBLINK_PASSWORD_MAX_BUFSIZE;
+  /* Adjust the length so that it is a multiple of 4. */
+  new_length >>= 2;
+  new_length <<= 2;
+
+  length = strlen (cipher);
+  if (length != new_length)
+    {
+      return ER_DBLINK_PASSWORD_INVALID_LENGTH;
+    }
+
+  // hex string to byte stream
+  err = crypt_dblink_str_to_bin (cipher, length, bin, &new_length, private_key);
+  if (err != NO_ERROR)
+    {
+      return ER_DBLINK_PASSWORD_INVALID_FMT;
+    }
+
+  err = crypt_dblink_decrypt ((unsigned char *) bin, new_length, (unsigned char *) newpwd, private_key);
+  if (err == NO_ERROR)
+    {
+      newpwd[new_length] = '\0';	// Do NOT omit this line.
+      err = reverse_shake_dblink_password (newpwd, new_length, bin);
+      if (err != NO_ERROR)
+	{
+	  return ER_DBLINK_PASSWORD_CHECKSUM;
+	}
+      if ((int) strlen (bin) >= raw_buf_size)
+	{
+	  return ER_DBLINK_PASSWORD_INVALID_LENGTH;
+	}
+      strcpy (raw_buf, bin);
+    }
+
+  return err;
 }

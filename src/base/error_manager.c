@@ -948,10 +948,9 @@ er_init (const char *msglog_filename, int exit_ask)
 	  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_INTERNAL, i);
 	  if (msg && *msg)
 	    {
-	      tmp = (char *) malloc (std::strlen (msg) + 1);
+	      tmp = strdup (msg);
 	      if (tmp)
 		{
-		  strcpy (tmp, msg);
 		  er_Cached_msg[i] = tmp;
 		}
 	    }
@@ -1489,8 +1488,8 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
     }
   if (os_error != NULL)
     {
-      strcat (crt_error.msg_area, "... ");
-      strcat (crt_error.msg_area, os_error);
+      size_t len = strlen (crt_error.msg_area);
+      snprintf (crt_error.msg_area + len, crt_error.msg_area_size - len, "... %s", os_error);
     }
 
   /* Call the logging function if any */
@@ -2114,7 +2113,8 @@ er_get_area_error (char *buffer, int *length)
   msg = strlen (crt_error.msg_area) != 0 ? crt_error.msg_area : "(null)";
 
   len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
-  len = MIN (len, *length);
+  /* *length is the caller's buffer size and is always positive (see the assert above), so the cast is safe. */
+  len = MIN (len, (std::size_t) * length);
   *length = (int) len;
   max_msglen = len - (OR_INT_SIZE * 3) - 1;
 
@@ -2644,7 +2644,8 @@ er_study_fmt (ER_FMT * fmt)
 static size_t
 er_estimate_size (ER_FMT * fmt, va_list * ap)
 {
-  int i, width;
+  int i;
+  size_t width;
   size_t n;
   size_t len;
   va_list args;
@@ -2719,7 +2720,8 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
 	  n = MAX_DOUBLE_WIDTH;
 	  break;
 	}
-      width = fmt->spec[i].width;
+      /* the width is scanned from digits only in er_study_spec (), so it is never negative */
+      width = (size_t) fmt->spec[i].width;
       len += MAX (width, n);
     }
 

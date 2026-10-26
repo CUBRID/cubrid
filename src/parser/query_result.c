@@ -523,6 +523,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      db_make_null (&col->info.value.db_value);
 	    }
 
+	  /* named like an untyped NULL column below */
+	  if (col->alias_print == NULL && PT_IS_CAST_OF_UNTYPED_NULL (col))
+	    {
+	      col->alias_print = pt_append_string (parser, NULL, "null");
+	    }
+
 	  if ((attr2->type_enum == PT_TYPE_NONE) || (attr2->type_enum == PT_TYPE_NA)
 	      || (attr2->type_enum == PT_TYPE_NULL))
 	    {
@@ -1043,20 +1049,20 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      /* there is only one class spec */
 	      original_name = pt_append_string (parser, NULL, t->name);
-	      t->original_name = (char *) malloc (strlen (original_name) + 1);
+	      t->original_name = strdup (original_name);
 	    }
 	  else
 	    {
 	      /* there are plural class specs */
 	      original_name = pt_append_string (parser, pt_append_string (parser, (char *) t->spec_name, "."), t->name);
-	      t->original_name = (char *) malloc (strlen (original_name) + 1);
+	      t->original_name = strdup (original_name);
 	    }
 	  if (!t->original_name)
 	    {
 	      PT_INTERNAL_ERROR (parser, "insufficient memory");
 	      return list;
 	    }
-	  strcpy ((char *) t->original_name, original_name);
+
 	}
     }
 
@@ -1274,12 +1280,8 @@ db_object_describe (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_Q
     {
       t->db_type = sm_att_type_id (class_mop, *name);
       t->size = pt_find_size_from_dbtype (t->db_type);
-      t->name = (char *) malloc (1 + strlen (*name));
-      if (t->name)
-	{
-	  strcpy ((char *) t->name, *name);
-	}
-      else
+      t->name = strdup (*name);
+      if (t->name == NULL)
 	{
 	  db_free_query_format (*col_spec);
 	  *col_spec = NULL;
@@ -1365,12 +1367,8 @@ db_object_fetch (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUER
     {
       t->db_type = sm_att_type_id (class_mop, *name);
       t->size = pt_find_size_from_dbtype (t->db_type);
-      t->name = (char *) malloc (1 + strlen (*name));
-      if (t->name)
-	{
-	  strcpy ((char *) t->name, *name);
-	}
-      else
+      t->name = strdup (*name);
+      if (t->name == NULL)
 	{
 	  goto err_end;
 	}
