@@ -601,13 +601,14 @@ struct btree_find_fk_object
   LOCK lock_mode;
   BTREE_FK_SEARCH search;
   MVCCID writer_before;		/* BTREE_FK_FIND_WRITER reports only a writer whose MVCCID precedes this */
+  bool stop_at_child;		/* BTREE_FK_FIND_WRITER also stops at a committed child */
   MVCCID writer_mvccid;		/* BTREE_FK_FIND_WRITER's answer */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL, MVCCID_NULL }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL, false, MVCCID_NULL }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -6323,11 +6324,12 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
  * key (in)	   : Parent key.
  * class_oid (in)  : Child class OID.
  * before (in)	   : Report only a transaction whose MVCCID precedes this.
+ * stop_at_child (in) : Report none behind a committed child.
  * writer (out)	   : That transaction's MVCCID, or MVCCID_NULL.
  */
 int
 btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, MVCCID before,
-			       MVCCID * writer)
+			       bool stop_at_child, MVCCID * writer)
 {
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
   int error_code;
@@ -6336,6 +6338,7 @@ btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 #if defined (SERVER_MODE)
   find_fk_object.search = BTREE_FK_FIND_WRITER;
   find_fk_object.writer_before = before;
+  find_fk_object.stop_at_child = stop_at_child;
   error_code = btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
   *writer = find_fk_object.writer_mvccid;
 #else /* !SERVER_MODE */
@@ -30518,6 +30521,11 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 #if defined (SERVER_MODE)
       if (find_fk_obj->search != BTREE_FK_FIND_CHILD)
 	{
+	  if (find_fk_obj->stop_at_child)
+	    {
+	      bts->end_scan = true;
+	      *stop = true;
+	    }
 	  return NO_ERROR;
 	}
       /* Try conditional lock */

@@ -4293,8 +4293,12 @@ locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, 
 	}
       for (fkref = index->fk; fkref != NULL && *writer == MVCCID_NULL && error_code == NO_ERROR; fkref = fkref->next)
 	{
+	  /* under RESTRICT the first of a committed child and a writer decides; the restrict check meets them in the
+	   * same order */
 	  error_code =
-	    btree_find_foreign_key_writer (thread_p, &fkref->self_btid, key, &fkref->self_oid, before, writer);
+	    btree_find_foreign_key_writer (thread_p, &fkref->self_btid, key, &fkref->self_oid, before,
+					   fkref->del_action == SM_FOREIGN_KEY_RESTRICT
+					   || fkref->del_action == SM_FOREIGN_KEY_NO_ACTION, writer);
 	}
       if (key == &dbvalue)
 	{
