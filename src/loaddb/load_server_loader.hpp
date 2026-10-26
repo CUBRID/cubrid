@@ -28,6 +28,7 @@
 #include "heap_file.h"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
+#include "partition_sr.h"
 
 #include <vector>
 
@@ -115,6 +116,11 @@ namespace cubload
 
       bool m_scancache_started;
       heap_scancache m_scancache;
+
+      // context of the partitioned class when the target class is one of its partitions; it is loaded once per batch
+      // and is only valid while the session holds SCH_S on the partitioned class (see register_class_with_attributes)
+      PRUNING_CONTEXT m_pcontext;
+      bool m_pcontext_loaded;
 
       std::size_t m_rows;
   };

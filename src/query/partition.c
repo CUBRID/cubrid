@@ -3692,6 +3692,57 @@ cleanup:
 }
 
 /*
+ * partition_check_record_for_partition () - check that a record belongs to
+ *					      the partition a pruning context
+ *					      was loaded for
+ * return : error code or NO_ERROR
+ * pcontext (in)  : pruning context loaded with DB_PARTITION_CLASS
+ * class_oid (in) : OID of that partition
+ * recdes (in)	  : record to check
+ *
+ * Note: Unlike partition_prune_insert, this function never clears the
+ * pruning context, so the caller can check many records with one context
+ * and must clear it itself.
+ */
+int
+partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * class_oid, RECDES * recdes)
+{
+  OID pruned_class_oid;
+  HFID pruned_hfid;
+  int error = NO_ERROR;
+
+  assert (pcontext != NULL && class_oid != NULL && recdes != NULL);
+  assert (pcontext->pruning_type == DB_PARTITION_CLASS);
+
+  if (pcontext->partitions == NULL || pcontext->selected_partition == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      return ER_PARTITION_WORK_FAILED;
+    }
+
+  /* a previous record may have left an internal pruning error in the reused context */
+  pcontext->error_code = NO_ERROR;
+
+  OID_SET_NULL (&pruned_class_oid);
+  HFID_SET_NULL (&pruned_hfid);
+
+  error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (!OID_EQ (&pruned_class_oid, &pcontext->selected_partition->class_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_DATA_FOR_PARTITION, 0);
+      return ER_INVALID_DATA_FOR_PARTITION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * partition_prune_update () - perform pruning on update statements
  * return : error code or NO_ERROR
  * thread_p (in)  : thread entry

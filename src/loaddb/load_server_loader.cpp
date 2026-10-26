@@ -24,6 +24,7 @@
 
 #include "btree.h"
 #include "dbtype.h"
+#include "heap_file.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -32,6 +33,7 @@
 #include "locator_sr.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "partition_sr.h"
 #include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
@@ -46,6 +48,9 @@
 
 namespace cubload
 {
+
+  static int get_class_pruning_type (cubthread::entry *thread_ref, const OID &class_oid, int &pruning_type,
+				     OID &root_oid);
 
   server_class_installer::server_class_installer (session &session, error_handler &error_handler)
     : m_session (session)
@@ -375,7 +380,50 @@ namespace cubload
 	return;
       }
 
-    int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
+    int error_code = NO_ERROR;
+    if (!is_syntax_check_only)
+      {
+	int pruning_type = DB_NOT_PARTITIONED_CLASS;
+	OID root_oid;
+
+	error_code = get_class_pruning_type (&thread_ref, class_oid, pruning_type, root_oid);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+
+	if (pruning_type == DB_PARTITION_CLASS)
+	  {
+	    // The object loader checks the rows of a partition against a pruning context of the partitioned class that
+	    // it keeps for a whole batch, and that context points into the partition cache. Hold SCH_S on the
+	    // partitioned class until the session ends, so that no DDL can change, or remove from the cache, the
+	    // partition definition while batches are loading. Load workers do not lock, so take it here, in the session
+	    // transaction that also holds BU on the partition.
+	    if (lock_object (&thread_ref, &root_oid, oid_Root_class_oid, SCH_S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	      {
+		ASSERT_ERROR ();
+		m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+		return;
+	      }
+
+	    // the partitioned class was found without a lock; make sure it did not change before the lock was granted
+	    OID locked_root_oid;
+	    error_code = get_class_pruning_type (&thread_ref, class_oid, pruning_type, locked_root_oid);
+	    if (error_code == NO_ERROR && (pruning_type != DB_PARTITION_CLASS || !OID_EQ (&locked_root_oid, &root_oid)))
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+		error_code = ER_PARTITION_WORK_FAILED;
+	      }
+	    if (error_code != NO_ERROR)
+	      {
+		m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+		return;
+	      }
+	  }
+      }
+
+    error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
     assert (attrinfo.num_values != -1);
     if (error_code != NO_ERROR)
       {
@@ -570,6 +618,70 @@ namespace cubload
     intl_identifier_lower (idname, eb.get_ptr ());
   }
 
+  //
+  // get_class_pruning_type () - decide which partition pruning type loaddb must use for the given target class
+  //
+  // return       : NO_ERROR or error code
+  // thread_ref   : thread entry
+  // class_oid    : OID of the class named by the %class line
+  // pruning_type : DB_PARTITION_CLASS when class_oid is a partition of a partitioned class, so that the object
+  //                loader checks each record against the partition definition; DB_NOT_PARTITIONED_CLASS otherwise
+  // root_oid     : OID of the partitioned class when pruning_type is DB_PARTITION_CLASS
+  //
+  // Rows loaded into a partitioned class itself would need to be routed to the right partitions, which the loader
+  // does not do; that case keeps pruning disabled here.
+  //
+  static int
+  get_class_pruning_type (cubthread::entry *thread_ref, const OID &class_oid, int &pruning_type, OID &root_oid)
+  {
+    int error_code = NO_ERROR;
+    OR_PARTITION *partitions = NULL;
+    int parts_count = 0;
+
+    pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+    OID_SET_NULL (&root_oid);
+    error_code = partition_find_root_class_oid (thread_ref, &class_oid, &root_oid);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    if (OID_ISNULL (&root_oid) || OID_EQ (&root_oid, &class_oid))
+      {
+	// several superclasses, or not a subclass at all: class_oid cannot be a partition
+	return NO_ERROR;
+      }
+
+    error_code = heap_get_class_partitions (thread_ref, &root_oid, &partitions, &parts_count);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    if (partitions == NULL)
+      {
+	// plain inheritance: the superclass is not partitioned
+	return NO_ERROR;
+      }
+
+    // partitions[0] describes the partitioned class itself; the actual partitions follow
+    for (int i = 1; i < parts_count; i++)
+      {
+	if (OID_EQ (&partitions[i].class_oid, &class_oid))
+	  {
+	    pruning_type = DB_PARTITION_CLASS;
+	    break;
+	  }
+      }
+
+    heap_clear_partition_info (thread_ref, partitions, parts_count);
+
+    return NO_ERROR;
+  }
+
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
     : m_session (session)
     , m_error_handler (error_handler)
@@ -582,9 +694,11 @@ namespace cubload
     , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
+    , m_pcontext ()
+    , m_pcontext_loaded (false)
     , m_rows (0)
   {
-    //
+    partition_init_pruning_context (&m_pcontext);
   }
 
   void
@@ -595,12 +709,46 @@ namespace cubload
 
     assert (m_class_entry == NULL);
     m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
-    if (m_class_entry == NULL)
+    if (m_class_entry == NULL || m_class_entry->is_ignored ())
       {
 	return;
       }
 
     const OID &class_oid = m_class_entry->get_class_oid ();
+
+    if (!m_session.get_args ().syntax_check)
+      {
+	int pruning_type = DB_NOT_PARTITIONED_CLASS;
+	OID root_oid;
+
+	int error_code = get_class_pruning_type (m_thread_ref, class_oid, pruning_type, root_oid);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+
+	if (pruning_type == DB_PARTITION_CLASS)
+	  {
+	    // the session holds SCH_S on the partitioned class, which keeps the context below valid for the batch
+	    assert (lock_has_lock_on_object (&root_oid, oid_Root_class_oid, SCH_S_LOCK));
+
+	    error_code = partition_load_pruning_context (m_thread_ref, &class_oid, DB_PARTITION_CLASS, &m_pcontext);
+	    if (error_code == NO_ERROR && (m_pcontext.partitions == NULL || m_pcontext.selected_partition == NULL))
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+		error_code = ER_PARTITION_WORK_FAILED;
+	      }
+	    if (error_code != NO_ERROR)
+	      {
+		partition_clear_pruning_context (&m_pcontext);
+		partition_init_pruning_context (&m_pcontext);
+		m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+		return;
+	      }
+	    m_pcontext_loaded = true;
+	  }
+      }
 
     start_scancache (class_oid);
     start_attrinfo (class_oid);
@@ -616,6 +764,13 @@ namespace cubload
     stop_scancache ();
 
     m_recdes_collected.clear ();
+
+    if (m_pcontext_loaded)
+      {
+	partition_clear_pruning_context (&m_pcontext);
+	partition_init_pruning_context (&m_pcontext);
+	m_pcontext_loaded = false;
+      }
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -700,15 +855,34 @@ namespace cubload
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
+	bool is_record_valid = true;
+
 	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
 	    != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_pcontext_loaded && !m_error_handler.current_line_has_error ())
+	  {
+	    // A row loaded into a partition must belong to that partition.
+	    RECDES recdes = new_recdes.get_recdes ();
+	    const OID &class_oid = m_class_entry->get_class_oid ();
+	    if (partition_check_record_for_partition (&m_pcontext, &class_oid, &recdes) != NO_ERROR)
+	      {
+		m_error_handler.on_failure ();
+		is_record_valid = false;
+	      }
+	  }
+
+	if (m_session.is_failed ())
+	  {
 	    return;
 	  }
 
-	// Add the recdes to the collected array.
-	if (!m_error_handler.current_line_has_error ())
+	// Add the recdes to the collected array. A failure that is filtered by the error control file is not fatal; it
+	// marks the current line, and the mark must be cleared below so that the next line is not dropped as well.
+	if (is_record_valid && !m_error_handler.current_line_has_error ())
 	  {
 	    m_recdes_collected.push_back (std::move (new_recdes));
 	  }
