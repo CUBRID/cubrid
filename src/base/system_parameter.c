@@ -562,6 +562,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
@@ -589,7 +590,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
 #define PRM_NAME_MAX_HASH_LIST_SCAN_SIZE "max_hash_list_scan_size"
-#define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
+#define PRM_NAME_MAX_CONNECT_BY_DFS_SIZE "max_connect_by_dfs_size"
 #define PRM_NAME_OPTIMIZER_RESERVE_03 "optimizer_reserve_03"
 #define PRM_NAME_OPTIMIZER_RESERVE_04 "optimizer_reserve_04"
 #define PRM_NAME_OPTIMIZER_RESERVE_05 "optimizer_reserve_05"
@@ -825,6 +826,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
 // #endregion
 
@@ -3573,14 +3575,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_OPTIMIZER_RESERVE_02,
-   PRM_NAME_OPTIMIZER_RESERVE_02,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
+  {PRM_ID_MAX_CONNECT_BY_DFS_SIZE,
+   PRM_NAME_MAX_CONNECT_BY_DFS_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_SIZE_UNIT),
+   PRM_BIGINT,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 128 * 1024 * 1024 /* 128 MB */ }},
+   {false, {.bi = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5663,6 +5666,20 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 5}},
    {false, {.i = 100000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* bind-value plan variants (CBRD-27490): how many distinct plans a query may learn for its
+   * bind values; 0 turns the feature off. The client-side compile chooses among them. */
+  {PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+   PRM_NAME_PLAN_CACHE_BIND_VARIANTS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -7947,7 +7964,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_INT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8042,7 +8059,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_FLOAT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8168,7 +8185,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.i;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8263,7 +8280,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.f;
 
 	  if (PRM_DIFFERENT_UNIT (prm))

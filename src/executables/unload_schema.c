@@ -1467,7 +1467,9 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
 
-  if (ctxt.classes != NULL && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR))
+  if (ctxt.classes != NULL
+      && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR
+	  || ctxt.emit_err_count > 0))
     {
       err_count++;
     }
@@ -3083,7 +3085,9 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
-      ;				/* just continue */
+      fprintf (stderr, "%s", db_error_string (3));
+      fprintf (stderr, " The AUTO_INCREMENT clause is missing from the schema file.\n");
+      ctxt.emit_err_count++;
     }
 
   if (qualifier == SHARED_ATTRIBUTE)
@@ -4020,19 +4024,23 @@ emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute)
   int error = NO_ERROR;
   DB_VALUE min_val, inc_val;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
+  int save;
 
   if (attribute->auto_increment != NULL)
     {
       db_make_null (&min_val);
       db_make_null (&inc_val);
 
+      AU_SAVE_AND_DISABLE (save);
       error = db_get (attribute->auto_increment, "min_val", &min_val);
       if (error < 0)
 	{
+	  AU_RESTORE (save);
 	  return error;
 	}
 
       error = db_get (attribute->auto_increment, "increment_val", &inc_val);
+      AU_RESTORE (save);
       if (error < 0)
 	{
 	  pr_clear_value (&min_val);
@@ -5498,7 +5506,7 @@ extract_class (extract_context & ctxt)
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_CLASS);
-  if (er_errid () == ER_FAILED)
+  if (er_errid () == ER_FAILED || ctxt.emit_err_count > 0)
     {
       err = ER_FAILED;
       goto end_class;
@@ -6252,7 +6260,7 @@ filter_user_classes (DB_OBJLIST ** class_list, const char *user)
       name = db_get_class_name (cl->op);
       sm_qualifier_name (name, owner_name, DB_MAX_IDENTIFIER_LENGTH);
 
-      if (owner_name != NULL && strcmp (owner_name, user) == 0)
+      if (strcmp (owner_name, user) == 0)
 	{
 	  prev = cl;
 	}
@@ -6384,7 +6392,7 @@ do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char 
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PARSER_VARCHAR *res = NULL;
   char qry_buf[4096];
   char *query_str = qry_buf;
