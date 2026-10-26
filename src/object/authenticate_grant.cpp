@@ -51,6 +51,7 @@ static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_o
 
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
+static int au_lock_grantee (MOP user, MOP *auth);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -231,18 +232,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	{
 	  assert (grantor != NULL);
 
-	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	    {
-	      error = ER_AU_ACCESS_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	    }
-	  /* lock authorization for write & mark dirty */
-	  else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	    {
-	      error = ER_AU_CANT_UPDATE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	  if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
 	      gindex = find_grant_entry (grants, class_mop, grantor);
 	      if (gindex == -1)
@@ -389,18 +379,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	{
 	  assert (grantor != NULL);
 
-	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	    {
-	      error = ER_AU_ACCESS_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	    }
-	  /* lock authorization for write & mark dirty */
-	  else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	    {
-	      error = ER_AU_CANT_UPDATE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	  if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
 	      gindex = find_grant_entry (grants, obj_mop, grantor);
 	      if (gindex == -1)
@@ -618,19 +597,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 	  goto fail_end;
 	}
 
-      if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	{
-	  error = ER_AU_ACCESS_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto fail_end;
-	}
-      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	{
-	  error = ER_AU_CANT_UPDATE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto fail_end;
-	}
-      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+      if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
 	  gindex = find_grant_entry (grants, class_mop, grantor);
 	  if (gindex == -1)
@@ -813,19 +780,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 	  goto fail_end;
 	}
 
-      if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	{
-	  error = ER_AU_ACCESS_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto fail_end;
-	}
-      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	{
-	  error = ER_AU_CANT_UPDATE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto fail_end;
-	}
-      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+      if ((error = au_lock_grantee (user, &auth)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
 	  gindex = find_grant_entry (grants, obj_mop, grantor);
 	  if (gindex == -1)
@@ -935,6 +890,36 @@ fail_end:
     }
   AU_RESTORE (save);
   return (error);
+}
+
+/*
+ * au_lock_grantee - get the grantee's authorization object locked for update, so that GRANT and REVOKE
+ *                   statements on one user run one after the other
+ *   return: error code
+ *   user(in): user whose privileges change
+ *   auth(out): the user's authorization object
+ */
+static int
+au_lock_grantee (MOP user, MOP *auth)
+{
+  int error;
+
+  if (au_get_object (user, "authorization", auth) != NO_ERROR)
+    {
+      error = ER_AU_ACCESS_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+      return error;
+    }
+
+  /* lock authorization for write & mark dirty */
+  if (au_fetch_instance (*auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
+    {
+      error = ER_AU_CANT_UPDATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  return obj_inst_lock (*auth, 1);
 }
 
 /*
