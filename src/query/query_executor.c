@@ -29319,9 +29319,11 @@ qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
 
 /*
  * qexec_spec_is_for_update () - Does the scan of this spec lock its rows at select, as FOR UPDATE does?
- *   return: true for a FOR UPDATE spec, and for a DML target left to the force-phase reevaluation when the transaction
- *	     is above READ COMMITTED.  There the force phase reports a serialization conflict for a row changed after the
- *	     snapshot, so the row is locked at select as before, and the other writer waits.
+ *   return: true for a FOR UPDATE spec, and for a DML target left to the force-phase reevaluation when that does not
+ *	     run: above READ COMMITTED, where the force phase reports a serialization conflict for a row changed after
+ *	     the snapshot, and with mvcc_reevaluate_at_force off.  The row is then locked at select as before, and the
+ *	     other writer waits.  Both are read here, not when the plan is made, since one cached plan serves every
+ *	     session.
  *   thread_p(in):
  *   spec(in):
  */
@@ -29332,8 +29334,9 @@ qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec
     {
       return true;
     }
-  return (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE_ABOVE_READ_COMMITTED)
-	  && logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED);
+  return (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED)
+	  && (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	      || !prm_get_bool_value (PRM_ID_MVCC_REEVALUATE_AT_FORCE)));
 }
 
 /*

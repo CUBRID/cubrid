@@ -15699,9 +15699,9 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
-	      else if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_ABOVE_READ_COMMITTED)
+	      else if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED)
 		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE_ABOVE_READ_COMMITTED);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED);
 		}
 
 	      if (access->access == ACCESS_METHOD_SEQUENTIAL || access->access == ACCESS_METHOD_INDEX)
@@ -25155,7 +25155,7 @@ pt_mvcc_prepare_upd_del_select (PARSER_CONTEXT * parser, PT_NODE * select_stmt)
  *   parser(in): context
  *   statement(in): select parse tree
  *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
- *   mark(in): PT_SPEC_FLAG_FOR_UPDATE_CLAUSE, or PT_SPEC_FLAG_FOR_UPDATE_ABOVE_READ_COMMITTED for a statement left to
+ *   mark(in): PT_SPEC_FLAG_FOR_UPDATE_CLAUSE, or PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED for a statement left to
  *	       the force-phase reevaluation
  */
 
@@ -25550,13 +25550,6 @@ pt_delete_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_NODE *cl_name_node = NULL;
 
-  /* the switch: off, and every DELETE locks its rows at select, as before reevaluation was turned on. */
-  if (!prm_get_bool_value (PRM_ID_MVCC_REEVALUATE_AT_FORCE))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
   /* the rows are already locked at select */
   if (aptr_statement->info.query.q.select.group_by != NULL)
     {
@@ -25848,11 +25841,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else if (!abort_reevaluation)
 	{
-	  /* Reevaluation re-checks a row only under READ COMMITTED; above it the force phase reports a serialization
-	   * conflict where a select-phase lock made the other writer wait.  The plan is shared by transactions of any
-	   * isolation level, so the executor decides. */
+	  /* Reevaluation re-checks a row only under READ COMMITTED and with mvcc_reevaluate_at_force on.  The plan is
+	   * shared by sessions of any isolation level and setting, so the executor decides. */
 	  pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_DELETE,
-					       PT_SPEC_FLAG_FOR_UPDATE_ABOVE_READ_COMMITTED);
+					       PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED);
 	}
 
       /* Prepare generated SELECT statement for mvcc reevaluation */
@@ -26390,13 +26382,6 @@ pt_update_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_NODE *cl_name_node = NULL;
 
-  /* the switch; see pt_delete_must_abort_reevaluation () */
-  if (!prm_get_bool_value (PRM_ID_MVCC_REEVALUATE_AT_FORCE))
-    {
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      return true;
-    }
-
   /* pt_to_upd_del_query () locked the rows at select where it added the GROUP BY */
   if (aptr_statement->info.query.q.select.group_by != NULL)
     {
@@ -26715,7 +26700,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     {
       /* see pt_to_delete_xasl () */
       pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_UPDATE,
-					   PT_SPEC_FLAG_FOR_UPDATE_ABOVE_READ_COMMITTED);
+					   PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED);
     }
 
   /* Prepare generated SELECT statement for mvcc reevaluation */
