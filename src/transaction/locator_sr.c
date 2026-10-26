@@ -4256,13 +4256,15 @@ locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, 
   OR_INDEX *index;
   OR_FOREIGN_KEY *fkref;
   BTID btid;
-  int i;
+  int i, num_found;
   int error_code = NO_ERROR;
 
   *writer = MVCCID_NULL;
-  if (heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &attr_info, &idx_info) <= 0)
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &attr_info, &idx_info);
+  if (num_found <= 0)
     {
-      return NO_ERROR;
+      /* NO_ERROR when the class has no index */
+      return num_found;
     }
 
   for (i = 0; i < idx_info.num_btids && *writer == MVCCID_NULL && error_code == NO_ERROR; i++)
