@@ -181,8 +181,10 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 FUNC_PRED_UNPACK_INFO * func_preds,
 						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
 						 bool skip_checking_fk);
+static bool locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
-				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
+				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
+				      ATTR_ID * att_id, int n_att_id);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_wait_for_child_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
@@ -4025,6 +4027,33 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
 }
 
 /*
+ * locator_index_has_attr () - is any of the attributes a column of the index?
+ *
+ * return: true when one is, or when att_id stands for every attribute (NULL or empty)
+ */
+static bool
+locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id)
+{
+  int i, j;
+
+  if (att_id == NULL || n_att_id <= 0)
+    {
+      return true;
+    }
+  for (i = 0; i < index->n_atts; i++)
+    {
+      for (j = 0; j < n_att_id; j++)
+	{
+	  if (att_id[j] == (ATTR_ID) index->atts[i]->id)
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
+/*
  * locator_check_foreign_key () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4036,10 +4065,13 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
  *   new_recdes(in):
  *   is_cached(in):
  *   copyarea(in):
+ *   att_id(in): the attributes an UPDATE assigns; NULL for every attribute
+ *   n_att_id(in): their number
  */
 static int
 locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid, RECDES * recdes,
-			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea)
+			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea, ATTR_ID * att_id,
+			   int n_att_id)
 {
   int num_found, i;
   HEAP_CACHE_ATTRINFO index_attrinfo;
@@ -4085,6 +4117,11 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       if (index->type != BTREE_FOREIGN_KEY)
 	{
+	  continue;
+	}
+      if (!locator_index_has_attr (index, att_id, n_att_id))
+	{
+	  /* the row keeps its entry, which a parent DELETE meets; checking would only wait on that DELETE */
 	  continue;
 	}
 
@@ -5446,7 +5483,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
-				       &cache_attr_copyarea);
+				       &cache_attr_copyarea, NULL, 0);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error1;
@@ -6264,7 +6301,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    {
 	      error_code =
 		locator_check_foreign_key (thread_p, hfid, class_oid, oid, recdes, &new_record, &is_cached,
-					   &cache_attr_copyarea);
+					   &cache_attr_copyarea, att_id, n_att_id);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
