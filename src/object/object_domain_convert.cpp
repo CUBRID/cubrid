@@ -21,6 +21,7 @@
  *                             domain's type, and the switch that finds a pair's converter
  */
 
+#include <type_traits>
 #include "config.h"
 
 #include <stdio.h>
@@ -152,10 +153,22 @@ tp_numeric_overflow (T number)
     }
   else if constexpr (DST == DB_TYPE_INTEGER)
     {
+      /* DB_INT32_MAX is not representable in a float and DB_BIGINT_MAX is representable
+       * in neither float nor double, so comparing a floating point value against the
+       * limit itself compares it against the next power of two and lets the boundary
+       * value through. The _FROM_FP forms compare against that power of two instead. */
+      if constexpr (std::is_floating_point<T>::value)
+	{
+	  return OR_CHECK_INT_OVERFLOW_FROM_FP (number);
+	}
       return OR_CHECK_INT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_BIGINT)
     {
+      if constexpr (std::is_floating_point<T>::value)
+	{
+	  return OR_CHECK_BIGINT_OVERFLOW_FROM_FP (number);
+	}
       return OR_CHECK_BIGINT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_FLOAT)
@@ -2106,7 +2119,7 @@ tp_value_convert_float_to_time (const DB_VALUE *src, DB_VALUE *target, const TP_
 
   {
     float ftmp = db_get_float (src);
-    if (OR_CHECK_INT_OVERFLOW (ftmp))
+    if (OR_CHECK_INT_OVERFLOW_FROM_FP (ftmp))
       {
 	status = DOMAIN_OVERFLOW;
       }

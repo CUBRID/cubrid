@@ -46,6 +46,7 @@
 #include "buffer.hpp"
 #include "thread_manager.hpp"
 #include "error_manager.h"
+#include "log_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -841,12 +842,15 @@ namespace cubconn::connection
 
   bool worker::requires_client_info (context *ctx)
   {
-    if (ctx->m_conn->fd == cdc_Gl.conn.fd)
-      {
-	return false;
-      }
+    bool is_cdc_session;
 
-    return true;
+    /* the CDC log-extraction channel is not a booted client; its session owner
+     * is kept in cdc_Session_owner (CBRD-27436) */
+    log_extract_owner_lock (&cdc_Session_owner);
+    is_cdc_session = (ctx->m_conn->fd == cdc_Session_owner.fd);
+    log_extract_owner_unlock (&cdc_Session_owner);
+
+    return !is_cdc_session;
   }
 
   bool worker::is_registering_client (context *ctx)
