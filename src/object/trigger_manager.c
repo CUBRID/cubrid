@@ -1976,7 +1976,7 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
   if (error == NO_ERROR)
     {
       tr_User_triggers_modified = 1;
-      tr_User_triggers_valid = 0;
+      tr_invalidate_user_cache ();
     }
 
   return error;
@@ -2042,7 +2042,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
   if (error == NO_ERROR && !rollback)
     {
       tr_User_triggers_modified = 1;
-      tr_User_triggers_valid = 0;
+      tr_invalidate_user_cache ();
     }
 
   return error;
@@ -5903,7 +5903,7 @@ tr_check_partial_rollback_triggers (void)
 {
   if (tr_User_triggers_modified)
     {
-      tr_User_triggers_valid = 0;
+      tr_invalidate_user_cache ();
     }
 }
 
