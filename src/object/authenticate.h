@@ -149,6 +149,7 @@ struct au_system_object
 };
 
 extern const AU_SYSTEM_OBJECT *au_find_system_object (DB_OBJECT_TYPE obj_type);
+extern int au_make_system_object_when_clauses (char *buf, int buf_size);
 
 #if defined (SA_MODE)
 extern int au_force_write_new_auth (void);

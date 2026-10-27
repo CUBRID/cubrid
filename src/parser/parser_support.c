@@ -7770,21 +7770,52 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "[u].[name] = '%1$s'"
                                 ") "
                         ") "
+        "UNION ALL "
+                /* unique_name holds the name of the system object, so the outer query prints "ON <name>" */
+                "SELECT "
+                        "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+                        "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+                        "[a].[object_type] AS [object_type], "
+                        /* au_make_system_object_when_clauses () */
+                        "CAST (CASE [a].[object_type] %2$s END AS VARCHAR(255)) AS [unique_name], "
+                        "[a].[auth_type] AS [auth_type], "
+                        "[a].[is_grantable] AS [is_grantable] "
+                "FROM "
+                        "[_db_auth] AS [a] "
+                "WHERE "
+                        "[a].[object_of] IS NULL "
+                        "AND ( "
+                        "[a].[grantee].[name] = '%1$s' "
+                        "OR "
+                        "SET {[a].[grantee].[name]} SUBSETEQ ("
+                                "SELECT "
+                                        "SUM (SET {[t].[g].[name]}) "
+                                "FROM "
+                                        /* AU_USER_CLASS_NAME */
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                "WHERE "
+                                        "[u].[name] = '%1$s'"
+                                ") "
+                        ") "
         ") "
         "GROUP BY "
                 "[grantee_name], [unique_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 
-  const int buffer_size = 4096;	// length of query (1303) + identifier (255) * 4 < 1024
+  const int buffer_size = 4096;	// length of query (2102) + identifier (255) * 6 + WHEN clauses (256) < 4096
   char buffer[buffer_size];
   memset (buffer, 0, buffer_size);
+  char system_object_when_clauses[256];
 
   /* conversion to uppercase can cause <original_user_name> to double size, if internationalization is used : size
    * <user_name> accordingly */
   intl_identifier_upper (original_user_name, user_name);
 
-  snprintf (buffer, buffer_size, query, user_name);
+  int n = au_make_system_object_when_clauses (system_object_when_clauses, sizeof (system_object_when_clauses));
+  assert (n > 0);
+
+  snprintf (buffer, buffer_size, query, user_name, system_object_when_clauses);
 
   /* parser ';' will empty and reset the stack of parser, this make the status machine be right for the next statement,
    * and avoid nested parser statement. */

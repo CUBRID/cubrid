@@ -104,6 +104,29 @@ au_find_system_object (DB_OBJECT_TYPE obj_type)
 }
 
 /*
+ * au_make_system_object_when_clauses - write the WHEN clauses that map the type of each system object to its name
+ *   return: the length written, or -1 if buf is too small
+ *   buf(out): "WHEN <type> THEN '<name>' " for each system object
+ *   buf_size(in): the size of buf
+ */
+int
+au_make_system_object_when_clauses (char *buf, int buf_size)
+{
+  int len = 0;
+
+  for (const AU_SYSTEM_OBJECT &sys_obj : AU_SYSTEM_OBJECTS)
+    {
+      len += snprintf (buf + len, buf_size - len, "WHEN %d THEN '%s' ", sys_obj.type, sys_obj.name);
+      if (len >= buf_size)
+	{
+	  return -1;
+	}
+    }
+
+  return len;
+}
+
+/*
  * GRANT/REVOKE OPERATION
  */
 
