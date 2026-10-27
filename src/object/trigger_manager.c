@@ -1921,7 +1921,7 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
  *    owner(in): trigger owner
  *
  * Note:
- *    If successful, it will recalculate the user trigger cache list as well.
+ *    If successful, it will mark the user trigger cache to be rebuilt on its next use.
  */
 static int
 register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
@@ -1976,7 +1976,7 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
   if (error == NO_ERROR)
     {
       tr_User_triggers_modified = 1;
-      tr_update_user_cache ();
+      tr_User_triggers_valid = 0;
     }
 
   return error;
@@ -2042,7 +2042,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
   if (error == NO_ERROR && !rollback)
     {
       tr_User_triggers_modified = 1;
-      tr_update_user_cache ();
+      tr_User_triggers_valid = 0;
     }
 
   return error;
