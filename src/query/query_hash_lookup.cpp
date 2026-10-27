@@ -17,21 +17,22 @@
  */
 
 /*
- * query_eval_hash.cpp - the hash over a list subquery's values for the equality lookups of a predicate
+ * query_hash_lookup.cpp - the hash over a list subquery's values for the equality lookups of a predicate
  *
  * A list subquery's R_EQ lookups read the whole list for every row that finds no match in it. From a later lookup of
- * one execution of the subquery on (eval_hash_for_lookup), a hash over the list answers them: a value is hashed in the
+ * one execution of the subquery on (hash_lookup_get), a hash over the list answers them: a value is hashed in the
  * type its comparison compares it in, and only the list values of the same hash are given back, for the caller to
- * compare by that same comparison. A value the hash cannot take as its comparison compares it (a conversion that fails,
- * a NaN, a type or a collation left out) sends that lookup, or the whole execution, back to reading the list.
- * Only an uncorrelated subquery's list is hashed (eval_some_list_lookup); one that executes again builds its hash again.
+ * compare by that same comparison. A value the hash cannot take as its comparison compares it (a conversion that
+ * fails, a NaN, a type or a collation left out) sends that lookup, or the whole execution, back to reading the list.
+ * Only an uncorrelated subquery's list is hashed (eval_some_list_lookup); one that executes again builds its hash
+ * again.
  */
 
 #include "config.h"
 
 #include <string.h>
 
-#include "query_eval_hash.hpp"
+#include "query_hash_lookup.hpp"
 
 #include "dbtype.h"
 #include "domain_rules.h"
@@ -51,9 +52,9 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-struct eval_hash_lookup
+struct hash_lookup
 {
-  INT64 rows_read;		/* rows of the list the lookups without a table read (eval_hash_count_read) */
+  INT64 rows_read;		/* rows of the list the lookups without a table read (hash_lookup_count_read) */
   bool unusable;		/* the lookups read the list: a value the table cannot take, or hashing turned off */
   bool has_null;		/* the list holds a NULL */
   const DOMAIN_COMPARE *compare;	/* the comparison the table was built for */
@@ -61,30 +62,30 @@ struct eval_hash_lookup
   LANG_FASTCMP fastcmp;		/* lang_coll's compare function */
   HASH_LIST_SCAN hash_scan;	/* the table; HASH_METH_NOT_USE: none */
   QFILE_LIST_SCAN_ID list_scan;	/* open while the table is: the table is built over it and reads tuples through it */
-  QFILE_TUPLE_RECORD tuple_record;	/* the tuple the last eval_hash_next found */
+  QFILE_TUPLE_RECORD tuple_record;	/* the tuple the last hash_lookup_next found */
   DB_VALUE value;		/* that tuple's list value */
 };
 
-static bool eval_hash_type (DB_TYPE type);
-static bool eval_hash_comparable (const DOMAIN_COMPARE *compare);
-static bool eval_hash_value (const EVAL_HASH_LOOKUP *hash, const DB_VALUE *value, unsigned int *hash_key);
-static bool eval_hash_key (const EVAL_HASH_LOOKUP *hash, int side, const DB_VALUE *value, unsigned int *hash_key);
-static int eval_hash_build (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash, QFILE_LIST_ID *list_id,
-			    const DOMAIN_COMPARE *compare, HASH_METHOD method);
-static void eval_hash_clear (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash);
+static bool hash_lookup_type (DB_TYPE type);
+static bool hash_lookup_comparable (const DOMAIN_COMPARE *compare);
+static bool hash_lookup_value (const HASH_LOOKUP *hash, const DB_VALUE *value, unsigned int *hash_key);
+static bool hash_lookup_key (const HASH_LOOKUP *hash, int side, const DB_VALUE *value, unsigned int *hash_key);
+static int hash_lookup_build (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, QFILE_LIST_ID *list_id,
+			      const DOMAIN_COMPARE *compare, HASH_METHOD method);
+static void hash_lookup_clear (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
 
 /* building a hash file measured about 21 reads of its list with 2,000 INT rows a page of the list, and about 3 with 73
  * VARCHAR of 200 bytes: a wider row costs a read more. 64 builds after 31 and 1 reads of the whole list there, later
  * and earlier than measured; measure again if the cost of a hash file changes */
-static const int EVAL_HASH_FILE_ROWS_PER_READ = 64;
+static const int HASH_LOOKUP_FILE_ROWS_PER_READ = 64;
 
 /*
  * Hash values
  */
 
-/* The types whose values eval_hash_value hashes alike when their comparison finds them equal. */
+/* The types whose values hash_lookup_value hashes alike when their comparison finds them equal. */
 static bool
-eval_hash_type (DB_TYPE type)
+hash_lookup_type (DB_TYPE type)
 {
   switch (type)
     {
@@ -107,28 +108,28 @@ eval_hash_type (DB_TYPE type)
 }
 
 /*
- * eval_hash_comparable () - a comparison the hash can answer for: its two sides are the row's values, and it either
+ * hash_lookup_comparable () - a comparison the hash can answer for: its two sides are the row's values, and it either
  *			     compares them as they are or converts them once each, without a failure resolved in
  *			     advance or a codeset brought to an ENUM's, and compares strings in a collation the hash takes
  */
 static bool
-eval_hash_comparable (const DOMAIN_COMPARE *compare)
+hash_lookup_comparable (const DOMAIN_COMPARE *compare)
 {
   return (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT)
 	 && compare->value[0] < 0 && compare->value[1] < 0 && compare->failed == 0 && compare->codeset_side < 0
-	 && compare->cmp != NULL && eval_hash_type (compare->cmp->id)
+	 && compare->cmp != NULL && hash_lookup_type (compare->cmp->id)
 	 && (!TP_IS_CHAR_TYPE (compare->cmp->id)
 	     || (compare->collation >= 0
 		 && lang_get_coll_fastcmp (lang_get_collation (compare->collation)) != LANG_FASTCMP_OTHER));
 }
 
 /*
- * eval_hash_value () - the hash of a value in the type its comparison compares it in: values the comparison finds
+ * hash_lookup_value () - the hash of a value in the type its comparison compares it in: values the comparison finds
  *			equal hash alike
  *   return: false if the value has no such hash
  */
 static bool
-eval_hash_value (const EVAL_HASH_LOOKUP *hash, const DB_VALUE *value, unsigned int *hash_key)
+hash_lookup_value (const HASH_LOOKUP *hash, const DB_VALUE *value, unsigned int *hash_key)
 {
   const DOMAIN_COMPARE *compare = hash->compare;
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
@@ -141,7 +142,7 @@ eval_hash_value (const EVAL_HASH_LOOKUP *hash, const DB_VALUE *value, unsigned i
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     {
-      /* the comparison's collation, not the value's (eval_hash_comparable). The collations' hash functions
+      /* the comparison's collation, not the value's (hash_lookup_comparable). The collations' hash functions
        * (lang_mht2str_*) tell apart strings their comparison finds equal */
       if (db_get_string_codeset (value) != hash->lang_coll->codeset)
 	{
@@ -163,23 +164,23 @@ eval_hash_value (const EVAL_HASH_LOOKUP *hash, const DB_VALUE *value, unsigned i
 }
 
 /*
- * eval_hash_key () - the hash of a comparison side's value, converted as the comparison converts that side
+ * hash_lookup_key () - the hash of a comparison side's value, converted as the comparison converts that side
  *   return: false if the conversion fails or the value has no hash
  *   side(in): 0 the row's item, 1 a list value
  */
 static bool
-eval_hash_key (const EVAL_HASH_LOOKUP *hash, int side, const DB_VALUE *value, unsigned int *hash_key)
+hash_lookup_key (const HASH_LOOKUP *hash, int side, const DB_VALUE *value, unsigned int *hash_key)
 {
   const DOMAIN_COMPARE *compare = hash->compare;
   if (compare->conv[side] == NULL)
     {
-      return eval_hash_value (hash, value, hash_key);
+      return hash_lookup_value (hash, value, hash_key);
     }
   DB_VALUE converted;
   bool hashed = false;
   if (tp_value_convert (compare->conv[side], compare->target[side], value, &converted) == DOMAIN_COMPATIBLE)
     {
-      hashed = eval_hash_value (hash, &converted, hash_key);
+      hashed = hash_lookup_value (hash, &converted, hash_key);
     }
   pr_clear_value (&converted);
   return hashed;
@@ -191,45 +192,45 @@ eval_hash_key (const EVAL_HASH_LOOKUP *hash, int side, const DB_VALUE *value, un
  */
 
 /*
- * eval_hash_create () - a hash with no table yet
+ * hash_lookup_create () - a hash with no table yet
  *   return: the hash, or NULL with an error set
  */
-EVAL_HASH_LOOKUP *
-eval_hash_create (THREAD_ENTRY *thread_p)
+HASH_LOOKUP *
+hash_lookup_create (THREAD_ENTRY *thread_p)
 {
-  EVAL_HASH_LOOKUP *hash = (EVAL_HASH_LOOKUP *) db_private_alloc (thread_p, sizeof (EVAL_HASH_LOOKUP));
+  HASH_LOOKUP *hash = (HASH_LOOKUP *) db_private_alloc (thread_p, sizeof (HASH_LOOKUP));
   if (hash == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (EVAL_HASH_LOOKUP));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_LOOKUP));
       return NULL;
     }
   /* no table (HASH_METH_NOT_USE is 0), so no list scan open */
-  memset (hash, 0, sizeof (EVAL_HASH_LOOKUP));
+  memset (hash, 0, sizeof (HASH_LOOKUP));
   return hash;
 }
 
 /*
- * eval_hash_destroy () - frees a hash eval_hash_create made, with its table (qexec_clear_xasl)
+ * hash_lookup_destroy () - frees a hash hash_lookup_create made, with its table (qexec_clear_xasl)
  */
 void
-eval_hash_destroy (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash)
+hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 {
-  eval_hash_clear (thread_p, hash);
+  hash_lookup_clear (thread_p, hash);
   db_private_free (thread_p, hash);
 }
 
 /*
- * eval_hash_destroy_tree () - frees the hashes in an XASL tree: a parallel aptr worker frees those it made in its own
+ * hash_lookup_destroy_tree () - frees the hashes in an XASL tree: a parallel aptr worker frees those it made in its own
  *			       private heap before another thread clears the tree (qexec_clear_xasl)
  */
 void
-eval_hash_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
+hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
 {
   cubxasl::iterate_xasl_tree<bool> (xasl, [thread_p] (XASL_NODE *node)
   {
     if (node->hash_lookup != NULL)
       {
-	eval_hash_destroy (thread_p, node->hash_lookup);
+	hash_lookup_destroy (thread_p, node->hash_lookup);
 	node->hash_lookup = NULL;
       }
     return true;
@@ -237,14 +238,14 @@ eval_hash_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
 }
 
 /*
- * eval_hash_build () - the table over the list's values for the comparison; hash->unusable instead when a value has no
- *			hash
+ * hash_lookup_build () - the table over the list's values for the comparison; hash->unusable instead when a value
+ *			has no hash
  *   return: error code
  *   method(in): the table's method (qdata_hscan_method)
  */
 static int
-eval_hash_build (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash, QFILE_LIST_ID *list_id,
-		 const DOMAIN_COMPARE *compare, HASH_METHOD method)
+hash_lookup_build (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, QFILE_LIST_ID *list_id,
+		   const DOMAIN_COMPARE *compare, HASH_METHOD method)
 {
   QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
@@ -287,7 +288,7 @@ eval_hash_build (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash, QFILE_LIST_ID *
 	  hash->has_null = true;
 	  continue;
 	}
-      hashed = eval_hash_key (hash, 1, &value, &hash_key);
+      hashed = hash_lookup_key (hash, 1, &value, &hash_key);
       /* read in place, but a compressed string is decompressed into its own buffer */
       pr_clear_value (&value);
       if (!hashed)
@@ -310,17 +311,17 @@ eval_hash_build (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash, QFILE_LIST_ID *
 
   if (error != NO_ERROR || hash->unusable)
     {
-      eval_hash_clear (thread_p, hash);
+      hash_lookup_clear (thread_p, hash);
     }
   return error;
 }
 
 /*
- * eval_hash_clear () - frees the table and closes the list scan it reads through: the table's positions first, then
+ * hash_lookup_clear () - frees the table and closes the list scan it reads through: the table's positions first, then
  *			the scan; the state of the execution stays
  */
 static void
-eval_hash_clear (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash)
+hash_lookup_clear (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 {
   if (hash->hash_scan.hash_list_scan_type != HASH_METH_NOT_USE)
     {
@@ -332,23 +333,23 @@ eval_hash_clear (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash)
 }
 
 /*
- * eval_hash_for_lookup () - the hash that answers a lookup of the subquery's list
+ * hash_lookup_get () - the hash that answers a lookup of the subquery's list
  *   return: error code
  *   subquery(in): the subquery whose list list_id is; it owns the hash
- *   compare(in): the lookup's comparison; the table is built only for one eval_hash_comparable takes
+ *   compare(in): the lookup's comparison; the table is built only for one hash_lookup_comparable takes
  *   hash(out): the hash with its table, or NULL: the caller reads the list
  */
 int
-eval_hash_for_lookup (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *list_id,
-		      const DOMAIN_COMPARE *compare, EVAL_HASH_LOOKUP **hash)
+hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *list_id,
+		 const DOMAIN_COMPARE *compare, HASH_LOOKUP **hash)
 {
-  EVAL_HASH_LOOKUP *hash_lookup = subquery->hash_lookup;
+  HASH_LOOKUP *hash_lookup = subquery->hash_lookup;
   int error;
 
   *hash = NULL;
   if (hash_lookup == NULL)
     {
-      hash_lookup = eval_hash_create (thread_p);
+      hash_lookup = hash_lookup_create (thread_p);
       if (hash_lookup == NULL)
 	{
 	  return er_errid ();
@@ -377,18 +378,18 @@ eval_hash_for_lookup (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID
       if (method == HASH_METH_HASH_FILE)
 	{
 	  const INT64 rows_per_page = list_id->tuple_cnt / MAX (list_id->page_cnt, 1);
-	  build_rows = MAX (1, rows_per_page / EVAL_HASH_FILE_ROWS_PER_READ) * list_id->tuple_cnt;
+	  build_rows = MAX (1, rows_per_page / HASH_LOOKUP_FILE_ROWS_PER_READ) * list_id->tuple_cnt;
 	}
       if (hash_lookup->rows_read < build_rows)
 	{
 	  return NO_ERROR;
 	}
       /* checked here, once a table would be built, rather than at each lookup */
-      if (!eval_hash_comparable (compare))
+      if (!hash_lookup_comparable (compare))
 	{
 	  return NO_ERROR;
 	}
-      error = eval_hash_build (thread_p, hash_lookup, list_id, compare, method);
+      error = hash_lookup_build (thread_p, hash_lookup, list_id, compare, method);
       if (error != NO_ERROR && error != ER_INTERRUPTED && er_errid () != ER_INTERRUPTED)
 	{
 	  /* as a hash join falls back to a simpler method: the lookups read the list */
@@ -417,35 +418,35 @@ eval_hash_for_lookup (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID
 }
 
 /*
- * eval_hash_count_read () - counts the rows a lookup read from the list for want of a table (eval_hash_for_lookup)
+ * hash_lookup_count_read () - counts the rows a lookup read from the list for want of a table (hash_lookup_get)
  *   rows(in): the rows the lookup read: up to its match, or the whole list
  */
 void
-eval_hash_count_read (xasl_node *subquery, INT64 rows)
+hash_lookup_count_read (xasl_node *subquery, INT64 rows)
 {
   assert (subquery->hash_lookup != NULL);
   subquery->hash_lookup->rows_read += rows;
 }
 
 /*
- * eval_hash_has_null () - the list holds a NULL: a lookup that finds no equal value is UNKNOWN, not FALSE
+ * hash_lookup_has_null () - the list holds a NULL: a lookup that finds no equal value is UNKNOWN, not FALSE
  */
 bool
-eval_hash_has_null (const EVAL_HASH_LOOKUP *hash)
+hash_lookup_has_null (const HASH_LOOKUP *hash)
 {
   return hash->has_null;
 }
 
 /*
- * eval_hash_start () - starts the list values of the item's hash (eval_hash_next)
+ * hash_lookup_start () - starts the list values of the item's hash (hash_lookup_next)
  *   return: false if the item has no hash in the type its comparison compares it in: the caller reads the list
  */
 bool
-eval_hash_start (EVAL_HASH_LOOKUP *hash, const DB_VALUE *item)
+hash_lookup_start (HASH_LOOKUP *hash, const DB_VALUE *item)
 {
   unsigned int hash_key;
 
-  if (!eval_hash_key (hash, 0, item, &hash_key))
+  if (!hash_lookup_key (hash, 0, item, &hash_key))
     {
       return false;
     }
@@ -455,12 +456,12 @@ eval_hash_start (EVAL_HASH_LOOKUP *hash, const DB_VALUE *item)
 }
 
 /*
- * eval_hash_next () - the next list value of the item's hash
+ * hash_lookup_next () - the next list value of the item's hash
  *   return: S_SUCCESS, S_END or S_ERROR
  *   value(out): the list value, read in place; it holds until the next call
  */
 SCAN_CODE
-eval_hash_next (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash, DB_VALUE **value)
+hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, DB_VALUE **value)
 {
   bool is_null;
 
@@ -487,11 +488,11 @@ eval_hash_next (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash, DB_VALUE **value
 }
 
 /*
- * eval_hash_end () - ends the list values of an item: a tuple read by its position keeps its list page fixed, so it is
- *		      unfixed between rows, as a hash list scan does when a probe ends
+ * hash_lookup_end () - ends the list values of an item: a tuple read by its position keeps its list page fixed, so it
+ *		      is unfixed between rows, as a hash list scan does when a probe ends
  */
 void
-eval_hash_end (THREAD_ENTRY *thread_p, EVAL_HASH_LOOKUP *hash)
+hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 {
   if (hash->list_scan.position == S_ON && hash->list_scan.curr_pgptr != NULL)
     {

@@ -307,7 +307,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
-  ${QUERY_DIR}/query_eval_hash.cpp
+  ${QUERY_DIR}/query_hash_lookup.cpp
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/domain_plan.c
   ${QUERY_DIR}/domain_resolve.c
@@ -330,7 +330,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   ${QUERY_DIR}/memoize.hpp
-  ${QUERY_DIR}/query_eval_hash.hpp
+  ${QUERY_DIR}/query_hash_lookup.hpp
   )
 
 set(OBJECT_SOURCES

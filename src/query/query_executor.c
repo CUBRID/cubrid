@@ -89,7 +89,7 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
-#include "query_eval_hash.hpp"
+#include "query_hash_lookup.hpp"
 #include "ftab_set.hpp"
 
 #if SERVER_MODE && !WINDOWS
@@ -2428,7 +2428,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     }
   if (xasl->hash_lookup != NULL)
     {
-      eval_hash_destroy (thread_p, xasl->hash_lookup);
+      hash_lookup_destroy (thread_p, xasl->hash_lookup);
       xasl->hash_lookup = NULL;
     }
   xasl->executed_parallelism = 0;

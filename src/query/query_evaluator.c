@@ -45,7 +45,7 @@
 #include "dbtype.h"
 #include "language_support.h"
 #include "string_opfunc.h"
-#include "query_eval_hash.hpp"
+#include "query_hash_lookup.hpp"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -1172,7 +1172,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 }
 
 /*
- * eval_some_list_lookup () - eval_some_list_eval; once the subquery's list has a hash (query_eval_hash.cpp), the list
+ * eval_some_list_lookup () - eval_some_list_eval; once the subquery's list has a hash (query_hash_lookup.cpp), the list
  *			      values of the item's hash answer in place of the whole list
  *   subquery(in): the subquery whose list list_id is
  */
@@ -1180,7 +1180,7 @@ static DB_LOGICAL
 eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
 		       const DOMAIN_COMPARE * compare, const val_descr * vd, XASL_NODE * subquery)
 {
-  EVAL_HASH_LOOKUP *hash;
+  HASH_LOOKUP *hash;
   DB_VALUE *list_val;
   SCAN_CODE qp_scan;
   DB_LOGICAL res, t_res;
@@ -1192,23 +1192,23 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
     {
       return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd, NULL);
     }
-  if (eval_hash_for_lookup (thread_p, subquery, list_id, compare, &hash) != NO_ERROR)
+  if (hash_lookup_get (thread_p, subquery, list_id, compare, &hash) != NO_ERROR)
     {
       return V_ERROR;
     }
-  if (hash == NULL || !eval_hash_start (hash, item))
+  if (hash == NULL || !hash_lookup_start (hash, item))
     {
       INT64 rows = 0;
       res = eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd, &rows);
       if (hash == NULL && res != V_ERROR)
 	{
-	  eval_hash_count_read (subquery, rows);
+	  hash_lookup_count_read (subquery, rows);
 	}
       return res;
     }
 
-  res = eval_hash_has_null (hash) ? V_UNKNOWN : V_FALSE;
-  while ((qp_scan = eval_hash_next (thread_p, hash, &list_val)) == S_SUCCESS)
+  res = hash_lookup_has_null (hash) ? V_UNKNOWN : V_FALSE;
+  while ((qp_scan = hash_lookup_next (thread_p, hash, &list_val)) == S_SUCCESS)
     {
       t_res = eval_value_rel_cmp (thread_p, item, list_val, R_EQ, NULL, vd, compare, NULL);
       if (t_res == V_TRUE || t_res == V_ERROR)
@@ -1221,7 +1221,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
 	  res = V_UNKNOWN;
 	}
     }
-  eval_hash_end (thread_p, hash);
+  hash_lookup_end (thread_p, hash);
   if (qp_scan == S_ERROR)
     {
       return V_ERROR;
