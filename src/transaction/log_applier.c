@@ -4471,13 +4471,11 @@ la_get_item_pk_value (LA_ITEM * item)
  *   item(in/out): the item being freed
  *
  * Note:
- *   key holds the primary key of a data item, or the statement text of a statement item.
- *   The client workspace heap has no lock, so only the thread that created it, the coordinator, uses it;
- *   with utility threads enabled (db_set_use_utility_thread), db_private_alloc and db_private_free on any
- *   other thread go to malloc and free instead. A statement item is built by the coordinator and freed by a
- *   worker, so a text taken from the workspace heap would be freed with free(). The text is therefore taken
- *   with malloc and freed here, not through pr_clear_value. A data item's key is unpacked and freed by the
- *   same worker, so pr_clear_value is safe for it.
+ *   key is the primary key of a data item or the statement text of a statement item. A statement item is
+ *   built on the coordinator and freed on a worker, and db_private_alloc and db_private_free use a different
+ *   allocator on each. So the text is taken with or_unpack_string_alloc, which uses malloc, and freed here with
+ *   free_and_init, not through pr_clear_value. A data item's key is unpacked and freed on the same worker, so
+ *   pr_clear_value is safe for it.
  */
 static void
 la_clear_repl_item_key (LA_ITEM * item)
@@ -7519,17 +7517,18 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
  *   outer(in/out): the outer transaction's apply slot
  *   fragment_lsa(in): the SYSOP_END coordinate; items at or before it belong to the fragment
  *
- * At a serial SYSOP_END only the operation's own replicated items are buffered in the apply list (the
- * auto-increment sysop is logged before the row insert, and regular DML is emitted only at the outer
- * commit), so the items at or before the SYSOP_END coordinate form the fragment. They are unlinked from
- * the outer slot and moved into a freshly allocated standalone slot owned by the fragment task, leaving
- * any later item for the outer transaction. The slot is freed when the fragment task retires.
+ * Note:
+ *   At a serial SYSOP_END only the operation's own replicated items are buffered in the apply list (the
+ *   auto-increment sysop is logged before the row insert, and regular DML is emitted only at the outer
+ *   commit), so the items at or before the SYSOP_END coordinate form the fragment. They are unlinked from
+ *   the outer slot and moved into a freshly allocated standalone slot owned by the fragment task, leaving
+ *   any later item for the outer transaction. The slot is freed when the fragment task retires.
  *
- * If the outer slot has become a long transaction, it holds only its first item and the LSA of the last
- * replication record, and its items are read back from the log when applied. Since they all lie at or before
- * the SYSOP_END coordinate, the whole slot becomes the fragment and the outer slot starts over empty. Left to
- * the outer commit, the items would be lost if the outer transaction aborted, though the master committed the
- * operation on its own.
+ *   If the outer slot has become a long transaction, it holds only its first item and the LSA of the last
+ *   replication record, and its items are read back from the log when applied. Since they all lie at or
+ *   before the SYSOP_END coordinate, the whole slot becomes the fragment and the outer slot starts over
+ *   empty. Left to the outer commit, the items would be lost if the outer transaction aborted, though the
+ *   master committed the operation on its own.
  */
 static LA_APPLY *
 la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
@@ -7611,7 +7610,7 @@ static int la_wset_label_trid = NULL_TRANID;
 static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
 
 /*
- * la_coordinator_submit_task() - put a task read from the log on the commit-order ring and hand it over
+ * la_coordinator_submit_task() - put a task read from the log on the commit-order ring and queue it
  *   return: NO_ERROR or error code
  *   task(in): COMMIT or SYSOP_END task with its dependency set
  *
@@ -7619,7 +7618,7 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   With the commit-order ring full the coordinator first waits here, collecting results. Every task is
  *   recorded on the ring whether or not it can run now. A task whose dependency is not applied yet is
  *   parked, and so is one whose dependency is applied when the task queue has no room; the next collect
- *   dispatches it. Older ready tasks are drained first so a newcomer never passes a parked task that was
+ *   queues it. Older ready tasks are drained first so a newcomer never passes a parked task that was
  *   ready before it.
  *
  *   With a single worker every task is put on the task queue at once, so the worker takes them from the FIFO
@@ -7699,16 +7698,18 @@ la_coordinator_submit_task (LA_TASK * task)
  *   task(in): COMMIT or SYSOP_END task in the range, already on the commit-order ring
  *
  * Note:
- *   Transactions in the range may already be on the slave; re-applied side by side over that state, two of
- *   them can lock rows the master never had them share and the workers deadlock. The victim fails its task,
- *   the applier exits, and the next run replays the same range into the same deadlock, so the slave stops
- *   advancing. So the tasks queued earlier are finished first, together with the parked ones their completion
- *   releases, and this one is then queued and finished before the next commit is read. The first commit past
- *   the range starts after every one in it has retired.
+ *   Transactions in the range may already be on the slave. Re-applied side by side over that state, two of them
+ *   can lock rows the master never had them share and the workers deadlock; the failed task stops the applier,
+ *   and the next run replays the same range into the same deadlock. So each commit in the range runs with no
+ *   other task running.
  *
- *   The log is read again from the required LSA, so the commits between it and the committed LSA this
- *   process started from come first. The workers skip them whole, so they take the parallel path and the
- *   range starts only after all of them have retired.
+ *   Before the task is queued, the ready parked tasks are queued and every queued task is waited for, again
+ *   until no task is parked, since a task that retires may make a parked one ready. The task is then queued
+ *   and waited for, so the next commit is read only after it has retired.
+ *
+ *   The commits read before the range, from the required LSA up to the committed LSA this process started
+ *   from, are skipped whole by the workers and go out in parallel; the first commit in the range is the one
+ *   that waits for them.
  *
  *   TODO: This is needed only because a restarted applier cannot tell which transactions in the range a
  *   worker already committed. If each worker recorded the commit LSA it applied in the same transaction as
@@ -7840,6 +7841,10 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
     }
   else
     {
+      /* TODO: No case is known to reach here. At startup committed_lsa is set to the required LSA the log is read
+       * again from, and while running it follows the frontier, which never passes a commit not yet read. If this
+       * is ever reached, a labeled operation's items stay in the outer transaction's slot and are applied again
+       * with the outer commit, and its label stays held; detach and drop the items and clear the label here then. */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "reader skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
 		    lrec->trid, (long long) final->pageid, (int) final->offset,
