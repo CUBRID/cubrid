@@ -345,16 +345,37 @@ test_isolated_delete_retry ()
   check_conf
 }
 
+# createdb and deletedb of any database rewrite every row of databases.txt (cfg_write_directory): a name shorter
+# than 8 characters gets a second tab and each path a trailing space. Ownership must survive that rewrite.
+test_registry_rewrite ()
+{
+  new_case registry-rewrite
+  fixture setup_unittestdb.sh || fail 'fixture creation failed'
+  fixture setup_isolated_db.sh oosnologdb || fail 'isolated creation failed'
+  awk '{ printf "%s%s\t%s\t%s\t%s \n", $1, (length ($1) < 8 ? "\t" : ""), $2, $3, $4 }' \
+    "$CUBRID_DATABASES/databases.txt" > "$CUBRID_DATABASES/rewritten"
+  mv "$CUBRID_DATABASES/rewritten" "$CUBRID_DATABASES/databases.txt"
+
+  fixture cleanup_isolated_db.sh oosnologdb || fail 'isolated cleanup failed after a registry rewrite'
+  fixture cleanup_unittestdb.sh || fail 'cleanup failed after a registry rewrite'
+  [ ! -e "$CUBRID_DATABASES/oosnologdb/oosnologdb" ] \
+    || fail 'isolated database survived cleanup after a registry rewrite'
+  [ ! -e "$CUBRID_DATABASES/unittestdb/unittestdb" ] || fail 'shared fixture survived cleanup after a registry rewrite'
+  [ "$(awk '{ print $1, $2, $3, $4 }' "$CUBRID_DATABASES/databases.txt")" \
+    = 'otherdb /unrelated/data localhost /unrelated/log' ] || fail 'cleanup changed an unrelated registration'
+  check_conf
+}
+
 if [ "$#" -eq 0 ]; then
   set -- preexisting replaced_volume owned_retry changed_registration failed_creation delete_retry \
     isolated_preexisting isolated_owned_recreate isolated_replaced_volume isolated_failed_creation \
-    isolated_delete_retry
+    isolated_delete_retry registry_rewrite
 fi
 for test_name in "$@"; do
   case "$test_name" in
     preexisting|replaced_volume|owned_retry|changed_registration|failed_creation|delete_retry) ;;
     isolated_preexisting|isolated_owned_recreate|isolated_replaced_volume|isolated_failed_creation) ;;
-    isolated_delete_retry) ;;
+    isolated_delete_retry|registry_rewrite) ;;
     *) fail "unknown case: $test_name" ;;
   esac
   "test_$test_name"

@@ -68,9 +68,11 @@ oos_database_identity ()
   local volume_identity
 
   [ -f "$databases_txt" ] || return 1
-  # Ambiguous registrations must never grant deletion authority.
+  # Ambiguous registrations must never grant deletion authority. Compare the fields, not the bytes: createdb and
+  # deletedb of any database rewrite every row with other whitespace (cfg_write_directory).
   registration=$(awk -v db="$1" '
-    $1 == db { registration = $0; count++ }
+    BEGIN { OFS = "\t" }
+    $1 == db { $1 = $1; registration = $0; count++ }
     END { if (count != 1) exit 1; print registration }
   ' "$databases_txt") || return 1
   read -r db_name data_dir _registry_tail <<< "$registration"
