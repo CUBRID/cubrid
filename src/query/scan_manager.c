@@ -5735,17 +5735,14 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   SCAN_CODE code;
 
-  if (!hsidp->batch_iter)
-    {
-      return scan_next_heap_scan_rows (thread_p, scan_id);
-    }
   for (;;)
     {
-      if (hsidp->batch_rowmode)
+      if (!hsidp->batch_iter || hsidp->batch_rowmode)
 	{
-	  /* a page the filter handed back, its rows one by one; then the iterator takes the next page */
+	  /* the row path's one call (a scan without the filter iterator, or a page the filter handed back): with one
+	   * call site it is inlined into scan_next_scan_local () as before the batch, not an extra call per row */
 	  code = scan_next_heap_scan_rows (thread_p, scan_id);
-	  if (code != S_END)
+	  if (!hsidp->batch_iter || code != S_END)
 	    {
 	      return code;
 	    }
