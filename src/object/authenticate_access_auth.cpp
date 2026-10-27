@@ -455,16 +455,17 @@ au_auth_accessor::insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 {
   int error = NO_ERROR;
   MOP object_of = nullptr;
+
+  error = find_object_of (obj_type, obj_mop, &object_of);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   for (int index = DB_AUTH_EXECUTE; index; index >>= 1)
     {
       if (auth_type & index)
 	{
-	  error = find_object_of (obj_type, obj_mop, &object_of);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-
 	  error = set_new_auth (obj_type, NULL, grantor, user, object_of, (DB_AUTH) index,
 				((grant_option & index) ? true : false));
 	  if (error != NO_ERROR)
@@ -483,6 +484,13 @@ au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 {
   int error = NO_ERROR;
   MOP object_of = nullptr;
+
+  error = find_object_of (obj_type, obj_mop, &object_of);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   for (int index = DB_AUTH_EXECUTE; index; index >>= 1)
     {
       if (auth_type & index)
@@ -496,12 +504,6 @@ au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 	  assert (m_au_obj != NULL);
 
 	  error = obj_inst_lock (m_au_obj, 1);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  error = find_object_of (obj_type, obj_mop, &object_of);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
