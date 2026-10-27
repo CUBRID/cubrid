@@ -337,13 +337,21 @@ exit:
     int error = NO_ERROR;
     int is_restore = (auth_name == NULL) ? 1 : 0;
 
+    auto get_result = [&] (const cubmem::block & b)
+    {
+      return NO_ERROR;
+    };
+
+    // wait for the client to finish the switch. Switching the user can fetch objects from the server in this
+    // transaction, and a transaction must not be worked on by two threads at a time.
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
+	error = m_stack->send_data_to_client_recv (get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
+		std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client_recv (get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
       }
 
     if (error != NO_ERROR)

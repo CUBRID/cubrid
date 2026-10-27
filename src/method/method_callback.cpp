@@ -1023,17 +1023,17 @@ exit:
 	  }
 	else
 	  {
-	    au_perform_push_user (user);
+	    error = au_perform_push_user (user);
 	  }
       }
     else // POP
       {
-	au_perform_pop_user ();
+	error = au_perform_pop_user ();
       }
 
-    // no response
-
-    return error;
+    // reply with the outcome. The server waits for it before it goes on with the transaction, because switching
+    // the user can fetch objects from the server in the same transaction.
+    return xs_pack_and_queue (error);
   }
 
 //////////////////////////////////////////////////////////////////////////
