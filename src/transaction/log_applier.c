@@ -3696,13 +3696,15 @@ la_delete_ha_apply_info (void)
 }
 
 /*
- * The applied-statement marker: a one-row slave table that holds the commit LSA of the last transaction with a
- * statement item (a DDL, or a DML replicated as a statement with the USE_SBR hint) that the slave committed.
+ * The applied-statement marker, table ha_applied_stmt_marker on the slave: one row holding the commit LSA of the
+ * last transaction with a statement item (a DDL, or a DML replicated as a statement with the USE_SBR hint) that
+ * the slave committed.
  *
- * A restart applies the transactions of its recovery range again, which is safe for row items: they carry the
- * resulting row, so a second apply gives the same row or fails on a key and is skipped. A statement carries the
- * statement and runs again: a DDL fails, and a DML such as "SET n = n + 1" succeeds a second time and leaves the
- * slave different from the master. So a statement transaction must never be applied twice.
+ * A restart applies the transactions of its recovery range again. Applying a row item again does no harm: it
+ * carries the resulting row, so it gives the same row or fails on a key and the error is ignored. Applying a
+ * statement item again runs the statement again: a DDL fails, and a DML such as "SET n = n + 1" succeeds a
+ * second time and leaves the slave different from the master. So a statement transaction must never be applied
+ * twice.
  *
  * The worker writes the marker in the same slave transaction as the statement, so the two commit or roll back
  * together. One row is enough because a statement transaction is a barrier on the slave: its label is the
@@ -10125,7 +10127,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     }
 
   /* the commits at or below the last statement transaction committed on the slave are all applied (see
-   * la_create_applied_stmt_marker); skip them whole, so that no statement among them runs again */
+   * LA_APPLIED_STMT_MARKER_NAME); skip them whole, so that no statement among them runs again */
   error = la_create_applied_stmt_marker ();
   if (error == NO_ERROR)
     {
