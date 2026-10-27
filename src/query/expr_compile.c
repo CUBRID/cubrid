@@ -3647,6 +3647,7 @@ typedef enum
 } EXPR_RUNS_WHAT;
 
 static bool expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what);
+static bool expr_pred_runs (const PRED_EXPR * pr, EXPR_RUNS_WHAT what);
 
 static bool
 expr_regu_list_runs (const REGU_VARIABLE_LIST list, EXPR_RUNS_WHAT what)
@@ -3701,7 +3702,9 @@ expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
 	  }
 	return (what == EXPR_RUNS_SIDE_EFFECT && expr_arith_side_effect (arith->opcode))
 	  || expr_regu_runs (arith->leftptr, what) || expr_regu_runs (arith->rightptr, what)
-	  || expr_regu_runs (arith->thirdptr, what);
+	  || expr_regu_runs (arith->thirdptr, what)
+	  /* T_CASE, T_DECODE, T_IF, T_PREDICATE evaluate arith->pred through eval_pred () (fetch_op_case ()) */
+	  || expr_pred_runs (arith->pred, what);
       }
     case TYPE_FUNC:
       return regu->value.funcp != NULL && expr_regu_list_runs (regu->value.funcp->operand, what);
