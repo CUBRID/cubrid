@@ -775,18 +775,28 @@ static int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT
                                           const heap_pending_record *pending = nullptr);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
-static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-                                const HEAP_REC_LAYOUT *layout, const heap_pending_record *pending = nullptr);
-static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-                                                     const HEAP_REC_LAYOUT *layout,
-                                                     const heap_pending_record *pending = nullptr);
+static int heap_attrvalue_read_variable (RECDES *recdes, HEAP_ATTRVALUE *value, HEAP_CACHE_ATTRINFO *attr_info,
+                                        OR_ATTRIBUTE *attrepr, const HEAP_REC_LAYOUT *layout,
+                                        const heap_pending_record *pending);
+/* Let record loops reuse their known record/layout conditions for each attribute. Resolve stays out of line. */
+STATIC_INLINE int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+                                     const HEAP_REC_LAYOUT *layout, const heap_pending_record *pending = nullptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+                                                          const HEAP_REC_LAYOUT *layout,
+                                                          const heap_pending_record *pending = nullptr)
+  __attribute__ ((ALWAYS_INLINE));
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 							    std::vector < RECDES > *oos_payloads,
                                                             const HEAP_REC_LAYOUT *layout,
                                                             const heap_pending_record *pending = nullptr);
-static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
+STATIC_INLINE int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 							  HEAP_CACHE_ATTRINFO * attr_info,
-                                const heap_pending_record *pending = nullptr);
+                                const heap_pending_record *pending = nullptr)
+  __attribute__ ((ALWAYS_INLINE));
+static int heap_attrinfo_read_oos_dbvalues (THREAD_ENTRY *thread_p, RECDES *recdes,
+                                          HEAP_CACHE_ATTRINFO *attr_info, const HEAP_REC_LAYOUT *layout,
+                                          const heap_pending_record *pending);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record *pending = nullptr);
@@ -11536,19 +11546,43 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
   value->rd_attrepr = attrepr;
 }
 
+/*
+ * heap_attrvalue_read_variable () - Keep Resolve scratch alive through conversion and release.
+ * Fixed and default values do not need this frame. Both paths use the same DB_VALUE conversion.
+ */
 static int
+heap_attrvalue_read_variable (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+			      OR_ATTRIBUTE * attrepr, const HEAP_REC_LAYOUT * layout,
+			      const heap_pending_record * pending)
+{
+  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
+  bool oos_owned_buffer = false;
+  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
+  int error;
+
+  error = heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
+					 IO_MAX_PAGE_SIZE, pending);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
+  if (oos_owned_buffer && raw.data != oos_scratch)
+    {
+      recdes_free_data_area (&raw);
+    }
+  return error;
+}
+
+STATIC_INLINE int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
 		     const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
-
-  bool oos_owned_buffer = false;
-  /* OOS Resolve uses scratch up to one I/O page and allocates larger values. */
-  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
-  int error;
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -11589,25 +11623,12 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  error =
-	    heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-					   IO_MAX_PAGE_SIZE, pending);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  return heap_attrvalue_read_variable (recdes, value, attr_info, attrepr, layout, pending);
 	}
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
-  /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
-  if (oos_owned_buffer && raw.data != oos_scratch)
-    {
-      recdes_free_data_area (&raw);
-    }
-
-  return error;
+  return heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, false);
 }
 
 /*
@@ -11615,7 +11636,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
  *
  *   Keeps the per-attribute OOS Resolve path and its stack-scratch fast path.
  */
-static int
+STATIC_INLINE int
 heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 					  const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
 {
@@ -11666,24 +11687,36 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
  *   cardinality: 0 or 1 keeps the per-attribute loop and its stack-scratch fast path; >= 2 uses
  *   grouped Resolve.
  */
-static int
+STATIC_INLINE int
 heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 					       HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record * pending)
 {
   HEAP_REC_LAYOUT layout;
-  const HEAP_REC_LAYOUT *layoutp = NULL;
 
   if (recdes != NULL && recdes->data != NULL && attr_info->read_classrepr != NULL)
     {
       heap_rec_layout_init (&layout, recdes, attr_info);
-      layoutp = &layout;
+      if (heap_recdes_contains_oos (recdes))
+	{
+	  return heap_attrinfo_read_oos_dbvalues (thread_p, recdes, attr_info, &layout, pending);
+	}
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, &layout, pending);
     }
 
   if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
     {
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, layoutp, pending);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, NULL, pending);
     }
 
+  return heap_attrinfo_read_oos_dbvalues (thread_p, recdes, attr_info, NULL, pending);
+}
+
+/* Grouped Resolve state belongs only to records carrying OOS references. Keep it out of the
+ * ordinary read loop, while sharing representation/default handling and conversion with it. */
+static int
+heap_attrinfo_read_oos_dbvalues (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+				 const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
+{
 /* *INDENT-OFF* */
   std::vector <RECDES> oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
 /* *INDENT-ON* */
@@ -11699,10 +11732,10 @@ heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES *
 
   if (!grouped_applied)
     {
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, layoutp, pending);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, layout, pending);
     }
 
-  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads, layoutp, pending);
+  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads, layout, pending);
   heap_oos_free_grouped_payloads (oos_payloads);
   return ret;
 }

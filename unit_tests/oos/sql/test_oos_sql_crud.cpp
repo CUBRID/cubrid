@@ -325,6 +325,47 @@ TEST_F (OosSqlCrud, MixedChunkSizes)
   EXPECT_EQ (len, 65536);
 }
 
+TEST_F (OosSqlCrud, FixedValuesAcrossNullsAndRepresentations)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_crud (id INT, s SMALLINT, b BIGINT, f FLOAT, d DOUBLE, "
+		       "dt DATE, n NUMERIC(10,2), payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_crud VALUES "
+		       "(1, -7, 9000000000, 1.5, -2.25, DATE '2024-02-29', 123.45, X'1234'), "
+		       "(2, NULL, NULL, NULL, NULL, NULL, NULL, NULL), "
+		       "(3, 12, -9000000000, -1.5, 2.25, DATE '2024-03-01', -123.45, "
+		       "CAST(REPEAT('A9', 20000) AS BIT VARYING))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  // Keep rows in the old representation, then read them alongside a new row and its explicit value.
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_crud ADD COLUMN added INT DEFAULT 41"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_crud (id, added) VALUES (4, 99)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  const char *checks[] =
+  {
+    "SELECT COUNT(*) FROM t_oos_crud WHERE id = 1 AND s = -7 AND b = 9000000000 "
+    "AND f = 1.5 AND d = -2.25 AND dt = DATE '2024-02-29' AND n = 123.45 AND added = 41",
+    "SELECT COUNT(*) FROM t_oos_crud WHERE id = 2 AND s IS NULL AND b IS NULL "
+    "AND f IS NULL AND d IS NULL AND dt IS NULL AND n IS NULL AND added = 41",
+    "SELECT COUNT(*) FROM t_oos_crud WHERE id = 3 AND s = 12 AND b = -9000000000 "
+    "AND f = -1.5 AND d = 2.25 AND dt = DATE '2024-03-01' AND n = -123.45 "
+    "AND added = 41 AND payload = CAST(REPEAT('A9', 20000) AS BIT VARYING)",
+    "SELECT COUNT(*) FROM t_oos_crud WHERE id = 4 AND s IS NULL AND added = 99",
+    "SELECT COUNT(*) FROM t_oos_crud WHERE id = 1 AND CAST(s AS BIGINT) = -7 "
+    "AND CAST(b AS VARCHAR) = '9000000000' AND CAST(dt AS VARCHAR) = '02/29/2024'"
+  };
+  // Reuse decode slots across non-NULL, NULL, old/default and OOS-backed records.
+  for (int pass = 0; pass < 3; ++pass)
+    {
+      for (const char *sql : checks)
+	{
+	  int count = 0;
+	  ASSERT_EQ (fetch_single_int (sql, &count), NO_ERROR) << sql;
+	  EXPECT_EQ (count, 1) << sql;
+	}
+    }
+}
+
 int
 main (int argc, char **argv)
 {
