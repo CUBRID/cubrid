@@ -3730,6 +3730,12 @@ partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * cl
   error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid);
   if (error != NO_ERROR)
     {
+      if (er_errid () == NO_ERROR)
+	{
+	  /* some pruning failures return an error code without setting an error */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+	  error = ER_PARTITION_WORK_FAILED;
+	}
       return error;
     }
 
