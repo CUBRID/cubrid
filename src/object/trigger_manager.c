@@ -213,8 +213,8 @@ static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, c
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int validate_trigger (TR_TRIGGER * trigger);
 
-static int register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner);
-static int unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback);
+static int register_user_trigger (DB_OBJECT * object);
+static int unregister_user_trigger (TR_TRIGGER * trigger, int rollback);
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
 
 static void reorder_schema_caches (TR_TRIGGER * trigger);
@@ -1915,16 +1915,15 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
  */
 
 /*
- * register_user_trigger() - This stores a new trigger object inside the owner user object
+ * register_user_trigger() - This stores a new trigger object inside the current user object
  *    return: error code
  *    object(in): trigger object
- *    owner(in): trigger owner
  *
  * Note:
  *    If successful, it will mark the user trigger cache to be rebuilt on its next use.
  */
 static int
-register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
+register_user_trigger (DB_OBJECT * object)
 {
   int error = NO_ERROR;
   DB_SET *table;
@@ -1933,8 +1932,8 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
 
   AU_DISABLE (save);
 
-  if (owner != NULL && (error = obj_inst_lock (owner, 1)) == NO_ERROR
-      && (error = obj_get (owner, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
+      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -1949,13 +1948,13 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
 	{
 	  table = set_create_sequence (0);
 	  db_make_sequence (&value, table);
-	  obj_set (owner, "triggers", &value);
+	  obj_set (Au_user, "triggers", &value);
 	  /*
 	   * remember, because of coercion, we have to either set the domain properly to begin with or
 	   * we have to get the coerced set back out after it has been assigned
 	   */
 	  set_free (table);
-	  obj_get (owner, "triggers", &value);
+	  obj_get (Au_user, "triggers", &value);
 	  if (DB_IS_NULL (&value))
 	    {
 	      table = NULL;
@@ -1975,8 +1974,7 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
 
   if (error == NO_ERROR)
     {
-      tr_User_triggers_modified = 1;
-      tr_invalidate_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
 
   return error;
@@ -1986,7 +1984,6 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
  * unregister_user_trigger() - This removes a trigger from the user object and associated caches
  *    return: error code
  *    trigger(in): trigger structure
- *    owner(in): user object that holds the trigger
  *    rollback(in): non-zero if we're performing a rollback
  *
  * Note:
@@ -1996,7 +1993,7 @@ register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
  *    In that case, try to be more tolerant of errors that may occurr.
  */
 static int
-unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
+unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 {
   int error = NO_ERROR;
   DB_SET *table;
@@ -2015,8 +2012,8 @@ unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
 
   AU_DISABLE (save);
 
-  if (owner != NULL && (error = obj_inst_lock (owner, 1)) == NO_ERROR
-      && (error = obj_get (owner, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
+      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2041,8 +2038,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
   /* don't bother updating the cache now if its a rollback */
   if (error == NO_ERROR && !rollback)
     {
-      tr_User_triggers_modified = 1;
-      tr_invalidate_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
 
   return error;
@@ -2062,6 +2058,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   int error = NO_ERROR;
   DB_SET *table;
   DB_VALUE value;
+  DB_VALUE event_value;
   DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
   int max, i;
@@ -2104,6 +2101,17 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
 		{
 		  /* deleted objects should have been filtered by now */
+		  error = obj_get (db_get_object (&value), TR_ATT_EVENT, &event_value);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		  if (DB_VALUE_TYPE (&event_value) != DB_TYPE_INTEGER
+		      || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&event_value)))
+		    {
+		      continue;
+		    }
+
 		  trigger = tr_map_trigger (db_get_object (&value), 1);
 		  if (trigger == NULL)
 		    {
@@ -2163,6 +2171,7 @@ tr_update_user_cache (void)
   int error = NO_ERROR;
   DB_SET *table;
   DB_VALUE value;
+  DB_VALUE event_value;
   TR_TRIGGER *trigger;
   int max, i;
   int save;
@@ -2200,6 +2209,17 @@ tr_update_user_cache (void)
 		      && db_get_object (&value) != NULL)
 		    {
 		      /* deleted objects will have been filtered by now */
+		      error = obj_get (db_get_object (&value), TR_ATT_EVENT, &event_value);
+		      if (error != NO_ERROR)
+			{
+			  break;
+			}
+		      if (DB_VALUE_TYPE (&event_value) != DB_TYPE_INTEGER
+			  || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&event_value)))
+			{
+			  continue;
+			}
+
 		      trigger = tr_map_trigger (db_get_object (&value), 1);
 		      if (trigger == NULL)
 			{
@@ -2242,6 +2262,17 @@ void
 tr_invalidate_user_cache (void)
 {
   tr_User_triggers_valid = 0;
+}
+
+/*
+ * tr_mark_user_triggers_modified() - Marks the user triggers as changed by the current transaction
+ *    return: none
+ */
+void
+tr_mark_user_triggers_modified (void)
+{
+  tr_User_triggers_modified = 1;
+  tr_invalidate_user_cache ();
 }
 
 /* SCHEMA CACHE */
@@ -4147,7 +4178,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
     }
   else
     {
-      if (register_user_trigger (object, trigger->owner))
+      if (register_user_trigger (object))
 	{
 	  goto error;
 	}
@@ -4422,7 +4453,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
   /* remove it from the class or user cache */
   if (trigger->class_mop == NULL)
     {
-      error = unregister_user_trigger (trigger, trigger->owner, rollback);
+      error = unregister_user_trigger (trigger, rollback);
     }
   else
     {
@@ -6923,42 +6954,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       goto end;
     }
   pr_clear_value (&value);
-
-  /* a user trigger is held by the user of its qualifier, so move it when the qualifier changes */
-  if (trigger->class_mop == NULL)
-    {
-      char old_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-      char new_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-      MOP old_owner, new_owner;
-
-      sm_qualifier_name (old_name, old_owner_name, DB_MAX_USER_LENGTH);
-      sm_qualifier_name (new_name, new_owner_name, DB_MAX_USER_LENGTH);
-
-      if (intl_identifier_casecmp (old_owner_name, new_owner_name) != 0)
-	{
-	  old_owner = db_find_user (old_owner_name);
-	  new_owner = db_find_user (new_owner_name);
-	  if (old_owner == NULL || new_owner == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto end;
-	    }
-
-	  error = unregister_user_trigger (trigger, old_owner, 0);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto end;
-	    }
-
-	  error = register_user_trigger (trigger_object, new_owner);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto end;
-	    }
-	}
-    }
 
   if (!deferred_flush)
     {
