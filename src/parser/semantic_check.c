@@ -11908,9 +11908,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       pt_no_double_updates (parser, node);
 
-      /* check destination derived table */
+      /* check destination derived table. A remote target with its columns is in the derived dblink table shape. */
       entity = node->info.merge.into;
-      if (entity->info.spec.derived_table != NULL)
+      if (entity->info.spec.derived_table != NULL && entity->info.spec.remote_server_name == NULL)
 	{
 	  PT_ERRORm (parser, entity, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MERGE_DERIVED_TABLE);
 	  break;
@@ -11969,8 +11969,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       node = pt_semantic_type (parser, node, info);
 
-      /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node && node->info.merge.into && node->info.merge.into->info.spec.remote_server_name == NULL)
+      /* try to coerce insert_values into types indicated by insert_attributes. A remote target with its columns,
+       * in the derived dblink table shape, gets its values coerced, as a local target's are. */
+      if (node && node->info.merge.into && (node->info.merge.into->info.spec.remote_server_name == NULL
+					    || PT_SPEC_IS_DERIVED (node->info.merge.into)))
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
@@ -12777,6 +12779,72 @@ pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
 }
 
 /*
+ * pt_dblink_dml_target_as_derived () - Give a remote DML target the derived dblink table shape a remote SELECT
+ *   spec has, so that name resolution fetches its columns from the remote and binds names to them.
+ *   return: NO_ERROR, or ER_FAILED with no parser error set
+ *   parser(in): parser context
+ *   spec(in/out): the target spec, its connection info resolved
+ *
+ * Note: The PT_DBLINK_TABLE_DML node stays in remote_server_name. db_vdb.c skips mq_translate for a remote DML
+ *   and the sink dispatch finds the statement by it. All the visible columns are fetched, with
+ *   "SELECT * FROM <table>", so an invisible column is not found.
+ */
+static int
+pt_dblink_dml_target_as_derived (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  PT_NODE *dml = spec->info.spec.remote_server_name;
+  PT_NODE *entity = spec->info.spec.entity_name;
+  PT_NODE *tbl, *range_var, *star;
+  PT_DBLINK_INFO *info;
+
+  if (dml == NULL || dml->node_type != PT_DBLINK_TABLE_DML || entity == NULL || dml->info.dblink_table.url == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  tbl = parser_new_node (parser, PT_DBLINK_TABLE);
+  range_var = parser_new_node (parser, PT_NAME);
+  star = parser_new_node (parser, PT_NAME);
+  if (tbl == NULL || range_var == NULL || star == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  info = &tbl->info.dblink_table;
+  info->remote_table_name = NULL;
+  if (entity->info.name.resolved != NULL)
+    {
+      info->remote_table_name = pt_append_string (parser, info->remote_table_name, entity->info.name.resolved);
+      info->remote_table_name = pt_append_string (parser, info->remote_table_name, ".");
+    }
+  info->remote_table_name = pt_append_string (parser, info->remote_table_name, entity->info.name.original);
+
+  info->is_name = true;
+  info->conn = dml->info.dblink_table.conn;
+  info->owner_name = dml->info.dblink_table.owner_name;
+  info->url = dml->info.dblink_table.url;
+  info->user = dml->info.dblink_table.user;
+  info->pwd = dml->info.dblink_table.pwd;
+  info->cols = NULL;
+
+  star->type_enum = PT_TYPE_STAR;
+  info->sel_list = star;
+
+  range_var->info.name.original = (spec->info.spec.range_var != NULL)
+    ? spec->info.spec.range_var->info.name.original : entity->info.name.original;
+
+  /* pt_remake_dblink_select_list () reads the name and the alias from qstr */
+  info->qstr = entity;
+  entity->next = spec->info.spec.range_var;
+  spec->info.spec.entity_name = NULL;
+  spec->info.spec.range_var = range_var;
+  spec->info.spec.derived_table = tbl;
+  spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+
+  return NO_ERROR;
+}
+
+/*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
  *   parser(in): the parser context
@@ -12876,6 +12944,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
+	      bool resolve_whole = false;
+
 	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
 	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
 	       * breaks out of the normal query semantic check below, so the subquery is never processed
@@ -13027,7 +13097,29 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			}
 		    }
 		}
-	      break;
+	      else if (node->node_type == PT_MERGE)
+		{
+		  /* A remote MERGE with a local source binds source columns per row, and they are spread over its
+		   * clauses. They are resolved with the target's columns in scope, as a local MERGE resolves them: the
+		   * target takes its columns and the statement goes on to the steps below. A target already in that
+		   * shape is a statement checked again. */
+		  PT_NODE *remote = node->info.merge.into->info.spec.remote_server_name;
+
+		  if (remote->node_type == PT_DBLINK_TABLE_DML && remote->info.dblink_table.qstr == NULL)
+		    {
+		      if (!PT_SPEC_IS_DERIVED (node->info.merge.into)
+			  && pt_dblink_dml_target_as_derived (parser, node->info.merge.into) != NO_ERROR)
+			{
+			  PT_INTERNAL_ERROR (parser, "remote MERGE: failed to take the target's columns");
+			  break;
+			}
+		      resolve_whole = true;
+		    }
+		}
+	      if (!resolve_whole)
+		{
+		  break;
+		}
 	    }
 	}
 
@@ -15632,7 +15724,8 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
   else if (stmt->node_type == PT_MERGE)
     {
-      if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
+      if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name
+	  && !PT_SPEC_IS_DERIVED (stmt->info.merge.into))
 	{
 	  assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 	  return stmt;
