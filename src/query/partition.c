@@ -2516,6 +2516,8 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      pinfo->error_code = ER_FAILED;
 	      goto cleanup;
 	    }
+	  /* new_collection_val owns it from here: every goto cleanup frees it */
+	  db_make_collection (&new_collection_val, new_collection);
 
 	  for (int i = 0; i < size; i++)
 	    {
@@ -2571,12 +2573,6 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		      goto cleanup;
 		    }
 		}
-	    }
-
-	  if (db_make_collection (&new_collection_val, new_collection) != NO_ERROR)
-	    {
-	      pinfo->error_code = ER_FAILED;
-	      goto cleanup;
 	    }
 
 	  /* values of the partition expression: the partition key's domain */
