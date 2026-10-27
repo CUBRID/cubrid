@@ -576,7 +576,8 @@ mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_SELECT (node))
+  /* a set operation is a scope of its own as well; its operands are one level deeper (see mq_bump_corr_post) */
+  if (!PT_IS_QUERY_NODE_TYPE (node->node_type))
     return node;
 
   /* Can not increment threshold for list portion of walk. Since those queries are not sub-queries of this query.
