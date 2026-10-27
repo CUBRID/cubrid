@@ -2494,9 +2494,8 @@ la_unfix_page_buffer (LA_CACHE_BUFFER * cache_buffer)
  *   pageid(in): page id the buffer was fixed for; used when cache_buffer is NULL
  *
  * Note:
- *   Each fix the thread takes adds an entry for the buffer and its page id to that list. When the same
- *   buffer was fixed more than once, the most recently added entry is taken off, so nested fixes are
- *   released in reverse order.
+ *   Each fix the thread takes adds an entry for the buffer and its page id to that list. The list is searched
+ *   from its end and the first matching entry is taken off; the last entry moves into its place.
  */
 static LA_CACHE_BUFFER *
 la_unpin_page_buffer (const LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid)
@@ -2645,9 +2644,8 @@ la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to)
 	  continue;
 	}
 
-      /* Coordinator and workers share this cache. Never invalidate a page that
-       * is still fixed by another thread; it must be released through the
-       * normal la_release_page_buffer() path. */
+      /* Coordinator and workers share this cache, so a page a thread still has fixed is left in place until
+       * that thread releases it. */
       if (cache_buffer->fix_count > 0)
 	{
 	  continue;
@@ -2692,9 +2690,9 @@ la_lower_lsa_by_pending_task (const LA_TASK * task, void *arg)
 }
 
 /*
- * la_find_required_lsa() - Find out the lowest required page ID
- *   return: NO_ERROR or error code
- *   required_lsa(in/out) : lowest required LSA
+ * la_find_required_lsa() - find the lowest log position a worker may still have to read
+ *   return: NO_ERROR
+ *   required_lsa(out): that position, or final_lsa when nothing is being read or applied
  *
  * Note:
  *   required_lsa is the lowest log position a worker may still have to read. The repl_lists slots give the
@@ -2743,7 +2741,8 @@ la_find_required_lsa (LOG_LSA * required_lsa)
   if (!LSA_ISNULL (&task_lowest) && (LSA_ISNULL (&slot_lowest) || LSA_LT (&task_lowest, &slot_lowest))
       && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
     {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator required_lsa held by unretired task at %lld|%d (slots from %lld|%d)\n",
+      _er_log_debug (ARG_FILE_LINE,
+		     "[WSET] coordinator required_lsa held by unretired task at %lld|%d (slots from %lld|%d)\n",
 		     (long long) task_lowest.pageid, (int) task_lowest.offset, (long long) slot_lowest.pageid,
 		     (int) slot_lowest.offset);
     }
@@ -2994,8 +2993,9 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
  *   return: NO_ERROR or error code
  *
  * Note:
- *   The coordinator stores max_committed_lsa before it dispatches a commit above it (see
+ *   The coordinator stores max_committed_lsa before it puts a commit above it on the task queue (see
  *   la_coordinator_cover_commit), so no transaction above it was committed on the slave by the previous
+ *   run. The value is also kept as recovery_boundary_lsa, the end of the restart recovery range for this
  *   run. NULL when nothing was stored, which makes the range empty.
  */
 static int
@@ -6575,7 +6575,8 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
 	  string_buffer sb;
 
 	  db_sprint_value (la_get_item_pk_value (item), sb);
-	  _er_log_debug (ARG_FILE_LINE, "[WSET] worker skip update without log position worker=%zu class=%s pk=%.255s\n",
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[WSET] worker skip update without log position worker=%zu class=%s pk=%.255s\n",
 			 (size_t) context->worker_idx, item->class_name, sb.get_buffer ());
 	}
 
@@ -10252,8 +10253,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      break;
 	    }
 
-	  /* Drop only unused future pages from the shared cache.
-	   * Fixed pages are left intact until their owners release them. */
+	  /* The page to read next and those after it may still be written by copylogdb: drop their cached copies so
+	   * they are read again from disk. A page a worker still has fixed stays until the worker releases it. */
 	  la_decache_page_buffers (la_Info.final_lsa.pageid, LOGPAGEID_MAX);
 
 	  /* Workers fetch log pages under the cache mutex, and a fetch re-reads the copied log header in place and
