@@ -40,6 +40,7 @@ set(SA_MODE_TESTS
   test_oos_reference_errors
   test_byte_span_writer
   test_oos_tde_gate
+  test_oos_boundaries
   test_oos_workspace
 )
 
@@ -203,6 +204,8 @@ set_tests_properties(test_oos_storage_format_guard
 # Register SA_MODE tests
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos_boundaries COMMAND test_oos_boundaries)
+set_tests_properties(test_oos_boundaries PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
 # identity stamp contract: insert issues it, reads verify it, deletes require it (CBRD-26950).
 add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
