@@ -37,6 +37,7 @@ set(SA_MODE_TESTS
   test_oos_bestspace
   test_oos_growth_sweep
   test_oos_record_flags
+  test_oos_reference_errors
   test_byte_span_writer
   test_oos_tde_gate
   test_oos_boundaries
@@ -49,6 +50,14 @@ foreach(test_name ${SA_MODE_TESTS})
   target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SA_MODE)
   target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
 endforeach()
+
+# Native SQL-log cache/decoder lifetime tests require neither a database nor WAL replay.
+add_executable(test_oos_sql_log_cache test_oos_sql_log_cache.cpp)
+target_link_libraries(test_oos_sql_log_cache PRIVATE ${EP_LIBS} cubridcs GTest::gtest)
+target_compile_definitions(test_oos_sql_log_cache PRIVATE ${COMMON_DEFS} CS_MODE)
+target_include_directories(test_oos_sql_log_cache PRIVATE ${TEST_INCLUDES})
+add_test(NAME test_oos_sql_log_cache COMMAND test_oos_sql_log_cache)
+set_tests_properties(test_oos_sql_log_cache PROPERTIES TIMEOUT 30)
 
 # =============================================================================
 # SERVER_MODE tests (linked to cubrid, in-process server with MVCC/threading)
@@ -71,6 +80,9 @@ endforeach()
 
 # =============================================================================
 # CTest fixture: auto-create unittestdb before OOS tests, delete it after
+#
+# Every fixture setup and cleanup below reads the shared databases.txt to decide ownership while
+# createdb/deletedb rewrite it in place, so they take one registry lock instead of running in parallel.
 # =============================================================================
 add_test(NAME oos_setup_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -79,7 +91,9 @@ add_test(NAME oos_setup_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_unittestdb.sh"
 )
-set_tests_properties(oos_setup_db PROPERTIES FIXTURES_SETUP OOS_DB)
+set_tests_properties(oos_setup_db
+  PROPERTIES FIXTURES_SETUP OOS_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY
+)
 
 add_test(NAME oos_cleanup_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -88,7 +102,15 @@ add_test(NAME oos_cleanup_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_unittestdb.sh"
 )
-set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
+set_tests_properties(oos_cleanup_db
+  PROPERTIES FIXTURES_CLEANUP OOS_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 30
+)
+
+# Script lifecycle regression uses a private sandbox utility, without a database fixture.
+add_test(NAME test_oos_fixture_lifecycle
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_unittestdb_lifecycle.sh"
+)
+set_tests_properties(test_oos_fixture_lifecycle PROPERTIES TIMEOUT 30)
 
 # =============================================================================
 # CTest fixtures: databases owned by a single binary
@@ -105,7 +127,9 @@ add_test(NAME oos_setup_no_logging_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosnologdb
 )
-set_tests_properties(oos_setup_no_logging_db PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB TIMEOUT 180)
+set_tests_properties(oos_setup_no_logging_db
+  PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
 
 add_test(NAME oos_cleanup_no_logging_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -114,7 +138,9 @@ add_test(NAME oos_cleanup_no_logging_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosnologdb
 )
-set_tests_properties(oos_cleanup_no_logging_db PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB TIMEOUT 60)
+set_tests_properties(oos_cleanup_no_logging_db
+  PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
 
 add_test(NAME oos_setup_recovery_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -123,7 +149,9 @@ add_test(NAME oos_setup_recovery_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosrecoverydb
 )
-set_tests_properties(oos_setup_recovery_db PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB TIMEOUT 180)
+set_tests_properties(oos_setup_recovery_db
+  PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
 
 add_test(NAME oos_cleanup_recovery_db
   COMMAND ${CMAKE_COMMAND} -E env
@@ -132,7 +160,45 @@ add_test(NAME oos_cleanup_recovery_db
     "PATH=$ENV{PATH}"
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosrecoverydb
 )
-set_tests_properties(oos_cleanup_recovery_db PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB TIMEOUT 60)
+set_tests_properties(oos_cleanup_recovery_db
+  PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
+# The storage format guard test patches the volume header of its own database and leaves it refused, so that
+# this cleanup proves deletedb still removes a database that boot refuses.
+add_test(NAME oos_setup_format_guard_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosformatdb
+)
+set_tests_properties(oos_setup_format_guard_db
+  PROPERTIES FIXTURES_SETUP OOS_FORMAT_GUARD_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
+
+add_test(NAME oos_cleanup_format_guard_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosformatdb
+)
+set_tests_properties(oos_cleanup_format_guard_db
+  PROPERTIES FIXTURES_CLEANUP OOS_FORMAT_GUARD_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
+# Boot refuses a database whose volume header lacks this build's storage format stamp (pre-OOS 11.5 builds).
+add_test(NAME test_oos_storage_format_guard
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_storage_format_guard.sh" oosformatdb
+)
+set_tests_properties(test_oos_storage_format_guard
+  PROPERTIES FIXTURES_REQUIRED OOS_FORMAT_GUARD_DB TIMEOUT 120
+)
 
 # =============================================================================
 # Register SA_MODE tests
@@ -159,6 +225,9 @@ add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 add_test(NAME test_oos_growth_sweep COMMAND test_oos_growth_sweep)
 # pure-logic test for separating record metadata from MVCC lifecycle flags.
 add_test(NAME test_oos_record_flags COMMAND test_oos_record_flags)
+# Allocation failures are simulated within this binary; it needs no database fixture.
+add_test(NAME test_oos_reference_errors COMMAND test_oos_reference_errors)
+set_tests_properties(test_oos_reference_errors PROPERTIES TIMEOUT 30)
 # pure-logic test for the bounded writer used by oos_read; no DB fixture.
 add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
 # pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
@@ -166,13 +235,13 @@ add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
 
 set_tests_properties(
   test_oos_delete test_oos_remove_file test_oos_bestspace test_oos_growth_sweep
-  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 30
 )
 # Error-path cases pay for an error-stack dump each in debug builds: test_oos_identity_stamp runs 22 to 39 s
 # alone and test_oos has exceeded 30 s under full-suite load. test_oos_eager_diagnostics runs real heap DML
 # with page reclaim and relocation and measured 11 to 13 s; it shares the headroom for the same reason.
 set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics
-  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 60
 )
 
 # =============================================================================

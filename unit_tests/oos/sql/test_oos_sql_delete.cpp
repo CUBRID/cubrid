@@ -24,6 +24,7 @@
  */
 
 #include "test_oos_sql_common.hpp"
+#include "environment_variable.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -38,10 +39,141 @@ class OosSqlDelete : public ::testing::Test
     }
     void TearDown () override
     {
+      db_abort_transaction ();
       exec_sql ("DROP TABLE IF EXISTS t_oos_del");
       db_commit_transaction ();
     }
 };
+
+TEST_F (OosSqlDelete, DeleteIndexedOutlineValue)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_del (id INT PRIMARY KEY, "
+		       "v VARCHAR(80) STORAGE FORCE_OUTLINE)"), 0);
+  ASSERT_GE (exec_sql ("CREATE INDEX i_oos_del_v ON t_oos_del(v)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_del VALUES (1, 'abcdefghijklmnopqrstuvwxyz')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  ASSERT_GE (exec_sql ("DELETE FROM t_oos_del WHERE id = 1"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+
+  int count = -1;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'abcdefghijklmnopqrstuvwxyz' "
+			       "USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'abcdefghijklmnopqrstuvwxyz' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+
+  ASSERT_GE (exec_sql ("DELETE FROM t_oos_del WHERE id = 1"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'abcdefghijklmnopqrstuvwxyz' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+}
+
+TEST_F (OosSqlDelete, ReplaceIndexedOutlineValueAndRollback)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_del (id INT PRIMARY KEY, "
+		       "v VARCHAR(80) STORAGE FORCE_OUTLINE)"), 0);
+  ASSERT_GE (exec_sql ("CREATE INDEX i_oos_del_v ON t_oos_del(v)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_del VALUES (1, 'abcdefghijklmnopqrstuvwxyz')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  ASSERT_GE (exec_sql ("REPLACE INTO t_oos_del VALUES (1, 'zyxwvutsrqponmlkjihgfedcba')"), 0);
+  int count = -1;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE id = 1 "
+			       "AND v = 'zyxwvutsrqponmlkjihgfedcba' USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'abcdefghijklmnopqrstuvwxyz' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'zyxwvutsrqponmlkjihgfedcba' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE id = 1 "
+			       "AND v = 'abcdefghijklmnopqrstuvwxyz' USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'abcdefghijklmnopqrstuvwxyz' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'zyxwvutsrqponmlkjihgfedcba' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+
+  ASSERT_GE (exec_sql ("REPLACE INTO t_oos_del VALUES (1, 'zyxwvutsrqponmlkjihgfedcba')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE id = 1 "
+			       "AND v = 'zyxwvutsrqponmlkjihgfedcba' USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'abcdefghijklmnopqrstuvwxyz' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE v = 'zyxwvutsrqponmlkjihgfedcba' "
+			       "USING INDEX i_oos_del_v(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+}
+
+TEST_F (OosSqlDelete, DeleteOutlinePartitionKeyAfterInlineIndex)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_del (id INT, v VARCHAR(80) STORAGE FORCE_OUTLINE) "
+		       "PARTITION BY RANGE(v) (PARTITION p0 VALUES LESS THAN('m'), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("CREATE INDEX i_oos_del_id ON t_oos_del(id)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_del VALUES (1, 'abcdefghijklmnopqrstuvwxyz'), "
+		       "(2, 'zyxwvutsrqponmlkjihgfedcba')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  // The index only reads id. Query-cache invalidation then needs the old OOS partition key.
+  ASSERT_GE (exec_sql ("DELETE FROM t_oos_del WHERE id = 1"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  int count = -1;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del__p__p0 "
+			       "WHERE v = 'abcdefghijklmnopqrstuvwxyz' USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+
+  ASSERT_GE (exec_sql ("DELETE FROM t_oos_del WHERE id = 1"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del__p__p0 USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del__p__p1 "
+			       "WHERE v = 'zyxwvutsrqponmlkjihgfedcba' USING INDEX NONE", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del WHERE id = 1 "
+			       "USING INDEX i_oos_del_id(+)", &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+}
+
+TEST_F (OosSqlDelete, DeleteInlineIndexedAndOutlineUnindexedControls)
+{
+  for (bool indexed :
+       {
+	       true, false
+       })
+    {
+      ASSERT_GE (exec_sql (indexed ? "CREATE TABLE t_oos_del (v VARCHAR(80))"
+			   : "CREATE TABLE t_oos_del (v VARCHAR(80) STORAGE FORCE_OUTLINE)"), 0);
+      if (indexed)
+	{
+	  ASSERT_GE (exec_sql ("CREATE INDEX i_oos_del_v ON t_oos_del(v)"), 0);
+	}
+      ASSERT_GE (exec_sql ("INSERT INTO t_oos_del VALUES ('abcdefghijklmnopqrstuvwxyz')"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      ASSERT_GE (exec_sql ("DELETE FROM t_oos_del"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      int count = -1;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_del USING INDEX NONE", &count), NO_ERROR);
+      EXPECT_EQ (count, 0);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_del"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
 
 // TC-01: DELETE a single-chunk OOS record
 TEST_F (OosSqlDelete, DeleteSingleChunk)
@@ -295,6 +427,13 @@ int
 main (int argc, char **argv)
 {
   ::testing::InitGoogleTest (&argc, argv);
+  // Enable partition-key consumers in query-cache invalidation; defaults disable this path.
+  if (envvar_set ("MAX_QUERY_CACHE_ENTRIES", "16") != NO_ERROR
+      || envvar_set ("QUERY_CACHE_SIZE_IN_PAGES", "16") != NO_ERROR)
+    {
+      fprintf (stderr, "Cannot configure the query cache for OOS DELETE tests.\n");
+      return 1;
+    }
   ::testing::AddGlobalTestEnvironment (new SqlServerEnv ());
   return RUN_ALL_TESTS ();
 }

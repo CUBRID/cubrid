@@ -95,7 +95,8 @@ struct disk_volume_header
   INT64 vol_creation;		/* Volume creation time */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and multi volumes */
-  INT32 reserved0;		/* reserved area */
+  INT32 storage_format;		/* DISK_STORAGE_FORMAT_REVISION of the build that formatted the volume. Volumes
+				 * formatted before the stamp existed hold 0 here, which was the reserved area. */
   INT32 reserved1;		/* reserved area */
   INT32 reserved2;		/* reserved area */
   INT32 reserved3;		/* reserved area */
@@ -109,6 +110,10 @@ struct disk_volume_header
 				 * var_fields */
 
 };
+
+/* unit_tests/oos/scripts/test_storage_format_guard.sh rewrites the stamp at this file offset of volume 0 */
+static_assert (offsetof (FILEIO_PAGE, page) + offsetof (DISK_VOLUME_HEADER, storage_format) == 140,
+	       "storage_format moved in the volume header page");
 
 typedef struct disk_recv_link_perm_volume DISK_RECV_LINK_PERM_VOLUME;
 struct disk_recv_link_perm_volume
@@ -609,7 +614,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   vhdr->db_charset = lang_charset ();
   vhdr->hint_allocsect = NULL_SECTID;
   vhdr->dummy1 = vhdr->dummy2 = 0;	/* alignment. You may use it. */
-  vhdr->reserved0 = vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
+  vhdr->storage_format = DISK_STORAGE_FORMAT_REVISION;
+  vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
 
   /* set sector table info in volume header */
   disk_volume_header_set_stab (vol_purpose, vhdr);
@@ -3154,6 +3160,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
+  (void) fprintf (fp, " storage_format = %d\n", vhdr->storage_format);
 }
 
 /*
@@ -5921,6 +5928,44 @@ disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * d
   *db_charset = (INTL_CODESET) vhdr->db_charset;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
+
+  return NO_ERROR;
+}
+
+/*
+ * disk_check_storage_format () - Reject a volume formatted with another storage format
+ *   return: NO_ERROR or ER_BO_INCOMPATIBLE_STORAGE_FORMAT
+ *   volid(in): Permanent volume identifier
+ *
+ * Note: Unreleased builds of one disk compatibility level can still change the storage format. Their databases
+ *       must be recreated, and this check makes boot refuse them before any other page is read or recovered.
+ */
+int
+disk_check_storage_format (THREAD_ENTRY * thread_p, INT16 volid)
+{
+  DISK_VOLUME_HEADER *vhdr;
+  PAGE_PTR pgptr = NULL;
+  INT32 storage_format;
+
+  int error_code = NO_ERROR;
+
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  storage_format = vhdr->storage_format;
+
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  if (storage_format != DISK_STORAGE_FORMAT_REVISION)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_INCOMPATIBLE_STORAGE_FORMAT, 2, storage_format,
+	      DISK_STORAGE_FORMAT_REVISION);
+      return ER_BO_INCOMPATIBLE_STORAGE_FORMAT;
+    }
 
   return NO_ERROR;
 }

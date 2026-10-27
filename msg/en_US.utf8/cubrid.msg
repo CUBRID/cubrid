@@ -1508,7 +1508,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1391 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
 
-1392 Last Error
+1392 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
+
+1393 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

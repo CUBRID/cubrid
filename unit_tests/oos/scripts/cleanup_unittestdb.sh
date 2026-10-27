@@ -23,9 +23,10 @@ source "$script_dir/oos_db_common.sh"
 
 oos_require_env
 
-cubrid server stop "$OOS_UNITTESTDB_NAME" 2>/dev/null || true
-if oos_database_exists "$OOS_UNITTESTDB_NAME"; then
+if oos_database_owned "$OOS_UNITTESTDB_NAME"; then
+  cubrid server stop "$OOS_UNITTESTDB_NAME" 2>/dev/null || true
   cubrid deletedb "$OOS_UNITTESTDB_NAME"
+  rm -f "$(oos_database_receipt "$OOS_UNITTESTDB_NAME")"
 fi
 
 oos_remove_fixture_sections "$(oos_cubrid_conf)"

@@ -1798,7 +1798,9 @@
 
 #define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1391
 
-#define ER_LAST_ERROR                               -1392
+#define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1392
+
+#define ER_LAST_ERROR                               -1393
 
 
 /*
