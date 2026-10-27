@@ -487,6 +487,9 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
   req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_CLONES];
+  req_p->processing_function = sqmgr_drop_query_clones;
+
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
 
@@ -749,6 +752,14 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
   req_p->processing_function = scdc_end_session;
+
+  /* the CDC channel authenticates itself with these two, so they run before any
+   * authorization state exists on the connection */
+  req_p = &net_Requests[NET_SERVER_CDC_AUTH_CHALLENGE];
+  req_p->processing_function = scdc_auth_challenge;
+
+  req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
+  req_p->processing_function = scdc_auth_response;
 
   /* flashback */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];

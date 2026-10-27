@@ -138,6 +138,7 @@ struct tr_activity
   void *parser;			/* parser for statement */
   void *statement;		/* PT_NODE* of statement */
   int exec_cnt;			/* number of executions */
+  int in_use;			/* executions in progress */
 };
 
 /*
