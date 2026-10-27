@@ -993,9 +993,13 @@ std::string
 sm_define_view_auth_spec (void)
 {
   char stmt [4096];
+  char system_object_when_clauses [256];
+
+  int n = au_make_system_object_when_clauses (system_object_when_clauses, sizeof (system_object_when_clauses));
+  assert (n > 0);
 
   // *INDENT-OFF*
-  int n = snprintf (stmt, sizeof(stmt),
+  n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[a].[grantor].[name] AS [grantor_name], "
 	  "[a].[grantee].[name] AS [grantee_name], "
@@ -1050,6 +1054,35 @@ sm_define_view_auth_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") SETNEQ {}"
+	  ") "
+   "UNION ALL "
+        "SELECT "
+	  "[a].[grantor].[name] AS [grantor_name], "
+	  "[a].[grantee].[name] AS [grantee_name], "
+          /* au_make_system_object_when_clauses () */
+          "CASE [a].[object_type] %s END AS [object_type], "
+          "NULL AS [object_name], "
+          "'DBA' AS [owner_name], "
+          "[a].[auth_type] AS [auth_type], "
+          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
+          "[a].[created_time] AS [created_time], "
+          "[a].[updated_time] AS [updated_time] "
+        "FROM "
+          /* CT_CLASSAUTH_NAME */
+	  "[%s] AS [a] "
+	"WHERE "
+          "[a].[object_of] IS NULL "
+          "AND [a].[object_type] >= 100 "
+          "AND ( "
+	  "{'DBA', 'CUB_SELECT_CATALOG', [a].[grantee].[name]} * ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") SETNEQ {}"
 	  ") ",
 	CT_CLASSAUTH_NAME,
         CT_CLASS_NAME,
@@ -1057,6 +1090,10 @@ sm_define_view_auth_spec (void)
 
         CT_CLASSAUTH_NAME,
         CT_STORED_PROC_NAME,
+	AU_USER_CLASS_NAME,
+
+        system_object_when_clauses,
+        CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME
         );
   // *INDENT-ON*

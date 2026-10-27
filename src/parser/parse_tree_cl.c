@@ -327,6 +327,7 @@ static PT_NODE *pt_init_name (PT_NODE * p);
 static PT_NODE *pt_init_node_list (PT_NODE * p);
 static PT_NODE *pt_init_pointer (PT_NODE * node);
 static PT_NODE *pt_init_resolution (PT_NODE * p);
+static PT_NODE *pt_init_revoke (PT_NODE * p);
 static PT_NODE *pt_init_select (PT_NODE * p);
 static PT_NODE *pt_init_showstmt (PT_NODE * p);
 static PT_NODE *pt_init_sort_spec (PT_NODE * p);
@@ -5586,7 +5587,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_RENAME] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_TRIGGER] = pt_init_func_null_function;
   pt_init_func_array[PT_RESOLUTION] = pt_init_resolution;
-  pt_init_func_array[PT_REVOKE] = pt_init_func_null_function;
+  pt_init_func_array[PT_REVOKE] = pt_init_revoke;
   pt_init_func_array[PT_ROLLBACK_WORK] = pt_init_func_null_function;
   pt_init_func_array[PT_SAVEPOINT] = pt_init_func_null_function;
   pt_init_func_array[PT_SCOPE] = pt_init_func_null_function;
@@ -13428,6 +13429,7 @@ static PT_NODE *
 pt_init_grant (PT_NODE * p)
 {
   p->info.grant.grant_option = (PT_MISC_TYPE) 0;
+  p->info.grant.system_object = DB_OBJECT_UNKNOWN;
 
   return (p);
 }
@@ -13453,7 +13455,14 @@ pt_print_grant (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, "grant ");
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " on ");
-  q = pt_append_varchar (parser, q, r2);
+  if (p->info.grant.system_object != DB_OBJECT_UNKNOWN)
+    {
+      q = pt_append_nulstring (parser, q, au_find_system_object (p->info.grant.system_object)->name);
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r2);
+    }
   q = pt_append_nulstring (parser, q, " to ");
   q = pt_append_varchar (parser, q, r3);
 
@@ -14697,6 +14706,19 @@ pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 /*
+ * pt_init_revoke () -
+ *   return:
+ *   p(in):
+ */
+static PT_NODE *
+pt_init_revoke (PT_NODE * p)
+{
+  p->info.revoke.system_object = DB_OBJECT_UNKNOWN;
+
+  return (p);
+}
+
+/*
  * pt_print_revoke () -
  *   return:
  *   parser(in):
@@ -14717,7 +14739,14 @@ pt_print_revoke (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, "revoke ");
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " on ");
-  q = pt_append_varchar (parser, q, r2);
+  if (p->info.revoke.system_object != DB_OBJECT_UNKNOWN)
+    {
+      q = pt_append_nulstring (parser, q, au_find_system_object (p->info.revoke.system_object)->name);
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r2);
+    }
   q = pt_append_nulstring (parser, q, " from ");
   q = pt_append_varchar (parser, q, r3);
 
