@@ -3359,9 +3359,11 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
 	  rc = eb_decline (&b, "the recursion limit reaches the expressions");
 	}
     }
-  if (rc == NO_ERROR && in->agg_list == NULL && plan->n_raw_kids == 0 && plan->proj_prog == NULL)
+  if (rc == NO_ERROR && in->agg_list == NULL && plan->n_raw_kids == 0 && plan->rtf == NULL && plan->proj_prog == NULL)
     {
-      /* a projection gains from a filter the batch runs as arrays, or from its program run as vectors */
+      /* a projection gains from a filter term the batch runs as arrays -- a raw leaf, or the runtime filter's
+       * lookup (eb_build_rtf_leaf ()), whose dropped rows leave before any column but the key is read -- or from
+       * its program run as vectors */
       rc = eb_decline (&b, "no filter term the batch runs as arrays");
     }
   if (rc == NO_ERROR && plan->n_cols == 0 && plan->n_kids > 0 && plan->n_shared_used == 0 && plan->n_proj_vec == 0)
