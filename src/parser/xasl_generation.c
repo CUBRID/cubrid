@@ -402,11 +402,12 @@ static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIM
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static const TP_DOMAIN *pt_key_element_domain (const REGU_VARIABLE * regu);
-static bool pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column);
-static int pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
-				  const TP_DOMAIN ** written, bool * kept);
-static int pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN ** written_domain);
-static int pt_decide_index_keys (INDX_INFO * indx_infop);
+static bool pt_convert_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column);
+static int pt_decide_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column,
+				  bool midxkey, const TP_DOMAIN ** written, bool * kept);
+static int pt_decide_key_bound (PARSER_CONTEXT * parser, INDX_INFO * indx_infop, REGU_VARIABLE * bound,
+				TP_DOMAIN ** written_domain);
+static int pt_decide_index_keys (PARSER_CONTEXT * parser, INDX_INFO * indx_infop);
 static int pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, DOMAIN_COMPARE * decided);
 static int pt_decide_key_compares (INDX_INFO * indx_infop);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
@@ -14111,7 +14112,7 @@ pt_key_element_domain (const REGU_VARIABLE * regu)
  *   return: false where the element keeps its value - a list column read into its slot, or a regu that converts already
  */
 static bool
-pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
+pt_convert_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column)
 {
   if (regu->type == TYPE_DBVAL)
     {
@@ -14119,8 +14120,10 @@ pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
       db_make_null (&converted);
       if (tp_value_coerce (&regu->value.dbval, &converted, column) == DOMAIN_COMPATIBLE)
 	{
-	  pr_clear_value (&regu->value.dbval);
+	  /* the old value is a parser orphan (pt_make_regu_constant registered a copy of it), freed with the
+	   * statement; the converted one is registered the same way */
 	  regu->value.dbval = converted;
+	  pt_register_orphan_db_value (parser, &regu->value.dbval);
 	  regu->domain = (TP_DOMAIN *) column;
 	  return true;
 	}
@@ -14150,7 +14153,7 @@ pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
  *   kept(out): the column keeps its value's own domain
  */
 static int
-pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
+pt_decide_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
 		       const TP_DOMAIN ** written, bool * kept)
 {
   *written = column;
@@ -14183,7 +14186,7 @@ pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midx
 	  error = pt_decide_key_compare (compare.target[0], column, &converted);
 	  if (error == NO_ERROR && converted.conv[0] == NULL && converted.collation == compare.collation
 	      && compare.codeset_side < 0 && converted.codeset_side < 0
-	      && pt_convert_key_element (regu, compare.target[0]))
+	      && pt_convert_key_element (parser, regu, compare.target[0]))
 	    {
 	      element = compare.target[0];
 	      rule =
@@ -14210,7 +14213,7 @@ pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midx
 	{
 	  return ER_FAILED;
 	}
-      if (pt_convert_key_element (regu, target))
+      if (pt_convert_key_element (parser, regu, target))
 	{
 	  return NO_ERROR;
 	}
@@ -14228,7 +14231,8 @@ pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midx
  *   written_domain(out): that domain; NULL for a key written with the index's
  */
 static int
-pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN ** written_domain)
+pt_decide_key_bound (PARSER_CONTEXT * parser, INDX_INFO * indx_infop, REGU_VARIABLE * bound,
+		     TP_DOMAIN ** written_domain)
 {
   const TP_DOMAIN *key_type = indx_infop->key_type;
   const TP_DOMAIN *written;
@@ -14242,7 +14246,7 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
   if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
     {
       /* a single-column key takes its value as it is or converted, under no key domain of its own */
-      return pt_decide_key_element (bound, key_type, false, &written, &kept);
+      return pt_decide_key_element (parser, bound, key_type, false, &written, &kept);
     }
 
   assert (bound->type == TYPE_FUNC && bound->value.funcp->ftype == F_MIDXKEY);
@@ -14258,7 +14262,7 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
 	  /* an index skip scan's first column is the skip value, read from the index */
 	  if (!(indx_infop->use_iss && operand == first))
 	    {
-	      error = pt_decide_key_element (&operand->value, column, true, &written, &kept);
+	      error = pt_decide_key_element (parser, &operand->value, column, true, &written, &kept);
 	      mixed = mixed || kept;
 	    }
 	  operand = operand->next;
@@ -14306,13 +14310,13 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
  *   skip scan's fetch range is the skip value alone, written with the index's domain
  */
 static int
-pt_decide_index_keys (INDX_INFO * indx_infop)
+pt_decide_index_keys (PARSER_CONTEXT * parser, INDX_INFO * indx_infop)
 {
   KEY_INFO *key_infop = &indx_infop->key_info;
   for (int i = 0; i < key_infop->key_cnt; i++)
     {
       KEY_RANGE *range = &key_infop->key_ranges[i];
-      if (pt_decide_key_bound (indx_infop, range->key1, &range->key1_domain) != NO_ERROR)
+      if (pt_decide_key_bound (parser, indx_infop, range->key1, &range->key1_domain) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -14320,7 +14324,7 @@ pt_decide_index_keys (INDX_INFO * indx_infop)
 	{
 	  range->key2_domain = range->key1_domain;
 	}
-      else if (pt_decide_key_bound (indx_infop, range->key2, &range->key2_domain) != NO_ERROR)
+      else if (pt_decide_key_bound (parser, indx_infop, range->key2, &range->key2_domain) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -15030,7 +15034,7 @@ end:
 	  return NULL;
 	}
     }
-  if (pt_decide_index_keys (indx_infop) != NO_ERROR)
+  if (pt_decide_index_keys (parser, indx_infop) != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "index plan generation - search key domains");
       return NULL;
