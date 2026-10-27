@@ -787,6 +787,8 @@ la_coordinator_cover_commit (const LA_TASK * task)
 {
   int error;
 
+  assert (task != NULL);
+
   /* the slot alone does not mean there is something to re-apply: la_log_record_process opens a slot at the
    * first record of every transaction, including a peer applier's apply-info update that carries no item */
   if (!task->has_items)
@@ -824,9 +826,13 @@ la_coordinator_cover_commit (const LA_TASK * task)
 static int
 la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status)
 {
-  LA_TASK task = *task_in;
+  LA_TASK task;
   UINT64 dispatch_seq = 0;
   int error;
+
+  assert (task_in != NULL);
+
+  task = *task_in;
 
   /* Every applier on this node writes to the same database, and only the one holding the dbname lock may write.
    * The coordinator takes it here, before a task that writes is put on the task queue; the workers never take it.
@@ -2478,6 +2484,7 @@ la_get_page (LOG_PAGEID pageid)
 static void
 la_unfix_page_buffer (LA_CACHE_BUFFER * cache_buffer)
 {
+  assert (cache_buffer != NULL);
   assert (cache_buffer->fix_count > 0);
 
   if (cache_buffer->fix_count > 0)
@@ -2566,6 +2573,9 @@ la_release_pinned_page_buffers (const LA_CACHE_BUFFER * keep)
 
   if (la_Pinned_page_buffer_count == 0)
     {
+      /* keep is the page the coordinator is reading, fixed before the record was processed */
+      assert (keep == NULL);
+
       return;
     }
 
@@ -2710,6 +2720,8 @@ la_find_required_lsa (LOG_LSA * required_lsa)
   LOG_LSA task_lowest;
   LOG_LSA lowest_lsa;
   LA_INFLIGHT_ENTRY *entry;
+
+  assert (required_lsa != NULL);
 
   LSA_SET_NULL (&slot_lowest);
   LSA_SET_NULL (&task_lowest);
@@ -7621,6 +7633,8 @@ la_coordinator_submit_task (LA_TASK * task)
   LOG_LSA label;
   int error;
 
+  assert (task != NULL);
+
   error = la_coordinator_wait_for_commit_order_slot ();
   if (error != NO_ERROR)
     {
@@ -7704,6 +7718,8 @@ static int
 la_coordinator_run_alone (LA_TASK * task)
 {
   int error;
+
+  assert (task != NULL);
 
   do
     {
