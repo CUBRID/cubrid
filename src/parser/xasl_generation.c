@@ -7144,9 +7144,10 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
  *
  * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
- * comparison's type). A NUMERIC pair with a floating side, or whose common domain is floating, has none: a floating
- * NUMERIC hashes a value normalized and a fixed one its scaled digits, and a floating key can hold fixed values (a
- * CONNECT BY PRIOR column), while a DOUBLE holds only 15 digits exactly.
+ * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE: a floating NUMERIC hashes a value
+ * normalized and a fixed one its scaled digits, and a floating key can hold fixed values (a CONNECT BY PRIOR column),
+ * while numbers the comparison finds equal are one DOUBLE up to 15 digits. Two fixed NUMERICs whose common domain is
+ * floating have none.
  */
 static bool
 pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
@@ -7185,9 +7186,14 @@ pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, co
     }
   if (TP_DOMAIN_TYPE (*common) == DB_TYPE_NUMERIC && (floating || (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION))
     {
-      /* a DOUBLE rounds a NUMERIC twice (the coefficient, then 10^scale): equal values of two scales can hash apart */
-      *common = NULL;
-      return false;
+      if (!floating)
+	{
+	  /* two fixed NUMERICs beyond 38 digits together: a DOUBLE rounds a value twice (the coefficient, then
+	   * 10^scale), so equal values of the two scales could hash apart */
+	  *common = NULL;
+	  return false;
+	}
+      *common = tp_domain_resolve_default (DB_TYPE_DOUBLE);
     }
   return true;
 }
