@@ -94,6 +94,7 @@ extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
 extern int mht_compare_logpageids_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ptrs_are_equal (const void *key1, const void *key2);
 extern int mht_compare_dbvalues_are_equal (const void *key1, const void *key2);
+extern int mht_compare_dbvalues_are_identical (const void *key1, const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
