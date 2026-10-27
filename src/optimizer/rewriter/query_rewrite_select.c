@@ -4251,11 +4251,12 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 }
 
 /*
- * qo_hq_string_cast_walker () - detects a cast of a string to a non-string
- *   type, which fails on a value that is not of that type
+ * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot
+ *   convert: any cast written in the query, or a cast the compiler wrapped
+ *   from a string to another type (its other wrapped casts only widen)
  */
 static PT_NODE *
-qo_hq_string_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   bool *found = (bool *) arg;
 
@@ -4263,8 +4264,10 @@ qo_hq_string_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
     {
       *continue_walk = PT_LIST_WALK;
     }
-  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST) && node->info.expr.arg1 != NULL
-	   && PT_IS_CHAR_STRING_TYPE (node->info.expr.arg1->type_enum) && !PT_IS_CHAR_STRING_TYPE (node->type_enum))
+  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST)
+	   && (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP)
+	       || (node->info.expr.arg1 != NULL && PT_IS_CHAR_STRING_TYPE (node->info.expr.arg1->type_enum)
+		   && !PT_IS_CHAR_STRING_TYPE (node->type_enum))))
     {
       *found = true;
       *continue_walk = PT_STOP_WALK;
@@ -4278,9 +4281,8 @@ qo_hq_string_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
  *   the hash list scan, can give a result other than the single-table plan
  * Note: a JSON key is hashed by its text, so JSON values that compare equal
  *       ('1.0' and '"1"' against '1') can hash apart. The build key is
- *       evaluated on every row, even one no parent reaches, so a string cast
- *       to another type there can fail where the single-table plan never
- *       evaluates it.
+ *       evaluated on every row, even one no parent reaches, so a cast there
+ *       can fail where the single-table plan never evaluates it.
  */
 static bool
 qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
@@ -4308,7 +4310,7 @@ qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
       return false;
     }
 
-  (void) parser_walk_tree (parser, c1.has_prior ? arg2 : arg1, qo_hq_string_cast_walker, &found, NULL, NULL);
+  (void) parser_walk_tree (parser, c1.has_prior ? arg2 : arg1, qo_hq_cast_walker, &found, NULL, NULL);
 
   return found;
 }
@@ -4356,8 +4358,8 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  *       grp = 7 or grp IN (7, 8). An expression over the column
  *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
  *       equality conjunct is unsafe as a hash key (see
- *       qo_hq_is_unsafe_hash_key): a JSON side, or a build side that casts a
- *       string to another type.
+ *       qo_hq_is_unsafe_hash_key): a JSON side, or a build side with a cast
+ *       that can fail.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
