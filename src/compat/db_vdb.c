@@ -86,6 +86,7 @@ static DB_SESSION *db_open_buffer_copy_local (const char *text, size_t len);
 static bool db_needs_bind_signature_plan (const DB_SESSION * session);
 static int db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values);
 static bool db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values);
+static bool db_keeps_signature_plan (const DB_SESSION * replaced);
 static bool db_compiles_at_execution (DB_SESSION * session, int stmt_ndx);
 static void db_swap_compilation (DB_SESSION * a, DB_SESSION * b);
 static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
@@ -2830,12 +2831,32 @@ db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values
 	{
 	  db_swap_compilation (session, plan);
 	  *link = plan->next;
-	  plan->next = session->signature_plans;
-	  session->signature_plans = plan;
+	  if (db_keeps_signature_plan (plan))
+	    {
+	      plan->next = session->signature_plans;
+	      session->signature_plans = plan;
+	    }
+	  else
+	    {
+	      plan->next = NULL;
+	      db_close_session_local (plan);
+	    }
 	  return true;
 	}
     }
   return false;
+}
+
+/*
+ * db_keeps_signature_plan () - CBRD-27583: whether the compilation a signature's plan replaced as the session's current
+ *   one is kept in signature_plans: it is the plan of its own signature - typed positions, a cacheable statement, made
+ *   while execution was not skipped (a level 514 compilation has no XASL)
+ */
+static bool
+db_keeps_signature_plan (const DB_SESSION * replaced)
+{
+  return replaced->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (replaced->parser)
+    && !replaced->statements[0]->flag.cannot_prepare && !replaced->parser->flag.plan_only_signature;
 }
 
 /*
@@ -3014,8 +3035,7 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
   }
 #endif
   db_swap_compilation (session, typed);
-  if (typed->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (typed->parser)
-      && !typed->statements[0]->flag.cannot_prepare && !typed->parser->flag.plan_only_signature)
+  if (db_keeps_signature_plan (typed))
     {
       /* the replaced compilation is the plan of its own signature: kept, the least recently used one beyond
        * DB_MAX_SIGNATURE_PLANS closed */
