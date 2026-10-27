@@ -69,19 +69,30 @@ server installations, changed process identity, and incorrect result counts or
 checksums. Raw SQL, stdout, stderr, counters, executable identity and retained
 samples remain in the artifact directory.
 
+Before executing SQL or starting counters, the harness resolves `csql` from
+`PATH` and checks that it resolves to `$CUBRID/bin/csql`. Put the selected
+installation's `bin` directory first in `PATH`; a client from another installation
+is rejected even when it can connect to the selected server. Every query uses
+that checked absolute executable path. The summary records the resolved CSQL
+path and its SHA-256 fingerprint alongside the server identity.
+
 ## Compare
 
 ```sh
 python3 bench.py compare --baseline /path/to/artifacts/base/summary.json \
-  --candidate /path/to/artifacts/report/summary.json
+  --candidate /path/to/artifacts/candidate/summary.json --max-overhead-percent 2
 ```
 
 Exit status is 0 for results within the supplied instruction budget, 1 for a
 detected regression, and 2 for invalid or inconclusive evidence. The initial
 diagnostic budget is 5% instructions; retained-sample spread above 2% makes the
-comparison inconclusive. These defaults help detect the reported 8–10% symptom;
-they are not an agreed final acceptance criterion. The command reports elapsed
-time but does not use it to judge CPU regression on a shared host.
+comparison inconclusive. The 5% default helps detect the reported 8–10% symptom.
+For final class 1 acceptance, explicitly supply the approved 2% budget shown
+above. Class 1 means actual ordinary heap records on both engines, with no
+overflow or OOS records; verify the storage path with native diagnostics. Classes
+2 (heap versus OOS), 3 (overflow versus OOS), and UPDATE performance require
+separate measurements and are not covered by this gate. The command reports
+elapsed time but does not use it to judge CPU regression on a shared host.
 
 Compare `current` separately. Inspect execution plans and buffer residency before
 attributing a reproduced difference to attribute decoding. Repeating a report's

@@ -61,10 +61,7 @@ def expected(rows):
     return {"narrow": (values,), "wide": (rows * (rows + 1) // 2, values, rows * 80)}
 
 
-def csql_command(database, sql):
-    executable = shutil.which("csql")
-    if not executable:
-        raise ValueError("csql is unavailable; select the matching built installation first")
+def csql_command(database, sql, executable):
     return [executable, "-C", "-u", "dba", "--no-pager", "-t", "-N", "-i", str(sql), database]
 
 
@@ -121,6 +118,13 @@ def measure(args):
     for name in ("CUBRID", "CUBRID_DATABASES", "CUBRID_CONF"):
         if environment.get(name.encode(), b"") != os.environ.get(name, "").encode():
             raise ValueError(f"server PID and client environment disagree on {name}")
+    executable = shutil.which("csql")
+    if not executable:
+        raise ValueError("csql is unavailable; select the matching built installation first")
+    client = Path(executable).resolve(strict=True)
+    if client != (install / "bin/csql").resolve(strict=True):
+        raise ValueError(f"csql executable {client} does not match selected CUBRID installation {install}; "
+                         f"put {install / 'bin'} first in PATH")
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     manifest = {
@@ -129,6 +133,7 @@ def measure(args):
         "fixture_sha256": hashlib.sha256(fixture(args.rows).encode()).hexdigest(),
         "harness_sha256": digest(__file__), "server": identity,
         "server_sha256": digest(identity["executable"]), "source": args.source,
+        "client": {"executable": str(client), "sha256": digest(client)},
         "affinity": sorted(os.sched_getaffinity(args.server_pid)),
         "environment": {name: os.environ.get(name) for name in
                         ("CUBRID", "CUBRID_CONF", "CUBRID_CONF_FILE", "CUBRID_DATABASES", "PRESET_MODE")},
@@ -142,7 +147,7 @@ def measure(args):
     save()
     validation = output / "validate.sql"
     validation.write_text("SELECT COUNT(*), MIN(id), MAX(id), SUM(LENGTH(payload)) FROM n;\n")
-    run(csql_command(args.database, validation), output / "validate", args.timeout)
+    run(csql_command(args.database, validation, str(client)), output / "validate", args.timeout)
     if results(output / "validate.stdout") != [(args.rows, 1, args.rows, args.rows * 80)]:
         raise ValueError("fixture validation failed; see validate.stdout")
     for case, sql in QUERIES.items():
@@ -154,7 +159,7 @@ def measure(args):
                 counter_file = prefix.with_suffix(".perf")
                 command = ["perf", "stat", "-x", ";", "-e", "instructions:u,cycles:u,task-clock",
                            "-p", str(args.server_pid), "-o", str(counter_file), "--"]
-                command += csql_command(args.database, output / f"{case}.sql")
+                command += csql_command(args.database, output / f"{case}.sql", str(client))
                 elapsed = run(command, prefix, args.timeout)
                 if process_identity(args.server_pid) != identity:
                     raise ValueError("server process changed during measurement")
