@@ -742,7 +742,7 @@ namespace memoize
     assert (sz == k2->m_values.size());
     for (size_t i = 0; i < sz; i++)
       {
-	if (!mht_compare_dbvalues_are_equal (&k1->m_values[i], &k2->m_values[i]))
+	if (!mht_compare_dbvalues_are_identical (&k1->m_values[i], &k2->m_values[i]))
 	  {
 	    return false;
 	  }
