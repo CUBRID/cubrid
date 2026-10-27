@@ -5703,8 +5703,8 @@ expr_batch_reset (EXPR_BATCH * batch)
 }
 
 /* The plan's per-scan state, so that the next scan it serves counts from nothing: the trace's pages, the pages
- * handed back, the last chunk's fallback cause, the per-chunk decode marks and the mask
- * depth.  What the plan learned of the class stays -- the representations it decodes (reprs, repids) and the ones
+ * handed back, the give-up those counts decided, the last chunk's fallback cause, the per-chunk decode marks and the
+ * mask depth (a give-up judged on one open's pages does not hold the next open to the row path with no cause shown).  What the plan learned of the class stays -- the representations it decodes (reprs, repids) and the ones
  * it rejected -- and so does what it built from the clone: the arena and the lines carved from it, the columns,
  * the vectors and their sources, the steps, the leaves, the keys, the shared values, the projection columns, the
  * compiled filter and the operand program.  The runtime filter is the execution's (expr_batch_plan_rebind ()). */
@@ -5715,6 +5715,7 @@ expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan)
 
   plan->pages = 0;
   plan->pages_fallback = 0;
+  plan->gave_up = false;
   plan->fallback_why = NULL;
   plan->mask_depth = 0;
   for (i = 0; i < plan->n_cols; i++)
