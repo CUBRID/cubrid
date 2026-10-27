@@ -2149,7 +2149,7 @@ fhs_connect_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int local_depth, F
 static FHS_RESULT
 fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p, TFTID * value_p)
 {
-  RECDES bucket_recdes;
+  RECDES bucket_recdes = RECDES_INITIALIZER;
   RECDES old_bucket_recdes;
 
   PGSLOTID slot_no, tmp_slot;
@@ -2175,8 +2175,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  /* insert new record into dk_bucket */
 	  if (fhs_insert_to_dk_bucket (thread_p, fhsid_p, &dk_bucket_vpid, key_p, value_p) != FHS_SUCCESSFUL_COMPLETION)
 	    {
-	      /* This should never happen. */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	  return FHS_SUCCESSFUL_COMPLETION;
@@ -2190,7 +2189,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 			&dk_bucket_page_p);
 	  if (success != NO_ERROR || dk_bucket_page_p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	  /* insert new record into dk_bucket */
@@ -2373,7 +2372,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
 		    &new_dk_bucket_page_p);
       if (success != NO_ERROR || new_dk_bucket_page_p == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  ASSERT_ERROR ();
 	  goto error;
 	}
       /* connect with prior page */

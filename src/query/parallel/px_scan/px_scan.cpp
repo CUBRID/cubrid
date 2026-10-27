@@ -1876,6 +1876,9 @@ namespace parallel_scan
 	      {
 		return S_ERROR;
 	      }
+	    /* close the lists before a worker can connect its own to them (finalize_node) */
+	    m_result_handler->read_initialize (m_thread_p);
+	    m_result_handler_read_initialized = true;
 	  }
 
 	err_code = start_tasks();
