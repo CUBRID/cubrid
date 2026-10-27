@@ -3194,9 +3194,12 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
    * Set the LSA on the data page of the corresponding log record for page
    * operation logging.
    * Make sure that I should log. Page operational logging is not done for
-   * temporary data of temporary files and volumes
+   * temporary data of temporary files and volumes.
+   * The header page of a permanent volume with temporary purpose has a temporary LSA; do not set the LSA when
+   * compensating RVDK_LINK_PERM_VOLEXT on it (see LOG_NEED_TO_SET_LSA).
    */
-  if (pgptr != NULL && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
+  if (pgptr != NULL && (rcvindex != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary (pgptr))
+      && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
     {
       assert (false);
       return;
