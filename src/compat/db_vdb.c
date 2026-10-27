@@ -2736,7 +2736,13 @@ db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values)
 
 	  if (db_needs_bind_signature_plan (session))
 	    {
-	      return db_use_bind_signature_plan (session, count, in_values);
+	      int error = db_use_bind_signature_plan (session, count, in_values);
+	      if (error != NO_ERROR)
+		{
+		  /* no compilation of these values' bind type signature: nothing executes them */
+		  parser->flag.set_host_var = 0;
+		}
+	      return error;
 	    }
 	}
     }

@@ -4268,7 +4268,8 @@ obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_FETCHMODE f
   obj = obj_find_object_by_pkey (op, key, fetchmode);
 
 notfound:
-  if (obj == NULL)
+  /* a key of another type than the index's keeps its error (find_unique_key_matches) */
+  if (obj == NULL && er_errid () != ER_TP_CANT_COERCE)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
     }
@@ -4358,7 +4359,8 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 	}
     }
 
-  if (!find_unique_key_matches (key, cons->attributes[0]->domain))
+  /* a multi-column key is a sequence of the columns' values, not a value of the first column's domain */
+  if (cons->attributes[1] == NULL && !find_unique_key_matches (key, cons->attributes[0]->domain))
     {
       return NULL;
     }

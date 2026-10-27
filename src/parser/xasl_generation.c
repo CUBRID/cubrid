@@ -7143,9 +7143,9 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
  *
  * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
- * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE: a floating NUMERIC hashes a value
- * normalized and a fixed one its scaled digits, and a floating key can hold fixed values (a CONNECT BY PRIOR column),
- * while numbers the comparison finds equal are one DOUBLE.
+ * comparison's type). A NUMERIC pair with a floating side, or whose common domain is floating, has none: a floating
+ * NUMERIC hashes a value normalized and a fixed one its scaled digits, and a floating key can hold fixed values (a
+ * CONNECT BY PRIOR column), while a DOUBLE holds only 15 digits exactly.
  */
 static bool
 pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
@@ -7184,7 +7184,9 @@ pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, co
     }
   if (TP_DOMAIN_TYPE (*common) == DB_TYPE_NUMERIC && (floating || (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION))
     {
-      *common = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      /* a DOUBLE rounds a NUMERIC twice (the coefficient, then 10^scale): equal values of two scales can hash apart */
+      *common = NULL;
+      return false;
     }
   return true;
 }
@@ -19972,7 +19974,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* generate initial outlist (for data fetching) */
 	  buildlist->a_outptr_list_ex = pt_to_outlist (parser, select_list_ex, &xasl->selected_upd_list, unbox);
 
-	  if (buildlist->a_regu_list == NULL)
+	  if (buildlist->a_outptr_list_ex == NULL)
 	    {
 	      goto analytic_exit_on_error;
 	    }
@@ -23678,8 +23680,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       db_query_plan_dump_fp_open ();
 
+      /* the walk keeps the readers of the statement it is called from, as parser_generate_xasl does */
+      PT_CTE_NULL_READER *save_cte_null_readers = pt_Cte_null_readers;
+      pt_Cte_null_readers = NULL;
       value_clauses = parser_walk_tree (parser, value_clauses, parser_generate_xasl_pre, NULL,
 					parser_generate_xasl_post, &xasl_Supp_info);
+      pt_Cte_null_readers = save_cte_null_readers;
 
       db_query_plan_dump_fp_close ();
 
@@ -33434,7 +33440,8 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	}
       break;
     case SQ_TYPE_DBVAL:
-      /* a correlated constant regu: its value and its domain key the cache */
+      /* a correlated constant regu: its value and its domain key the cache; the value is held as read, in the
+       * domain it is read in (the unpack finds its conversion, regu_produced_domain) */
       if (key_struct)
 	{
 	  QPROC_DB_VALUE_LIST new_dbv, list_p;
@@ -33448,13 +33455,15 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      regu_alloc (new_dbv);
 	      new_dbv->next = NULL;
 	      new_dbv->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
-	      new_dbv->dom = regu_produced_domain ((REGU_VARIABLE *) p);
+	      new_dbv->dom = ((REGU_VARIABLE *) p)->original_domain != NULL
+		? ((REGU_VARIABLE *) p)->original_domain : ((REGU_VARIABLE *) p)->domain;
 	      list_p->next = new_dbv;
 	    }
 	  else
 	    {
 	      key_struct->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
-	      key_struct->dom = regu_produced_domain ((REGU_VARIABLE *) p);
+	      key_struct->dom = ((REGU_VARIABLE *) p)->original_domain != NULL
+		? ((REGU_VARIABLE *) p)->original_domain : ((REGU_VARIABLE *) p)->domain;
 	    }
 	}
       cnt++;

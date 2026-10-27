@@ -7497,8 +7497,8 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  * collection targets, which coerce the elements implicitly.
  *
  * The whole policy, one character per pair, read from this switch by calling it for every (src, dst, mode) at run
- * time (SA build; the server build differs in the six object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
- * VOBJ <- OBJECT, OID <- OID, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
+ * time (SA build; the server build differs in the five object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
+ * VOBJ <- OBJECT, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
  * indexable as well as readable. When a case changes, change its character.
  *
  *    .  the pair does not convert in any mode     =  the same type: nullptr, nothing to convert
