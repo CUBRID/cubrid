@@ -2113,6 +2113,8 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
   RETURN_IF_NOT_VALID (context);
 
+  db_make_null (&tempval);
+
   if (context->validation_only)
     {
       switch (type)
@@ -2180,6 +2182,8 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     }
 
 error_exit:
+  /* The element was cloned into the collection, so release whatever the conversion and the cast allocated. */
+  db_value_clear (&tempval);
   ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
@@ -2721,6 +2725,9 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
 
   RETURN_IF_NOT_VALID (context);
 
+  db_make_null (&src_val);
+  db_make_null (&dest_val);
+
   CHECK_VALIDATION_ONLY (context);
 
   if (context->next_attr >= context->num_attrs)
@@ -2778,6 +2785,9 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
     }
 
 error_exit:
+  /* The class object keeps its own copy, so release whatever the conversion and the cast allocated. */
+  db_value_clear (&src_val);
+  db_value_clear (&dest_val);
   if (!LDR_IS_INSIDE_COLLECTION (str, type))
     {
       context->next_attr += 1;
