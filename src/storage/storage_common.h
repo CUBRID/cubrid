@@ -146,6 +146,7 @@ struct btree_node_split_info
 typedef char *PAGE_PTR;		/* Pointer to a page */
 
 /* TODO - PAGE_TYPE is used for debugging */
+/* Page types are stored in every page header: append new types, never insert. PERF_PAGE_TYPE mirrors them. */
 typedef enum
 {
   PAGE_UNKNOWN = 0,		/* used for initialized page */
@@ -162,7 +163,7 @@ typedef enum
   PAGE_LOG,			/* NONE - log page (unused) */
   PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_VACUUM_DATA,		/* Vacuum data. */
-  PAGE_OOS,			/* oos page. New types are appended: page types are stored on disk. */
+  PAGE_OOS,			/* oos page */
   PAGE_LAST = PAGE_OOS
 } PAGE_TYPE;
 

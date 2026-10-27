@@ -15159,7 +15159,14 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
 }
 
 /* pgbuf_get_page_type_for_stat () casts a stored PAGE_TYPE to PERF_PAGE_TYPE */
-static_assert ((int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_OOS == (int) PAGE_OOS
+static_assert ((int) PERF_PAGE_UNKNOWN == (int) PAGE_UNKNOWN && (int) PERF_PAGE_FTAB == (int) PAGE_FTAB
+	       && (int) PERF_PAGE_HEAP == (int) PAGE_HEAP && (int) PERF_PAGE_VOLHEADER == (int) PAGE_VOLHEADER
+	       && (int) PERF_PAGE_VOLBITMAP == (int) PAGE_VOLBITMAP && (int) PERF_PAGE_QRESULT == (int) PAGE_QRESULT
+	       && (int) PERF_PAGE_EHASH == (int) PAGE_EHASH && (int) PERF_PAGE_OVERFLOW == (int) PAGE_OVERFLOW
+	       && (int) PERF_PAGE_AREA == (int) PAGE_AREA && (int) PERF_PAGE_CATALOG == (int) PAGE_CATALOG
+	       && (int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_LOG == (int) PAGE_LOG
+	       && (int) PERF_PAGE_DROPPED_FILES == (int) PAGE_DROPPED_FILES
+	       && (int) PERF_PAGE_VACUUM_DATA == (int) PAGE_VACUUM_DATA && (int) PERF_PAGE_OOS == (int) PAGE_OOS
 	       && (int) PERF_PAGE_BTREE_ROOT == (int) PAGE_LAST + 1, "PERF_PAGE_TYPE must mirror PAGE_TYPE");
 
 /*

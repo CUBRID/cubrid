@@ -95,8 +95,8 @@ struct disk_volume_header
   INT64 vol_creation;		/* Volume creation time */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and multi volumes */
-  INT32 storage_format;		/* DISK_STORAGE_FORMAT_REVISION of the build that formatted the volume. Volumes formatted
-				 * before the stamp existed hold 0 here, which was the reserved area. */
+  INT32 storage_format;		/* DISK_STORAGE_FORMAT_REVISION of the build that formatted the volume. Volumes
+				 * formatted before the stamp existed hold 0 here, which was the reserved area. */
   INT32 reserved1;		/* reserved area */
   INT32 reserved2;		/* reserved area */
   INT32 reserved3;		/* reserved area */
@@ -111,8 +111,9 @@ struct disk_volume_header
 
 };
 
-/* unit_tests/oos/scripts/test_storage_format_guard.sh rewrites the stamp at this offset in volume 0 */
-static_assert (offsetof (DISK_VOLUME_HEADER, storage_format) == 108, "storage_format moved in DISK_VOLUME_HEADER");
+/* unit_tests/oos/scripts/test_storage_format_guard.sh rewrites the stamp at this file offset of volume 0 */
+static_assert (offsetof (FILEIO_PAGE, page) + offsetof (DISK_VOLUME_HEADER, storage_format) == 140,
+	       "storage_format moved in the volume header page");
 
 typedef struct disk_recv_link_perm_volume DISK_RECV_LINK_PERM_VOLUME;
 struct disk_recv_link_perm_volume
@@ -3159,6 +3160,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
+  (void) fprintf (fp, " storage_format = %d\n", vhdr->storage_format);
 }
 
 /*

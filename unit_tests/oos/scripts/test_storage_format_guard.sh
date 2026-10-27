@@ -29,11 +29,8 @@ db_name="${1:?database name required}"
 
 oos_require_env
 
-# DISK_STORAGE_FORMAT_REVISION, stored at FILEIO_PAGE_RESERVED (32 bytes) + offsetof (DISK_VOLUME_HEADER,
-# storage_format) (108, pinned by a static_assert in disk_manager.c) in the first page of volume 0.
-readonly expected_revision=1
+# File offset of the stamp in volume 0, pinned by a static_assert in disk_manager.c.
 readonly stamp_offset=140
-readonly refusal='format 0, this build 1|형식 0, 현재 빌드 1'
 
 volume="$(oos_database_dir "$db_name")/$db_name"
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/oos-format-guard.XXXXXX")
@@ -48,7 +45,7 @@ restore_stamp ()
 on_exit ()
 {
   if [ "$restore_on_exit" = true ]; then
-    restore_stamp
+    restore_stamp || printf 'cannot restore the storage format stamp of %s\n' "$volume" >&2
   fi
   rm -rf "$work_dir"
 }
@@ -85,12 +82,15 @@ expect_refused ()
 
   [ "$rc" -ne 0 ] || fail "$what accepted a database without the storage format stamp"
   [ "$rc" -lt 128 ] || fail "$what died (exit $rc) instead of refusing the database"
-  grep -Eq "$refusal" "$log" || { cat "$log" >&2; fail "$what did not report the incompatible storage format"; }
+  grep -Eq "format 0, this build $revision|형식 0, 현재 빌드 $revision" "$log" \
+    || { cat "$log" >&2; fail "$what did not report the incompatible storage format"; }
 }
 
 [ -f "$volume" ] || fail "missing volume $volume"
 open_database fresh || { cat "$work_dir/fresh.log" >&2; fail 'a database created by this build was refused'; }
-[ "$(read_stamp)" = "$expected_revision" ] || fail "volume 0 stamp is $(read_stamp), expected $expected_revision"
+# A database created by this build carries its DISK_STORAGE_FORMAT_REVISION, never the pre-stamp 0.
+revision=$(read_stamp)
+[ -n "$revision" ] && [ "$revision" -ne 0 ] || fail "volume 0 of a database created by this build has stamp '$revision'"
 
 dd if="$volume" of="$saved_stamp" bs=1 skip="$stamp_offset" count=4 status=none
 restore_on_exit=true
@@ -103,6 +103,11 @@ expect_refused 'csql -S' "$work_dir/pre_stamp.log" "$rc"
 rc=0
 cubrid checkdb -S "$db_name" < /dev/null > "$work_dir/checkdb.log" 2>&1 || rc=$?
 expect_refused 'checkdb -S' "$work_dir/checkdb.log" "$rc"
+
+# xboot_emergency_patch has its own copy of the check.
+rc=0
+cubrid emergency_patchlog "$db_name" < /dev/null > "$work_dir/patchlog.log" 2>&1 || rc=$?
+expect_refused 'emergency_patchlog' "$work_dir/patchlog.log" "$rc"
 
 restore_stamp
 restore_on_exit=false
