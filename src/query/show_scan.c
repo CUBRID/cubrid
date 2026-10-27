@@ -60,7 +60,7 @@
 #include "server_support.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
-#include "writeset.hpp"
+#include "writeset_stat.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

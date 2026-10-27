@@ -33,6 +33,7 @@
 #include <new>
 
 #include "writeset.hpp"
+#include "writeset_stat.hpp"
 
 #include "error_manager.h"
 #include "log_impl.h"
@@ -44,8 +45,6 @@
 #include "system_parameter.h"
 #include "db_value_printer.hpp"
 #include "string_buffer.hpp"
-#include "db_date.h"
-#include "show_scan.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -58,27 +57,6 @@
 
 /* Global WRITE/REF commit history indexed by writeset key hash. */
 LOG_WSET_HISTORY wset_History;
-
-/* Counted since the server started, in this process's memory only; SHOW WRITESET STATUS shows them. */
-struct wset_statistics
-{
-  std::atomic<UINT64> overflow_count { 0 };
-  std::atomic<UINT64> history_clear_count { 0 };
-  std::atomic<UINT64> commit_order_fallback_count { 0 };
-  std::atomic<UINT64> write_publish_count { 0 };
-  std::atomic<UINT64> ref_publish_count { 0 };
-
-  std::atomic<UINT64> commit_count { 0 };		/* commits that wrote a writeset label */
-  std::atomic<UINT64> commit_fallback_count { 0 };	/* of those, the ones labeled for commit order */
-  std::atomic<UINT64> fallback_key_limit_count { 0 };	/* ... because the transaction had too many keys */
-  std::atomic<UINT64> fallback_statement_count { 0 };	/* ... because a change could not give its keys */
-  std::atomic<UINT64> conflict_ref_count { 0 };	/* commits whose dependency is a referencer of one of its keys */
-  std::atomic<UINT64> conflict_write_count { 0 };	/* commits whose dependency is a writer of one of its keys */
-  std::atomic<UINT64> clear_capacity_count { 0 };	/* times the history was cleared because it was full */
-};
-
-static wset_statistics wset_Statistics;
-static time_t wset_Statistics_start_time = 0;	/* when the counters started, shown by SHOW WRITESET STATUS */
 
 /* Keys that committers holding the shared history lock are about to publish. The capacity check adds its own
  * keys here before comparing, so several committers that pass the check at the same moment see one another's
@@ -475,7 +453,7 @@ wset_history_initialize (void)
   wset_Trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
 
   wset_History_initialized = true;
-  wset_Statistics_start_time = time (NULL);
+  wset_stat_start ();
 
   WSET_TRACE (1, "INITIALIZE history_size=%lld trace_level=%d\n",
 	      (long long) wset_History.history_size, wset_Trace_level);
@@ -530,7 +508,7 @@ wset_push_hash (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind)
 
   if ((INT64) tdes->wset_hashes.size () >= wset_History.history_size)
     {
-      wset_Statistics.overflow_count.fetch_add (1, std::memory_order_relaxed);
+      wset_stat_count_key_limit_exceeded ();
       wset_fallback_to_commit_order (tdes, WSET_FALLBACK_TRANSACTION_LIMIT);
       return NO_ERROR;
     }
@@ -569,7 +547,7 @@ wset_fallback_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
   tdes->wset_overflow = true;
   tdes->wset_fallback_reason = (int) reason;
   std::vector<LOG_WSET_ENTRY> ().swap (tdes->wset_hashes);
-  wset_Statistics.commit_order_fallback_count.fetch_add (1, std::memory_order_relaxed);
+  wset_stat_count_fallback ();
 }
 
 /*
@@ -1080,13 +1058,9 @@ wset_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *wset_paren
 
   pthread_rwlock_unlock (&wset_History.history_lock);
 
-  if (dependency_from_ref_seq)
+  if (key_conflict)
     {
-      wset_Statistics.conflict_ref_count.fetch_add (1, std::memory_order_relaxed);
-    }
-  else if (key_conflict)
-    {
-      wset_Statistics.conflict_write_count.fetch_add (1, std::memory_order_relaxed);
+      wset_stat_count_conflict (dependency_from_ref_seq);
     }
 
   if (dependency_from_ref_seq)
@@ -1186,15 +1160,8 @@ wset_publish_keys (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *comm
       WSET_TRACE (3, "PUBLISH trid=%d kind=%s hash=%016llx commit_lsa=%lld|%d\n",
 		  tdes->trid, wset_kind_name (e.kind), (unsigned long long) e.hash,
 		  (long long) commit_lsa->pageid, (int) commit_lsa->offset);
-      if (e.kind == LOG_WSET_KIND_WRITE)
-	{
-	  wset_Statistics.write_publish_count.fetch_add (1, std::memory_order_relaxed);
-	}
-      else
-	{
-	  assert (e.kind == LOG_WSET_KIND_REF);
-	  wset_Statistics.ref_publish_count.fetch_add (1, std::memory_order_relaxed);
-	}
+      assert (e.kind == LOG_WSET_KIND_WRITE || e.kind == LOG_WSET_KIND_REF);
+      wset_stat_count_publish (e.kind == LOG_WSET_KIND_REF);
     }
 
   return true;
@@ -1244,7 +1211,7 @@ wset_clear_history_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_ou
     }
 
   wset_History.map.clear ();
-  wset_Statistics.history_clear_count.fetch_add (1, std::memory_order_relaxed);
+  wset_stat_count_history_clear ();
   LSA_COPY (history_start_out, &wset_History.history_start);
 }
 
@@ -1360,7 +1327,7 @@ wset_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, const LOG_
 	  old_size = wset_History.map.size ();
 	  wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
 	  history_cleared = true;
-	  wset_Statistics.clear_capacity_count.fetch_add (1, std::memory_order_relaxed);
+	  wset_stat_count_clear_capacity ();
 	}
 
       if (!wset_publish_keys (tdes, begin, end, commit_lsa))
@@ -1413,20 +1380,10 @@ wset_publish_commit_to_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
 	      tdes->wset_hashes.size (), tdes->wset_overflow ? 1 : 0);
 
-  wset_Statistics.commit_count.fetch_add (1, std::memory_order_relaxed);
+  wset_stat_count_commit (tdes->wset_overflow, tdes->wset_fallback_reason == WSET_FALLBACK_TRANSACTION_LIMIT);
 
   if (tdes->wset_overflow)
     {
-      wset_Statistics.commit_fallback_count.fetch_add (1, std::memory_order_relaxed);
-      if (tdes->wset_fallback_reason == WSET_FALLBACK_TRANSACTION_LIMIT)
-	{
-	  wset_Statistics.fallback_key_limit_count.fetch_add (1, std::memory_order_relaxed);
-	}
-      else
-	{
-	  wset_Statistics.fallback_statement_count.fetch_add (1, std::memory_order_relaxed);
-	}
-
       wset_clear_overflow_history (tdes, commit_lsa);
       return;
     }
@@ -1552,76 +1509,25 @@ wset_raise_history_start (const LOG_LSA *lsa, const char *reason)
 }
 
 /*
- * wset_status_start_scan - build the one row of SHOW WRITESET STATUS
+ * wset_get_history_usage - how large the commit history is and how many keys it holds, for SHOW WRITESET STATUS
+ *   history_size(out): the key limit of the history (ha_writeset_history_size)
+ *   entry_count(out): keys in the history now; 0 before the history is set up
  *
- *   thread_p(in): thread entry
- *   type(in): SHOWSTMT_WRITESET_STATUS
- *   arg_values(in), arg_cnt(in): unused; the statement takes no argument
- *   ptr(out): the array context holding the row
- *
- * return: NO_ERROR, or an error code
- *
- * Note: The row is made from the counters in this server's memory when the statement runs; nothing is kept
- *       on disk, and the counters start from 0 with the server. The key count is read under the shared
- *       history lock, so a whole-map clear, which takes the exclusive lock, does not run at the same time.
+ * Note: The key count is read under the shared history lock, so a whole-map clear, which takes the exclusive
+ *       lock, does not run at the same time.
  */
-int
-wset_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values, int arg_cnt, void **ptr)
+void
+wset_get_history_usage (INT64 *history_size, INT64 *entry_count)
 {
-  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  const int num_cols = 10;
-  DB_VALUE *vals = NULL;
-  DB_DATETIME start_time;
-  INT64 entry_count = 0;
-  int idx = 0;
-
-  *ptr = NULL;
-
-  ctx = showstmt_alloc_array_context (thread_p, 1, num_cols);
-  if (ctx == NULL)
-    {
-      ASSERT_ERROR ();
-      return er_errid ();
-    }
-
-  vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
-  if (vals == NULL)
-    {
-      ASSERT_ERROR ();
-      showstmt_free_array_context (thread_p, ctx);
-      return er_errid ();
-    }
+  *history_size = wset_History.history_size;
+  *entry_count = 0;
 
   if (wset_History_initialized)
     {
       pthread_rwlock_rdlock (&wset_History.history_lock);
-      entry_count = (INT64) wset_History.map.size ();
+      *entry_count = (INT64) wset_History.map.size ();
       pthread_rwlock_unlock (&wset_History.history_lock);
     }
-
-  db_localdatetime (&wset_Statistics_start_time, &start_time);
-  db_make_datetime (&vals[idx++], &start_time);
-  db_make_bigint (&vals[idx++], wset_History.history_size);
-  db_make_bigint (&vals[idx++], entry_count);
-
-#define WSET_STATUS_COUNTER(counter) \
-  db_make_bigint (&vals[idx++], (DB_BIGINT) wset_Statistics.counter.load (std::memory_order_relaxed))
-
-  WSET_STATUS_COUNTER (commit_count);
-  WSET_STATUS_COUNTER (commit_fallback_count);
-  WSET_STATUS_COUNTER (fallback_key_limit_count);
-  WSET_STATUS_COUNTER (fallback_statement_count);
-  WSET_STATUS_COUNTER (conflict_ref_count);
-  WSET_STATUS_COUNTER (conflict_write_count);
-  WSET_STATUS_COUNTER (clear_capacity_count);
-
-#undef WSET_STATUS_COUNTER
-
-  assert (idx == num_cols);
-
-  *ptr = ctx;
-
-  return NO_ERROR;
 }
 
 #endif /* SERVER_MODE || SA_MODE */
