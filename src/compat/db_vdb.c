@@ -3124,17 +3124,21 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
  * note : A system savepoint serves the statement that declared it, and the server is not told when that
  *    statement succeeds.  Its end is only visible here.  Execution re-enters this function -- a stored
  *    procedure's statements, the statements a DDL runs for itself, a recompile -- so the savepoints are
- *    given up when the outermost call returns and not before.
+ *    given up when the outermost call returns and not before.  One already live when the outermost call
+ *    starts was declared outside any statement -- by db_put through the API, whose triggers can CALL a
+ *    procedure that comes back here -- and is not this call's to give up.
  */
 static int
 db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
 {
   static int depth = 0;
+  bool ends_system_savepoints = depth == 0 && !tran_has_live_system_savepoint ();
   int err;
 
   depth++;
   err = db_execute_and_keep_statement_internal (session, stmt_ndx, result);
-  if (--depth == 0)
+  depth--;
+  if (ends_system_savepoints)
     {
       tran_end_system_savepoints ();
     }

@@ -111,7 +111,9 @@ static CUB_THREAD_LOCAL DB_NAMELIST *user_savepoint_list = NULL;
 
 /* A system savepoint gives one client statement its atomicity, and only that statement rolls back to it.  The
  * server is told nothing when the statement succeeds, so the client remembers here that one may still be in use:
- * set when a system savepoint is declared, cleared when the top-level statement that declared it is over. */
+ * set when a system savepoint is declared, cleared when the top-level statement that declared it is over.  One
+ * declared outside any statement (db_put through the API, for one) stays set to the end of the transaction:
+ * nothing marks where the operation that declared it ends. */
 static bool system_savepoint_is_live = false;
 
 static int tran_add_savepoint (const char *savept_name);
@@ -1058,6 +1060,17 @@ bool
 tran_has_reachable_savepoint (void)
 {
   return user_savepoint_list != NULL || system_savepoint_is_live;
+}
+
+/*
+ * tran_has_live_system_savepoint - May a system savepoint still be rolled back to?
+ *
+ * return: true if one was declared and not given up since
+ */
+bool
+tran_has_live_system_savepoint (void)
+{
+  return system_savepoint_is_live;
 }
 
 /*
