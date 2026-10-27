@@ -1283,6 +1283,23 @@ db_shutdown (void)
 void
 db_shutdown_without_request_to_server (void)
 {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  {
+    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+    if (g_num_sub_clients > 0)
+      {
+	/* finalizing the client modules shared with the alive sub-clients is skipped, as at exit */
+	er_log_debug (ARG_FILE_LINE, "db_shutdown_without_request_to_server: %d sub-clients are still alive\n",
+		      g_num_sub_clients);
+	return;
+      }
+
+    /* no more sub-clients can be started from now on */
+    (void) g_ready_to_sub.store (false, std::memory_order_release);
+  }
+#endif
+
   boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 
