@@ -1351,7 +1351,7 @@ la_stats_note_class (LA_STATS * stats, const char *class_name)
 }
 
 /*
- * la_apply_worker_run_task() - apply one transaction on the calling worker and fill its result
+ * la_apply_worker_run_task() - apply one task on the calling worker and fill its result
  *   context(in/out): the worker's apply context
  *   task(in): transaction to apply
  *   trace_level(in): ha_writeset_trace_level, read once by the worker
@@ -1359,10 +1359,9 @@ la_stats_note_class (LA_STATS * stats, const char *class_name)
  *   result(in/out): result started by la_result_init; the outcome of each step is filled in
  *
  * Note:
- *   The transaction is applied, its remaining changes are flushed and it commits on the slave,
- *   in that order; a failed step skips the ones after it and its error goes into result.
- *   Only COMMIT and SYSOP_END are dispatched to workers. For the statistics, a task with items is shown
- *   as the worker's current task while it runs, and the time it took goes into result.
+ *   The worker module calls this for each task it takes from the task queue; only COMMIT and SYSOP_END tasks
+ *   are queued. The task is applied by la_apply_worker_apply_task. Around it, for the statistics, a task with
+ *   items is shown as the worker's current task while it runs, and the time it took goes into result.
  */
 static void
 la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
@@ -1395,8 +1394,13 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
 
 /*
  * la_apply_worker_apply_task() - apply, flush and commit one task; the body of la_apply_worker_run_task
+ *   the arguments are those of la_apply_worker_run_task
  *
- * Note: the arguments are those of la_apply_worker_run_task.
+ * Note:
+ *   The transaction's items are applied, its remaining changes are flushed and it commits on the slave, in
+ *   that order; a failed step skips the ones after it and its error goes into result. A transaction with a
+ *   statement item also marks its commit in the same slave transaction, so the statement does not run again
+ *   after a restart (la_create_applied_stmt_marker).
  */
 static void
 la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
