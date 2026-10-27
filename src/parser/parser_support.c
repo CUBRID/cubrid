@@ -13631,6 +13631,44 @@ pt_static_sql_tokenize (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
   return true;
 }
 
+/*
+ * pt_static_sql_depends_on_parameters () - check if the text is lexed differently by the parameters of the session or
+ *					     the client that runs the rewritten query
+ *   return: true if so
+ *   list(in): text and its tokens
+ *
+ * Note: the rewritten query is lexed again at runtime with the parameters of the caller, while the compiled tree was
+ *	 lexed with those of the creator:
+ *	 - a backslash in a string literal is an escape or not by no_backslash_escapes (a session parameter)
+ *	 - "..." is a delimited identifier or a string literal by ansi_quotes (a client parameter)
+ */
+static bool
+pt_static_sql_depends_on_parameters (const PT_STATIC_SQL_EDIT_LIST * list)
+{
+  int i;
+
+  for (i = 0; i < list->token_count; i++)
+    {
+      const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
+
+      if (token->kind != PT_SS_TOKEN_QUOTED)
+	{
+	  continue;
+	}
+      if (list->text[token->start] == '"')
+	{
+	  return true;
+	}
+      if (list->text[token->start] == '\''
+	  && memchr (list->text + token->start, '\\', token->end - token->start) != NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 static PT_NODE *
 pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -13644,6 +13682,15 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 
   switch (node->node_type)
     {
+    case PT_EXPR:
+      if (node->info.expr.op == PT_WEEKF && node->info.expr.arg2 != NULL
+	  && node->info.expr.arg2->node_type == PT_VALUE && node->info.expr.arg2->buffer_pos < 0)
+	{
+	  /* the mode of WEEK () not written is taken from default_week_format (a session parameter) by the parser */
+	  list->failed = true;
+	}
+      break;
+
     case PT_HOST_VAR:
       if (node->info.host_var.label != NULL && node->info.host_var.index >= 0
 	  && node->info.host_var.index < parser->host_var_count)
@@ -13674,7 +13721,7 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 }
 
 /*
- * pt_static_sql_remove_into () - remove the INTO clause of the top query, found in the text at the top level
+ * pt_static_sql_remove_into () - remove the INTO (or TO) clause of the top query, found in the text at the top level
  */
 static void
 pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int into_count)
@@ -13692,8 +13739,10 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
 	{
 	  depth--;
 	}
-      else if (tokens[i].kind == PT_SS_TOKEN_IDENT && depth == 0 && tokens[i].end - tokens[i].start == 4
-	       && strncasecmp (list->text + tokens[i].start, "into", 4) == 0)
+      else if (tokens[i].kind == PT_SS_TOKEN_IDENT && depth == 0
+	       && ((tokens[i].end - tokens[i].start == 4 && strncasecmp (list->text + tokens[i].start, "into", 4) == 0)
+		   || (tokens[i].end - tokens[i].start == 2
+		       && strncasecmp (list->text + tokens[i].start, "to", 2) == 0)))
 	{
 	  into = i;
 	  break;
@@ -14037,6 +14086,10 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
   list.backslash_escapes = !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && !parser->flag.strings_have_no_escapes;
   list.ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
   if (!pt_static_sql_tokenize (parser, &list))
+    {
+      return;
+    }
+  if (pt_static_sql_depends_on_parameters (&list))
     {
       return;
     }
