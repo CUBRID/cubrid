@@ -141,7 +141,7 @@ struct eb_vec
 {
   void *data;			/* the plan's cap elements, or 1 for a scalar */
   unsigned char *isnull;	/* the plan's cap bytes, or 1 for a scalar */
-  unsigned char *scales;	/* NUMERIC step result: the scale of each element; else NULL */
+  short *scales;		/* NUMERIC step result: the scale of each element, negative for NUMERIC (p, -s); else NULL */
   unsigned char *precs;		/* NUMERIC shared value: the precision of each element's DB_VALUE; else NULL */
   short scale;			/* NUMERIC column or scalar: the scale of every element */
   short col;			/* EB_VK_COL / EB_VK_PTR: the column (plan->cols) */
@@ -543,7 +543,7 @@ eb_num_put (EB_VEC * vec, int r, const NUMERIC_AGG_EXPR_VAL * val)
   ((__int128 *) vec->data)[i] = val->is_negative ? -(__int128) val->coefficient : (__int128) val->coefficient;
   if (vec->scales != NULL)
     {
-      vec->scales[i] = (unsigned char) val->scale;
+      vec->scales[i] = (short) val->scale;
     }
   else
     {
@@ -3464,8 +3464,8 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 
       if (v->kind != EB_VK_SCALAR && v->kind != EB_VK_PTR)
 	{
-	  per_row += (size_t) eb_elem_size (v->etype) + 1 + ((v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype)) ? 1 : 0)
-	    + ((v->kind == EB_VK_SHARED && EB_IS_NUM (v->etype)) ? 2 : 0);
+	  per_row += (size_t) eb_elem_size (v->etype) + 1 + ((v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype)) ? 2 : 0)
+	    + ((v->kind == EB_VK_SHARED && EB_IS_NUM (v->etype)) ? 3 : 0);
 	}
     }
   cap = eb_cap_of (per_row);
@@ -3481,7 +3481,8 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
     {
       EB_VEC *v = &plan->vecs[i];
       void *data;
-      unsigned char *isnull, *scales = NULL, *precs = NULL;
+      unsigned char *isnull, *precs = NULL;
+      short *scales = NULL;
 
       if (v->kind == EB_VK_SCALAR || v->kind == EB_VK_PTR)
 	{
@@ -3491,7 +3492,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
       isnull = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
       if ((v->kind == EB_VK_SLOT || v->kind == EB_VK_SHARED) && EB_IS_NUM (v->etype))
 	{
-	  scales = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+	  scales = (short *) eb_arena_alloc (plan, sizeof (short) * (size_t) cap);
 	  if (scales == NULL)
 	    {
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
