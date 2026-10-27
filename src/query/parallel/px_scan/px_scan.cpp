@@ -388,6 +388,12 @@ extern "C"
 
     scan_id->type = S_HEAP_SCAN;
 
+    /* Workers do not acquire row locks, including when reopening a partition. */
+    if (mvcc_select_lock_needed)
+      {
+	return NO_ERROR;
+      }
+
     if (spec->curent == nullptr)
       {
 	/* DB_PARTITION_CLASS will be parallel-heap-scanned, not DB_PARTITIONED_CLASS */
@@ -398,8 +404,7 @@ extern "C"
 	  }
 
 	assert (thread_p->private_heap_id != 0);
-	if (oid_is_system_class (class_oid)
-	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed)
+	if (oid_is_system_class (class_oid) || mvcc_is_mvcc_disabled_class (class_oid))
 	  {
 	    /* parallel-thread heap scan not supported */
 	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -1331,6 +1336,12 @@ extern "C"
 	return NO_ERROR;
       }
 
+    /* Workers do not acquire the row locks required by FOR UPDATE. */
+    if (scan_id->mvcc_select_lock_needed)
+      {
+	return NO_ERROR;
+      }
+
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
       {
 	return NO_ERROR;
@@ -1744,6 +1755,7 @@ namespace parallel_scan
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
 					  &m_interrupt, &m_err_messages, m_parallelism, m_xasl);
 	m_result_handler->set_trace_handler (&m_trace_handler);
+	m_result_handler->set_orig_vd (m_orig_vd);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -1872,6 +1884,9 @@ namespace parallel_scan
 	      {
 		return S_ERROR;
 	      }
+	    /* close the lists before a worker can connect its own to them (finalize_node) */
+	    m_result_handler->read_initialize (m_thread_p);
+	    m_result_handler_read_initialized = true;
 	  }
 
 	err_code = start_tasks();

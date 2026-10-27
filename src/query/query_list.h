@@ -750,8 +750,12 @@ enum
   LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
   HV_PRED_PLAN_UNPEEKED = 0x1 << 18,	/* plan built with unbound host-var predicate markers; the
 					 * first execution replans under the actual bind values */
-  XASL_TRACE_PLAN_DETAIL = 0x1 << 19	/* the session shows its plans in detail (csql ;plan detail): the trace
+  XASL_TRACE_PLAN_DETAIL = 0x1 << 19,	/* the session shows its plans in detail (csql ;plan detail): the trace
 					 * carries the compiled expression programs' section too */
+  BIND_WATCH_CANDIDATE = 0x1 << 20	/* the statement passed target selection for bind-value plan
+					 * variants (joined nodes, a skewed host-var predicate not
+					 * pinned by a unique key): its executions choose among the
+					 * query's plans by fingerprint (bind_variant.h) */
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
