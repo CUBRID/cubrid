@@ -6629,6 +6629,12 @@ db_least_or_greatest_by (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE_COMPARE_RESU
 {
   int error_code = NO_ERROR;
 
+  if (!can_compare && cmp_result != DB_UNK)
+    {
+      /* incomparable values ordered by their types: a pick, not an error, so the comparison's error goes */
+      er_clear ();
+    }
+
   if (cmp_result == DB_EQ)
     {
       pr_clone_value (arg1, result);

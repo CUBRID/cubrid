@@ -1601,6 +1601,14 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, &cci_value, plan->domain);
+	      /* the output keeps the declared column: the next open plans from it (dblink_plan_columns) */
+	      db_value_domain_init (valptrp->val, TP_DOMAIN_TYPE (plan->domain), plan->domain->precision,
+				    plan->domain->scale);
+	      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (plan->domain)))
+		{
+		  db_string_put_cs_and_collation (valptrp->val, plan->domain->codeset, plan->domain->collation_id);
+		}
+	      db_value_put_null (valptrp->val);
 	      goto close_exit;
 	    }
 	}
