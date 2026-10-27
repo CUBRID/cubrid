@@ -380,6 +380,7 @@ struct lk_tran_lock
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
   int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
   int escalated_count;		/* class entries with escalated_from set; only this transaction's thread touches them */
+  bool reclaimed_only_transient;	/* the last reclaim of instance locks took only this statement's requests */
   int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
@@ -565,7 +566,6 @@ static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, cons
 				  int cond_flag, bool mark_transient, bool ahead_of_waiters);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
-static bool lock_escalation_takes_only_transient (LK_TRAN_LOCK * tran_lock, const OID * class_oid);
 static void lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower);
 static void lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry);
 static LOCK lock_escalation_mode (LOCK class_mode);
@@ -3198,35 +3198,6 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
 
 
 /*
- * lock_escalation_takes_only_transient () - Whether every instance lock the escalation reclaims is this statement's
- *   return: bool
- *   tran_lock(in): caller holds hold_mutex
- *   class_oid(in): the class about to escalate
- *
- * Note: the reclaim takes earlier statements' locks too, and then only the raised class lock protects them.  A raise
- *	that reclaims nothing (a partition counted by its partitioned class) covers only requests that come after it.
- */
-static bool
-lock_escalation_takes_only_transient (LK_TRAN_LOCK * tran_lock, const OID * class_oid)
-{
-  LK_ENTRY *curr;
-
-  for (curr = tran_lock->inst_hold_list; curr != NULL; curr = curr->tran_next)
-    {
-      if (curr->res_head->key.type != LOCK_RESOURCE_INSTANCE || !OID_EQ (&curr->res_head->key.class_oid, class_oid))
-	{
-	  continue;
-	}
-      if (curr->transient_count < curr->count)
-	{
-	  return false;
-	}
-    }
-
-  return true;
-}
-
-/*
  * lock_escalation_mode () - The class lock mode an escalation raises a class lock to
  *   return: X_LOCK over IX or SIX, S_LOCK otherwise
  *   class_mode(in): the class lock mode before the escalation
@@ -3315,7 +3286,6 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
   int granted;
   int wait_msecs;
   int rv;
-  bool escalation_ends_with_statement = false;
   LOCK pre_escalation_mode = NULL_LOCK;
 
   /* check lock escalation count */
@@ -3344,14 +3314,6 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
   /* lock escalation should be performed */
   tran_lock->lock_escalation_on = true;
 
-  /* asked before the raise reclaims the entries that answer it */
-  if (tran_lock->transient_scope > 0
-      && lock_escalation_takes_only_transient (tran_lock, &class_entry->res_head->key.oid))
-    {
-      escalation_ends_with_statement = true;
-      pre_escalation_mode = class_entry->granted_mode;
-    }
-
   if (class_entry->granted_mode == NULL_LOCK || class_entry->granted_mode == S_LOCK
       || class_entry->granted_mode == X_LOCK || class_entry->granted_mode == SCH_M_LOCK)
     {
@@ -3366,6 +3328,10 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
   /* Because to count the shared and exclusive instance locks may cause high CPU usage, we used a simple rule to decide
    * the escalated class lock mode */
   max_class_lock = lock_escalation_mode (class_entry->granted_mode);
+
+  /* the reclaim inside the raise answers whether everything it takes is this statement's; a failed raise walks nothing */
+  pre_escalation_mode = class_entry->granted_mode;
+  tran_lock->reclaimed_only_transient = false;
 
   pthread_mutex_unlock (&tran_lock->hold_mutex);
 
@@ -3394,9 +3360,11 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       /* 2. release original class lock only one time in order to maintain original class lock count */
       lock_internal_perform_unlock_object (thread_p, class_entry, false, true);
 
-      if (escalation_ends_with_statement && class_entry->escalated_from == NULL_LOCK)
+      if (tran_lock->transient_scope > 0 && tran_lock->reclaimed_only_transient
+	  && class_entry->escalated_from == NULL_LOCK)
 	{
-	  /* written after the raise: as a class grant escalated_from does not cover, the raise would withdraw it */
+	  /* written after the raise: as a class grant escalated_from does not cover, the raise would withdraw it.  A raise
+	   * that reclaimed nothing (a partition counted by its partitioned class) covers only the requests after it. */
 	  class_entry->escalated_from = pre_escalation_mode;
 	  tran_lock->escalated_count++;
 	}
@@ -4960,6 +4928,7 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
   LK_ENTRY *curr, *next;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  tran_lock->reclaimed_only_transient = true;
 
   /* remove instance locks if given condition is satisfied */
   curr = tran_lock->inst_hold_list;
@@ -4981,6 +4950,11 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
 	{
 	  if (curr->granted_mode <= lock || lock == X_LOCK)
 	    {
+	      if (curr->transient_count < curr->count)
+		{
+		  /* an earlier statement's request: once reclaimed only the class lock protects it */
+		  tran_lock->reclaimed_only_transient = false;
+		}
 	      /* found : the same class_oid and interesting lock mode --> unlock it. */
 	      lock_internal_perform_unlock_object (thread_p, curr, true, false);
 	    }
