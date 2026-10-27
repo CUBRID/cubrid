@@ -213,8 +213,8 @@ static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, c
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int validate_trigger (TR_TRIGGER * trigger);
 
-static int register_user_trigger (DB_OBJECT * object);
-static int unregister_user_trigger (TR_TRIGGER * trigger, int rollback);
+static int register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner);
+static int unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback);
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
 
 static void reorder_schema_caches (TR_TRIGGER * trigger);
@@ -1915,15 +1915,16 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
  */
 
 /*
- * register_user_trigger() - This stores a new trigger object inside the current user object
+ * register_user_trigger() - This stores a new trigger object inside the owner user object
  *    return: error code
  *    object(in): trigger object
+ *    owner(in): trigger owner
  *
  * Note:
  *    If successful, it will recalculate the user trigger cache list as well.
  */
 static int
-register_user_trigger (DB_OBJECT * object)
+register_user_trigger (DB_OBJECT * object, DB_OBJECT * owner)
 {
   int error = NO_ERROR;
   DB_SET *table;
@@ -1932,8 +1933,8 @@ register_user_trigger (DB_OBJECT * object)
 
   AU_DISABLE (save);
 
-  if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
-      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (owner != NULL && (error = obj_inst_lock (owner, 1)) == NO_ERROR
+      && (error = obj_get (owner, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -1948,13 +1949,13 @@ register_user_trigger (DB_OBJECT * object)
 	{
 	  table = set_create_sequence (0);
 	  db_make_sequence (&value, table);
-	  obj_set (Au_user, "triggers", &value);
+	  obj_set (owner, "triggers", &value);
 	  /*
 	   * remember, because of coercion, we have to either set the domain properly to begin with or
 	   * we have to get the coerced set back out after it has been assigned
 	   */
 	  set_free (table);
-	  obj_get (Au_user, "triggers", &value);
+	  obj_get (owner, "triggers", &value);
 	  if (DB_IS_NULL (&value))
 	    {
 	      table = NULL;
@@ -1985,6 +1986,7 @@ register_user_trigger (DB_OBJECT * object)
  * unregister_user_trigger() - This removes a trigger from the user object and associated caches
  *    return: error code
  *    trigger(in): trigger structure
+ *    owner(in): user object that holds the trigger
  *    rollback(in): non-zero if we're performing a rollback
  *
  * Note:
@@ -1994,7 +1996,7 @@ register_user_trigger (DB_OBJECT * object)
  *    In that case, try to be more tolerant of errors that may occurr.
  */
 static int
-unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
+unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
 {
   int error = NO_ERROR;
   DB_SET *table;
@@ -2013,8 +2015,8 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 
   AU_DISABLE (save);
 
-  if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
-      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (owner != NULL && (error = obj_inst_lock (owner, 1)) == NO_ERROR
+      && (error = obj_get (owner, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2047,7 +2049,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 }
 
 /*
- * get_user_trigger_objects() - This is used to build and return a list of all the user triggers currently defined
+ * get_user_trigger_objects() - This is used to build and return a list of the user triggers owned by the current user
  *    return: error code
  *    event(in): event type
  *    active_filter(in): non-zero to filter out inactive triggers
@@ -2063,17 +2065,20 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
   int max, i;
+  int save;
 
   *trigger_list = NULL;
 
-  if (Au_user == NULL)
+  if (Au_user == NULL || Au_root == NULL)
     {
       return NO_ERROR;
     }
 
-  error = obj_get (Au_user, "triggers", &value);
+  AU_DISABLE (save);
+  error = obj_get (Au_root, "triggers", &value);
   if (error != NO_ERROR)
     {
+      AU_ENABLE (save);
       return error;
     }
 
@@ -2091,7 +2096,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       error = set_filter (table);
       max = set_size (table);
 
-      for (i = 0; i < max && error == NO_ERROR; i++)
+      for (i = 1; i < max && error == NO_ERROR; i += 2)
 	{
 	  error = set_get_element (table, i, &value);
 	  if (error == NO_ERROR)
@@ -2104,7 +2109,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
-		  else
+		  else if (trigger->class_mop == NULL && ws_is_same_object (trigger->owner, Au_user))
 		    {
 		      if (!active_filter || trigger->status == TR_STATUS_ACTIVE)
 			{
@@ -2140,6 +2145,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       *trigger_list = NULL;
     }
 
+  AU_ENABLE (save);
   return error;
 }
 
@@ -2148,7 +2154,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
  *    return: error
  *
  * Note:
- *    It goes through the trigger objects defined for the user, maps them to trigger objects and
+ *    It goes through the user triggers owned by the current user, maps them to trigger objects and
  *    stores them on specific lists for quick access.
  */
 int
@@ -2159,6 +2165,7 @@ tr_update_user_cache (void)
   DB_VALUE value;
   TR_TRIGGER *trigger;
   int max, i;
+  int save;
 
   tr_User_triggers_valid = 0;
   if (tr_User_triggers != NULL)
@@ -2167,7 +2174,8 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
-  if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  AU_DISABLE (save);
+  if (Au_user != NULL && Au_root != NULL && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2183,7 +2191,7 @@ tr_update_user_cache (void)
 	  error = set_filter (table);
 	  max = set_size (table);
 
-	  for (i = 0; i < max && error == NO_ERROR; i++)
+	  for (i = 1; i < max && error == NO_ERROR; i += 2)
 	    {
 	      error = set_get_element (table, i, &value);
 	      if (error == NO_ERROR)
@@ -2198,7 +2206,7 @@ tr_update_user_cache (void)
 			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
-		      else
+		      else if (trigger->class_mop == NULL && ws_is_same_object (trigger->owner, Au_user))
 			{
 			  error = insert_trigger_list (&tr_User_triggers, trigger);
 			}
@@ -2220,6 +2228,7 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
+  AU_ENABLE (save);
   return error;
 }
 
@@ -3401,7 +3410,8 @@ end:
  *
  * Note:
  *    If the trigger is associated with a class, the current user must have appropriate class authorization.
- *    If the trigger is associated with a user, the current user must be the owner of the trigger.
+ *    If the trigger is associated with a user, the current user must be the owner of the trigger or a member
+ *    of the DBA group.
  *    If the alter flag is set, it means that the trigger is about to be modified in some way.
  */
 static bool
@@ -3448,8 +3458,8 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
     }
   else
     {
-      /* its a user trigger, must be the active user */
-      if (ws_is_same_object (trigger->owner, Au_user))
+      /* its a user trigger, must be the owner or a member of the DBA group */
+      if (ws_is_same_object (trigger->owner, Au_user) || au_is_dba_group_member (Au_user))
 	{
 	  status = true;
 	}
@@ -3942,6 +3952,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_INVALID_USER, owner_name);
+      goto error;
+    }
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
@@ -4132,7 +4147,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
     }
   else
     {
-      if (register_user_trigger (object))
+      if (register_user_trigger (object, trigger->owner))
 	{
 	  goto error;
 	}
@@ -4407,7 +4422,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
   /* remove it from the class or user cache */
   if (trigger->class_mop == NULL)
     {
-      error = unregister_user_trigger (trigger, rollback);
+      error = unregister_user_trigger (trigger, trigger->owner, rollback);
     }
   else
     {
@@ -5879,6 +5894,19 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
     }
 }
 
+/*
+ * tr_check_partial_rollback_triggers() - This is called when the transaction is rolled back to a savepoint.
+ *    return: none
+ */
+void
+tr_check_partial_rollback_triggers (void)
+{
+  if (tr_User_triggers_modified)
+    {
+      tr_User_triggers_valid = 0;
+    }
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_check_timeout_triggers() - This is called whenever a lock timeout ocurrs.
@@ -6895,6 +6923,42 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       goto end;
     }
   pr_clear_value (&value);
+
+  /* a user trigger is held by the user of its qualifier, so move it when the qualifier changes */
+  if (trigger->class_mop == NULL)
+    {
+      char old_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+      char new_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+      MOP old_owner, new_owner;
+
+      sm_qualifier_name (old_name, old_owner_name, DB_MAX_USER_LENGTH);
+      sm_qualifier_name (new_name, new_owner_name, DB_MAX_USER_LENGTH);
+
+      if (intl_identifier_casecmp (old_owner_name, new_owner_name) != 0)
+	{
+	  old_owner = db_find_user (old_owner_name);
+	  new_owner = db_find_user (new_owner_name);
+	  if (old_owner == NULL || new_owner == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto end;
+	    }
+
+	  error = unregister_user_trigger (trigger, old_owner, 0);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+
+	  error = register_user_trigger (trigger_object, new_owner);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+	}
+    }
 
   if (!deferred_flush)
     {
