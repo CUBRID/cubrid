@@ -16833,8 +16833,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->g_with_rollup = 0;
 	}
 
-      /* set index scan order */
-      xasl->iscan_oid_order = ((orderby_skip) ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
+      /* set index scan order: a skipped ORDER BY or GROUP BY reads the rows in index order (the index decides a
+       * skipped GROUP BY: groupby_skip above is false when a sort plan tops the scan) */
+      xasl->iscan_oid_order = ((orderby_skip || (xasl->spec_list != NULL && xasl->spec_list->indexptr != NULL
+						 && xasl->spec_list->indexptr->groupby_skip))
+			       ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
 
       /* save single tuple info */
       if (select_node->info.query.flag.single_tuple == 1)
