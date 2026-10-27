@@ -23,6 +23,7 @@
 #include "db_function.hpp"
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "memory_hash.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "chartype.h"
@@ -1895,8 +1896,12 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
       && (!is_char || (db_get_string_collation (value1) == domain->collation_id
 		       && db_get_string_collation (value2) == domain->collation_id)))
     {
-      return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL,
-				   is_char ? domain->collation_id : 0) == DB_EQ;
+      if (is_char)
+	{
+	  /* strings equal only under the collation ('A' and 'a') can give different results, e.g. ASCII (key) */
+	  return mht_compare_dbvalues_are_identical (value1, value2) != 0;
+	}
+      return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL, 0) == DB_EQ;
     }
   /* only a collection key compares by its elements' values; any other key comparison is decided by the compiler */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL

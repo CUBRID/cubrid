@@ -41,6 +41,7 @@
 #include "numeric_opfunc.h"	// SUM_ACC word accumulator
 #include "object_domain.h"
 #include "query_executor.h"
+#include "binaryheap.h"
 #include "px_scan_trace_handler.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -134,6 +135,15 @@ namespace parallel_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	m_.trace_handler_p = trace_handler_p;
+      }
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::set_orig_vd (VAL_DESCR *orig_vd)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	m_.orig_vd = orig_vd;
       }
   }
 
@@ -674,6 +684,19 @@ namespace parallel_scan
 	    }
 	}
 
+	/* A partition read serially before this one left its rows in the leader's top-N heap, not in dest:
+	 * flush them into dest so they join the worker lists; the final ORDER BY then sorts the whole list. */
+	if (m_.orig_xasl->topn_items != nullptr && m_.orig_xasl->topn_items->heap->element_count > 0)
+	  {
+	    if (qexec_topn_tuples_to_list_id (thread_p, m_.orig_xasl, m_.orig_vd->xasl_state, false, NULL) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    assert (m_.orig_xasl->topn_items == nullptr);
+	  }
+
 	/* Restamp by merged position. RENUMBER left the columns unnumbered; ATOMIC_DRAW put the number
 	 * each worker drew there, which is not where the row lands once the worker lists are chained -
 	 * serial guarantees the k-th returned row carries k, so the merge has to restore that. */
@@ -731,7 +754,7 @@ namespace parallel_scan
 	      }
 	  }
 
-	/* main heap empty under parallel concat; falls through to qexec_orderby_distinct_by_sorting on worker concat list_id at qexec_orderby_distinct:4049 (orderby_topnsort intentionally not set). */
+	/* the leader's heap was flushed into dest above (or never got a row); falls through to qexec_orderby_distinct_by_sorting on the merged list_id at qexec_orderby_distinct (orderby_topnsort intentionally not set). */
 	qexec_clear_topn_items (thread_p, m_.orig_xasl);
 
 	return S_END;
