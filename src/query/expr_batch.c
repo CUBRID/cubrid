@@ -261,6 +261,7 @@ struct eb_leaf
   const DB_VALUE *sub_len_v;
   int sub_start;
   int sub_len;
+  bool sub_empty_is_null;	/* an empty SUBSTRING is NULL (oracle_style_empty_string), not the empty string */
   /* an OR of AND chains of leaves: or_n disjuncts, or_len[d] leaves each, their indexes in or_leaf (vec is -1) */
   int or_n;
   const int *or_len;
@@ -1169,7 +1170,7 @@ eb_cell_str_long (const EB_COL * col, int r, const unsigned char *d, int avail, 
   int net, clen, dlen;
   char *slot;
 
-  if (col->max_bytes == 0 || avail < 1 + 2 * OR_INT_SIZE)
+  if (avail < 1 + 2 * OR_INT_SIZE)
     {
       return -1;
     }
@@ -1179,15 +1180,21 @@ eb_cell_str_long (const EB_COL * col, int r, const unsigned char *d, int avail, 
   dlen = OR_GET_INT (&net);
   d += 1 + 2 * OR_INT_SIZE;
   avail -= 1 + 2 * OR_INT_SIZE;
-  if (clen < 0 || dlen < 0 || dlen > col->max_bytes || (clen == 0 ? dlen : clen) > avail)
+  if (clen < 0 || dlen < 0 || (clen == 0 ? dlen : clen) > avail)
     {
       return -1;
     }
   if (clen == 0)
     {
+      /* stored as it is: the record's bytes, whatever the column's scratch */
       *str = (const char *) d;
       *len = dlen;
       return 1;
+    }
+  if (col->max_bytes == 0 || dlen > col->max_bytes)
+    {
+      /* compressed, and no slot of the column's scratch holds it */
+      return -1;
     }
   slot = col->scratch + (size_t) col->max_bytes * (size_t) r;
   if (!col->scratch_set[r])
@@ -1581,6 +1588,8 @@ eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
 	}
       leaf->sub_start = db_get_int (leaf->sub_start_v);
       leaf->sub_len = db_get_int (leaf->sub_len_v);
+      /* the row path's empty SUBSTRING is a zero-size string, which this parameter makes NULL (db_make_db_char ()) */
+      leaf->sub_empty_is_null = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
     }
   for (i = 0; i < leaf->k_n; i++)
     {
@@ -1674,6 +1683,7 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	       * of the string's); a start past the last character, or no character to take, is the empty result,
 	       * which a parameter may make NULL */
 	      const char *p = str, *end = str + len;
+	      bool empty = false;
 	      int k;
 
 	      for (k = leaf->sub_start - 1; k > 0 && p != NULL && p < end; k--)
@@ -1682,24 +1692,34 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 		}
 	      if (k > 0 || p == NULL)
 		{
-		  return eb_fallback (plan, "an empty SUBSTRING");
+		  empty = true;
 		}
-	      str = p;
-	      for (k = leaf->sub_len; k > 0 && p < end; k--)
+	      else
 		{
-		  const char *q = eb_char_end (p, end, (INTL_CODESET) col->codeset);
-
-		  if (q == NULL)
+		  str = p;
+		  for (k = leaf->sub_len; k > 0 && p < end; k--)
 		    {
-		      break;
+		      const char *q = eb_char_end (p, end, (INTL_CODESET) col->codeset);
+
+		      if (q == NULL)
+			{
+			  break;
+			}
+		      p = q;
 		    }
-		  p = q;
+		  empty = (p == str);
+		  len = (int) (p - str);
 		}
-	      if (p == str)
+	      if (empty)
 		{
-		  return eb_fallback (plan, "an empty SUBSTRING");
+		  /* the row's result is the row path's, not a reason to hand the chunk back: NULL under
+		   * oracle_style_empty_string (UNKNOWN, as a NULL column), else the empty string compared as one */
+		  if (leaf->sub_empty_is_null)
+		    {
+		      got = 0;
+		    }
+		  len = 0;
 		}
-	      len = (int) (p - str);
 	    }
 	  for (i = 0; got > 0 && i < leaf->k_n && !hit; i++)
 	    {
