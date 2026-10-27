@@ -171,6 +171,8 @@ extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list, SORT_LIST * c
 /* Sorting related routines */
 extern SORT_STATUS qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * info, RECDES * key,
 					QFILE_LIST_SCAN_ID * input_scan, QFILE_TUPLE_RECORD * tplrec);
+extern QFILE_TUPLE qfile_generate_carried_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p,
+						 RECDES * output_recdes_p, QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
 extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes,
 					      QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
 extern int qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg);

@@ -98,13 +98,14 @@ struct SORT_REC
 };
 
 /*
- * A P_sort_key may carry its original tuple behind the key body instead of pointing back to it, so the tuple is
- * read from the record after the sort with no page fix of the input list. Such a record has
- * s.original.pageid == NULL_PAGEID (no list page has it; membuf pages use pageid >= 0 with NULL_VOLID) and
- * s.original.offset == the tuple start, relative to the start of the SORT_REC.
+ * A P_sort_key may carry the columns of its original tuple that are not sort keys behind the key body, instead of
+ * pointing back to the tuple; the tuple is then rebuilt from the record after the sort (qfile_generate_carried_tuple)
+ * with no page fix of the input list. Such a record has s.original.pageid == NULL_PAGEID (no list page has it; membuf
+ * pages use pageid >= 0 with NULL_VOLID) and s.original.offset == the start of the carried columns (a mini tuple
+ * laid out by SORTKEY_INFO.rest_tl), relative to the start of the SORT_REC.
  */
 #define SORT_REC_HAS_TUPLE(rec)         ((rec)->s.original.pageid == NULL_PAGEID)
-#define SORT_REC_TUPLE(rec)             ((char *) (rec) + (rec)->s.original.offset)
+#define SORT_REC_REST(rec)              ((char *) (rec) + (rec)->s.original.offset)
 
 #define SORT_CARRY_UNDECIDED            0
 #define SORT_CARRY_YES                  1
@@ -179,6 +180,10 @@ struct SORTKEY_INFO
 
   /* P_sort_key tuple carrying (SORT_REC_HAS_TUPLE), decided by qfile_build_sort_rec on a sample of the input */
   int carry_tuple;		/* SORT_CARRY_UNDECIDED, SORT_CARRY_YES or SORT_CARRY_NO */
+  QFILE_TUPLE_VALUE_TYPE_LIST rest_tl;	/* carried mini-tuple layout: domp[j] = domain of list column rest_col[j] */
+  int *rest_col;		/* list column of carried column j (the list columns that are no sort key) */
+  int *col_src;			/* per list column: key index i (>= 0), or -1 - carried column index j */
+  int col_cnt;			/* number of list columns */
   struct qfile_sort_carry_sample *carry_sample;	/* the sample while undecided */
 };
 

@@ -3955,8 +3955,14 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 	      if (SORT_REC_HAS_TUPLE (key))
 		{
-		  /* the record carries the tuple; no page fix */
-		  data = SORT_REC_TUPLE (key);
+		  /* the record carries the tuple's other columns; rebuild it, no page fix */
+		  data = qfile_generate_carried_tuple (&info->key_info, key, &info->output_recdes,
+						       &info->output_file->type_list);
+		  if (data == NULL)
+		    {
+		      error = ER_FAILED;
+		      continue;
+		    }
 
 		  /* update orderby_num() in the tuple */
 		  qfile_slot_set_tuple_ptr (&tplslot, data, 0);
@@ -3966,8 +3972,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 							 ordby_info->ordbynum_val);
 		    }
 
-		  error =
-		    qfile_add_tuple_to_list_from (thread_p, info->output_file, data, list_idp->type_list.hdr_size);
+		  error = qfile_add_tuple_to_list (thread_p, info->output_file, data);
 		  continue;
 		}
 
@@ -5152,10 +5157,13 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
       /* read tuple */
       if (context->sort_key.use_original && SORT_REC_HAS_TUPLE (key))
 	{
-	  /* the record carries the tuple; no page fix */
-	  if (qdata_load_agg_hentry_from_tuple
-	      (thread_p, SORT_REC_TUPLE (key), context->part_list_id->type_list.hdr_size, context->temp_part_key,
-	       context->temp_part_value, context->key_domains, context->accumulator_domains) != NO_ERROR)
+	  /* the record carries the tuple's other columns; rebuild it, no page fix */
+	  data = qfile_generate_carried_tuple (&context->sort_key, key, &context->tuple_recdes,
+					       &context->part_list_id->type_list);
+	  if (data == NULL
+	      || qdata_load_agg_hentry_from_tuple (thread_p, data, context->part_list_id->type_list.hdr_size,
+						   context->temp_part_key, context->temp_part_value,
+						   context->key_domains, context->accumulator_domains) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -5362,9 +5370,13 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
       peek = COPY;		/* default */
       if (info->key_info.use_original && SORT_REC_HAS_TUPLE (key))
 	{
-	  /* the record carries the tuple; no page fix. The values outlive the record (until the group is finalized),
-	   * so they are copied. */
-	  data = SORT_REC_TUPLE (key);
+	  /* the record carries the tuple's other columns; rebuild it, no page fix. The values outlive the record (until
+	   * the group is finalized), so they are copied. */
+	  data = qfile_generate_carried_tuple (&info->key_info, key, &info->gby_rec, &list_idp->type_list);
+	  if (data == NULL)
+	    {
+	      goto exit_on_error;
+	    }
 	}
       else if (info->key_info.use_original)
 	{			/* P_sort_key */
@@ -24533,9 +24545,14 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
       if (SORT_REC_HAS_TUPLE (key))
 	{
-	  /* the record carries the tuple; no page fix. Its values are consumed within this record, as with a page
-	   * that is released once the next record lies on another page, so they are peeked. */
-	  data = SORT_REC_TUPLE (key);
+	  /* the record carries the tuple's other columns; rebuild it, no page fix. Its values are consumed within this
+	   * record, as with a page that is released once the next record lies on another page, so they are peeked. */
+	  data = qfile_generate_carried_tuple (&analytic_state->key_info, key, &analytic_state->analytic_rec,
+					       &list_idp->type_list);
+	  if (data == NULL)
+	    {
+	      goto exit_on_error;
+	    }
 	  peek = PEEK;
 	}
       else
