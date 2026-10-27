@@ -733,7 +733,7 @@ metadata_of_page_buffer_status (void)
   return &md;
 }
 
-/* the HA master's writeset statistics, counted since the server started; see wset_status_start_scan */
+/* the HA master's writeset statistics, counted since the server started; see wset_status_start_scan in writeset_stat.cpp */
 static SHOWSTMT_METADATA *
 metadata_of_writeset_status (void)
 {
@@ -747,7 +747,12 @@ metadata_of_writeset_status (void)
     {"Fallback_statement_count", "bigint"},
     {"Conflict_ref_count", "bigint"},
     {"Conflict_write_count", "bigint"},
-    {"Clear_capacity_count", "bigint"}
+    {"Clear_capacity_count", "bigint"},
+    {"Key_limit_exceeded_count", "bigint"},
+    {"Fallback_count", "bigint"},
+    {"Write_publish_count", "bigint"},
+    {"Ref_publish_count", "bigint"},
+    {"History_clear_count", "bigint"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

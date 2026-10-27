@@ -479,6 +479,7 @@ if(UNIX)
   list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_gate.cpp)
   list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_pending.cpp)
   list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_worker.cpp)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_stat.cpp)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
   SET_SOURCE_FILES_PROPERTIES(
     ${EXECUTABLES_DIR}/checksumdb.c

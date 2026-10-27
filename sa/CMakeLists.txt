@@ -481,6 +481,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/writeset.cpp
+  ${TRANSACTION_DIR}/writeset_stat.cpp
   ${TRANSACTION_DIR}/writeset_history_map.cpp
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
