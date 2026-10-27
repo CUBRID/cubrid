@@ -582,6 +582,7 @@ static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static LA_APPLY *la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa);
 static int la_coordinator_submit_task (LA_TASK * task);
+static int la_coordinator_run_alone (LA_TASK * task);
 static int la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final);
 static bool la_coordinator_set_commit_dependency (LA_TASK * task);
 static int la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
@@ -1082,7 +1083,7 @@ la_coordinator_pop_result (LA_RESULT * result)
  * Note:
  *   Takes each worker result as it arrives and retires the finished tasks in the order they were queued (the
  *   transaction's items are freed and committed_lsa advances), until no queued task is left.
- *   la_coordinator_submit_task uses it to run a commit in the restart recovery range alone.
+ *   la_coordinator_run_alone uses it to run a commit in the restart recovery range with no other task running.
  */
 static int
 la_coordinator_wait_until_retired (void)
@@ -7599,20 +7600,12 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   dispatches it. Older ready tasks are drained first so a newcomer never passes a parked task that was
  *   ready before it.
  *
- *   With a single worker every task is handed over at once, so the worker takes them from the FIFO queue
- *   in commit order and nothing is parked: a parked task would let a later independent one pass it, and
+ *   With a single worker every task is put on the task queue at once, so the worker takes them from the FIFO
+ *   queue in commit order and nothing is parked: a parked task would let a later independent one pass it, and
  *   one worker is meant to apply the log in commit order. The queue cannot be full here, because the
  *   in-flight list has the same capacity as the queue and la_coordinator_enqueue_task waits for room in it.
  *
- *   In the restart recovery range the coordinator with more workers also hands over one task at a time and
- *   waits for it to retire. Transactions there may already be on the slave; re-applied side by side over that
- *   state, two of them can lock rows the master never had them share and the workers deadlock. The victim
- *   fails its task, the applier exits, and the next run replays the same range into the same deadlock, so the
- *   slave stops advancing. The first commit past the range starts after every one in it has retired.
- *
- *   The log is read again from the required LSA, so the commits between it and the committed LSA this
- *   process started from come first. The workers skip them whole, so they take the parallel path and the
- *   range starts only after all of them have retired.
+ *   With more workers, a commit in the restart recovery range runs alone (la_coordinator_run_alone).
  */
 static int
 la_coordinator_submit_task (LA_TASK * task)
@@ -7644,38 +7637,16 @@ la_coordinator_submit_task (LA_TASK * task)
       return error;
     }
 
-  if (la_Info.worker_count == 1 || la_is_in_recovery_range (&task->commit_lsa))
+  if (la_Info.worker_count == 1)
     {
-      /* With more workers, the tasks queued earlier are finished first, together with the parked ones their
-       * completion releases; this one is then queued and finished before the next commit is read. */
-      if (la_Info.worker_count > 1)
-	{
-	  do
-	    {
-	      error = la_coordinator_drain_ready ();
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
-	      error = la_coordinator_wait_until_retired ();
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
-	  while (!la_pending_is_empty ());
-	}
-
-      /* nothing is ever parked on this path, so the FIFO queue alone carries the commit order */
+      /* nothing is ever parked with one worker, so the FIFO queue alone carries the commit order */
       assert (la_pending_is_empty ());
-      error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
-      if (error != NO_ERROR || la_Info.worker_count == 1)
-	{
-	  return error;
-	}
+      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
+    }
 
-      return la_coordinator_wait_until_retired ();
+  if (la_is_in_recovery_range (&task->commit_lsa))
+    {
+      return la_coordinator_run_alone (task);
     }
 
   error = la_coordinator_drain_ready ();
@@ -7696,6 +7667,53 @@ la_coordinator_submit_task (LA_TASK * task)
     }
   la_coordinator_trace_schedule (task, LA_SCHED_PARKED, UINT64_MAX);
   return error;
+}
+
+/*
+ * la_coordinator_run_alone() - run a commit in the restart recovery range with no other task running
+ *   return: NO_ERROR, or an error from queuing the task or waiting for the tasks to retire
+ *   task(in): COMMIT or SYSOP_END task in the range, already on the commit-order ring
+ *
+ * Note:
+ *   Transactions in the range may already be on the slave; re-applied side by side over that state, two of
+ *   them can lock rows the master never had them share and the workers deadlock. The victim fails its task,
+ *   the applier exits, and the next run replays the same range into the same deadlock, so the slave stops
+ *   advancing. So the tasks queued earlier are finished first, together with the parked ones their completion
+ *   releases, and this one is then queued and finished before the next commit is read. The first commit past
+ *   the range starts after every one in it has retired.
+ *
+ *   The log is read again from the required LSA, so the commits between it and the committed LSA this
+ *   process started from come first. The workers skip them whole, so they take the parallel path and the
+ *   range starts only after all of them have retired.
+ */
+static int
+la_coordinator_run_alone (LA_TASK * task)
+{
+  int error;
+
+  do
+    {
+      error = la_coordinator_drain_ready ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = la_coordinator_wait_until_retired ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  while (!la_pending_is_empty ());
+
+  error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return la_coordinator_wait_until_retired ();
 }
 
 /*
