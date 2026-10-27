@@ -6102,6 +6102,7 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
   QFILE_LIST_SCAN_ID scan;
   QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
   int n = 0, d = 0, f1 = 0, f2 = 0, rc = NO_ERROR;
+  SCAN_CODE sc = S_END;
   unsigned int i;
 
   if (hashes == NULL || counts == NULL)
@@ -6118,7 +6119,7 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
       db_private_free_and_init (thread_p, counts);
       return ER_FAILED;
     }
-  while (n < QEXEC_GBY_SAMPLE_ROWS && qfile_scan_list_next (thread_p, &scan, &tpl, PEEK) == S_SUCCESS)
+  while (n < QEXEC_GBY_SAMPLE_ROWS && (sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
     {
       unsigned int h;
 
@@ -6137,6 +6138,11 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
       hashes[i] = h;
       counts[i]++;
       n++;
+    }
+  if (sc == S_ERROR && rc == NO_ERROR)
+    {
+      /* a read error is not the list's end (qexec_gby_merge_rows () alike) */
+      rc = ER_FAILED;
     }
   qfile_close_scan (thread_p, &scan);
   for (i = 0; i < size; i++)
@@ -7759,6 +7765,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
 
   *result = QEXEC_GBY_MERGE_NONE;
   memset (&table, 0, sizeof (table));	/* end: frees it on every path below */
+  memset (&job, 0, sizeof (job));	/* end: frees the sort lists the job opened and did not hand over */
   /* the table was dumped into the lists and cleared before this (qdata_save_agg_htable_to_list ()); entries left
    * in it mean the dump did not run, and then there is nothing to merge */
   if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL || list_id->tuple_cnt == 0
@@ -7835,7 +7842,6 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   qfile_close_list (thread_p, list_id);
   qfile_close_list (thread_p, partials);
   qexec_gby_reader_init (gbstate, &reader);
-  memset (&job, 0, sizeof (job));
   job.rd = &reader;
   job.table = &table;
   job.rows_like = list_id;
@@ -7905,6 +7911,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
 
   rows_out = job.to_sort_rows;
   partials_out = job.to_sort_partials;
+  job.to_sort_rows = job.to_sort_partials = NULL;	/* rows_out / partials_out own them now */
   if (order_free && (job.stop || rows_out == NULL || rows_out->tuple_cnt == 0))
     {
       /* every group is in the output -- or the group count limit was reached, and the rest are not wanted */
@@ -7942,6 +7949,9 @@ end:
   qexec_gby_merge_free_parts (thread_p, n_parts, &row_parts, &part_parts);
   qexec_gby_merge_free_list (thread_p, &rows_out);
   qexec_gby_merge_free_list (thread_p, &partials_out);
+  /* opened by qexec_gby_merge_job_sort_lists () and not handed over: an error came first */
+  qexec_gby_merge_free_list (thread_p, &job.to_sort_rows);
+  qexec_gby_merge_free_list (thread_p, &job.to_sort_partials);
   qexec_gby_mtable_free (thread_p, &table);
   if (rc != NO_ERROR)
     {
