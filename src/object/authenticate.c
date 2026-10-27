@@ -6003,6 +6003,7 @@ int
 au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 {
   DB_OBJECT *trigger_owner_obj = NULL;
+  TR_TRIGGER *trigger = NULL;
   DB_OBJECT *target_class_obj = NULL;
   SM_CLASS *target_class = NULL;
   DB_VALUE value;
@@ -6115,6 +6116,13 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 	{
 	  assert (false);
 	}
+      goto end;
+    }
+
+  trigger = tr_map_trigger (trigger_mop, false);
+  if (trigger != NULL && trigger->class_mop == NULL)
+    {
+      tr_mark_user_triggers_modified ();
     }
 
 end:

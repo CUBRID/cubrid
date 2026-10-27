@@ -375,6 +375,7 @@ extern int tr_unmap_trigger (TR_TRIGGER * trigger);
 
 extern int tr_update_user_cache (void);
 extern void tr_invalidate_user_cache (void);
+extern void tr_mark_user_triggers_modified (void);
 
 /* Migration and information functions */
 
