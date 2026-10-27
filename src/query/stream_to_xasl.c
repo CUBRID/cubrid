@@ -3846,8 +3846,8 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || update_info->num_classes == 0)
     {
-      stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
-      return NULL;
+      /* the remote UPDATE + local subquery sink has no local class, as the DELETE sink does not */
+      update_info->classes = NULL;
     }
   else
     {
@@ -3916,6 +3916,12 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
 	}
     }
 
+  /* remote UPDATE + local subquery sink fields */
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &update_info->sink);
+
+  update_info->remote_set_text = stx_restore_string (thread_p, ptr);
+  ptr = or_unpack_int (ptr, &update_info->remote_num_set_binds);
+
   return ptr;
 
 error:
@@ -3925,7 +3931,9 @@ error:
 
 /*
  * stx_restore_remote_dml_sink () - restore the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
+ *   by the INSERT SELECT,
+ *   DELETE and UPDATE local-subquery procs.
  *   return: advanced ptr
  */
 static char *
@@ -3940,6 +3948,9 @@ stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK
   sink->user = stx_restore_string (thread_p, ptr);
   sink->pwd = stx_restore_string (thread_p, ptr);
   sink->table_name = stx_restore_string (thread_p, ptr);
+  sink->remote_key_col = stx_restore_string (thread_p, ptr);
+  sink->remote_op = stx_restore_string (thread_p, ptr);
+  sink->remote_using_index = stx_restore_string (thread_p, ptr);
 
   return ptr;
 }
@@ -3991,9 +4002,6 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
 
   /* remote DELETE + local subquery sink fields */
   ptr = stx_restore_remote_dml_sink (thread_p, ptr, &delete_info->sink);
-
-  delete_info->remote_key_col = stx_restore_string (thread_p, ptr);
-  delete_info->remote_op = stx_restore_string (thread_p, ptr);
 
   return ptr;
 
@@ -4153,6 +4161,30 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  if (insert_info->remote_num_odku == 0)
+    {
+      insert_info->remote_odku_cols = NULL;
+      insert_info->remote_odku_exprs = NULL;
+    }
+  else
+    {
+      insert_info->remote_odku_cols =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      insert_info->remote_odku_exprs =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      if (insert_info->remote_odku_cols == NULL || insert_info->remote_odku_exprs == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_odku; i++)
+	{
+	  insert_info->remote_odku_cols[i] = stx_restore_string (thread_p, ptr);
+	  insert_info->remote_odku_exprs[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
   return ptr;
 
 error:
@@ -4253,6 +4285,12 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
+  outptr_list->eval_prog = NULL;
+  outptr_list->eval_prog_idx = NULL;
+  outptr_list->eval_prog_state = 0;
+  outptr_list->eval_prog_row_ready = false;
+  outptr_list->eval_prog_share_spec = NULL;
+
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4313,6 +4351,11 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
 
   ptr = or_unpack_int (ptr, &tmp);
   pred_expr->type = (TYPE_PRED_EXPR) tmp;
+
+  /* server-side only: compiled lazily on the first evaluation (eval_data_filter ()) */
+  pred_expr->scan_prog = NULL;
+  pred_expr->scan_prog_state = 0;
+  pred_expr->scan_prog_gen = 0;
 
   switch (pred_expr->type)
     {
@@ -6095,6 +6138,14 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   XASL_UNPACK_INFO *xasl_unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && aggregate != NULL);
+
+  /* server-side runtime state, never part of the stream */
+  aggregate->operand_prog = NULL;
+  aggregate->operand_prog_idx = NULL;
+  aggregate->operand_prog_state = 0;
+  aggregate->operand_prog_base = -1;
+  aggregate->operand_prog_share_spec = NULL;
+  aggregate->operand_prog_link_stamp = 0;
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);

@@ -131,8 +131,9 @@ TEST_CASE ("Test mmon_add_stat", "")
   MMON_SERVER_INFO test_server_info;
   size_t allocated_size;
   size_t allocated_size_2;
-  std::string test_filename;
-  std::string test_filename2;
+  // static: mmon_add_stat () takes the address of a file name for the call site, so a name must not be freed and reused
+  static std::string test_filename;
+  static std::string test_filename2;
   int ret;
   REQUIRE (mmon_is_memory_monitor_enabled () == false);
   ret = mmon_initialize ("unittest");
@@ -186,8 +187,8 @@ TEST_CASE ("Test mmon_add_stat 2", "")
   size_t current_size;
   size_t allocated_size;
   size_t allocated_size_2;
-  std::string test_filename;
-  std::string test_filename2;
+  static std::string test_filename;
+  static std::string test_filename2;
   int ret;
 
   mmon_aggregate_server_info (test_server_info);
@@ -229,7 +230,7 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
   std::vector <std::thread> threads;
   size_t allocated_size[num_threads];
   size_t total_allocated_size = 0;
-  std::string test_filename;
+  static std::string test_filename;
   int ret;
 
   mmon_aggregate_server_info (test_server_info);

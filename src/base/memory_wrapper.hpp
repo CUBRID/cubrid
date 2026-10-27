@@ -61,29 +61,8 @@ inline void *operator new[] (size_t size, const char *file, const int line) noex
   return cub_alloc (size, file, line);
 }
 
-/* Mainly delete (void *ptr, size_t sz) / delete [] (void *ptr, size_t sz) is called,
- * but when deleting arrays of destructible class types, including incomplete types,
- * either delete (void *ptr) / delete [] (void *ptr) or delete (void *ptr, size_t sz) /
- * delete [] (void *ptr, size_t sz) can be called. */
-inline void operator delete (void *ptr) noexcept
-{
-  cub_free (ptr);
-}
-
-inline void operator delete (void *ptr, size_t sz) noexcept
-{
-  cub_free (ptr);
-}
-
-inline void operator delete [] (void *ptr) noexcept
-{
-  cub_free (ptr);
-}
-
-inline void operator delete [] (void *ptr, size_t sz) noexcept
-{
-  cub_free (ptr);
-}
+/* The blocks above are released by the global operator delete, which is replaced in memory_wrapper.cpp
+ * together with the global operator new. */
 
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE

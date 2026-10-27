@@ -387,6 +387,22 @@ typedef struct hashjoin_proc_node
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, UPDATE + local subquery) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+  char *remote_key_col;		/* remote WHERE column the per-row value is compared to, NULL when the proc sends
+				 * no WHERE (INSERT SELECT, and the UPDATE shape that updates every remote row) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
+  char *remote_using_index;	/* the statement's USING INDEX clause, sent as written, NULL when there is none */
+};
+
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
@@ -403,18 +419,12 @@ struct update_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
-};
-
-/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
- * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
-typedef struct remote_dml_sink REMOTE_DML_SINK;
-struct remote_dml_sink
-{
-  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
-  char *url;			/* DBLink connection URL */
-  char *user;			/* DBLink connection user */
-  char *pwd;			/* DBLink connection password */
-  char *table_name;		/* remote target table name */
+  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A local
+   * subquery becomes a bind placeholder; what pt_dblink_dml_is_remote_only_expr accepts is deparsed into
+   * the SET text instead, its value not being computable on this side. */
+  REMOTE_DML_SINK sink;
+  char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
+  int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;
@@ -440,6 +450,9 @@ struct insert_proc_node
   REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
+  char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -455,8 +468,6 @@ struct delete_proc_node
 				 * in conditions */
   /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
   REMOTE_DML_SINK sink;
-  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
-  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<>", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -547,9 +558,13 @@ struct cte_proc_node
 #define XASL_NL_SEMIJOIN		(0x1 << 24)	/* this scan proc is the inner of a NL semi join (first-match) */
 #define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
+#define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
+#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
+/* driven per outer row instead of by the scan block iterator: a NL semi/anti inner and every scan proc after it */
+#define XASL_IS_PER_OUTER_ROW(x)    (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN | XASL_NL_FOLLOWING_JOIN)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -627,8 +642,7 @@ struct cte_proc_node
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
 #define	PCOL_ISLEAF_TUPLE_OFFSET	2
 #define	PCOL_LEVEL_TUPLE_OFFSET		3
-#define	PCOL_INDEX_STRING_TUPLE_OFFSET	4
-#define	PCOL_PARENTPOS_TUPLE_OFFSET	5
+#define	PCOL_PARENTPOS_TUPLE_OFFSET	4
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
 /* XASL FILE IDENTIFICATION */

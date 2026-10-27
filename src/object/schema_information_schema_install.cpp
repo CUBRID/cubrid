@@ -683,7 +683,6 @@ namespace cubschema
       {"is_visible", format_varchar (3)},
       {"expression", format_varchar (1023)},
       {"filter_condition", "string"},
-      {"deduplicate_level", "integer"},
       {"create_time", "datetime"},
       {"update_time", "datetime"},
       {"access_time", "datetime"},
