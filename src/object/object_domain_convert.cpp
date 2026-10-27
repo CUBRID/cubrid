@@ -143,28 +143,42 @@ template <> struct tp_numeric_value<DB_TYPE_MONETARY>
   }
 };
 
+/* Whether a floating point value is out of the INTEGER range. A value above DB_INT32_MAX overflows even when it would
+ * round down into the range, as it does for SMALLINT and NUMERIC: the conversions narrow ROUND (value), so the bound is
+ * DB_INT32_MAX itself. It is exact in double (in float it rounds up to 2^31, which would let 2^31 through), and the
+ * range is tested from the inside so that a NaN, which fails every comparison, is an overflow too. */
+static bool
+tp_double_int_overflow (double number)
+{
+  return ! (number >= DB_INT32_MIN && number <= DB_INT32_MAX);
+}
+
 template <DB_TYPE DST, typename T>
 static bool
 tp_numeric_overflow (T number)
 {
   if constexpr (DST == DB_TYPE_SHORT)
     {
+      /* The SHORT limits are exact in float and double; the range is tested from the inside so that a NaN, which
+       * fails every comparison, is an overflow, as it is for INTEGER and BIGINT below. */
+      if constexpr (std::is_floating_point<T>::value)
+	{
+	  return ! (number >= DB_INT16_MIN && number <= DB_INT16_MAX);
+	}
       return OR_CHECK_SHORT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_INTEGER)
     {
-      /* DB_INT32_MAX is not representable in a float and DB_BIGINT_MAX is representable
-       * in neither float nor double, so comparing a floating point value against the
-       * limit itself compares it against the next power of two and lets the boundary
-       * value through. The _FROM_FP forms compare against that power of two instead. */
       if constexpr (std::is_floating_point<T>::value)
 	{
-	  return OR_CHECK_INT_OVERFLOW_FROM_FP (number);
+	  return tp_double_int_overflow (number);
 	}
       return OR_CHECK_INT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_BIGINT)
     {
+      /* DB_BIGINT_MAX is representable in neither float nor double, so comparing a floating point value against it
+       * compares against 2^63 and lets that value through. The _FROM_FP form compares against 2^63 itself. */
       if constexpr (std::is_floating_point<T>::value)
 	{
 	  return OR_CHECK_BIGINT_OVERFLOW_FROM_FP (number);
@@ -2147,7 +2161,7 @@ tp_value_convert_double_to_time (const DB_VALUE *src, DB_VALUE *target, const TP
 
   {
     double dtmp = db_get_double (src);
-    if (OR_CHECK_INT_OVERFLOW (dtmp))
+    if (tp_double_int_overflow (dtmp))
       {
 	status = DOMAIN_OVERFLOW;
       }
@@ -2175,7 +2189,7 @@ tp_value_convert_monetary_to_time (const DB_VALUE *src, DB_VALUE *target, const 
   int second;
 
   v_money = db_get_monetary (src);
-  if (OR_CHECK_INT_OVERFLOW (v_money->amount))
+  if (tp_double_int_overflow (v_money->amount))
     {
       status = DOMAIN_OVERFLOW;
     }
