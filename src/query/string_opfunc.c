@@ -26868,6 +26868,8 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
    * digits) + sign (1 digit) + NULL terminator (1 byte) */
   char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
+  /* num_str, or a heap copy of an input too long for it; cutting the input would drop its last digits */
+  char *num_buf = num_str;
   char *num_p_str = num_str, *res_p_str = NULL;
   char *num_end_ptr = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -26971,22 +26973,20 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       int str_size = db_get_string_size (num);
       INTL_CODESET codeset = db_get_string_codeset (num);
       int prev_char_length = 0;
-      char *str_start = NULL, *str_end = NULL;
-      char *prev_char = NULL;
+      const char *str_start = db_get_string (num), *str_end = NULL;
+      const char *prev_char = NULL;
 
-      if (str_size >= 0)
+      /* Trim before choosing a buffer, so CHAR padding does not require a heap copy. */
+      if (str_size > 0)
 	{
-	  str_size = MIN (str_size, (int) (sizeof (num_str) - 1));
-	  strncpy (num_str, db_get_string (num), str_size);
-	  str_start = num_str;
-	  str_end = num_str + str_size;
+	  str_end = str_start + str_size;
 
 	  /* trim the tailing white spaces */
 	  do
 	    {
 	      prev_char =
-		(char *) intl_prev_char ((unsigned char *) str_end, (unsigned char *) str_start, codeset,
-					 &prev_char_length);
+		(const char *) intl_prev_char ((const unsigned char *) str_end, (const unsigned char *) str_start,
+					       codeset, &prev_char_length);
 	      assert (prev_char >= str_start);
 
 	      if (intl_is_space (prev_char, str_end, codeset, NULL))
@@ -27008,10 +27008,23 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	  str_size = 0;
 	}
 
-      num_str[str_size] = '\0';
-      num_p_str = num_str;
+      if (str_size >= (int) sizeof (num_str))
+	{
+	  num_buf = (char *) db_private_alloc (NULL, str_size + 1);
+	  if (num_buf == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+      if (str_size > 0)
+	{
+	  strncpy (num_buf, str_start, str_size);
+	}
+      num_buf[str_size] = '\0';
+      num_p_str = num_buf;
 
-      if (!is_str_valid_number (num_p_str, str_end, from_base_int, codeset))
+      if (!is_str_valid_number (num_p_str, num_buf + str_size, from_base_int, codeset))
 	{
 	  error_code = ER_OBJ_INVALID_ARGUMENTS;
 	  goto error;
@@ -27023,14 +27036,30 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       const char *num_bit_str = db_get_bit (num, &num_size);
       num_size = QSTR_NUM_BYTES (num_size);
 
-      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also,
-       * we convert at most 64 digits even if we need only 16 in order to let strtoll handle overflow (weird stuff
-       * happens there ...) */
-      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_bit_str, num_size);
-      num_str[num_size * 2] = '\0';
+      /* an empty bit string has no digit, as an empty string has none */
+      if (num_size == 0)
+	{
+	  error_code = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      if (num_size * 2 >= (int) sizeof (num_str))
+	{
+	  num_buf = (char *) db_private_alloc (NULL, num_size * 2 + 1);
+	  if (num_buf == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+
+      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; all
+       * the bytes are converted, and strtoull reports a value beyond UINT64 as an overflow */
+      num_size = qstr_bin_to_hex (num_buf, num_size * 2, num_bit_str, num_size);
+      num_buf[num_size * 2] = '\0';
 
       /* set up variables for hex -> base10 conversion */
-      num_p_str = num_str;
+      num_p_str = num_buf;
       from_base_int = 16;
       num_is_signed = false;
     }
@@ -27117,7 +27146,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
   result->need_clear = true;
 
   /* all ok */
-  return NO_ERROR;
+  goto exit;
 
 error:
   if (result)
@@ -27130,12 +27159,19 @@ error:
 	{
 	  er_clear ();
 	}
-      return NO_ERROR;
+      error_code = NO_ERROR;
+      goto exit;
     }
 
   if (er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+exit:
+  if (num_buf != num_str)
+    {
+      db_private_free_and_init (NULL, num_buf);
     }
   return error_code;
 }
