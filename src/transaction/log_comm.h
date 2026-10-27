@@ -88,4 +88,12 @@ extern const char *log_isolation_string (TRAN_ISOLATION isolation);
 extern int log_dump_log_info (const char *logname_info, bool also_stdout, const char *fmt, ...);
 extern bool log_does_allow_replication (void);
 
+#if defined (SERVER_MODE)
+/* the folded client half's modification-gate baseline (#121 D8): read
+ * tdes->disable_modifications by transaction index (0 when the index has no
+ * live descriptor).  The dynamic toggle depth lives in the session context
+ * (db_cl_context), not here — a boundary reseed must not destroy it. */
+extern int logtb_session_modification_disabled (int tran_index);
+#endif
+
 #endif /* _LOG_COMM_H_ */

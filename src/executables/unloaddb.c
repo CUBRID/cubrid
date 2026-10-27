@@ -288,7 +288,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       /* pass */
     }
-  else if (password == NULL && (db_error_code () == ER_AU_REJECT_LOGIN && use_console_password))
+  else if (password == NULL && (db_error_code () == ER_AU_REJECT_LOGIN && au_ctx ()->prompt_password))
     {
       /* console input a password */
       password =

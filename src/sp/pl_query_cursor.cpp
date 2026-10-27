@@ -26,6 +26,10 @@
 #include "object_representation.h"
 #include "xserver_interface.h"
 
+#if defined (SERVER_MODE)
+extern bool csc_bracket_is_active (void);
+#endif
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -99,10 +103,13 @@ namespace cubpl
 
 	if (m_query_entry)
 	  {
-	    // Since the list was not created in this thread,
-	    // incrementing the count of the list (m_qlist_count) is required
-	    // to make the assertion on m_qlist_count in qexec_execute_query() hold
-	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
+	    // Only wire callbacks import a list created on another thread.
+#if defined (SERVER_MODE)
+	    if (!csc_bracket_is_active ())
+#endif
+	      {
+		qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
+	      }
 	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
 

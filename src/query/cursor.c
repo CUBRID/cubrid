@@ -44,6 +44,8 @@
 #include "virtual_object.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CURSOR_BUFFER_SIZE              DB_PAGESIZE
 #define CURSOR_BUFFER_AREA_SIZE         IO_MAX_PAGE_SIZE
@@ -1141,6 +1143,12 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
    * identifier we can make a good estimate of oid entry count.
    */
   cursor_id_p->oid_ent_count = CEIL_PTVDIV (DB_PAGESIZE, sizeof (OID)) - 1;
+  if (cursor_id_p->oid_ent_count <= 0)
+    {
+      /* no page size yet; also keeps a negative count out of malloc (-Werror=alloc-size-larger-than) */
+      cursor_id_p->oid_ent_count = 0;
+      return;
+    }
 
   oids_size = cursor_id_p->oid_ent_count * sizeof (OID);
   cursor_id_p->oid_set = (OID *) malloc (oids_size);
@@ -1181,7 +1189,12 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
 bool
 cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable, bool is_oid_included)
 {
+#if defined (SERVER_MODE)
+  /* zero template only, but concurrent workers each get their own */
+  static thread_local QFILE_LIST_ID empty_list_id;
+#else
   static QFILE_LIST_ID empty_list_id;	/* TODO: remove static empty_list_id */
+#endif
 
   if (cursor_id_p == NULL)
     {

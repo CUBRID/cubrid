@@ -29,23 +29,8 @@
 #include "connection_defs.h"
 #include "connection_support.hpp"
 
-/* the order to connect to db-hosts in databases.txt */
-#define DB_CONNECT_ORDER_SEQ         0
-#define DB_CONNECT_ORDER_RANDOM      1
-
-/* abnormal DB host status */
-#define DB_HS_NORMAL                    0x00000000
-#define DB_HS_CONN_TIMEOUT              0x00000001
-#define DB_HS_CONN_FAILURE              0x00000002
-#define DB_HS_MISMATCHED_RW_MODE        0x00000004
-#define DB_HS_HA_DELAYED                0x00000008
-#define DB_HS_NON_PREFFERED_HOSTS       0x00000010
-#define DB_HS_UNUSABLE_DATABASES        0x00000020
-
-#define DB_HS_RECONNECT_INDICATOR \
-  (DB_HS_MISMATCHED_RW_MODE | DB_HS_HA_DELAYED | DB_HS_NON_PREFFERED_HOSTS)
-
-
+/* DB_CONNECT_ORDER_* / DB_HS_* moved to connection_defs.h (needed by
+ * db_admin.c compiled under SERVER_MODE, where this header cannot be used) */
 
 class connection_cl:public connection_support
 {

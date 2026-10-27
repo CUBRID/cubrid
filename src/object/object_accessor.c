@@ -103,10 +103,20 @@ typedef struct argstate
   int free_overflow;
 } ARGSTATE;
 
+#if !defined (SERVER_MODE)
 char *obj_Method_error_msg;
+#endif
 
 static int forge_flag_pat = 0;
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#define obj_Method_call_level (csc_current ()->obj_method_call_level)
+#define obj_Method_error_msg (csc_current ()->obj_method_error_msg)
+#else
 static int obj_Method_call_level = 0;
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static MOP obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons, DB_VALUE * key,
 					    AU_FETCHMODE fetchmode);

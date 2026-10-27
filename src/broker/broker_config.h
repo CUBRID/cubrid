@@ -42,7 +42,7 @@
 
 #define MAX_BROKER_NUM          50
 
-#define	CONF_LOG_FILE_LEN	128
+#define	CONF_LOG_FILE_LEN	256	/* was 128: long install paths truncated log/acl paths (workspace#259 axis 6) */
 
 #define	DEFAULT_AS_MIN_NUM	5
 #define	DEFAULT_AS_MAX_NUM	40
@@ -306,6 +306,15 @@ struct t_broker_info
   /* to here, these are used only in shard */
 
   char use_SSL;
+
+  /* stage B1 (#117): dispatch driver connections to the database server's
+   * adoption socket instead of a CAS pool */
+  char direct_handoff;
+  int direct_handoff_wait_timeout;	/* seconds a driver waits for a handoff slot (workspace#259 axis 4) */
+
+  /* stage B2 (#116 D9-SSL): an SSL client's db_info is encrypted, so the
+   * broker cannot route by dbname — SSL handoffs go to this database */
+  char direct_handoff_ssl_db[32 + 1];
 
   char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
   char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];

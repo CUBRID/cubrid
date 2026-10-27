@@ -28,10 +28,13 @@
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "object_print_util.hpp"
+#include "parser.h"
 #include "printer.hpp"
 #include "schema_manager.h"
 #include "trigger_manager.h"
 #include "work_space.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* safe string free */
 #define STRFREE_W(string)                               \
@@ -529,7 +532,11 @@ get_user_name (DB_OBJECT *user)
 {
 #define MAX_USER_NAME 32	/* actually its 8 */
 
+#if defined (SERVER_MODE)
+  static thread_local char namebuf[MAX_USER_NAME];
+#else
   static char namebuf[MAX_USER_NAME];
+#endif
 
   DB_VALUE value;
   const char *tmp;

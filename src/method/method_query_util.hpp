@@ -52,7 +52,6 @@ namespace cubmethod
   std::string get_column_default_as_string (DB_ATTRIBUTE *attr);
   void serialize_collection_as_string (DB_VALUE *col, std::string &out);
   char get_set_domain (DB_DOMAIN *set_domain, int &precision, short &scale, char &charset);
-#endif
 }
 
 #endif

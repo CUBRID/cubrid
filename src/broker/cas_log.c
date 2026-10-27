@@ -49,6 +49,11 @@
 #include "hide_password.h"
 #include "cas_optimization.h"
 #include "cas_common_vars.h"
+#if defined (SERVER_MODE)
+#include "adoption.hpp"
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(WINDOWS)
 typedef int mode_t;
@@ -60,9 +65,44 @@ typedef int mode_t;
 #define CAS_LOG_VISIBLE_PW     0
 #define CAS_LOG_HIDE_PW        1
 
+#if defined (SERVER_MODE)
+/* A session thread that fails before cas_server_session_slot_begin (for
+ * example a TLS handshake that times out) has no CAS slot yet: every logger
+ * below is then a no-op instead of a NULL dereference of as_info
+ * (workspace#259 axis 4, found by the pre-auth timeout probe). */
+#define CAS_LOG_REQUIRE_SLOT() do { if (as_info == NULL) { return; } } while (0)
+#else
+#define CAS_LOG_REQUIRE_SLOT()
+#endif
+
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
-static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
-static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
+static CAS_TLS char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
+#if defined (SERVER_MODE)
+/* The 160 KiB stdio buffer for the SQL log used to be a TLS array, paid by
+ * every server thread whether or not it ever opens a SQL log. Allocate it on
+ * first use per thread and release it at thread exit (pooled executors keep
+ * it warm across the sessions they serve). (workspace#259 axis 4: 스레드당 TLS) */
+static char *
+cas_sql_log_buffer (void)
+{
+  struct sql_log_buffer_holder
+  {
+    char *buffer = NULL;
+     ~sql_log_buffer_holder ()
+    {
+      free (buffer);
+    }
+  };
+  static thread_local sql_log_buffer_holder holder;
+  if (holder.buffer == NULL)
+    {
+      holder.buffer = (char *) malloc (SQL_LOG_BUFFER_SIZE);
+    }
+  return holder.buffer;
+}
+#else
+static CAS_TLS char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
+#endif
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
@@ -77,10 +117,10 @@ static FILE *access_log_open (char *log_file_name);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
 						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
 
-static FILE *log_fp = NULL, *slow_log_fp = NULL;
-static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
-static INT64 saved_log_fpos = 0;
-static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
+static CAS_TLS FILE *log_fp = NULL, *slow_log_fp = NULL;
+static CAS_TLS char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
+static CAS_TLS INT64 saved_log_fpos = 0;
+static CAS_TLS CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
 static void cas_fwrite_oneline (FILE * fp, const char *str);
@@ -101,7 +141,7 @@ static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
 static void access_log_backup (char *access_log_file, struct tm *ct);
 
-static INT64 saved_temp_stmt_fpos = 0;
+static CAS_TLS INT64 saved_temp_stmt_fpos = 0;
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name)
@@ -112,7 +152,18 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 
   assert (filename_buf != NULL);
 
+#if defined (SERVER_MODE)
+  const char *session_dir = fid == FID_SQL_LOG_DIR ? cas_session_cfg.log_dir : cas_session_cfg.slow_log_dir;
+  int dir_size = snprintf (dirname, sizeof (dirname), "%s%s", session_dir,
+			   session_dir[0] != '\0' && session_dir[strlen (session_dir) - 1] == '/' ? "" : "/");
+  if (dir_size < 0 || (size_t) dir_size >= sizeof (dirname))
+    {
+      filename_buf[0] = '\0';
+      return NULL;
+    }
+#else
   get_cubrid_file (fid, dirname, BROKER_PATH_MAX);
+#endif
   switch (fid)
     {
     case FID_SQL_LOG_DIR:
@@ -123,7 +174,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 	}
       else
 	{
-	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, CAS_LOG_SLOT_INDEX + 1);
 	}
       break;
     case FID_SLOW_LOG_DIR:
@@ -134,7 +185,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 	}
       else
 	{
-	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, CAS_LOG_SLOT_INDEX + 1);
 	}
       break;
     default:
@@ -155,6 +206,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 void
 cas_log_open (char *br_name)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp != NULL)
     {
@@ -165,10 +217,12 @@ cas_log_open (char *br_name)
     {
       if (br_name != NULL)
 	{
+#if !defined (SERVER_MODE)
 	  if (as_info->cas_log_reset == CAS_LOG_RESET_REOPEN)
 	    {
 	      set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
 	    }
+#endif
 
 	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath, BROKER_PATH_MAX, br_name);
 	}
@@ -184,12 +238,32 @@ cas_log_open (char *br_name)
       else
 	{
 	  log_fp = cas_fopen (log_filepath, "w");
+	  if (log_fp == NULL && errno == ENOENT)
+	    {
+	      /* the directory was removed after startup (a CAS got it back from its broker's restart) */
+	      char dir[BROKER_PATH_MAX];
+	      strncpy (dir, log_filepath, sizeof (dir) - 1);
+	      dir[sizeof (dir) - 1] = '\0';
+	      if (cas_mkdir (dirname (dir), 0777) == 0)
+		{
+		  log_fp = cas_fopen (log_filepath, "w");
+		}
+	    }
 	  saved_log_fpos = 0;
 	}
 
       if (log_fp)
 	{
+#if defined (SERVER_MODE)
+	  char *sql_log_buffer = cas_sql_log_buffer ();
+	  if (sql_log_buffer != NULL)
+	    {
+	      setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
+	    }
+	  /* allocation failure: stdio's default buffer, the log still works */
+#else
 	  setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
+#endif
 	}
       cas_log_fd_status = CAS_LOG_FD_OPENED;
     }
@@ -205,6 +279,7 @@ cas_log_open (char *br_name)
 void
 cas_log_reset (char *br_name)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (as_info->cas_log_reset)
     {
@@ -248,6 +323,7 @@ cas_log_close (bool flag)
 void
 cas_log_flush_if_needed (void)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
     {
       cas_fflush (log_fp);
@@ -306,10 +382,11 @@ cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
 void
 cas_log_end (int mode, int run_time_sec, int run_time_msec)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -340,7 +417,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 		   || as_info->cur_sql_log_mode == SQL_LOG_MODE_NOTICE)
 	    {
 	      /* check timeout */
-	      if ((run_time_sec * 1000 + run_time_msec) < shm_appl->long_transaction_time)
+	      if ((run_time_sec * 1000 + run_time_msec) < CAS_SHM_CFG (long_transaction_time))
 		{
 		  abandon = true;
 		}
@@ -372,7 +449,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	  saved_log_fpos = cas_ftell (log_fp);
 
-	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
+	  if ((saved_log_fpos / 1000) > CAS_SHM_CFG (sql_log_max_size))
 	    {
 	      cas_log_close (true);
 	      cas_log_backup (FID_SQL_LOG_DIR);
@@ -429,10 +506,11 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_nu
 void
 cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -453,10 +531,11 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 void
 cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -483,6 +562,19 @@ cas_log_query_cancel (int dummy, ...)
   char buf[LINE_MAX];
   bool log_mode;
   struct timeval tv;
+
+#if defined (SERVER_MODE)
+  /* a driver cancel reaches the session as an interrupt (#117 D4), not as the CAS's SIGUSR1 */
+  if (query_cancel_flag != 1)
+    {
+      INT64 cancel_msec = cubconn::adoption::registry_take_cancel ();
+      if (cancel_msec != 0)
+	{
+	  query_cancel_time = cancel_msec;
+	  query_cancel_flag = 1;
+	}
+    }
+#endif
 
   if (log_fp == NULL || query_cancel_flag != 1)
     {
@@ -517,10 +609,11 @@ cas_log_query_cancel (int dummy, ...)
 void
 cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   cas_log_query_cancel (0);
@@ -544,10 +637,11 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 void
 cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -570,6 +664,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, .
 void
 cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   FILE *fp = NULL;
   va_list ap;
 
@@ -644,7 +739,7 @@ cas_log_write2_nonl_noflush (const char *fmt, ...)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -664,7 +759,7 @@ cas_log_write2 (const char *fmt, ...)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -682,10 +777,11 @@ cas_log_write2 (const char *fmt, ...)
 void
 cas_log_write_value_string (char *value, int size)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -698,9 +794,10 @@ cas_log_write_value_string (char *value, int size)
 void
 cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -713,9 +810,10 @@ cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_P
 void
 cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -734,9 +832,10 @@ cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR
 void
 cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -749,9 +848,10 @@ cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_I
 void
 cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -801,7 +901,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_P
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -840,7 +940,13 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 {
 
   FILE *fp;
+#if defined (SERVER_MODE)
+  /* the session's broker names its own file, as each broker's CAS wrote <ACCESS_LOG_DIR>/<broker>.access */
+  char *access_log_file = cas_session_cfg.access_log_file[0] != '\0'
+    ? cas_session_cfg.access_log_file : shm_appl->access_log_file;
+#else
   char *access_log_file = shm_appl->access_log_file;
+#endif
   char clt_ip_str[16];
   struct tm start_tm;
   time_t start_sec;
@@ -861,7 +967,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
   if (ACCESS_LOG_IS_DENIED_TYPE (log_type))
     {
       int n;
-      n = snprintf (log_file_buf, PATH_MAX, "%s%s", shm_appl->access_log_file, ACCESS_LOG_DENIED_FILENAME_POSTFIX);
+      n = snprintf (log_file_buf, PATH_MAX, "%s%s", access_log_file, ACCESS_LOG_DENIED_FILENAME_POSTFIX);
       if (n >= PATH_MAX)
 	{
 	  return -1;
@@ -877,7 +983,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
     }
 
   fseek (fp, 0, SEEK_END);
-  if ((ftell (fp) / ONE_K) > shm_appl->access_log_max_size)
+  if ((ftell (fp) / ONE_K) > CAS_SHM_CFG (access_log_max_size))
     {
       time_t backup_sec = time (NULL);
       struct tm backup_tm;
@@ -937,10 +1043,17 @@ cas_log_query_info_init (int id, char is_only_query_plan)
 char *
 cas_log_query_plan_file (int id)
 {
-  static char plan_file_name[BROKER_PATH_MAX];
+  static CAS_TLS char plan_file_name[BROKER_PATH_MAX];
   char dirname[BROKER_PATH_MAX];
   get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
+#if defined (SERVER_MODE)
+  /* the slot index disambiguates sessions in the merged server, where every
+   * session shares one pid and the srv_handle ids are per-session (B2-D5) */
+  if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.%d.plan", dirname, (int) getpid (), shm_as_index, id) <
+      0)
+#else
   if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id) < 0)
+#endif
     {
       assert (false);
       return NULL;
@@ -1017,10 +1130,12 @@ cas_slow_log_open (char *br_name)
     {
       if (br_name != NULL)
 	{
+#if !defined (SERVER_MODE)
 	  if (as_info->cas_slow_log_reset == CAS_LOG_RESET_REOPEN)
 	    {
 	      set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
 	    }
+#endif
 
 	  make_sql_log_filename (FID_SLOW_LOG_DIR, slow_log_filepath, BROKER_PATH_MAX, br_name);
 	}
@@ -1077,7 +1192,7 @@ cas_slow_log_end ()
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1085,7 +1200,7 @@ cas_slow_log_end ()
       long slow_log_fpos;
       slow_log_fpos = cas_ftell (slow_log_fp);
 
-      if ((slow_log_fpos / 1000) > shm_appl->sql_log_max_size)
+      if ((slow_log_fpos / 1000) > CAS_SHM_CFG (sql_log_max_size))
 	{
 	  cas_slow_log_close ();
 	  cas_log_backup (FID_SLOW_LOG_DIR);
@@ -1106,7 +1221,7 @@ cas_slow_log_write_and_end (struct timeval *log_time, unsigned int seq_num, cons
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1129,7 +1244,7 @@ cas_slow_log_write (struct timeval *log_time, unsigned int seq_num, bool unit_st
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1149,7 +1264,7 @@ cas_slow_log_write2 (const char *fmt, ...)
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1169,7 +1284,7 @@ cas_slow_log_write_value_string (char *value, int size)
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1185,7 +1300,7 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL && query != NULL)

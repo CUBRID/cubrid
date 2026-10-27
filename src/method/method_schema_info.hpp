@@ -19,9 +19,6 @@
 #ifndef _METHOD_SCHEMA_INFO_HPP_
 #define _METHOD_SCHEMA_INFO_HPP_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include <vector>
 

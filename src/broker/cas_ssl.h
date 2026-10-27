@@ -24,7 +24,13 @@
 #ifndef _CAS_SSL_H_
 #define _CAS_SSL_H_
 
-extern bool ssl_client;
+#include "cas_common_vars.h"	/* CAS_TLS */
+
+extern CAS_TLS bool ssl_client;
+#if defined (SERVER_MODE)
+#define CAS_SSL_CERT_ERROR_SIZE 1200
+extern CAS_TLS char cas_ssl_cert_error[CAS_SSL_CERT_ERROR_SIZE];	/* empty, or the line for the session's SQL log */
+#endif
 
 extern int cas_init_ssl (int sd);
 extern int cas_ssl_read (int sd, char *buf, int size);

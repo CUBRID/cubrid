@@ -33,6 +33,11 @@
 #include <ctype.h>
 
 #include "authenticate.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#include "object_domain.h"
+#include "quick_fit.h"
+#endif
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -40,6 +45,12 @@
 #include "dbtype.h"
 #include "error_code.h"
 #include "db.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;
+#endif
 
 enum
 {
@@ -691,6 +702,48 @@ metadata_of_threads (void)
   return &md;
 }
 
+/* SHOW SESSION STATUS: the per-session CAS statistics the broker's shm slot
+ * table used to expose through 'cubrid broker status' (B2-D10, #116 D10) */
+static SHOWSTMT_METADATA *
+metadata_of_session_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Token", "bigint"},
+    {"Slot", "int"},
+    {"Broker", "varchar(64)"},
+    {"Client_ip", "varchar(20)"},
+    {"Db_user", "varchar(32)"},
+    {"Session_id", "bigint"},
+    {"Tran_index", "int"},
+    {"Num_requests", "bigint"},
+    {"Num_transactions", "bigint"},
+    {"Num_queries", "bigint"},
+    {"Num_selects", "bigint"},
+    {"Num_inserts", "bigint"},
+    {"Num_updates", "bigint"},
+    {"Num_deletes", "bigint"},
+    {"Num_errors", "bigint"},
+    {"Num_long_queries", "bigint"},
+    {"Num_long_transactions", "bigint"},
+    {"Last_activity", "varchar(256)"},
+    {"Client_type", "varchar(24)"},
+    {"Num_query_replace_prepare", "bigint"},
+    {"Num_query_replace_execute", "bigint"},
+    {"Num_query_replace_fallback", "bigint"},
+    {"Client_version", "varchar(20)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_SESSION_STATUS, true /* only_for_dba */ , "show session status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 static SHOWSTMT_METADATA *
 metadata_of_page_buffer_status (void)
 {
@@ -945,8 +998,42 @@ free_db_attribute_list (SHOWSTMT_METADATA * md)
  * showstmt_metadata_init() -- initialize the metadata of show statements
  * return error code>
  */
+static int showstmt_metadata_init_internal (void);
+static void showstmt_metadata_final_internal (void);
+#if defined (SERVER_MODE)
+static client_session_context &
+showstmt_boot_context (void)
+{
+  static client_session_context ctx;
+  return ctx;
+}
+#endif
+
 int
 showstmt_metadata_init (void)
+{
+#if defined (SERVER_MODE)
+  /* Called by server bootstrap only. Metadata must not retain a session heap. */
+  assert (!csc_bracket_is_active ());
+  unsigned int saved_on_server = db_on_server;
+  csc_activate (&showstmt_boot_context ());
+  db_on_server = 0;
+  int error = showstmt_metadata_init_internal ();
+  if (error != NO_ERROR)
+    {
+      tp_session_domains_final ();
+      db_destroy_workspace_heap ();
+    }
+  db_on_server = saved_on_server;
+  csc_deactivate ();
+  return error;
+#else
+  return showstmt_metadata_init_internal ();
+#endif
+}
+
+static int
+showstmt_metadata_init_internal (void)
 {
   int error;
   unsigned int i;
@@ -979,6 +1066,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
   show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
   show_Metas[SHOWSTMT_PAGE_BUFFER_STATUS] = metadata_of_page_buffer_status ();
+  show_Metas[SHOWSTMT_SESSION_STATUS] = metadata_of_session_status ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {
@@ -1004,6 +1092,29 @@ on_error:
  */
 void
 showstmt_metadata_final (void)
+{
+#if defined (SERVER_MODE)
+  if (!show_Inited)
+    {
+      return;
+    }
+  /* All sessions have retired; free with the same allocator used at boot. */
+  assert (!csc_bracket_is_active ());
+  unsigned int saved_on_server = db_on_server;
+  csc_activate (&showstmt_boot_context ());
+  db_on_server = 0;
+  showstmt_metadata_final_internal ();
+  tp_session_domains_final ();
+  db_destroy_workspace_heap ();
+  db_on_server = saved_on_server;
+  csc_deactivate ();
+#else
+  showstmt_metadata_final_internal ();
+#endif
+}
+
+static void
+showstmt_metadata_final_internal (void)
 {
   unsigned int i;
 

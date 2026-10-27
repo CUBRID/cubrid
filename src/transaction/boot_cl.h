@@ -60,7 +60,14 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, B
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
 #endif /* SA_MODE */
+#if defined (SERVER_MODE)
+extern int boot_initialize_client_modules (void);
+extern void boot_finalize_client_modules (void);
+#endif
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
+#if defined (SERVER_MODE)
+extern int boot_resume_client (BOOT_CLIENT_CREDENTIAL * client_credential, const char *password);
+#endif
 extern int boot_shutdown_client (bool is_er_final);
 extern void boot_donot_shutdown_client_at_exit (void);
 extern void boot_server_die_or_changed (void);

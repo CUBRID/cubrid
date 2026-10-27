@@ -60,6 +60,15 @@
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "xasl.h"
+#include "client_session_context.hpp"	/* csc_render_fflush */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+#if defined (SERVER_MODE)
+/* merged client half: the session's optimizer-level override
+ * (client_session_context.cpp) */
+extern int *csc_qo_optimization_level (void);
+#endif
 
 /* figure out how many bytes a QO_USING_INDEX struct with n entries requires */
 #define SIZEOF_USING_INDEX(n) \
@@ -159,7 +168,13 @@ struct qo_implied_join_pair
   QO_SEGMENT *tail_seg;
 };
 
+#if defined (SERVER_MODE)
+/* immutable: a first-use store from concurrent optimizations would be a data
+ * race; UTIL_infinity() is the HUGE_VAL constant, so initialize statically */
+double QO_INFINITY = UTIL_infinity ();
+#else
 double QO_INFINITY = 0.0;
+#endif
 
 static QO_PLAN *qo_optimize_helper (QO_ENV * env);
 static QO_NODE *qo_add_node (PT_NODE * entity, QO_ENV * env);
@@ -291,6 +306,15 @@ qo_get_optimization_param (void *retval, int param, ...)
   switch (param)
     {
     case QO_PARAM_LEVEL:
+#if defined (SERVER_MODE)
+      /* merged in-process session: level changes land on the session, not the
+       * shared sysprm — the CAS original wrote its per-process parameter */
+      if (csc_bracket_is_active () && *csc_qo_optimization_level () != -1)
+	{
+	  *(int *) retval = *csc_qo_optimization_level ();
+	  break;
+	}
+#endif
       *(int *) retval = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
       break;
     case QO_PARAM_COST:
@@ -338,8 +362,15 @@ qo_set_optimization_param (void *retval, int param, ...)
     case QO_PARAM_LEVEL:
       if (retval)
 	{
-	  *(int *) retval = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+	  qo_get_optimization_param (retval, QO_PARAM_LEVEL);
 	}
+#if defined (SERVER_MODE)
+      if (csc_bracket_is_active ())
+	{
+	  *csc_qo_optimization_level () = va_arg (args, int);
+	  break;
+	}
+#endif
       prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, va_arg (args, int));
       break;
 
@@ -796,7 +827,9 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->nterms = 0;
   env->neqclasses = 0;
 
+#if !defined (SERVER_MODE)
   QO_INFINITY = UTIL_infinity ();
+#endif
 
   return env;
 
@@ -8859,7 +8892,7 @@ qo_env_dump (QO_ENV * env, FILE * f)
 	}
     }
 
-  fflush (f);
+  csc_render_fflush (f);
 }
 
 /*

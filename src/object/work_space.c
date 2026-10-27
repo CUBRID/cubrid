@@ -55,17 +55,30 @@
 #include "view_transform.h"
 #include "dbtype.h"
 #include "execute_statement.h"
+#include "client_session_context.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 
 #if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif
-
+extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
+#else
 extern unsigned int db_on_server;
+#endif
 
 /*
  * need these to get the allocation areas initialized, avoid including
  * the entire file
  */
+
+#if defined (SERVER_MODE)
+/* the workspace globals and file statics live in the session's ws_context
+ * (work_space.h); the file-private ones are redirected here */
+#define Ws_dirty (csc_ws ()->dirty)
+#define Null_object (csc_ws ()->null_object)
+#define Classname_cache (csc_ws ()->classname_cache)
+#define ws_MVCC_snapshot_version (csc_ws ()->mvcc_snapshot_version)
+#else /* SERVER_MODE */
 
 /*
  * ws_Commit_mops
@@ -141,12 +154,17 @@ static MOP Null_object;
 
 static MHT_TABLE *Classname_cache = NULL;
 
+#endif /* !SERVER_MODE */
 
 /*
  * Objlist_area
  *    Area for allocating external object list links.
+ *    Shared across sessions in SERVER_MODE (#123 D5): areas are MT-safe and
+ *    per-session instances would just multiply the first-touch block floor.
  */
 static AREA *Objlist_area = NULL;
+
+#if !defined (SERVER_MODE)
 
 /* When MVCC is enabled, fetched objects are not locked. Which means next
  * fetch call would go to server and check if object was changed. However,
@@ -164,6 +182,8 @@ static unsigned int ws_MVCC_snapshot_version = 0;
 
 int ws_Error_ignore_list[-ER_LAST_ERROR];
 int ws_Error_ignore_count = 0;
+
+#endif /* !SERVER_MODE */
 
 #define OBJLIST_AREA_COUNT 4096
 
@@ -202,7 +222,28 @@ static void ws_examine_no_mop_has_cached_lock (void);
 void
 ws_abort_transaction (void)
 {
-  if (db_Disable_modifications)
+  /* the abort below may itself run out of memory and re-enter this callback;
+   * a second entry just leaves the already-set error and returns instead of
+   * recursing into another abort */
+  static thread_local bool ws_abort_in_progress = false;
+
+#if defined (SERVER_MODE)
+  /* Shared bootstrap and pre-registration workspace initialization may have
+   * an active bracket but no client transaction. Leave allocation failures to
+   * their initialization cleanup; never abort the server's main transaction. */
+  if (!csc_bracket_is_active () || tm_Tran_index == NULL_TRAN_INDEX)
+    {
+      return;
+    }
+#endif /* SERVER_MODE */
+
+  if (ws_abort_in_progress)
+    {
+      return;
+    }
+  ws_abort_in_progress = true;
+
+  if (DB_MODIFICATION_DISABLED ())
     {
       if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
 	{
@@ -216,11 +257,17 @@ ws_abort_transaction (void)
 
       (void) tran_unilaterally_abort ();
 
-      /* couldn't get to the catalog, use hard coded strings */
+#if !defined (SERVER_MODE)
+      /* couldn't get to the catalog, use hard coded strings; the server build
+       * has no client console for this banner - there the contract is
+       * transaction aborted, session and process live on */
       fprintf (stdout, "CUBRID cannot allocate main memory and must halt execution.\n");
       fprintf (stdout, "The current transaction has been aborted.\n");
       fprintf (stdout, "Data integrity has been preserved.\n");
+#endif /* !SERVER_MODE */
     }
+
+  ws_abort_in_progress = false;
 }
 
 /*
@@ -265,6 +312,9 @@ ws_make_mop (const OID * oid)
 
       op->trigger_involved = 0;
       op->serial_restart = 0;
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+      op->owner_ws = csc_ws ();
+#endif
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
@@ -1629,6 +1679,8 @@ ws_release_user_instance (MOP mop)
 void
 ws_dirty (MOP op)
 {
+  WS_ASSERT_OWNED (op);
+
   /*
    * don't add the root class to any dirty list. otherwise, later traversals
    * of that dirty list will loop forever.
@@ -1694,6 +1746,8 @@ ws_dirty (MOP op)
 void
 ws_clean (MOP op)
 {
+  WS_ASSERT_OWNED (op);
+
   /*
    * because pinned objects can be in a state of direct modification, we
    * can't reset the dirty bit after a workspace panic flush because this
@@ -2302,6 +2356,45 @@ ws_find_class (const char *name)
  * MAIN INITIALIZATION AND SHUTDOWN
  */
 
+/* Shared allocation areas are owned by server boot, not by a session. */
+int
+ws_initialize_shared (void)
+{
+  int error_code;
+
+  /*
+   * area_init() must have been called earlier.
+   * These need to all be returning errors !
+   */
+  error_code = ws_area_init ();	/* object lists */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = pr_area_init ();	/* DB_VALUE */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = set_area_init ();	/* set reference */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = obt_area_init ();	/* object templates, assignment templates */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = classobj_area_init ();	/* schema templates */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * ws_init - initialize workspace
  *    return: NO_ERROR if successful, error code otherwise
@@ -2329,38 +2422,28 @@ ws_init (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /*
-   * area_init() must have been called earlier.
-   * These need to all be returning errors !
-   */
-  error_code = ws_area_init ();	/* object lists */
+#if !defined (SERVER_MODE)
+  error_code = ws_initialize_shared ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  error_code = pr_area_init ();	/* DB_VALUE */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = set_area_init ();	/* set reference */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = obt_area_init ();	/* object templates, assignment templates */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = classobj_area_init ();	/* schema templates */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+#endif
 
   /* build the MOP table */
   ws_Mop_table_size = prm_get_integer_value (PRM_ID_WS_HASHTABLE_SIZE);
+#if defined (SERVER_MODE)
+  /* server-hosted sessions pay this table per session; unless the parameter
+   * was set explicitly, start at the bottom of its range (#123 D6) */
+  if (!sysprm_param_is_set (PRM_ID_WS_HASHTABLE_SIZE))
+    {
+      int ws_table_min = 0, ws_table_max = 0;
+      if (sysprm_get_range (PRM_ID_WS_HASHTABLE_SIZE, &ws_table_min, &ws_table_max) == NO_ERROR)
+	{
+	  ws_Mop_table_size = ws_table_min;
+	}
+    }
+#endif
   allocsize = sizeof (WS_MOP_TABLE_ENTRY) * ws_Mop_table_size;
   ws_Mop_table = (WS_MOP_TABLE_ENTRY *) malloc (allocsize);
 
@@ -2406,11 +2489,15 @@ ws_init (void)
 error:
   db_destroy_workspace_heap ();
 
+#if !defined (SERVER_MODE)
+  /* the areas are process-shared in the server (#123 D5): a failed session
+   * boot must only undo what it created, not allocators live sessions use */
   ws_area_final ();
   pr_area_final ();
   set_area_final ();
   obt_area_final ();
   classobj_area_final ();
+#endif
 
   if (ws_Mop_table != NULL)
     {
@@ -2723,6 +2810,8 @@ ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_mop)
 void
 ws_decache (MOP mop)
 {
+  WS_ASSERT_OWNED (mop);
+
   /* these should be caught before we get here, issue a warning message */
 #if 0
   if (mop->pinned)
@@ -3848,6 +3937,12 @@ ws_need_flush (void)
 int
 ws_area_init (void)
 {
+  if (Objlist_area != NULL)
+    {
+      /* process-shared area (#123 D5); process teardown resets the pointer */
+      return NO_ERROR;
+    }
+
   Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST), OBJLIST_AREA_COUNT);
   if (Objlist_area == NULL)
     {

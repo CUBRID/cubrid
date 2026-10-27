@@ -40,6 +40,9 @@
 #if !defined(SERVER_MODE)
 #include "memory_alloc.h"
 #include "server_interface.h"
+#else
+/* client stats path (perfmon_server_* stubs) now compiled in server */
+#include "network_interface_cl.h"
 #endif /* !SERVER_MODE */
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
@@ -651,7 +654,7 @@ static const char *perfmon_stat_thread_stat_name (size_t index);
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
-#if defined(CS_MODE) || defined(SA_MODE)
+/* unguarded — client half now compiled into server */
 bool perfmon_Iscollecting_stats = false;
 
 /* Client execution statistics */
@@ -959,7 +962,7 @@ exit:
   return err;
 }
 
-#endif /* CS_MODE || SA_MODE */
+/* end of former CS/SA region */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
@@ -2027,6 +2030,9 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
       return PERF_MODULE_VACUUM;
+    case TT_SERVER:
+      /* a folded driver session serves its client's transaction on its own thread */
+      return thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX ? PERF_MODULE_USER : PERF_MODULE_SYSTEM;
     default:
       return PERF_MODULE_SYSTEM;
     }

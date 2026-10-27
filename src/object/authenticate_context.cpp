@@ -37,8 +37,8 @@
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
 #include "trigger_manager.h" /* tr_invalidate_user_cache () */
-
-bool use_console_password = false; // If true, allows password input from the console
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // static functions
 static int au_add_method_check_authorization (void);
@@ -100,6 +100,7 @@ authenticate_context::final_ctx (void)
 int
 authenticate_context::start (void)
 {
+  prompt_password = false;
   int error = NO_ERROR;
 
   MOPLIST mops;
@@ -223,6 +224,7 @@ authenticate_context::start (void)
 int
 authenticate_context::login (const char *name, const char *password, bool ignore_dba_privilege)
 {
+  prompt_password = false;
   int error = NO_ERROR;
   int save;
 
@@ -570,7 +572,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
-  use_console_password = false;
+  prompt_password = false;
 
   if (dbuser == NULL || strlen (dbuser) == 0)
     {
@@ -661,7 +663,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
 			  || !match_password (db_get_string (&nm_value), dbpassword, db_get_string (&value)))
 			{
-			  use_console_password = (dbpassword == NULL || *dbpassword == '\0');
+			  prompt_password = (dbpassword == NULL || *dbpassword == '\0');
 			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}

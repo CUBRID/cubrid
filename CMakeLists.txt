@@ -339,8 +339,24 @@ bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
 flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
 add_flex_bison_dependency(csql_lexer csql_grammar)
-add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
-add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
+
+# wf122 A2: stamp CSQL_PARSER_TLS onto the generator-owned mutable globals
+# (bison's yylval/yylloc/yynerrs/yychar, flex's scanner bookkeeping) so the
+# SERVER_MODE build parses on concurrent worker threads.  Runs whenever the
+# generated outputs are refreshed; fails the build if the generator output
+# no longer matches the expected declarations (see cmake/patch_parser_tls.cmake).
+set(PARSER_TLS_PATCH ${CMAKE_SOURCE_DIR}/cmake/patch_parser_tls.cmake)
+set(PARSER_TLS_STAMP ${CMAKE_BINARY_DIR}/parser_tls_patched.stamp)
+add_custom_command(OUTPUT ${PARSER_TLS_STAMP}
+  COMMAND ${CMAKE_COMMAND} -DPATCH_FILE=${CSQL_GRAMMAR_OUTPUT} -DPATCH_KIND=grammar_c -P ${PARSER_TLS_PATCH}
+  COMMAND ${CMAKE_COMMAND} -DPATCH_FILE=${CMAKE_BINARY_DIR}/csql_grammar.h -DPATCH_KIND=grammar_h -P ${PARSER_TLS_PATCH}
+  COMMAND ${CMAKE_COMMAND} -DPATCH_FILE=${CSQL_LEXER_OUTPUT} -DPATCH_KIND=lexer_c -P ${PARSER_TLS_PATCH}
+  COMMAND ${CMAKE_COMMAND} -E touch ${PARSER_TLS_STAMP}
+  DEPENDS ${BISON_csql_grammar_OUTPUTS} ${FLEX_csql_lexer_OUTPUTS}
+  COMMENT "Stamping CSQL_PARSER_TLS onto generated parser state")
+
+add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS} ${PARSER_TLS_STAMP})
+add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS} ${PARSER_TLS_STAMP})
 
 # Loader FLEX/BISON targets
 set(BISON_LOADER_FLAGS "-d -r all")

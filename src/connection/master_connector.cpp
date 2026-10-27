@@ -455,7 +455,7 @@ namespace cubconn::master
     /* setup unix domain socket and get the path */
     if (!css_tcp_setup_server_datagram (m_unixpath.c_str (), &m_unixsocket))
       {
-	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
+	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, m_server_name.c_str ());
 	return false;
       }
 
@@ -711,7 +711,7 @@ namespace cubconn::master
 
 	(void) ::unlink (m_unixpath.c_str ());
 	::close (m_unixsocket);
-	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
+	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, m_server_name.c_str ());
 	return false;
       }
 
@@ -787,7 +787,7 @@ namespace cubconn::master
 	break;
 
       default:
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, "server name");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, m_server_name.c_str ());
 	return result::Error;
       }
 

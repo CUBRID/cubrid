@@ -53,6 +53,8 @@
 #include "execute_statement.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
@@ -112,7 +114,15 @@ struct locator_list_keep_mops
   LIST_MOPS *list;		/* The list of mops */
 };
 
+/* per session in the merged server: db_set_interrupt (0) at the start of a
+ * request only forwards the reset when this flag is still raised, so a shared
+ * flag cleared by another session's request start left a late cancel armed
+ * for the victim's next statement (workspace#259 axis 3, audit 0-6) */
+#if defined(SERVER_MODE)
+static thread_local volatile sig_atomic_t lc_Is_siginterrupt = false;
+#else
 static volatile sig_atomic_t lc_Is_siginterrupt = false;
+#endif
 
 #if defined(CUBRID_DEBUG)
 static void locator_dump_mflush (FILE * out_fp, LOCATOR_MFLUSH_CACHE * mflush);
@@ -6891,7 +6901,11 @@ end:
 
 //
 // class locator_repl
+#if defined (SERVER_MODE)
+thread_local class locator_repl __gv_locator_repl;
+#else
 CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
+#endif
 
 /*
  * locator_repl_mflush_force () - Force the mflush area

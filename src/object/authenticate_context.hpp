@@ -100,6 +100,9 @@ class EXPORT_IMPORT authenticate_context
     */
     bool ignore_passwords;
 
+    // Keep the last login result through final_ctx (), until the caller handles it.
+    bool prompt_password = false;
+
     /*
     * Au_dba_user, Au_public_user
     *
@@ -215,7 +218,5 @@ class EXPORT_IMPORT authenticate_context
       return std::array { dba_user, public_user, information_schema_user };
     }
 };
-
-extern bool use_console_password;
 
 #endif // _AUTHENTICATE_CONTEXT_HPP_

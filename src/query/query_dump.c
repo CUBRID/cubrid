@@ -50,10 +50,12 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
+#include "client_session_context.hpp"	/* CSC_CLIENT_STDOUT */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define foutput stdout
+/* a folded csql renders the client half's stdout (xasl_debug_dump) into its reply */
+#define foutput CSC_CLIENT_STDOUT
 
 enum
 {
@@ -3314,7 +3316,7 @@ qdump_print_xasl (xasl_node * xasl_p)
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);
   fprintf (foutput, "\nquery_alias:%s\n", xasl_p->query_alias ? xasl_p->query_alias : "(NULL)");
   fprintf (foutput, "<end of xasl structure %p>\n", xasl_p);
-  fflush (foutput);
+  csc_render_fflush (foutput);
 
   return true;
 }

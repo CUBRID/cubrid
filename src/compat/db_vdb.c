@@ -59,6 +59,8 @@
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define BUF_SIZE 1024
 
@@ -741,7 +743,11 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 }
 
+#if defined (SERVER_MODE)
+thread_local int g_open_buffer_control_flags = 0;
+#else
 int g_open_buffer_control_flags = 0;
+#endif
 
 /* Per-session registry of the compiled subsessions of SQL-level prepared statements
  * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests
@@ -1385,7 +1391,11 @@ db_compile_statement_local (DB_SESSION * session)
   DB_QUERY_TYPE *qtype, *q;
   CUBRID_STMT_TYPE cmd_type;
   int err;
+#if defined (SERVER_MODE)
+  static thread_local long seed = 0;
+#else
   static long seed = 0;
+#endif
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -5352,7 +5362,6 @@ db_check_single_query (DB_SESSION * session)
   return NO_ERROR;
 }
 
-#if !defined (SERVER_MODE)
 /*
  * db_get_parser() - This function returns session's parser
  * returns: session->parser
@@ -5365,7 +5374,6 @@ db_get_parser (DB_SESSION * session)
 {
   return session->parser;
 }
-#endif /* !defined (SERVER_MODE) */
 
 /*
  * db_get_statement() - This function returns session's statement for id

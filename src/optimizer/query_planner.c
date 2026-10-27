@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
+#include <limits.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -55,6 +56,9 @@
 #include "regu_var.hpp"
 #include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
@@ -204,17 +208,23 @@ typedef struct ndv_info NDV_INFO;
 
 typedef int (*QO_WALK_FUNCTION) (QO_PLAN *, void *);
 
-static int infos_allocated = 0;
-static int infos_deallocated = 0;
+/* per-thread: plan/info accounting and the plan free list live for the
+ * optimizations running on one thread (see csql_parser_tls.h) */
+#include "csql_parser_tls.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
-static int qo_plans_allocated;
-static int qo_plans_deallocated;
-static int qo_plans_malloced;
-static int qo_plans_demalloced;
-static int qo_accumulating_plans;
-static int qo_next_tmpfile;
+static CSQL_PARSER_TLS int infos_allocated = 0;
+static CSQL_PARSER_TLS int infos_deallocated = 0;
 
-static QO_PLAN *qo_plan_free_list;
+static CSQL_PARSER_TLS int qo_plans_allocated;
+static CSQL_PARSER_TLS int qo_plans_deallocated;
+static CSQL_PARSER_TLS int qo_plans_malloced;
+static CSQL_PARSER_TLS int qo_plans_demalloced;
+static CSQL_PARSER_TLS int qo_accumulating_plans;
+static CSQL_PARSER_TLS int qo_next_tmpfile;
+
+static CSQL_PARSER_TLS QO_PLAN *qo_plan_free_list;
 
 static QO_PLAN *qo_scan_new (QO_INFO *, QO_NODE *, QO_SCANMETHOD);
 static void qo_scan_free (QO_PLAN *);
@@ -534,6 +544,37 @@ QO_PLAN_VTBL *all_vtbls[] = {
   &qo_set_follow_plan_vtbl,
   &qo_worst_plan_vtbl
 };
+
+#if defined (SERVER_MODE)
+/* Reuse the immutable-vtable lookup introduced for the folded cost override.
+ * The compact policy belongs to the client context, so it also follows that
+ * context when an internal compiler request runs on another worker. Two bits
+ * per all_vtbls entry encode default (0), zero (1), and worst (2). */
+typedef void (*QO_PLAN_COST_FUNC) (QO_PLAN *);
+static_assert (DIM (all_vtbls) * 2 <= sizeof (unsigned int) * CHAR_BIT, "cost policy must fit its session word");
+
+static QO_PLAN_COST_FUNC
+qo_plan_cost_fn (const QO_PLAN_VTBL * vtbl)
+{
+  unsigned int overrides = csc_bracket_is_active ()? csc_current ()->qo_cost_overrides : 0;
+  if (overrides != 0)
+    {
+      for (int i = 0; i < DIM (all_vtbls); i++)
+	{
+	  if (all_vtbls[i] == vtbl)
+	    {
+	      unsigned int cost = (overrides >> (2 * i)) & 3u;
+	      return cost == 1 ? &qo_zero_cost : (cost == 2 ? &qo_worst_cost : vtbl->cost_fn);
+	    }
+	}
+    }
+  return vtbl->cost_fn;
+}
+
+#define QO_PLAN_COST_FN(vtbl) (qo_plan_cost_fn (vtbl))
+#else /* SERVER_MODE */
+#define QO_PLAN_COST_FN(vtbl) ((vtbl)->cost_fn)
+#endif /* SERVER_MODE */
 
 static double qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel);
 
@@ -860,7 +901,7 @@ qo_plan_compute_cost (QO_PLAN * plan)
   BITSET_ITERATOR iter;
 
   /* This computes the specific cost characteristics for each plan. */
-  (*(plan->vtbl)->cost_fn) (plan);
+  (*QO_PLAN_COST_FN (plan->vtbl)) (plan);
 
   /* When computing the cost for a WORST_PLAN, we'll get in here without a backing info node; just work around it. */
   if (plan->info == NULL)
@@ -3201,7 +3242,7 @@ qo_sort_cost (QO_PLAN * planp)
 	{
 	  double save_ncard = QO_NODE_NCARD (subplanp->plan_un.scan.node);
 	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
-	  (*(subplanp->vtbl)->cost_fn) (subplanp);
+	  (*QO_PLAN_COST_FN (subplanp->vtbl)) (subplanp);
 	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = save_ncard;
 	}
 
@@ -6460,8 +6501,8 @@ qo_plan_dump_cost_params (FILE * output)
     {
       const SYSPRM_PARAM *prm = GET_PRM (cost_prm[i]);
 
-      if (PRM_IS_FLOAT (prm) ? (PRM_GET_FLOAT (prm->value) != PRM_GET_FLOAT (prm->default_value))
-	  : (PRM_GET_INT (prm->value) != PRM_GET_INT (prm->default_value)))
+      if (PRM_IS_FLOAT (prm) ? (prm_get_float_value (cost_prm[i]) != PRM_GET_FLOAT (prm->default_value))
+	  : (prm_get_integer_value (cost_prm[i]) != PRM_GET_INT (prm->default_value)))
 	{
 	  tuned = true;
 	  break;
@@ -6541,11 +6582,11 @@ qo_plan_get_cost_fn (const char *plan_name)
     {
       if (intl_mbs_ncasecmp (plan_name, all_vtbls[i]->plan_string, strlen (all_vtbls[i]->plan_string)) == 0)
 	{
-	  if (all_vtbls[i]->cost_fn == &qo_zero_cost)
+	  if (QO_PLAN_COST_FN (all_vtbls[i]) == &qo_zero_cost)
 	    {
 	      cost = '0';
 	    }
-	  else if (all_vtbls[i]->cost_fn == &qo_worst_cost)
+	  else if (QO_PLAN_COST_FN (all_vtbls[i]) == &qo_worst_cost)
 	    {
 	      cost = 'i';
 	    }
@@ -6580,6 +6621,8 @@ qo_plan_set_cost_fn (const char *plan_name, int fn)
     {
       if (intl_mbs_ncasecmp (plan_name, all_vtbls[i]->plan_string, strlen (all_vtbls[i]->plan_string)) == 0)
 	{
+	  void (*new_cost_fn) (QO_PLAN *) = NULL;	/* NULL: the plan's default cost */
+
 	  switch (fn)
 	    {
 	    case 0:
@@ -6588,7 +6631,7 @@ qo_plan_set_cost_fn (const char *plan_name, int fn)
 	    case 'B':		/* BEST */
 	    case 'z':		/* zero */
 	    case 'Z':		/* ZERO */
-	      all_vtbls[i]->cost_fn = &qo_zero_cost;
+	      new_cost_fn = &qo_zero_cost;
 	      break;
 
 	    case 1:
@@ -6597,13 +6640,23 @@ qo_plan_set_cost_fn (const char *plan_name, int fn)
 	    case 'I':		/* INFINITE */
 	    case 'w':		/* worst */
 	    case 'W':		/* WORST */
-	      all_vtbls[i]->cost_fn = &qo_worst_cost;
+	      new_cost_fn = &qo_worst_cost;
 	      break;
 
 	    default:
-	      all_vtbls[i]->cost_fn = all_vtbls[i]->default_cost;
 	      break;
 	    }
+#if defined (SERVER_MODE)
+	  if (!csc_bracket_is_active ())
+	    {
+	      return NULL;
+	    }
+	  unsigned int cost = new_cost_fn == &qo_zero_cost ? 1u : (new_cost_fn == &qo_worst_cost ? 2u : 0u);
+	  unsigned int &overrides = csc_current ()->qo_cost_overrides;
+	  overrides = (overrides & ~(3u << (2 * i))) | (cost << (2 * i));
+#else /* SERVER_MODE */
+	  all_vtbls[i]->cost_fn = (new_cost_fn != NULL) ? new_cost_fn : all_vtbls[i]->default_cost;
+#endif /* SERVER_MODE */
 	  return all_vtbls[i]->plan_string;
 	}
     }

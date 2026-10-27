@@ -50,14 +50,18 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 
-#if !defined (SERVER_MODE)
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"	/* csc_bracket_is_active () */
+#endif
+/* workspace/object client semantics are compiled in SERVER_MODE too (merged
+ * binary); the object converters below discriminate at run time by
+ * csc_bracket_is_active () (see tp_value_convert_bracketed) */
 #include "work_space.h"
 #include "virtual_object.h"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "object_template.h"
 #include "dbi.h"
-#endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
 #include "error_manager.h"
@@ -2363,7 +2367,6 @@ tp_value_convert_enumeration_to_time (const DB_VALUE *src, DB_VALUE *target, con
   return status;
 }
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_object_to_object (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				   date_conversion_error *error)
@@ -2424,9 +2427,7 @@ tp_value_convert_object_to_object (const DB_VALUE *src, DB_VALUE *target, const 
 
   return status;
 }
-#endif /* !defined (SERVER_MODE) */
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_oid_to_object (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				date_conversion_error *error)
@@ -2484,9 +2485,7 @@ tp_value_convert_oid_to_object (const DB_VALUE *src, DB_VALUE *target, const TP_
 
   return status;
 }
-#endif /* !defined (SERVER_MODE) */
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_pointer_to_object (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				    date_conversion_error *error)
@@ -2508,9 +2507,7 @@ tp_value_convert_pointer_to_object (const DB_VALUE *src, DB_VALUE *target, const
 
   return status;
 }
-#endif /* !defined (SERVER_MODE) */
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_vobj_to_object (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				 date_conversion_error *error)
@@ -2575,9 +2572,7 @@ tp_value_convert_vobj_to_object (const DB_VALUE *src, DB_VALUE *target, const TP
 
   return status;
 }
-#endif /* !defined (SERVER_MODE) */
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_object_to_vobj (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				 date_conversion_error *error)
@@ -2598,7 +2593,22 @@ tp_value_convert_object_to_vobj (const DB_VALUE *src, DB_VALUE *target, const TP
 
   return status;
 }
-#endif /* !defined (SERVER_MODE) */
+
+#if defined (SERVER_MODE)
+/* The object converters above need the session workspace.  A genuine server
+ * thread has none, so it keeps the pre-fold server behavior (SERVER_BODY: an
+ * OBJECT target stays incompatible, an OBJECT source is its OID
+ * representation); any bracketed session thread (either hat -- its server half
+ * receives OBJECT values across the folded seam, wf173 class) runs the client
+ * body on the workspace it owns. */
+template <TP_VALUE_CONVERTER CLIENT_BODY, TP_VALUE_CONVERTER SERVER_BODY>
+static TP_DOMAIN_STATUS
+tp_value_convert_bracketed (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+			    date_conversion_error *error)
+{
+  return (csc_bracket_is_active () ? CLIENT_BODY : SERVER_BODY) (src, target, desired_domain, error);
+}
+#endif /* SERVER_MODE */
 
 static TP_DOMAIN_STATUS
 tp_value_convert_oid_to_vobj (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
@@ -8318,21 +8328,21 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 #if !defined (SERVER_MODE)
 	case DB_TYPE_OBJECT:
 	  return tp_value_convert_object_to_object;
-#else /* !defined (SERVER_MODE) */
-	case DB_TYPE_OBJECT:
-	  return tp_value_convert_incompatible;
-#endif /* !defined (SERVER_MODE) */
-#if !defined (SERVER_MODE)
 	case DB_TYPE_OID:
 	  return tp_value_convert_oid_to_object;
-#endif /* !defined (SERVER_MODE) */
-#if !defined (SERVER_MODE)
 	case DB_TYPE_VOBJ:
 	  return tp_value_convert_vobj_to_object;
-#endif /* !defined (SERVER_MODE) */
-#if !defined (SERVER_MODE)
 	case DB_TYPE_POINTER:
 	  return tp_value_convert_pointer_to_object;
+#else /* !defined (SERVER_MODE) */
+	case DB_TYPE_OBJECT:
+	  return tp_value_convert_bracketed<tp_value_convert_object_to_object, tp_value_convert_incompatible>;
+	case DB_TYPE_OID:
+	  return tp_value_convert_bracketed<tp_value_convert_oid_to_object, tp_value_convert_incompatible>;
+	case DB_TYPE_VOBJ:
+	  return tp_value_convert_bracketed<tp_value_convert_vobj_to_object, tp_value_convert_incompatible>;
+	case DB_TYPE_POINTER:
+	  return tp_value_convert_bracketed<tp_value_convert_pointer_to_object, tp_value_convert_incompatible>;
 #endif /* !defined (SERVER_MODE) */
 	default:
 	  break;
@@ -8358,6 +8368,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 #if !defined (SERVER_MODE)
 	case DB_TYPE_OBJECT:
 	  return tp_value_convert_object_to_vobj;
+#else /* !defined (SERVER_MODE) */
+	case DB_TYPE_OBJECT:
+	  return tp_value_convert_bracketed<tp_value_convert_object_to_vobj, tp_value_convert_oid_to_vobj>;
 #endif /* !defined (SERVER_MODE) */
 	case DB_TYPE_OID:
 	  return tp_value_convert_oid_to_vobj;

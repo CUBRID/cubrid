@@ -146,6 +146,8 @@ struct qmgr_query_entry
   QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
   bool includes_tde_class;	/* true if this query include some tde class. It is from xasl node */
+  struct xasl_unpack_info *xasl_buf_info;	/* unpacked one-shot XASL while it executes (parallel scan
+						 * workers unpack their copy from it); NULL otherwise */
   unsigned int alloc_no;	/* incremented on every retrieval from the free list (qmgr_allocate_query_entry()) */
 };
 

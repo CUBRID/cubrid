@@ -25,11 +25,11 @@
 #include "dbtype.h"
 #include "chartype.h"
 
-#if !defined(SERVER_MODE)
+/* unguarded — client half now compiled into server */
 #include "dbi.h"
 #include "object_domain.h"
 #include "object_primitive.h"
-#endif
+/* end of former !SERVER_MODE region */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -473,7 +473,7 @@ namespace cubmethod
     return std::string (val_str);
   }
 
-#if !defined(SERVER_MODE)
+  /* unguarded — client half now compiled into server */
   int
   get_stmt_type (std::string sql)
   {
@@ -844,5 +844,5 @@ namespace cubmethod
 
     return (set_domain_count != 1) ? DB_TYPE_NULL : set_type;
   }
-#endif
+  /* end of former !SERVER_MODE region */
 }
