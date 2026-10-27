@@ -350,14 +350,16 @@ exit:
 
     // wait for the client to finish the switch. Switching the user can fetch objects from the server in this
     // transaction, and a transaction must not be worked on by two threads at a time.
+    // The client may have switched the rights by the time an interrupt is noticed. Take its reply regardless,
+    // or a switch that did happen would be taken as failed and not be undone.
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client_recv (get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
+	error = m_stack->send_data_to_client_recv (get_result, false, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
 		std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client_recv (get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client_recv (get_result, false, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
       }
 
     if (error == NO_ERROR && client_error != NO_ERROR)
@@ -704,7 +706,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
+    error = m_stack->send_data_to_client_recv (get_prepare_info, true, code, sql, flag, m_stack->get_tran_id ());
     return error;
   }
 
@@ -762,7 +764,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (get_execute_info, code, request);
+    error = m_stack->send_data_to_client_recv (get_execute_info, true, code, request);
     request.clear ();
 
     return error;
@@ -868,7 +870,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, request);
+    error = m_stack->send_data_to_client_recv (java_lambda, true, code, request);
     return error;
   }
 
@@ -887,7 +889,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, request);
+    error = m_stack->send_data_to_client_recv (java_lambda, true, code, request);
     return error;
   }
 
@@ -905,7 +907,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command, oid);
+    error = m_stack->send_data_to_client_recv (java_lambda, true, code, command, oid);
     return error;
   }
 
@@ -926,7 +928,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, request);
+    error = m_stack->send_data_to_client_recv (java_lambda, true, code, request);
     return error;
   }
 
@@ -970,7 +972,7 @@ exit:
 	}
     };
 
-    error = m_stack->send_data_to_client_recv (get_make_outresult_info, code, query_id);
+    error = m_stack->send_data_to_client_recv (get_make_outresult_info, true, code, query_id);
 
     return error;
   }
@@ -988,7 +990,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, handler_id);
+    error = m_stack->send_data_to_client_recv (java_lambda, true, code, handler_id);
     return error;
   }
 
@@ -1006,7 +1008,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command);
+    error = m_stack->send_data_to_client_recv (java_lambda, true, code, command);
     return error;
   }
 

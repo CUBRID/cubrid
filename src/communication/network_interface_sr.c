@@ -6664,13 +6664,14 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
  *
  *   area(in):
  *   datasize(in):
+ *   check_preexisting_error (in): false to return the data even if the transaction is interrupted
  *
  * NOTE:
  */
 int
-xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize)
+xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize, bool check_preexisting_error)
 {
-  return xs_receive_data_from_client_with_timeout (thread_p, area, datasize, -1);
+  return xs_receive_data_from_client_with_timeout (thread_p, area, datasize, -1, check_preexisting_error);
 }
 
 /*
@@ -6681,11 +6682,14 @@ xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize
  *   area(in):
  *   datasize(in):
  *   timeout (in):
+ *   check_interrupt (in): false to return the data even if the transaction is interrupted. The interrupt is left
+ *                         set, to be caught by the next check.
  *
  * NOTE:
  */
 int
-xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout)
+xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout,
+					  bool check_interrupt)
 {
   unsigned int rid;
   int rc = 0;
@@ -6710,7 +6714,7 @@ xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, 
       return ER_FAILED;
     }
 
-  if (logtb_is_interrupted (thread_p, false, &continue_checking))
+  if (check_interrupt && logtb_is_interrupted (thread_p, false, &continue_checking))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
@@ -7514,7 +7518,7 @@ xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p, LOG_PAGEID * fpageid_
   int remote_error;
 
   /* Obtain success message from the client, without blocking the server. */
-  error = xs_receive_data_from_client_with_timeout (thread_p, &reply, &reply_size, timeout);
+  error = xs_receive_data_from_client_with_timeout (thread_p, &reply, &reply_size, timeout, true);
   if (error != NO_ERROR)
     {
       if (reply)
