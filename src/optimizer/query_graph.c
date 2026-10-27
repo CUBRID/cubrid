@@ -8510,22 +8510,21 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
- * qo_row_snapshot_apply () - re-derive join selectivities from the kept rows of small filtered nodes
+ * qo_row_snapshot_apply () - re-derive join selectivities from the kept rows of filtered nodes
  *   return: void
  *   env(in): optimizer environment, after qo_discover_edges () and qo_assign_eq_classes ()
  *
  * A code/dimension table filtered by a constant and joined to a large table on its key gets the
  * join estimated at 1/NDV, because the planner does not know WHICH key the constant selects:
  * histograms are kept per column, so the pair ('release dates', 16) is lost at collection time
- * (JOB 19c: 124x underestimate, 37x slower than the reference). A table of at most
- * statistics_row_snapshot_max_rows rows keeps its rows with the statistics (row_snapshot_cl.hpp);
- * for its node this pass applies the constant sargs to them and, for every equi-join term the
+ * (JOB 19c: 124x underestimate, 37x slower than the reference). A table declared ROW_SNAPSHOT keeps
+ * its rows, or a uniform sample of them, with the statistics (row_snapshot_cl.hpp); for its node this pass applies the constant sargs to them and, for every equi-join term the
  * node takes part in, replaces the term's selectivity with the mean over the surviving rows of
  * the OTHER column's equality estimate for that row's key:
  *
  *     sel = (1 / k) * SUM_i P (other.col = v_i)
  *
- * The node's own selectivity becomes k over the snapshot's rows. Nothing else changes: no derived
+ * The node's own selectivity becomes k over the kept rows (a fraction, so a sample serves as well). Nothing else changes: no derived
  * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
  * the index scan cost already reads. Every failure along the way -- no snapshot, a predicate the
  * pass cannot evaluate, a key the histogram cannot price, zero survivors, a join between two

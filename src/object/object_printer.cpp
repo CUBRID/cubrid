@@ -1115,6 +1115,12 @@ void object_printer::describe_class (struct db_object *class_op)
       m_buf (" DONT_REUSE_OID");
     }
 
+  /* rows kept with the statistics (CBRD-27478); printed only when set, so other tables print as before */
+  if (sm_get_class_flag (class_op, SM_CLASSFLAG_ROW_SNAPSHOT) > 0)
+    {
+      m_buf (", ROW_SNAPSHOT");
+    }
+
   /* collation */
   if (class_descr.collation != NULL)
     {

@@ -1555,6 +1555,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DENSE_RANK
 %token <cptr> DETERMINISTIC
 %token <cptr> DONT_REUSE_OID
+%token <cptr> NO_ROW_SNAPSHOT
 %token <cptr> ELT
 %token <cptr> EMPTY
 %token <cptr> ENCRYPT
@@ -1690,6 +1691,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> RESPECT
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
+%token <cptr> ROW_SNAPSHOT
 %token <cptr> REVERSE
 %token <cptr> RLIKE
 %token <cptr> DISK_SIZE
@@ -5921,6 +5923,26 @@ alter_clause_for_alter_list
 	|        alter_auto_increment_mysql_specific
 	| MODIFY alter_modify_clause_for_alter_list
 	| CHANGE alter_change_clause_for_alter_list
+	| ROW_SNAPSHOT
+		{{
+			PT_NODE *alt = parser_get_alter_node();
+
+			if (alt)
+			  {
+			    alt->info.alter.code = PT_CHANGE_ROW_SNAPSHOT;
+			    alt->info.alter.alter_clause.row_snapshot.on = true;
+			  }
+		}}
+	| NO_ROW_SNAPSHOT
+		{{
+			PT_NODE *alt = parser_get_alter_node();
+
+			if (alt)
+			  {
+			    alt->info.alter.code = PT_CHANGE_ROW_SNAPSHOT;
+			    alt->info.alter.alter_clause.row_snapshot.on = false;
+			  }
+		}}
 	| OWNER TO identifier
 		{{
 			PT_NODE *alt = parser_get_alter_node();
@@ -9172,6 +9194,14 @@ table_option
 		{{
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ROW_SNAPSHOT
+		{{
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_ROW_SNAPSHOT, NULL);
+		}}
+	| NO_ROW_SNAPSHOT
+		{{
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_NO_ROW_SNAPSHOT, NULL);
 		}}
 	| DONT_REUSE_OID
 		{{
@@ -20754,6 +20784,7 @@ identifier
         | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NO_ROW_SNAPSHOT        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ELT                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20886,6 +20917,7 @@ identifier
 	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ROW_SNAPSHOT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

@@ -786,6 +786,10 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][tT][uU][rR][nN][sS]						{ return RETURNS; }
 [rR][eE][uU][sS][eE]_[oO][iI][dD]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return REUSE_OID; }
+[rR][oO][wW]_[sS][nN][aA][pP][sS][hH][oO][tT]				{ csql_yylval.cptr = pt_makename(yytext);
+									  return ROW_SNAPSHOT; }
+[nN][oO]_[rR][oO][wW]_[sS][nN][aA][pP][sS][hH][oO][tT]			{ csql_yylval.cptr = pt_makename(yytext);
+									  return NO_ROW_SNAPSHOT; }
 [rR][eE][vV][eE][rR][sS][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return REVERSE; }
 [dD][iI][sS][kK][_][sS][iI][zZ][Ee]				        { csql_yylval.cptr = pt_makename(yytext);

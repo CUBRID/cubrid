@@ -17,15 +17,18 @@
  */
 
 /*
- * row_snapshot_cl.hpp - rows of small tables kept with the statistics (CBRD-27478)
+ * row_snapshot_cl.hpp - rows of code tables kept with the statistics (CBRD-27478)
  *
  * Histograms are kept per column, so a constant filter on one column of a code table tells the
  * optimizer how many rows survive but not WHICH keys they carry: `it.info = 'release dates'
  * AND it.id = mi.info_type_id` is priced at 1/NDV of mi.info_type_id whatever id 'release dates'
- * has. For a table of at most statistics_row_snapshot_max_rows rows, UPDATE STATISTICS also keeps
- * the rows themselves, as one more _db_histogram row of the class under a reserved key_attr. The
- * optimizer applies the constant filters of such a node to the rows and prices each equi-join
- * of the node by the surviving keys, through the other column's histogram.
+ * has. For a table declared ROW_SNAPSHOT (CREATE/ALTER TABLE), UPDATE STATISTICS also keeps its
+ * rows -- all of them up to statistics_row_snapshot_rows, a uniform sample of that many beyond --
+ * as one more _db_histogram row of the class under a reserved key_attr. The declaration is a class
+ * flag (SM_CLASSFLAG_ROW_SNAPSHOT), so it travels with the schema (SHOW CREATE TABLE, unloaddb,
+ * HA); the rows are a statistic. The optimizer applies the constant filters of such a node to the
+ * rows and prices each equi-join of the node by the surviving keys, through the other column's
+ * histogram.
  *
  * The snapshot is a statistic like the histograms: it is refreshed by the next UPDATE STATISTICS
  * and is not invalidated by DML. A constant that matches no row of it (a code added since)
@@ -49,16 +52,17 @@ typedef struct sm_class SM_CLASS;
  * dot, so no column's histogram can take this row. */
 #define ROW_SNAPSHOT_KEY_ATTR ".row_snapshot"
 
-/* the largest snapshot kept, packed; a table over it keeps none whatever its row count */
-#define ROW_SNAPSHOT_MAX_BYTES (64 * 1024)
-/* the most rows a snapshot can hold: the upper bound of statistics_row_snapshot_max_rows */
+/* the largest snapshot kept, packed; over it the sample is thinned evenly until it fits */
+#define ROW_SNAPSHOT_MAX_BYTES (1024 * 1024)
+/* the most rows a snapshot can hold: the upper bound of statistics_row_snapshot_rows */
 #define ROW_SNAPSHOT_MAX_ROWS 10000
 
-/* the rows of a small table, as the statistics last saw them */
+/* the rows of a table, as the statistics last saw them */
 struct row_snapshot
 {
   int n_attrs;			/* columns kept */
-  int n_rows;
+  int n_rows;			/* rows kept: all of the table's, or a uniform sample of them */
+  int table_rows;		/* rows of the table when they were collected */
   int *attr_ids;		/* column id per slot; -1 = a column that no longer matches the class */
   DB_VALUE *values;		/* n_rows x n_attrs, row-major */
 };
@@ -75,19 +79,19 @@ struct row_snapshot_filter
 };
 typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 
-/* statistics_row_snapshot_max_rows; 0 = the feature is off */
+/* statistics_row_snapshot_rows; 0 = the feature is off */
 extern int row_snapshot_max_rows (void);
 
-/* UPDATE STATISTICS: keep the rows of classop when it has at most statistics_row_snapshot_max_rows
- * rows and they pack into ROW_SNAPSHOT_MAX_BYTES, otherwise remove the snapshot it may have.
- * Does nothing while the feature is off. A failure to read the rows only leaves the class
- * without a snapshot; a failure to write the catalog is returned. */
+/* UPDATE STATISTICS: when classop is declared ROW_SNAPSHOT, keep its rows (a sample of
+ * statistics_row_snapshot_rows of them when it has more), thinned to fit ROW_SNAPSHOT_MAX_BYTES.
+ * Does nothing for other classes or while the feature is off. A failure to read the rows only
+ * leaves the class without a snapshot; a failure to write the catalog is returned. */
 extern int row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullscan);
-/* remove the snapshot of classop, if any (DROP HISTOGRAM, DROP TABLE) */
+/* remove the snapshot of classop, if any (NO_ROW_SNAPSHOT, DROP HISTOGRAM) */
 extern int row_snapshot_drop (MOP classop);
 
 /* the snapshot of a class for planning, loaded once into its statistics cache; NULL when the
- * feature is off or the class has none */
+ * feature is off, the class is not declared ROW_SNAPSHOT or has no rows kept yet */
 extern const ROW_SNAPSHOT *row_snapshot_get (MOP classop, SM_CLASS *class_);
 extern void row_snapshot_free (ROW_SNAPSHOT *snapshot);
 

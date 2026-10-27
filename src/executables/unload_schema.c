@@ -1789,6 +1789,11 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	      output_ctx (" DONT_REUSE_OID");
 	    }
 
+	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_ROW_SNAPSHOT) > 0)
+	    {
+	      output_ctx (", ROW_SNAPSHOT");
+	    }
+
 	  if (class_ != NULL)
 	    {
 	      output_ctx (", COLLATE %s", lang_get_collation_name (class_->collation_id));

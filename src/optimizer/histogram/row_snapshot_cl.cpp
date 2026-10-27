@@ -23,6 +23,7 @@
 #include "row_snapshot_cl.hpp"
 
 #include <cstring>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -44,16 +45,17 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* blob layout: magic, version, total length, n_attrs, n_rows, n_attrs column ids, then the values
- * row by row, each packed with its domain (or_put_value), so a value reads back with its type and
- * collation */
+/* blob layout: magic, version, total length, n_attrs, n_rows (kept), table_rows (the table's rows
+ * when collected), n_attrs column ids, then the values row by row, each packed with its domain
+ * (or_put_value), so a value reads back with its type and collation */
 #define ROW_SNAPSHOT_MAGIC 0x52534e31	/* "RSN1" */
 #define ROW_SNAPSHOT_VERSION 1
-#define ROW_SNAPSHOT_HEADER_INTS 5
+#define ROW_SNAPSHOT_HEADER_INTS 6
 /* more columns than a class can have means the blob is not ours */
 #define ROW_SNAPSHOT_MAX_ATTRS 10000
 
 static bool row_snapshot_keeps_type (DB_TYPE type);
+static int row_snapshot_fixed_size (int n_attrs);
 static ROW_SNAPSHOT *row_snapshot_load (MOP classop, SM_CLASS *class_);
 static ROW_SNAPSHOT *row_snapshot_decode (const char *blob, int length);
 static void row_snapshot_check_columns (ROW_SNAPSHOT *snapshot, SM_CLASS *class_);
@@ -65,7 +67,7 @@ static bool row_snapshot_or_filter_prepare (PARSER_CONTEXT *parser, const ROW_SN
 int
 row_snapshot_max_rows (void)
 {
-  return prm_get_integer_value (PRM_ID_STATISTICS_ROW_SNAPSHOT_MAX_ROWS);
+  return prm_get_integer_value (PRM_ID_STATISTICS_ROW_SNAPSHOT_ROWS);
 }
 
 /* the columns a snapshot keeps: the ones a histogram is built for, except object references,
@@ -83,6 +85,13 @@ row_snapshot_drop (MOP classop)
   return sm_drop_histogram (classop, ROW_SNAPSHOT_KEY_ATTR);
 }
 
+/* the packed size of a header and the column ids */
+static int
+row_snapshot_fixed_size (int n_attrs)
+{
+  return OR_INT_SIZE * (ROW_SNAPSHOT_HEADER_INTS + n_attrs);
+}
+
 int
 row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullscan)
 {
@@ -91,29 +100,34 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
   const char *class_name;
   std::vector<std::string> names;
   std::vector<int> ids;
-  std::vector<DB_VALUE> values;
+  std::vector<DB_VALUE> values;	/* the kept rows, n_attrs values each */
+  std::vector<int> row_size;	/* packed size of each kept row */
+  std::vector<int> keep;	/* the rows written out, after the byte cap */
   std::string query;
+  std::mt19937_64 rng (0x27478);
   DB_QUERY_RESULT *result = NULL;
   DB_QUERY_ERROR query_error;
-  int n_rows = 0, size, pos, i, error = NO_ERROR;
+  INT64 seen = 0;
+  int n_attrs, n_rows = 0, size, pos, i, c, error = NO_ERROR;
   bool usable = true;
   char *blob = NULL;
   OR_BUF buf;
+  char sample_pred[64];
 
-  if (max_rows <= 0)
+  if (max_rows <= 0 || sm_get_class_flag (classop, SM_CLASSFLAG_ROW_SNAPSHOT) <= 0)
     {
-      /* off: the catalog is left exactly as it is */
+      /* off, or a table not declared ROW_SNAPSHOT: the catalog is left exactly as it is (ALTER TABLE
+       * ... NO_ROW_SNAPSHOT and DROP TABLE remove the kept rows themselves) */
+      er_clear ();
       return NO_ERROR;
     }
 
-  /* a partitioned class plans its partitions, not its own (row-less) heap; the catalog classes are
-   * not the code tables this is for */
+  /* the declaration refuses these, but a table can be partitioned after it was declared */
   if (sm_partitioned_class_type (classop, &partition_type, NULL, NULL) != NO_ERROR)
     {
       return er_errid ();
     }
-  if (partition_type != DB_NOT_PARTITIONED_CLASS || sm_is_system_class (classop) || total_rows <= 0
-      || total_rows > max_rows)
+  if (partition_type != DB_NOT_PARTITIONED_CLASS || total_rows <= 0)
     {
       return row_snapshot_drop (classop);
     }
@@ -131,9 +145,10 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
     {
       return row_snapshot_drop (classop);
     }
+  n_attrs = (int) names.size ();
 
   query = "SELECT ";
-  for (i = 0; i < (int) names.size (); i++)
+  for (i = 0; i < n_attrs; i++)
     {
       query += (i == 0) ? "[" : ", [";
       query += names[i];
@@ -142,41 +157,69 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
   query += " FROM [";
   query += class_name;
   query += "]";
+  if (total_rows > max_rows)
+    {
+      /* A table over the limit keeps a uniform sample of max_rows rows, so its estimates move smoothly
+       * as it grows instead of switching method at the limit. The server filters to about a quarter
+       * more rows than needed and the reservoir below trims them to exactly max_rows. DRANDOM, not
+       * DRAND: DRAND is evaluated once per statement, so it would keep every row or none. */
+      snprintf (sample_pred, sizeof (sample_pred), " WHERE DRANDOM () < %.9f",
+		MIN (1.0, 1.25 * (double) max_rows / (double) total_rows));
+      query += sample_pred;
+    }
 
   /* Reading the rows is part of the statistics, not of the statement: a failure here leaves the
    * class without a snapshot (the optimizer then prices it as before) instead of failing the
    * UPDATE STATISTICS that already collected everything else. */
-  size = OR_INT_SIZE * (ROW_SNAPSHOT_HEADER_INTS + (int) ids.size ());
   if (db_compile_and_execute_local (query.c_str (), &result, &query_error) < 0)
     {
       er_clear ();
       return row_snapshot_drop (classop);
     }
+  values.reserve ((size_t) MIN (total_rows, (INT64) max_rows) * n_attrs);
   for (pos = db_query_first_tuple (result); pos == DB_CURSOR_SUCCESS && usable; pos = db_query_next_tuple (result))
     {
-      if (++n_rows > max_rows)
-	{
-	  /* the table grew past the limit after the statistics counted it */
-	  usable = false;
-	  break;
-	}
-      for (i = 0; i < (int) ids.size (); i++)
-	{
-	  DB_VALUE v;
+      int slot, rs = 0;
 
-	  db_make_null (&v);
-	  if (db_query_get_tuple_value (result, i, &v) != NO_ERROR)
+      /* reservoir: the first max_rows rows fill it, each later row replaces a random one with
+       * probability max_rows / seen */
+      seen++;
+      if (n_rows < max_rows)
+	{
+	  slot = n_rows++;
+	  values.resize ((size_t) n_rows * n_attrs);
+	  row_size.push_back (0);
+	  for (c = 0; c < n_attrs; c++)
+	    {
+	      db_make_null (&values[ (size_t) slot * n_attrs + c]);
+	    }
+	}
+      else
+	{
+	  INT64 r = (INT64) (rng () % (std::uint64_t) seen);
+
+	  if (r >= max_rows)
+	    {
+	      continue;
+	    }
+	  slot = (int) r;
+	  for (c = 0; c < n_attrs; c++)
+	    {
+	      pr_clear_value (&values[ (size_t) slot * n_attrs + c]);
+	    }
+	}
+      for (c = 0; c < n_attrs; c++)
+	{
+	  DB_VALUE *v = &values[ (size_t) slot * n_attrs + c];
+
+	  if (db_query_get_tuple_value (result, c, v) != NO_ERROR)
 	    {
 	      usable = false;
 	      break;
 	    }
-	  values.push_back (v);
-	  size += or_packed_value_size (&v, 0, 1, 0);
+	  rs += or_packed_value_size (v, 0, 1, 0);
 	}
-      if (size > ROW_SNAPSHOT_MAX_BYTES)
-	{
-	  usable = false;
-	}
+      row_size[slot] = rs;
     }
   if (pos < 0)
     {
@@ -185,7 +228,42 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
   db_query_end (result);
   er_clear ();
 
+  /* the byte cap: fewer rows, still spread evenly over the kept ones, rather than none */
+  size = row_snapshot_fixed_size (n_attrs);
+  for (i = 0; i < n_rows; i++)
+    {
+      size += row_size[i];
+    }
   if (usable && n_rows > 0)
+    {
+      int m = n_rows;
+
+      while (m > 0)
+	{
+	  int sz = row_snapshot_fixed_size (n_attrs);
+
+	  keep.clear ();
+	  for (i = 0; i < m; i++)
+	    {
+	      keep.push_back ((int) ((INT64) i * n_rows / m));
+	      sz += row_size[keep.back ()];
+	    }
+	  if (sz <= ROW_SNAPSHOT_MAX_BYTES)
+	    {
+	      size = sz;
+	      break;
+	    }
+	  /* shrink in proportion to the overshoot, at least one row */
+	  m = MIN (m - 1, (int) ((double) m * (ROW_SNAPSHOT_MAX_BYTES - row_snapshot_fixed_size (n_attrs))
+				 / (double) (sz - row_snapshot_fixed_size (n_attrs))));
+	}
+      if (m <= 0)
+	{
+	  usable = false;
+	}
+    }
+
+  if (usable && !keep.empty ())
     {
       blob = (char *) malloc (size);
       if (blob == NULL)
@@ -193,22 +271,26 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
 	  usable = false;
 	}
     }
-  if (usable && n_rows > 0)
+  if (usable && !keep.empty ())
     {
       or_init (&buf, blob, size);
       if (or_put_int (&buf, ROW_SNAPSHOT_MAGIC) != NO_ERROR || or_put_int (&buf, ROW_SNAPSHOT_VERSION) != NO_ERROR
-	  || or_put_int (&buf, size) != NO_ERROR || or_put_int (&buf, (int) ids.size ()) != NO_ERROR
-	  || or_put_int (&buf, n_rows) != NO_ERROR)
+	  || or_put_int (&buf, size) != NO_ERROR || or_put_int (&buf, n_attrs) != NO_ERROR
+	  || or_put_int (&buf, (int) keep.size ()) != NO_ERROR
+	  || or_put_int (&buf, (int) MIN (total_rows, (INT64) INT_MAX)) != NO_ERROR)
 	{
 	  usable = false;
 	}
-      for (i = 0; usable && i < (int) ids.size (); i++)
+      for (i = 0; usable && i < n_attrs; i++)
 	{
 	  usable = (or_put_int (&buf, ids[i]) == NO_ERROR);
 	}
-      for (i = 0; usable && i < (int) values.size (); i++)
+      for (int k : keep)
 	{
-	  usable = (or_put_value (&buf, &values[i], 0, 1, 0) == NO_ERROR);
+	  for (c = 0; usable && c < n_attrs; c++)
+	    {
+	      usable = (or_put_value (&buf, &values[ (size_t) k * n_attrs + c], 0, 1, 0) == NO_ERROR);
+	    }
 	}
       if (usable && buf.ptr - blob != size)
 	{
@@ -221,7 +303,7 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
       pr_clear_value (&values[i]);
     }
 
-  if (usable && n_rows > 0)
+  if (usable && !keep.empty ())
     {
       error = histogram_store_blob (classop, ROW_SNAPSHOT_KEY_ATTR, blob, size, with_fullscan);
     }
@@ -281,7 +363,7 @@ row_snapshot_decode (const char *blob, int length)
 {
   ROW_SNAPSHOT *snapshot;
   OR_BUF buf;
-  int magic = 0, version = 0, total = 0, n_attrs = 0, n_rows = 0, i, rc = NO_ERROR;
+  int magic = 0, version = 0, total = 0, n_attrs = 0, n_rows = 0, table_rows = 0, i, rc = NO_ERROR;
   char *copy;
 
   /* or_get_value () reads the values with the padding they were written with, relative to the
@@ -307,6 +389,7 @@ row_snapshot_decode (const char *blob, int length)
   total = or_get_int (&buf, &rc);
   n_attrs = or_get_int (&buf, &rc);
   n_rows = or_get_int (&buf, &rc);
+  table_rows = or_get_int (&buf, &rc);
   if (magic != ROW_SNAPSHOT_MAGIC || version != ROW_SNAPSHOT_VERSION || total != length || n_attrs <= 0
       || n_attrs > ROW_SNAPSHOT_MAX_ATTRS || n_rows <= 0 || n_rows > ROW_SNAPSHOT_MAX_ROWS
       || length - OR_INT_SIZE * ROW_SNAPSHOT_HEADER_INTS < OR_INT_SIZE * n_attrs
@@ -333,6 +416,7 @@ row_snapshot_decode (const char *blob, int length)
       return NULL;
     }
   snapshot->n_attrs = n_attrs;
+  snapshot->table_rows = table_rows;
   for (i = 0; i < n_attrs * n_rows; i++)
     {
       db_make_null (&snapshot->values[i]);
@@ -447,7 +531,8 @@ row_snapshot_get (MOP classop, SM_CLASS *class_)
 {
   HIST_STATS *histogram;
 
-  if (row_snapshot_max_rows () <= 0 || classop == NULL || class_ == NULL)
+  if (row_snapshot_max_rows () <= 0 || classop == NULL || class_ == NULL
+      || (class_->flags & SM_CLASSFLAG_ROW_SNAPSHOT) == 0)
     {
       return NULL;
     }
@@ -476,11 +561,6 @@ row_snapshot_get (MOP classop, SM_CLASS *class_)
     {
       histogram->row_snapshot_loaded = true;
       histogram->row_snapshot = row_snapshot_load (classop, class_);
-    }
-  if (histogram->row_snapshot != NULL && histogram->row_snapshot->n_rows > row_snapshot_max_rows ())
-    {
-      /* kept under a larger limit than this session's: the table is not small to it */
-      return NULL;
     }
   return histogram->row_snapshot;
 }
@@ -877,31 +957,25 @@ bool
 row_snapshot_join_selectivity (const ROW_SNAPSHOT *snapshot, const int *rows, int k, int column, PT_NODE *other,
 			       double nf_other, double *selectivity)
 {
-  double sum = 0.0, one, sel;
-  bool success;
+  double sum = 0.0, sel;
+  bool success = false;
+  std::vector<DB_VALUE *> keys;
 
   if (k <= 0 || column < 0)
     {
       return false;
     }
 
+  /* a NULL key joins no row of the other side: it stays in k and adds 0 (the sum skips it) */
+  keys.reserve (k);
   for (int i = 0; i < k; i++)
     {
-      DB_VALUE *key = &snapshot->values[rows[i] * snapshot->n_attrs + column];
-
-      if (DB_IS_NULL (key))
-	{
-	  /* a NULL key joins no row of the other side: it stays in k and adds 0 */
-	  continue;
-	}
-      one = 0.0;
-      success = false;
-      histogram_get_equal_selectivity (other, key, &one, &success);
-      if (!success)
-	{
-	  return false;
-	}
-      sum += one;
+      keys.push_back (&snapshot->values[rows[i] * snapshot->n_attrs + column]);
+    }
+  histogram_get_equal_selectivity_sum (other, keys.data (), k, &sum, &success);
+  if (!success)
+    {
+      return false;
     }
 
   /* histogram_get_equal_selectivity () returns the fraction of the other column's NON-null rows

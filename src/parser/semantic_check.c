@@ -8478,6 +8478,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
   bool found_tbl_encrypt = false;
+  bool found_row_snapshot = false;
   int error = NO_ERROR;
 
   entity_type = node->info.create_entity.entity_type;
@@ -8603,6 +8604,18 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		found_tbl_encrypt = true;
 	      }
+	  }
+	  break;
+	case PT_TABLE_OPTION_ROW_SNAPSHOT:
+	case PT_TABLE_OPTION_NO_ROW_SNAPSHOT:
+	  {
+	    if (found_row_snapshot)
+	      {
+		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    found_row_snapshot = true;
 	  }
 	  break;
 	default:
