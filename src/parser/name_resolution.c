@@ -445,8 +445,9 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
    * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
-   * on any unbound name in the value clause. */
-  if (spec->info.spec.remote_server_name)
+   * on any unbound name in the value clause. A target with its columns, in the derived
+   * dblink table shape, is bound, so it is checked like a local one. */
+  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -511,9 +512,10 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
-   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
-   * post callback must not decrement it either, or *level_p underflows. */
-  if (spec->info.spec.remote_server_name)
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec that is
+   * not in the derived dblink table shape, so this post callback must not decrement it
+   * either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       return node;
     }
@@ -1899,6 +1901,12 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
       cls_name = node->info.merge.into->info.spec.entity_name;
       values_list = node->info.merge.insert.value_clauses;
       attrs_list = node->info.merge.insert.attr_list;
+    }
+
+  if (cls_name == NULL)
+    {
+      /* a remote target in the derived dblink table shape has no local class */
+      return;
     }
 
   au_fetch_class_force (cls_name->info.name.db_object, &smclass, AU_FETCH_READ);
@@ -4155,6 +4163,12 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
+      if (!ok && spec->info.spec.remote_server_name != NULL && name->info.name.original != NULL)
+	{
+	  /* Report a column a remote DML target lacks as db_get_attribute_force () does for a local class.
+	   * pt_bind_name_or_path_in_scope () clears it once the name is found in any spec. */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name->info.name.original);
+	}
       if (col && !name->info.name.spec_id)
 	{
 	  name->type_enum = col->type_enum;
@@ -5971,7 +5985,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
-	      if (spec->info.spec.remote_server_name)
+	      if (spec->info.spec.remote_server_name && PT_SPEC_IS_ENTITY (spec))
 		{
 		  /* only column name with remote server name is resolved
 		   * PT_DOT node such as new.col obj.old does not resolve */
