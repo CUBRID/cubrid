@@ -642,7 +642,7 @@ static int la_coordinator_pop_result (LA_RESULT * result);
 static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
-static int la_coordinator_dispatch_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status);
+static int la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status);
 static int la_coordinator_cover_commit (const LA_TASK * task);
 static void la_coordinator_trace_schedule (const LA_TASK * task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
 static int la_coordinator_drain_ready (void);
@@ -716,7 +716,7 @@ la_coordinator_drain_ready (void)
 
   while (!la_task_queue_is_full () && la_pending_pop_ready (&task))
     {
-      error = la_coordinator_dispatch_task (&task, LA_SCHED_RELEASED);
+      error = la_coordinator_enqueue_task (&task, LA_SCHED_RELEASED);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -806,18 +806,18 @@ la_coordinator_cover_commit (const LA_TASK * task)
 }
 
 /*
- * la_coordinator_dispatch_task() - hand a task that passed the gate to the workers
+ * la_coordinator_enqueue_task() - put a task that passed the gate on the task queue the workers take from
  *   return: NO_ERROR, or an error from waiting for an in-flight slot, the in-flight list or the task queue
  *   task_in(in): the task; copied
  *   sched_status(in): LA_SCHED_DISPATCHED or LA_SCHED_RELEASED, for the schedule trace
  *
  * Note:
- *   Before pushing the task on the task queue, the coordinator writes it into the in-flight list, the
- *   ledger it later matches results against and retires in order. That entry gives the task the
- *   sequence number the worker and retire traces report.
+ *   Before pushing the task on the task queue, the coordinator stores a larger recovery range bound if the
+ *   task is above it, and writes the task into the in-flight list, the ledger it later matches results against
+ *   and retires in order. That entry gives the task the sequence number the worker and retire traces report.
  */
 static int
-la_coordinator_dispatch_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status)
+la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status)
 {
   LA_TASK task = *task_in;
   UINT64 dispatch_seq = 0;
@@ -7593,7 +7593,7 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   With a single worker every task is handed over at once, so the worker takes them from the FIFO queue
  *   in commit order and nothing is parked: a parked task would let a later independent one pass it, and
  *   one worker is meant to apply the log in commit order. The queue cannot be full here, because the
- *   in-flight list has the same capacity as the queue and la_coordinator_dispatch_task waits for room in it.
+ *   in-flight list has the same capacity as the queue and la_coordinator_enqueue_task waits for room in it.
  *
  *   In the restart recovery range the coordinator with more workers also hands over one task at a time and
  *   waits for it to retire. Transactions there may already be on the slave; re-applied side by side over that
@@ -7662,7 +7662,7 @@ la_coordinator_submit_task (LA_TASK * task)
 
       /* nothing is ever parked on this path, so the FIFO queue alone carries the commit order */
       assert (la_pending_is_empty ());
-      error = la_coordinator_dispatch_task (task, LA_SCHED_DISPATCHED);
+      error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
       if (error != NO_ERROR || la_Info.worker_count == 1)
 	{
 	  return error;
@@ -7679,7 +7679,7 @@ la_coordinator_submit_task (LA_TASK * task)
 
   if (la_gate_is_satisfied (&task->dependency_seq) && !la_task_queue_is_full ())
     {
-      return la_coordinator_dispatch_task (task, LA_SCHED_DISPATCHED);
+      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
     }
 
   error = la_pending_push (task);
