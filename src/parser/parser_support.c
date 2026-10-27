@@ -12449,35 +12449,49 @@ pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
   return true;
 }
 
-/* true iff expr can be copied into a remote SQL string as-is: a literal, a bare column of the remote
- * target, or + - * / (and unary -) over those.
+/*
+ * pt_dblink_dml_classify_value () - How a remote DML sink can send expr: as text the remote computes, as one
+ *   value computed here and bound, as text with such values bound inside it, or not at all. The text is a
+ *   literal, a column of the remote target, or + - * / (and unary -) over those. leaf_fn says which nodes
+ *   are target columns and which are local values, since that differs from one DML to the next.
+ *   return: the class. MIXED is the caller's to accept or refuse.
+ *   expr(in): the value
+ *   leaf_fn(in): classifies a node before it is looked into
+ *   arg(in): passed to leaf_fn
  *
- * Callers deparse this into the remote statement. Host variables print as "?" with no bind; function
+ * Callers deparse the text into the remote statement. Host variables print as "?" with no bind; function
  * calls are unchecked text -- both are rejected.
- *
- * Bare columns rely on a single spec. Qualified names (t.col) are rejected here; WHERE can check
- * qualifiers later in settle, this path cannot.
  *
  * "||" is omitted: CUBRID/Oracle concatenate, MySQL treats it as OR unless PIPES_AS_CONCAT is set.
  *
- * First caller: UPDATE SET. Named for the question, not the clause, so other deparse paths can reuse
- * it. Predicate shapes have their own check. Shared (non-static) with xasl_generation.c, which re-checks
- * the shape before printing -- if this and the gate ever drift, the expression is rejected, not shipped. */
-bool
-pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
+ * Shared (non-static) with xasl_generation.c. The gate and XASL generation both call it, and XASL
+ * generation calls it again before printing. A value whose class the two would not both accept, or whose
+ * tree changed in between, is rejected, not shipped. Predicate shapes have their own check.
+ */
+PT_DBLINK_VALUE_CLASS
+pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *arg)
 {
+  PT_DBLINK_VALUE_CLASS cls1, cls2;
+
   if (expr == NULL)
     {
-      return false;
+      return PT_DBLINK_VALUE_REJECT;
+    }
+
+  switch (leaf_fn (expr, arg))
+    {
+    case PT_DBLINK_LEAF_REMOTE:
+      return PT_DBLINK_VALUE_REMOTE_TEXT;
+    case PT_DBLINK_LEAF_LOCAL:
+      return PT_DBLINK_VALUE_LOCAL_BIND;
+    default:
+      break;
     }
 
   switch (expr->node_type)
     {
     case PT_VALUE:
-      return true;
-
-    case PT_NAME:
-      return expr->info.name.meta_class == PT_NORMAL;
+      return PT_DBLINK_VALUE_REMOTE_TEXT;
 
     case PT_EXPR:
       switch (expr->info.expr.op)
@@ -12489,33 +12503,64 @@ pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
 	case PT_UNARY_MINUS:
 	  break;
 	default:
-	  return false;
+	  return PT_DBLINK_VALUE_REJECT;
 	}
 
       if (expr->info.expr.arg3 != NULL)
 	{
-	  return false;
+	  return PT_DBLINK_VALUE_REJECT;
 	}
 
-      return pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg1)
-	&& (expr->info.expr.arg2 == NULL || pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg2));
+      cls1 = pt_dblink_dml_classify_value (expr->info.expr.arg1, leaf_fn, arg);
+      cls2 = (expr->info.expr.arg2 == NULL
+	      ? PT_DBLINK_VALUE_REMOTE_TEXT : pt_dblink_dml_classify_value (expr->info.expr.arg2, leaf_fn, arg));
+      if (cls1 == PT_DBLINK_VALUE_REJECT || cls2 == PT_DBLINK_VALUE_REJECT)
+	{
+	  return PT_DBLINK_VALUE_REJECT;
+	}
+
+      if (cls1 == PT_DBLINK_VALUE_REMOTE_TEXT && cls2 == PT_DBLINK_VALUE_REMOTE_TEXT)
+	{
+	  return PT_DBLINK_VALUE_REMOTE_TEXT;
+	}
+      return PT_DBLINK_VALUE_MIXED;
 
     default:
-      return false;
+      return PT_DBLINK_VALUE_REJECT;
     }
 }
 
+/* pt_dblink_dml_classify_value leaves for an UPDATE SET value: a bare column is the target's, a subquery is
+ * the local value.
+ *
+ * Bare columns rely on a single spec. Qualified names (t.col) are rejected; WHERE can check qualifiers
+ * later in settle, this path cannot. */
+PT_DBLINK_LEAF_KIND
+pt_dblink_update_set_leaf (PT_NODE * node, void *arg)
+{
+  if (PT_IS_QUERY (node))
+    {
+      return PT_DBLINK_LEAF_LOCAL;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_NORMAL)
+    {
+      return PT_DBLINK_LEAF_REMOTE;
+    }
+
+  return PT_DBLINK_LEAF_NONE;
+}
+
 /* true iff every UPDATE SET assignment is one the remote sink can honor, with *num_set_subq set to how many
- * of them are a scalar subquery. Two RHS forms are accepted:
+ * of them are a scalar subquery. Two RHS forms are accepted (pt_dblink_dml_classify_value):
  *   - a bare subquery (col = (SELECT ...)): evaluated once, its value bound to a placeholder in the remote
  *     SET clause
- *   - a remote-only expression (pt_dblink_dml_is_remote_only_expr): deparsed into that clause instead,
- *     its value not being computable here
+ *   - remote text: deparsed into that clause instead, its value not being computable here
  *
  * Rejected: a multi-column row assignment ((c1, c2) = (SELECT ...)), which one placeholder per column cannot
  * express, and everything outside those two forms -- a subquery inside an expression (col = (SELECT ...) + 1),
  * where binding the scalar alone would drop the operator, and a host variable or function call, which the
- * remote-only check turns away. Shape only -- purity is the caller's settle step. */
+ * classifier turns away. Shape only -- purity is the caller's settle step. */
 static bool
 pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *num_set_subq)
 {
@@ -12532,12 +12577,14 @@ pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *n
 	  return false;
 	}
 
-      if (PT_IS_QUERY (ea.rhs))
+      switch (pt_dblink_dml_classify_value (ea.rhs, pt_dblink_update_set_leaf, NULL))
 	{
+	case PT_DBLINK_VALUE_LOCAL_BIND:
 	  cnt++;
-	}
-      else if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
-	{
+	  break;
+	case PT_DBLINK_VALUE_REMOTE_TEXT:
+	  break;
+	default:
 	  return false;
 	}
     }
