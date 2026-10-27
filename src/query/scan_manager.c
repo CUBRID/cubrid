@@ -7783,6 +7783,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
   SCAN_BATCH_KEEP *keep = (spec != NULL) ? spec->batch_keep : NULL;
   EXPR_BATCH_INPUTS in;
   FILTER_INFO data_filter;
+  int err_before;
 
   if (hsidp->batch_state != 0)
     {
@@ -7890,9 +7891,16 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       scan_batch_keep_drop (thread_p, keep);
     }
 
+  /* a decline here is the row path, not a fault: an allocation that failed on the way leaves no error behind (a parallel
+   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before */
+  err_before = er_errid ();
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
     {
+      if (err_before == NO_ERROR)
+	{
+	  er_clear ();
+	}
       return hsidp->batch_state;
     }
   hsidp->batch = (EXPR_BATCH *) db_private_alloc (thread_p, sizeof (EXPR_BATCH));
@@ -7901,6 +7909,10 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
+      if (err_before == NO_ERROR)
+	{
+	  er_clear ();
+	}
       return hsidp->batch_state;
     }
   if (expr_batch_init (hsidp->batch_plan, hsidp->batch) != NO_ERROR)
@@ -7909,6 +7921,10 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
+      if (err_before == NO_ERROR)
+	{
+	  er_clear ();
+	}
       return hsidp->batch_state;
     }
   /* the chunks' rows point into the page this watcher holds (scan_batch_collect_chunk ()): a chunk under which the

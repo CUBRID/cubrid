@@ -5533,6 +5533,7 @@ expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REP
   int idx_incache = -1;
   bool rejected = false;
   bool ok = true;
+  int err_before = er_errid ();
   int i;
 
   if (plan == NULL || plan->n_reprs == 0 || repid == NULL_REPRID)
@@ -5643,6 +5644,11 @@ done:
   if (!ok && plan->n_rejected < EB_MAX_REPRS)
     {
       plan->rejected[plan->n_rejected++] = repid;
+    }
+  if (!ok && err_before == NO_ERROR)
+    {
+      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise) */
+      er_clear ();
     }
   return ok ? NO_ERROR : ER_FAILED;
 }
