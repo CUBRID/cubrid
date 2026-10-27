@@ -8095,12 +8095,14 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  /* Whether these row locks end with the statement: yes for a DML target and for a click counter's scope, not for
-   * SELECT ... FOR UPDATE.  The facts sit on the top node only, so the caller passes the answer in.  The opener adds
-   * the per-class condition (the pruned partition, after a switch). */
+  /* Whether these row locks end with the statement: yes for a READ COMMITTED DML target and for a click counter's
+   * scope, not for SELECT ... FOR UPDATE.  The facts sit on the top node only, so the caller passes the answer in.  The
+   * opener adds the per-class condition for a DML target (the pruned partition, after a switch).  A click counter
+   * (force_select_lock) needs neither condition: by the statement end its increments are committed, or have joined the
+   * transaction and keep the locks. */
   upddel_target_scan = (mvcc_select_lock_needed && stmt_scoped_locks
 			&& lock_transient_scope_is_outermost (thread_p)
-			&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+			&& (force_select_lock || logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED));
 
   /* Finalize cached-scan activation once per open, before dispatching on access method. The
    * driving-scan gate is assigned next to fixed_scan in qexec_execute_mainblock_internal ();
@@ -8147,8 +8149,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		    }
 #endif /* SERVER_MODE && !WINDOWS */
 		  error_code =
-		    scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, upddel_target_scan, scan_op_type,
-					 fixed, grouped,
+		    scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, upddel_target_scan, force_select_lock,
+					 scan_op_type, fixed, grouped,
 					 curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 					 &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
 					 curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
@@ -8174,7 +8176,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      SCAN_TYPE scan_type = S_HEAP_SCAN_RECORD_INFO;
 
 	      error_code = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, upddel_target_scan,
-						scan_op_type, fixed, grouped,
+						force_select_lock, scan_op_type, fixed, grouped,
 						curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 						&ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
 						curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
@@ -8208,7 +8210,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	  case ACCESS_METHOD_INDEX:
 	    error_code = scan_open_index_scan (thread_p, s_id, mvcc_select_lock_needed, upddel_target_scan,
-					       scan_op_type, fixed, grouped,
+					       force_select_lock, scan_op_type, fixed, grouped,
 					       curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 					       curr_spec->indexptr, &ACCESS_SPEC_CLS_OID (curr_spec),
 					       &ACCESS_SPEC_HFID (curr_spec), curr_spec->s.cls_node.cls_regu_list_key,
@@ -10077,7 +10079,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 #endif /* SERVER_MODE && !WINDOWS */
 		  error =
 		    scan_open_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
-					 spec->s_id.upddel_target_scan,
+					 spec->s_id.upddel_target_scan, spec->s_id.click_counter_scan,
 					 spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
 					 spec->s_id.single_fetch, spec->s_dbval, spec->s_id.val_list, spec->s_id.vd,
 					 &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
@@ -10121,10 +10123,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 	      error =
 		scan_open_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
-				     spec->s_id.upddel_target_scan, spec->s_id.scan_op_type,
-				     spec->s_id.fixed, spec->s_id.grouped, spec->s_id.single_fetch, spec->s_dbval,
-				     spec->s_id.val_list, spec->s_id.vd, &class_oid, &class_hfid,
-				     spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
+				     spec->s_id.upddel_target_scan, spec->s_id.click_counter_scan,
+				     spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
+				     spec->s_id.single_fetch, spec->s_dbval, spec->s_id.val_list, spec->s_id.vd,
+				     &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
 				     spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
 				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
@@ -10195,7 +10197,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 	      error =
 		scan_open_index_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
-				      spec->s_id.upddel_target_scan,
+				      spec->s_id.upddel_target_scan, spec->s_id.click_counter_scan,
 				      spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
 				      spec->s_id.single_fetch, spec->s_dbval, spec->s_id.val_list, spec->s_id.vd,
 				      spec->indexptr, &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_key,

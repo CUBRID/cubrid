@@ -205,7 +205,7 @@ namespace parallel_scan
 		      }
 		  }
 		bool iscan_oid_order = m_scan_id->s.isid.iscan_oid_order;
-		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, false, S_SELECT,
+		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, false, false, S_SELECT,
 						 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 						 m_xasl->val_list, m_vd, spec->indexptr, &m_cls_oid, &m_hfid,
 						 cls->cls_regu_list_key, spec->where_key,
@@ -228,7 +228,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
-		scan_open_heap_scan (&thread_ref, m_scan_id, false, false, S_SELECT,
+		scan_open_heap_scan (&thread_ref, m_scan_id, false, false, false, S_SELECT,
 				     m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 				     m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
 				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
@@ -336,7 +336,7 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
-			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false, false,
+			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false, false, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 							&scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
@@ -357,7 +357,7 @@ namespace parallel_scan
 			bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
 			specp->indexptr->btid = scan_info.btid;
 			err_code =
-				scan_open_index_scan (&thread_ref, &specp->s_id, false, false,
+				scan_open_index_scan (&thread_ref, &specp->s_id, false, false, false,
 						      S_SELECT, fixed_scan, specp->s_id.grouped,
 						      specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 						      specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
