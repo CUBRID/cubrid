@@ -182,6 +182,8 @@ typedef enum
   LC_FETCH_MVCC_VERSION = 0x02,	/* fetch MVCC - visible version */
   LC_FETCH_DIRTY_VERSION = 0x03,	/* fetch dirty version - S-locked */
   LC_FETCH_CURRENT_VERSION_NO_CHECK = 0x04,	/* fetch current version and not check server side */
+  LC_FETCH_COMMITTED_VERSION = 0x05,	/* fetch the latest committed version - no lock, no transaction snapshot
+					 * (see mvcc_satisfies_committed) */
 } LC_FETCH_VERSION_TYPE;
 
 #define LC_FETCH_IS_MVCC_VERSION_NEEDED(fetch_type) \
@@ -202,6 +204,8 @@ typedef enum
 #define LC_FLAG_HAS_UNIQUE_INDEX 0x04	/* Used for flushing, set if object has unique index */
 #define LC_FLAG_TRIGGER_INVOLVED 0x08	/* Used for supplemental logging to know whether trigger is involved
 					   or not, set if do_Trigger_involved is true */
+#define LC_FLAG_HAS_PRIOR_VALUE 0x10	/* Used for replication: a _db_serial write-back's replaced value
+					   follows the key */
 
 #define LC_ONEOBJ_SET_HAS_INDEX(obj) \
   (obj)->flag |= LC_FLAG_HAS_INDEX
@@ -220,6 +224,20 @@ typedef enum
 
 #define LC_ONEOBJ_IS_TRIGGER_INVOLVED(obj) \
   (((obj)->flag & LC_FLAG_TRIGGER_INVOLVED) != 0)
+
+#define LC_FLAG_SERIAL_RESTART 0x20	/* a _db_serial write that restarts the serial: current_val and started stand */
+
+#define LC_ONEOBJ_SET_SERIAL_RESTART(obj) \
+  (obj)->flag |= LC_FLAG_SERIAL_RESTART
+
+#define LC_ONEOBJ_IS_SERIAL_RESTART(obj) \
+  (((obj)->flag & LC_FLAG_SERIAL_RESTART) != 0)
+
+#define LC_ONEOBJ_SET_HAS_PRIOR_VALUE(obj) \
+  (obj)->flag |= LC_FLAG_HAS_PRIOR_VALUE
+
+#define LC_ONEOBJ_HAS_PRIOR_VALUE(obj) \
+  (((obj)->flag & LC_FLAG_HAS_PRIOR_VALUE) != 0)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj

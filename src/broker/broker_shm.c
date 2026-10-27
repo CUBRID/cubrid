@@ -546,7 +546,6 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   shm_as_p->max_string_length = br_info_p->max_string_length;
   shm_as_p->stripped_column_name = br_info_p->stripped_column_name;
   shm_as_p->keep_connection = br_info_p->keep_connection;
-  shm_as_p->cache_user_info = br_info_p->cache_user_info;
   shm_as_p->statement_pooling = br_info_p->statement_pooling;
   shm_as_p->access_mode = br_info_p->access_mode;
   shm_as_p->cci_pconnect = br_info_p->cci_pconnect;
@@ -625,11 +624,15 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
 		   *      If we can identify the cause and resolve it clearly, we will remove the pragma. */
 		  assert ((shard_cas_id + shard_info_p->as_info_index_base) < APPL_SERVER_NUM_LIMIT);
 		  assert (shard_id < SHARD_INFO_SIZE_LIMIT);
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wrestrict"
+#endif
 		  strcpy (as_info_p->database_user, shard_conn_info_p->db_user);
 		  strcpy (as_info_p->database_passwd, shard_conn_info_p->db_password);
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
 		}
 
 	      if (shard_cas_id < shard_info_p->min_appl_server)

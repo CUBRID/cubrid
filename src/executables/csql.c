@@ -3293,7 +3293,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
-      if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
+      if (!csql_Is_interactive || csql_arg->passwd != NULL
+	  || !(db_error_code () == ER_AU_REJECT_LOGIN && use_console_password))
 	{
 	  /* not INTERACTIVE mode, or password is given already, or the error code is not password related */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -3779,7 +3780,8 @@ csql_display_trace (void)
     {
       pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
       fprintf (pf, "\n=== Auto Trace ===\n");
-      fprintf (pf, "%s\n", db_get_char (&trace));
+      /* peeked value: the bytes are not NUL-terminated, print exactly the string size */
+      fprintf (pf, "%.*s\n", db_get_string_size (&trace), db_get_char (&trace));
       csql_pclose (pf, csql_Output_fp);
     }
 
@@ -3897,7 +3899,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
-      if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
+      if (csql_Is_interactive && (db_error_code () == ER_AU_REJECT_LOGIN && use_console_password))
 	{
 	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
 
