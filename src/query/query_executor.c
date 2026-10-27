@@ -16166,9 +16166,14 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      assert (lock_has_xlock_or_self_lock (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid));
 	    }
 
-	  if (!joins_transaction && locator_object_is_ours (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid))
+	  if (!joins_transaction)
 	    {
-	      joins_transaction = true;
+	      err = locator_object_is_ours (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
+					    &crt_incr_info.m_class_hfid, &joins_transaction);
+	      if (err != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
 	    }
 
 	  all_incr_info.push_back (crt_incr_info);
