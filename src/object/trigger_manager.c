@@ -6869,12 +6869,9 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
  *    trigger_object(in): trigger object
  *    name(in): new trigger name
  *    call_from_api(in): call from api
- *    deferred_flush(in): do not flush the trigger object
- *    allow_owner_change(in): allow the owner qualifier of the name to change (only for changing the owner)
  */
 int
-tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush,
-		   bool allow_owner_change)
+tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush)
 {
   TR_TRIGGER *trigger = NULL;
   DB_VALUE value;
@@ -6917,21 +6914,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (intl_identifier_casecmp (trigger->name, new_name) == 0)
     {
       goto end;
-    }
-
-  if (!allow_owner_change)
-    {
-      char old_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-      char new_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-
-      sm_qualifier_name (old_name, old_owner_name, DB_MAX_USER_LENGTH);
-      sm_qualifier_name (new_name, new_owner_name, DB_MAX_USER_LENGTH);
-
-      if (intl_identifier_casecmp (old_owner_name, new_owner_name) != 0)
-	{
-	  ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
-	  goto end;
-	}
     }
 
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);

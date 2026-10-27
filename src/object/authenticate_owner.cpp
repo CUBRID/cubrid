@@ -395,7 +395,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (trigger_old_name));
 
-  error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true, true);
+  error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -410,7 +410,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       ASSERT_ERROR ();
 
       /* abort on error */
-      if (tr_rename_trigger (trigger_mop, trigger_old_name, false, true, true) != NO_ERROR)
+      if (tr_rename_trigger (trigger_mop, trigger_old_name, false, true) != NO_ERROR)
 	{
 	  assert (false);
 	}
