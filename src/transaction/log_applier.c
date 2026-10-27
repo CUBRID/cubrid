@@ -764,18 +764,19 @@ la_coordinator_wait_for_commit_order_slot (void)
 }
 
 /*
- * la_coordinator_cover_commit() - store a larger max_committed_lsa before a task above it reaches a worker
+ * la_coordinator_cover_commit() - store a larger max_committed_lsa before a task above it is put on the task queue
  *   return: NO_ERROR or an error from storing the bound
- *   task(in): task about to be handed to the workers
+ *   task(in): task about to be put on the task queue
  *
  * Note:
- *   After a crash, the transactions up to the stored bound are re-applied with their re-apply errors
- *   skipped, so every transaction a worker may have committed must lie at or below it. Storing the bound
- *   first, before the task is handed over, keeps that true whenever the crash comes. The bound is the commit
- *   of the task itself, so a commit that was never handed over stays above it and its errors are counted.
- *   A commit without replicated items is not covered: it cannot fail when re-applied, and storing for it
- *   would turn an empty commit into a real one that a mutual HA peer receives as empty and answers the
- *   same way, without end.
+ *   The workers commit on their own connections and the coordinator stores max_committed_lsa separately, so the
+ *   two are not updated at once. If a worker committed first and the applier stopped before max_committed_lsa
+ *   was updated, the restarted applier would apply that transaction again; being above max_committed_lsa, its
+ *   re-apply errors (a duplicate key, for example) would not be ignored but counted as failures. So
+ *   max_committed_lsa is raised to the task's commit before the task is put on the task queue, and in the same
+ *   case the re-apply errors are ignored.
+ *   A task without replicated items is not stored: re-applying it cannot fail, and the store would itself be
+ *   a commit that a mutual HA peer sends back.
  */
 static int
 la_coordinator_cover_commit (const LA_TASK * task)
@@ -823,10 +824,9 @@ la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_stat
   UINT64 dispatch_seq = 0;
   int error;
 
-  /* Every applier on this node writes to the same database, and the dbname lock decides which one may write.
-   * It is taken here, by the coordinator only, before a task that writes goes to a worker, as the serial
-   * applier took it before each transaction it applied; an applier with nothing to apply never asks for it.
-   * It is released only when nothing dispatched is left running, so it is taken again here after a release. */
+  /* Every applier on this node writes to the same database, and only the one holding the dbname lock may write.
+   * The coordinator takes it here, before a task that writes is put on the task queue; the workers never take it.
+   * It is released only when no queued task is left running, so after a release it is taken again here. */
   if (task.has_items && LSA_GT (&task.commit_lsa, &la_Info.last_committed_lsa))
     {
       error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
@@ -951,17 +951,15 @@ la_coordinator_collect_results (void)
 }
 
 /*
- * la_coordinator_record_result() - attach a worker's result to its dispatch entry and report it to the gate
+ * la_coordinator_record_result() - attach a worker's result to its in-flight entry and report it to the gate
  *   return: NO_ERROR, or an error when no dispatch entry matches
  *   result(in): result taken from the result queue
  *
  * Note:
- *   A worker commits to the slave before it queues the result, so a received COMMIT result
- *   means its changes are applied and the transaction is marked completed in the gate right
- *   away, ahead of retire. A serial fragment (LOG_SYSOP_END) commits on its own coordinate
- *   and is recorded the same way, so an outer commit that depends on it can pass the gate.
- *   A failed result is not recorded: a transaction that depends on it must not run on top of
- *   a missing change, and retire stops the applier at the failure.
+ *   A successful result of a commit or a serial fragment (LOG_SYSOP_END) is marked completed in the gate at
+ *   once, not when it retires, so the tasks that depend on it can pass the gate without waiting for retire.
+ *   A failed result is not marked: a transaction that depends on it must not run on top of a missing change,
+ *   and retire stops the applier at the failure.
  */
 static int
 la_coordinator_record_result (const LA_RESULT * result)
@@ -983,14 +981,17 @@ la_coordinator_record_result (const LA_RESULT * result)
 }
 
 /*
- * la_coordinator_complete_without_task() - put a labeled point that has nothing to apply through the gate
+ * la_coordinator_complete_without_task() - mark a labeled SYSOP_END with nothing to apply as completed in the gate
  *   return: NO_ERROR, or an error from waiting for a slot, the commit-order ring or releasing parked tasks
- *   lsa(in): log LSA another transaction's dependency may name
+ *   lsa(in): LSA of the SYSOP_END
  *
  * Note:
- *   The point takes its place in commit order and is completed at once, so the frontier passes it
- *   only after every commit before it is applied, as it would after a task at that LSA retired.
- *   Tasks waiting on it are released here.
+ *   The master labels a system operation that carries replicated items, such as a serial update, and later
+ *   transactions may name its SYSOP_END as their dependency. The slave normally applies it as a serial fragment
+ *   task, and the task's result marks the SYSOP_END completed in the gate. When the slave has no items for it,
+ *   no task is made, and the transactions that depend on it would stay parked forever; so the SYSOP_END is put
+ *   in commit order and marked completed here instead, and the parked tasks it unblocks are put on the task queue.
+ *   Like a task's, it is passed by the frontier only after every commit before it is applied.
  */
 static int
 la_coordinator_complete_without_task (const LOG_LSA * lsa)
@@ -1029,10 +1030,14 @@ la_coordinator_complete_without_task (const LOG_LSA * lsa)
  *   commit_lsa(in): LSA of the commit
  *
  * Note:
- *   The range starts after the committed LSA this process started from and ends at the last commit the
- *   previous run may have applied, so applied and unapplied transactions are mixed in it. A commit at or
- *   below the start is skipped whole by the worker and touches no row, so it is not in the range. The
- *   range is empty when no bound was stored.
+ *   The range is above last_committed_lsa and at or below recovery_boundary_lsa, both set once at start:
+ *   - last_committed_lsa: committed_lsa in _db_ha_apply_info, or the applied statement marker if larger
+ *     (la_get_last_ha_applied_info, la_apply_log_file). A commit at or below it is skipped whole by the
+ *     worker and touches no row.
+ *   - recovery_boundary_lsa: max_committed_lsa in _db_ha_apply_info, the largest commit the previous run
+ *     put on the task queue (la_get_ha_apply_max_committed_lsa). NULL, and the range empty, when none was stored.
+ *   A worker may or may not have committed each commit in the range before the previous run stopped, so
+ *   applied and unapplied transactions are mixed in it.
  */
 static bool
 la_is_in_recovery_range (const LOG_LSA * commit_lsa)
@@ -1071,12 +1076,13 @@ la_coordinator_pop_result (LA_RESULT * result)
 }
 
 /*
- * la_coordinator_wait_until_retired() - wait until every task handed to the workers is retired
- *   return: NO_ERROR, or an error from collecting or retiring results, or ER_FAILED on shutdown
+ * la_coordinator_wait_until_retired() - wait until every task put on the task queue has finished and been retired
+ *   return: NO_ERROR, the error of a failed task or of storing the apply info, or ER_FAILED on shutdown
  *
  * Note:
- *   Collects and retires results the same way la_coordinator_wait_for_inflight_slot does, until the
- *   in-flight list is empty instead of until it has room.
+ *   Takes each worker result as it arrives and retires the finished tasks in the order they were queued (the
+ *   transaction's items are freed and committed_lsa advances), until no queued task is left.
+ *   la_coordinator_submit_task uses it to run a commit in the restart recovery range alone.
  */
 static int
 la_coordinator_wait_until_retired (void)
@@ -1242,13 +1248,15 @@ la_coordinator_add_result_stats (const LA_RESULT * result)
 }
 
 /*
- * la_coordinator_store_apply_info_at_interval() - store _db_ha_apply_info at most once per commit interval
+ * la_coordinator_store_apply_info_at_interval() - store _db_ha_apply_info at most once per
+ *   ha_applylogdb_max_commit_interval_in_msecs
  *   return: NO_ERROR or an error from storing the apply info
  *
  * Note:
  *   Storing on every retire makes each retire a commit on this server. In a mutual HA pair the peer applier
  *   retires it as an empty commit and stores again, and the two appliers feed each other empty transactions
- *   without end. The main loop's periodic commit stores the progress made in between.
+ *   without end. Progress retired within an interval is stored by the first retire after it, or, when no task
+ *   retires any more, by the main loop's periodic commit (la_log_commit).
  */
 static int
 la_coordinator_store_apply_info_at_interval (void)
@@ -1624,7 +1632,8 @@ la_stop_apply_workers (void)
  *   return: NO_ERROR, or the commit error, or ER_NET_CANT_CONNECT_SERVER when the server is down
  *
  * Note:
- *   The coordinator's only write to the slave: workers commit the replicated transactions themselves.
+ *   The statistics rows are stored in the same transaction. The workers commit the replicated transactions
+ *   themselves, and max_committed_lsa is stored apart, before a task is queued (la_coordinator_cover_commit).
  *   A failed update is counted and reported but does not stop the applier unless the server is down, as
  *   in the serial applier. The positions stay at their last stored values until the next store succeeds,
  *   which only widens the range a restart re-applies; restarting here would re-apply that range at once.
@@ -7637,10 +7646,8 @@ la_coordinator_submit_task (LA_TASK * task)
 
   if (la_Info.worker_count == 1 || la_is_in_recovery_range (&task->commit_lsa))
     {
-      /* the skipped commits before the range went out in parallel; the first commit in the range waits until
-       * all of them are dispatched and retired, then each one in the range runs alone. Entries retire in
-       * dispatch order once finished, so the wait ends; then every commit before the earliest parked one is
-       * applied, which makes that one ready for the next pass. */
+      /* With more workers, the tasks queued earlier are finished first, together with the parked ones their
+       * completion releases; this one is then queued and finished before the next commit is read. */
       if (la_Info.worker_count > 1)
 	{
 	  do
