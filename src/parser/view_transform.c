@@ -219,9 +219,6 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
-static bool mq_is_attr_name_used (PT_NODE * attr_list, const char *name);
-static bool mq_is_aggregate_without_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
-static PT_NODE *mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						       PT_NODE * derived_table, PT_NODE ** new_spec);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -1578,120 +1575,6 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
 }
 
 /*
- * mq_is_aggregate_without_group_by () - check if a query is an aggregate query without GROUP BY
- *   return: true if so
- *   parser(in):
- *   query(in):
- *
- * Note: such a query returns one row by the aggregation. When no column of it is referenced, its select list must not
- *       be reduced to a constant: the tree keeps the aggregation (PT_SELECT_INFO_HAS_AGG), but the printed text
- *       does not (e.g. "select count(*) from t" printed as "select 1 from t" returns a row per row of t).
- */
-static bool
-mq_is_aggregate_without_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
-{
-  return (query != NULL && PT_IS_SELECT (query) && query->info.query.q.select.group_by == NULL
-	  && pt_has_aggregate (parser, query));
-}
-
-/*
- * mq_is_attr_name_used () - check if a name is used by an attribute in the list
- *   return: true if used
- *   attr_list(in): attribute list
- *   name(in): name to check
- */
-static bool
-mq_is_attr_name_used (PT_NODE * attr_list, const char *name)
-{
-  PT_NODE *attr;
-
-  for (attr = attr_list; attr != NULL; attr = attr->next)
-    {
-      if (attr->node_type != PT_NAME)
-	{
-	  continue;
-	}
-      if ((attr->info.name.original != NULL && intl_identifier_casecmp (attr->info.name.original, name) == 0)
-	  || (attr->alias_print != NULL && intl_identifier_casecmp (attr->alias_print, name) == 0))
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
- * mq_copy_select_list_as_attr_list () - copy the select list of a derived table as its attribute list (as_attr_list)
- *   return: attribute list
- *   parser(in):
- *   select_list(in): select list of the derived table
- *   spec(in): spec of the derived table
- *
- * Note: an attribute list is a list of names, as it is printed as "spec (col1, col2)". When no column of the derived
- *       table is referenced, the select list is reduced to a constant (e.g. "select 1" for count(*)), which is given a
- *       generated name here. Otherwise the constant would be printed as "spec (1)", which can not be parsed again.
- */
-static PT_NODE *
-mq_copy_select_list_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * spec)
-{
-  PT_NODE *attr_list, *attr, *prev, *name;
-  const char *generated_name;
-  int i = 0;
-
-  attr_list = parser_copy_tree_list (parser, select_list);
-
-  for (attr = attr_list, prev = NULL; attr != NULL; prev = attr, attr = attr->next)
-    {
-      if (attr->node_type == PT_NAME)
-	{
-	  continue;
-	}
-
-      /* the name must not be one of the attributes kept in the list (e.g. "a_1" of "select c as a_1 ... order by a_1") */
-      do
-	{
-	  generated_name = mq_generate_name (parser, "a", &i);
-	}
-      while (mq_is_attr_name_used (attr_list, generated_name));
-
-      name = pt_name (parser, generated_name);
-      if (name == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  parser_free_tree (parser, attr_list);
-	  return NULL;
-	}
-      name->line_number = attr->line_number;
-      name->column_number = attr->column_number;
-      name->info.name.meta_class = PT_NORMAL;
-      if (spec->info.spec.range_var != NULL)
-	{
-	  name->info.name.resolved = spec->info.spec.range_var->info.name.original;
-	}
-      name->info.name.spec_id = spec->info.spec.id;
-      name->type_enum = attr->type_enum;
-      name->data_type = parser_copy_tree (parser, attr->data_type);
-
-      /* replace attr with name */
-      name->next = attr->next;
-      attr->next = NULL;
-      parser_free_tree (parser, attr);
-      if (prev == NULL)
-	{
-	  attr_list = name;
-	}
-      else
-	{
-	  prev->next = name;
-	}
-      attr = name;
-    }
-
-  return attr_list;
-}
-
-/*
  * mq_remove_select_list_for_inline_view () - remove unnecessary select list
  *   return: PT_NODE *, statement
  *   parser(in): parser context
@@ -1792,23 +1675,8 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   if (new_select_list == NULL)
     {
       /* case of constant attr. e.g.) count(*), count(1) */
-      if (mq_is_aggregate_without_group_by (parser, subquery))
-	{
-	  /* keep one of the aggregated columns, which keeps the aggregation when the tree is printed */
-	  for (col = subquery->info.query.q.select.list; col != NULL && col->flag.is_hidden_column; col = col->next)
-	    {
-	      ;
-	    }
-	  if (col != NULL)
-	    {
-	      new_select_list = parser_copy_tree (parser, col);
-	    }
-	}
-      if (new_select_list == NULL)
-	{
-	  /* just add one of integer value */
-	  new_select_list = pt_make_integer_value (parser, 1);
-	}
+      /* just add one of integer value */
+      new_select_list = pt_make_integer_value (parser, 1);
     }
 
   /* cut off select list and order by */
@@ -1858,11 +1726,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
     }
 
   /* copy select_list to as_attr_list before mq_lambda() */
-  as_attr_list = mq_copy_select_list_as_attr_list (parser, tmp_query->info.query.q.select.list, spec);
-  if (as_attr_list == NULL && pt_has_error (parser))
-    {
-      goto exit_on_error;
-    }
+  as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
   if (parser->flag.is_parsing_static_sql)
     {
       /* as_attr_list entries are bare column-name declarations for the derived table's exposed
@@ -2590,6 +2454,15 @@ static PUSHABLE_TYPE
 mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery)
 {
   CHECK_PUSHABLE_INFO cpi;
+
+  /* PL/CSQL static SQL: the tree is not executed but printed as the rewritten query, which is compiled again at run
+   * time and has its select list removed there. Removing it here only breaks the printed text: an aggregate removed
+   * from the select list of an aggregate query without GROUP BY (e.g. "select 1 from t" for "select 1, count(*) from
+   * t" returns a row per row of t), and the constant select list printed as the attribute list "spec (1)". */
+  if (parser->flag.is_parsing_static_sql)
+    {
+      return NON_PUSHABLE;
+    }
 
   /* NO_MERGE and QUERY_CACHE hint check */
   if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
@@ -5887,36 +5760,8 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  if (new_query->info.query.q.select.list == NULL)
 	    {
 	      /* case of constant attr. e.g.) count(*), count(1) */
-	      if (mq_is_aggregate_without_group_by (parser, query_spec))
-		{
-		  /* keep one of the attributes of the view, which is substituted with an aggregated column of the
-		   * view and keeps the aggregation when the tree is printed */
-		  v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
-		  if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
-		    {
-		      return NULL;
-		    }
-		  if (v_attr_list != NULL && v_attr_list->type_enum == PT_TYPE_OBJECT)
-		    {
-		      v_attr_list = v_attr_list->next;	/* skip oid attr */
-		    }
-		  if (v_attr_list != NULL)
-		    {
-		      v_attr = parser_copy_tree (parser, v_attr_list);
-		      if (v_attr == NULL)
-			{
-			  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
-			  return NULL;
-			}
-		      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
-		      new_query->info.query.q.select.list = v_attr;
-		    }
-		}
-	      if (new_query->info.query.q.select.list == NULL)
-		{
-		  /* just add one of integer value */
-		  new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
-		}
+	      /* just add one of integer value */
+	      new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
 	    }
 	}
       else
@@ -5989,12 +5834,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      spec->info.spec.as_attr_list =
-	mq_copy_select_list_as_attr_list (parser, new_query->info.query.q.select.list, spec);
-      if (spec->info.spec.as_attr_list == NULL && pt_has_error (parser))
-	{
-	  return NULL;
-	}
+      spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
       if (parser->flag.is_parsing_static_sql)
 	{
 	  /* as_attr_list entries are bare column-name declarations for the derived table's exposed
