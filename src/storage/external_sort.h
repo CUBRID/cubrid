@@ -110,11 +110,24 @@ struct SORT_REC
 #define SORT_CARRY_YES                  1
 #define SORT_CARRY_NO                   2
 
-/* start a sort undecided on tuple carrying, with no sample (a parallel worker's copy must not share the sample) */
+/* start a sort undecided on tuple carrying, with no sample */
 #define SORTKEY_INFO_INIT_CARRY(key_info_p) \
   do \
     { \
       (key_info_p)->carry_tuple = SORT_CARRY_UNDECIDED; \
+      (key_info_p)->carry_sample = NULL; \
+    } \
+  while (0)
+
+/* a parallel worker's copy of the key info: it samples its own input (never the leader's sample), unless the sort
+ * never carries tuples */
+#define SORTKEY_INFO_INIT_WORKER_CARRY(key_info_p) \
+  do \
+    { \
+      if ((key_info_p)->carry_tuple != SORT_CARRY_NO) \
+	{ \
+	  (key_info_p)->carry_tuple = SORT_CARRY_UNDECIDED; \
+	} \
       (key_info_p)->carry_sample = NULL; \
     } \
   while (0)

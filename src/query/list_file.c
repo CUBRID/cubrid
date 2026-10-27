@@ -4062,13 +4062,8 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 
 	  list_id_p = &(sort_info_p->s_id->s_id->list_id);
 
-	  if (SORT_REC_HAS_TUPLE (key_p))
-	    {
-	      /* the record carries the tuple; no page fix */
-	      error = qfile_add_tuple_to_list_from (thread_p, sort_info_p->output_file, SORT_REC_TUPLE (key_p),
-						    list_id_p->type_list.hdr_size);
-	      continue;
-	    }
+	  /* qfile_sort_list_with_func () never lets this output carry tuples */
+	  assert (!SORT_REC_HAS_TUPLE (key_p));
 
 	  vpid.pageid = key_p->s.original.pageid;
 	  vpid.volid = key_p->s.original.volid;
@@ -4502,7 +4497,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
       sort_key_overhead = (int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) / DB_PAGESIZE);
 
       /* short tuples ride in the sort records (qfile_build_sort_rec), on top of their keys */
-      if (list_id_p->tuple_cnt > 0
+      if (key_info_p->carry_tuple != SORT_CARRY_NO && list_id_p->tuple_cnt > 0
 	  && (double) list_id_p->page_cnt * DB_PAGESIZE / list_id_p->tuple_cnt <= QFILE_SORT_REC_TUPLE_MAX_SIZE)
 	{
 	  sort_key_overhead += prorated_pages;
@@ -4826,6 +4821,12 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   if (put_func == qfile_put_next_sort_item)
     {
       parallel_type = SORT_ORDER_BY;
+
+      /* Never carry tuples here. This output re-reads each original with a latch-free simple fix, and a parallel sort
+       * does it in every worker over its own share, so a carried tuple saves next to nothing; it only grows the sort
+       * records, by twice when the keys are most of the tuple (1M 248-byte tuples sorted by five 46-byte keys,
+       * parallel sort: 846 -> 1148 ms with a large buffer, 1907 -> 2461 ms with a 512M one; serial sort: no gain). */
+      info.key_info.carry_tuple = SORT_CARRY_NO;
     }
   else
     {

@@ -5293,7 +5293,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return ER_FAILED;
 	    }
 	  memcpy (worker_info_p, sort_param->get_arg, sizeof (SORT_INFO));
-	  SORTKEY_INFO_INIT_CARRY (&worker_info_p->key_info);
+	  SORTKEY_INFO_INIT_WORKER_CARRY (&worker_info_p->key_info);
 	  worker_info_p->s_id = NULL;	/* not used by qfile_sort_get_next_parallel */
 	  worker_info_p->output_file = NULL;
 	  worker_info_p->input_file = NULL;	/* set below */
@@ -5370,7 +5370,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    }
 	  memset (winfo, 0, sizeof (SORT_INFO));
 	  memcpy (&winfo->key_info, px->key_info, sizeof (SORTKEY_INFO));
-	  SORTKEY_INFO_INIT_CARRY (&winfo->key_info);
+	  SORTKEY_INFO_INIT_WORKER_CARRY (&winfo->key_info);
 
 	  /* clone input_file per worker so overflow tfile_vfid redirect is thread-safe */
 	  winfo->input_file = qfile_clone_list_id (input_list, true, QFILE_SKIP_DEPENDENT);
