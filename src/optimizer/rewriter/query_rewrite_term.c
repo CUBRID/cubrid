@@ -489,6 +489,35 @@ qo_is_reduceable_const (PT_NODE * expr)
 }
 
 /*
+ * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
+ *   return: false if the comparison may be done in an approximate numeric type
+ *   expr(in): expression compared with the constant
+ *   val(in): constant side of the comparison
+ *
+ * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
+ *   A host variable is not typed until it is bound, so it is not taken as exact either.
+ */
+bool
+qo_is_exact_compare_const (PT_NODE * expr, PT_NODE * val)
+{
+  if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
+    {
+      return true;
+    }
+
+  switch (val->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -601,8 +630,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	    {
 	      if (qo_is_reduceable_const (arg2))
 		{
-		  found_equality_term = true;
-		  break;	/* immediately break */
+		  if (qo_is_exact_compare_const (arg1, arg2))
+		    {
+		      found_equality_term = true;
+		      break;	/* immediately break */
+		    }
+		  continue;
 		}
 	      else if (pt_is_attr (arg2))
 		{

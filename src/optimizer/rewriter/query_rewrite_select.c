@@ -1560,34 +1560,6 @@ qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
- *   return: false if the comparison may be done in an approximate numeric type
- *   expr(in): expression compared with the constant
- *   val(in): constant side of the comparison
- *
- * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
- */
-static bool
-qo_is_exact_compare_const (PT_NODE * expr, PT_NODE * val)
-{
-  if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
-    {
-      return true;
-    }
-
-  switch (val->type_enum)
-    {
-    case PT_TYPE_SMALLINT:
-    case PT_TYPE_INTEGER:
-    case PT_TYPE_BIGINT:
-    case PT_TYPE_NUMERIC:
-      return true;
-    default:
-      return false;
-    }
-}
-
-/*
  * qo_is_constant_order_expr () - is the ORDER BY expression fixed to a constant by a WHERE term?
  *   return: true if a top-level WHERE conjunct 'col = const' (or 'col range (const =)') exists
  *   parser(in): parser context
@@ -1808,13 +1780,17 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       col = pt_get_end_path_node (col);
-      if (col->node_type == PT_NAME)
+      if (with_rollup)
+	{
+	  is_const_col = false;
+	}
+      else if (col->node_type == PT_NAME)
 	{
 	  is_const_col = PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT);
 	}
       else
 	{
-	  is_const_col = !with_rollup && qo_is_constant_order_expr (parser, node->info.query.q.select.where, col);
+	  is_const_col = qo_is_constant_order_expr (parser, node->info.query.q.select.where, col);
 	}
 
       if (is_const_col)
