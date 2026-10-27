@@ -1190,14 +1190,8 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	}
     }
 
-  if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  /* add savepoint to local list */
+  /* add savepoint to local list before the server holds it: a user savepoint the list does not know of would let
+   * NO_REACHABLE_SAVEPOINT go out under it */
   if (savepoint_type == USER_SAVEPOINT)
     {
       error_code = tran_add_savepoint (savept_name);
@@ -1206,7 +1200,23 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	  return error_code;
 	}
     }
-  else
+
+  if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
+    {
+      if (savepoint_type == USER_SAVEPOINT)
+	{
+	  DB_NAMELIST *sp = user_savepoint_list;
+
+	  user_savepoint_list = sp->next;
+	  db_ws_free ((char *) sp->name);
+	  db_ws_free (sp);
+	}
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  if (savepoint_type != USER_SAVEPOINT)
     {
       system_savepoint_is_live = true;
     }
