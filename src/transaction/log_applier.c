@@ -778,6 +778,9 @@ la_coordinator_wait_for_commit_order_slot (void)
  *   case the re-apply errors are ignored.
  *   A task without replicated items is not stored: re-applying it cannot fail, and the store would itself be
  *   a commit that a mutual HA peer sends back.
+ *
+ *   TODO: Not needed if each worker records the commit LSA it applied in the same transaction as the data
+ *   (see la_coordinator_run_alone).
  */
 static int
 la_coordinator_cover_commit (const LA_TASK * task)
@@ -7685,6 +7688,12 @@ la_coordinator_submit_task (LA_TASK * task)
  *   The log is read again from the required LSA, so the commits between it and the committed LSA this
  *   process started from come first. The workers skip them whole, so they take the parallel path and the
  *   range starts only after all of them have retired.
+ *
+ *   TODO: This is needed only because a restarted applier cannot tell which transactions in the range a
+ *   worker already committed. If each worker recorded the commit LSA it applied in the same transaction as
+ *   the data, the restarted applier could skip those and apply the rest in parallel. This function, the
+ *   re-apply error tolerance in the range and the max_committed_lsa store before queuing
+ *   (la_coordinator_cover_commit) would then be unnecessary.
  */
 static int
 la_coordinator_run_alone (LA_TASK * task)
