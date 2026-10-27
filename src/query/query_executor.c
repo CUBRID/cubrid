@@ -12366,6 +12366,7 @@ qexec_batch_filter_eligible (const XASL_NODE * xasl)
 #define QEXEC_GBY_CACHE_SIZE (1024)	/* power of two; at most half of it is used */
 #define QEXEC_GBY_KEY_MAX (256)
 #define QEXEC_GBY_EVICT_NOTE (8)	/* LRU head entries noted before a row-path call */
+#define QEXEC_GBY_PROBE_ROWS (2048)	/* rows the node looks up before it judges whether its cache pays */
 
 typedef struct qexec_gby_entry QEXEC_GBY_ENTRY;
 struct qexec_gby_entry
@@ -12393,6 +12394,8 @@ struct qexec_batch_gby
   QEXEC_GBY_ENTRY *cache;	/* invariant: every entry's value is a live group of the table, and a group has at most
 				 * one entry (qexec_gby_cache_evicted () drops the entries of the groups the table freed) */
   int n_cached;
+  INT64 n_lookups;		/* rows looked up in the cache and the ones it had: a cache that misses more than it hits */
+  INT64 n_hits;			/* turns the node off (qexec_batch_gby_consume ()) */
   unsigned int seen_evictions;	/* the context's evictions the cache is current with (qexec_batch_gby_consume ()) */
   int cap;			/* rows the scratch arrays hold */
   int *pend_row;		/* a chunk's rows of cached groups, in row order, and their entries */
@@ -12540,6 +12543,13 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
   if (value == NULL)
     {
       return;
+    }
+  if (value->batch_slot >= 0 && value->batch_slot < QEXEC_GBY_CACHE_SIZE && st->cache[value->batch_slot].len >= 0
+      && st->cache[value->batch_slot].value == value)
+    {
+      /* the group already has an entry under other bytes (an equal key that encodes otherwise, as under a
+       * case-insensitive collation): a group has at most one entry, so this row's bytes replace it */
+      qexec_gby_cache_remove (thread_p, st, (unsigned int) value->batch_slot);
     }
   for (i = h & (QEXEC_GBY_CACHE_SIZE - 1); st->cache[i].len >= 0; i = (i + 1) & (QEXEC_GBY_CACHE_SIZE - 1))
     ;
@@ -12801,6 +12811,15 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
       st->off = true;
       qexec_gby_cache_clear (thread_p, st);
     }
+  if (!st->off && st->n_lookups >= QEXEC_GBY_PROBE_ROWS && st->n_hits * 2 < st->n_lookups)
+    {
+      /* The cache pays only when a chunk's groups repeat in it.  A table of more groups than the cache keeps, its
+       * keys in no order, sends nearly every row through the row path and through the cache's bookkeeping both: a
+       * cache that misses more than it hits leaves the rows to the row path alone, as when the table stops taking
+       * them. */
+      st->off = true;
+      qexec_gby_cache_clear (thread_p, st);
+    }
   if (st->off)
     {
       return qexec_batch_gby_rows (thread_p, st, batch, 0);
@@ -12826,12 +12845,18 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
       AGGREGATE_HASH_VALUE *note_val[QEXEC_GBY_EVICT_NOTE];
       int note_slot[QEXEC_GBY_EVICT_NOTE];
       int n_note = 0, groups_before, evicted;
+      bool new_group;
       HENTRY_PTR he;
       unsigned int before;
       int tuples_before;
 
+      if (len >= 0)
+	{
+	  st->n_lookups++;
+	}
       if (e != NULL)
 	{
+	  st->n_hits++;
 	  st->pend_row[n_pend] = r;
 	  st->pend_ent[n_pend] = (int) (e - st->cache);
 	  n_pend++;
@@ -12881,8 +12906,11 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	  qexec_gby_cache_clear (thread_p, st);
 	  return qexec_batch_gby_rows (thread_p, st, batch, j + 1);
 	}
-      evicted = (int) before + 1 - (int) mht_count (ctx->hash_table);
-      if (evicted > 0 && evicted <= n_note && ctx->group_count == groups_before + 1)
+      /* the groups the call freed: the table grows by one for a new group and stays for an existing one, so the
+       * existing group a row found outside the cache (more groups than the cache keeps) frees none */
+      new_group = (ctx->group_count == groups_before + 1);
+      evicted = (int) before + (new_group ? 1 : 0) - (int) mht_count (ctx->hash_table);
+      if (new_group && evicted > 0 && evicted <= n_note)
 	{
 	  /* a new group at the tail and the LRU head evicted for it, entry by entry */
 	  qexec_gby_cache_evicted (thread_p, st, note_val, note_slot, evicted);
@@ -12890,7 +12918,7 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	}
       else if (evicted != 0)
 	{
-	  /* not a plain new group: an existing one under other bytes, or a dump; a dumped group is freed */
+	  /* more groups freed than were noted, or a dump: a freed group may still have an entry */
 	  qexec_gby_cache_clear (thread_p, st);
 	  st->seen_evictions = ctx->evictions;
 	}
