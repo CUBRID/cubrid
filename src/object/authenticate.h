@@ -148,6 +148,9 @@ struct au_system_object
   DB_AUTH privileges;		/* the privileges that can be granted on it */
 };
 
+extern const AU_SYSTEM_OBJECT AU_SYSTEM_OBJECTS[];
+extern const int AU_SYSTEM_OBJECTS_COUNT;
+
 extern const AU_SYSTEM_OBJECT *au_find_system_object (DB_OBJECT_TYPE obj_type);
 extern int au_make_system_object_when_clauses (char *buf, int buf_size);
 

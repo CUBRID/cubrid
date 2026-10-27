@@ -79,10 +79,12 @@ static void print_grant_entry (DB_SET *grants, int grant_index, FILE *fp);
  * SYSTEM OBJECTS
  */
 
-static const AU_SYSTEM_OBJECT AU_SYSTEM_OBJECTS[] =
+const AU_SYSTEM_OBJECT AU_SYSTEM_OBJECTS[] =
 {
   {DB_OBJECT_SENSITIVITY_LABEL, "SENSITIVITY LABEL", (DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_ALTER)}
 };
+
+const int AU_SYSTEM_OBJECTS_COUNT = sizeof (AU_SYSTEM_OBJECTS) / sizeof (AU_SYSTEM_OBJECTS[0]);
 
 /*
  * au_find_system_object - find a system object by its type

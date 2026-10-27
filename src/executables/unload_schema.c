@@ -6079,6 +6079,20 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	    }
 	  err = au_export_grants (ctxt, output_ctx, cls->op, DB_OBJECT_PROCEDURE);
 	}
+
+      /* only the DBA owns system objects, and a class-only unload skips them as it skips users */
+      if ((ctxt.is_dba_user || ctxt.is_dba_group_member) && required_class_only == false)
+	{
+	  for (int i = 0; i < AU_SYSTEM_OBJECTS_COUNT; i++)
+	    {
+	      /* set err only on a failure, not to hide one from the loops above */
+	      int error = au_export_grants (ctxt, output_ctx, NULL, AU_SYSTEM_OBJECTS[i].type);
+	      if (error != NO_ERROR)
+		{
+		  err = error;
+		}
+	    }
+	}
     }
 
   return err;
