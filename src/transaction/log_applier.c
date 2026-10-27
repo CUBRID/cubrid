@@ -7648,7 +7648,7 @@ la_coordinator_submit_task (LA_TASK * task)
   LSA_COPY (&label, &task->dependency_seq);
   if (la_gate_bound_dependency (&task->dependency_seq) && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
     {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] reader label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
+      _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
 		     "dependency=%lld|%d\n", task->tranid, (long long) task->commit_lsa.pageid,
 		     (int) task->commit_lsa.offset, (long long) label.pageid, (int) label.offset,
 		     (long long) task->dependency_seq.pageid, (int) task->dependency_seq.offset);
@@ -7824,14 +7824,14 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	}
 
       LA_DEBUG_LOG (ARG_FILE_LINE,
-		    "reader defer_sysop_end trid=%d lsa=%lld|%d apply=%p head=%p committed=%lld|%d\n",
+		    "coordinator defer_sysop_end trid=%d lsa=%lld|%d apply=%p head=%p committed=%lld|%d\n",
 		    lrec->trid, (long long) final->pageid, (int) final->offset, (void *) sysop_apply,
 		    (sysop_apply ? (void *) sysop_apply->head : NULL), (long long) la_Info.committed_lsa.pageid,
 		    (int) la_Info.committed_lsa.offset);
       if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= (la_wset_label_trid == lrec->trid ? 1 : 2))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] reader sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
+			 "[WSET] coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
 			 "action=defer labeled=%d long=%d\n",
 			 lrec->trid, (long long) final->pageid, (int) final->offset,
 			 (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
@@ -7844,18 +7844,22 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
       /* TODO: No case is known to reach here. At startup committed_lsa is set to the required LSA the log is read
        * again from, and while running it follows the frontier, which never passes a commit not yet read. If this
        * is ever reached, a labeled operation's items stay in the outer transaction's slot and are applied again
-       * with the outer commit, and its label stays held; detach and drop the items and clear the label here then. */
+       * with the outer commit, and its label stays held; detach and drop the items and clear the label here then.
+       * The items count in the trace below shows whether that happens. */
       LA_DEBUG_LOG (ARG_FILE_LINE,
-		    "reader skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
+		    "coordinator skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
 		    lrec->trid, (long long) final->pageid, (int) final->offset,
 		    (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
       if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
 	{
+	  LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
+
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] reader sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
+			 "[WSET] coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
 			 "action=skip\n",
 			 lrec->trid, (long long) final->pageid, (int) final->offset,
-			 (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset, 0);
+			 (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
+			 sysop_apply == NULL ? 0 : sysop_apply->num_items);
 	}
     }
 
