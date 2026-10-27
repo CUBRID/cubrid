@@ -363,18 +363,6 @@ struct lk_res_block
   int count;			/* # of entries in lock res block */
 };
 
-/* A class an escalation raised over this statement's row locks, lowered back when the statement ends unless a request
- * the lowered mode would not cover lands on it first.  No hold_mutex: only this transaction reaches it, and parallel
- * scan workers only read it -- they ask IS, which every from_mode covers. */
-#define LK_ESCALATION_RECORDS_PER_STATEMENT 16
-typedef struct lk_escalation_record LK_ESCALATION_RECORD;
-struct lk_escalation_record
-{
-  OID class_oid;
-  LOCK from_mode;		/* lowered back to this */
-  LOCK to_mode;			/* lowered only while still at this */
-};
-
 /*
  * Transaction Lock Entry Structure
  */
@@ -391,8 +379,7 @@ struct lk_tran_lock
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
   int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
-  LK_ESCALATION_RECORD escalated[LK_ESCALATION_RECORDS_PER_STATEMENT];	/* classes to lower at statement end */
-  int escalated_count;		/* # of entries in escalated */
+  int escalated_count;		/* class entries with escalated_from set; only this transaction's thread touches them */
   int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
@@ -580,8 +567,8 @@ static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
 static bool lock_escalation_takes_only_transient (LK_TRAN_LOCK * tran_lock, const OID * class_oid);
 static void lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower);
-static void lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, const OID * class_oid);
-static void lock_withdraw_uncovered_escalation_record (LK_TRAN_LOCK * tran_lock, const OID * class_oid, LOCK lock);
+static void lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry);
+static LOCK lock_escalation_mode (LOCK class_mode);
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 						   const OID * class_oid, LOCK lock);
@@ -815,6 +802,7 @@ lock_uninit_entry (void *entry)
   entry_ptr->tran_index = -1;
   entry_ptr->thrd_entry = NULL;
   entry_ptr->transient_count = 0;
+  entry_ptr->escalated_from = NULL_LOCK;
 
   return NO_ERROR;
 }
@@ -1011,6 +999,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = false;
   entry_ptr->bind_index_in_tran = -1;
   XASL_ID_SET_NULL (&entry_ptr->xasl_id);
@@ -1033,6 +1022,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = (lock == S_LOCK);
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
@@ -1056,6 +1046,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = (lock == S_LOCK);
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
@@ -1078,6 +1069,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = false;
 }
 
@@ -3211,13 +3203,13 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
  *   tran_lock(in): caller holds hold_mutex
  *   class_oid(in): the class about to escalate
  *
- * Note: the reclaim takes earlier statements' locks too, and then only the raised class lock protects them.
+ * Note: the reclaim takes earlier statements' locks too, and then only the raised class lock protects them.  A raise
+ *	that reclaims nothing (a partition counted by its partitioned class) covers only requests that come after it.
  */
 static bool
 lock_escalation_takes_only_transient (LK_TRAN_LOCK * tran_lock, const OID * class_oid)
 {
   LK_ENTRY *curr;
-  bool saw_one = false;
 
   for (curr = tran_lock->inst_hold_list; curr != NULL; curr = curr->tran_next)
     {
@@ -3229,10 +3221,20 @@ lock_escalation_takes_only_transient (LK_TRAN_LOCK * tran_lock, const OID * clas
 	{
 	  return false;
 	}
-      saw_one = true;
     }
 
-  return saw_one;
+  return true;
+}
+
+/*
+ * lock_escalation_mode () - The class lock mode an escalation raises a class lock to
+ *   return: X_LOCK over IX or SIX, S_LOCK otherwise
+ *   class_mode(in): the class lock mode before the escalation
+ */
+static LOCK
+lock_escalation_mode (LOCK class_mode)
+{
+  return (class_mode == IX_LOCK || class_mode == SIX_LOCK) ? X_LOCK : S_LOCK;
 }
 
 /*
@@ -3242,35 +3244,31 @@ lock_escalation_takes_only_transient (LK_TRAN_LOCK * tran_lock, const OID * clas
  *   lower(in): false only forgets the records
  *
  * Note: the rows a raise stood for are published by now, so a late arrival settles on the MVCCID lock as for any
- *	other row.  Lowered to from_mode, not released: the DML's intention lock stays to commit.
+ *	other row.  Lowered to escalated_from, not released: the DML's intention lock stays to commit.
  */
 static void
 lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower)
 {
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
-  LOCK from_mode, ex_lock;
-  int tran_index;
+  LOCK ex_lock;
 
-  int i;
+  tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-
-  if (lower)
+  for (entry_ptr = tran_lock->class_hold_list; entry_ptr != NULL && tran_lock->escalated_count > 0;
+       entry_ptr = entry_ptr->tran_next)
     {
-      for (i = 0; i < tran_lock->escalated_count; i++)
+      if (entry_ptr->escalated_from == NULL_LOCK)
 	{
-	  LK_ESCALATION_RECORD *rec = &tran_lock->escalated[i];
-
-	  from_mode = rec->from_mode;
-	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, &rec->class_oid, true);
-	  /* a further raise since is not this statement's to undo */
-	  if (entry_ptr != NULL && entry_ptr->granted_mode == rec->to_mode && rec->to_mode > from_mode)
-	    {
-	      (void) lock_internal_demote_class_lock (thread_p, entry_ptr, from_mode, &ex_lock);
-	    }
+	  continue;
 	}
+      /* a further raise since is not this statement's to undo */
+      if (lower && entry_ptr->granted_mode == lock_escalation_mode (entry_ptr->escalated_from))
+	{
+	  (void) lock_internal_demote_class_lock (thread_p, entry_ptr, entry_ptr->escalated_from, &ex_lock);
+	}
+      entry_ptr->escalated_from = NULL_LOCK;
+      tran_lock->escalated_count--;
     }
 
   tran_lock->escalated_count = 0;
@@ -3280,45 +3278,15 @@ lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower)
  * lock_withdraw_escalation_record () - Forget the class's record, so its lock stays raised to commit
  *   return: void
  *   tran_lock(in): the transaction's lock list
- *   class_oid(in): the class
+ *   class_entry(in): the transaction's lock entry of the class, or NULL
  */
 static void
-lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, const OID * class_oid)
+lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry)
 {
-  int i;
-
-  for (i = 0; i < tran_lock->escalated_count; i++)
+  if (class_entry != NULL && class_entry->escalated_from != NULL_LOCK)
     {
-      if (OID_EQ (&tran_lock->escalated[i].class_oid, class_oid))
-	{
-	  tran_lock->escalated[i] = tran_lock->escalated[--tran_lock->escalated_count];
-	  return;
-	}
-    }
-}
-
-/*
- * lock_withdraw_uncovered_escalation_record () - Forget the class's record unless its from_mode covers lock
- *   return: void
- *   tran_lock(in): the transaction's lock list
- *   class_oid(in): the class just granted
- *   lock(in): the mode requested
- */
-static void
-lock_withdraw_uncovered_escalation_record (LK_TRAN_LOCK * tran_lock, const OID * class_oid, LOCK lock)
-{
-  int i;
-
-  for (i = 0; i < tran_lock->escalated_count; i++)
-    {
-      if (OID_EQ (&tran_lock->escalated[i].class_oid, class_oid))
-	{
-	  if (lock_conv (lock, tran_lock->escalated[i].from_mode) != tran_lock->escalated[i].from_mode)
-	    {
-	      tran_lock->escalated[i] = tran_lock->escalated[--tran_lock->escalated_count];
-	    }
-	  return;
-	}
+      class_entry->escalated_from = NULL_LOCK;
+      tran_lock->escalated_count--;
     }
 }
 
@@ -3349,7 +3317,6 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
   int rv;
   bool escalation_ends_with_statement = false;
   LOCK pre_escalation_mode = NULL_LOCK;
-  OID escalated_class_oid = OID_INITIALIZER;
 
   /* check lock escalation count */
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -3377,13 +3344,12 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
   /* lock escalation should be performed */
   tran_lock->lock_escalation_on = true;
 
-  /* asked before the raise reclaims the entries that answer it; past the last slot a class stays raised to commit */
-  if (tran_lock->transient_scope > 0 && tran_lock->escalated_count < LK_ESCALATION_RECORDS_PER_STATEMENT
+  /* asked before the raise reclaims the entries that answer it */
+  if (tran_lock->transient_scope > 0
       && lock_escalation_takes_only_transient (tran_lock, &class_entry->res_head->key.oid))
     {
       escalation_ends_with_statement = true;
       pre_escalation_mode = class_entry->granted_mode;
-      COPY_OID (&escalated_class_oid, &class_entry->res_head->key.oid);
     }
 
   if (class_entry->granted_mode == NULL_LOCK || class_entry->granted_mode == S_LOCK
@@ -3399,14 +3365,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
 
   /* Because to count the shared and exclusive instance locks may cause high CPU usage, we used a simple rule to decide
    * the escalated class lock mode */
-  if (class_entry->granted_mode == IX_LOCK || class_entry->granted_mode == SIX_LOCK)
-    {
-      max_class_lock = X_LOCK;
-    }
-  else
-    {
-      max_class_lock = S_LOCK;
-    }
+  max_class_lock = lock_escalation_mode (class_entry->granted_mode);
 
   pthread_mutex_unlock (&tran_lock->hold_mutex);
 
@@ -3435,14 +3394,11 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       /* 2. release original class lock only one time in order to maintain original class lock count */
       lock_internal_perform_unlock_object (thread_p, class_entry, false, true);
 
-      if (escalation_ends_with_statement)
+      if (escalation_ends_with_statement && class_entry->escalated_from == NULL_LOCK)
 	{
-	  /* written after the raise: as a class grant from_mode does not cover, the raise would withdraw it */
-	  LK_ESCALATION_RECORD *rec = &tran_lock->escalated[tran_lock->escalated_count++];
-
-	  COPY_OID (&rec->class_oid, &escalated_class_oid);
-	  rec->from_mode = pre_escalation_mode;
-	  rec->to_mode = max_class_lock;
+	  /* written after the raise: as a class grant escalated_from does not cover, the raise would withdraw it */
+	  class_entry->escalated_from = pre_escalation_mode;
+	  tran_lock->escalated_count++;
 	}
     }
 
@@ -4436,11 +4392,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
       lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
     }
 
-  if (ret_val == LK_GRANTED && search_key.type == LOCK_RESOURCE_CLASS
-      && lk_Gl.tran_lock_table[tran_index].escalated_count > 0)
+  if (ret_val == LK_GRANTED && search_key.type == LOCK_RESOURCE_CLASS && *entry_addr_ptr != NULL
+      && (*entry_addr_ptr)->escalated_from != NULL_LOCK
+      && lock_conv (lock, (*entry_addr_ptr)->escalated_from) != (*entry_addr_ptr)->escalated_from)
     {
-      /* at the grant, so no caller of a class lock can skip it */
-      lock_withdraw_uncovered_escalation_record (&lk_Gl.tran_lock_table[tran_index], &search_key.oid, lock);
+      /* at the grant, so no caller of a class lock can skip it; a mode the lowered lock covers keeps the record */
+      lock_withdraw_escalation_record (&lk_Gl.tran_lock_table[tran_index], *entry_addr_ptr);
     }
 
   return ret_val;
@@ -6703,7 +6660,7 @@ end:
       && lk_Gl.tran_lock_table[tran_index].escalated_count > 0)
     {
       /* a row request the statement keeps (nested statement, FK check) has no entry under the escalated class */
-      lock_withdraw_escalation_record (&lk_Gl.tran_lock_table[tran_index], class_oid);
+      lock_withdraw_escalation_record (&lk_Gl.tran_lock_table[tran_index], class_entry);
     }
 
 #if defined (EnableThreadMonitoring)
