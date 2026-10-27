@@ -688,7 +688,7 @@ domain_merge_class (DOMAIN_OPERAND_CLASS lhs, const DOMAIN_PLAN_ITEM * rhs)
   return lhs == OPERAND_CORRELATED || other == OPERAND_CORRELATED ? OPERAND_CORRELATED : OPERAND_CONST;
 }
 
-static bool
+bool
 domain_non_cacheable_operator (OPERATOR_TYPE opcode)
 {
   switch (opcode)
@@ -728,7 +728,7 @@ domain_non_cacheable_operator (OPERATOR_TYPE opcode)
 
 /* The non-cacheable operators a fetch computes every time only because it does not analyze their predicate: over
  * operands no row changes, no row changes them either. */
-static bool
+bool
 domain_branch_operator (OPERATOR_TYPE opcode)
 {
   return opcode == T_CASE || opcode == T_DECODE || opcode == T_IF || opcode == T_PREDICATE;
@@ -2082,8 +2082,8 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	  domain_walk_regu (ctx, key->key_limit_u);
 	  ctx->in_key_limit = false;
 	  /* the scan computes its key limits when it opens, and turns an overflow of their arithmetic into a limit
-	   * (scan_handle_overflow_subtraction_upper, fetch_and_coerce_key_limit_lower): a constant there is the scan's
-	   * to compute, not one whose failure is resolve_domains' error */
+	   * (fetch_key_limits): a constant there is the scan's to compute, not one whose failure is resolve_domains'
+	   * error */
 	  domain_force_row (key->key_limit_l);
 	  domain_force_row (key->key_limit_u);
 	}

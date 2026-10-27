@@ -97,6 +97,16 @@ typedef struct find_id_info
   } out;
 } FIND_ID_INFO;
 
+typedef struct analytic_partition_key_info
+{
+  UINTPTR spec_id;		/* id of the derived table spec */
+  PT_NODE *spec;		/* derived table spec */
+  PT_NODE *subquery;		/* derived table query */
+  PT_NODE *select_list;		/* select list of the derived table query */
+  PT_NODE *key;			/* select list item to find in PARTITION BY */
+  bool is_partition_key;	/* output */
+} ANALYTIC_PARTITION_KEY_INFO;
+
 typedef struct mq_bump_core_info
 {
   int match_level;
@@ -241,6 +251,16 @@ static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * 
 static bool mq_has_class_methods_corr_subqueries (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term);
+static PT_NODE *mq_check_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *mq_find_spec_ref_or_coll_modifier_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+						       int *continue_walk);
+static PT_NODE *mq_get_partition_key_item (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * spec, PT_NODE * subquery);
+static PT_NODE *mq_check_exact_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+						  int *continue_walk);
+static bool mq_is_partition_key_operand (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec,
+					 PT_NODE * subquery);
+static bool mq_is_analytic_partition_key_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec,
+					       PT_NODE * subquery);
 static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query, int pos);
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
@@ -439,6 +459,8 @@ static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
+static int mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
+				   PT_NODE * old_select_list);
 
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -574,7 +596,8 @@ mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_SELECT (node))
+  /* a set operation is a scope of its own as well; its operands are one level deeper (see mq_bump_corr_post) */
+  if (!PT_IS_QUERY_NODE_TYPE (node->node_type))
     return node;
 
   /* Can not increment threshold for list portion of walk. Since those queries are not sub-queries of this query.
@@ -3983,9 +4006,313 @@ pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term)
   save_next = term->next;
   term->next = NULL;
   (void) parser_walk_tree (parser, term, pt_check_pushable, (void *) &cpi, NULL, NULL);
+  /* a variable assignment (@a := ...) changes its result for each evaluation as well */
+  if (!cpi.method_found && pt_has_define_vars (parser, term))
+    {
+      cpi.method_found = true;
+    }
   term->next = save_next;
 
   return cpi.method_found;
+}
+
+/*
+ * mq_check_partition_key_pre() - walk_tree pre function; check if the analytic functions found
+ *                                all have the given expression in their PARTITION BY clause
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): ANALYTIC_PARTITION_KEY_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_check_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  ANALYTIC_PARTITION_KEY_INFO *infop = (ANALYTIC_PARTITION_KEY_INFO *) arg;
+  PT_NODE *sort_spec, *expr;
+
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      /* analytic functions of a subquery work on their own rows */
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+
+  if (!PT_IS_ANALYTIC_NODE (tree))
+    {
+      return tree;
+    }
+
+  /* pt_check_analytic_function () replaced a PARTITION BY expression which matches a select list item with
+   * the position of the item. An expression left as it is matches no select list item. */
+  for (sort_spec = tree->info.function.analytic.partition_by; sort_spec; sort_spec = sort_spec->next)
+    {
+      expr = sort_spec->info.sort_spec.expr;
+      if (expr != NULL && expr->node_type == PT_VALUE && sort_spec->info.sort_spec.pos_descr.pos_no > 0
+	  && pt_get_node_from_list (infop->select_list, sort_spec->info.sort_spec.pos_descr.pos_no - 1) == infop->key)
+	{
+	  break;
+	}
+    }
+
+  if (sort_spec == NULL)
+    {
+      infop->is_partition_key = false;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * mq_find_spec_ref_or_coll_modifier_pre() - walk_tree pre function; check if the tree refers to the given spec
+ *                                           or has a COLLATE modifier
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): ANALYTIC_PARTITION_KEY_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_spec_ref_or_coll_modifier_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  ANALYTIC_PARTITION_KEY_INFO *infop = (ANALYTIC_PARTITION_KEY_INFO *) arg;
+
+  if (tree->node_type == PT_DATA_TYPE)
+    {
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+
+  if ((tree->node_type == PT_NAME && tree->info.name.spec_id == infop->spec_id) || PT_HAS_COLLATION_MODIFIER (tree))
+    {
+      infop->is_partition_key = false;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * mq_get_partition_key_item() - get the select list item of a column of the derived table if the item is
+ *                               a PARTITION BY key of all analytic functions of the subquery
+ *   return: select list item, or NULL
+ *   parser(in):
+ *   name(in): column of the derived table
+ *   spec(in): derived table spec
+ *   subquery(in): derived table query
+ */
+static PT_NODE *
+mq_get_partition_key_item (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * spec, PT_NODE * subquery)
+{
+  ANALYTIC_PARTITION_KEY_INFO info;
+  PT_NODE *attr, *col;
+
+  if (name->node_type != PT_NAME || name->info.name.spec_id != spec->info.spec.id || PT_HAS_COLLATION_MODIFIER (name))
+    {
+      return NULL;
+    }
+
+  /* find the select list item of the column */
+  for (attr = spec->info.spec.as_attr_list, col = subquery->info.query.q.select.list; attr && col;
+       attr = attr->next, col = col->next)
+    {
+      if (attr->node_type == PT_NAME
+	  && pt_str_compare (attr->info.name.original, name->info.name.original, CASE_INSENSITIVE) == 0)
+	{
+	  break;
+	}
+    }
+
+  if (attr == NULL || col == NULL || PT_IS_ANALYTIC_NODE (col))
+    {
+      return NULL;
+    }
+
+  info.spec_id = spec->info.spec.id;
+  info.spec = spec;
+  info.subquery = subquery;
+  info.select_list = subquery->info.query.q.select.list;
+  info.key = col;
+  info.is_partition_key = true;
+  (void) parser_walk_tree (parser, subquery->info.query.q.select.list, mq_check_partition_key_pre, &info, NULL, NULL);
+
+  return info.is_partition_key ? col : NULL;
+}
+
+/*
+ * mq_check_exact_partition_key_pre() - walk_tree pre function; check if all columns of the derived table are
+ *                                      PARTITION BY keys whose values are equal only when they are the same
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): ANALYTIC_PARTITION_KEY_INFO
+ *   continue_walk(in/out):
+ *
+ * Note:
+ *  The rows of a partition have the same key value for such a type, so any deterministic expression of the keys
+ *  has the same result for them. A string can be equal to a different string (collation, trailing spaces), and
+ *  so can a value with a time zone, a floating point value (-0.0 and 0.0) and a NUMERIC value of a different
+ *  scale (1.0 and 1.00), so they are not such a type.
+ */
+static PT_NODE *
+mq_check_exact_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  ANALYTIC_PARTITION_KEY_INFO *infop = (ANALYTIC_PARTITION_KEY_INFO *) arg;
+  PT_NODE *col;
+
+  if (tree->node_type == PT_DATA_TYPE)
+    {
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+
+  if (tree->node_type == PT_DOT_ || (tree->node_type == PT_NAME && tree->info.name.spec_id == infop->spec_id))
+    {
+      col =
+	(tree->node_type == PT_NAME) ? mq_get_partition_key_item (parser, tree, infop->spec, infop->subquery) : NULL;
+      switch (col ? col->type_enum : PT_TYPE_NONE)
+	{
+	case PT_TYPE_SMALLINT:
+	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
+	case PT_TYPE_DATE:
+	case PT_TYPE_TIME:
+	case PT_TYPE_DATETIME:
+	case PT_TYPE_TIMESTAMP:
+	  break;
+
+	default:
+	  infop->is_partition_key = false;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * mq_is_partition_key_operand() - check if an operand of a comparison is either a column of the derived table
+ *                                 that is a PARTITION BY key of all analytic functions of the subquery,
+ *                                 or an expression which does not refer to the derived table at all
+ *   return:
+ *   parser(in):
+ *   operand(in):
+ *   spec(in): derived table spec
+ *   subquery(in): derived table query
+ */
+static bool
+mq_is_partition_key_operand (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec, PT_NODE * subquery)
+{
+  ANALYTIC_PARTITION_KEY_INFO info;
+
+  if (operand == NULL)
+    {
+      return true;
+    }
+
+  if (operand->node_type == PT_NAME && operand->info.name.spec_id == spec->info.spec.id)
+    {
+      return mq_get_partition_key_item (parser, operand, spec, subquery) != NULL;
+    }
+
+  /* The column must be a direct operand. A function or a cast of it, or a COLLATE modifier, can make the term
+   * distinguish the rows which the PARTITION BY clause puts in the same partition. */
+  info.spec_id = spec->info.spec.id;
+  info.is_partition_key = true;
+  (void) parser_walk_tree (parser, operand, mq_find_spec_ref_or_coll_modifier_pre, &info, NULL, NULL);
+
+  return info.is_partition_key;
+}
+
+/*
+ * mq_is_analytic_partition_key_term() - check if a term can be pushed into a subquery with analytic functions
+ *   return: true if the term is pushable
+ *   parser(in):
+ *   term(in): CNF term
+ *   spec(in): derived table spec
+ *   subquery(in): derived table query
+ *
+ * Note:
+ *  An analytic function is computed in each partition separately. When a term is evaluated with the same result for
+ *  all rows of a partition, filtering the rows before the analytic functions removes whole partitions only and the
+ *  results of the remaining partitions do not change. This holds for a comparison whose operand is a PARTITION BY key
+ *  common to all analytic functions, since the comparison and the partitioning use the same collation, and for
+ *  any deterministic term on keys whose values are equal only when they are the same (see
+ *  mq_check_exact_partition_key_pre ()).
+ */
+static bool
+mq_is_analytic_partition_key_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec, PT_NODE * subquery)
+{
+  ANALYTIC_PARTITION_KEY_INFO info;
+  PT_NODE *disjunct, *save_next, *save_or_next;
+
+  if (subquery->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  /* a term on the keys of an exact type only */
+  info.spec_id = spec->info.spec.id;
+  info.spec = spec;
+  info.subquery = subquery;
+  info.is_partition_key = true;
+  for (disjunct = term; disjunct && info.is_partition_key; disjunct = disjunct->or_next)
+    {
+      save_next = disjunct->next;
+      save_or_next = disjunct->or_next;
+      disjunct->next = NULL;
+      disjunct->or_next = NULL;
+      (void) parser_walk_tree (parser, disjunct, mq_check_exact_partition_key_pre, &info, NULL, NULL);
+      disjunct->next = save_next;
+      disjunct->or_next = save_or_next;
+    }
+
+  if (info.is_partition_key)
+    {
+      return true;
+    }
+
+  /* a comparison which uses the same collation as the partitioning */
+  for (disjunct = term; disjunct; disjunct = disjunct->or_next)
+    {
+      if (disjunct->node_type != PT_EXPR || PT_HAS_COLLATION_MODIFIER (disjunct))
+	{
+	  return false;
+	}
+
+      switch (disjunct->info.expr.op)
+	{
+	case PT_EQ:
+	case PT_NE:
+	case PT_NULLSAFE_EQ:
+	case PT_GT:
+	case PT_GE:
+	case PT_LT:
+	case PT_LE:
+	case PT_BETWEEN:
+	case PT_NOT_BETWEEN:
+	case PT_RANGE:
+	case PT_IS_IN:
+	case PT_IS_NOT_IN:
+	case PT_IS_NULL:
+	case PT_IS_NOT_NULL:
+	  break;
+
+	default:
+	  return false;
+	}
+
+      if (!mq_is_partition_key_operand (parser, disjunct->info.expr.arg1, spec, subquery)
+	  || !mq_is_partition_key_operand (parser, disjunct->info.expr.arg2, spec, subquery)
+	  || !mq_is_partition_key_operand (parser, disjunct->info.expr.arg3, spec, subquery))
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
@@ -4320,10 +4647,10 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 
   if (infop->out.correlated_found)
     {
-      if (pt_has_aggregate (parser, infop->in.subquery))
+      if (pt_has_aggregate (parser, infop->in.subquery) || pt_has_analytic (parser, infop->in.subquery))
 	{
-	  /* When a correlated term is pushed to a subquery that includes an aggregate function, */
-	  /* group_by processing can be repeatedly performed. */
+	  /* When a correlated term is pushed to a subquery that includes an aggregate or analytic function, */
+	  /* group_by or analytic processing can be repeatedly performed. */
 	  /* This may cause performance degradation. In this case, copypush is not performed. */
 	  is_correlated_with_agg = true;
 	}
@@ -5492,6 +5819,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next, *in_spec;
   bool is_outer_joined;
+  bool has_analytic;
 
   /* init */
   push_term_list = NULL;
@@ -5531,10 +5859,16 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return 0;
     }
 
-  /* subquery has analytic functions */
   if (PT_IS_QUERY (subquery)
-      && (pt_has_analytic (parser, subquery) || PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_COLS_SCHEMA)
+      && (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_COLS_SCHEMA)
 	  || PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_FULL_INFO_COLS_SCHEMA) || PT_IS_VALUE_QUERY (subquery)))
+    {
+      return 0;
+    }
+
+  /* subquery has analytic functions: only a term on a PARTITION BY key is pushed */
+  has_analytic = PT_IS_QUERY (subquery) && pt_has_analytic (parser, subquery);
+  if (has_analytic && subquery->node_type != PT_SELECT)
     {
       return 0;
     }
@@ -5576,13 +5910,15 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
 
       /* The term of an outer joined spec is evaluated both in the derived table and in the main query
-       * (see below), so a term which can return a different result for each evaluation is not pushed. */
-      if (is_outer_joined && pt_has_non_deterministic_expr (parser, term))
+       * (see below), so a term which can return a different result for each evaluation is not pushed.
+       * Neither is it for analytic functions, since it can keep only some rows of a partition. */
+      if ((is_outer_joined || has_analytic) && pt_has_non_deterministic_expr (parser, term))
 	{
 	  continue;
 	}
 
-      if (pt_check_pushable_term (parser, term, infop))
+      if (pt_check_pushable_term (parser, term, infop)
+	  && (!has_analytic || mq_is_analytic_partition_key_term (parser, term, spec, subquery)))
 	{
 	  /* copy term */
 	  new_term = parser_copy_tree (parser, term);
@@ -15822,10 +16158,34 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 static PT_NODE *
 mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list, PT_NODE * old_select_list)
 {
+  if (mq_update_analytic_pos (parser, new_select_list, new_select_list, old_select_list) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return new_select_list;
+}
+
+/*
+ * mq_update_analytic_pos() - update PT_VALUE located within the OVER clause of the analytic functions
+ *                            found in node_list.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   node_list(in): nodes in which analytic functions are searched for
+ *   new_select_list(in):
+ *   old_select_list(in):
+ *
+ * NOTE: An analytic function can be nested in an expression or a function (e.g. x - LAG (x) OVER (...)),
+ * so their arguments are also searched, in the same way as pt_to_analytic_final_node().
+ */
+static int
+mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
+			PT_NODE * old_select_list)
+{
   PT_NODE *partition_by, *order_by;
   PT_NODE *col, *link, *order_list, *order, *value;
 
-  for (col = new_select_list; col; col = col->next)
+  for (col = node_list; col; col = col->next)
     {
       if (PT_IS_ANALYTIC_NODE (col))
 	{
@@ -15871,14 +16231,14 @@ mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select
 		{
 		  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
 			      old_index);
-		  return NULL;
+		  return ER_FAILED;
 		}
 
 	      referenced_node = parser_copy_tree (parser, old_select_node);
 	      if (referenced_node == NULL)
 		{
 		  PT_ERRORm (parser, old_select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  return NULL;
+		  return ER_FAILED;
 		}
 
 	      for (new_select_node = new_select_list, index = 1; new_select_node;
@@ -15913,7 +16273,24 @@ mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select
 	      link->next = NULL;
 	    }
 	}
+      else if (PT_IS_EXPR_NODE (col))
+	{
+	  if (mq_update_analytic_pos (parser, col->info.expr.arg1, new_select_list, old_select_list) != NO_ERROR
+	      || mq_update_analytic_pos (parser, col->info.expr.arg2, new_select_list, old_select_list) != NO_ERROR
+	      || mq_update_analytic_pos (parser, col->info.expr.arg3, new_select_list, old_select_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (PT_IS_FUNCTION (col))
+	{
+	  if (mq_update_analytic_pos (parser, col->info.function.arg_list, new_select_list,
+				      old_select_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
     }
 
-  return new_select_list;
+  return NO_ERROR;
 }

@@ -825,6 +825,33 @@ mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
 }
 
 /*
+ * mht_compare_dbvalues_are_identical - compare two DB_VALUEs, strings byte by byte
+ *   return: 0 or 1 (key1 == key2)
+ *   key1(in): pointer to DB_VALUE key1
+ *   key2(in): pointer to DB_VALUE key2
+ *
+ * Note: for keys of cached results (memoize, subquery cache). Strings equal only under their collation
+ *       ('A' and 'a' under a case-insensitive one) can give different results, e.g. ASCII (key).
+ *       Identical bytes are also equal under the collation, so mht_get_hash_number () still applies.
+ */
+int
+mht_compare_dbvalues_are_identical (const void *key1, const void *key2)
+{
+  const DB_VALUE *val1 = (const DB_VALUE *) key1;
+  const DB_VALUE *val2 = (const DB_VALUE *) key2;
+  int size;
+
+  if (key1 != key2 && TP_IS_CHAR_TYPE (db_value_type (val1)) && TP_IS_CHAR_TYPE (db_value_type (val2))
+      && !DB_IS_NULL (val1) && !DB_IS_NULL (val2))
+    {
+      size = db_get_string_size (val1);
+      return (size == db_get_string_size (val2) && memcmp (db_get_string (val1), db_get_string (val2), size) == 0);
+    }
+
+  return mht_compare_dbvalues_are_equal (key1, key2);
+}
+
+/*
  * mht_calculate_htsize - find a good hash table size
  *   return: adjusted hash table size
  *   ht_size(in): given hash table size
@@ -2700,7 +2727,9 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry
 
       if (ht->table[idx].hash == hash)
 	{
-	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal) */
+	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal).
+	   * Probes therefore return same-hash duplicates in reverse insertion order; a caller that needs list
+	   * order reorders on its side (e.g. the CONNECT BY DFS reverses a node's children). */
 	  entry->next = ht->table[idx].entry;
 	  ht->table[idx].entry = entry;
 	  ht->nentries++;
