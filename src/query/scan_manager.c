@@ -8132,13 +8132,17 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
 	  batch->n_rows = 0;
 	  return S_ERROR;
 	}
-      if (unknown_repid == NULL_REPRID)
+      if (unknown_repid == NULL_REPRID || code != S_DOESNT_FIT)
 	{
+	  /* with rows collected, their records are peeked from the page the scan holds, and learning reads the class
+	   * record (heap_classrepr_get ()), whose ordered fix may let that page go and fix it again: the chunk goes
+	   * out as it is, and the next call meets the record first, with nothing collected, and learns it then */
 	  return code;
 	}
-      /* the walk stopped at a record of a representation the plan has not met: learned now when its columns and
-       * keys read as the plan's do, else remembered as one the row path keeps (no error either way) */
-      if (expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid) != NO_ERROR || code != S_DOESNT_FIT)
+      /* the walk stopped, nothing collected, at a record of a representation the plan has not met: learned now
+       * when its columns and keys read as the plan's do, else remembered as one the row path keeps (no error either
+       * way) */
+      if (expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid) != NO_ERROR)
 	{
 	  return code;
 	}
