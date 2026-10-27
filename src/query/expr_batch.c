@@ -3783,8 +3783,8 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
     {
       return EXPR_BATCH_FALLBACK;
     }
-  /* the coefficient is below 10^38, well inside the signed 128-bit range */
-  kv = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+  /* the word domain is uint128 (39 digits): a coefficient from 2^127 does not fit a signed int128, so the
+   * magnitude stays unsigned until it is known to */
   leaf->k_op = leaf->rel_op;
   leaf->k_all = 0;
   d = col_scale - nv.scale;
@@ -3796,10 +3796,10 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
   if (d >= 0)
     {
       /* no column value reaches 10^38: |K| * 10^d is beyond every one of them from |K| >= 10^(38 - d) */
-      if (kv != 0 && (kv > 0 ? kv : -kv) >= eb_pow10[EB_POW10_MAX - d])
+      if (nv.coefficient != 0 && nv.coefficient >= (uint128_t) eb_pow10[EB_POW10_MAX - d])
 	{
 	  /* |K| at the column's scale is beyond every value the column holds */
-	  bool k_positive = kv > 0;
+	  bool k_positive = !nv.is_negative;
 
 	  switch (leaf->rel_op)
 	    {
@@ -3819,13 +3819,21 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
 	    }
 	  return NO_ERROR;
 	}
+      kv = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;	/* below 10^38 here */
       leaf->k.n = kv * eb_pow10[d];
       return NO_ERROR;
     }
   p10 = eb_pow10[-d];
   {
     /* the constant has digits below the column's scale: the division decides the operator */
-    __int128 q = kv / p10, r = kv % p10;
+    /* the magnitude's quotient fits (p10 >= 10), then the sign */
+    __int128 q = (__int128) (nv.coefficient / (uint128_t) p10), r = (__int128) (nv.coefficient % (uint128_t) p10);
+
+    if (nv.is_negative)
+      {
+	q = -q;
+	r = -r;
+      }
 
     if (r < 0)
       {
