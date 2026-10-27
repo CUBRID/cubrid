@@ -4186,8 +4186,7 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
 /*
  * xts_process_remote_dml_sink () - pack the common DBLink remote push-sink fields (is_remote flag +
  *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
- *   by the INSERT SELECT,
- *   DELETE and UPDATE local-subquery procs.
+ *   by the INSERT SELECT, DELETE and UPDATE local-subquery procs and the MERGE local-source proc.
  *   return: advanced ptr, or NULL on failure
  */
 static char *
@@ -4412,7 +4411,7 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 static char *
 xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info)
 {
-  int offset;
+  int offset, i;
 
   offset = xts_save_xasl_node (merge_info->update_xasl);
   if (offset == ER_FAILED)
@@ -4429,6 +4428,83 @@ xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info)
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, merge_info->has_delete);
+
+  /* remote MERGE + local source sink fields */
+  ptr = xts_process_remote_dml_sink (ptr, &merge_info->sink);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  offset = xts_save_string (merge_info->remote_target_alias);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (merge_info->remote_source_alias);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (merge_info->remote_clause_text);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* A count is never negative, and a non-zero count comes with its arrays. A NULL cast array would be
+   * read past below. A NULL int array would be sent as if absent, and unpacking takes an absent array
+   * with a count for a broken stream. */
+  if (merge_info->remote_num_binds < 0 || merge_info->remote_num_keys < 0
+      || (merge_info->remote_num_binds > 0
+	  && (merge_info->remote_bind_cast == NULL || merge_info->remote_bind_char_len == NULL))
+      || (merge_info->remote_num_keys > 0 && merge_info->remote_key_pos == NULL))
+    {
+      assert (false);
+      xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
+      return NULL;
+    }
+
+  ptr = or_pack_int (ptr, merge_info->remote_num_binds);
+
+  for (i = 0; i < merge_info->remote_num_binds; i++)
+    {
+      offset = xts_save_string (merge_info->remote_bind_cast[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  offset = 0;
+  if (merge_info->remote_num_binds > 0)
+    {
+      offset = xts_save_int_array (merge_info->remote_bind_char_len, merge_info->remote_num_binds);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, merge_info->remote_num_keys);
+
+  offset = 0;
+  if (merge_info->remote_num_keys > 0)
+    {
+      offset = xts_save_int_array (merge_info->remote_key_pos, merge_info->remote_num_keys);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -6631,8 +6707,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 /*
  * xts_sizeof_remote_dml_sink () - size of the common DBLink remote push-sink fields (is_remote flag +
  *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
- *   by the INSERT SELECT,
- *   DELETE and UPDATE local-subquery procs.
+ *   by the INSERT SELECT, DELETE and UPDATE local-subquery procs and the MERGE local-source proc.
  *   return:
  */
 static int
@@ -6716,7 +6791,16 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
 
   size += (PTR_SIZE		/* update_xasl */
 	   + PTR_SIZE		/* insert_xasl */
-	   + OR_INT_SIZE);	/* has_delete */
+	   + OR_INT_SIZE	/* has_delete */
+	   + xts_sizeof_remote_dml_sink ()	/* remote MERGE + local source sink fields */
+	   + PTR_SIZE		/* remote_target_alias */
+	   + PTR_SIZE		/* remote_source_alias */
+	   + PTR_SIZE		/* remote_clause_text */
+	   + OR_INT_SIZE	/* remote_num_binds */
+	   + (merge_info->remote_num_binds * PTR_SIZE)	/* remote_bind_cast */
+	   + PTR_SIZE		/* remote_bind_char_len */
+	   + OR_INT_SIZE	/* remote_num_keys */
+	   + PTR_SIZE);		/* remote_key_pos */
 
   return size;
 }
