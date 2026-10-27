@@ -13297,15 +13297,11 @@ locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 }
 
 /*
- * locator_object_is_ours () - Whether the object's last version carries this transaction's own, still active insert
- *			       id; see locator_last_version_is_ours ()
+ * locator_object_is_ours () - locator_last_version_is_ours () for an object given by its OID
  *   return: true when the last version was inserted by this transaction and is not yet visible to all
  *   thread_p(in): thread entry
  *   oid(in): object identifier
  *   class_oid(in): class of the object
- *
- * Note: a click counter asks it, so that the increment of a row the transaction has already changed goes with that
- *	 change instead of committing on its own on top of it.
  */
 bool
 locator_object_is_ours (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)

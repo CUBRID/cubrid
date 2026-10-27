@@ -8094,12 +8094,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  /* Whether these row locks end with the statement.  A DML target and a click counter (SELECT ... INCR) qualify,
-   * SELECT ... FOR UPDATE does not; the facts that tell them apart (upd_del_class_cnt, selected_upd_list) sit on
-   * the top node only, so the caller passes the answer in.  For the click counter that answer is whether the
-   * caller opened a scope for these locks: the variant that locks in qexec_execute_selupd_list () opens its own
-   * later, and a yes here would count requests no scope gives back.  The opener adds the per-class condition (the
-   * pruned partition, after a switch). */
+  /* Whether these row locks end with the statement: yes for a DML target and for a click counter's scope, not for
+   * SELECT ... FOR UPDATE.  The facts sit on the top node only, so the caller passes the answer in.  The opener adds
+   * the per-class condition (the pruned partition, after a switch). */
   upddel_target_scan = (mvcc_select_lock_needed && stmt_scoped_locks
 			&& lock_transient_scope_is_outermost (thread_p)
 			&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
@@ -15992,10 +15989,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  /* When this function takes the row locks itself they are the statement's: the increments commit in an
-   * autonomous subtransaction below, so nothing after this statement depends on still holding them, and
-   * the scope gives them back at its end -- what the instant lock mode used to do with a global flag.
-   * Otherwise the scan phase took them, inside a scope the caller opened for that and closes itself. */
+  /* the row locks taken here end with this function's scope; otherwise the scan took them in the caller's */
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
       /* need reevaluation in this function */
@@ -16185,16 +16179,13 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   log_sysop_start (thread_p);
   sysop_started = true;
 
-  /* The increments run in an autonomous subtransaction: they commit on their own and survive a rollback
-   * of the enclosing statement, which is what a click counter promises.  Not when a target is a row the
-   * transaction has already changed: an increment committed on top of that change would show it to others,
-   * so all of them go with the transaction, as develop did when the X lock the transaction held ended the
-   * instant lock mode. */
+  /* The increments commit on their own and survive a rollback, unless a target is the transaction's own row:
+   * committed on top of its uncommitted version, they would show that version to others. */
   if (!joins_transaction)
     {
+      /* in this function, several instances can be updated, so it need to be atomic */
       if (need_ha_replication)
 	{
-	  /* in this function, several instances can be updated, so it need to be atomic */
 	  repl_start_flush_mark (thread_p);
 	}
       tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
@@ -16238,14 +16229,13 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
   if (subtransaction_started)
     {
-      /* Commit the autonomous subtransaction. */
+      /* Subtransaction case. */
       log_sysop_commit (thread_p);
     }
   else
     {
-      /* The increments are the transaction's, and so are the row locks taken for them: keep those to commit, as
-       * the instant lock mode did.  Given back, a row could pass to a writer that waits on this transaction, and a
-       * rollback to a savepoint would then leave this transaction waiting on that writer to change the row again. */
+      /* Keep the row locks to commit with the increments.  Given back, a writer could take one and wait on us, and
+       * after a rollback to a savepoint we would wait on that writer to change the row again. */
       log_sysop_attach_to_outer (thread_p);
       if (lock_transient_scope_is_outermost (thread_p))
 	{
@@ -16263,7 +16253,6 @@ exit:
 
   if (transient_scope_started)
     {
-      /* give back the row locks this statement took */
       lock_transient_scope_end (thread_p, true);
       transient_scope_started = false;
     }
@@ -17234,7 +17223,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int error;
   bool empty_result = false;
   bool scan_immediately_stop = false;
-  bool selupd_transient_scope = false;	/* the click counter's scan locks end with the statement */
+  bool selupd_transient_scope = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
 
@@ -17486,9 +17475,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
 	    {
-	      /* Reevaluate at select since can't reevaluate in execute_selupd_list.  The row locks the scan
-	       * takes are the statement's: the increments commit in an autonomous subtransaction, so the
-	       * scope gives them back at its end. */
+	      /* Reevaluate at select since can't reevaluate in execute_selupd_list. */
 	      lock_transient_scope_start (thread_p);
 	      selupd_transient_scope = true;
 	      force_select_lock = true;
