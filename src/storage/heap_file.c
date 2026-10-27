@@ -8187,7 +8187,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  *   cap(in): at most so many rows
  *   n_rows(out): the rows collected
  *   repids(in): the representations the caller decodes (n_repids of them); a visible record of
- *               another one is an exception.  n_repids 0: not checked
+ *               another one ends the chunk before it.  n_repids 0: not checked
  *   n_repids(in): their number
  *   unknown_repid(out): NULL_REPRID on entry; receives the representation of the visible record that ended
  *                       the walk for its representation alone (the caller may learn it before the next

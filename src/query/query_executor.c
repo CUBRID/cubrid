@@ -7821,7 +7821,9 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     }
 
   /* the budget is one table's: a worker's table too, when workers merge, since each holds one partition at a
-   * time (the scan's tables each had it as well) */
+   * time (the scan's tables each had it as well).  A sub-partition of the second split is folded up to
+   * QEXEC_GBY_MERGE_SORT_FACTOR budgets before it goes to the sort, so one table may reach that many, and with
+   * workers merging each may at once: QEXEC_GBY_MERGE_SORT_FACTOR x workers x the budget at the worst */
   budget = (UINT64) MAX (prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE), (INT64) 1);
   /* a group's memory: its first tuple, its key, its accumulators, the table's slots */
   bytes = (UINT64) (groups * ((double) list_id->page_cnt * DB_PAGESIZE / MAX (list_id->tuple_cnt, 1)
@@ -13357,8 +13359,9 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	  expr_batch_plan_note_page (hsidp->batch_plan, false);
 	  continue;
 	}
-      /* the chunk and the rest of its page go to the row path (expr_batch_run () declined the chunk): nothing of
-       * the chunk was accumulated */
+      /* the chunk and the rest of its page go to the row path -- expr_batch_run () declined the chunk, the walk
+       * stopped at a record the page does not answer for (heap_page_collect_visible ()), or the plan gave up:
+       * nothing of the chunk was accumulated */
       s_id->scan_stats.batch_pages_rowpath++;
       expr_batch_plan_note_page (hsidp->batch_plan, true);
       qexec_batch_trace_end (thread_p, &trace, s_id);

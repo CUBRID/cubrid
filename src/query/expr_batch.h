@@ -257,7 +257,8 @@ extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * n
 extern const REPR_ID *expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n);
 extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid);
 
-/* trace: pages taken and pages handed back; rows the page skipped and the row path fetched by OID.  Counting
+/* trace: pages taken and pages handed back to the row path (a declined chunk, or a record the page does not
+ * answer for).  Counting
  * the pages, the plan gives up on the scan when the row path keeps taking them: expr_batch_plan_gave_up () is
  * true from then on, and the scan's remaining pages go to the row path without a batch try. */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
@@ -267,7 +268,7 @@ extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);
 
 /* A plan kept between two opens of the same scan (SCAN_BATCH_KEEP, scan_manager.h).  reset: the chunk's per-scan
- * state (its lines stay); reset_scan: the plan's per-scan state -- the trace's page and row counts, the last
+ * state (its lines stay); reset_scan: the plan's per-scan state -- the trace's page counts, the give-up, the last
  * fallback cause -- while what it learned of the class and built from the clone stays; rebind: the runtime filter
  * of the open that reuses the plan (the filter is the execution's), false when the plan's shape does not take it
  * (built with a filter term and there is none now, or the other way round, or the key compares otherwise): the
