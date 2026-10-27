@@ -279,6 +279,7 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
+    bool rights_pushed = false;
 
     if (m_stack == NULL)
       {
@@ -303,6 +304,7 @@ namespace cubpl
       {
 	goto exit;
       }
+    rights_pushed = true;
 
     error = request_invoke_command ();
     if (error != NO_ERROR)
@@ -322,8 +324,9 @@ exit:
 	m_stack->reset_query_handlers ();
       }
 
-    // restore execution rights
-    if (change_exec_rights (NULL) != NO_ERROR)
+    // restore execution rights. Not when the switch above failed: there is nothing of ours to pop, and a pop
+    // would take off a user pushed by an outer caller instead.
+    if (rights_pushed && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
       }
@@ -336,9 +339,12 @@ exit:
   {
     int error = NO_ERROR;
     int is_restore = (auth_name == NULL) ? 1 : 0;
+    int client_error = NO_ERROR;
 
     auto get_result = [&] (const cubmem::block & b)
     {
+      packing_unpacker result_unpacker (b.ptr, (size_t) b.dim);
+      result_unpacker.unpack_int (client_error);
       return NO_ERROR;
     };
 
@@ -352,6 +358,19 @@ exit:
     else
       {
 	error = m_stack->send_data_to_client_recv (get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+      }
+
+    if (error == NO_ERROR && client_error != NO_ERROR)
+      {
+	// the client refused the switch, e.g. the owner no longer exists. Running the routine with whatever rights
+	// happen to be in effect is not an option. The client error's own arguments are not sent over, so it cannot
+	// be raised here as it is. Report it wrapped in ER_METHOD_CALLBACK instead.
+	error = client_error;
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_METHOD_CALLBACK, 2, client_error,
+		    (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights");
+	  }
       }
 
     if (error != NO_ERROR)
