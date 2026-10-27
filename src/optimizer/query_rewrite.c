@@ -3475,6 +3475,12 @@ qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
       return query;
     }
 
+  /* only a class spec has unique constraints; TABLE (set) and JSON_TABLE specs have no class */
+  if (!PT_SPEC_IS_ENTITY (spec))
+    {
+      return query;
+    }
+
   /* check no_eliminate_join sql hint */
   if (query->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)
     {
