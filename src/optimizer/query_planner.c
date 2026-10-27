@@ -392,6 +392,7 @@ static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_plan_is_groupby_skip_candidate (QO_PLAN * plan);
+static bool qo_plan_has_class_hierarchy_scan (QO_PLAN * plan);
 static bool qo_check_join_for_groupby_skip (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
@@ -15529,6 +15530,43 @@ cleanup:
 }
 
 /*
+ * qo_plan_has_class_hierarchy_scan () - whether a scan of the plan reads a
+ *					 partitioned table or a class hierarchy
+ * return : true/false
+ * plan (in) :
+ *
+ * note: A sort plan is left out: its output is one list file, whatever it was
+ *	 built from.
+ */
+static bool
+qo_plan_has_class_hierarchy_scan (QO_PLAN * plan)
+{
+  if (plan == NULL)
+    {
+      return false;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      return QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node);
+
+    case QO_PLANTYPE_JOIN:
+      return (qo_plan_has_class_hierarchy_scan (plan->plan_un.join.outer)
+	      || qo_plan_has_class_hierarchy_scan (plan->plan_un.join.inner));
+
+    case QO_PLANTYPE_FOLLOW:
+      return qo_plan_has_class_hierarchy_scan (plan->plan_un.follow.head);
+
+    case QO_PLANTYPE_SORT:
+    case QO_PLANTYPE_WORST:
+      return false;
+    }
+
+  return false;
+}
+
+/*
  * qo_check_join_for_groupby_skip () - check if join plan hands the order of its
  *				       outermost index scan on to its output
  * return : true/false
@@ -15545,6 +15583,11 @@ cleanup:
  *	 - a join that null-supplies its outer side (right/full outer) does not keep
  *	   the outer rows in place.
  *	 - a sort plan on the way down re-orders the rows.
+ *	 - a partitioned table or class hierarchy on an inner side is read one scan
+ *	   block (partition or class) at a time, and for every block the executor
+ *	   runs the scans before it again from the outer
+ *	   (qexec_next_scan_block_iterations ()), so the outer rows repeat. A sort
+ *	   inner is one list file and does not.
  */
 static bool
 qo_check_join_for_groupby_skip (QO_PLAN * plan)
@@ -15567,6 +15610,11 @@ qo_check_join_for_groupby_skip (QO_PLAN * plan)
 	  if (plan->plan_un.join.join_type != NO_JOIN && plan->plan_un.join.join_type != JOIN_INNER
 	      && plan->plan_un.join.join_type != JOIN_LEFT)
 	    {
+	      return false;
+	    }
+	  if (qo_plan_has_class_hierarchy_scan (plan->plan_un.join.inner))
+	    {
+	      /* the outer rows are read again for every partition or class of such an inner, so they repeat */
 	      return false;
 	    }
 	  plan = plan->plan_un.join.outer;
