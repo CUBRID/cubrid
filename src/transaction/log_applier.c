@@ -197,11 +197,9 @@ struct la_cache_buffer
   LOG_PAGE logpage;		/* The actual buffered log page */
 };
 
-/* Page buffers the calling thread has fixed and not released yet. The coordinator and the workers share the
- * cache, so a buffer stays out of replacement while any thread holds it; each thread releases only the
- * fixes it took, by buffer and not by a hash lookup of the page id. A record that crosses a page boundary
- * fixes the next page inside the read macros without a matching release; those fixes stay on this list
- * until the thread finishes its unit of work and releases them all. */
+/* Page buffers a thread has fixed and not released yet. The cache is shared by the coordinator and the workers,
+ * so each thread releases only its own fixes, by buffer; the next pages the read macros fix for a record that
+ * crosses a page boundary are released with the rest when the thread finishes its unit of work. */
 #define LA_MAX_PINNED_PAGE_BUFFERS 256
 
 typedef struct la_pinned_page_buffer LA_PINNED_PAGE_BUFFER;
