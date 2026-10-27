@@ -4696,7 +4696,8 @@ dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, 
 		       int max_col_size, DB_VALUE * content, char **buf)
 {
   /* [리뷰] CAS가 마커로 서버 커서를 열어 드라이버용 VARCHAR/VARBIT 값으로 바꾼다.
-   * 1MiB씩 읽어도 버퍼는 값 전체 크기다(상한 1GiB/128MiB).
+   * 1MiB씩 읽어도 버퍼는 읽을 길이 전체 크기다. max_col_size(setMaxFieldSize)로 먼저 자르고,
+   * 자른 길이가 상한(1GiB/128MiB)을 넘을 때만 거부한다.
    * open 실패면 close를 건너뛰고, read 실패면 close 뒤 버퍼를 푼다. */
   DB_BIGINT size = byte_length;
   DB_BIGINT max_bytes = (db_value_type (marker) == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION
@@ -4707,16 +4708,17 @@ dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, 
   int err_code;
 
   *buf = NULL;
-  /* the same limit the value path applies to the whole value, before any max_col_size cut */
-  if (size > max_bytes)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (int) MIN (size, (DB_BIGINT) INT_MAX),
-	      (int) max_bytes);
-      return ERROR_INFO_SET (ER_QPROC_STRING_SIZE_TOO_BIG, DBMS_ERROR_INDICATOR);
-    }
+  /* JDBC setMaxFieldSize asks for at most max_col_size bytes: cut first, so only what is sent is read */
   if (max_col_size > 0 && size > max_col_size)
     {
       size = max_col_size;
+    }
+  /* what is read must still fit one value; with no cut this is the whole value, as on the value path */
+  if (size > max_bytes)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	      (int) MIN (byte_length, (DB_BIGINT) INT_MAX), (int) max_bytes);
+      return ERROR_INFO_SET (ER_QPROC_STRING_SIZE_TOO_BIG, DBMS_ERROR_INDICATOR);
     }
 
   *buf = (char *) MALLOC (size > 0 ? size : 1);
