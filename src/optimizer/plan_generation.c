@@ -49,6 +49,7 @@ static bool hashjoin_can_produce_layout (QO_ENV * env, PT_NODE * layout, PROJECT
 					 PROJECTION_PART_INFO * inner_info);
 static bool hashjoin_pred_set_has_work (QO_ENV * env, BITSET * pred_set);
 static PT_NODE *hashjoin_result_layout_for_node (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan);
+static void hashjoin_set_required_layout (QO_PLAN * plan, PT_NODE * layout);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
 				      PROJECTION_INFO * projection_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
@@ -80,10 +81,9 @@ static PT_NODE *make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset, bool check_func_index_segs);
 
-static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *, PT_NODE *);
+static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
-				XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl,
-				PT_NODE * required_layout);
+				XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl);
 static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *, XASL_NODE *, XASL_NODE *, int);
 static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl);
 
@@ -702,6 +702,23 @@ hashjoin_result_layout_for_node (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   assert (xasl->outptr_list->valptr_cnt == pt_length_of_list (select_list));
 
   return select_list;
+}
+
+/*
+ * hashjoin_set_required_layout () - tell a hash join plan the layout the node above it asked for
+ *   return: None.
+ *   plan(in): the plan the request is for
+ *   layout(in): the layout to ask for, or NULL to take the request back
+ *
+ * Only a hash join reads the request. plan_un is a union, so any other plan has no field to write.
+ */
+static void
+hashjoin_set_required_layout (QO_PLAN * plan, PT_NODE * layout)
+{
+  if (plan->plan_type == QO_PLANTYPE_JOIN && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
+    {
+      plan->plan_un.join.required_layout = layout;
+    }
 }
 
 /*
@@ -2467,7 +2484,7 @@ mark_following_joins (XASL_NODE * sa_scan)
  */
 static XASL_NODE *
 gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches,
-	   XASL_NODE * xasl, PT_NODE * required_layout)
+	   XASL_NODE * xasl)
 {
   PARSER_CONTEXT *parser;
   XASL_NODE *scan, *listfile, *merge, *fetch;
@@ -2573,7 +2590,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    {
 	      /* SORT-LIMIT plans should never be top rooted */
 	      assert (plan->plan_un.sort.sort_type != SORT_LIMIT);
-	      xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl, NULL);
+	      xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
 	      return xasl;
 	    }
 	}
@@ -2599,7 +2616,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  else
 	    {
 	      listfile = make_buildlist_proc (env, namelist, xasl->parallelism);
-	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile, NULL);
+	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 	      if (listfile != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
 		{
@@ -2621,7 +2638,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	}
       else
 	{
-	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl, NULL);
+	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
 	  xasl = add_sort_spec (env, xasl, plan, NULL, true /* add instnum pred */ );
 	  if (xasl != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
 	    {
@@ -2746,7 +2763,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);
-	  xasl = gen_outer (env, outer, &new_subqueries, scan, NULL, xasl, NULL);
+	  xasl = gen_outer (env, outer, &new_subqueries, scan, NULL, xasl);
 	  break;
 
 	case QO_JOINMETHOD_MERGE_JOIN:
@@ -2866,7 +2883,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
 	    left_xasl = make_buildlist_proc (env, left_list, xasl->parallelism);
-	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl, NULL);
+	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
 	    /* build inner segs namelist */
@@ -2879,7 +2896,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
 	    rght_xasl = make_buildlist_proc (env, rght_list, xasl->parallelism);
-	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl, NULL);
+	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
 	    merge =
@@ -3091,7 +3108,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   * and tack them on to the scan proc that eventually reads the result of the join.
 	   * The subplans for the two join components should start with clean slates.
 	   */
-	  xasl = gen_hashjoin (env, plan, &predset, &new_subqueries, inner_scans, fetches, xasl, required_layout);
+	  xasl = gen_hashjoin (env, plan, &predset, &new_subqueries, inner_scans, fetches, xasl);
 	  break;
 
 	default:
@@ -3114,7 +3131,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
       fetch = add_fetch_proc (env, fetch, fetches);
       fetch = add_subqueries (env, fetch, &new_subqueries);
       make_outer_instnum (env, plan->plan_un.follow.head, plan);
-      xasl = gen_outer (env, plan->plan_un.follow.head, &EMPTY_SET, inner_scans, fetch, xasl, NULL);
+      xasl = gen_outer (env, plan->plan_un.follow.head, &EMPTY_SET, inner_scans, fetch, xasl);
       break;
 
     case QO_PLANTYPE_WORST:
@@ -3143,9 +3160,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
  */
 static XASL_NODE *
 gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries, XASL_NODE * inner_scans,
-	      XASL_NODE * fetches, XASL_NODE * xasl, PT_NODE * required_layout)
+	      XASL_NODE * fetches, XASL_NODE * xasl)
 {
   QO_PLAN *outer_plan, *inner_plan;
+  PT_NODE *required_layout;
 
   PROJECTION_INFO projection_info;
   PROJECTION_PART_INFO *outer_info, *inner_info;
@@ -3168,6 +3186,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
+  required_layout = plan->plan_un.join.required_layout;
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
 
@@ -3211,7 +3230,8 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl, outer_info->expr_name_list);
+  hashjoin_set_required_layout (outer_plan, outer_info->expr_name_list);
+  outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl);
   if (outer_xasl == NULL)
     {
       goto error_exit;
@@ -3225,7 +3245,8 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl, inner_info->expr_name_list);
+  hashjoin_set_required_layout (inner_plan, inner_info->expr_name_list);
+  inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl);
   if (inner_xasl == NULL)
     {
       goto error_exit;
@@ -3288,6 +3309,9 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
+  /* the plans drop their references before the lists they point to are freed */
+  hashjoin_set_required_layout (outer_plan, NULL);
+  hashjoin_set_required_layout (inner_plan, NULL);
   qo_clear_projection_info (env, &projection_info);
 
   return xasl;
@@ -3387,7 +3411,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist, parallelism);
-      listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile, NULL);
+      listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile);
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
       if (namelist)
@@ -3665,7 +3689,9 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
       /* when xasl would only copy the join result, the join writes its columns and xasl takes that list file over */
       result_layout = hashjoin_result_layout_for_node (env, xasl, plan);
 
-      xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl, result_layout);
+      hashjoin_set_required_layout (plan, result_layout);
+      xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl);
+      hashjoin_set_required_layout (plan, NULL);
 
       lastxasl = xasl;
       while (lastxasl)
@@ -6027,7 +6053,7 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
   statement->info.query.order_by = new_order_by;
 
   listfile = make_buildlist_proc (env, node_list, xasl->parallelism);
-  listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile, NULL);
+  listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
   listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 
 cleanup:

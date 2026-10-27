@@ -223,6 +223,10 @@ struct qo_plan
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
       BITSET hash_terms;	/* hash_terms for hash list scan */
+
+      /* The layout the consumer of this hash join's result asked for. Borrowed: the requester sets it just before
+       * it generates this plan and clears it before the list it points to is freed. */
+      PT_NODE *required_layout;
     } join;
 
     struct
