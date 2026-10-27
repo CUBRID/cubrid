@@ -3568,7 +3568,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   LK_ENTRY *prev, *curr, *i;
   bool lock_conversion = false;
   THREAD_ENTRY *thrd_entry;
-  LK_TRAN_LOCK *tran_lock;
   LOCK_COMPATIBILITY compat1, compat2;
   bool is_res_mutex_locked = false;
   TSC_TICKS start_tick, end_tick;
@@ -3641,9 +3640,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 
   /* initialize */
   *entry_addr_ptr = NULL;
-
-  /* get current locking phase */
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
   while (state != LK_S_DONE)
     {
