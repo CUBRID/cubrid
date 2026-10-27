@@ -7784,6 +7784,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "[_db_auth] AS [a] "
                 "WHERE "
                         "[a].[object_of] IS NULL "
+                        "AND [a].[object_type] >= 100 "
                         "AND ( "
                         "[a].[grantee].[name] = '%1$s' "
                         "OR "
@@ -7803,7 +7804,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
         "ORDER BY 1;";
   // *INDENT-ON*
 
-  const int buffer_size = 4096;	// length of query (2102) + identifier (255) * 6 + WHEN clauses (256) < 4096
+  const int buffer_size = 4096;	// length of query (2131) + identifier (255) * 6 + WHEN clauses (256) < 4096
   char buffer[buffer_size];
   memset (buffer, 0, buffer_size);
   char system_object_when_clauses[256];
