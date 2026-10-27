@@ -340,13 +340,29 @@ namespace cubmethod
   int
   prepare_call_info::set_is_first_out (std::string &sql_stmt)
   {
-    if (!sql_stmt.empty() && sql_stmt[0] == '?')
+    /* skip leading whitespace/comments before detecting the out parameter */
+    std::size_t pos = skip_leading_whitespace_and_comment (sql_stmt, 0);
+    if (pos < sql_stmt.size () && sql_stmt[pos] == '?')
       {
 	is_first_out = true;
 
-	std::size_t found = sql_stmt.find ('=');
+	/* find '=' skipping any comment placed between "?" and "=".  only whitespace, comments and
+	 * a marker number (?:1) can come before '=', so quoted text is not considered here; a quote
+	 * there makes the rest fail the CALL check that follows. */
+	std::size_t found = pos + 1;
+	while (found < sql_stmt.size ())
+	  {
+	    found = skip_leading_whitespace_and_comment (sql_stmt, found);
+	    if (found >= sql_stmt.size () || sql_stmt[found] == '=')
+	      {
+		break;
+	      }
+
+	    found++;
+	  }
+
 	/* '=' is not found */
-	if (found == std::string::npos)
+	if (found >= sql_stmt.size ())
 	  {
 	    return ER_FAILED;
 	  }
