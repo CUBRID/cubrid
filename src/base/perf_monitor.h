@@ -218,13 +218,13 @@ typedef enum
   PERF_PAGE_QRESULT,		/* query result page */
   PERF_PAGE_EHASH,		/* ehash bucket/dir page */
   PERF_PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
-  PERF_PAGE_OOS,		/* oos page */
   PERF_PAGE_AREA,		/* area page */
   PERF_PAGE_CATALOG,		/* catalog page */
   PERF_PAGE_BTREE_GENERIC,	/* b+tree index (uninitialized) */
   PERF_PAGE_LOG,		/* NONE - log page (unused) */
   PERF_PAGE_DROPPED_FILES,	/* Dropped files page.  */
   PERF_PAGE_VACUUM_DATA,	/* Vacuum data */
+  PERF_PAGE_OOS,		/* oos page */
   PERF_PAGE_BTREE_ROOT,		/* b+tree root index page */
   PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page */
   PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page */

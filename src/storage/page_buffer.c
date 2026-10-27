@@ -15158,6 +15158,10 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
   return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
 }
 
+/* pgbuf_get_page_type_for_stat () casts a stored PAGE_TYPE to PERF_PAGE_TYPE */
+static_assert ((int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_OOS == (int) PAGE_OOS
+	       && (int) PERF_PAGE_BTREE_ROOT == (int) PAGE_LAST + 1, "PERF_PAGE_TYPE must mirror PAGE_TYPE");
+
 /*
  * pgbuf_get_page_type_for_stat () - Return the page type for current page
  *

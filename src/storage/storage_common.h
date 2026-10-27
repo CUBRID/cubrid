@@ -156,14 +156,14 @@ typedef enum
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
   PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
-  PAGE_OOS,			/* oos page */
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
   PAGE_BTREE,			/* b+tree index page (with ovf_OIDs) */
   PAGE_LOG,			/* NONE - log page (unused) */
   PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_VACUUM_DATA,		/* Vacuum data. */
-  PAGE_LAST = PAGE_VACUUM_DATA
+  PAGE_OOS,			/* oos page. New types are appended: page types are stored on disk. */
+  PAGE_LAST = PAGE_OOS
 } PAGE_TYPE;
 
 /* Index scan OID buffer size as set by system parameter. */

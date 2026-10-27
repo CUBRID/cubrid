@@ -34,6 +34,13 @@
 
 #define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
 
+/* Storage format revision that disk_format () stamps into every volume header, and that boot requires on the
+ * first volume. It is not a disk compatibility level: it rejects databases of unreleased builds of the same level
+ * whose storage format differs, and offers no upgrade path. Volumes formatted before the stamp hold 0.
+ * Bump it when an unreleased change makes existing databases unreadable.
+ * 1: out-of-row overflow storage (CBRD-26357). */
+#define DISK_STORAGE_FORMAT_REVISION 1
+
 /*
  * Disk sectors
  */
@@ -111,6 +118,7 @@ extern int disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * 
 extern int disk_get_db_creation (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation);
 extern INT32 disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid);
 extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid);
+extern int disk_check_storage_format (THREAD_ENTRY * thread_p, INT16 volid);
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *next_volext_fullname);
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, bool repair);
 extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
