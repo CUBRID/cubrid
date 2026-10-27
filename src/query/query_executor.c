@@ -14218,6 +14218,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
   savepoint_used = 1;
 
+  /* As in qexec_execute_merge (): a DELETE or UPDATE that a stored function runs while the values are computed runs
+   * nested, so it gives no row lock back inside this system operation, whose abort would undo its stamp. */
+  lock_transient_scope_start (thread_p);
+
   (void) session_begin_insert_values (thread_p);
 
   COPY_OID (&class_oid, &insert->class_oid);
@@ -14983,6 +14987,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  qexec_failure_line (__LINE__, xasl_state);
 	  GOTO_EXIT_ON_ERROR;
 	}
+
+      /* what ran inside ran nested: nothing to give back */
+      lock_transient_scope_end (thread_p, false);
     }
 
 #if 0				/* yaw */
@@ -15046,6 +15053,7 @@ exit_on_error:
   if (savepoint_used)
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+      lock_transient_scope_end (thread_p, false);
     }
   if (pcontext != NULL)
     {
