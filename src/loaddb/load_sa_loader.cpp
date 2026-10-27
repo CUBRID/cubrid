@@ -988,6 +988,14 @@ error_exit:
 
 	  case LDR_COLLECTION:
 	    ldr_act_value (ldr_Current_context, "{", 1, LDR_COLLECTION, is_element);
+	    if (is_element)
+	      {
+		/* A nested set: ldr_act_elem () has refused it, and that is all of it. Its trailing
+		 * brace must not reach ldr_act_attr (), which would take it for the end of the
+		 * enclosing collection and leave the collection state inverted for the lines after,
+		 * when --error-control-file lets the line go on. The server side stops here too. */
+		break;
+	      }
 	    process_values ((constant_type *) c->val, true);
 	    /* The trailing brace always goes through the attribute path: the collection is
 	     * finished and stored there, for a class attribute as well. */

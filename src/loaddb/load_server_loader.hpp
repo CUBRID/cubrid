@@ -98,6 +98,7 @@ namespace cubload
        * value to a sink and stops there.
        */
       int sink_heap (const attribute &attr, db_value &val);
+      bool report_value_error ();
       int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_collection_constant (constant_type *cons, const attribute &attr);
 

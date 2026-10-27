@@ -662,16 +662,13 @@ namespace cubload
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
 	int error_code = process_constant (c, attr);
-	if (error_code != NO_ERROR)
+	if (error_code == NO_ERROR)
 	  {
-	    m_error_handler.on_syntax_failure ();
-	    return;
+	    error_code = sink_heap (attr, get_attribute_db_value (attr_index));
 	  }
 
-	error_code = sink_heap (attr, get_attribute_db_value (attr_index));
-	if (error_code != NO_ERROR)
+	if (error_code != NO_ERROR && !report_value_error ())
 	  {
-	    m_error_handler.on_syntax_failure ();
 	    return;
 	  }
       }
@@ -825,6 +822,36 @@ namespace cubload
   server_object_loader::sink_heap (const attribute &attr, db_value &val)
   {
     return heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr_id (), &val, &m_attrinfo);
+  }
+
+  /*
+   * report_value_error - report the error a value or a collection element has just failed with
+   *    return: true when the rest of the line is still to be checked, false when the load has failed
+   * Note:
+   *    An error the session has already failed on was reported where it happened - an object
+   *    reference, or an element process_collection_constant () reported before returning to
+   *    process_line (); reporting it again prints the message twice.
+   *
+   *    When the error is one --error-control-file ignores, or this is --syntax-check, the line is
+   *    dropped in finish_line () either way, but the rest of it is still checked: an error the file
+   *    does not ignore may come later in the line, and it must fail the load whichever of the two
+   *    came first. SA does the same.
+   */
+  bool
+  server_object_loader::report_value_error ()
+  {
+    if (m_session.is_failed ())
+      {
+	return false;
+      }
+
+    m_error_handler.on_syntax_failure ();
+    if (m_session.is_failed ())
+      {
+	return false;
+      }
+
+    return true;
   }
 
   int
@@ -988,17 +1015,13 @@ namespace cubload
 	    break;
 	  }
 
-	if (error_code != NO_ERROR)
+	if (error_code == NO_ERROR)
 	  {
-	    db_value_clear (&db_val);
-	    set_free (set);
-	    return error_code;
+	    cast_elem_to_set_domain (domain.setdomain, &db_val);
+
+	    // add element to the set (db_val will be cloned, so it is safe to reuse same variable)
+	    error_code = set_add_element (set, &db_val);
 	  }
-
-	cast_elem_to_set_domain (domain.setdomain, &db_val);
-
-	// add element to the set (db_val will be cloned, so it is safe to reuse same variable)
-	error_code = set_add_element (set, &db_val);
 
 	/* The element was cloned into the collection, so release whatever the conversion allocated before
 	 * the next element overwrites the slot. */
@@ -1006,11 +1029,18 @@ namespace cubload
 
 	if (error_code != NO_ERROR)
 	  {
-	    set_free (set);
-	    return error_code;
+	    /* Report the element's error here, while the collection still has elements to check. */
+	    if (!report_value_error ())
+	      {
+		set_free (set);
+		return error_code;
+	      }
+
+	    error_code = NO_ERROR;
 	  }
       }
 
+    /* An element left out above was reported, and finish_line () drops the line it is on. */
     db_make_collection (&db_val, set);
 
     return error_code;
