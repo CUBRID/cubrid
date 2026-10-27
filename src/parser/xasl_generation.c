@@ -14597,8 +14597,10 @@ pt_decide_key_compares (INDX_INFO * indx_infop)
 		  assert (pt_decide_key_compare (column, classes[c * n_bounds + own[c]], &reversed) == NO_ERROR
 			  && pt_key_compares_equal (&reversed, &mirrored));
 		}
-	      /* CBRD-27583: a kept bound converts once, here, not at each comparison */
-	      assert (error != NO_ERROR || compares[c].conv[0] == NULL);
+	      /* CBRD-27583: a kept bound converts once, here, not at each comparison - unless the comparison converts
+	       * the index key first (pt_decide_key_element keeps the value so that a key's failure names its type) */
+	      assert (error != NO_ERROR || compares[c].conv[0] == NULL
+		      || (compares[c].first != 0 && compares[c].conv[1] != NULL));
 #endif
 	      bound->merges = bound->merges || domain_key_compare_merges (&compares[c], column);
 	    }
