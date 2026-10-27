@@ -1072,6 +1072,7 @@ sm_define_view_auth_spec (void)
 	  "[%s] AS [a] "
 	"WHERE "
           "[a].[object_of] IS NULL "
+          "AND [a].[object_type] >= 100 "
           "AND ( "
 	  "{'DBA', 'CUB_SELECT_CATALOG', [a].[grantee].[name]} * ("
 	      "SELECT "
