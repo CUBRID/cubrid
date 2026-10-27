@@ -1284,8 +1284,8 @@ la_coordinator_store_apply_info_at_interval (void)
  *   return: NO_ERROR, the error of a failed task, or an error from storing the apply info
  *
  * Note:
- *   Stops at the oldest entry that has no result yet, even if later ones have finished. Tasks are handed
- *   over out of commit order (a parked task goes later), so committed_lsa follows the gate's frontier
+ *   Stops at the oldest entry that has no result yet, even if later ones have finished. Tasks are queued
+ *   out of commit order (a parked task goes later), so committed_lsa follows the gate's frontier
  *   instead of the retired entry.
  */
 static int
@@ -1304,7 +1304,7 @@ la_coordinator_retire_results (void)
 	  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "[WSET] reader result trid=%d commit_lsa=%lld|%d type=%d worker=%d error=%d\n",
+			     "[WSET] coordinator result trid=%d commit_lsa=%lld|%d type=%d worker=%d error=%d\n",
 			     result->tranid, (long long) result->commit_lsa.pageid, (int) result->commit_lsa.offset,
 			     result->rectype, result->worker_idx, result->error);
 	    }
@@ -1314,7 +1314,7 @@ la_coordinator_retire_results (void)
       if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] reader retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
+			 "[WSET] coordinator retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
 			 result->tranid, (long long) result->commit_lsa.pageid, (int) result->commit_lsa.offset,
 			 result->rectype, result->worker_idx, (unsigned long long) entry->seq);
 	}
