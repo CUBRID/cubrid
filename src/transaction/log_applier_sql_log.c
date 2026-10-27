@@ -521,6 +521,9 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, const ch
   return NO_ERROR;
 }
 
+/*
+ * sl_write_sql() - write one applied change as SQL text to the SQL log file (only with ha_enable_sql_logging)
+ */
 static int
 sl_write_sql (string_buffer & query, string_buffer * select)
 {
@@ -533,6 +536,12 @@ sl_write_sql (string_buffer & query, string_buffer * select)
   return error;
 }
 
+/*
+ * sl_write_sql_locked() - sl_write_sql with sl_write_mutex held
+ *
+ * Note:
+ *   The lock is needed because the apply workers run in parallel and may write entries at the same time.
+ */
 static int
 sl_write_sql_locked (string_buffer & query, string_buffer * select)
 {
