@@ -877,9 +877,11 @@ TEST_F (OosSqlDeferredWrite, PendingReferencesResolveAndFinalizeInPlace)
     db_make_int (&value, 7);
     ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "id")), &value, &attrs), NO_ERROR);
     const char *names[] = { "a", "b" };
+    // heap_attrinfo_set borrows non-collection bytes until prepare_record owns them.
+    const std::string source_bytes[] = { std::string (5000, '\xAB'), std::string (50000, '\xCD') };
     for (int i = 0; i < 2; ++i)
       {
-	std::string bytes (50000, i == 0 ? '\xAB' : '\xCD');
+	const std::string &bytes = source_bytes[i];
 	ATTR_ID id = db_attribute_id (db_get_attribute (cls, names[i]));
 	db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
 	ASSERT_EQ (heap_attrinfo_set (nullptr, id, &value, &attrs), NO_ERROR);
@@ -894,7 +896,7 @@ TEST_F (OosSqlDeferredWrite, PendingReferencesResolveAndFinalizeInPlace)
     ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &storage), S_SUCCESS);
     heap_attrinfo_end (thread_p, &attrs);
   }
-  EXPECT_GE (storage.retained_bytes (), 100000u);
+  EXPECT_GE (storage.retained_bytes (), 55000u);
   // Actual fetch publication rejects the row and copied byte images before
   // publishing a descriptor or increasing the copy-area count.
   LC_COPYAREA_MANYOBJS exported = {};
@@ -989,9 +991,38 @@ TEST_F (OosSqlDeferredWrite, PendingReferencesResolveAndFinalizeInPlace)
   // Both requested attributes take grouped Resolve and survive source DB_VALUE cleanup.
   HEAP_CACHE_ATTRINFO attrs;
   ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
-  ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &record, &attrs, &storage), NO_ERROR);
-  EXPECT_EQ (db_get_int (heap_attrinfo_access (db_attribute_id (db_get_attribute (cls, "id")), &attrs)), 7);
+  for (int pass = 0; pass < 3; ++pass)
+    {
+      ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &record, &attrs, &storage), NO_ERROR);
+      EXPECT_EQ (db_get_int (heap_attrinfo_access (db_attribute_id (db_get_attribute (cls, "id")), &attrs)), 7);
+      for (int i = 0; i < 2; ++i)
+	{
+	  const char *name = i == 0 ? "a" : "b";
+	  DB_VALUE *decoded = heap_attrinfo_access (db_attribute_id (db_get_attribute (cls, name)), &attrs);
+	  int bits = 0;
+	  const char *bytes = db_get_bit (decoded, &bits);
+	  ASSERT_NE (bytes, nullptr);
+	  EXPECT_EQ (bits, i == 0 ? 40000 : 400000);
+	  EXPECT_TRUE (std::string (bytes, bits / 8) == std::string (i == 0 ? 5000 : 50000, i == 0 ? '\xAB' : '\xCD'))
+	      << "attribute " << i;
+	}
+    }
   heap_attrinfo_end (thread_p, &attrs);
+  // A single requested OOS value uses Resolve's scratch or heap buffer, both of
+  // which must be copied before the scalar reader returns to its caller.
+  for (int i = 0; i < 2; ++i)
+    {
+      ATTR_ID id = db_attribute_id (db_get_attribute (cls, i == 0 ? "a" : "b"));
+      ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, 1, &id, &attrs), NO_ERROR);
+      ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &record, &attrs, &storage), NO_ERROR);
+      int bits = 0;
+      const char *bytes = db_get_bit (heap_attrinfo_access (id, &attrs), &bits);
+      ASSERT_NE (bytes, nullptr);
+      EXPECT_EQ (bits, i == 0 ? 40000 : 400000);
+      EXPECT_TRUE (std::string (bytes, bits / 8) == std::string (i == 0 ? 5000 : 50000, i == 0 ? '\xAB' : '\xCD'))
+	  << "attribute " << i;
+      heap_attrinfo_end (thread_p, &attrs);
+    }
   EXPECT_TRUE (thread_p->oos_oids.empty ());
 
   ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &record, &storage), NO_ERROR);

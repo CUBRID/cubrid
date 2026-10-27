@@ -769,15 +769,13 @@ static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRI
 static int heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch,
 					   int oos_scratch_size, bool * oos_owned_buffer,
                                          const heap_pending_record *pending = nullptr);
-static int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout,
-					  HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
-					  bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size,
-                                          const heap_pending_record *pending = nullptr);
+STATIC_INLINE int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout,
+                                                HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
+                                                RECDES * raw, bool *is_oos) __attribute__ ((ALWAYS_INLINE));
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
-static int heap_attrvalue_read_variable (RECDES *recdes, HEAP_ATTRVALUE *value, HEAP_CACHE_ATTRINFO *attr_info,
-                                        OR_ATTRIBUTE *attrepr, const HEAP_REC_LAYOUT *layout,
-                                        const heap_pending_record *pending);
+static int heap_attrvalue_read_oos (RECDES *recdes, HEAP_ATTRVALUE *value, OR_ATTRIBUTE *attrepr,
+                                   const heap_pending_record *pending);
 /* Let record loops reuse their known record/layout conditions for each attribute. Resolve stays out of line. */
 STATIC_INLINE int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
                                      const HEAP_REC_LAYOUT *layout, const heap_pending_record *pending = nullptr)
@@ -11200,38 +11198,53 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
 }
 
 /*
- * heap_attrvalue_point_variable () -
- *
- *   return: NO_ERROR, or an error code propagated from the OOS inline-reference read or
- *           raised when the variable offset table header is inconsistent.
- *   recdes(in): Record
- *   attr_info(in): The attribute information structure
- *   attrepr(in): The attribute structure
- *   raw(out): Disk value pointer + length
- *   oos_owned_buffer(out): true iff successful OOS Resolve produced transient raw data.
- *                          Caller must use COPY in data_readval and call recdes_free_data_area
- *                          unless raw->data == oos_scratch.
- *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
+ * heap_attrvalue_point_variable () - Locate inline bytes or identify an OOS field.
+ *   return: NO_ERROR, or an error for an inconsistent variable offset table header.
+ *   is_oos(out): true for a non-NULL OOS field; caller must Resolve it before conversion.
  */
-static int
+STATIC_INLINE int
 heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
-			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * oos_owned_buffer,
-			       char *oos_scratch, int oos_scratch_size, const heap_pending_record * pending)
+			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * is_oos)
 {
   int offset;
-  int error;
   int this_off, next_off;
+  const int location = attrepr->location;
+  const int table_bytes = recdes->length - (int) (layout->var_table - recdes->data);
 
-  *oos_owned_buffer = false;
-  error = heap_recdes_get_var_offset_entry (recdes, attrepr->location, &offset);
-  if (error != NO_ERROR)
+  *is_oos = false;
+  /* Preserve heap_recdes_get_var_offset_entry's header and entry bounds using the
+   * layout already derived from this record, without decoding its header again. */
+  if (recdes->length < OR_MVCC_MIN_HEADER_SIZE || table_bytes < 0 || location < 0
+      || location >= table_bytes / layout->offset_size)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return error;
+      return ER_FAILED;
+    }
+
+  /* Read both bounding entries with the same width dispatch. Keep the raw first
+   * entry's IS_OOS bit even when the record's summary flag is absent. */
+  const char *entry = layout->var_table + location * layout->offset_size;
+  switch (layout->offset_size)
+    {
+    case OR_BYTE_SIZE:
+      offset = OR_GET_BYTE (entry);
+      next_off = OR_GET_VAR_OFFSET (OR_GET_BYTE (entry + OR_BYTE_SIZE));
+      break;
+    case OR_SHORT_SIZE:
+      offset = OR_GET_SHORT (entry);
+      next_off = OR_GET_VAR_OFFSET (OR_GET_SHORT (entry + OR_SHORT_SIZE));
+      break;
+    case OR_INT_SIZE:
+      offset = OR_GET_INT (entry);
+      next_off = OR_GET_VAR_OFFSET (OR_GET_INT (entry + OR_INT_SIZE));
+      break;
+    default:
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   this_off = OR_GET_VAR_OFFSET (offset);
-  next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout->var_table, attrepr->location + 1, layout->offset_size);
   if (next_off - this_off == 0)
     {
       return NO_ERROR;
@@ -11239,9 +11252,8 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
 
   if (OR_IS_OOS (offset))
     {
-      /* Resolve validates the stub and marks transient data for copying and cleanup. */
-      return heap_attrvalue_read_oos_inline (recdes, attrepr->location, raw, oos_scratch, oos_scratch_size,
-					     oos_owned_buffer, pending);
+      *is_oos = true;
+      return NO_ERROR;
     }
 
   raw->data = layout->var_table + this_off;
@@ -11547,13 +11559,12 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
 }
 
 /*
- * heap_attrvalue_read_variable () - Keep Resolve scratch alive through conversion and release.
- * Fixed and default values do not need this frame. Both paths use the same DB_VALUE conversion.
+ * heap_attrvalue_read_oos () - Keep Resolve scratch alive through conversion and release.
+ * Inline and default values do not need this frame. All paths share DB_VALUE conversion.
  */
 static int
-heap_attrvalue_read_variable (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-			      OR_ATTRIBUTE * attrepr, const HEAP_REC_LAYOUT * layout,
-			      const heap_pending_record * pending)
+heap_attrvalue_read_oos (RECDES * recdes, HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr,
+			 const heap_pending_record * pending)
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
@@ -11561,8 +11572,8 @@ heap_attrvalue_read_variable (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACH
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int error;
 
-  error = heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-					 IO_MAX_PAGE_SIZE, pending);
+  error = heap_attrvalue_read_oos_inline (recdes, attrepr->location, &raw, oos_scratch, IO_MAX_PAGE_SIZE,
+					  &oos_owned_buffer, pending);
   if (error != NO_ERROR)
     {
       return error;
@@ -11623,7 +11634,16 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  return heap_attrvalue_read_variable (recdes, value, attr_info, attrepr, layout, pending);
+	  bool is_oos;
+	  int error = heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &is_oos);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (is_oos)
+	    {
+	      return heap_attrvalue_read_oos (recdes, value, attrepr, pending);
+	    }
 	}
     }
 
@@ -11801,9 +11821,13 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	    }
 	  else
 	    {			/* A variable attribute */
-	      error =
-		heap_attrvalue_point_variable (recdes, &layout, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
-					       IO_MAX_PAGE_SIZE, pending);
+	      bool is_oos;
+	      error = heap_attrvalue_point_variable (recdes, &layout, attr_info, att, &raw, &is_oos);
+	      if (error == NO_ERROR && is_oos)
+		{
+		  error = heap_attrvalue_read_oos_inline (recdes, att->location, &raw, oos_scratch, IO_MAX_PAGE_SIZE,
+							  &oos_owned_buffer, pending);
+		}
 	      if (error != NO_ERROR)
 		{
 		  return error;
