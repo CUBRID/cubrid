@@ -5382,7 +5382,34 @@ insert_meth_instance (LDR_CONTEXT *context)
     {
       if (context->constructor != NULL)
 	{
-	  CHECK_ERR (err, construct_instance (context, &real_obj));
+	  /*
+	   * A forward reference has already made an object for this instance number, and a
+	   * constructor cannot fill an object it did not make. Find that out before the
+	   * constructor runs: when --error-control-file ignores the error, the line is to be
+	   * skipped, and the constructor would have made an object nobody asked for.
+	   */
+	  if (context->inst_num >= 0)
+	    {
+	      inst = otable_find (context->table, context->inst_num);
+	      if (inst != NULL && (inst->flags & INST_FLAG_RESERVED))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
+		  CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
+		}
+	    }
+
+	  if (!skip_current_instance)
+	    {
+	      CHECK_ERR (err, construct_instance (context, &real_obj));
+	    }
+
+	  if (skip_current_instance)
+	    {
+	      /* An error --error-control-file ignores: drop whatever the constructor made, and count nothing. */
+	      ldr_restore_pin_and_drop_obj (context, true);
+	      goto error_exit;
+	    }
+
 	  CHECK_PTR (err, real_obj);
 
 	  /*
@@ -5399,26 +5426,20 @@ insert_meth_instance (LDR_CONTEXT *context)
 	   */
 	  if (context->inst_num >= 0)
 	    {
-	      inst = otable_find (context->table, context->inst_num);
-	      if (inst == NULL || ! (inst->flags & INST_FLAG_RESERVED))
+	      CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
+	      CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
+	      CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
+
+	      if (skip_current_instance)
 		{
-		  CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
-		  CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
-		  CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
-		}
-	      else
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
-		  CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
+		  ldr_restore_pin_and_drop_obj (context, true);
+		  goto error_exit;
 		}
 	    }
 
-	  if (err == NO_ERROR)
-	    {
-	      context->obj = NULL;
-	      context->table->total_inserts++;
-	      err = check_commit (context);
-	    }
+	  context->obj = NULL;
+	  context->table->total_inserts++;
+	  err = check_commit (context);
 	}
       else
 	{
