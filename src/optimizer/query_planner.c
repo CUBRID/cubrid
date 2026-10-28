@@ -7362,6 +7362,7 @@ static QO_PLAN_COMPARE_RESULT
 qo_plan_cmp_parallel_drive (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp)
 {
   bool a_drives, b_drives;
+  double a_cost, b_cost;
 
   if (cmp != PLAN_COMP_LT && cmp != PLAN_COMP_GT)
     {
@@ -7371,6 +7372,16 @@ qo_plan_cmp_parallel_drive (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp
   a_drives = qo_plan_drives_parallel (a);
   b_drives = qo_plan_drives_parallel (b);
   if (a_drives == b_drives || qo_parallel_cost_divisor (a) <= 1.0)
+    {
+      return cmp;
+    }
+
+  /* only a decision taken on cost: qo_plan_cmp () also prefers a dearer plan on other grounds
+   * (an order-by skip under a LIMIT, a covering index), and keeping the cheaper one beside it
+   * would let qo_find_best_plan_on_planvec (), which compares cost alone, overturn that */
+  a_cost = a->fixed_cpu_cost + a->fixed_io_cost + a->variable_cpu_cost + a->variable_io_cost;
+  b_cost = b->fixed_cpu_cost + b->fixed_io_cost + b->variable_cpu_cost + b->variable_io_cost;
+  if ((cmp == PLAN_COMP_LT) ? (a_cost >= b_cost) : (b_cost >= a_cost))
     {
       return cmp;
     }
