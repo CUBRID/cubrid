@@ -1837,3 +1837,108 @@ sm_define_view_histogram_spec (void)
 
   return stmt;
 }
+
+std::string
+sm_define_view_sensitivity_label_spec (void)
+{
+  char stmt [2048];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof(stmt),
+	"SELECT "
+	  "[c].[owner].[name] AS [owner_name], "
+	  "[c].[class_name] AS [class_name], "
+	  "[a].[attr_name] AS [attr_name], "
+	  "[l].[grade].[name] AS [grade], "
+	  "[l].[grade].[grade_level] AS [grade_level], "
+	  "[l].[info_type].[name] AS [info_type], "
+	  "[l].[source].[name] AS [source], "
+	  "[l].[labeled_by] AS [labeled_by], "
+	  "[l].[created_time] AS [created_time], "
+	  "[l].[updated_time] AS [updated_time] "
+	"FROM "
+	  /* CT_SENSITIVITY_LABEL_NAME */
+	  "[%s] AS [l], "
+	  /* CT_CLASS_NAME */
+	  "[%s] AS [c], "
+	  /* CT_ATTRIBUTE_NAME */
+	  "[%s] AS [a] "
+	"WHERE "
+	  "[l].[class_of] = [c].[class_of] "
+	  "AND [a].[class_of] = [c] "
+	  "AND [a].[attr_id] = [l].[attr_id]",
+	CT_SENSITIVITY_LABEL_NAME,
+	CT_CLASS_NAME,
+	CT_ATTRIBUTE_NAME);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}
+
+std::string
+sm_define_view_sensitivity_label_grade_spec (void)
+{
+  char stmt [2048];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof(stmt),
+	"SELECT "
+	  "[g].[name] AS [name], "
+	  "[g].[grade_level] AS [grade_level], "
+	  "[g].[comment] AS [comment], "
+	  "[g].[created_time] AS [created_time], "
+	  "[g].[updated_time] AS [updated_time] "
+	"FROM "
+	  /* CT_SENSITIVITY_LABEL_GRADE_NAME */
+	  "[%s] AS [g]",
+	CT_SENSITIVITY_LABEL_GRADE_NAME);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}
+
+std::string
+sm_define_view_sensitivity_label_info_type_spec (void)
+{
+  char stmt [2048];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof(stmt),
+	"SELECT "
+	  "[i].[name] AS [name], "
+	  "[i].[comment] AS [comment], "
+	  "[i].[created_time] AS [created_time], "
+	  "[i].[updated_time] AS [updated_time] "
+	"FROM "
+	  /* CT_SENSITIVITY_LABEL_INFO_TYPE_NAME */
+	  "[%s] AS [i]",
+	CT_SENSITIVITY_LABEL_INFO_TYPE_NAME);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}
+
+std::string
+sm_define_view_sensitivity_label_source_spec (void)
+{
+  char stmt [2048];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof(stmt),
+	"SELECT "
+	  "[s].[name] AS [name], "
+	  "[s].[comment] AS [comment], "
+	  "[s].[created_time] AS [created_time], "
+	  "[s].[updated_time] AS [updated_time] "
+	"FROM "
+	  /* CT_SENSITIVITY_LABEL_SOURCE_NAME */
+	  "[%s] AS [s]",
+	CT_SENSITIVITY_LABEL_SOURCE_NAME);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}

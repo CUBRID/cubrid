@@ -55,6 +55,10 @@
 #define CT_SYNONYM_NAME            "_db_synonym"
 #define CT_HISTOGRAM_NAME       "_db_histogram"
 #define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
+#define CT_SENSITIVITY_LABEL_NAME            "_db_sensitivity_label"
+#define CT_SENSITIVITY_LABEL_GRADE_NAME      "_db_sensitivity_label_grade"
+#define CT_SENSITIVITY_LABEL_INFO_TYPE_NAME  "_db_sensitivity_label_info_type"
+#define CT_SENSITIVITY_LABEL_SOURCE_NAME     "_db_sensitivity_label_source"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -82,6 +86,10 @@
 #define CTV_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
 #define CTV_HISTOGRAM_NAME      "db_histogram"
+#define CTV_SENSITIVITY_LABEL_NAME            "db_sensitivity_label"
+#define CTV_SENSITIVITY_LABEL_GRADE_NAME      "db_sensitivity_label_grade"
+#define CTV_SENSITIVITY_LABEL_INFO_TYPE_NAME  "db_sensitivity_label_info_type"
+#define CTV_SENSITIVITY_LABEL_SOURCE_NAME     "db_sensitivity_label_source"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
@@ -116,13 +124,15 @@
  * and if the SELECT result exceeds this number, we assume that at least one
  * general object domain exists in a user class.
  *
- * The number of general object domains in system classes is currently 9 and
+ * The number of general object domains in system classes is currently 10 and
  * is hard-coded. Therefore, when a general object domain is added to or
  * removed from any system class, this value MUST be reviewed.
  *
  * CBRD-27382 took it to 10 by storing a referential class in _db_index, and
  * this change takes one back off: db_histogram.class_name stopped being an
  * OBJECT column and became VARCHAR (CBRD-27043).
+ *
+ * CBRD-27418 takes it back to 10 with _db_sensitivity_label.class_of.
  *
  * If the number changes, CNT_CATCLS_OBJECTS MUST be updated accordingly.
  *
@@ -135,6 +145,6 @@
  * See CBRD-23983 and CBRD-25697 for details.
  */
 
-#define CNT_CATCLS_OBJECTS              (9)	/* number of general object domains in system classes */
+#define CNT_CATCLS_OBJECTS              (10)	/* number of general object domains in system classes */
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */
