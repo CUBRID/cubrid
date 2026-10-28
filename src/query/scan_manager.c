@@ -3974,6 +3974,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	    }
 	  if (fhs_create (thread_p, llsidp->hlsid.file.hash_table, llsidp->list_id->tuple_cnt) == NULL)
 	    {
+	      /* the FHSID has no valid files; free it so that closing the scan does not destroy them */
+	      db_private_free_and_init (thread_p, llsidp->hlsid.file.hash_table);
 	      return S_ERROR;
 	    }
 	}

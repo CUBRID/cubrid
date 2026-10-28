@@ -688,7 +688,7 @@ domain_merge_class (DOMAIN_OPERAND_CLASS lhs, const DOMAIN_PLAN_ITEM * rhs)
   return lhs == OPERAND_CORRELATED || other == OPERAND_CORRELATED ? OPERAND_CORRELATED : OPERAND_CONST;
 }
 
-static bool
+bool
 domain_non_cacheable_operator (OPERATOR_TYPE opcode)
 {
   switch (opcode)
@@ -728,7 +728,7 @@ domain_non_cacheable_operator (OPERATOR_TYPE opcode)
 
 /* The non-cacheable operators a fetch computes every time only because it does not analyze their predicate: over
  * operands no row changes, no row changes them either. */
-static bool
+bool
 domain_branch_operator (OPERATOR_TYPE opcode)
 {
   return opcode == T_CASE || opcode == T_DECODE || opcode == T_IF || opcode == T_PREDICATE;

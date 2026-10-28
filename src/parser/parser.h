@@ -145,6 +145,8 @@ extern "C"
   extern PARSER_VARCHAR *pt_print_class_name (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
   extern PARSER_VARCHAR *pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * node);
+  extern PARSER_VARCHAR *pt_print_using_index_clause (PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
+						      const PT_NODE * using_index);
   extern PARSER_VARCHAR *pt_print_bytes_alias (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val);
   extern PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value *val);
@@ -206,6 +208,7 @@ extern "C"
   extern PT_NODE *pt_add_row_classoid_name (PARSER_CONTEXT * parser, PT_NODE * statement, int server_op);
 
   extern PT_NODE *pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op,
 					   const char *name1, const char *name2, char **new_trigger_stmt,
@@ -517,6 +520,8 @@ extern "C"
   extern PT_NODE *pt_right_part (const PT_NODE * expr);
   extern PT_NODE *pt_get_end_path_node (PT_NODE * node);
   extern PT_NODE *pt_get_first_arg_ignore_prior (PT_NODE * node);
+  extern bool pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column,
+					    bool skip_subquery_terms);
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_get_subquery_of_insert_select (const PT_NODE * insert_statement);
@@ -732,6 +737,7 @@ extern "C"
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
+  extern bool pt_dblink_dml_is_remote_only_expr (PT_NODE * expr);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

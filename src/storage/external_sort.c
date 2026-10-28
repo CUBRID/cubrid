@@ -5089,8 +5089,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
     {
       SORT_LISTFILE_PX_ARG *px = (SORT_LISTFILE_PX_ARG *) sort_param->px_extra_arg;
-      /* hash_eligible is GROUP_BY only (0 for ANALYTIC); skip parallelism when set */
-      if (px == NULL || px->hash_eligible)
+      if (px == NULL)
 	{
 	  return 1;
 	}

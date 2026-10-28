@@ -485,6 +485,18 @@ namespace parallel_scan
     return result;
   }
 
+  /* the inner scans task::initialize () can open in a worker */
+  static bool
+  worker_opens (const ACCESS_SPEC_TYPE *spec)
+  {
+    if (spec->type == TARGET_LIST)
+      {
+	return true;
+      }
+    return spec->type == TARGET_CLASS
+	   && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_INDEX);
+  }
+
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg)
   {
@@ -508,11 +520,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
-    if (arg->type != TARGET_CLASS && arg->type != TARGET_LIST)
+    /* a worker that builds the list or the value itself opens this inner scan (task::initialize ()), and it
+     * opens a heap, a B-tree or a list only; any other inner -- JSON_TABLE, a set, a method -- stays with
+     * the leader, or the worker fails the query on it (CBRD-27674) */
+    if (!worker_opens (arg))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
+	set_flag (result, CANNOT_BUILDVALUE_OPT);
       }
-    else
+    if (arg->type == TARGET_CLASS || arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
 	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);

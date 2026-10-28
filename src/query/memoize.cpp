@@ -173,6 +173,177 @@ namespace memoize
     }
   } const checker;
 
+  /* RANDOM (), SYS_GUID (), a serial's NEXT_VALUE and the like give another value at every evaluation. A memo replays
+   * the first result of a key to every outer row of that key, so the inner must not evaluate one, as the correlated
+   * subquery cache does not cache them (pt_check_corr_subquery_not_cachable_expr ()) (CBRD-27734). */
+  struct nondeterministic_check
+  {
+    /* is_subquery: the inner itself keeps its scan_ptr (the next inner, with its own memo) and its aptr (run once)
+     * out of the memo, as key_maker does */
+    bool operator() (xasl_node *xasl, bool is_subquery) const noexcept
+    {
+      for (ACCESS_SPEC_TYPE *spec = xasl->spec_list; spec != nullptr; spec = spec->next)
+	{
+	  if ((*this) (spec->where_key) || (*this) (spec->where_pred) || (*this) (spec->where_range))
+	    {
+	      return true;
+	    }
+	}
+      if ((*this) (xasl->if_pred) || (*this) (xasl->after_join_pred))
+	{
+	  return true;
+	}
+      for (XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+	{
+	  if ((*this) (dptr, true))
+	    {
+	      return true;
+	    }
+	}
+      if (!is_subquery)
+	{
+	  return false;
+	}
+
+      for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
+	{
+	  if ((*this) (aptr, true))
+	    {
+	      return true;
+	    }
+	}
+      if (xasl->scan_ptr != nullptr && (*this) (xasl->scan_ptr, true))
+	{
+	  return true;
+	}
+      if ((xasl->outptr_list != nullptr && (*this) (xasl->outptr_list->valptrp)) || (*this) (xasl->instnum_pred)
+	  || (*this) (xasl->ordbynum_pred))
+	{
+	  return true;
+	}
+      if (xasl->type == BUILDVALUE_PROC)
+	{
+	  for (AGGREGATE_TYPE *agg = xasl->proc.buildvalue.agg_list; agg != nullptr; agg = agg->next)
+	    {
+	      if ((*this) (agg->operands)
+		  || ((agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+		      && (*this) (agg->info.percentile.percentile_reguvar)))
+		{
+		  return true;
+		}
+	    }
+	  return (*this) (xasl->proc.buildvalue.having_pred);
+	}
+      return false;
+    }
+
+    bool operator() (cubxasl::pred_expr *pred_expr) const noexcept
+    {
+      if (pred_expr == nullptr)
+	{
+	  return false;
+	}
+
+      switch (pred_expr->type)
+	{
+	case T_PRED:
+	  return (*this) (pred_expr->pe.m_pred.lhs) || (*this) (pred_expr->pe.m_pred.rhs);
+
+	case T_EVAL_TERM:
+	{
+	  cubxasl::eval_term *et = &pred_expr->pe.m_eval_term;
+	  switch (et->et_type)
+	    {
+	    case T_COMP_EVAL_TERM:
+	      return (*this) (et->et.et_comp.lhs) || (*this) (et->et.et_comp.rhs);
+	    case T_ALSM_EVAL_TERM:
+	      return (*this) (et->et.et_alsm.elem) || (*this) (et->et.et_alsm.elemset);
+	    case T_LIKE_EVAL_TERM:
+	      return (*this) (et->et.et_like.src) || (*this) (et->et.et_like.pattern)
+		     || (*this) (et->et.et_like.esc_char);
+	    case T_RLIKE_EVAL_TERM:
+	      return (*this) (et->et.et_rlike.src) || (*this) (et->et.et_rlike.pattern)
+		     || (*this) (et->et.et_rlike.case_sensitive);
+	    }
+	  return false;
+	}
+
+	case T_NOT_TERM:
+	  return (*this) (pred_expr->pe.m_not_term);
+	}
+      return false;
+    }
+
+    bool operator() (regu_variable_node *regu_var) const noexcept
+    {
+      if (regu_var == nullptr)
+	{
+	  return false;
+	}
+
+      switch (regu_var->type)
+	{
+	case TYPE_INARITH:
+	case TYPE_OUTARITH:
+	{
+	  ARITH_TYPE *arith = regu_var->value.arithptr;
+	  switch (arith->opcode)
+	    {
+	    case T_RAND:
+	    case T_DRAND:
+	    case T_RANDOM:
+	    case T_DRANDOM:
+	    case T_SYS_GUID:
+	    case T_UUID:
+	    case T_CURRENT_VALUE:
+	    case T_NEXT_VALUE:
+	      return true;
+	    default:
+	      break;
+	    }
+	  return (*this) (arith->leftptr) || (*this) (arith->rightptr) || (*this) (arith->thirdptr)
+		 || (*this) (arith->pred);
+	}
+
+	case TYPE_FUNC:
+	  return (*this) (regu_var->value.funcp->operand);
+
+	case TYPE_SP:
+	  /* shortcut: pl_signature does not send DETERMINISTIC to the server, so a stored function is not checked;
+	   * check it once the server gets the flag */
+	  return (*this) (regu_var->value.sp_ptr->args);
+
+	case TYPE_REGU_VAR_LIST:
+	  return (*this) (regu_var->value.regu_var_list);
+
+	case TYPE_REGUVAL_LIST:
+	  for (REGU_VALUE_ITEM *item = regu_var->value.reguval_list->regu_list; item != nullptr; item = item->next)
+	    {
+	      if ((*this) (item->value))
+		{
+		  return true;
+		}
+	    }
+	  return false;
+
+	default:
+	  return false;
+	}
+    }
+
+    bool operator() (REGU_VARIABLE_LIST regu_var_list) const noexcept
+    {
+      for (; regu_var_list != nullptr; regu_var_list = regu_var_list->next)
+	{
+	  if ((*this) (&regu_var_list->value))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+    }
+  } const nondeterministic;
+
   template <TARGET_TYPE target_type>
   struct key_maker
   {
@@ -742,7 +913,7 @@ namespace memoize
     assert (sz == k2->m_values.size());
     for (size_t i = 0; i < sz; i++)
       {
-	if (!mht_compare_dbvalues_are_equal (&k1->m_values[i], &k2->m_values[i]))
+	if (!mht_compare_dbvalues_are_identical (&k1->m_values[i], &k2->m_values[i]))
 	  {
 	    return false;
 	  }
@@ -757,7 +928,7 @@ namespace memoize
     int key_cnt, value_cnt;
     std::vector<DB_VALUE *> key_ptr_src;
 
-    if (!checker (xasl))
+    if (!checker (xasl) || nondeterministic (xasl, false))
       {
 	return nullptr;
       }

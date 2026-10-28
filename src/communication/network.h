@@ -292,7 +292,13 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_BTREE_COMPACT_OVERFLOW) \
   \
   /* bind-value plan variants of a cached query */ \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_BIND_VARIANT)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_BIND_VARIANT) \
+  \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_DROP_CLONES) \
+  \
+  /* cdc channel authentication - appended at the end so no existing request number moves */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_CHALLENGE) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE)
 
 enum net_server_request
 {

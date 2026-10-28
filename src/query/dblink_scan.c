@@ -497,7 +497,7 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
  *
  * Note: The handshake already stored the type, so this costs no round trip.  It gates both the codeset
  *   we declare and the values we refuse for not being in it, so the two always cover the same
- *   connections.  The remote DELETE sink also restores the pushed value's type only where this holds,
+ *   connections.  The remote DELETE and UPDATE sinks also restore the WHERE key's type only where this holds,
  *   since the CAST it adds is CUBRID syntax.
  */
 static bool
@@ -1781,10 +1781,10 @@ sql_build_error:
 /*
  * Restoring the pushed value's declared type -- the whole policy in one place.
  *
- * The sink sends the local subquery value as "?". The remote types that placeholder (the marker) from the
- * target column, so the comparison no longer matches the all-local form: a CHAR target pads a VARCHAR
- * value, and a numeric target accepts a date the all-local form refuses. CAST(? AS <source>) puts the
- * declared type back.
+ * The DELETE and UPDATE sinks send the local subquery value as the WHERE key's "?". The remote types that
+ * placeholder (the marker) from the target column, so the comparison no longer matches the all-local form:
+ * a CHAR target pads a VARCHAR value, and a numeric target accepts a date the all-local form refuses.
+ * CAST(? AS <source>) puts the declared type back. The rule below is the same for both statements.
  *
  * One rule, after the first prepare, from the marker:
  *
@@ -1799,9 +1799,9 @@ sql_build_error:
  * column, and an ENUM column compared with = or <> (the remote wraps "?" in an enumeration conversion) --
  * and cannot tell them apart, so the source type alone decides:
  *
- *   date/time | cast: on a numeric target a bare "?" deletes rows the all-local form keeps; on an ENUM
- *             | target the cast fails with the same error as the all-local "="
- *   JSON      | refuse: the cast deletes an extra row on an ENUM target under IN (sent as "="), and a bare
+ *   date/time | cast: on a numeric target a bare "?" matches rows the all-local form leaves alone; on an
+ *             | ENUM target the cast fails with the same error as the all-local "="
+ *   JSON      | refuse: the cast matches an extra row on an ENUM target under IN (sent as "="), and a bare
  *             | "?" misses a row on an ENUM target under =. The cast is right on a numeric target, and the
  *             | refusal gives that up too
  *   the rest  | bare "?": the result does not change, and a cast would rewrite every numeric-key statement
@@ -1820,7 +1820,8 @@ sql_build_error:
  *   return: true for the date/time types, zone-qualified ones included
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
- * On a numeric target the remote deletes a row that the all-local form keeps when the source is date/time.
+ * On a numeric target the remote matches a row that the all-local form leaves alone when the source is
+ * date/time.
  * The zone-qualified types are listed although cci_bind_param still rejects them before a comparison happens:
  * once that binding works they need the same cast, and nothing here should have to change then. JSON is
  * refused instead of cast; see the policy comment above.
@@ -1865,7 +1866,7 @@ dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
  * at the bind.
  *
  * Adding a source type touches this function only when the name needs a precision, or is not one the
- * parser takes; whether a type is cast is decided in dblink_dml_delete_cast_type_needed ().
+ * parser takes; whether a type is cast is decided in dblink_dml_key_cast_type_needed ().
  */
 static const char *
 dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
@@ -1907,11 +1908,14 @@ dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
 }
 
 /*
- * dblink_dml_delete_cast_type_needed () - Ask the remote what it expects in the marker, and answer with the
- *   cast text when that disagrees with what the sink is about to bind.
+ * dblink_dml_key_cast_type_needed () - Ask the remote what it expects in the WHERE key's marker, and answer
+ *   with the cast text when that disagrees with what the sink is about to bind.
  *   return: NO_ERROR, or ER_DBLINK when the remote did not report the marker's type, or left it unresolved
  *           for a JSON source
- *   stmt_handle(in)   : prepared DELETE whose single marker is asked about
+ *   stmt_handle(in)   : prepared statement whose WHERE key marker is asked about
+ *   errctx(in)        : statement name the messages start with ("remote DELETE")
+ *   key_pos(in)       : 1-based position of the key marker. It is the statement's last marker, so the
+ *                       statement carries exactly this many
  *   src_dom(in)       : domain of the local subquery's source column
  *   buf(out)          : caller-provided buffer for the type text
  *   buflen(in)        : size of buf
@@ -1922,8 +1926,8 @@ dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
  * of falling back are in the policy comment above dblink_dml_unresolved_fallback_casts().
  */
 static int
-dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *buf, size_t buflen,
-				    const char **cast_type_out)
+dblink_dml_key_cast_type_needed (int stmt_handle, const char *errctx, int key_pos, TP_DOMAIN * src_dom, char *buf,
+				 size_t buflen, const char **cast_type_out)
 {
   T_CCI_PARAM_INFO *param_info = NULL;
   T_CCI_ERROR err_buf;
@@ -1933,40 +1937,49 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
   int num_param;
   char errmsg[sizeof (err_buf.err_msg) + 160];
 
-  /* The caller fills it in both modes (see qexec_execute_remote_dml_sink); a NULL would read as
-   * DB_TYPE_NULL and fall back to the bare "?" without a word. */
+  /* dblink_dml_open () refuses a NULL before connecting. */
   assert (src_dom != NULL);
 
   src_type = TP_DOMAIN_TYPE (src_dom);
   *cast_type_out = NULL;
 
+  /* Positions start at 1. CCI_GET_PARAM_INFO_TYPE reads [key_pos - 1], so a 0 against a remote that reports
+   * no parameter would read before the array. Checked in release builds too. */
+  assert (key_pos >= 1);
+  if (key_pos < 1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: WHERE key position out of range");
+      return ER_DBLINK;
+    }
+
   num_param = cci_get_param_info (stmt_handle, &param_info, &err_buf);
-  if (num_param != 1 || param_info == NULL)
+  if (num_param != key_pos || param_info == NULL)
     {
       /* num_param == 0 still hands back a malloc(0) block, so free before leaving */
       cci_param_info_free (param_info);
       /* "WHERE column", not "marker": the marker is the placeholder this file generates, so it is not in
-       * the statement the user wrote, while the column it stands for is. The statement carries exactly one
+       * the statement the user wrote, while the column it stands for is. The key is the statement's last
        * placeholder, so any other count means it is not the statement the sink built. err_buf is filled
        * only when the call fails -- the call resets it first. */
       if (num_param < 0)
 	{
 	  snprintf (errmsg, sizeof (errmsg),
-		    "remote DELETE: the remote did not report the type of the WHERE column, "
-		    "so the comparison cannot be made safely (CCI error %d: %s)", num_param,
+		    "%s: the remote did not report the type of the WHERE column, "
+		    "so the comparison cannot be made safely (CCI error %d: %s)", errctx, num_param,
 		    err_buf.err_msg[0] != '\0' ? err_buf.err_msg : "no message from the remote");
 	}
-      else if (num_param != 1)
+      else if (num_param != key_pos)
 	{
 	  snprintf (errmsg, sizeof (errmsg),
-		    "remote DELETE: the remote did not report the type of the WHERE column, "
-		    "so the comparison cannot be made safely (%d parameters reported, expected 1)", num_param);
+		    "%s: the remote did not report the type of the WHERE column, "
+		    "so the comparison cannot be made safely (%d parameters reported, expected %d)", errctx,
+		    num_param, key_pos);
 	}
       else
 	{
 	  snprintf (errmsg, sizeof (errmsg),
-		    "remote DELETE: the remote did not report the type of the WHERE column, "
-		    "so the comparison cannot be made safely");
+		    "%s: the remote did not report the type of the WHERE column, "
+		    "so the comparison cannot be made safely", errctx);
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
       return ER_DBLINK;
@@ -1974,7 +1987,7 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 
   /* through dblink_get_basic_utype() so the comparison stays right if a marker ever arrives with the
    * collection bits set -- CCI_GET_PARAM_INFO_TYPE reports the *ext* type. */
-  marker_type = dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) CCI_GET_PARAM_INFO_TYPE (param_info, 1));
+  marker_type = dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) CCI_GET_PARAM_INFO_TYPE (param_info, key_pos));
 
   if (marker_type == CCI_U_TYPE_NULL)
     {
@@ -1983,9 +1996,10 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
       if (src_type == DB_TYPE_JSON)
 	{
 	  cci_param_info_free (param_info);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-		  "remote DELETE: the remote did not report the type of the WHERE column, "
-		  "so a JSON value cannot be compared safely");
+	  snprintf (errmsg, sizeof (errmsg),
+		    "%s: the remote did not report the type of the WHERE column, "
+		    "so a JSON value cannot be compared safely", errctx);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
 	  return ER_DBLINK;
 	}
       if (dblink_dml_unresolved_fallback_casts (src_type))
@@ -2005,6 +2019,40 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 }
 
 /*
+ * dblink_dml_key_bind_expr () - The text the WHERE key's placeholder goes out as: a bare "?", or the
+ *   placeholder wrapped in a CAST that restores the source type.
+ *   return: NO_ERROR, or ER_DBLINK when the cast text does not fit buf
+ *   errctx(in)    : statement name the message starts with ("remote DELETE")
+ *   cast_type(in) : type name from dblink_dml_key_cast_type_needed(), or NULL for the bare placeholder
+ *   buf(out)      : caller-provided buffer for the text
+ *   buflen(in)    : size of buf
+ */
+static int
+dblink_dml_key_bind_expr (const char *errctx, const char *cast_type, char *buf, size_t buflen)
+{
+  char errmsg[96];
+  int ret;
+
+  if (cast_type == NULL || cast_type[0] == '\0')
+    {
+      ret = snprintf (buf, buflen, "?");
+    }
+  else
+    {
+      ret = snprintf (buf, buflen, "CAST(? AS %s)", cast_type);
+    }
+
+  if (ret < 0 || (size_t) ret >= buflen)
+    {
+      snprintf (errmsg, sizeof (errmsg), "%s: cast type name too long", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * dblink_dml_build_delete_sql () - Build "DELETE FROM <table> WHERE <key_col> <op> <placeholder>" (one
  *   placeholder, bare "?" or wrapped in a CAST -- see cast_type).
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
@@ -2014,7 +2062,8 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
  *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)         : comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
  *   cast_type(in)  : CUBRID type name to restore on the pushed value ("... <op> CAST(? AS <cast_type>)"), or
- *                    NULL to push the bare placeholder. Decided by dblink_dml_delete_cast_type_needed().
+ *                    NULL to push the bare placeholder. Decided by dblink_dml_key_cast_type_needed().
+ *   using_index(in): the statement's USING INDEX clause as written, NULL when there is none
  *   sql_out(out)   : set to the built SQL text on success
  *
  * TODO: key_col is appended unquoted, matching the parser-side
@@ -2027,7 +2076,7 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
-			     const char *cast_type, char **sql_out)
+			     const char *cast_type, const char *using_index, char **sql_out)
 {
   int ret, remaining;
   char *sql;
@@ -2036,27 +2085,25 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 
   *sql_out = NULL;
 
+  /* the clause already carries its leading space, or is empty when the statement has no hint */
+  if (using_index == NULL)
+    {
+      using_index = "";
+    }
+
   if (key_col == NULL || key_col[0] == '\0' || op == NULL || op[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: key_col/op is NULL or empty");
       return ER_DBLINK;
     }
 
-  if (cast_type != NULL && cast_type[0] != '\0')
+  ret = dblink_dml_key_bind_expr ("remote DELETE", cast_type, bind_expr, sizeof (bind_expr));
+  if (ret != NO_ERROR)
     {
-      ret = snprintf (bind_expr, sizeof (bind_expr), "CAST(? AS %s)", cast_type);
-      if (ret < 0 || ret >= (int) sizeof (bind_expr))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: cast type name too long");
-	  return ER_DBLINK;
-	}
-    }
-  else
-    {
-      strcpy (bind_expr, "?");
+      return ret;
     }
 
-  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + strlen (bind_expr) + 64;
+  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + strlen (bind_expr) + strlen (using_index) + 64;
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -2065,8 +2112,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   remaining = (int) sql_len;
-  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s %s", table_name, key_col, op,
-		  bind_expr);
+  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s %s%s", table_name, key_col, op,
+		  bind_expr, using_index);
   if (ret < 0 || ret >= remaining)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
@@ -2079,27 +2126,135 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 }
 
 /*
- * dblink_dml_delete_reprepare_with_cast () - Replace the prepared DELETE with one whose placeholder carries
- *   the restored type. Used when the marker's domain turned out to differ from the source type, which is
- *   only knowable after the first prepare.
+ * dblink_dml_build_update_sql () - Build "UPDATE <table> SET <set_text>" plus
+ *   " WHERE <key_col> <op> <placeholder>" when the statement has a WHERE (bare "?" or wrapped in a CAST --
+ *   see cast_type). set_text already carries one placeholder per bound SET value, so the statement's
+ *   placeholders read SET first and then the key -- the order the caller binds in.
+ *   return: NO_ERROR on success, error code on failure
+ *   thread_p(in)   : thread entry
+ *   table_name(in) : remote table name
+ *   set_text(in)   : SET clause built at XASL generation ("c1 = ?, c2 = c2 + 1")
+ *   key_col(in)    : remote WHERE column, NULL when the statement updates every remote row
+ *   op(in)         : comparison operator SQL text, NULL together with key_col
+ *   cast_type(in)  : as for the DELETE builder, applied to the WHERE key's placeholder only
+ *   using_index(in): the statement's USING INDEX clause as written, NULL when there is none
+ *   sql_out(out)   : set to the built SQL text on success
+ *
+ * The identifiers are appended unquoted, as the DELETE builder appends its key column; see the TODO there.
+ */
+static int
+dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *set_text,
+			     const char *key_col, const char *op, const char *cast_type, const char *using_index,
+			     char **sql_out)
+{
+  int ret, remaining;
+  char *sql;
+  size_t sql_len;
+  bool has_where;
+  char bind_expr[64] = "";
+
+  *sql_out = NULL;
+
+  /* the clause already carries its leading space, or is empty when the statement has no hint */
+  if (using_index == NULL)
+    {
+      using_index = "";
+    }
+
+  if (set_text == NULL || set_text[0] == '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE: SET text is NULL or empty");
+      return ER_DBLINK;
+    }
+
+  /* key_col and op arrive together: the statement either sends a WHERE or updates every remote row */
+  has_where = (key_col != NULL && key_col[0] != '\0');
+  if (has_where != (op != NULL && op[0] != '\0'))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE: key_col and op disagree");
+      return ER_DBLINK;
+    }
+
+  if (has_where)
+    {
+      ret = dblink_dml_key_bind_expr ("remote UPDATE", cast_type, bind_expr, sizeof (bind_expr));
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+    }
+
+  sql_len = (strlen (table_name) + strlen (set_text)
+	     + (has_where ? strlen (key_col) + strlen (op) + strlen (bind_expr) : 0) + strlen (using_index) + 64);
+  sql = (char *) db_private_alloc (thread_p, sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  remaining = (int) sql_len;
+  if (has_where)
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s WHERE %s %s %s%s", table_name,
+		      set_text, key_col, op, bind_expr, using_index);
+    }
+  else
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s%s", table_name, set_text, using_index);
+    }
+  if (ret < 0 || ret >= remaining)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE: SQL assembly truncated");
+      db_private_free (thread_p, sql);
+      return ER_DBLINK;
+    }
+
+  *sql_out = sql;
+  return NO_ERROR;
+}
+
+/*
+ * dblink_dml_reprepare_with_key_cast () - Replace the prepared statement with one whose WHERE key placeholder
+ *   carries the restored type. Used when the marker's domain turned out to differ from the source type,
+ *   which is only knowable after the first prepare.
  *   return: NO_ERROR, or an error code with state->stmt_handle left pointing at the original statement
  *   state(in/out) : sink state; stmt_handle is swapped only after the new prepare succeeds
- *   cast_type(in) : type name from dblink_dml_delete_cast_type_needed()
+ *   kind(in)      : DBLINK_DML_DELETE or DBLINK_DML_UPDATE, the statement to build again
+ *   errctx(in)    : statement name the message starts with ("remote DELETE")
+ *   sink(in)      : the plan's sink fields -- target table, WHERE column and operator, USING INDEX clause
+ *   set_text(in)  : UPDATE only -- the SET clause, as dblink_dml_open() received it
+ *   cast_type(in) : type name from dblink_dml_key_cast_type_needed()
  *
  * Failure is raised, not swallowed: the quiet alternative -- drop the cast and run the bare statement --
- * goes back to deleting the wrong rows with nothing to show for it. Swapping only after success means the
+ * goes back to changing the wrong rows with nothing to show for it. Swapping only after success means the
  * caller's dblink_dml_close() closes exactly one handle on either path, so no descriptor leaks.
  */
 static int
-dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, const char *table_name,
-				       const char *key_col, const char *op, const char *cast_type)
+dblink_dml_reprepare_with_key_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DBLINK_DML_KIND kind,
+				    const char *errctx, const REMOTE_DML_SINK * sink, const char *set_text,
+				    const char *cast_type)
 {
   T_CCI_ERROR err_buf;
   char *sql = NULL;
   int ret, req;
   char errmsg[sizeof (err_buf.err_msg) + 160];
 
-  ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);
+  /* switch + default, as in dblink_dml_open (): a kind with no WHERE key must not be re-prepared as DELETE */
+  switch (kind)
+    {
+    case DBLINK_DML_DELETE:
+      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, sink->remote_key_col, sink->remote_op,
+					 cast_type, sink->remote_using_index, &sql);
+      break;
+    case DBLINK_DML_UPDATE:
+      ret = dblink_dml_build_update_sql (thread_p, sink->table_name, set_text, sink->remote_key_col,
+					 sink->remote_op, cast_type, sink->remote_using_index, &sql);
+      break;
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: no WHERE key to cast for this kind");
+      return ER_DBLINK;
+    }
   if (ret != NO_ERROR)
     {
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
@@ -2111,7 +2266,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
   if (req < 0)
     {
       /* The remote's message is about a CAST the user did not write, so say where it came from. */
-      snprintf (errmsg, sizeof (errmsg), "remote DELETE (comparing in the source type, CAST(? AS %s)): %s",
+      snprintf (errmsg, sizeof (errmsg), "%s (comparing in the source type, CAST(? AS %s)): %s", errctx,
 		cast_type, err_buf.err_msg[0] != '\0' ? err_buf.err_msg : "no message from the remote");
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
@@ -2126,24 +2281,26 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
 
 /*
  * dblink_dml_open () - Connect to remote server and prepare the statement the DBLink remote push-sink
- *   sends (INSERT or REPLACE ... SELECT ... FROM local, DELETE + local subquery).
+ *   sends (INSERT or REPLACE ... SELECT ... FROM local, DELETE or UPDATE with a local subquery).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)    : thread entry
- *   kind(in)        : DBLINK_DML_INSERT, DBLINK_DML_REPLACE or DBLINK_DML_DELETE
- *   sink(in)        : the proc's sink fields -- connection URL, user, password and remote table name
+ *   kind(in)        : DBLINK_DML_INSERT, DBLINK_DML_REPLACE, DBLINK_DML_DELETE or DBLINK_DML_UPDATE
+ *   sink(in)        : the plan's sink fields -- connection, target table, and the remote WHERE column and
+ *                     operator when the statement sends a WHERE
  *   attr_names(in)  : INSERT and REPLACE only -- explicit column names (NULL for positional INSERT)
  *   num_attrs(in)   : INSERT and REPLACE only -- length of attr_names (0 when positional)
  *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
- *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
- *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
+ *   set_text(in)    : UPDATE only -- the SET clause, with a placeholder per bound value
+ *   num_set(in)     : UPDATE only -- number of placeholders in set_text. The WHERE key's placeholder comes
+ *                     after them
  *   odku(in)        : INSERT only -- ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means
  *                     no clause. REPLACE is refused when it carries any
- *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL for INSERT
- *                     and REPLACE). Used to restore the pushed value's declared type; see the policy
- *                     comment above dblink_dml_unresolved_fallback_casts()
+ *   src_dom(in)     : DELETE, and UPDATE with a WHERE -- domain of the local subquery's source column (NULL
+ *                     otherwise). Used to restore the WHERE key's declared type; see the policy comment above
+ *                     dblink_dml_unresolved_fallback_casts()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
- * Note: To prevent partial writes, both kinds ALWAYS:
+ * Note: To prevent partial writes, every kind ALWAYS:
  *   1. Set CCI_AUTOCOMMIT_FALSE on the remote CCI connection (ignores DBLINK_AUTO_COMMIT)
  *   2. Register the connection in the per-local-transaction dblink pool
  *      (qmgr_dblink_add_conn_handle)
@@ -2167,7 +2324,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  */
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink, char **attr_names,
-		 int num_attrs, int num_bind, const char *key_col, const char *op, const DBLINK_ODKU_ASSIGNS * odku,
+		 int num_attrs, int num_bind, const char *set_text, int num_set, const DBLINK_ODKU_ASSIGNS * odku,
 		 TP_DOMAIN * src_dom, DBLINK_DML_STATE * state)
 {
   int ret;
@@ -2176,7 +2333,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
   const char *errctx;
   const char *cast_type = NULL;
   bool restore_type = false;
-  char cast_buf[64];		/* DELETE only; longest is "character varying", or "bit(1073741823)" with a precision */
+  int key_pos = 1;		/* the WHERE key's placeholder, the statement's last */
+  char cast_buf[64];		/* DELETE and UPDATE; longest is "character varying", or "bit(1073741823)" with a precision */
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
@@ -2194,8 +2352,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
       return ER_DBLINK;
     }
 
-  /* switch (not if/kind==INSERT-else) + default so a future DBLINK_DML_UPDATE that forgets to add a
-   * case here fails with a clear error instead of silently taking the wrong branch. */
+  /* switch (not if/kind==INSERT-else) + default so a kind added later that forgets a case here fails with
+   * a clear error instead of silently taking the wrong branch. */
   switch (kind)
     {
     case DBLINK_DML_INSERT:
@@ -2207,8 +2365,19 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
     case DBLINK_DML_DELETE:
       errctx = "remote DELETE";
       break;
+    case DBLINK_DML_UPDATE:
+      errctx = "remote UPDATE";
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
+      return ER_DBLINK;
+    }
+
+  /* The WHERE key's type is restored from src_dom. */
+  if ((kind == DBLINK_DML_DELETE || kind == DBLINK_DML_UPDATE) && sink->remote_key_col != NULL && src_dom == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: WHERE key domain is NULL");
       return ER_DBLINK;
     }
 
@@ -2233,8 +2402,17 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
     case DBLINK_DML_DELETE:
       /* The first SQL always carries a bare "?": what to cast to is only knowable from the marker, which
        * needs this prepare to exist. Gated on a CUBRID remote -- CAST is CUBRID syntax. */
-      restore_type = (key_col != NULL && dblink_remote_is_cubrid (state->conn_handle));
-      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, key_col, op, NULL, &sql);
+      restore_type = (sink->remote_key_col != NULL && dblink_remote_is_cubrid (state->conn_handle));
+      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, sink->remote_key_col, sink->remote_op, NULL,
+					 sink->remote_using_index, &sql);
+      break;
+    case DBLINK_DML_UPDATE:
+      /* As for DELETE, when the statement sends a WHERE. Its key placeholder follows the SET ones, so the
+       * marker to ask about is the last, not the first. */
+      restore_type = (sink->remote_key_col != NULL && dblink_remote_is_cubrid (state->conn_handle));
+      key_pos = num_set + 1;
+      ret = dblink_dml_build_update_sql (thread_p, sink->table_name, set_text, sink->remote_key_col, sink->remote_op,
+					 NULL, sink->remote_using_index, &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -2264,10 +2442,11 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
   /* One decision, one place: ask the marker and re-prepare only when it disagrees with what we bind. */
   if (restore_type)
     {
-      ret = dblink_dml_delete_cast_type_needed (state->stmt_handle, src_dom, cast_buf, sizeof (cast_buf), &cast_type);
+      ret = dblink_dml_key_cast_type_needed (state->stmt_handle, errctx, key_pos, src_dom, cast_buf,
+					     sizeof (cast_buf), &cast_type);
       if (ret == NO_ERROR && cast_type != NULL)
 	{
-	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, sink->table_name, key_col, op, cast_type);
+	  ret = dblink_dml_reprepare_with_key_cast (thread_p, state, kind, errctx, sink, set_text, cast_type);
 	}
       if (ret != NO_ERROR)
 	{
@@ -2290,7 +2469,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
 }
 
 /*
- * dblink_dml_execute_row () - Bind values and execute one remote INSERT, REPLACE or DELETE row.
+ * dblink_dml_execute_row () - Bind values and execute one row of the remote statement this sink sends
+ *   (INSERT, REPLACE, DELETE or UPDATE).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)      : thread entry
  *   state(in)         : open DML sink state (conn_handle, stmt_handle)

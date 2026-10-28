@@ -498,6 +498,13 @@ struct trace_json_t;
 #define PT_SET_VALUE_QUERY(n) \
           ((n)->flag.is_value_query = 1)
 
+/* the cast the semantic check keeps over an untyped NULL to give a set operation or VALUES column the type of the
+ * other rows; the column keeps the name the NULL gave it */
+#define PT_IS_CAST_OF_UNTYPED_NULL(n) \
+          ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_CAST \
+           && PT_EXPR_INFO_IS_FLAGED ((n), PT_EXPR_INFO_CAST_SHOULD_FOLD) && (n)->flag.do_not_fold \
+           && (n)->info.expr.arg1 != NULL && (n)->info.expr.arg1->type_enum == PT_TYPE_NULL)
+
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
           (PT_IS_EXPR_NODE (n) ? (n)->info.expr.is_order_dependent \
@@ -4104,13 +4111,13 @@ typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
  * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
  * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
  * happen, and pt_convert_dblink_dml_query's "no sink" guard becomes a single ==NONE check instead of
- * accumulating a !flag per sink kind as more are added (UPDATE to follow). */
+ * accumulating a !flag per sink kind as more are added. */
 typedef enum dblink_remote_sink_kind
 {
   DBLINK_REMOTE_SINK_NONE = 0,
   DBLINK_REMOTE_SINK_INSERT_SELECT,	/* INSERT INTO remote SELECT ... FROM local */
-  DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ	/* DELETE FROM remote WHERE ... (local subquery) */
-    /* DBLINK_REMOTE_SINK_UPDATE_... to follow */
+  DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ,	/* DELETE FROM remote WHERE ... (local subquery) */
+  DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ	/* UPDATE remote SET ... WHERE ... (local subquery in SET or WHERE) */
 } DBLINK_REMOTE_SINK_KIND;
 
 typedef struct

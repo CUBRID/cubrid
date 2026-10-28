@@ -41,6 +41,7 @@
 #include "numeric_opfunc.h"	// SUM_ACC word accumulator
 #include "object_domain.h"
 #include "query_executor.h"
+#include "binaryheap.h"
 #include "px_scan_trace_handler.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -134,6 +135,15 @@ namespace parallel_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	m_.trace_handler_p = trace_handler_p;
+      }
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::set_orig_vd (VAL_DESCR *orig_vd)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	m_.orig_vd = orig_vd;
       }
   }
 
@@ -433,6 +443,11 @@ namespace parallel_scan
 	    {
 	      m_.hgby_results.push_back (context->part_list_id);
 	      context->part_list_id = NULL;
+	      /* a worker that read no rows neither kept nor gave up hashing */
+	      if (context->tuple_count > 0 && context->state > m_.hgby_state)
+		{
+		  m_.hgby_state = context->state;
+		}
 	    }
 
 	  m_.active_results--;
@@ -677,6 +692,19 @@ namespace parallel_scan
 	    }
 	}
 
+	/* A partition read serially before this one left its rows in the leader's top-N heap, not in dest:
+	 * flush them into dest so they join the worker lists; the final ORDER BY then sorts the whole list. */
+	if (m_.orig_xasl->topn_items != nullptr && m_.orig_xasl->topn_items->heap->element_count > 0)
+	  {
+	    if (qexec_topn_tuples_to_list_id (thread_p, m_.orig_xasl, m_.orig_vd->xasl_state, false, NULL) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    assert (m_.orig_xasl->topn_items == nullptr);
+	  }
+
 	/* Restamp by merged position. RENUMBER left the columns unnumbered; ATOMIC_DRAW put the number
 	 * each worker drew there, which is not where the row lands once the worker lists are chained -
 	 * serial guarantees the k-th returned row carries k, so the merge has to restore that. */
@@ -726,11 +754,15 @@ namespace parallel_scan
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return S_ERROR;
 	      }
-	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
-	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
+	    /* trace 'hash: partial' once any worker gave up hashing, 'hash: true' only if all kept it; never moves back
+	     * (see qexec_hash_gby_agg_tuple) */
+	    if (m_.hgby_state > m_.orig_xasl->groupby_stats.groupby_hash)
+	      {
+		m_.orig_xasl->groupby_stats.groupby_hash = m_.hgby_state;
+	      }
 	  }
 
-	/* main heap empty under parallel concat; falls through to qexec_orderby_distinct_by_sorting on worker concat list_id at qexec_orderby_distinct:4049 (orderby_topnsort intentionally not set). */
+	/* the leader's heap was flushed into dest above (or never got a row); falls through to qexec_orderby_distinct_by_sorting on the merged list_id at qexec_orderby_distinct (orderby_topnsort intentionally not set). */
 	qexec_clear_topn_items (thread_p, m_.orig_xasl);
 
 	return S_END;
@@ -1381,7 +1413,23 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    return rehome_agg_list (thread_p, agg_rehome_dir::RESTORE);
+    if (rehome_agg_list (thread_p, agg_rehome_dir::RESTORE) == S_ERROR)
+      {
+	return S_ERROR;
+      }
+
+    /* read_initialize () and the worker merge leave the lists closed, but a partitioned scan may scan its next
+     * partition serially on this thread and append to them. */
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	if (orig_agg_p->list_id != nullptr && orig_agg_p->list_id->tuple_cnt > 0
+	    && qfile_reopen_list_as_append_mode (thread_p, orig_agg_p->list_id) != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+      }
+
+    return S_END;
   }
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_finalize (THREAD_ENTRY *thread_p)

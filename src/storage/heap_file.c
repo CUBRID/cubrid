@@ -697,6 +697,7 @@ static int heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid, 
 
 static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					   HEAP_SCANCACHE ** scan_cache);
+STATIC_INLINE void heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache) __attribute__ ((ALWAYS_INLINE));
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
 					  MVCC_SNAPSHOT * mvcc_snapshot, bool copy_to_local_cache = false);
@@ -6407,6 +6408,17 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 }
 
 /*
+ * heap_scancache_reset_insert_hint () - clear the insert page hint
+ *   scan_cache (in/out): the two hint fields are always reset together
+ */
+STATIC_INLINE void
+heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache)
+{
+  VPID_SET_NULL (&scan_cache->insert_hint_vpid);
+  scan_cache->insert_hint_l1_pos = -1;	/* unknown position in the bestspace L1 arrays */
+}
+
+/*
  * heap_scancache_start_internal () - Start caching information for a heap scan
  *   return: NO_ERROR
  *   scan_cache(in/out): Scan cache
@@ -6514,6 +6526,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   if (copy_to_local_cache && is_queryscan)
     {
@@ -6548,6 +6561,7 @@ exit_on_error:
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -6701,6 +6715,9 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 {
   int ret;
 
+  /* reset before any early return, or the scan cache keeps the previous heap's hint */
+  heap_scancache_reset_insert_hint (scan_cache);
+
   ret = heap_scancache_force_modify (thread_p, scan_cache);
   if (ret != NO_ERROR)
     {
@@ -6836,6 +6853,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return NO_ERROR;
@@ -21410,11 +21428,141 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
   if (home_hint_p == NULL)
     {
+      bool hint_valid = false;
+
       assert (!HFID_IS_NULL (&context->hfid));
 
+      /* Rows of a batch INSERT mostly go to the same page,
+       * so the page of this scan's previous insert is tried before the bestspace search, in six steps:
+       *   1. the hint applies: a scan cache is given, it holds a hint, and no error is pending
+       *   2. the bestspace is looked up, and its candidate queue has no room for the row
+       *   3. the hint page is fixed without waiting
+       *   4. the page is checked like a bestspace candidate
+       *   5. hit: the row is counted and the free space is recorded; miss: the record is corrected, the hint dropped
+       *   6. a failed fix: contended keeps the hint, deallocated drops it, anything else is an error
+       * Step 1, in detail: some callers insert without a scan cache; the hint is empty before the first insert
+       * and after it is dropped; bestspace::find returns a pending error, which the er_clear () calls of
+       * step 5 and 6 would clear */
+      if (context->scan_cache_p != NULL && !VPID_ISNULL (&context->scan_cache_p->insert_hint_vpid)
+	  && er_errid_if_has_error () == NO_ERROR)
+	{
+	  // *INDENT-OFF*
+	  cubstorage::bestspace *bestspace;
+	  // *INDENT-ON*
+
+	  /* step 2: lookup only (NULL class_oid): heap_find_bestpage builds a missing bestspace */
+	  bestspace = heap_find_bestspace (thread_p, NULL, &context->hfid, NULL);
+	  if (bestspace != NULL
+	      /* the search takes reclaimed space from the candidate queue first;
+	       * the hint would skip it and fill its own page,
+	       * so a delete-and-reinsert loop would allocate new pages where the search reuses the reclaimed ones */
+	      && !bestspace->has_candidate ((std::uint16_t)
+					    bestspace->get_needed_size (context->recdes_p->length + SPAGE_SLOT_SIZE)))
+	    {
+	      VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
+
+	      /* step 3: mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is.
+	       * The watcher must be empty: pgbuf_ordered_fix puts the hint page into it */
+	      assert (PGBUF_IS_CLEAN_WATCHER (context->home_page_watcher_p));
+
+	      int save_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	      error_code = pgbuf_ordered_fix (thread_p, &hint_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+					      context->home_page_watcher_p);
+	      (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
+	      if (error_code == NO_ERROR)
+		{
+		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
+		  OID page_class_oid;
+		  bool page_valid = false;
+
+		  /* step 4: mirrors the candidate checks of bestspace::shard::L1_find
+		   * and the space rule of bestspace::find -- the hint keeps the unfill reservation */
+		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
+		  int needed_size = bestspace->get_needed_size (consume_size);
+		  int freespace = 0;
+
+		  if (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_HEAP
+		      && !heap_page_is_not_in_heap (thread_p, page_p)
+		      && heap_get_class_oid_from_page (thread_p, page_p, &page_class_oid) == NO_ERROR
+		      && OID_EQ (&page_class_oid, &context->class_oid))
+		    {
+		      page_valid = true;
+		      freespace = spage_max_space_for_new_record (thread_p, page_p);
+		    }
+
+		  if (page_valid && freespace >= needed_size)
+		    {
+		      /* step 5, hit: the search counts the record in the estimates when it hands out a page,
+		       * so the hint does too; otherwise the estimates miss every row that skips the search */
+		      bestspace->add_estimates (*thread_p, 0, 1, context->recdes_p->length);
+
+		      /* the search charges its handout to the recorded free space; the hint does the same,
+		       * but only when the page changes tier, since the L2/L3 bitmaps index by tier.
+		       *
+		       * The L1 pre-filter and the candidate queue compare the exact value,
+		       * so an entry left high within its tier costs one wasted page fix,
+		       * and the searcher that fixed the page writes back the measured value */
+		      std::uint16_t freespace_after = (std::uint16_t) (freespace - consume_size);
+
+		      // *INDENT-OFF*
+		      if (cubstorage::bestspace::size_to_tier (freespace_after)
+			  != cubstorage::bestspace::size_to_tier ((std::uint16_t) freespace))
+			{
+			  bestspace->update_freespace (hint_vpid, freespace_after,
+						       context->scan_cache_p->insert_hint_l1_pos);
+			}
+		      // *INDENT-ON*
+
+		      hint_valid = true;
+		    }
+		  else
+		    {
+		      /* step 5, miss: the page is too full or no longer this class's heap page -- drop the hint */
+		      er_clear ();	/* a failed header read is already logged */
+
+		      /* correct the recorded free space once before the hint is dropped,
+		       * so the next searcher reads the measured free space */
+		      if (page_valid)
+			{
+			  // *INDENT-OFF*
+			  bestspace->update_freespace (hint_vpid, (std::uint16_t) freespace,
+						       context->scan_cache_p->insert_hint_l1_pos);
+			  // *INDENT-ON*
+			}
+		      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+		      heap_scancache_reset_insert_hint (context->scan_cache_p);
+		    }
+		}
+	      else if (error_code == ER_LK_PAGE_TIMEOUT)
+		{
+		  /* step 6, contended: the page is not gone -- keep the hint */
+		  er_clear ();
+		  error_code = NO_ERROR;
+		}
+	      else if (error_code == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+		{
+		  /* step 6, deallocated: the hint page is gone -- drop the hint */
+		  heap_scancache_reset_insert_hint (context->scan_cache_p);
+		  er_clear ();
+		  error_code = NO_ERROR;
+		}
+	      else
+		{
+		  /* step 6, other error: interruption, I/O failure, ... -- not a hint miss */
+		  if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		    }
+		  return error_code;
+		}
+	    }
+	}
+
       /* find and fix page for insert */
-      if (heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, true,
-			      context->home_page_watcher_p) != NO_ERROR)
+      if (!hint_valid
+	  && heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, true,
+				 context->home_page_watcher_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -24199,6 +24347,19 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
+  /* save the page of this insert as the hint; the next insert of this scan tries it first */
+  if (rc == NO_ERROR && context->scan_cache_p != NULL && !OID_ISNULL (&context->res_oid))
+    {
+      VPID res_vpid;
+
+      VPID_SET (&res_vpid, context->res_oid.volid, context->res_oid.pageid);
+      if (!VPID_EQ (&res_vpid, &context->scan_cache_p->insert_hint_vpid))
+	{
+	  context->scan_cache_p->insert_hint_l1_pos = -1;	/* unknown position in the bestspace L1 arrays */
+	}
+      context->scan_cache_p->insert_hint_vpid = res_vpid;
+    }
+
   /* all ok */
   heap_unfix_watchers (thread_p, context);
 
@@ -24419,6 +24580,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
+  SERIAL_ROW_WRITE serial_write;
+  record_descriptor serial_merged;
+  RECDES serial_merged_recdes;
+  RECDES *client_recdes_p = context->recdes_p;
 
   /*
    * Check input
@@ -24508,6 +24673,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   CUBRID_OBJ_UPDATE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
+  serial_row_write_begin (thread_p, &context->class_oid, &serial_write);
+
   /*
    * Get location
    */
@@ -24552,6 +24719,23 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+    }
+
+  /* a _db_serial row keeps the value NEXT_VALUE wrote in place since the client read it */
+  if (serial_write.active && context->record_type == REC_HOME)
+    {
+      rc = serial_row_write_keep_value (thread_p, &serial_write, &context->oid, &context->home_recdes,
+					context->recdes_p, &serial_merged);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (serial_write.merged)
+	{
+	  serial_merged_recdes = serial_merged.get_recdes ();
+	  serial_merged_recdes.type = context->recdes_p->type;
+	  context->recdes_p = &serial_merged_recdes;
 	}
     }
 
@@ -24650,6 +24834,9 @@ exit:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+
+  context->recdes_p = client_recdes_p;
+  serial_row_write_end (thread_p, &serial_write);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));

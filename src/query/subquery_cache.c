@@ -260,7 +260,7 @@ sq_cmp_func (const void *key1, const void *key2)
 
   for (i = 0; i < sz1; i++)
     {
-      if (!mht_compare_dbvalues_are_equal (k1->dbv_array[i], k2->dbv_array[i]))
+      if (!mht_compare_dbvalues_are_identical (k1->dbv_array[i], k2->dbv_array[i]))
 	{
 	  return 0;
 	}

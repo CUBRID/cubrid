@@ -48,7 +48,7 @@ on:
         default: "0"
         type: string
       rerun_from:
-        description: "Re-run only the cases that failed in this run id. Takes precedence over limit"
+        description: "Re-run only what this run id left unhandled, plus the cases the tc branch changed since. Takes precedence over limit"
         required: false
         default: ""
         type: string
@@ -261,17 +261,17 @@ jobs:
               fi
               if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
-                # No run directory here: the source run's job names carry the suites.
+                # No run directory here: the source run's job names carry the suites. Every suite, as
+                # a passed one may have changed cases; one that had nothing to re-run left only a status job.
                 runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
-                  --jq '.jobs[] | select(.name | startswith("shard ")) | [.conclusion, .name] | @tsv') || {
+                  --jq '.jobs[] | select(.name | test("^(shard|status) ")) | .name') || {
                   echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
                 known=$(jq -r 'keys | join("|")' <<<"$SUITES")
                 sel=$(printf '%s\n' "$runjobs" \
-                  | awk -F'\t' -v k="^(${known})$" \
-                        '$1 != "success" {split($2, a, " "); if (a[2] ~ k) print a[2]}' \
+                  | awk -v k="^(${known})$" '{split($0, a, " "); if (a[2] ~ k) print a[2]}' \
                   | sort -u)
                 if [ -z "$sel" ]; then
-                  echo "::error::run ${rerun} left no failed shard to re-run: every shard passed, or the run predates per-suite shard names. Use /run shell, sql or all"
+                  echo "::error::run ${rerun} ran no suite: it only built, or it predates per-suite job names. Use /run shell, sql or all"
                   emit run false
                   exit 0
                 fi
@@ -554,12 +554,19 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           [ "$CACHE_WRITE" = 'true' ] || export CCACHE_READONLY=1 CCACHE_NOSTATS=1
           export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
+          # The node's counters are shared by concurrent builds and off in PR builds: a build counts its own in this log.
+          export CCACHE_LOGFILE="$RUNNER_TEMP/ccache.log"
           mkdir -p "$CCACHE_TEMPDIR"
           [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
           # No -j: ninja reads the cgroup quota.
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
+          echo "ccache, the node's cache, cumulative over develop pushes:"
           ccache -s
+          awk '/Result: cache hit \(direct\)/ {d++} /Result: cache hit \(preprocessed\)/ {p++} /Result: cache miss/ {m++}
+            END {t = d + p + m; if (t) printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %.2f %%\n", d, p, m, 100 * (d + p) / t
+              else print "::warning::no cache hit or miss in " FILENAME ", so ccache changed its log wording or no compile went through it"}' \
+            "$CCACHE_LOGFILE" || echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
 
       - name: 4. Publish, staged then moved in with one rename
         env:
@@ -763,6 +770,7 @@ jobs:
           INPUT_PR: ${{ needs.gate.outputs.pr }}
           INPUT_TT: ${{ needs.gate.outputs.testtools }}
           TC_UNTIL: ${{ needs.gate.outputs.tc_until }}
+          RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
         run: |
           echo "::add-mask::$GHI_TOKEN"
           eval "$OVERLAY"
@@ -859,6 +867,29 @@ jobs:
             printf '%s\n' "$TC_BRANCH" > "/tmp/tc.$repo.branch"
             done_repos="$done_repos $repo"
           done
+
+          if [ -n "$RERUN_FROM" ]; then
+            for suite in $SUITES_RUN; do
+              repo=$(attr "$suite" tc_repo)
+              dir="$WORKDIR/$repo"
+              : > "/tmp/tc.$suite.diff"
+              : > "/tmp/tc.$suite.since"
+              meta="$CI_ROOT/runs/$RERUN_FROM/$suite/plan/split.meta"
+              # The split step says why the source run is unusable.
+              [ -f "$meta" ] || continue
+              since=$(sed -n "s/^tc_sha='\(.*\)'\$/\1/p" "$meta")
+              [[ "$since" =~ ^[0-9a-f]{40}$ ]] || {
+                echo "::error::run $RERUN_FROM recorded no $suite tc commit, so what changed since is unknown. Use /run $suite"; exit 1; }
+              if ! git -C "$dir" cat-file -e "$since^{commit}" 2>/dev/null; then
+                use_token
+                git -C "$dir" fetch -q --depth 1 "https://github.com/CUBRID/${repo}.git" "$since" || {
+                  echo "::error::could not fetch $repo $since, the tc commit run $RERUN_FROM read"; exit 1; }
+              fi
+              git -C "$dir" diff --name-status -M "$since" HEAD -- "$suite/" > "/tmp/tc.$suite.diff"
+              echo "$since" > "/tmp/tc.$suite.since"
+              echo "$suite: $(wc -l < "/tmp/tc.$suite.diff") paths changed in $(cat "/tmp/tc.$repo.branch") since $since"
+            done
+          fi
           echo "refresh WAN: $(( ($(wan) - rx0) / 1048576 )) MB · /rw $(df -h /rw | awk 'END {print $3}') used"
           {
             echo "ctp_sha=$(git -C "$WORKDIR/cubrid-testtools" rev-parse HEAD)"
@@ -890,7 +921,7 @@ jobs:
             dir="$WORKDIR/$repo"
             root="$dir/$suite"
             out="$rundir/$suite"
-            want=0; unrun=0; short=0; gone=0
+            unrun=0; short=0; gone=0; nfail=0; changed=0
 
             # After the previous step's checkout: its reset --hard brings $excl back.
             [ -z "$excl" ] || rm -rf "${root:?}/$excl"
@@ -917,14 +948,16 @@ jobs:
                 fi
                 exit 1
               fi
-              prev_sha=$(find "$rd/$suite/shard" -mindepth 2 -maxdepth 2 -name build.read \
+              srcdir="$rd/$suite"
+              prev_sha=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec awk -F= '/^sha=/ {print $2}' {} + 2>/dev/null | sort -u) || prev_sha=''
+              # A suite with nothing to re-run had no shard, so only plan recorded the commit.
+              [ -n "$prev_sha" ] || prev_sha=$(awk -F= '/^sha=/ {print $2}' "$srcdir/plan/split.meta" 2>/dev/null) || prev_sha=''
               if [ "$(printf '%s' "$prev_sha" | grep -c . || :)" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
                 exit 1
               fi
               # A shard that died whole left no result file for failed.list: carry its share.
-              srcdir="$rd/$suite"
               : > /tmp/unrun.list
               for sf in "$srcdir"/plan/shards/*.list; do
                 [ -f "$sf" ] || continue
@@ -944,19 +977,32 @@ jobs:
                 done < "$srcdir/plan/plan.tsv"
               fi
               cut -f2 "$src" | sed "s#^#$repo/#" > /tmp/want.list
+              nfail=$(wc -l < /tmp/want.list)
               # The whole directory: a case is not known to be safe on its own.
               [ "$unit" != dir ] || sed -i "s#^\($repo/$suite/[^/]*\)/.*#\1#" /tmp/want.list
               cat /tmp/unrun.list >> /tmp/want.list
               sort -u -o /tmp/want.list /tmp/want.list
-              want=$(wc -l < /tmp/want.list)
               [ "$short" -eq 0 ] || echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled. Nothing names them, so this re-run cannot pass"
-              # A deleted unit and a renamed one look alike, so the re-run cannot pass over either.
-              grep -xF -f /tmp/want.list /tmp/all.list > /tmp/sel.list || : > /tmp/sel.list
-              gone=$((want - $(wc -l < /tmp/sel.list)))
+              # A re-run's shards list cases even where the suite's unit is a directory.
+              sort -u /tmp/all.list /tmp/cases.list | grep -xF -f /tmp/want.list > /tmp/sel.list || : > /tmp/sel.list
+              # Deleted or renamed by the tc branch since, or a top-level directory it emptied: gone on purpose.
+              awk -F'\t' -v r="$repo/" -v s="$suite" '$1 ~ /^[DR]/ {
+                  print r $2; if (match($2, "^" s "/[^/]+/")) print r substr($2, 1, RLENGTH - 1) }' \
+                "/tmp/tc.$suite.diff" > /tmp/left.list
+              { grep -vxF -f /tmp/sel.list /tmp/want.list || :; } | { grep -vxF -f /tmp/left.list || :; } > /tmp/gone.list
+              gone=$(wc -l < /tmp/gone.list)
               if [ "$gone" -gt 0 ]; then
-                echo "::warning::$gone are no longer in the tree (deleted or renamed), so this re-run cannot pass"
-                comm -23 /tmp/want.list <(sort /tmp/sel.list) | sed 's/^/  gone: /'
+                echo "::warning::$gone are no longer in the tree, and the tc branch did not delete or rename them since, so this re-run cannot pass"
+                sed 's/^/  gone: /' /tmp/gone.list
               fi
+              # By case, so keep holds just the cases/ directories named: a failed directory becomes its cases.
+              awk -F/ 'NR == FNR {d[$0]; next} $0 in d || ($1 "/" $2 "/" $3) in d' /tmp/sel.list /tmp/cases.list > /tmp/sel.cases
+              awk -F'\t' '$1 !~ /^D/ {print $NF}' "/tmp/tc.$suite.diff" \
+                | sed -nE "s#^(${suite}/.*)/(cases|answers)/[^/]+\$#${repo}/\1/cases#p" | sort -u > /tmp/changed.dirs
+              awk 'NR == FNR {d[$0]; next} {p = $0; sub(/\/[^\/]*$/, "", p)} p in d' /tmp/changed.dirs /tmp/cases.list > /tmp/changed.list
+              changed=$(wc -l < /tmp/changed.list)
+              sort -u /tmp/sel.cases /tmp/changed.list > /tmp/sel.list
+              unit=case
             elif [ "$LIMIT" -gt 0 ]; then
               head -"$LIMIT" /tmp/all.list > /tmp/sel.list
             else
@@ -968,12 +1014,9 @@ jobs:
             nunit=$(wc -l < /tmp/units.tsv)
             total=$(awk -F'\t' '{s+=$2} END {print s+0}' /tmp/units.tsv)
             if [ "$nunit" -eq 0 ]; then
-              if [ -n "$RERUN_FROM" ]; then
-                echo "::error::nothing to run: none of the $want ${unit}s run $RERUN_FROM left unhandled can run now. Use /run $suite"
-              else
-                echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
-              fi
-              exit 1
+              [ -n "$RERUN_FROM" ] || { echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"; exit 1; }
+              echo "::notice::$suite: nothing to re-run, so no shard"
+              par=0
             fi
             # More shards than units leaves the tail empty, and the matrix loop below rejects an empty shard.
             if [ "$par" -gt "$nunit" ]; then
@@ -1005,6 +1048,20 @@ jobs:
                 END { print timed + 0 > "/tmp/timed.count" }
               ' /tmp/units.tsv | sort -rn -k1,1 -k2,2 > /tmp/sorted.tsv
               timed=$(cat /tmp/timed.count)
+              # A develop merge into the tc branch can bring in hundreds of cases. Past 90 minutes one
+              # shard nears the shard job's timeout-minutes (120). Not where a cases/ directory holds
+              # many cases: keep would run all of them on every shard that got one.
+              if [ -n "$RERUN_FROM" ] && [ "$(attr "$suite" unit)" = case ]; then
+                load=$(awk -F'\t' '{s += $1} END {printf "%d", s}' /tmp/sorted.tsv)
+                if [ "$load" -gt 5400 ]; then
+                  par=$(( (load + 1799) / 1800 ))
+                  max=$(attr "$suite" par_default)
+                  [ "$par" -le "$max" ] || par="$max"
+                  [ "$par" -le "$nunit" ] || par="$nunit"
+                  runner=$(attr "$suite" runner)
+                  echo "::notice::$suite: the re-run would take about $((load / 60)) minutes on one shard, so it runs on $par shards on $runner"
+                fi
+              fi
               awk -v par="$par" '
                 BEGIN { FS = "\t"; for (i = 0; i < par; i++) load[i] = 0 }
                 {
@@ -1047,9 +1104,12 @@ jobs:
             done
             cp /tmp/plan.tsv "$out/plan/plan.tsv"
             cp /tmp/sel.list "$out/plan/cases.list"
+            [ -z "$RERUN_FROM" ] || cp /tmp/changed.list "$out/plan/changed.list"
             # Quoted: shard and collect source it.
             {
               echo "total=$total"
+              echo "unit=$unit"
+              echo "sha=$SHA"
               echo "units=$nunit"
               echo "par=$par"
               echo "timed=$timed"
@@ -1058,6 +1118,9 @@ jobs:
               echo "rerun_unrun=$unrun"
               echo "rerun_short=$short"
               echo "rerun_gone=$gone"
+              echo "rerun_failed=$nfail"
+              echo "rerun_changed=$changed"
+              echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
             } > "$out/plan/split.meta"
 
             case "$SABOTAGE" in
@@ -1106,7 +1169,8 @@ jobs:
     name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
     # success() is false for a failed job anywhere behind this one, such as the release leg.
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    # An empty matrix is a re-run with nothing to run; GitHub fails a job that expands to none.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]' }}
     permissions: {}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
@@ -1137,7 +1201,6 @@ jobs:
           {
             echo "TC_DIR=$WORKDIR/$(attr tc_repo)"
             echo "TC_SEED=$(attr tc_seed)"
-            echo "UNIT=$(attr unit)"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
           echo "tc_private=$(attr tc_private)" >> "$GITHUB_OUTPUT"
@@ -1230,7 +1293,10 @@ jobs:
           printf 'tc_sha=%s\ntc_branch=%s\n' "$(git -C "$TC_DIR" rev-parse HEAD)" "$tc_branch" > "$SHARD_DIR/tc.read"
 
       - name: Keep only my share
-        run: /entrypoint.sh keep "$UNIT" "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
+        # From plan, not the suite table: a re-run splits by case.
+        run: |
+          . "$PLAN_DIR/split.meta"
+          /entrypoint.sh keep "$unit" "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
 
       - name: Run CTP
         id: ctp
@@ -1514,6 +1580,7 @@ jobs:
             }
             read -r reason uniq_n <<<"$(agree "$d/shard/*/build.read" run_id "$BRID")"
             read -r tc_reason tc_uniq <<<"$(agree "$d/shard/*/tc.read" tc_sha "$tc_sha")"
+            [ "$total" -gt 0 ] || { reason=no-shard; tc_reason=no-shard; }
 
             covered=$((exec_sum + skip_sum))
             v_cov="OK"; [ "$covered" -ge "$total" ] || v_cov="FAIL"
@@ -1523,6 +1590,7 @@ jobs:
               ok)       v_same="OK all the same" ;;
               mixed)    v_same="FAIL shards differ ($uniq_n distinct)" ;;
               mismatch) v_same="FAIL all the same, but not the build plan verified" ;;
+              no-shard) v_same="no shard, nothing to read" ;;
               *)        v_same="FAIL nobody recorded a provenance" ;;
             esac
             v_this="OK"; [ "$BRID" = "$GITHUB_RUN_ID" ] || v_this="reused"
@@ -1531,6 +1599,7 @@ jobs:
               ok)       v_tcsame="OK all the same" ;;
               mixed)    v_tcsame="FAIL shards differ ($tc_uniq distinct)" ;;
               mismatch) v_tcsame="FAIL all the same, but not what plan chose" ;;
+              no-shard) v_tcsame="no shard, nothing to read" ;;
               *)        v_tcsame="FAIL nobody recorded a tc provenance" ;;
             esac
             . "/tmp/clock.$suite"
@@ -1539,14 +1608,29 @@ jobs:
               echo "## gha-ci: $suite suite"
               echo
               if [ -n "$RERUN_FROM" ]; then
-                echo "> **Only what run \`$RERUN_FROM\` left unhandled was re-run. This is not a full run.**"
+                echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were re-run. This is not a full run.**"
                 echo ">"
-                echo "> carried over: $total cases in $units unit(s) — its failures, plus $rerun_unrun cases that never ran because a shard died whole."
+                if [ "$total" -gt 0 ]; then
+                  echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because a shard died whole, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\` or \`medium\` failure brings its top-level directory."
+                elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
+                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. The verdict of run \`$RERUN_FROM\` stands.**"
+                elif [ "${rerun_gone:-0}" -eq 0 ]; then
+                  echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
+                else
+                  echo "> **Nothing to re-run: none of the cases run \`$RERUN_FROM\` failed or never ran is in the tree now.**"
+                fi
                 [ "${rerun_short:-0}" -eq 0 ] || echo "> **$rerun_short more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
-                [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree (deleted or renamed), so this run cannot pass.**"
+                [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree, and \`$tc_branch\` did not delete or rename them since, so this run cannot pass.**"
                 echo ">"
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
                 echo
+                if [ "${rerun_changed:-0}" -gt 0 ]; then
+                  echo "### Cases in the \`cases/\` directories changed since run \`$RERUN_FROM\` ($rerun_changed)"
+                  echo
+                  head -50 "$d/plan/changed.list" | sed "s#^$repo/##" | awk '{print "- `" $0 "`"}'
+                  [ "$rerun_changed" -le 50 ] || echo "_... and $((rerun_changed - 50)) more. The full list is [\`changed.list\`]($ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/plan/changed.list)._"
+                  echo
+                fi
               fi
               if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
                 echo "> **Attempt $GITHUB_RUN_ATTEMPT.** GitHub's _Re-run failed jobs_ ran only the jobs that failed, so a stage that did not run again reads \`(not measured)\` below. This is not \`/run rerun\`, which starts a new run."
@@ -1631,11 +1715,15 @@ jobs:
                 awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
                 echo
               fi
-              if [ -n "$PR" ] && { [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; }; then
+              if [ -n "$PR" ]; then
                 # The CTP branch has to ride along, or the re-run silently takes develop.
                 rerun_cmd="/run rerun $GITHUB_RUN_ID"
                 [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
-                echo "Re-run the failures and everything that never ran: \`$rerun_cmd\`"
+                if [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; then
+                  echo "Re-run the failures, everything that never ran, and the cases changed in \`$tc_branch\` since: \`$rerun_cmd\`"
+                else
+                  echo "Added or fixed cases in \`$tc_branch\`, and the engine is unchanged? Run only those: \`$rerun_cmd\`"
+                fi
                 echo
               fi
               echo "[Artifacts]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/)"
@@ -1643,36 +1731,48 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
 
             # A shard dying whole is invisible to guard 2.
-            srb=0
+            srb=0; held=''
             fault() { echo "::error::$suite: $1"; srb=1; }
+            # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
+            hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
             [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
             [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
             [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
             case "$reason" in
-              ok) ;;
-              mixed)    fault "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
-              mismatch) fault "every shard read the same build, but not the one from the run plan verified ($BRID)" ;;
+              ok|no-shard) ;;
+              mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
+              mismatch) hold "every shard read the same build, but not the one from the run plan verified ($BRID)" ;;
               *)        fault "no shard recorded a build provenance" ;;
             esac
             [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
             case "$tc_reason" in
-              ok) ;;
-              mixed)    fault "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
-              mismatch) fault "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
+              ok|no-shard) ;;
+              mixed)    hold "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
+              mismatch) hold "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
               *)        fault "no shard recorded a tc provenance" ;;
             esac
             [ "$fail_sum" -eq 0 ] || fault "$fail_sum failed"
             # A re-run replaces the source's status, so it must not pass over cases it did not run.
             if [ -n "$RERUN_FROM" ]; then
-              [ "${rerun_short:-0}" -eq 0 ] || fault "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
-              [ "${rerun_gone:-0}" -eq 0 ] || fault "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree (deleted or renamed). Use /run $suite"
+              [ "${rerun_short:-0}" -eq 0 ] || hold "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
+              [ "${rerun_gone:-0}" -eq 0 ] || hold "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree, and $tc_branch did not delete or rename them since. Use /run $suite"
+              from="$CI_ROOT/runs/$RERUN_FROM/$suite/collect"
+              if [ -f "$from/held" ]; then
+                [ ! -s "$from/held" ] || hold "run $RERUN_FROM was red for what no re-run clears: $(cat "$from/held"). Use /run $suite" "$(cat "$from/held")"
+              # A run from before held was recorded: the cause of its red is unknown, so with nothing
+              # re-run it stands.
+              elif [ "$total" -eq 0 ]; then
+                prev=$(cat "$from/verdict" 2>/dev/null || echo none)
+                [ "$prev" = pass ] || hold "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
+              fi
             fi
 
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
-            unset total units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
-                  shard_max shard_med shard_span shard_n
+            printf '%s' "$held" > "$d/collect/held"
+            unset total unit sha units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
+                  rerun_failed rerun_changed rerun_since shard_max shard_med shard_span shard_n
           done
 
           {

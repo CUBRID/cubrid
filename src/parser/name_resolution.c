@@ -255,6 +255,7 @@ static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * nod
 static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						   int *continue_walk);
+static PT_NODE *pt_bind_cte_null_name_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
 						   PT_NODE * derived_table, PT_NODE * derived_name);
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
@@ -11413,7 +11414,8 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, cte_def);
 
       /* the attributes of cte self references specs can now be computed correctly */
-      recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
+      recursive_cte =
+	parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, recursive_cte, NULL, NULL);
     }
 
 end:
@@ -11428,7 +11430,7 @@ end:
  *   return:
  *   parser(in):
  *   node(in):
- *   arg(in/out):
+ *   arg(in): the recursive part
  *   continue_walk(in/out):
  */
 static PT_NODE *
@@ -11442,7 +11444,40 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
 
   pt_bind_spec_attrs (parser, node);
 
+  /* names bound while the column was an untyped NULL take the final type of the column */
+  (void) parser_walk_tree (parser, (PT_NODE *) arg, pt_bind_cte_null_name_types, node, NULL, NULL);
+
   *continue_walk = PT_LIST_WALK;
+
+  return node;
+}
+
+/*
+ * pt_bind_cte_null_name_types () - give a name of a CTE self reference spec, bound while the CTE column was an
+ *				    untyped NULL, the final type of the column
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in): the CTE self reference spec
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_bind_cte_null_name_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+  PT_NODE *col;
+
+  if (node->node_type != PT_NAME || node->type_enum != PT_TYPE_NULL || node->info.name.spec_id != spec->info.spec.id)
+    {
+      return node;
+    }
+
+  col = pt_is_on_list (parser, node, spec->info.spec.as_attr_list);
+  if (col != NULL && col->type_enum != PT_TYPE_NULL)
+    {
+      node->type_enum = col->type_enum;
+      node->data_type = parser_copy_tree_list (parser, col->data_type);
+    }
 
   return node;
 }
@@ -11493,7 +11528,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
     case PT_IS_SUBQUERY:
       /* must be a subquery derived table */
       /* select_list must have passed star expansion */
-      PT_NODE * att, *col;
+      PT_NODE * att, *col, *name_att;
 
       select_list = pt_get_select_list (parser, derived_table);
       if (!select_list)
@@ -11509,20 +11544,23 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 	    }
 	  else
 	    {
-	      if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
+	      name_att = PT_IS_CAST_OF_UNTYPED_NULL (att) ? att->info.expr.arg1 : att;
+	      if (name_att->node_type == PT_NAME && name_att->info.name.original != NULL
+		  && name_att->info.name.original[0] != '\0')
 		{
-		  col = pt_name (parser, att->info.name.original);
+		  col = pt_name (parser, name_att->info.name.original);
 		}
-	      else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
+	      else if (name_att->node_type == PT_VALUE && name_att->info.value.text != NULL
+		       && name_att->info.value.text[0] != '\0')
 		{
-		  col = pt_name (parser, att->info.value.text);
+		  col = pt_name (parser, name_att->info.value.text);
 		}
-	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
+	      else if (name_att->node_type == PT_EXPR || name_att->node_type == PT_FUNCTION)
 		{
 		  PARSER_VARCHAR *alias;
 		  save_custom = parser->custom_print;
 		  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-		  alias = pt_print_bytes (parser, att);
+		  alias = pt_print_bytes (parser, name_att);
 		  parser->custom_print = save_custom;
 		  col = pt_name (parser, (const char *) alias->bytes);
 		}

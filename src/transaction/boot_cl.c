@@ -1185,7 +1185,8 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
   if (tran_index == NULL_TRAN_INDEX)
     {
       assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      error_code = er_errid ();
+      goto error;
     }
 
   if (!is_sub_client)
@@ -1194,19 +1195,22 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
       if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error_code = er_errid ();
+	  goto error;
 	}
       if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error_code = er_errid ();
+	  goto error;
 	}
 
       /* Reset the pagesize according to server.. */
       if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error_code = er_errid ();
+	  goto error;
 	}
 
       /* Reset the disk_level according to server.. */
@@ -1217,7 +1221,8 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 #endif /* CS_MODE */
       if (sysprm_init_intl_param () != NO_ERROR)
 	{
-	  return er_errid ();
+	  error_code = er_errid ();
+	  goto error;
 	}
     }
 
@@ -1311,6 +1316,16 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
     }
 
   return NO_ERROR;
+
+error:
+  /* Protect against falsely returning NO_ERROR to caller */
+  if (error_code == NO_ERROR)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  return error_code;
 }
 
 /*

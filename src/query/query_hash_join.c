@@ -2757,6 +2757,8 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
 	  if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	    {
+	      /* the FHSID has no valid files; free it so that hjoin_scan_clear does not destroy them */
+	      db_private_free_and_init (thread_p, hash_scan->file.hash_table);
 	      goto error_exit;
 	    }
 

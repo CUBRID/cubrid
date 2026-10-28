@@ -1191,6 +1191,24 @@ update_auto_increment_error:
 }
 
 /*
+ * do_flush_serial_restart () - write a _db_serial row that restarts the serial
+ *   return: Error code
+ *   serial_object(in): the row, its current_val and started set by the restart
+ *
+ * Without the flag the server keeps the current_val and started on the page (serial_row_write_keep_value ()).
+ */
+static int
+do_flush_serial_restart (MOP serial_object)
+{
+  int error;
+
+  serial_object->serial_restart = 1;
+  error = locator_flush_instance (serial_object);
+  serial_object->serial_restart = 0;
+  return error;
+}
+
+/*
  * do_reset_auto_increment_serial() -
  *   return: Error code
  *   serial_obj(in/out):
@@ -1256,7 +1274,7 @@ do_reset_auto_increment_serial (MOP serial_obj)
   assert (edit_serial_object == serial_object);
   obj_tmpl = NULL;
 
-  error_code = locator_flush_instance (edit_serial_object);
+  error_code = do_flush_serial_restart (edit_serial_object);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1431,7 +1449,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
   assert (edit_serial_object == serial_object);
   obj_tmpl = NULL;
 
-  error_code = locator_flush_instance (edit_serial_object);
+  error_code = do_flush_serial_restart (edit_serial_object);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -2480,6 +2498,10 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
    */
   assert (WS_ISDIRTY (serial_mop) == false);
 
+  /* as in do_alter_serial: decache before the refetch takes the write lock; under it the write-back would be
+   * skipped with HA, and the template's block end would overwrite it at commit */
+  (void) serial_decache ((OID *) (&serial_obj_id));
+
   ws_decache (serial_mop);
 
   /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */
@@ -3294,6 +3316,15 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* obj_tmpl has been released by dbt_finish_object */
   obj_tmpl = NULL;
+
+  if (cur_val_change)
+    {
+      error = do_flush_serial_restart (serial_object);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
 
 end:
   if (!OID_ISNULL (&serial_obj_id))

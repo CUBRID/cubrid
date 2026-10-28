@@ -5462,9 +5462,9 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  if (PT_IS_NAME_NODE (arg1) && PT_IS_VALUE_NODE (arg2)
 	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)) && arg1_type != PT_TYPE_ENUMERATION)
 	    {
-	      if (arg1_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+	      if ((arg1_type == PT_TYPE_NA || arg1_type == PT_TYPE_NULL) && common_type != PT_TYPE_NULL)
 		{
-		  /* NA column vs constant: use inferred type (e.g. string literal) */
+		  /* NA or all-NULL column vs constant: use inferred type (e.g. string literal) */
 		  arg1_eq_type = arg2_eq_type = common_type;
 		}
 	      else
@@ -5473,7 +5473,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		}
 	      if (arg3_type != PT_TYPE_NONE)
 		{
-		  arg3_eq_type = arg1_type;
+		  arg3_eq_type = (arg1_type == PT_TYPE_NULL) ? arg1_eq_type : arg1_type;
 		}
 
 	      /* if column type is number (except NUMERIC) and operator is not EQ cast const node to DOUBLE to enhance
@@ -5494,7 +5494,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1) && arg3_type == PT_TYPE_NONE
 		   && arg2_type != PT_TYPE_ENUMERATION)
 	    {
-	      if (arg2_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+	      if ((arg2_type == PT_TYPE_NA || arg2_type == PT_TYPE_NULL) && common_type != PT_TYPE_NULL)
 		{
 		  arg1_eq_type = arg2_eq_type = common_type;
 		}
@@ -7551,6 +7551,11 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		break;
 	      }
 	    common_type = pt_common_type (common_type, PT_TYPE_ENUMERATION);
+	    if (common_type == PT_TYPE_MAYBE)
+	      {
+		/* an ENUM with an undetermined argument is resolved as a string, as with a string literal */
+		common_type = PT_TYPE_VARCHAR;
+	      }
 	    recurs_expr = node;
 	    while (PT_IS_RECURSIVE_EXPRESSION (recurs_expr) && op == recurs_expr->info.expr.op)
 	      {
@@ -9892,6 +9897,11 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  else
 	    {
 	      common_type = (arg2_type == PT_TYPE_MAYBE) ? arg3_type : arg2_type;
+	      if (common_type == PT_TYPE_ENUMERATION)
+		{
+		  /* an ENUM with an undetermined argument is resolved as a string, as with a string literal */
+		  common_type = PT_TYPE_VARCHAR;
+		}
 	    }
 	}
       else
@@ -18641,6 +18651,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  has_error = true;
 	  goto end;
 	}
+    }
+  else if (opd1 && (opd1->type_enum == PT_TYPE_NA || opd1->type_enum == PT_TYPE_NULL) && pt_is_range_expression (op)
+	   && opd2 && PT_IS_QUERY_NODE_TYPE (opd2->node_type))
+    {
+      /* NULL <quantified comparison> (subquery) depends on the subquery result: when the subquery returns no row it
+       * is TRUE for ALL and NOT IN and FALSE for SOME and IN, otherwise it is UNKNOWN. Leave it to run time. */
+      goto end;
     }
   else if (opd1
 	   && ((opd1->node_type == PT_VALUE
