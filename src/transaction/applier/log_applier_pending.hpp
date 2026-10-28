@@ -29,6 +29,6 @@ extern int la_pending_push (const LA_TASK *task);
 extern bool la_pending_pop_ready (LA_TASK *task);
 extern void la_pending_clear (void);
 extern bool la_pending_is_empty (void);
-extern void la_pending_foreach (void (*fn) (const LA_TASK * task, void *arg), void *arg);
+extern void la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg);
 
 #endif /* _LOG_APPLIER_PENDING_HPP_ */

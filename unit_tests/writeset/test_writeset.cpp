@@ -218,7 +218,7 @@ make_string_int_key (DB_VALUE *key, TP_DOMAIN **domain_out, int collation_id, in
   DB_MIDXKEY midxkey;
 
   string_domain = tp_domain_copy (tp_domain_resolve (DB_TYPE_VARCHAR, NULL, string_precision, 0, NULL,
-						     collation_id), false);
+				  collation_id), false);
   int_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_INTEGER), false);
   REQUIRE (string_domain != NULL);
   REQUIRE (int_domain != NULL);

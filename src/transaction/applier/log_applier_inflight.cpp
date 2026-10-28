@@ -218,7 +218,7 @@ la_inflight_entry_at (int pos)
       return NULL;
     }
 
-  return &la_Inflight.entries[(la_Inflight.head + pos) % la_Inflight.capacity];
+  return &la_Inflight.entries[ (la_Inflight.head + pos) % la_Inflight.capacity];
 }
 
 static LA_INFLIGHT_ENTRY *
