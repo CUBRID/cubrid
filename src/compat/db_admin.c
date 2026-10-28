@@ -167,7 +167,7 @@ static CUB_THREAD_LOCAL bool db_Is_sub_client_registered = false;
 
 /*
  * db_register_sub_client () - register the calling thread as a sub-client
- *   return: NO_ERROR, or ER_FAILED if the main client is not ready
+ *   return: NO_ERROR, or ER_MAIN_CLIENT_NOT_READY if the main client is not ready
  *   client_credential(out): copy of the credential of the main client
  */
 static int
@@ -179,8 +179,11 @@ db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   if (g_ready_to_sub.load (std::memory_order_acquire) == false)
     {
-      // TODO: Assign independent error codes.
-      return ER_FAILED;
+      /*
+       * The error is not set: the main client may be finalizing or initializing the error manager in db_restart ()
+       * or db_shutdown () (see db_shutdown_sub ()).
+       */
+      return ER_MAIN_CLIENT_NOT_READY;
     }
 
   *client_credential = gv_client_credential;
@@ -1030,8 +1033,8 @@ db_restart (const char *program, int print_version, const char *volume)
     if (g_num_sub_clients > 0)
       {
 	/* restarting the main client finalizes the client modules shared with the alive sub-clients */
-	er_log_debug (ARG_FILE_LINE, "db_restart: %d sub-clients are still alive\n", g_num_sub_clients);
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENTS_ALIVE, 2, "db_restart", g_num_sub_clients);
+	return ER_SUB_CLIENTS_ALIVE;
       }
 
     /*
@@ -1123,8 +1126,9 @@ db_restart_sub (int sub_index)
   if (db_is_main_client_thread ())
     {
       /* the main client thread cannot be restarted as a sub-client */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENT_ON_MAIN_THREAD, 1, "db_restart_sub");
       assert (false);
-      return ER_FAILED;
+      return ER_SUB_CLIENT_ON_MAIN_THREAD;
     }
 
   /*
@@ -1255,8 +1259,8 @@ db_shutdown (void)
     if (g_num_sub_clients > 0)
       {
 	/* shutting down the main client finalizes the client modules shared with the alive sub-clients */
-	er_log_debug (ARG_FILE_LINE, "db_shutdown: %d sub-clients are still alive\n", g_num_sub_clients);
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENTS_ALIVE, 2, "db_shutdown", g_num_sub_clients);
+	return ER_SUB_CLIENTS_ALIVE;
       }
 
     /* no more sub-clients can be started from now on */
@@ -1290,8 +1294,8 @@ db_shutdown_without_request_to_server (void)
     if (g_num_sub_clients > 0)
       {
 	/* finalizing the client modules shared with the alive sub-clients is skipped, as at exit */
-	er_log_debug (ARG_FILE_LINE, "db_shutdown_without_request_to_server: %d sub-clients are still alive\n",
-		      g_num_sub_clients);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENTS_ALIVE, 2, "db_shutdown_without_request_to_server",
+		g_num_sub_clients);
 	return;
       }
 
@@ -1318,8 +1322,9 @@ db_shutdown_sub ()
   if (db_is_main_client_thread ())
     {
       /* the main client must not be shut down as a sub-client */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENT_ON_MAIN_THREAD, 1, "db_shutdown_sub");
       assert (false);
-      return ER_FAILED;
+      return ER_SUB_CLIENT_ON_MAIN_THREAD;
     }
 
   if (db_Is_sub_client_registered == false)
