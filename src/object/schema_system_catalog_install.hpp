@@ -62,6 +62,10 @@ namespace cubschema
       static system_catalog_definition get_synonym ();
       static system_catalog_definition get_histogram ();
       static system_catalog_definition get_global_tran ();
+      static system_catalog_definition get_sensitivity_label ();
+      static system_catalog_definition get_sensitivity_label_grade ();
+      static system_catalog_definition get_sensitivity_label_info_type ();
+      static system_catalog_definition get_sensitivity_label_source ();
 
       // views
       static system_catalog_definition get_view_class ();

@@ -86,7 +86,11 @@ namespace cubschema
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_TRIGGER_NAME,		// "_db_trigger"
-    CT_HISTOGRAM_NAME		// "_db_histogram"
+    CT_HISTOGRAM_NAME,		// "_db_histogram"
+    CT_SENSITIVITY_LABEL_NAME,	// "_db_sensitivity_label"
+    CT_SENSITIVITY_LABEL_GRADE_NAME,	// "_db_sensitivity_label_grade"
+    CT_SENSITIVITY_LABEL_INFO_TYPE_NAME,	// "_db_sensitivity_label_info_type"
+    CT_SENSITIVITY_LABEL_SOURCE_NAME	// "_db_sensitivity_label_source"
   };
 
   static const std::vector <std::string> sm_system_vclass_names = []()
