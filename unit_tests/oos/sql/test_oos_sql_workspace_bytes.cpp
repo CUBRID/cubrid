@@ -27,6 +27,12 @@
 #include "scope_exit.hpp"
 #include "work_space.h"
 
+#if defined(LINUX)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
+#include <cstring>
 #include <map>
 #include <string>
 #include <vector>
@@ -497,6 +503,23 @@ TEST_F (OosWorkspaceBytes, InlineVariableOffsetsAndValueOrder)
 	      EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
 	      er_clear ();
 	    }
+#if defined(LINUX)
+	  const size_t page_size = sysconf (_SC_PAGESIZE);
+	  void *mapping = mmap (nullptr, 2 * page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	  ASSERT_NE (mapping, MAP_FAILED);
+	  scope_exit unmap ([&] ()
+	  {
+	    munmap (mapping, 2 * page_size);
+	  });
+	  ASSERT_EQ (mprotect ((char *) mapping + page_size, page_size, PROT_NONE), 0);
+	  char *guarded = (char *) mapping + page_size - header - width;
+	  std::memcpy (guarded, bytes.data (), header + width);
+	  OR_PUT_INT (guarded, OR_GET_INT (guarded) | (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS));
+	  RECDES truncated = { header + width, header + width, REC_HOME, guarded };
+	  EXPECT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &truncated, &attrs), ER_FAILED);
+	  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
+	  er_clear ();
+#endif
 	}
     }
 }

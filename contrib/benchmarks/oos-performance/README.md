@@ -123,13 +123,15 @@ database argument; the configuration file selection must also match.
 
 ```sh
 python3 bench.py compare --baseline /path/to/artifacts/base/summary.json \
-  --candidate /path/to/artifacts/candidate/summary.json --max-overhead-percent 5
+  --candidate /path/to/artifacts/candidate/summary.json --max-overhead-percent 2
 ```
 
 Exit status is 0 for results within the supplied instruction budget, 1 for a
 detected regression, and 2 for invalid or inconclusive evidence. The initial
-budget is 5% instructions; retained-sample spread above 2% makes the comparison
-inconclusive. The earlier historical gate used a 2% instruction budget.
+diagnostic default is 5% instructions. Use the explicit 2% limit above for final
+ordinary SELECT acceptance. Retained-sample spread above 2% makes the comparison
+inconclusive. The author accepts roughly 5% ordinary UPDATE overhead separately;
+this scan-only comparator does not measure UPDATE.
 Class 1 means actual ordinary heap records on both engines, with no
 overflow or OOS records; verify the storage path with native diagnostics. Classes
 2 (heap versus OOS), 3 (overflow versus OOS), and UPDATE performance require

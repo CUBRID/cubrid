@@ -706,17 +706,17 @@ static bool
 heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
-  int vot_entry;
+  int vot_entry, next_entry;
 
   if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
-      || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0
-      || OR_VAR_IS_NULL (recdes->data, attrepr->location))
+      || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0)
     {
       return false;
     }
 
   return (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) == NO_ERROR
-	  && OR_IS_OOS (vot_entry));
+	  && heap_recdes_get_var_offset_entry (recdes, attrepr->location + 1, &next_entry) == NO_ERROR
+	  && OR_GET_VAR_OFFSET (vot_entry) != OR_GET_VAR_OFFSET (next_entry) && OR_IS_OOS (vot_entry));
 }
 
 /*
