@@ -761,9 +761,7 @@ extern "C"
   typedef void (*PT_DBLINK_MERGE_BIND_FN) (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg);
   extern int pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn,
 					 void *arg);
-  typedef void (*PT_DBLINK_MERGE_KEY_FN) (PARSER_CONTEXT * parser, PT_NODE * target_col, PT_NODE * source_col,
-					  void *arg);
-  extern int pt_dblink_merge_walk_keys (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_KEY_FN fn, void *arg);
+  extern int pt_dblink_merge_check_keys (PARSER_CONTEXT * parser, PT_NODE * merge);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

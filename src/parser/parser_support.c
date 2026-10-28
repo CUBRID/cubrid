@@ -12150,54 +12150,100 @@ pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_
   return binds.count;
 }
 
-/* what pt_dblink_merge_walk_keys carries over the walk */
-typedef struct pt_dblink_merge_keys PT_DBLINK_MERGE_KEYS;
-struct pt_dblink_merge_keys
+/* what pt_dblink_merge_check_keys carries over the walk */
+typedef struct pt_dblink_merge_key_check PT_DBLINK_MERGE_KEY_CHECK;
+struct pt_dblink_merge_key_check
 {
-  PT_DBLINK_MERGE_KEY_FN fn;
-  void *arg;
-  int count;
+  PT_DBLINK_MERGE_REFS refs;
+  PT_NODE *merge;
 };
 
-/* pt_dblink_merge_walk_on callback: report a key's two columns */
-static bool
-pt_dblink_merge_key_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
-			  void *arg)
+/* node without the CAST type checking wrapped it in */
+static PT_NODE *
+pt_dblink_merge_unwrap_cast (PT_NODE * node)
 {
-  PT_DBLINK_MERGE_KEYS *keys = (PT_DBLINK_MERGE_KEYS *) arg;
+  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST
+      && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+    {
+      return node->info.expr.arg1;
+    }
+  return node;
+}
+
+/* pt_dblink_merge_walk_on callback: stop at the first key the sink cannot take */
+static bool
+pt_dblink_merge_check_key_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+				PT_NODE * source_col, void *arg)
+{
+  PT_DBLINK_MERGE_KEY_CHECK *check = (PT_DBLINK_MERGE_KEY_CHECK *) arg;
+  PT_NODE *arg1, *arg2;
+  PT_DBLINK_LEAF_KIND leaf1, leaf2;
 
   if (source_col != NULL)
     {
-      keys->fn (parser, target_col, source_col, keys->arg);
-      keys->count++;
+      if (target_col->type_enum == PT_TYPE_NULL && source_col->type_enum != PT_TYPE_NULL)
+	{
+	  /* a remote type DBLink does not map, NCHAR for one: how the remote compares it is unknown */
+	  PT_ERRORf2 (parser, check->merge,
+		      "dblink: remote MERGE with a local source does not support the type of the ON key's target "
+		      "column; %s = %s", pt_short_print (parser, target_col), pt_short_print (parser, source_col));
+	  return false;
+	}
+      return true;
     }
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return true;
+    }
+
+  arg1 = pt_dblink_merge_unwrap_cast (term->info.expr.arg1);
+  arg2 = pt_dblink_merge_unwrap_cast (term->info.expr.arg2);
+  if (arg1 == term->info.expr.arg1 && arg2 == term->info.expr.arg2)
+    {
+      return true;
+    }
+
+  leaf1 = (arg1 != NULL) ? pt_dblink_merge_value_leaf (arg1, &check->refs) : PT_DBLINK_LEAF_NONE;
+  leaf2 = (arg2 != NULL) ? pt_dblink_merge_value_leaf (arg2, &check->refs) : PT_DBLINK_LEAF_NONE;
+  if ((leaf1 == PT_DBLINK_LEAF_REMOTE && leaf2 == PT_DBLINK_LEAF_LOCAL)
+      || (leaf1 == PT_DBLINK_LEAF_LOCAL && leaf2 == PT_DBLINK_LEAF_REMOTE))
+    {
+      PT_ERRORf2 (parser, check->merge,
+		  "dblink: remote MERGE with a local source needs the two columns of each ON key to compare without "
+		  "a conversion; cast the source column to the target column's type in the USING; %s = %s",
+		  pt_short_print (parser, arg1), pt_short_print (parser, arg2));
+      return false;
+    }
+
   return true;
 }
 
 /*
- * pt_dblink_merge_walk_keys () - Call fn once per ON key of a remote MERGE with a local source, with its target
- *   column and its source column. The keys come in the order pt_dblink_merge_walk_binds () reports them.
- *   return: the number of keys
+ * pt_dblink_merge_check_keys () - Reject an ON key of a remote MERGE with a local source that the sink cannot
+ *   take for a key. The sink looks for duplicate keys in the source column's type, and the remote matches them
+ *   in the target column's. The two agree when the columns compare without a conversion. Type checking wraps
+ *   one side in a CAST otherwise. '1' and '01' are two strings but one INTEGER, so they could update one target
+ *   row twice. A key whose target column has a type DBLink does not map is rejected too.
+ *   return: NO_ERROR, or ER_FAILED with the parser error set
  *   parser(in): parser context
- *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
- *   fn(in): called with each key's target column and source column
- *   arg(in): passed to fn
+ *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
  */
 int
-pt_dblink_merge_walk_keys (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_KEY_FN fn, void *arg)
+pt_dblink_merge_check_keys (PARSER_CONTEXT * parser, PT_NODE * merge)
 {
-  PT_DBLINK_MERGE_REFS refs;
-  PT_DBLINK_MERGE_KEYS keys;
+  PT_DBLINK_MERGE_KEY_CHECK check;
 
-  pt_dblink_merge_init_refs (merge, &refs);
+  pt_dblink_merge_init_refs (merge, &check.refs);
+  check.merge = merge;
 
-  keys.fn = fn;
-  keys.arg = arg;
-  keys.count = 0;
+  if (!pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &check.refs, pt_dblink_merge_check_key_term,
+				&check))
+    {
+      return ER_FAILED;
+    }
 
-  pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &refs, pt_dblink_merge_key_term, &keys);
-
-  return keys.count;
+  return NO_ERROR;
 }
 
 static void

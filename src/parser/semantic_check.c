@@ -13268,7 +13268,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	       * clauses of remote_text_src for the remote text, and the two walks must meet the same columns. It
 	       * refuses the statement when they count different columns. The statement skips mq_translate as a
 	       * remote DML (db_vdb.c), so no rewrite changes the clauses in between. */
-	      node->info.merge.remote_src_query = pt_dblink_merge_src_query (parser, node, merge_src_from, sc_info_ptr);
+	      if (pt_dblink_merge_check_keys (parser, node) == NO_ERROR)
+		{
+		  node->info.merge.remote_src_query =
+		    pt_dblink_merge_src_query (parser, node, merge_src_from, sc_info_ptr);
+		}
 	    }
 	}
 
