@@ -5674,8 +5674,8 @@ qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_
 static bool
 qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params, QFILE_LIST_CACHE_KEY * key)
 {
-  /* the client sends one value per position the text names (;bind_var_cnt=) */
-  assert (xasl->n_param_compares == params->size);
+  /* the client sends one value per position the text names (;bind_var_cnt=); -1 is a text whose tokens disagree */
+  assert (xasl->n_param_compares < 0 || xasl->n_param_compares == params->size);
   if (xasl->n_param_compares != params->size)
     {
       return false;

@@ -316,6 +316,7 @@ static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, con
 static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
 static const char *xcache_skip_quoted (const char *p);
+static const char *xcache_param_count_mark (const char *text);
 static int xcache_param_count (const char *text);
 static int xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compare);
 static int xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * compares);
@@ -1546,23 +1547,34 @@ xcache_skip_quoted (const char *p)
 }
 
 /*
+ * xcache_param_count_mark () - CBRD-27583: the count mark a cache key text carries after its statement: the last one,
+ *   found without reading the statement's quotes (a JSON literal prints its own quotes undoubled); NULL without one
+ */
+static const char *
+xcache_param_count_mark (const char *text)
+{
+  const char *mark = NULL;
+  for (const char *p = strstr (text, XCACHE_PARAM_COUNT_MARK); p != NULL; p = strstr (p + 1, XCACHE_PARAM_COUNT_MARK))
+    {
+      mark = p;
+    }
+  return mark;
+}
+
+/*
  * xcache_param_count () - CBRD-27583: the count of parameter positions a cache key text names after its
  *   statement, 0 without the count
  */
 static int
 xcache_param_count (const char *text)
 {
-  const size_t mark_length = sizeof (XCACHE_PARAM_COUNT_MARK) - 1;
-  for (const char *p = text; *p != '\0'; p++)
+  const char *mark = xcache_param_count_mark (text);
+  if (mark == NULL)
     {
-      p = xcache_skip_quoted (p);
-      if (strncmp (p, XCACHE_PARAM_COUNT_MARK, mark_length) == 0)
-	{
-	  const int count = atoi (p + mark_length);
-	  return count > 0 ? count : 0;
-	}
+      return 0;
     }
-  return 0;
+  const int count = atoi (mark + sizeof (XCACHE_PARAM_COUNT_MARK) - 1);
+  return count > 0 ? count : 0;
 }
 
 /*
@@ -1613,11 +1625,13 @@ xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * comp
     }
 
   int result = count;
-  const size_t mark_length = sizeof (XCACHE_PARAM_COUNT_MARK) - 1;
-  for (const char *p = text; *p != '\0' && result >= 0; p++)
+  /* the tokens are in the statement, before its count mark; a position whose token the scan misses (quotes it reads
+   * wrongly) compares its values by their own types, as below */
+  const char *const statement_end = xcache_param_count_mark (text);
+  for (const char *p = text; p < statement_end && result >= 0; p++)
     {
       p = xcache_skip_quoted (p);
-      if (strncmp (p, XCACHE_PARAM_COUNT_MARK, mark_length) == 0)
+      if (p >= statement_end)
 	{
 	  break;
 	}
