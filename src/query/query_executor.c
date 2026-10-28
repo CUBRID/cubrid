@@ -95,6 +95,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_scan_trace_handler.hpp"
 #include "px_scan.hpp"
+#include "px_merge_join.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -530,12 +531,6 @@ static int qexec_analytic_value_lookup (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
 static int qexec_analytic_group_header_next (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static int qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
 static int qexec_collection_has_null (DB_VALUE * colval);
-static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left,
-							 int *left_ind, TP_DOMAIN ** left_dom,
-							 QFILE_TUPLE_RECORD * rght, int *rght_ind,
-							 TP_DOMAIN ** rght_dom, int tval_cnt,
-							 const DOMAIN_COMPARE_PLAN * const *compares,
-							 const VAL_DESCR * vd);
 static QFILE_LIST_ID *qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 					QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
 					int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd);
@@ -587,6 +582,7 @@ static int qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_st
 static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  DBLINK_DML_KIND kind);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
@@ -6089,7 +6085,7 @@ qexec_collection_has_null (DB_VALUE * colval)
  * as the lessor side, that tuple will be discarded,
  * then the next comparison will discard the other side.
  */
-static DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN ** left_dom,
 			  QFILE_TUPLE_RECORD * rght, int *rght_ind, TP_DOMAIN ** rght_dom, int tval_cnt,
 			  const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd)
@@ -6172,6 +6168,582 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
   return (DB_VALUE_COMPARE_RESULT) cmp;
 }
 
+/*
+ * qexec_merge_side_init () - open one input side of an inner merge
+ *   return: NO_ERROR, or ER_FAILED
+ *   side(out)          : side to initialize
+ *   list_id(in)        : sorted input list file
+ *   indp(in)           : merge column positions (borrowed, not freed by qexec_merge_side_clear)
+ *   nvals(in)          : merge column count
+ *
+ * Note: On failure the side is left clearable by qexec_merge_side_clear.
+ */
+int
+qexec_merge_side_init (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side, QFILE_LIST_ID * list_id, int *indp, int nvals)
+{
+  int k;
+
+  side->list_id = list_id;
+  side->sid.status = S_CLOSED;
+  side->tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  side->indp = indp;
+  side->domp = NULL;
+  side->valp = NULL;
+  side->lenp = NULL;
+  side->nvals = nvals;
+  side->scan = S_END;
+
+  side->domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
+  side->valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
+  side->lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
+  if (side->domp == NULL || side->valp == NULL || side->lenp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  for (k = 0; k < nvals; k++)
+    {
+      side->domp[k] = list_id->type_list.domp[indp[k]];
+    }
+
+  if (qfile_open_list_scan (list_id, &side->sid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+  qexec_merge_side_clear (thread_p, side);
+  return ER_FAILED;
+}
+
+/*
+ * qexec_merge_side_clear () - close the scan and free the arrays of one merge side
+ *   return:
+ *   side(in/out)       : side to clear
+ */
+void
+qexec_merge_side_clear (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side)
+{
+  qfile_close_scan (thread_p, &side->sid);
+
+  if (side->domp)
+    {
+      db_private_free_and_init (thread_p, side->domp);
+    }
+  if (side->valp)
+    {
+      db_private_free_and_init (thread_p, side->valp);
+    }
+  if (side->lenp)
+    {
+      db_private_free_and_init (thread_p, side->lenp);
+    }
+}
+
+/*
+ * qexec_merge_side_pvals () - position the merge columns of the current tuple
+ *   return:
+ *   side(in/out)       : merge side; valp/lenp are set from side->tplrec (lenp 0 == NULL)
+ */
+void
+qexec_merge_side_pvals (QEXEC_MERGE_SIDE * side)
+{
+  int v;
+  bool is_null;
+
+  for (v = 0; v < side->nvals; v++)
+    {
+      side->valp[v] = (char *) qfile_slot_get_column_data (&side->tplrec, side->indp[v], &side->lenp[v], &is_null);
+      if (is_null)
+	{
+	  side->lenp[v] = 0;
+	}
+    }
+}
+
+/*
+ * qexec_merge_side_next () - move a merge side to its next tuple and position its merge columns
+ *   return: S_SUCCESS, S_END, or S_ERROR (also stored in side->scan)
+ *   side(in/out)       : merge side
+ */
+SCAN_CODE
+qexec_merge_side_next (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side)
+{
+  side->scan = qfile_scan_list_next (thread_p, &side->sid, &side->tplrec, PEEK);
+  if (side->scan == S_SUCCESS)
+    {
+      qexec_merge_side_pvals (side);
+    }
+
+  return side->scan;
+}
+
+/*
+ * qexec_merge_side_prev () - move a merge side to its previous tuple and position its merge columns
+ *   return: S_SUCCESS, S_END, or S_ERROR (also stored in side->scan)
+ *   side(in/out)       : merge side
+ */
+SCAN_CODE
+qexec_merge_side_prev (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side)
+{
+  side->scan = qfile_scan_list_prev (thread_p, &side->sid, &side->tplrec, PEEK);
+  if (side->scan == S_SUCCESS)
+    {
+      qexec_merge_side_pvals (side);
+    }
+
+  return side->scan;
+}
+
+/*
+ * qexec_merge_side_jump () - move a merge side to a saved tuple position and position its merge columns
+ *   return: S_SUCCESS, S_END, or S_ERROR (also stored in side->scan)
+ *   side(in/out)       : merge side
+ *   pos(in)            : tuple position saved from this side's scan
+ */
+SCAN_CODE
+qexec_merge_side_jump (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side, QFILE_TUPLE_POSITION * pos)
+{
+  side->scan = qfile_jump_scan_tuple_position (thread_p, &side->sid, pos, &side->tplrec, PEEK);
+  if (side->scan == S_SUCCESS)
+    {
+      qexec_merge_side_pvals (side);
+    }
+
+  return side->scan;
+}
+
+/*
+ * qexec_merge_side_skip_null_keys () - move a merge side to the first tuple whose merge columns are all bound
+ *   return: S_SUCCESS, S_END, or S_ERROR
+ *   side(in/out)       : merge side
+ *
+ * Note: A sorted list keeps its NULL keys at the beginning, and an inner merge never joins them.
+ */
+SCAN_CODE
+qexec_merge_side_skip_null_keys (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side)
+{
+  int k;
+
+  while (qexec_merge_side_next (thread_p, side) == S_SUCCESS)
+    {
+      for (k = 0; k < side->nvals; k++)
+	{
+	  if (side->lenp[k] == 0)
+	    {
+	      break;
+	    }
+	}
+      if (k >= side->nvals)
+	{
+	  break;
+	}
+    }
+
+  return side->scan;
+}
+
+/*
+ * qexec_merge_side_cmp () - compare the merge columns of the current outer and inner tuples
+ *   return: see qexec_cmp_tpl_vals_merge (DB_UNK == error)
+ *   outer(in)          : outer merge side
+ *   inner(in)          : inner merge side
+ *   compares(in)       : see qexec_cmp_tpl_vals_merge
+ *   vd(in)             : see qexec_cmp_tpl_vals_merge
+ */
+DB_VALUE_COMPARE_RESULT
+qexec_merge_side_cmp (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner,
+		      const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd)
+{
+  return qexec_cmp_tpl_vals_merge (thread_p, &outer->tplrec, outer->indp, outer->domp, &inner->tplrec, inner->indp,
+				   inner->domp, outer->nvals, compares, vd);
+}
+
+/*
+ * qexec_merge_group_forward () - join the current outer tuple with an inner key group, walking the inner forwards
+ *   return: S_SUCCESS, S_END, or S_ERROR
+ *   list_idp(in)       : output list file
+ *   merge_infop(in)    : list file merge information
+ *   tplrec(in)         : work area for the merged tuple
+ *   outer(in)          : outer merge side, positioned on the outer tuple
+ *   inner(in/out)      : inner merge side, positioned on the top of the group
+ *   group_cnt(in)      : number of inner tuples in the group, 0 if the group is not formed yet
+ *   cnt_out(out)       : number of inner tuples joined
+ *   val_cmp(out)       : with group_cnt == 0, the comparison that found the bottom of the group
+ *   compares(in)       : see qexec_cmp_tpl_vals_merge
+ *   vd(in)             : see qexec_cmp_tpl_vals_merge
+ *
+ * Note: With group_cnt == 0 the walk stops at the first inner tuple that does not match or at the end of the inner
+ *       list; inner->scan tells which (S_END) and S_SUCCESS is returned. With group_cnt > 0 the inner tuples are
+ *       not compared nor positioned, and S_END is returned when the inner list ends inside the group.
+ */
+SCAN_CODE
+qexec_merge_group_forward (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
+			   QFILE_TUPLE_RECORD * tplrec, QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner,
+			   int group_cnt, int *cnt_out, DB_VALUE_COMPARE_RESULT * val_cmp,
+			   const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd)
+{
+  int cnt = 0;
+
+  while (1)
+    {
+      if (qfile_merge_tuple_add_list (thread_p, list_idp, &outer->tplrec, &inner->tplrec, merge_infop, tplrec) !=
+	  NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      cnt++;
+
+      if (group_cnt == 0)
+	{
+	  if (qexec_merge_side_next (thread_p, inner) == S_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (inner->scan == S_END)
+	    {
+	      break;
+	    }
+
+	  *val_cmp = qexec_merge_side_cmp (thread_p, outer, inner, compares, vd);
+	  if (*val_cmp != DB_EQ)
+	    {
+	      if (*val_cmp == DB_UNK)
+		{
+		  return S_ERROR;
+		}
+
+	      break;		/* found the bottom of the group */
+	    }
+	}
+      else
+	{
+	  if (cnt >= group_cnt)
+	    {
+	      break;
+	    }
+
+	  inner->scan = qfile_scan_list_next (thread_p, &inner->sid, &inner->tplrec, PEEK);
+	  if (inner->scan == S_END || inner->scan == S_ERROR)
+	    {
+	      return inner->scan;
+	    }
+	}
+    }
+
+  *cnt_out = cnt;
+  return S_SUCCESS;
+}
+
+/*
+ * qexec_merge_group_backward () - join the current outer tuple with an inner key group, walking the inner backwards
+ *   return: NO_ERROR, or ER_FAILED
+ *   list_idp(in)       : output list file
+ *   merge_infop(in)    : list file merge information
+ *   tplrec(in)         : work area for the merged tuple
+ *   outer(in)          : outer merge side, positioned on the outer tuple
+ *   inner(in/out)      : inner merge side, positioned on the bottom of the group; left on its top
+ *   group_cnt(in)      : number of inner tuples in the group
+ */
+int
+qexec_merge_group_backward (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
+			    QFILE_TUPLE_RECORD * tplrec, QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner,
+			    int group_cnt)
+{
+  int cnt = group_cnt;
+
+  while (1)
+    {
+      if (qfile_merge_tuple_add_list (thread_p, list_idp, &outer->tplrec, &inner->tplrec, merge_infop, tplrec) !=
+	  NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      cnt--;
+      if (cnt <= 0)
+	{
+	  break;
+	}
+
+      /* the group shares one key, so the inner tuples need not be compared nor positioned */
+      inner->scan = qfile_scan_list_prev (thread_p, &inner->sid, &inner->tplrec, PEEK);
+      if (inner->scan == S_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  qexec_merge_side_pvals (inner);
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_merge_inner_loop () - run the inner merge state machine over two positioned merge sides
+ *   return: NO_ERROR when either side ends, ER_FAILED on error or when hooks->should_stop asks to stop
+ *   list_idp(in)       : output list file
+ *   merge_infop(in)    : list file merge information
+ *   tplrec(in)         : work area for the merged tuple
+ *   outer(in/out)      : outer merge side, positioned on its first tuple
+ *   inner(in/out)      : inner merge side, positioned on its first tuple
+ *   compares(in)       : see qexec_cmp_tpl_vals_merge
+ *   vd(in)             : see qexec_cmp_tpl_vals_merge
+ *   hooks(in)          : optional caller hooks, NULL for the plain serial merge
+ *
+ * Note: hooks->after_advance runs only when a side lands on a new key outside a group walk: the outer advance on
+ *       DB_LT, the inner advance on DB_GT, and the outer advance after each forward or backward group walk. It does
+ *       not run inside the group walks, after the inner steps back, nor after the inner returns to the bottom of a
+ *       group, since those tuples were already checked. The loop does not set an error.
+ */
+int
+qexec_merge_inner_loop (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
+			QFILE_TUPLE_RECORD * tplrec, QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner,
+			const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd,
+			const QEXEC_MERGE_HOOKS * hooks)
+{
+  int cnt, group_cnt, already_compared;
+  SCAN_DIRECTION direction;
+  QFILE_TUPLE_POSITION inner_tplpos;
+  DB_VALUE_COMPARE_RESULT val_cmp;
+  SCAN_CODE scan;
+
+  direction = S_FORWARD;
+  group_cnt = 0;
+  already_compared = false;
+  val_cmp = DB_UNK;
+
+  while (1)
+    {
+      if (hooks != NULL && hooks->should_stop != NULL && hooks->should_stop (thread_p, hooks->arg))
+	{
+	  return ER_FAILED;
+	}
+
+      /* compare two tuple values, if they have not been compared yet */
+      if (!already_compared)
+	{
+	  val_cmp = qexec_merge_side_cmp (thread_p, outer, inner, compares, vd);
+	  if (val_cmp == DB_UNK)
+	    {			/* is error */
+	      return ER_FAILED;
+	    }
+	}
+      already_compared = false;	/* re-init */
+
+      /* value of the outer is less than value of the inner */
+      if (val_cmp == DB_LT)
+	{
+	  scan = qexec_merge_side_next (thread_p, outer);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, outer, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  direction = S_FORWARD;
+	  group_cnt = 0;
+
+	  continue;
+	}
+
+      /* value of the outer is greater than value of the inner */
+      if (val_cmp == DB_GT)
+	{
+	  scan = qexec_merge_side_next (thread_p, inner);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, inner, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  direction = S_FORWARD;
+	  group_cnt = 0;
+
+	  continue;
+	}
+
+      if (val_cmp != DB_EQ)
+	{			/* error ? */
+	  return ER_FAILED;
+	}
+
+      /* values of the outer and inner are equal, do a scan group processing */
+      if (direction == S_FORWARD)
+	{
+	  scan = qexec_merge_group_forward (thread_p, list_idp, merge_infop, tplrec, outer, inner, group_cnt, &cnt,
+					    &val_cmp, compares, vd);
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  scan = qexec_merge_side_next (thread_p, outer);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, outer, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* if the group is formed for the first time */
+	  if (group_cnt == 0)
+	    {
+	      /* save the position of inner scan; it is the bottom of the group */
+	      qfile_save_current_scan_tuple_position (&inner->sid, &inner_tplpos);
+
+	      if (inner->scan == S_END)
+		{
+		  /* move the inner to the previous tuple and position tuple values */
+		  if (qexec_merge_side_prev (thread_p, inner) == S_ERROR)
+		    {
+		      return ER_FAILED;
+		    }
+
+		  /* set group count and direction */
+		  group_cnt = cnt;
+		  direction = S_BACKWARD;
+		}
+	      else
+		{
+		  val_cmp = qexec_merge_side_cmp (thread_p, outer, inner, compares, vd);
+		  if (val_cmp == DB_UNK)
+		    {		/* is error */
+		      return ER_FAILED;
+		    }
+
+		  if (val_cmp == DB_LT)
+		    {
+		      /* move the inner to the previous tuple and position tuple values */
+		      if (qexec_merge_side_prev (thread_p, inner) == S_ERROR)
+			{
+			  return ER_FAILED;
+			}
+
+		      val_cmp = qexec_merge_side_cmp (thread_p, outer, inner, compares, vd);
+		      if (val_cmp == DB_UNK)
+			{	/* is error */
+			  return ER_FAILED;
+			}
+
+		      if (val_cmp == DB_EQ)
+			{
+			  /* next value is the same, so prepare for further group scan operations */
+
+			  /* set group count and direction */
+			  group_cnt = cnt;
+			  direction = S_BACKWARD;
+			}
+		      else
+			{
+			  /* move the inner to the current tuple and position tuple values */
+			  scan = qexec_merge_side_next (thread_p, inner);
+			  if (scan == S_END)
+			    {
+			      return NO_ERROR;
+			    }
+			  if (scan == S_ERROR)
+			    {
+			      return ER_FAILED;
+			    }
+
+			  val_cmp = DB_LT;	/* restore comparison */
+			}
+		    }
+
+		  /* comparison has already been done */
+		  already_compared = true;
+		}
+	    }
+	  else
+	    {
+	      /* set further scan direction */
+	      direction = S_BACKWARD;
+	    }
+	}
+      else
+	{			/* (direction == S_BACKWARD) */
+	  if (qexec_merge_group_backward (thread_p, list_idp, merge_infop, tplrec, outer, inner, group_cnt) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  scan = qexec_merge_side_next (thread_p, outer);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, outer, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  val_cmp = qexec_merge_side_cmp (thread_p, outer, inner, compares, vd);
+	  if (val_cmp == DB_UNK)
+	    {			/* is error */
+	      return ER_FAILED;
+	    }
+
+	  if (val_cmp != DB_EQ)
+	    {
+	      /* jump to the previously set scan position */
+	      scan = qexec_merge_side_jump (thread_p, inner, &inner_tplpos);
+	      /* is saved position the end of scan? */
+	      if (scan == S_END)
+		{
+		  return NO_ERROR;
+		}
+	      if (scan == S_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      /* reset group count */
+	      group_cnt = 0;
+	    }
+	  else
+	    {
+	      /* comparison has already been done */
+	      already_compared = true;
+	    }
+
+	  /* set further scan direction */
+	  direction = S_FORWARD;
+
+	}			/* (direction == S_BACKWARD) */
+
+    }
+}
+
 /* pre-defined vars:    list_idp,
  *                      merge_infop,
  *                      nvals
@@ -6200,39 +6772,6 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
                                         (pre##_indp)[_v],                    \
                                         &(pre##_lenp)[_v], &_null);          \
             if (_null) (pre##_lenp)[_v] = 0;                                 \
-        }                                                                    \
-    } while (0)
-
-/**************************** INNER MERGE MACRO *****************************/
-#define QEXEC_MERGE_NEXT_SCAN(thread_p, pre, e)                              \
-    do {                                                                     \
-        pre##_scan = qfile_scan_list_next((thread_p), &(pre##_sid), &(pre##_tplrec), PEEK); \
-        if ((e) && pre##_scan == S_END)                                      \
-            goto exit_on_end;                                                \
-        if (pre##_scan == S_ERROR)                                           \
-            goto exit_on_error;                                              \
-    } while (0)
-
-#define QEXEC_MERGE_PREV_SCAN(thread_p, pre)                                 \
-    do {                                                                     \
-        pre##_scan = qfile_scan_list_prev((thread_p), &(pre##_sid), &(pre##_tplrec), PEEK); \
-        if (pre##_scan == S_ERROR)                                           \
-            goto exit_on_error;                                              \
-    } while (0)
-
-#define QEXEC_MERGE_NEXT_SCAN_PVALS(thread_p, pre, e)                        \
-    do {                                                                     \
-        QEXEC_MERGE_NEXT_SCAN((thread_p), pre, e);                           \
-        if (pre##_scan == S_SUCCESS) {                                       \
-            QEXEC_MERGE_PVALS(pre);                                          \
-        }                                                                    \
-    } while (0)
-
-#define QEXEC_MERGE_REV_SCAN_PVALS(thread_p, pre)                            \
-    do {                                                                     \
-        QEXEC_MERGE_PREV_SCAN((thread_p), pre);                                          \
-        if (pre##_scan == S_SUCCESS) {                                       \
-            QEXEC_MERGE_PVALS(pre);                                          \
         }                                                                    \
     } while (0)
 
@@ -6278,6 +6817,8 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
  *   inner_list_idp(in) : Second (right) list file to be merged
  *   merge_infop(in)    : List file merge information
  *   ls_flag(in)        :
+ *   compares(in)       : [ls_column_cnt] each merge column pair's resolved comparison
+ *   vd(in)             : value descriptor of the execution
  *
  * Note: This routine merges the given two sorted list files using
  * the given list file merge information and returns the result
@@ -6292,32 +6833,25 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 		  const VAL_DESCR * vd)
 {
   /* outer -> left scan, inner -> right scan */
-
-  /* pre-defined vars: */
   QFILE_LIST_ID *list_idp = NULL;
   int nvals;
   QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-  QFILE_TUPLE_RECORD outer_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-  QFILE_TUPLE_RECORD inner_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-  int *outer_indp, *inner_indp;
-  char **outer_valp = NULL, **inner_valp = NULL;
-  int *outer_lenp = NULL, *inner_lenp = NULL;
-  SCAN_CODE outer_scan = S_END, inner_scan = S_END;
-  QFILE_LIST_SCAN_ID outer_sid, inner_sid;
-
-  TP_DOMAIN **outer_domp = NULL, **inner_domp = NULL;
+  QEXEC_MERGE_SIDE outer, inner;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
-  int k, cnt, group_cnt, already_compared;
-  SCAN_DIRECTION direction;
-  QFILE_TUPLE_POSITION inner_tplpos;
-  DB_VALUE_COMPARE_RESULT val_cmp;
+  int k;
+  SCAN_CODE scan;
 
-  /* get merge columns count */
   nvals = merge_infop->ls_column_cnt;
 
-  /* get indicator of merge columns */
-  outer_indp = merge_infop->ls_outer_column;
-  inner_indp = merge_infop->ls_inner_column;
+  if (qexec_merge_side_init (thread_p, &outer, outer_list_idp, merge_infop->ls_outer_column, nvals) != NO_ERROR)
+    {
+      return NULL;
+    }
+  if (qexec_merge_side_init (thread_p, &inner, inner_list_idp, merge_infop->ls_inner_column, nvals) != NO_ERROR)
+    {
+      qexec_merge_side_clear (thread_p, &outer);
+      return NULL;
+    }
 
   /* form the typelist for the resultant list file */
   type_list.type_cnt = merge_infop->ls_pos_cnt;
@@ -6332,16 +6866,6 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
       type_list.domp[k] = ((merge_infop->ls_outer_inner_list[k] == QFILE_OUTER_LIST)
 			   ? outer_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]
 			   : inner_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]);
-    }
-
-  outer_sid.status = S_CLOSED;
-  inner_sid.status = S_CLOSED;
-
-  /* open a scan on the outer(inner) list file */
-  if (qfile_open_list_scan (outer_list_idp, &outer_sid) != NO_ERROR
-      || qfile_open_list_scan (inner_list_idp, &inner_sid) != NO_ERROR)
-    {
-      goto exit_on_error;
     }
 
   /* open the result list file; same query id with outer(inner) list file */
@@ -6362,364 +6886,39 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
       goto exit_on_error;
     }
 
-  /* merge column domain info */
-  outer_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
-  if (outer_domp == NULL)
+  scan = qexec_merge_side_skip_null_keys (thread_p, &outer);
+  if (scan == S_END)
+    {
+      goto exit_on_end;
+    }
+  if (scan == S_ERROR)
     {
       goto exit_on_error;
     }
 
-  inner_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
-  if (inner_domp == NULL)
+  scan = qexec_merge_side_skip_null_keys (thread_p, &inner);
+  if (scan == S_END)
+    {
+      goto exit_on_end;
+    }
+  if (scan == S_ERROR)
     {
       goto exit_on_error;
     }
 
-  for (k = 0; k < nvals; k++)
-    {
-      outer_domp[k] = outer_list_idp->type_list.domp[merge_infop->ls_outer_column[k]];
-      inner_domp[k] = inner_list_idp->type_list.domp[merge_infop->ls_inner_column[k]];
-    }
-
-  /* merge column val pointer */
-  outer_valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
-  if (outer_valp == NULL)
+  if (qexec_merge_inner_loop (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, compares, vd, NULL) != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  inner_valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
-  if (inner_valp == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* merge column value lengths (0 == NULL) */
-  outer_lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
-  if (outer_lenp == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  inner_lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
-  if (inner_lenp == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* When a list file is sorted on a column, all the NULL values appear at the beginning of the list. So, we know that
-   * all the following values in the inner/outer column are BOUND(not NULL) values. Depending on the join type, we must
-   * skip or join with a NULL opposite row, when a NULL is encountered. */
-
-  /* move the outer(left) scan to the first tuple */
-  while (1)
-    {
-      /* move to the next outer tuple and position tuple values (to merge columns) */
-      QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
-
-      for (k = 0; k < nvals; k++)
-	{
-	  if (outer_lenp[k] == 0)	/* NULL */
-	    {
-	      break;
-	    }
-	}
-      if (k >= nvals)
-	{			/* not found V_UNBOUND. exit loop */
-	  break;
-	}
-    }
-
-  /* move the inner(right) scan to the first tuple */
-  while (1)
-    {
-      /* move to the next inner tuple and position tuple values (to merge columns) */
-      QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
-
-      for (k = 0; k < nvals; k++)
-	{
-	  if (inner_lenp[k] == 0)	/* NULL */
-	    {
-	      break;
-	    }
-	}
-      if (k >= nvals)
-	{			/* not found V_UNBOUND. exit loop */
-	  break;
-	}
-
-    }
-
-  /* set the comparison function to be called */
-  direction = S_FORWARD;
-  group_cnt = 0;
-  already_compared = false;
-  val_cmp = DB_UNK;
-
-  while (1)
-    {
-      /* compare two tuple values, if they have not been compared yet */
-      if (!already_compared)
-	{
-	  val_cmp =
-	    qexec_cmp_tpl_vals_merge (thread_p, &outer_tplrec, outer_indp, outer_domp, &inner_tplrec, inner_indp,
-				      inner_domp, nvals, compares, vd);
-	  if (val_cmp == DB_UNK)
-	    {			/* is error */
-	      goto exit_on_error;
-	    }
-	}
-      already_compared = false;	/* re-init */
-
-      /* value of the outer is less than value of the inner */
-      if (val_cmp == DB_LT)
-	{
-	  /* move the outer(left) scan to the next tuple and position tuple values (to merge columns) */
-	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
-	  direction = S_FORWARD;
-	  group_cnt = 0;
-
-	  continue;
-	}
-
-      /* value of the outer is greater than value of the inner */
-      if (val_cmp == DB_GT)
-	{
-	  /* move the inner(right) scan to the next tuple and position tuple values (to merge columns) */
-	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
-	  direction = S_FORWARD;
-	  group_cnt = 0;
-
-	  continue;
-	}
-
-      if (val_cmp != DB_EQ)
-	{			/* error ? */
-	  goto exit_on_error;
-	}
-
-      /* values of the outer and inner are equal, do a scan group processing */
-      if (direction == S_FORWARD)
-	{
-	  /* move forwards within a group */
-	  cnt = 0;
-	  /* group_cnt has the number of tuples in the group */
-	  while (1)
-	    {
-	      /* merge the fetched tuples(left and right) */
-	      QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec, &inner_tplrec);
-
-	      cnt++;		/* increase the counter of processed tuples */
-
-	      /* if the group is formed for the first time */
-	      if (group_cnt == 0)
-		{
-		  /* move the inner(right) scan to the next tuple and position tuple values (to merge columns) */
-		  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, false /* do not exit */ );
-		  if (inner_scan == S_END)
-		    {
-		      break;
-		    }
-
-		  /* and compare */
-		  val_cmp =
-		    qexec_cmp_tpl_vals_merge (thread_p, &outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-					      inner_indp, inner_domp, nvals, compares, vd);
-		  if (val_cmp != DB_EQ)
-		    {
-		      if (val_cmp == DB_UNK)
-			{	/* is error */
-			  goto exit_on_error;
-			}
-
-		      break;	/* found the bottom of the group */
-		    }
-		}
-	      else
-		{		/* group_cnt > 0 */
-		  if (cnt >= group_cnt)
-		    {
-		      break;	/* reached the bottom of the group */
-		    }
-
-		  /* move the inner(right) scan to the next tuple */
-		  QEXEC_MERGE_NEXT_SCAN (thread_p, inner, true);
-		}
-	    }			/* while (1) */
-
-	  /* move the outer to the next tuple and position tuple values */
-	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
-
-	  /* if the group is formed for the first time */
-	  if (group_cnt == 0)
-	    {
-	      /* save the position of inner scan; it is the bottom of the group */
-	      qfile_save_current_scan_tuple_position (&inner_sid, &inner_tplpos);
-
-	      if (inner_scan == S_END)
-		{
-		  /* move the inner to the previous tuple and position tuple values */
-		  QEXEC_MERGE_REV_SCAN_PVALS (thread_p, inner);
-
-		  /* set group count and direction */
-		  group_cnt = cnt;
-		  direction = S_BACKWARD;
-		}
-	      else
-		{
-		  /* and compare */
-		  val_cmp =
-		    qexec_cmp_tpl_vals_merge (thread_p, &outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-					      inner_indp, inner_domp, nvals, compares, vd);
-		  if (val_cmp == DB_UNK)
-		    {		/* is error */
-		      goto exit_on_error;
-		    }
-
-		  if (val_cmp == DB_LT)
-		    {
-		      /* move the inner to the previous tuple and position tuple values */
-		      QEXEC_MERGE_REV_SCAN_PVALS (thread_p, inner);
-
-		      /* and compare */
-		      val_cmp =
-			qexec_cmp_tpl_vals_merge (thread_p, &outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-						  inner_indp, inner_domp, nvals, compares, vd);
-		      if (val_cmp == DB_UNK)
-			{	/* is error */
-			  goto exit_on_error;
-			}
-
-		      if (val_cmp == DB_EQ)
-			{
-			  /* next value is the same, so prepare for further group scan operations */
-
-			  /* set group count and direction */
-			  group_cnt = cnt;
-			  direction = S_BACKWARD;
-			}
-		      else
-			{
-			  /* move the inner to the current tuple and position tuple values */
-			  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
-
-			  val_cmp = DB_LT;	/* restore comparison */
-			}
-		    }
-
-		  /* comparison has already been done */
-		  already_compared = true;
-		}
-	    }
-	  else
-	    {
-	      /* set further scan direction */
-	      direction = S_BACKWARD;
-	    }
-	}
-      else
-	{			/* (direction == S_BACKWARD) */
-	  /* move backwards within a group */
-	  cnt = group_cnt;
-	  /* group_cnt has the number of tuples in the group */
-	  while (1)
-	    {
-	      /* merge the fetched tuples(left and right) */
-	      QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec, &inner_tplrec);
-
-	      cnt--;		/* decrease the counter of the processed tuples */
-
-	      if (cnt <= 0)
-		{
-		  break;	/* finish the group */
-		}
-
-	      /* if not yet reached the top of the group */
-	      /* move the inner(right) scan to the previous tuple */
-	      QEXEC_MERGE_PREV_SCAN (thread_p, inner);
-
-	      /* all of the inner tuples in the group have the same value at the merge column, so we don't need to
-	       * compare with the value of the outer one; just count the number of the tuples in the group */
-	    }			/* while (1) */
-
-	  /* position tuple values (to merge columns) */
-	  QEXEC_MERGE_PVALS (inner);
-
-	  /* move the outer(left) scan to the next tuple and position tuple values */
-	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
-
-	  /* and compare */
-	  val_cmp =
-	    qexec_cmp_tpl_vals_merge (thread_p, &outer_tplrec, outer_indp, outer_domp, &inner_tplrec, inner_indp,
-				      inner_domp, nvals, compares, vd);
-	  if (val_cmp == DB_UNK)
-	    {			/* is error */
-	      goto exit_on_error;
-	    }
-
-	  if (val_cmp != DB_EQ)
-	    {
-	      /* jump to the previously set scan position */
-	      inner_scan = qfile_jump_scan_tuple_position (thread_p, &inner_sid, &inner_tplpos, &inner_tplrec, PEEK);
-	      /* is saved position the end of scan? */
-	      if (inner_scan == S_END)
-		{
-		  goto exit_on_end;
-		}
-
-	      /* and position tuple values */
-	      QEXEC_MERGE_PVALS (inner);
-
-	      /* reset group count */
-	      group_cnt = 0;
-	    }
-	  else
-	    {
-	      /* comparison has already been done */
-	      already_compared = true;
-	    }
-
-	  /* set further scan direction */
-	  direction = S_FORWARD;
-
-	}			/* (direction == S_BACKWARD) */
-
-    }				/* while (1) */
 
 exit_on_end:
   free_and_init (type_list.domp);
-  qfile_close_scan (thread_p, &outer_sid);
-  qfile_close_scan (thread_p, &inner_sid);
+  qexec_merge_side_clear (thread_p, &outer);
+  qexec_merge_side_clear (thread_p, &inner);
 
   if (tplrec.tpl)
     {
       db_private_free_and_init (thread_p, tplrec.tpl);
-    }
-
-  if (outer_domp)
-    {
-      db_private_free_and_init (thread_p, outer_domp);
-    }
-  if (outer_valp)
-    {
-      db_private_free_and_init (thread_p, outer_valp);
-    }
-
-  if (inner_domp)
-    {
-      db_private_free_and_init (thread_p, inner_domp);
-    }
-  if (inner_valp)
-    {
-      db_private_free_and_init (thread_p, inner_valp);
-    }
-  if (outer_lenp)
-    {
-      db_private_free_and_init (thread_p, outer_lenp);
-    }
-  if (inner_lenp)
-    {
-      db_private_free_and_init (thread_p, inner_lenp);
     }
 
   if (list_idp)
@@ -7474,9 +7673,29 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
   if (merge_infop->join_type == JOIN_INNER)
     {
-      /* call list file merge routine */
-      list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag,
-				  xasl->proc.mergelist.merge_compares, &xasl_state->vd);
+      bool px_merge_executed = false;
+
+#if SERVER_MODE && !WINDOWS
+      int px_merge_parallelism = 0;
+      if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
+							  merge_infop, ls_flag, xasl->proc.mergelist.merge_compares,
+							  &xasl_state->vd, outer_xasl->parallelism, &list_id,
+							  px_merge_executed, px_merge_parallelism) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (px_merge_executed)
+	{
+	  xasl->executed_parallelism = px_merge_parallelism;
+	}
+#endif /* SERVER_MODE && !WINDOWS */
+
+      if (!px_merge_executed)
+	{
+	  /* call list file merge routine */
+	  list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag,
+				      xasl->proc.mergelist.merge_compares, &xasl_state->vd);
+	}
     }
   else
     {
@@ -7515,8 +7734,9 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* make this the resultant list file */
-  if (qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+  /* MOVE_DEPENDENT: the parallel merge gathers ranges with qfile_connect_list, so list_id may carry a dependent
+   * chain whose ownership transfers here; serial paths have none, so MOVE == PROHIBIT for them */
+  if (qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
     {
       qfile_close_list (thread_p, list_id);
       qfile_destroy_list (thread_p, list_id);
@@ -10926,6 +11146,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  /* remote UPDATE + local subquery sink: evaluate the local subqueries here and push the remote UPDATE via
+   * CCI; this has no local class (num_classes == 0) so it must not enter the local update path below. */
+  if (update->sink.is_remote)
+    {
+      return qexec_execute_remote_update_subquery (thread_p, xasl, xasl_state);
+    }
+
   thread_p->no_logging = (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
@@ -13063,15 +13290,15 @@ qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, INSER
 }
 
 /*
- * qexec_collect_remote_delete_key () - Collect the single WHERE-key value for the scan's current row,
- *   for one row of the remote DELETE local-subquery sink.
+ * qexec_collect_remote_delete_key () - Collect the single WHERE-key value for the scan's current row.
+ *   The remote DELETE sink binds it alone; the remote UPDATE sink binds it after its SET values.
  *   return: NO_ERROR on success (bindv[0] set, or skip_row set for a no-op row), ER_FAILED if the scan
  *           row is malformed (asserted, should not happen)
  *   s_id(in)      : scan id positioned at the current row
  *   xasl_state(in): XASL state, for qexec_failure_line on error
  *   bindv(out)    : bindv[0] set to the key value to push, unless skip_row is set
- *   skip_row(out) : set to true when the key is NULL -- the caller must skip this row (DELETE WHERE
- *                   key op NULL is a no-op) without touching bindv
+ *   skip_row(out) : set to true when the key is NULL -- the caller must skip this row (a WHERE that
+ *                   compares with NULL matches no row) without touching bindv
  */
 static int
 qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** bindv, bool * skip_row)
@@ -13091,8 +13318,8 @@ qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VAL
     }
   bindv[0] = vallist->val;
 
-  /* A NULL value never matches in IN / = ANY or a scalar comparison, so it deletes nothing; skip it
-   * (DELETE WHERE key op NULL is a no-op) rather than binding NULL, which the row executor rejects. */
+  /* A NULL value never matches in IN / = ANY or a scalar comparison, so the remote statement would
+   * change no row; skip it rather than send a statement that does nothing. */
   if (DB_IS_NULL (bindv[0]))
     {
       *skip_row = true;
@@ -13102,21 +13329,59 @@ qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VAL
 }
 
 /*
- * qexec_execute_remote_dml_sink () - Push local rows to a remote table via CCI: either streaming a local
- *   SELECT into a remote INSERT or REPLACE, or pushing one remote DELETE per value from a local WHERE
- *   subquery.
+ * qexec_collect_remote_update_set_vals () - Point vals[] at the values the SET placeholders take, one per
+ *   bound SET value, in the order the builder chained their aptrs.
+ *   return: NO_ERROR, or ER_FAILED when the chain does not hold what the plan says it does
+ *   xasl(in)   : UPDATE_PROC XASL with sink.is_remote set
+ *   vals(out)  : filled with num_set pointers
+ *   num_set(in): remote_num_set_binds
+ *
+ * Note: the driving subquery, when the statement has a WHERE, is the chain's head and feeds the WHERE
+ *   placeholder instead, so the SET aptrs start one later. Each of them is single-tuple, so its value is
+ *   the one its execution left in single_tuple.
+ */
+static int
+qexec_collect_remote_update_set_vals (XASL_NODE * xasl, DB_VALUE ** vals, int num_set)
+{
+  XASL_NODE *aptr = xasl->aptr_list;
+  int i;
+
+  if (xasl->proc.update.sink.remote_key_col != NULL)
+    {
+      aptr = (aptr != NULL ? aptr->next : NULL);
+    }
+
+  for (i = 0; i < num_set; i++, aptr = aptr->next)
+    {
+      if (aptr == NULL || aptr->single_tuple == NULL || aptr->single_tuple->valp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		  "remote UPDATE sink: the aptr chain does not carry the SET values the plan declares");
+	  return ER_FAILED;
+	}
+      vals[i] = aptr->single_tuple->valp->val;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_execute_remote_dml_sink () - Push local values to a remote table via CCI: streaming a local SELECT
+ *   into a remote INSERT or REPLACE, or sending one remote DELETE or UPDATE per value from a local subquery.
  *   return: NO_ERROR or ER_FAILED
- *   xasl(in)       : XASL Tree block (INSERT_PROC or DELETE_PROC with sink.is_remote set, per kind)
+ *   xasl(in)       : XASL Tree block (INSERT_PROC, DELETE_PROC or UPDATE_PROC with sink.is_remote set)
  *   xasl_state(in) : XASL state
  *   kind(in)       : which statement the proc sends -- INSERT and REPLACE both read INSERT_PROC
  *
- * Note: The aptr producing xasl->val_list has already been executed and xasl->list_id set up by the
- *       caller (qexec_execute_insert directly; qexec_execute_remote_delete_subquery for DELETE, since
- *       the local subquery there is not the generic local-DELETE aptr path). This function opens the
- *       remote connection, opens the local scan, streams rows to the remote table via CCI bind/execute,
- *       and accumulates affected rows in list_id->tuple_cnt. Only the per-row value collection differs
- *       by kind: INSERT collects the leading num_vals (visible) columns positionally; DELETE collects a
- *       single WHERE-key value and skips (no-op) a NULL key rather than binding it.
+ * Note: The aptrs producing xasl->val_list have already been executed and xasl->list_id set up by the
+ *       caller (qexec_execute_insert directly; the DELETE and UPDATE wrappers for theirs, since the local
+ *       subqueries there are not the generic local-DML aptr path). This function opens the remote
+ *       connection, opens the local scan, sends rows to the remote table via CCI bind/execute, and
+ *       accumulates affected rows in list_id->tuple_cnt. What differs by kind is what each row binds:
+ *       INSERT takes the leading num_vals (visible) columns positionally; DELETE takes a single WHERE-key
+ *       value and skips (no-op) a NULL key rather than binding it; UPDATE takes the SET values the plan's
+ *       aptrs left, and then that same key value. An UPDATE that sends no WHERE has no scan at all -- it
+ *       sends its one statement and returns.
  */
 static int
 qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, DBLINK_DML_KIND kind)
@@ -13126,18 +13391,20 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   SCAN_CODE xb_scan, ls_scan;
   SCAN_ID *s_id = NULL;
   DB_VALUE *bindv[1];
+  DB_VALUE **upd_bindv = NULL;
   int val_no = 0, row_affected;
   char **attr_names = NULL;
-  int num_attrs = 0;
-  const char *key_col = NULL, *op = NULL;
+  int num_attrs = 0, num_set = 0;
+  const char *set_text = NULL;
   TP_DOMAIN *src_dom = NULL;
   DBLINK_ODKU_ASSIGNS odku = { NULL, NULL, 0 };
   DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
-  assert (specp != NULL);
+  /* only an UPDATE that sends no WHERE has nothing to scan: its statement goes once, with the SET values */
+  assert (specp != NULL || kind == DBLINK_DML_UPDATE);
 
-  /* switch (not if/kind==INSERT-else) + default so a future DBLINK_DML_UPDATE that forgets to add a
-   * case here fails with a clear error instead of silently taking the wrong branch. */
+  /* switch (not if/kind==INSERT-else) + default so a kind added later that forgets a case here fails with
+   * a clear error instead of silently taking the wrong branch. */
   switch (kind)
     {
     case DBLINK_DML_INSERT:
@@ -13163,13 +13430,40 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	DELETE_PROC_NODE *del = &xasl->proc.delete_;
 
 	sink = &del->sink;
-	key_col = del->remote_key_col;
-	op = del->remote_op;
 	/* Domain of the value the executor will bind. dblink_dml_open() runs before qexec_open_scan(), so
 	 * s_id does not exist yet -- xasl->val_list is the same list qexec_collect_remote_delete_key() reads
 	 * from. The domain is filled before either mode reaches here: pt_make_val_list() sets it in SA, and
 	 * stx_build_val_list() rejects a NULL dom when unpacking in CS. */
 	src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
+	break;
+      }
+    case DBLINK_DML_UPDATE:
+      {
+	UPDATE_PROC_NODE *upd = &xasl->proc.update;
+
+	sink = &upd->sink;
+	set_text = upd->remote_set_text;
+	num_set = upd->remote_num_set_binds;
+	/* The WHERE key's domain, read from the list DELETE reads it from. Both build their skeleton with
+	 * pt_make_aptr_parent_node (). An UPDATE without a WHERE has no key to restore. */
+	if (sink->remote_key_col != NULL)
+	  {
+	    src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
+	  }
+
+	/* one slot per SET placeholder, plus the WHERE value when the statement sends one */
+	upd_bindv = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * (num_set + 1));
+	if (upd_bindv == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * (num_set + 1));
+	    qexec_failure_line (__LINE__, xasl_state);
+	    goto exit_on_error;
+	  }
+	if (qexec_collect_remote_update_set_vals (xasl, upd_bindv, num_set) != NO_ERROR)
+	  {
+	    qexec_failure_line (__LINE__, xasl_state);
+	    goto exit_on_error;
+	  }
 	break;
       }
     default:
@@ -13180,12 +13474,40 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   assert (sink->is_remote);
 
-  /* open remote connection and prepare the INSERT, REPLACE or DELETE statement */
-  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, key_col, op, &odku, src_dom,
+  /* a statement that sends a WHERE needs the driving scan whose rows fill its placeholder. Only an UPDATE
+   * arrives without a scan, and only when it sends no WHERE; the other way round would bind the SET values
+   * against a statement that still has a key placeholder. */
+  if (specp == NULL && sink->remote_key_col != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DML sink: the statement's WHERE and the plan's driving scan disagree");
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  /* open remote connection and prepare the statement this kind sends */
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, set_text, num_set, &odku, src_dom,
 		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
+    }
+
+  if (specp == NULL)
+    {
+      /* an UPDATE that sends no WHERE: one statement, carrying the SET values and nothing per row */
+      if (dblink_dml_execute_row (thread_p, &dblink_state, upd_bindv, num_set, &row_affected) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  goto exit_on_error;
+	}
+      xasl->list_id->tuple_cnt += row_affected;
+
+      dblink_dml_stmt_done (thread_p, &dblink_state);
+      dblink_dml_close (&dblink_state);
+      db_private_free_and_init (thread_p, upd_bindv);
+
+      return NO_ERROR;
     }
 
   /* open local scan on the SELECT / WHERE-subquery result */
@@ -13254,6 +13576,31 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 		xasl->list_id->tuple_cnt += row_affected;
 		break;
 	      }
+	    case DBLINK_DML_UPDATE:
+	      {
+		bool skip_row;
+
+		/* the WHERE value rides in the slot after the SET ones, the order the statement binds in */
+		if (qexec_collect_remote_delete_key (s_id, xasl_state, &upd_bindv[num_set], &skip_row) != NO_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
+		if (skip_row)
+		  {
+		    continue;
+		  }
+
+		/* like DELETE, the remote's own count: a key with no match reports 0, a non-unique one more
+		 * than 1, and neither equals "one local subquery row" */
+		if (dblink_dml_execute_row (thread_p, &dblink_state, upd_bindv, num_set + 1, &row_affected) != NO_ERROR)
+		  {
+		    qexec_failure_line (__LINE__, xasl_state);
+		    goto exit_on_error;
+		  }
+
+		xasl->list_id->tuple_cnt += row_affected;
+		break;
+	      }
 	    default:
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
 	      qexec_failure_line (__LINE__, xasl_state);
@@ -13280,6 +13627,10 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   dblink_dml_close (&dblink_state);
   qexec_close_scan (thread_p, specp);
+  if (upd_bindv != NULL)
+    {
+      db_private_free_and_init (thread_p, upd_bindv);
+    }
 
   return NO_ERROR;
 
@@ -13289,6 +13640,10 @@ exit_on_error:
   dblink_dml_stmt_abort (thread_p, &dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
+  if (upd_bindv != NULL)
+    {
+      db_private_free_and_init (thread_p, upd_bindv);
+    }
 
   return ER_FAILED;
 }
@@ -13550,6 +13905,70 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_DELETE);
+}
+
+/*
+ * qexec_execute_remote_update_subquery () - Evaluate the local subqueries the plan carries, then hand off
+ *   to qexec_execute_remote_dml_sink() to push the remote UPDATE via CCI.
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : UPDATE_PROC XASL with sink.is_remote set; aptr_list = the local subqueries
+ *   xasl_state(in) : XASL state
+ *
+ * Note: every aptr runs here, not just the head. The chain holds the driving subquery when the statement
+ *   has a WHERE, and one single-tuple subquery per bound SET value; the sink reads the latter's values
+ *   once and scans the former per row.
+ */
+static int
+qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  XASL_NODE *aptr;
+
+  assert (xasl->proc.update.sink.is_remote);
+  assert (xasl->aptr_list != NULL);	/* the sink XASL always carries at least one local subquery */
+
+  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+    {
+      if (QEXEC_IS_SUBQUERY_CACHE (aptr))
+	{
+	  if (qexec_execute_subquery_for_result_cache (thread_p, aptr, xasl_state) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      return ER_FAILED;
+	    }
+
+	  /* A cache hit copies the list file only. The value a SET placeholder takes is read from
+	   * single_tuple, which qexec_execute_mainblock () fills at its end. Fill it the same way here, and
+	   * keep its check that the subquery returned at most one row. */
+	  if (aptr->is_single_tuple)
+	    {
+	      if (aptr->list_id->tuple_cnt > 1)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
+		  qexec_failure_line (__LINE__, xasl_state);
+		  return ER_FAILED;
+		}
+	      if (aptr->single_tuple != NULL
+		  && qdata_get_single_tuple_from_list_id (thread_p, aptr->list_id, aptr->single_tuple) != NO_ERROR)
+		{
+		  qexec_failure_line (__LINE__, xasl_state);
+		  return ER_FAILED;
+		}
+	    }
+	}
+      else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+    }
+
+  if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+
+  return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_UPDATE);
 }
 
 /*
