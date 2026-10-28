@@ -3664,6 +3664,24 @@ expr_regu_list_runs (const REGU_VARIABLE_LIST list, EXPR_RUNS_WHAT what)
   return false;
 }
 
+/* an operator that reads the catalog or an index while a row is evaluated: develop turns the block's fixed scan
+ * off for it (XASL_NO_FIXED_SCAN, pt_to_regu_variable ()) */
+static bool
+expr_arith_reads_storage (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_INDEX_CARDINALITY:
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+      return true;
+    default:
+      return false;
+    }
+}
+
 /* Does a row's evaluation of regu run, anywhere under its arithmetic, function and procedure-argument nodes:
  * EXPR_RUNS_SIDE_EFFECT -- a node with a side effect: a stored procedure call (TYPE_SP), or an operator
  * expr_arith_side_effect () names (a serial, INCR/DECR, a random number, a session variable).
@@ -3673,7 +3691,9 @@ expr_regu_list_runs (const REGU_VARIABLE_LIST list, EXPR_RUNS_WHAT what)
  * EXPR_RUNS_QUERY -- a node that runs another query: a regu with a linked XASL (a scalar subquery the fetch executes
  * before it reads the value), a list (TYPE_LIST_ID), a stored procedure call (TYPE_SP, which may run any query).
  * Such a node may open a scan whose ordered fix lets go of the page the batch holds and fixes it again, while the
- * chunk's rows still point into it. */
+ * chunk's rows still point into it.  So may the operators that read the catalog or an index while the row is
+ * evaluated (expr_arith_reads_storage ()): develop turns the block's fixed scan off for them (XASL_NO_FIXED_SCAN),
+ * which a filter iterator, holding its page on its own, would not see. */
 static bool
 expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
 {
@@ -3701,6 +3721,7 @@ expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
 	    return false;
 	  }
 	return (what == EXPR_RUNS_SIDE_EFFECT && expr_arith_side_effect (arith->opcode))
+	  || (what == EXPR_RUNS_QUERY && expr_arith_reads_storage (arith->opcode))
 	  || expr_regu_runs (arith->leftptr, what) || expr_regu_runs (arith->rightptr, what)
 	  || expr_regu_runs (arith->thirdptr, what)
 	  /* T_CASE, T_DECODE, T_IF, T_PREDICATE evaluate arith->pred through eval_pred () (fetch_op_case ()) */
