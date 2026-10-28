@@ -261,6 +261,9 @@ struct groupby_state
   int g_dim_levels;		/* dimensions size */
 
   int hash_eligible;
+  bool no_first_tuple;		/* hash aggregation keeps no first rows: a group may be in the partial list alone */
+  bool put_partials;		/* there are no rows to sort: the partial list's sort outputs the groups */
+  bool part_taken;		/* the partial entry under the scan went to a group of the sorted rows */
 
   AGGREGATE_HASH_CONTEXT *agg_hash_context;
 
@@ -481,6 +484,8 @@ static void qexec_gby_start_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 static void qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N);
 static int qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, const RECDES * recdes);
 static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N, bool keep_list_file);
+static void qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
+					 AGGREGATE_HASH_VALUE * value);
 static SORT_STATUS qexec_hash_gby_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
 static int qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static SORT_STATUS qexec_gby_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
@@ -853,8 +858,8 @@ static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC
 static void qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc);
 static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VARIABLE_LIST regu_list,
 				 QFILE_TUPLE_RECORD * tplrec, AGGREGATE_HASH_KEY * key);
-static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
-					    AGGREGATE_HASH_KEY * key, bool * found);
+static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
+					    bool * found);
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
 static int qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static void qexec_clear_a_eval_values (THREAD_ENTRY * thread_p, ANALYTIC_EVAL_TYPE * a_eval_list);
@@ -4905,7 +4910,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      else if (!proc->g_output_first_tuple)
+      else if (proc->g_first_tuple == XASL_G_FIRST_TUPLE_KEEP)
 	{
 	  int tuple_size = tpldesc->tpl_size;
 
@@ -4954,18 +4959,28 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       /* compute hash table size */
       context->hash_size += qdata_get_agg_hkey_size (new_key);
       context->hash_size += qdata_get_agg_hvalue_size (new_value, false);
+
+      if (proc->g_first_tuple == XASL_G_FIRST_TUPLE_NONE)
+	{
+	  /* no first row is kept: the group's first row is aggregated like the rest, and its entry counts it */
+	  *output_tuple = false;
+	  value = new_value;
+	}
     }
   else
+    {
+      /* no need to output tuple */
+      *output_tuple = false;
+      context->tuple_count++;
+    }
+
+  if (value != NULL)
     {
       REGU_VARIABLE_LIST regu_var_p;
       DB_VALUE *tmp;
 
-      /* no need to output tuple */
-      *output_tuple = false;
-
       /* count new tuple */
       value->tuple_count++;
-      context->tuple_count++;
 
       /* fetch values */
       for (regu_var_p = proc->g_scan_regu_list; regu_var_p != NULL; regu_var_p = regu_var_p->next)
@@ -5289,9 +5304,18 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	  if (context->sorted_count > 0)
 	    {
-	      /* different key, write current accumulators */
-	      if (qdata_save_agg_hentry_to_list (thread_p, context->curr_part_key, context->curr_part_value,
-						 context->temp_dbval_array, context->sorted_part_list_id) != NO_ERROR)
+	      /* different key, the current group is complete */
+	      if (state->put_partials)
+		{
+		  qexec_gby_put_partial_group (thread_p, state, context->curr_part_key, context->curr_part_value);
+		  if (state->state != NO_ERROR)
+		    {
+		      return state->state;
+		    }
+		}
+	      else if (qdata_save_agg_hentry_to_list (thread_p, context->curr_part_key, context->curr_part_value,
+						      context->temp_dbval_array,
+						      context->sorted_part_list_id) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -5477,8 +5501,8 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		}
 
 	      /* search in partial list */
-	      if (qexec_locate_agg_hentry_in_list (thread_p, info->agg_hash_context, info->agg_hash_context->temp_key,
-						   &found) != NO_ERROR)
+	      if (qexec_locate_agg_hentry_in_list (thread_p, info, info->agg_hash_context->temp_key, &found) !=
+		  NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -5536,8 +5560,8 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		}
 
 	      /* search in partial list */
-	      if (qexec_locate_agg_hentry_in_list (thread_p, info->agg_hash_context, info->agg_hash_context->temp_key,
-						   &found) != NO_ERROR)
+	      if (qexec_locate_agg_hentry_in_list (thread_p, info, info->agg_hash_context->temp_key, &found) !=
+		  NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -5714,6 +5738,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
     {
       GOTO_EXIT_ON_ERROR;
     }
+  gbstate.no_first_tuple = (gbstate.hash_eligible && buildlist->g_first_tuple == XASL_G_FIRST_TUPLE_NONE);
 
   /*
    * Create a new listfile to receive the results.
@@ -5794,14 +5819,22 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 		  GOTO_EXIT_ON_ERROR;
 		}
 
+	      /* start new group and aggregate tuple; since unsorted list is empty we don't have rollup groups */
+	      qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
+
+	      if (gbstate.no_first_tuple)
+		{
+		  /* the entry holds every row of the group */
+		  qexec_gby_put_partial_group (thread_p, &gbstate, (AGGREGATE_HASH_KEY *) head->key, value);
+		  head = head->act_next;
+		  continue;
+		}
+
 	      if (value->first_tuple.tpl == NULL)
 		{
 		  /* empty unsorted list and no first tuple? this should not happen ... */
 		  GOTO_EXIT_ON_ERROR;
 		}
-
-	      /* start new group and aggregate tuple; since unsorted list is empty we don't have rollup groups */
-	      qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
 
 	      /* load values in list and aggregate first tuple */
 	      qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false);
@@ -5858,6 +5891,13 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qfile_close_list (thread_p, list_id);
     }
 
+  /* without first rows and with no row left unhashed, the partial entries are the whole groups */
+  gbstate.put_partials = (gbstate.no_first_tuple && list_id->tuple_cnt == 0);
+  if (gbstate.put_partials)
+    {
+      qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
+    }
+
   /* sort partial list and open a scan on it */
   if (gbstate.hash_eligible && gbstate.agg_hash_context->part_list_id->tuple_cnt > 0)
     {
@@ -5904,11 +5944,20 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       /* write last group */
       if (gbstate.agg_hash_context->sorted_count > 0)
 	{
+	  if (gbstate.put_partials)
+	    {
+	      qexec_gby_put_partial_group (thread_p, &gbstate, gbstate.agg_hash_context->curr_part_key,
+					   gbstate.agg_hash_context->curr_part_value);
+	      if (gbstate.state != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
 	  /* different key, write current accumulators */
-	  if (qdata_save_agg_hentry_to_list (thread_p, gbstate.agg_hash_context->curr_part_key,
-					     gbstate.agg_hash_context->curr_part_value,
-					     gbstate.agg_hash_context->temp_dbval_array,
-					     gbstate.agg_hash_context->sorted_part_list_id) != NO_ERROR)
+	  else if (qdata_save_agg_hentry_to_list (thread_p, gbstate.agg_hash_context->curr_part_key,
+						  gbstate.agg_hash_context->curr_part_value,
+						  gbstate.agg_hash_context->temp_dbval_array,
+						  gbstate.agg_hash_context->sorted_part_list_id) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -5922,6 +5971,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qfile_destroy_list (thread_p, gbstate.agg_hash_context->part_list_id);
       qfile_free_list_id (gbstate.agg_hash_context->part_list_id);
       gbstate.agg_hash_context->part_list_id = NULL;
+
+      if (gbstate.put_partials)
+	{
+	  /* every group is in the output */
+	  goto output_done;
+	}
 
       /* reopen scan on newly sorted list */
       if (qfile_open_list_scan (gbstate.agg_hash_context->sorted_part_list_id, &gbstate.agg_hash_context->part_scan_id)
@@ -6000,6 +6055,30 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
     }
 
+  if (gbstate.no_first_tuple)
+    {
+      AGGREGATE_HASH_CONTEXT *context = gbstate.agg_hash_context;
+
+      /* the partial entries after the rows' last group are groups of their own */
+      while (gbstate.state == NO_ERROR && context->part_scan_code == S_SUCCESS)
+	{
+	  if (!gbstate.part_taken)
+	    {
+	      qexec_gby_put_partial_group (thread_p, &gbstate, context->curr_part_key, context->curr_part_value);
+	    }
+	  context->part_scan_code =
+	    qdata_load_agg_hentry_from_list (thread_p, &context->part_scan_id, context->curr_part_key,
+					     context->curr_part_value, context->key_domains,
+					     context->accumulator_domains);
+	  gbstate.part_taken = false;
+	}
+      if (gbstate.state != NO_ERROR || context->part_scan_code == S_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+
+output_done:
   /* close output file */
   qfile_close_list (thread_p, gbstate.output_file);
   /* The final group has now been finalized, so the last PEEKed page held by
@@ -22852,6 +22931,46 @@ exit_on_error:
 }
 
 /*
+ * qexec_gby_put_partial_group () - output a group whose rows all went into one partial entry
+ *   return:
+ *   gbstate(in): the first group dimension is started
+ *   key(in): the group's key
+ *   value(in): the group's accumulators; they move to the group
+ *
+ * Note: without first rows (XASL_G_FIRST_TUPLE_NONE) the output reads the keys and the aggregates only, so the key
+ *       values are put where a row of the group would have put them.
+ */
+static void
+qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
+			     AGGREGATE_HASH_VALUE * value)
+{
+  REGU_VARIABLE_LIST regu;
+  int i = 0;
+
+  assert (gbstate->no_first_tuple && !gbstate->with_rollup);
+
+  if (gbstate->state != NO_ERROR)
+    {
+      return;
+    }
+
+  for (regu = gbstate->g_hk_regu_list; regu != NULL; regu = regu->next, i++)
+    {
+      if (DB_NEED_CLEAR (regu->value.vfetch_to))
+	{
+	  pr_clear_value (regu->value.vfetch_to);
+	}
+      pr_share_value (key->values[i], regu->value.vfetch_to);
+    }
+  assert (i == key->val_count);
+
+  qdata_load_agg_hvalue_in_agg_list (value, gbstate->g_dim[0].d_agg_list, false);
+  gbstate->input_recs += value->tuple_count;
+
+  (void) qexec_gby_finalize_group_dim (thread_p, gbstate, NULL);
+}
+
+/*
  * qexec_gby_start_group_dim () -
  *   return:
  *   gbstate(in):
@@ -30277,9 +30396,10 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
  *   found(out): true if found, false otherwise
  */
 static int
-qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context, AGGREGATE_HASH_KEY * key,
+qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
 				 bool * found)
 {
+  AGGREGATE_HASH_CONTEXT *context = gbstate->agg_hash_context;
   DB_VALUE_COMPARE_RESULT result;
   bool done = false;
   int diff_pos;
@@ -30316,6 +30436,7 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT
 	{
 	  /* found key */
 	  *found = true;
+	  gbstate->part_taken = true;
 	  return NO_ERROR;
 	}
       else if (result == DB_GT)
@@ -30326,11 +30447,22 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT
 	}
       else if (!done)
 	{
+	  if (gbstate->no_first_tuple && !gbstate->part_taken)
+	    {
+	      /* no row of this group was sorted: it is a group of its own, before the rows' next one */
+	      qexec_gby_put_partial_group (thread_p, gbstate, context->curr_part_key, context->curr_part_value);
+	      if (gbstate->state != NO_ERROR)
+		{
+		  return gbstate->state;
+		}
+	    }
+
 	  /* scan for next */
 	  context->part_scan_code =
 	    qdata_load_agg_hentry_from_list (thread_p, &context->part_scan_id, context->curr_part_key,
 					     context->curr_part_value, context->key_domains,
 					     context->accumulator_domains);
+	  gbstate->part_taken = false;
 	}
     }
 
