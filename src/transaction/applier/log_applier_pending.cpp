@@ -169,7 +169,7 @@ la_pending_is_empty (void)
  *   arg(in): passed through to fn
  */
 void
-la_pending_foreach (void (*fn) (const LA_TASK * task, void *arg), void *arg)
+la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg)
 {
   LA_PENDING_NODE *node;
 

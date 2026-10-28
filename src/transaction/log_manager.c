@@ -5613,7 +5613,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq) || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
+			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
 	      wset_publish_commit_to_history (tdes, &commit_lsa);
 	    }
 	  else
@@ -6392,7 +6393,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	       * right before the label is written, and the keys are published once the commit LSA is known, so a
 	       * two-phase commit orders on the slave like any other commit. */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq) || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
+			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
 	      wset_publish_commit_to_history (tdes, &commit_lsa);
 	    }
 	  else
