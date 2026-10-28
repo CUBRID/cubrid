@@ -484,6 +484,7 @@ static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE
 static PT_NODE *mq_collect_shared_derived_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_find_unshareable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec);
+static bool mq_has_named_columns_first (PT_NODE * spec);
 static bool mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep);
 static void mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement);
 /*
@@ -10060,25 +10061,70 @@ mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec)
 }
 
 /*
+ * mq_has_named_columns_first () - are the columns of a derived spec the named columns followed by hidden columns only
+ *   return: true if so
+ *   spec(in): derived spec whose derived table is a SELECT
+ *
+ * Note: a hidden column is an ORDER BY key that the query of spec does not use
+ */
+static bool
+mq_has_named_columns_first (PT_NODE * spec)
+{
+  PT_NODE *attr, *col = spec->info.spec.derived_table->info.query.q.select.list;
+
+  for (attr = spec->info.spec.as_attr_list; attr != NULL; attr = attr->next, col = col->next)
+    {
+      if (col == NULL || col->flag.is_hidden_column)
+	{
+	  return false;
+	}
+    }
+
+  for (; col != NULL; col = col->next)
+    {
+      if (!col->flag.is_hidden_column)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * mq_adopt_view_columns () - give a derived spec the columns of the representative of its group, in the same order
  *   return: false if spec uses a column the representative does not have; spec is then left unchanged
  *   parser(in):
  *   spec(in/out): derived spec rewritten from the view of rep
  *   rep(in): derived spec whose result spec will scan
  *
- * Note: the columns spec does not use are added as NULL; the derived table of spec is not generated
+ * Note: the columns spec does not use are added as NULL; the derived table of spec is not generated, but its
+ *	 hidden columns stay at the end and the positions of its ORDER BY are moved with the columns
  */
 static bool
 mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
 {
   PT_NODE *query = spec->info.spec.derived_table;
-  PT_NODE *rep_attr, *attr, *col, *prev_attr, *prev_col;
-  PT_NODE *attrs_head = NULL, *attrs_tail = NULL, *cols_head = NULL, *cols_tail = NULL;
+  PT_NODE *rep_attr, *attr, *col, *prev_attr, *prev_col, *order;
+  PT_NODE *attrs_head = NULL, *attrs_tail = NULL, *cols_head = NULL, *cols_tail = NULL, *hidden_cols = NULL;
+  PT_NODE **old_cols = NULL;
+  int n_cols, n_attrs, pos;
 
-  if (spec->info.spec.as_attr_list == NULL || spec->info.spec.range_var == NULL
-      || pt_length_of_list (spec->info.spec.as_attr_list) != pt_length_of_list (query->info.query.q.select.list))
+  if (spec->info.spec.as_attr_list == NULL || spec->info.spec.range_var == NULL || !mq_has_named_columns_first (spec))
     {
       return false;
+    }
+
+  n_cols = pt_length_of_list (query->info.query.q.select.list);
+
+  for (order = query->info.query.order_by; order != NULL; order = order->next)
+    {
+      pos = order->info.sort_spec.pos_descr.pos_no;
+      if (order->info.sort_spec.expr == NULL || order->info.sort_spec.expr->node_type != PT_VALUE || pos < 1
+	  || pos > n_cols)
+	{
+	  return false;
+	}
     }
 
   for (rep_attr = rep->info.spec.as_attr_list; rep_attr != NULL; rep_attr = rep_attr->next)
@@ -10089,7 +10135,8 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
 	}
     }
 
-  if (spec->info.spec.as_attr_list->node_type == PT_VALUE && spec->info.spec.as_attr_list->next == NULL)
+  if (spec->info.spec.as_attr_list->node_type == PT_VALUE && spec->info.spec.as_attr_list->next == NULL
+      && query->info.query.order_by == NULL && n_cols == 1)
     {
       /* the reference uses no column of the view, e.g. count(*): its constant column is replaced */
       parser_free_tree (parser, spec->info.spec.as_attr_list);
@@ -10112,6 +10159,30 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
 	{
 	  return false;
 	}
+    }
+
+  if (query->info.query.order_by != NULL)
+    {
+      /* remember the column at each position, to find the positions of the ORDER BY again */
+      old_cols = (PT_NODE **) parser_alloc (parser, n_cols * sizeof (PT_NODE *));
+      if (old_cols == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return false;
+	}
+      for (pos = 0, col = query->info.query.q.select.list; col != NULL; pos++, col = col->next)
+	{
+	  old_cols[pos] = col;
+	}
+    }
+
+  n_attrs = pt_length_of_list (spec->info.spec.as_attr_list);
+  if (n_attrs > 0 && n_cols > n_attrs)
+    {
+      /* cut off the hidden columns; they are put back after the named columns */
+      col = pt_get_node_from_list (query->info.query.q.select.list, n_attrs - 1);
+      hidden_cols = col->next;
+      col->next = NULL;
     }
 
   for (rep_attr = rep->info.spec.as_attr_list; rep_attr != NULL; rep_attr = rep_attr->next)
@@ -10173,6 +10244,20 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
   assert (spec->info.spec.as_attr_list == NULL && query->info.query.q.select.list == NULL);
   spec->info.spec.as_attr_list = attrs_head;
   query->info.query.q.select.list = cols_head;
+  cols_tail->next = hidden_cols;
+
+  for (order = query->info.query.order_by; order != NULL; order = order->next)
+    {
+      attr = old_cols[order->info.sort_spec.pos_descr.pos_no - 1];
+      for (pos = 1, col = cols_head; col != attr; pos++, col = col->next)
+	{
+	  assert (col != NULL);
+	}
+      order->info.sort_spec.expr->info.value.data_value.i = pos;
+      order->info.sort_spec.expr->info.value.db_value.data.i = pos;
+      order->info.sort_spec.expr->info.value.text = NULL;
+      order->info.sort_spec.pos_descr.pos_no = pos;
+    }
 
   return true;
 }
@@ -10242,9 +10327,7 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
       rep = group[rep_idx];
       derived = rep->info.spec.derived_table;
 
-      /* ORDER BY views are not shared */
-      if (!PT_IS_SELECT (derived) || derived->info.query.correlation_level != 0 || derived->info.query.order_by != NULL
-	  || pt_length_of_list (rep->info.spec.as_attr_list) != pt_length_of_list (derived->info.query.q.select.list))
+      if (!PT_IS_SELECT (derived) || derived->info.query.correlation_level != 0 || !mq_has_named_columns_first (rep))
 	{
 	  continue;
 	}
@@ -10261,7 +10344,7 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  derived = group[j]->info.spec.derived_table;
 	  if (PT_IS_SELECT (derived) && derived->info.query.correlation_level == 0
-	      && derived->info.query.order_by == NULL && mq_adopt_view_columns (parser, group[j], rep))
+	      && mq_adopt_view_columns (parser, group[j], rep))
 	    {
 	      derived->info.query.shared_view_group = group_id + 1;
 	      has_member = true;
