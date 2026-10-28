@@ -4199,6 +4199,12 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
       pgbuf_unfix_and_init (thread_p, page_fhead);
 
       pgbuf_discard_pages_of_sectors (thread_p, vsid_collector.vsids, vsid_collector.n_vsids);
+
+      {
+	/* lets a test checkpoint and crash after the pages are gone and before the sectors are freed */
+	int hold_seconds = 10;
+	(void) FI_TEST_ARG (thread_p, FI_TEST_FILE_MANAGER_DESTROY_HOLD, &hold_seconds, FI_INIT_STATE);
+      }
     }
   else
     {

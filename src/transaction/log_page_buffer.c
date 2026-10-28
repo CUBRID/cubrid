@@ -108,6 +108,7 @@
 #include "object_representation.h"
 #include "flashback.h"
 #include "system_metadata_version.h"
+#include "fault_injection.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -7431,6 +7432,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       goto error_cannot_chkpt;
     }
+
+  {
+    /* lets a test destroy files while the checkpoint start is fixed and the flush has not run */
+    int hold_seconds = 10;
+    (void) FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_CHECKPOINT_HOLD, &hold_seconds, FI_INIT_STATE);
+  }
 
   detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
