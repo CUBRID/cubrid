@@ -17798,6 +17798,7 @@ pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.merge.update.del_search_cond, arg);
   PT_APPLY_WALK (parser, p->info.merge.check_where, arg);
   PT_APPLY_WALK (parser, p->info.merge.waitsecs_hint, arg);
+  PT_APPLY_WALK (parser, p->info.merge.remote_src_query, arg);
 
   return p;
 }

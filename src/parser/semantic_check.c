@@ -12844,6 +12844,69 @@ pt_dblink_dml_target_as_derived (PARSER_CONTEXT * parser, PT_NODE * spec)
   return NO_ERROR;
 }
 
+/* pt_dblink_merge_walk_binds callback: append the source column to the SELECT list being built, by its name
+ * alone. The list is bound over a copy of the source, so the column's own resolution does not carry over. */
+static void
+pt_dblink_merge_add_select_col (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_NODE **list = (PT_NODE **) arg;
+
+  *list = parser_append_node (pt_name (parser, value->info.name.original), *list);
+}
+
+/*
+ * pt_dblink_merge_src_query () - Build and bind the SELECT a remote MERGE with a local source scans. It reads
+ *   FROM a copy of the USING source taken before name resolution. It has one column per bound source column,
+ *   in pt_dblink_merge_walk_binds () order.
+ *   return: the bound SELECT, or NULL on failure (parser error set)
+ *   parser(in): parser context
+ *   merge(in): the name-resolved PT_MERGE
+ *   from(in): the copy of the USING spec
+ *   sc_info_ptr(in/out): semantic check info, passed through to pt_bind_remote_dml_subq
+ *
+ * Note: The source alone is in the SELECT's FROM, so a column found by its name is the source's. A column
+ *   the walk reports was resolved to the source, so the name is found there again.
+ */
+static PT_NODE *
+pt_dblink_merge_src_query (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE * from, SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  PT_NODE *select, *list = NULL, *col;
+  int count;
+
+  count = pt_dblink_merge_walk_binds (parser, merge, pt_dblink_merge_add_select_col, &list);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  for (col = list; col != NULL; col = col->next)
+    {
+      count--;
+    }
+  if (count != 0)
+    {
+      /* pt_name () failed for a column */
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+  if (list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no value to bind from the source");
+      return NULL;
+    }
+
+  select = parser_new_node (parser, PT_SELECT);
+  if (select == NULL)
+    {
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+  select->info.query.q.select.list = list;
+  select->info.query.q.select.from = from;
+
+  return pt_bind_remote_dml_subq (parser, select, sc_info_ptr, "remote MERGE: failed to translate the source");
+}
+
 /*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
@@ -12859,6 +12922,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   SEMANTIC_CHK_INFO *sc_info_ptr = info;
   bool save_donot_fold = false;
+  PT_NODE *merge_src_from = NULL;
 
   assert (parser != NULL);
 
@@ -13107,11 +13171,22 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 		  if (remote->node_type == PT_DBLINK_TABLE_DML && remote->info.dblink_table.qstr == NULL)
 		    {
-		      if (!PT_SPEC_IS_DERIVED (node->info.merge.into)
-			  && pt_dblink_dml_target_as_derived (parser, node->info.merge.into) != NO_ERROR)
+		      if (!PT_SPEC_IS_DERIVED (node->info.merge.into))
 			{
-			  PT_INTERNAL_ERROR (parser, "remote MERGE: failed to take the target's columns");
-			  break;
+			  if (pt_dblink_dml_target_as_derived (parser, node->info.merge.into) != NO_ERROR)
+			    {
+			      PT_INTERNAL_ERROR (parser, "remote MERGE: failed to take the target's columns");
+			      break;
+			    }
+
+			  /* the source SELECT is bound over its own copy of the source, taken before the statement
+			   * resolves its names */
+			  merge_src_from = parser_copy_tree (parser, node->info.merge.using_clause);
+			  if (merge_src_from == NULL)
+			    {
+			      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      break;
+			    }
 			}
 		      resolve_whole = true;
 		    }
@@ -13174,6 +13249,14 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
 		  node = parser_walk_tree (parser, node, pt_expand_isnull_preds, node, NULL, NULL);
 		}
+	    }
+
+	  if (merge_src_from != NULL && node != NULL && !pt_has_error (parser))
+	    {
+	      /* a remote MERGE with a local source: the SELECT whose rows the sink sends. XASL generation walks the
+	       * clauses again for the remote text, and the two walks must meet the same columns. The statement skips
+	       * mq_translate as a remote DML (db_vdb.c), so no rewrite changes the clauses in between. */
+	      node->info.merge.remote_src_query = pt_dblink_merge_src_query (parser, node, merge_src_from, sc_info_ptr);
 	    }
 	}
 
