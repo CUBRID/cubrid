@@ -38,6 +38,7 @@
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "subquery_cache.h"
+#include "xasl_predicate.hpp"
 #include "pl_signature.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -220,8 +221,6 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
-  int domain_scope;		/* server, load-derived, not serialized: the scope of the correlated values its block
-				 * reads converted once, which a scan filling this list starts anew; 0 none */
 };
 
 /* To handle selected update list, click counter related */
@@ -265,6 +264,11 @@ struct update_assignment
   DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
   REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
   bool clear_value_at_clone_decache;	/* true, if need to clear constant db_value at clone decache */
+  TP_DOMAIN *domain;		/* CBRD-27583: the attribute's domain, which the value converts into */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  DB_TYPE value_type;		/* CBRD-27583: the type the value comes in, chosen at unpack */
+  TP_VALUE_CONVERTER conv;	/* CBRD-27583: value_type into domain (ASSIGN), chosen at unpack */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 /*on duplicate key update info structure */
@@ -349,6 +353,9 @@ struct buildlist_proc_node
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
   GBY_SKIP_STATE *gby_skip_state;	/* GROUP BY skip aggregated during the scan, one execution's; not serialized */
+  const TP_DOMAIN **g_hk_compares;	/* per hash key column, the domain whose cmpval and collation compare its values
+					 * (domain_compare_in_domain), decided at unpack; NULL: each execution's key domains;
+					 * not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
@@ -373,9 +380,8 @@ struct mergelist_proc_node
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
-  /* load-derived, not serialized: [ls_merge.ls_column_cnt] each merge column pair's comparison, as the
-   * load or resolve_domains resolved it */
-  const struct DOMAIN_COMPARE_PLAN **merge_compares;
+  /* CBRD-27583: [ls_merge.ls_column_cnt] each merge column pair's comparison, decided at unpack; not serialized */
+  const struct DOMAIN_COMPARE *merge_compares;
 };
 
 typedef struct hashjoin_proc_node
@@ -455,6 +461,15 @@ struct insert_proc_node
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
   char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
+  TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
+  int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
+				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  DB_TYPE *value_types;		/* CBRD-27583: the type each value comes in - per row of values and
+				 * attribute, a single row for a SELECT - chosen at unpack */
+  TP_VALUE_CONVERTER *convs;	/* CBRD-27583: each value_types entry into its attribute's domain */
+  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583: each default_types entry into its attribute's domain */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -639,6 +654,82 @@ struct cte_proc_node
 #define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
   (((func_p)->function == PT_MEDIAN) \
    || ((func_p)->function == PT_PERCENTILE_CONT))
+
+/*
+ * CBRD-27583: the terms an ORDERBY_NUM predicate's upper bound comes from (qexec_get_orderbynum_upper_bound):
+ * the comparisons of its AND tree's leaves of ORDERBY_NUM () (a constant) with a value, a host variable or an
+ * expression, on either side. xasl_orderbynum_upper_bound gives the bound and the relation with the bound on the
+ * right, NULL for another term or relation than < and <=. The compiler decides the operand coercion of bound - 1 of
+ * each < (xasl_for_each_orderbynum_less_than, in that order), which the stream carries after the predicate with their
+ * count. The compiler, unpack and the execution pick the terms with these two functions alone, which is why they pick
+ * the same terms (unpack checks the count).
+ */
+inline REGU_VARIABLE *
+xasl_orderbynum_upper_bound (const PRED_EXPR * pred, REL_OP * op)
+{
+  if (pred->type != T_EVAL_TERM || pred->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+    {
+      return NULL;
+    }
+  const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+  REGU_VARIABLE *bound = term->rhs;
+  *op = term->rel_op;
+  if (term->lhs->type != TYPE_CONSTANT)
+    {
+      /* the bound on the left: the reversed comparison */
+      if (term->rhs->type != TYPE_CONSTANT)
+	{
+	  return NULL;
+	}
+      bound = term->lhs;
+      *op = *op == R_GT ? R_LT : *op == R_GE ? R_LE : *op == R_LT ? R_GT : *op == R_LE ? R_GE : R_NONE;
+    }
+  if (bound->type != TYPE_POS_VALUE && bound->type != TYPE_DBVAL && bound->type != TYPE_INARITH)
+    {
+      return NULL;
+    }
+  return *op == R_LT || *op == R_LE ? bound : NULL;
+}
+
+/* *INDENT-OFF* */
+template <typename PRED, typename VISIT>
+inline void
+xasl_for_each_orderbynum_upper_bound (PRED * pred, VISIT && visit)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
+    {
+      xasl_for_each_orderbynum_upper_bound (pred->pe.m_pred.lhs, visit);
+      xasl_for_each_orderbynum_upper_bound (pred->pe.m_pred.rhs, visit);
+      return;
+    }
+  REL_OP op;
+  const REGU_VARIABLE *bound = xasl_orderbynum_upper_bound (pred, &op);
+  if (bound != NULL)
+    {
+      visit (&pred->pe.m_eval_term.et.et_comp, bound, op);
+    }
+}
+
+template <typename PRED, typename VISIT>
+inline void
+xasl_for_each_orderbynum_less_than (PRED * pred, VISIT && visit)
+{
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_upper_bound (pred, [&visit] (auto * term, const REGU_VARIABLE * bound, REL_OP op)
+    {
+      if (op == R_LT)
+	{
+	  visit (term, bound);
+	}
+    });
+  /* *INDENT-ON* */
+}
+
+/* *INDENT-ON* */
 
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
@@ -1146,11 +1237,8 @@ namespace memoize
   class storage;
 }
 // *INDENT-ON*
-struct domain_plan;
-
 struct xasl_node
 {
-  struct domain_plan *domain_plan;	/* tree-wide unpack-arena plan, not serialized */
   XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
@@ -1161,6 +1249,10 @@ struct xasl_node
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into INTEGER, found at
+						 * unpack from its domain; not serialized */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */
 
   VAL_LIST *single_tuple;	/* single tuple result */
@@ -1189,9 +1281,8 @@ struct xasl_node
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
   REGU_VARIABLE *limit_offset;	/* offset of limit clause */
   REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
-  /* load-derived, not serialized: the row count's comparison with 0, as the load or resolve_domains resolved
-   * it */
-  const struct DOMAIN_COMPARE_PLAN *limit_compare;
+  /* CBRD-27583: the row count's comparison with an INT 0, decided at unpack; not serialized */
+  const struct DOMAIN_COMPARE *limit_compare;
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 
