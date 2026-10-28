@@ -36,6 +36,7 @@
 #define INFO_SCHEMA_ROUTINE_PRIVILEGES_NAME  "routine_privileges"
 #define INFO_SCHEMA_ROUTINES_NAME            "routines"
 #define INFO_SCHEMA_SCHEMATA_NAME            "schemata"
+#define INFO_SCHEMA_SENSITIVITY_LABELS_NAME  "sensitivity_labels"
 #define INFO_SCHEMA_SEQUENCES_NAME           "sequences"
 #define INFO_SCHEMA_STATISTICS_NAME          "statistics"
 #define INFO_SCHEMA_SYNONYMS_NAME            "synonyms"

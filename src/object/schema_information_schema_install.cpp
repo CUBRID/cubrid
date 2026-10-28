@@ -56,6 +56,8 @@ info_schema_init (void)
 				 information_schema_initializer::get_view_routine_privileges ());
   info_schema_list.emplace_back (INFO_SCHEMA_ROUTINES_NAME, information_schema_initializer::get_view_routines ());
   info_schema_list.emplace_back (INFO_SCHEMA_SCHEMATA_NAME, information_schema_initializer::get_view_schemata ());
+  info_schema_list.emplace_back (INFO_SCHEMA_SENSITIVITY_LABELS_NAME,
+				 information_schema_initializer::get_view_sensitivity_labels ());
   info_schema_list.emplace_back (INFO_SCHEMA_SEQUENCES_NAME, information_schema_initializer::get_view_sequences ());
   info_schema_list.emplace_back (INFO_SCHEMA_STATISTICS_NAME, information_schema_initializer::get_view_statistics ());
   info_schema_list.emplace_back (INFO_SCHEMA_SYNONYMS_NAME, information_schema_initializer::get_view_synonyms ());
@@ -598,6 +600,43 @@ namespace cubschema
       {"schema_comment", format_varchar (1024)},
       {"create_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_schemata_spec ()}
+    },
+    // constraint
+    {},
+    // authorization
+    {
+      // owner
+      Au_information_schema_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+    // initializer
+    nullptr
+	   );
+  }
+
+  information_schema_definition
+  information_schema_initializer::get_view_sensitivity_labels ()
+  {
+    return information_schema_definition (
+		   // name
+		   INFO_SCHEMA_SENSITIVITY_LABELS_NAME,
+		   // columns
+    {
+      {"table_catalog", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
+      {"table_name", format_varchar (255)},
+      {"column_name", format_varchar (255)},
+      {"grade", format_varchar (255)},
+      {"grade_level", "integer"},
+      {"info_type", format_varchar (255)},
+      {"source", format_varchar (255)},
+      {"labeled_by", format_varchar (255)},
+      {"create_time", "datetime"},
+      {"update_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_sensitivity_labels_spec ()}
     },
     // constraint
     {},

@@ -787,6 +787,41 @@ sm_define_view_schemata_spec (void)
 }
 
 std::string
+sm_define_view_sensitivity_labels_spec (void)
+{
+  char stmt [2048];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof (stmt),
+    "SELECT "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
+      "[cls].[class_name] AS [table_name], "
+      "[attr].[attr_name] AS [column_name], "
+      "[lbl].[grade].[name] AS [grade], "
+      "[lbl].[grade].[grade_level] AS [grade_level], "
+      "[lbl].[info_type].[name] AS [info_type], "
+      "[lbl].[source].[name] AS [source], "
+      "[lbl].[labeled_by] AS [labeled_by], "
+      "[lbl].[created_time] AS [create_time], "
+      "[lbl].[updated_time] AS [update_time] "
+    "FROM "
+      /* CT_SENSITIVITY_LABEL_NAME */
+      "[%s] AS [lbl] "
+      /* CT_CLASS_NAME */
+      "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [lbl].[class_of] "
+      /* CT_ATTRIBUTE_NAME */
+      "INNER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_id] = [lbl].[attr_id]",
+    CT_SENSITIVITY_LABEL_NAME,
+    CT_CLASS_NAME,
+    CT_ATTRIBUTE_NAME);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}
+
+std::string
 sm_define_view_sequences_spec (void)
 {
   char stmt [2048];
