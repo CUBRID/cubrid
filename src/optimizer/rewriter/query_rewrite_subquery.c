@@ -36,6 +36,15 @@
   (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE | PT_HINT_ORDERED | PT_HINT_LEADING \
    | PT_HINT_PARALLEL | PT_HINT_LK_TIMEOUT)
 
+/* plan hints that name no table and apply to the whole SELECT holding them */
+#define QO_UNNEST_QUERY_WIDE_HINTS \
+  (PT_HINT_USE_IDX_DESC | PT_HINT_NO_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_MULTI_RANGE_OPT \
+   | PT_HINT_NO_SORT_LIMIT | PT_HINT_NO_HASH_AGGREGATE | PT_HINT_NO_HASH_LIST_SCAN | PT_HINT_NO_INDEX_SS \
+   | PT_HINT_NO_INDEX_LS | PT_HINT_NO_ELIMINATE_JOIN | PT_HINT_NO_PUSH_PRED | PT_HINT_NO_PARALLEL_SCAN \
+   | PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ \
+   | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_RECORD_INFO | PT_HINT_SELECT_PAGE_INFO \
+   | PT_HINT_SELECT_KEY_INFO)
+
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM outer_hint,
 				       bool require_where);
 static void qo_move_spec_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subq, PT_NODE * inner_spec,
@@ -98,11 +107,9 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM
       return false;
     }
 
-  /* any other hint names no table and applies to the whole SELECT holding it (NO_COVERING_IDX, USE_DESC_IDX,
-   * ...); lifted out it would apply to every outer table too. RECOMPILE acts through the statement flag, not
-   * this bit. */
-  if (subq->info.query.q.select.hint & ~outer_hint
-      & ~(QO_UNNEST_SPEC_HINTS | QO_UNNEST_DROPPED_HINTS | PT_HINT_RECOMPILE))
+  /* a query-wide plan hint (NO_COVERING_IDX, USE_DESC_IDX, ...) lifted out would apply to every outer table
+   * too; keep the subquery unless the outer SELECT holds the same hint */
+  if (subq->info.query.q.select.hint & ~outer_hint & QO_UNNEST_QUERY_WIDE_HINTS)
     {
       return false;
     }
@@ -593,7 +600,8 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
       qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_NO_USE_HASH,
 			 &node->info.query.q.select.no_use_hash, &subq->info.query.q.select.no_use_hash);
 
-      /* qo_is_unnestable_subquery () let through only what the outer SELECT already holds, and RECOMPILE */
+      /* the query-wide plan hints passed qo_is_unnestable_subquery () only when the outer SELECT holds them;
+       * the rest (RECOMPILE, INLINE_CTE, ...) choose no plan for a table */
       node->info.query.q.select.hint |=
 	(subq->info.query.q.select.hint & ~(QO_UNNEST_SPEC_HINTS | QO_UNNEST_DROPPED_HINTS));
 
