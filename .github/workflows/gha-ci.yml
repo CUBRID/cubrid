@@ -563,9 +563,9 @@ jobs:
           /entrypoint.sh build $BUILD_ARGS
           echo "ccache, the node's cache, cumulative over develop pushes:"
           ccache -s
-          results="$RUNNER_TEMP/ccache-results.tsv"
           # Parallel compiles share the log, so one line can land inside another: read from every "[time pid] ".
-          awk -v results="$results" '
+          tally='
+            BEGIN { if (results != "") printf "" > results }
             function entry(s,   pid, f, part, k) {
               if (!match(s, /^\[[^ ]+ [0-9]+ *\] /)) return
               pid = substr(s, 1, RLENGTH); gsub(/^\[[^ ]+ | *\] $/, "", pid)
@@ -574,7 +574,7 @@ jobs:
               else if (sub(/^Working directory: /, "", s)) cwd[pid] = s
               else if (sub(/^Source file: /, "", s)) src[pid] = s
               else if (sub(/^Result: /, "", s)) {
-                print s "\t" cwd[pid] "\t" src[pid] > results
+                if (results != "") print s "\t" cwd[pid] "\t" src[pid] > results
                 k = s ~ /^cache hit \(direct\)/ ? 1 : s ~ /^cache hit \(preprocessed\)/ ? 2 : s ~ /^cache miss/ ? 3 : 0
                 if (!k) return
                 f = src[pid] ~ /^\// ? src[pid] : cwd[pid] "/" src[pid]
@@ -599,10 +599,17 @@ jobs:
               split("CUBRID source|external libraries|CMake checks", parts, "|")
               for (i = 1; i <= 3; i++)
                 printf "  %-19s hit (direct) %d, hit (preprocessed) %d, miss %d, hit rate %s\n", parts[i] ":", n[parts[i], 1], n[parts[i], 2], n[parts[i], 3], rate(n[parts[i], 1], n[parts[i], 2], n[parts[i], 3])
-            }' "$CCACHE_LOGFILE" || { rm -f "$results"; echo "::warning::could not read $CCACHE_LOGFILE or write $results, so this build has no ccache counts"; }
-          [ ! -f "$results" ] || { mkdir -p "$BUILD_LOG_DIR" && gzip -c "$results" > "$BUILD_LOG_DIR/ccache-results.tsv.gz" &&
-            echo "ccache, per-file results: $ARTIFACT_URL_BASE/${BUILD_LOG_DIR#"$CI_ROOT"/}/ccache-results.tsv.gz"; } ||
-            echo "::warning::could not keep the ccache results in $BUILD_LOG_DIR"
+            }'
+          # Only the second pass writes a file, so a table that cannot be written leaves the counts in place.
+          if awk "$tally" "$CCACHE_LOGFILE"; then
+            results="$RUNNER_TEMP/ccache-results.tsv"
+            { awk -v results="$results" "$tally" "$CCACHE_LOGFILE" > /dev/null && mkdir -p "$BUILD_LOG_DIR" &&
+              gzip -c "$results" > "$BUILD_LOG_DIR/ccache-results.tsv.gz" &&
+              echo "ccache, per-file results: $ARTIFACT_URL_BASE/${BUILD_LOG_DIR#"$CI_ROOT"/}/ccache-results.tsv.gz"; } ||
+              echo "::warning::could not write the per-file ccache results to $results or $BUILD_LOG_DIR"
+          else
+            echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
+          fi
 
       - name: 4. Publish, staged then moved in with one rename
         env:
