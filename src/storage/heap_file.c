@@ -12334,22 +12334,17 @@ exit_on_error:
 }
 
 /*
- * heap_attrinfo_set () - Set the value of given attribute
- *   return: NO_ERROR
- *   inst_oid(in): The instance oid
- *   attrid(in): The identifier of the attribute to be set
- *   attr_val(in): The memory value of the attribute
- *   attr_info(in/out): The attribute information structure which describe the
- *                      desired attributes
- *
- * Note: Set DB_VALUE of desired attribute identifier.
+ * heap_attrinfo_start_set () - the value of an attribute heap_attrinfo_set or heap_attrinfo_set_converted writes:
+ *   located, cleared and initialized in the attribute's type
+ *   return: NO_ERROR, or the error
+ *   value_p(out), pr_type_p(out): the attribute value and its primitive type
  */
-int
-heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
+static int
+heap_attrinfo_start_set (const OID * inst_oid, ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info,
+			 HEAP_ATTRVALUE ** value_p, const PR_TYPE ** pr_type_p)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   const PR_TYPE *pr_type;	/* Primitive type array function structure */
-  TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
   /*
@@ -12393,6 +12388,41 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
+  *value_p = value;
+  *pr_type_p = pr_type;
+  return NO_ERROR;
+
+exit_on_error:
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * heap_attrinfo_set () - Set the value of given attribute
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid
+ *   attrid(in): The identifier of the attribute to be set
+ *   attr_val(in): The memory value of the attribute
+ *   attr_info(in/out): The attribute information structure which describe the
+ *                      desired attributes
+ *
+ * Note: Set DB_VALUE of desired attribute identifier.
+ */
+int
+heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  /* the catalog's writers (a serial, FK SET NULL, loaddb, XA); DML writes through heap_attrinfo_set_converted */
+  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
+  TP_DOMAIN_STATUS dom_status;
+  int ret = NO_ERROR;
+
+  ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
   /*
    * As we use "writeval" to do the writing and that function gets
    * enough domain information, we can use non-exact domain matching
@@ -12424,16 +12454,102 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      return ret;
     }
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
 
   return ret;
+}
 
-exit_on_error:
+/*
+ * heap_attrinfo_is_fixed_copy_type () - whether a value of this type converts into an attribute of the same type by a
+ *   plain copy: a fixed-size type whose domain has no precision, codeset or time zone (tp_value_cast_internal clones
+ *   a value of a non-parameterized domain's own type)
+ */
+static bool
+heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_MONETARY:
+      return true;
+    default:
+      return false;
+    }
+}
 
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+/*
+ * heap_attrinfo_set_converted () - CBRD-27583: set the value an INSERT, UPDATE or MERGE assigns to an
+ *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
+ *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
+ *   the match it tries first
+ *   return: NO_ERROR, or the conversion's error
+ *   domain(in): the attribute's domain the XASL streams, of the catalog's type (a client builds a collection's,
+ *		 MONETARY's or an object's domain that tp_domain_match does not find the catalog's)
+ *   value_type(in), conv(in): the plan's - the type the value comes in and its converter into domain's type, which a
+ *			       converter depends on alone; the converter of a value of another type is looked up
+ */
+int
+heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
+			     HEAP_CACHE_ATTRINFO * attr_info, const TP_DOMAIN * domain, DB_TYPE value_type,
+			     TP_VALUE_CONVERTER conv)
+{
+  HEAP_ATTRVALUE *value;
+  const PR_TYPE *pr_type;
+  int ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+  const TP_DOMAIN *catalog = value->last_attrepr->domain;
+  assert (TP_DOMAIN_TYPE (catalog) == TP_DOMAIN_TYPE (domain));
+  const bool collection = TP_IS_SET_TYPE (pr_type->id) && !DB_IS_NULL (attr_val);
+  /* a compatible collection is stored as it is, as heap_attrinfo_set does */
+  if (DB_IS_NULL (attr_val) || TP_DOMAIN_TYPE (catalog) == DB_TYPE_OBJECT
+      || (collection && tp_domain_check (catalog, attr_val, TP_EXACT_MATCH) == DOMAIN_COMPATIBLE))
+    {
+      /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
+      ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
+    }
+  else if (value_type == TP_DOMAIN_TYPE (catalog) && heap_attrinfo_is_fixed_copy_type (value_type)
+	   /* guard: the plan's premise; a mismatch takes the converter path */
+	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type)
+    {
+      /* the plan's value of the attribute's own fixed-size type: the cast would only clone it (no precision, codeset
+       * or zone) */
+      ret = pr_type->setval (&value->dbvalue, attr_val, false);
+    }
+  else
+    {
+      /* the plan's same fixed-size type reaches here only when the guard above failed */
+      assert (value_type != TP_DOMAIN_TYPE (catalog) || !heap_attrinfo_is_fixed_copy_type (value_type));
+      const TP_DOMAIN_STATUS dom_status =
+	tp_value_auto_cast_with_precision_check_converter (attr_val, &value->dbvalue, catalog,
+							   value_type, conv);
+      if (dom_status != DOMAIN_COMPATIBLE)
+	{
+	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, catalog);
+	  assert (er_errid () != NO_ERROR);
+	  db_make_null (&value->dbvalue);
+	}
+    }
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  value->state = HEAP_WRITTEN_ATTRVALUE;
+  return NO_ERROR;
 }
 
 /*
