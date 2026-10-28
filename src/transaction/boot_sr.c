@@ -2314,6 +2314,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  /* Refuse a database of another storage format before any other page is read, or rewritten by the double write
+   * buffer or log recovery. */
+  error_code = disk_check_storage_format (thread_p, LOG_DBFIRST_VOLID);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Find the location of the database parameters and read them */
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
     {
@@ -5502,6 +5510,13 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   /* Mount the data volume */
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* The emergency patch reads catalogs and may recreate the log; refuse another storage format first. */
+  error_code = disk_check_storage_format (thread_p, LOG_DBFIRST_VOLID);
   if (error_code != NO_ERROR)
     {
       goto error_exit;

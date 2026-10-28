@@ -3083,6 +3083,16 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
       output_ctx (" INVISIBLE");
     }
 
+  /* emit storage prefer_inline */
+  if (db_attribute_is_oos_prefer_inline (attribute))
+    {
+      output_ctx (" STORAGE PREFER_INLINE");
+    }
+  else if (db_attribute_is_oos_force_outline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_OUTLINE");
+    }
+
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
