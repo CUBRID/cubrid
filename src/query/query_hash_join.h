@@ -44,6 +44,7 @@ namespace parallel_query
 
 struct xasl_node;
 struct tp_domain;
+struct DOMAIN_COMPARE;
 
 typedef struct xasl_node XASL_NODE;
 typedef struct tp_domain TP_DOMAIN;
@@ -88,6 +89,10 @@ typedef struct hashjoin_input_domain_info
 {
   TP_DOMAIN **domains;
   int *value_indexes;
+  /* [key] the converter of this input's value into the key's common domain (coerce_domains), NULL none */
+  TP_VALUE_CONVERTER *converters;
+  /* [key] the comparison of the two inputs' values once converted: tp_value_compare without coercion, decided */
+  DOMAIN_COMPARE *compares;
 } HASHJOIN_INPUT_DOMAIN_INFO;
 
 typedef struct hashjoin_domain_info
@@ -98,8 +103,8 @@ typedef struct hashjoin_domain_info
   /* Common domains of build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
-  /* Whether to use the coerce domain. */
-  bool need_coerce_domains;
+  /* the compiler decided the join from the inputs' column domains (XASL stream) */
+  bool decided;
 } HASHJOIN_DOMAIN_INFO;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -201,7 +206,6 @@ typedef struct hashjoin_fetch_info
    * which is a member of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT_DOMAIN_INFO *input;
   TP_DOMAIN **coerce_domains;
-  bool need_coerce_domains;
 
   /* True when the regu_list_pred values are ready in val_descr for the current tuple,
    * so a predicate can reuse them instead of preparing them again.
@@ -374,6 +378,7 @@ int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int ke
 void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */
+TP_VALUE_CONVERTER hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common);
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);

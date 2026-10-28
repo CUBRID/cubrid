@@ -109,7 +109,7 @@ namespace parallel_query
 
     int
     try_parallel_merge (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
-			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, const DOMAIN_COMPARE_PLAN *const *compares,
+			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, const DOMAIN_COMPARE *compares,
 			const VAL_DESCR *vd, int hint_degree,
 			QFILE_LIST_ID **result_list_id, bool &executed, int &executed_parallelism)
     {
