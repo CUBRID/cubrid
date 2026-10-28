@@ -5205,17 +5205,21 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_NUMERIC:
     case DB_TYPE_MONETARY:
       {
-	/* a number first operand adds, as the typed additions did: a number or a date or time second operand, no
-	 * value for any other */
-	DB_TYPE left_target, right_target;
-	DOMAIN_ARITH arith;
-
-	(void) domain_arith_rule (T_ADD, type1, type2, &left_target, &right_target, &arith);
-	if (arith.kind == DOMAIN_ARITH_NUMBER)
+	/* a number first operand adds, as the typed additions do: only an addition whose value its consumer reads as
+	 * a string (oracle_style_empty_string) comes here, by what its node decided (a concatenation's operands are
+	 * strings); a number or a date or time second operand, no value for any other */
+	if (arith == NULL || !arith_decides_arith (arith))
 	  {
-	    error = qdata_number_operator (T_ADD, arith.type, dbval1_p, dbval2_p, result_p);
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	    return ER_QPROC_INVALID_DATATYPE;
 	  }
-	else if (arith.kind == DOMAIN_ARITH_DATE)
+	const DOMAIN_ARITH *decided = arith_decided_arith (arith);
+	if (decided->kind == DOMAIN_ARITH_NUMBER)
+	  {
+	    error = qdata_number_operator (T_ADD, decided->type, dbval1_p, dbval2_p, result_p);
+	  }
+	else if (decided->kind == DOMAIN_ARITH_DATE)
 	  {
 	    error = qdata_add_datetime_value (dbval1_p, dbval2_p, result_p, domain_p);
 	  }
