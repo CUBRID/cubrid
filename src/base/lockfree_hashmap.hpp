@@ -1411,7 +1411,7 @@ namespace lockfree
     ct_stat_type::autotimer stat_autotimer (m_hashmap->m_stat_iterates, m_hashmap->m_active_stats);
 
     T **next_p = NULL;
-    do
+    while (true)
       {
 	/* save current leader as trailer */
 	if (m_curr != NULL)
@@ -1463,12 +1463,11 @@ namespace lockfree
 		    continue;
 		  }
 	      }
+
+	    /* we have a valid entry */
+	    return m_curr;
 	  }
       }
-    while (m_curr == NULL);
-
-    /* we have a valid entry */
-    return m_curr;
   }
 
   template <class Key, class T>

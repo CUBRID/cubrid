@@ -2438,7 +2438,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
   tran_entry = it->tran_entry;
   assert (edesc != NULL && tran_entry != NULL);
 
-  do
+  while (true)
     {
       /* save current leader as trailer */
       if (it->curr != NULL)
@@ -2496,12 +2496,11 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 		  continue;
 		}
 	    }
+
+	  /* we have a valid entry */
+	  return it->curr;
 	}
     }
-  while (it->curr == NULL);
-
-  /* we have a valid entry */
-  return it->curr;
 }
 
 #if defined (UNITTEST_LF)

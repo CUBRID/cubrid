@@ -207,6 +207,7 @@ namespace test_lockfree
   static int case_shared_transys ();
   static int case_index_churn ();
   static int case_iterator_completeness ();
+  static int case_iterate_skips_deleted ();
   static int case_erase_locked_liveness ();
   static int case_insert_given_promote ();
 
@@ -353,6 +354,7 @@ namespace test_lockfree
       { "shared_transys", case_shared_transys },
       { "index_churn", case_index_churn },
       { "iterator_completeness", case_iterator_completeness },
+      { "iterate_skips_deleted", case_iterate_skips_deleted },
       { "insert_given_promote", case_insert_given_promote },
       { "uninit_runs_at_destroy", case_uninit_runs_at_destroy },
       { "erase_locked_liveness", case_erase_locked_liveness }
@@ -3476,6 +3478,129 @@ namespace test_lockfree
     if (err != 0)
       {
 	test_common::sync_cout ("  FAILED: a held entry changed identity on one of the two insert paths\n");
+      }
+    return err;
+  }
+
+  //
+  // case_iterate_skips_deleted () - iterate () never hands back an entry deleted while it waited for the entry's
+  // mutex. erase_locked () marks and unlinks under that mutex, so the walker sees the mark only once it has the
+  // lock, and whatever it returns its caller treats as live.
+  //
+  // Timed, not deterministic: the holder keeps the only entry locked for ISD_WAIT_MSEC after the walker starts,
+  // then erases it. A walker that had not reached the entry by then makes its trial vacuous.
+  //
+  // Calibrated: with iterate () leaving its loop on any entry it holds again, both implementations return the
+  // deleted entry in 20 trials of 20.
+  //
+  static const size_t ISD_TRIALS = 20;
+  static const int ISD_WAIT_MSEC = 20;
+
+  struct isd_result
+  {
+    std::atomic<bool> m_started { false };
+    adv_entry *m_seen = NULL;
+    bool m_waited = false;
+  };
+
+  template <typename Hash, typename Tran>
+  static void
+  isd_walker (Hash *hash, Tran tran, isd_result *res)
+  {
+    typename Hash::iterator iter { tran, *hash };
+    res->m_started = true;
+    const auto start = std::chrono::steady_clock::now ();
+    res->m_seen = iter.iterate ();
+    res->m_waited = std::chrono::steady_clock::now () - start >= std::chrono::milliseconds (ISD_WAIT_MSEC / 2);
+    if (res->m_seen != NULL)
+      {
+	// releases the entry and walks on to the end
+	(void) iter.iterate ();
+      }
+  }
+
+  template <typename Hash, typename Tran>
+  static int
+  isd_arm (const char *name, Hash *hash, Tran holder, Tran walker)
+  {
+    adv_key k = { 0u, 0u };
+    size_t waited = 0;
+    size_t handed_back = 0;
+
+    for (size_t trial = 0; trial < ISD_TRIALS; trial++)
+      {
+	adv_entry *e = NULL;
+	(void) hash->find_or_insert (holder, k, e);
+	test_common::custom_assert (e != NULL);
+
+	isd_result res;
+	std::thread t (isd_walker<Hash, Tran>, hash, walker, &res);
+	while (!res.m_started)
+	  {
+	    std::this_thread::yield ();
+	  }
+	std::this_thread::sleep_for (std::chrono::milliseconds (ISD_WAIT_MSEC));
+	test_common::custom_assert (hash->erase_locked (holder, k, e));
+	t.join ();
+
+	waited += res.m_waited ? 1 : 0;
+	handed_back += res.m_seen != NULL ? 1 : 0;
+      }
+
+    string_buffer line;
+    line ("  %s walker waited in %zu of %zu trials, got the deleted entry back in %zu\n", name, waited,
+	  ISD_TRIALS, handed_back);
+    say (line);
+    if (waited == 0)
+      {
+	test_common::sync_cout ("  no trial reached the race - nothing was tested\n");
+      }
+    return (handed_back != 0 || waited == 0) ? 1 : 0;
+  }
+
+  static int
+  case_iterate_skips_deleted ()
+  {
+    test_common::sync_cout ("case_iterate_skips_deleted\n");
+    int err = 0;
+
+    {
+      lf_entry_descriptor l_edesc;
+      adv_edesc_init (l_edesc, true, LF_ENTRY_DESCRIPTOR_MAX_ALLOC);
+      tran::system l_transys { 2 };
+      adv_hashmap l_hash;
+      test_common::custom_assert (l_hash.init (l_transys, 1, 8, 2, l_edesc) == NO_ERROR);
+      tran::index l_holder = l_transys.assign_index ();
+      tran::index l_walker = l_transys.assign_index ();
+
+      err = err | isd_arm ("lockfree::hashmap", &l_hash, l_holder, l_walker);
+
+      l_hash.destroy ();
+      l_transys.free_index (l_walker);
+      l_transys.free_index (l_holder);
+    }
+
+    {
+      lf_entry_descriptor l_edesc;
+      adv_edesc_init (l_edesc, true, LF_ENTRY_DESCRIPTOR_MAX_ALLOC);
+      lf_tran_system l_transys;
+      lf_tran_system_init (&l_transys, 2);
+      adv_lf_hash l_hash;
+      test_common::custom_assert (l_hash.init (l_transys, 1, 2, 8, l_edesc) == NO_ERROR);
+      lf_tran_entry *l_holder = lf_tran_request_entry (&l_transys);
+      lf_tran_entry *l_walker = lf_tran_request_entry (&l_transys);
+
+      err = err | isd_arm ("lf_hash_table    ", &l_hash, l_holder, l_walker);
+
+      lf_tran_return_entry (l_walker);
+      lf_tran_return_entry (l_holder);
+      l_hash.destroy ();
+      lf_tran_system_destroy (&l_transys);
+    }
+
+    if (err != 0)
+      {
+	test_common::sync_cout ("  FAILED: iterate () returned an entry deleted while it waited for the mutex\n");
       }
     return err;
   }
