@@ -599,7 +599,7 @@ jobs:
               split("CUBRID source|external libraries|CMake checks", parts, "|")
               for (i = 1; i <= 3; i++)
                 printf "  %-19s hit (direct) %d, hit (preprocessed) %d, miss %d, hit rate %s\n", parts[i] ":", n[parts[i], 1], n[parts[i], 2], n[parts[i], 3], rate(n[parts[i], 1], n[parts[i], 2], n[parts[i], 3])
-            }' "$CCACHE_LOGFILE" || echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
+            }' "$CCACHE_LOGFILE" || { rm -f "$results"; echo "::warning::could not read $CCACHE_LOGFILE or write $results, so this build has no ccache counts"; }
           [ ! -f "$results" ] || { mkdir -p "$BUILD_LOG_DIR" && gzip -c "$results" > "$BUILD_LOG_DIR/ccache-results.tsv.gz" &&
             echo "ccache, per-file results: $ARTIFACT_URL_BASE/${BUILD_LOG_DIR#"$CI_ROOT"/}/ccache-results.tsv.gz"; } ||
             echo "::warning::could not keep the ccache results in $BUILD_LOG_DIR"
