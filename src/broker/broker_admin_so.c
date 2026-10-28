@@ -1290,8 +1290,6 @@ admin_log_write (const char *log_file, const char *msg)
   FILE *fp;
   struct tm ct;
   time_t ts;
-  char buf[BROKER_PATH_MAX * 2];
-  char *line, *next;
 
   fp = fopen (log_file, "a");
   if (fp != NULL)
@@ -1299,20 +1297,8 @@ admin_log_write (const char *log_file, const char *msg)
       ts = time (NULL);
       memset (&ct, 0x0, sizeof (struct tm));
       localtime_r (&ts, &ct);
-
-      /* a message may hold several lines; write each as its own timestamped entry to keep one entry per line */
-      strncpy (buf, msg, sizeof (buf) - 1);
-      buf[sizeof (buf) - 1] = '\0';
-      for (line = buf; line != NULL; line = next)
-	{
-	  next = strchr (line, '\n');
-	  if (next != NULL)
-	    {
-	      *next++ = '\0';
-	    }
-	  fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour,
-		   ct.tm_min, ct.tm_sec, line);
-	}
+      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour,
+	       ct.tm_min, ct.tm_sec, msg);
       fclose (fp);
     }
 }

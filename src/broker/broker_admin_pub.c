@@ -4364,7 +4364,7 @@ admin_check_ssl_files (void)
       if (!S_ISREG (sbuf.st_mode))
 	{
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
-		    "SSL private key is not a regular file: %s\n"
+		    "SSL private key is not a regular file: %s. "
 		    "Provide the private key as a regular file, and restart the service.", key);
 	  return -1;
 	}
@@ -4374,7 +4374,7 @@ admin_check_ssl_files (void)
 	{
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
 		    "SSL private key has an invalid owner, but it must be owned by the authorized service user "
-		    "or root: %s\n"
+		    "or root: %s. "
 		    "The key may already have been copied by its owner. Generate a new private key and certificate "
 		    "as the authorized user or root, and restart the service.", key);
 	  return -1;
@@ -4386,9 +4386,9 @@ admin_check_ssl_files (void)
       if (sbuf.st_uid == geteuid () && (mode & (S_IRWXG | S_IRWXO)) != 0)
 	{
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
-		    "SSL private key permission is %04o, but it must be 0600 or 0400: %s\n"
+		    "SSL private key permission is %04o, but it must be 0600 or 0400: %s. "
 		    "The key may already have been copied by another user. "
-		    "Generate a new private key and certificate,\n"
+		    "Generate a new private key and certificate, "
 		    "set the key file permission to 600 or 400, and restart the service.", mode, key);
 	  return -1;
 	}
@@ -4396,9 +4396,9 @@ admin_check_ssl_files (void)
 	{
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
 		    "SSL private key permission is %04o, but it must be 0640, 0600, 0440 or 0400 "
-		    "when owned by root: %s\n"
+		    "when owned by root: %s. "
 		    "The key may already have been copied by another user. "
-		    "Generate a new private key and certificate,\n"
+		    "Generate a new private key and certificate, "
 		    "set the key file permission to 640 or less, and restart the service.", mode, key);
 	  return -1;
 	}
@@ -4408,7 +4408,7 @@ admin_check_ssl_files (void)
   if (admin_has_bundled_ssl_key (cert))
     {
       snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
-		"WARNING: the system uses the SSL private key shipped with CUBRID, which is public: %s\n"
+		"WARNING: the system uses the SSL private key shipped with CUBRID, which is public: %s. "
 		"Anyone can impersonate this service. Generate a new private key and certificate.", key);
     }
 
