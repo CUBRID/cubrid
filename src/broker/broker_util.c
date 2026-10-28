@@ -532,9 +532,12 @@ ut_get_avg_from_array (int array[], int size)
 }
 
 bool
-ut_is_appl_server_ready (int pid, char *ready_flag)
+ut_is_appl_server_ready (int pid, char *ready_flag, void (*wait_output) (void *, int), void *owner)
 {
   unsigned int i;
+
+  if (pid <= 0)
+    return false;
 
   for (i = 0; i < SERVICE_READY_WAIT_COUNT; i++)
     {
@@ -551,7 +554,10 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
 	  if (h_process != NULL)
 	    {
 	      CloseHandle (h_process);
-	      SLEEP_MILISEC (0, 10);
+	      if (wait_output != NULL)
+		wait_output (owner, 10);
+	      else
+		SLEEP_MILISEC (0, 10);
 	      continue;
 	    }
 	  else
@@ -561,7 +567,10 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
 #else /* WINDOWS */
 	  if (kill (pid, 0) == 0)
 	    {
-	      SLEEP_MILISEC (0, 10);
+	      if (wait_output != NULL)
+		wait_output (owner, 10);
+	      else
+		SLEEP_MILISEC (0, 10);
 	      continue;
 	    }
 	  else
