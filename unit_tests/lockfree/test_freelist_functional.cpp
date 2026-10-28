@@ -194,14 +194,14 @@ namespace test_lockfree
   //
   // test_reclaim_after_idle () - epoch reclamation must survive the transaction table going fully idle.
   //
-  // table::get_min_active_tranid () answers INVALID_TRANID - the largest id there is - when no descriptor is
-  // active, and that happens routinely: get_new_global_tranid () recomputes the minimum before the caller has
-  // been assigned its own id. descriptor::reclaim_retired_list () used to store that sentinel as the pass's
-  // high-water mark, after which its "minimum has not moved" early return was true forever and the descriptor
-  // never reclaimed again, so its retired list grew without bound.
+  // descriptor::reclaim_retired_list () used to store INVALID_TRANID - the "nothing active" minimum, and the
+  // largest id there is - as the pass's high-water mark, after which its "minimum has not moved" early return was
+  // true forever and the descriptor never reclaimed again, so its retired list grew without bound.
   //
-  // A single thread retiring one node at a time with no transaction open between retires is the cheapest way
-  // to reproduce it: the table is idle at every recompute.
+  // Calibration: no longer detects that. It did (99 of 1000 reclaimed) while the minimum was refreshed before the
+  // refreshing thread's id was published; now every refresh counts the thread running it, a single thread never
+  // computes the sentinel, and with the guard reverted it reports 999, as fixed. Kept as a check that a lone
+  // descriptor retiring outside any transaction keeps reclaiming.
   //
   int
   test_reclaim_after_idle ()
