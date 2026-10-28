@@ -12375,14 +12375,18 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  *   return: a sequential heap scan of a SELECT with a data filter; what the block does per row is the row loop's
  *
  * A partitioned class is asked block by block too, each partition's scan getting its own filter plan
- * (qexec_batch_eligible ()).
+ * (qexec_batch_eligible ()).  A block the compiler marked XASL_NO_FIXED_SCAN -- an operator in it reads the catalog
+ * or an index while a row is evaluated (INDEX_CARDINALITY, ESTIMATED_*), or a serial -- keeps its filter on the row
+ * path: the iterator holds its page while a chunk's terms and constant steps run, which develop does not allow such a
+ * block.
  */
 bool
 qexec_batch_filter_eligible (const XASL_NODE * xasl)
 {
   const ACCESS_SPEC_TYPE *spec = xasl->spec_list;
 
-  return (spec != NULL && spec->next == NULL && xasl->curr_spec == spec && spec->type == TARGET_CLASS
+  return (spec != NULL && spec->next == NULL && xasl->curr_spec == spec && !XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN)
+	  && spec->type == TARGET_CLASS
 	  && spec->access == ACCESS_METHOD_SEQUENTIAL && spec->s_id.type == S_HEAP_SCAN
 	  && !spec->s_id.mvcc_select_lock_needed && spec->where_pred != NULL
 	  && xasl->scan_op_type == S_SELECT && !QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
