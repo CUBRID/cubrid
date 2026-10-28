@@ -4989,12 +4989,22 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
 {
   int rc = eb_run_chunk (plan, batch, thread_p, vd);
 
-  if (rc == NO_ERROR && batch->page_watcher != NULL && batch->page_watcher->page_was_unfixed)
+  if (batch->page_watcher != NULL && batch->page_watcher->page_was_unfixed)
     {
       /* The rows point into the page the watcher holds.  An ordered fix on this thread let the page go and fixed
        * it again since the watcher fixed it (pgbuf_ordered_fix (): page_was_unfixed), and an update in between may
        * have changed the bytes the chunk was evaluated on: the chunk goes to the row path as a declined one does,
-       * which reads each row again from the page as it is now. */
+       * which reads each row again from the page as it is now.  An error the chunk raised may come from those old
+       * bytes too, so it is cleared and the row path raises it again if the rows still give it; an interrupt is
+       * not about the rows and goes up as it is. */
+      if (rc != NO_ERROR)
+	{
+	  if (er_errid () == ER_INTERRUPTED)
+	    {
+	      return rc;
+	    }
+	  er_clear ();
+	}
       return eb_fallback (plan, "the page was unfixed under the chunk");
     }
   return rc;

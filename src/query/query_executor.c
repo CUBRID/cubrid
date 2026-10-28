@@ -7334,7 +7334,7 @@ qexec_gby_px_finish (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIS
   AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
   QFILE_LIST_SCAN_ID rscan, pscan;
   QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
-  SCAN_CODE sc, pc;
+  SCAN_CODE sc = S_END, pc;
   int rc = NO_ERROR;
 
   if (rows == NULL || partials == NULL || rows->tuple_cnt == 0)
