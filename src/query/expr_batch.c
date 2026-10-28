@@ -2695,6 +2695,46 @@ eb_build_program (EB_BUILD * b)
 	    }
 	  b->pending_pop[b->n_pending++] = info.jump_to;
 	  break;
+	case EXPR_STEP_CAST:
+	  {
+	    /* an integer cast into a NUMERIC of scale 0 with room for every value of its type (an integer operand
+	     * widened for a NUMERIC operator): the integer itself, as the wrapped leaf's EB_OP_INT2NUM -- a cast that
+	     * could overflow or scale stays the row path's */
+	    const TP_DOMAIN *to = info.domain;
+	    int digits;
+
+	    in1 = eb_program_cell_vec (b, info.arg1_cell);
+	    if (in1 < 0 || to == NULL || TP_DOMAIN_TYPE (to) != DB_TYPE_NUMERIC || to->scale != 0
+		|| plan->vecs[in1].etype != EB_I64)
+	      {
+		return eb_decline (b, "a program step the batch does not reproduce");
+	      }
+	    switch (plan->vecs[in1].dbtype)
+	      {
+	      case DB_TYPE_SHORT:
+		digits = 5;
+		break;
+	      case DB_TYPE_INTEGER:
+		digits = 10;
+		break;
+	      case DB_TYPE_BIGINT:
+		digits = 19;
+		break;
+	      default:
+		return eb_decline (b, "a program step the batch does not reproduce");
+	      }
+	    if (to->precision < digits || to->precision > DB_MAX_NUMERIC_PRECISION || info.out_cell < 0)
+	      {
+		return eb_decline (b, "an integer cast into a NUMERIC that may not hold it");
+	      }
+	    rc = eb_emit (b, EB_OP_INT2NUM, in1, -1, EB_NUM, DB_TYPE_NUMERIC, &out);
+	    if (rc != NO_ERROR)
+	      {
+		return rc;
+	      }
+	    b->cell_vec[info.out_cell] = out;
+	    break;
+	  }
 	default:
 	  return eb_decline (b, "a program step the batch does not reproduce");
 	}
