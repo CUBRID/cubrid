@@ -4283,12 +4283,98 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 }
 
 /*
+ * qo_hq_fixed_numeric_key () - the precision and scale of a fixed NUMERIC key
+ *   side
+ *   return: false for a float NUMERIC or a side without a data type
+ *   arg(in): a NUMERIC key side
+ *   precision(out), scale(out): its precision and scale
+ */
+static bool
+qo_hq_fixed_numeric_key (PT_NODE * arg, int *precision, int *scale)
+{
+  /* PRIOR is typed float NUMERIC, but its values keep the form of its operand */
+  if ((PT_IS_EXPR_NODE_WITH_OPERATOR (arg, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (arg, PT_QPRIOR))
+      && arg->info.expr.arg1 != NULL)
+    {
+      arg = arg->info.expr.arg1;
+    }
+  if (arg->data_type == NULL)
+    {
+      return false;
+    }
+  *precision = arg->data_type->info.data_type.precision;
+  *scale = arg->data_type->info.data_type.dec_precision;
+
+  return *precision > 0 && *precision <= DB_MAX_FIXED_NUMERIC_PRECISION;
+}
+
+/*
+ * qo_hq_is_inexact_numeric_pair () - checks whether the hash list scan hashes
+ *   a pair whose common type is NUMERIC through a DOUBLE that can round equal
+ *   values of the two sides apart
+ *   return: true for such a pair
+ *   arg1(in), arg2(in): the sides of a PT_EQ conjunct
+ * Note: fixed NUMERIC sides of one scale hash as they are. A NUMERIC converts
+ *       its coefficient with one rounding and then divides it by 10^scale,
+ *       which rounds again unless the coefficient is below 2^53 (15 digits);
+ *       a negative scale or a float NUMERIC rounds as well.
+ */
+static bool
+qo_hq_is_inexact_numeric_pair (PT_NODE * arg1, PT_NODE * arg2)
+{
+  PT_NODE *arg[2] = { arg1, arg2 };
+  bool fixed[2] = { false, false };
+  int precision[2] = { 0, 0 };
+  int scale[2] = { 0, 0 };
+  int i;
+
+  if (arg1->type_enum != PT_TYPE_NUMERIC && arg2->type_enum != PT_TYPE_NUMERIC)
+    {
+      return false;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (arg[i]->type_enum)
+	{
+	case PT_TYPE_NUMERIC:
+	  fixed[i] = qo_hq_fixed_numeric_key (arg[i], &precision[i], &scale[i]);
+	  break;
+	case PT_TYPE_SMALLINT:
+	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
+	case PT_TYPE_MAYBE:
+	  break;
+	default:
+	  /* the common type is not NUMERIC */
+	  return false;
+	}
+    }
+
+  if (fixed[0] && fixed[1] && scale[0] == scale[1])
+    {
+      return false;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      if (arg[i]->type_enum == PT_TYPE_NUMERIC && (!fixed[i] || scale[i] < 0 || (scale[i] > 0 && precision[i] > 15)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_hq_is_unsafe_hash_key () - checks whether one PT_EQ conjunct, as a key of
  *   the hash list scan, can give a result other than the single-table plan
  * Note: a JSON key is hashed by its text, so JSON values that compare equal
  *       ('1.0' and '"1"' against '1') can hash apart. The build key is
  *       evaluated on every row, even one no parent reaches, so a cast there
- *       can fail where the single-table plan never evaluates it.
+ *       can fail where the single-table plan never evaluates it. A NUMERIC
+ *       pair is hashed as DOUBLE (see qo_hq_is_inexact_numeric_pair).
  */
 static bool
 qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
@@ -4314,6 +4400,12 @@ qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
   if (c1.has_prior == c2.has_prior)
     {
       return false;
+    }
+
+  /* TODO: the hash key of a NUMERIC pair is DOUBLE; drop this once NUMERIC keys hash exactly */
+  if (qo_hq_is_inexact_numeric_pair (arg1, arg2))
+    {
+      return true;
     }
 
   (void) parser_walk_tree (parser, c1.has_prior ? arg2 : arg1, qo_hq_cast_walker, &found, NULL, NULL);
@@ -4364,8 +4456,9 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  *       grp = 7 or grp IN (7, 8). An expression over the column
  *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
  *       equality conjunct is unsafe as a hash key (see
- *       qo_hq_is_unsafe_hash_key): a JSON side, or a build side with a cast
- *       that can fail.
+ *       qo_hq_is_unsafe_hash_key): a JSON side, a build side with a cast
+ *       that can fail, or a NUMERIC pair whose DOUBLE hash can round equal
+ *       values apart.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
