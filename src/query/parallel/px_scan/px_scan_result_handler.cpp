@@ -327,8 +327,6 @@ namespace parallel_scan
 	      }
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
-	    /* the worker's partial list is written at its finalize: it takes its domains as the leader's does */
-	    qexec_setup_hash_aggregate_lists (&curr_xasl->proc.buildlist);
 	  }
 	if (m_.gby_skip)
 	  {

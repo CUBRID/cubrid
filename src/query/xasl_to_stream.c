@@ -7969,9 +7969,8 @@ static void
 xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan)
 {
   const TP_DOMAIN *argument = xts_argument_domain (aggregate->operands != NULL ? &aggregate->operands->value : NULL);
-  domain_plan_aggregate_accumulator (aggregate->function, aggregate->opr_dbtype,
-				     domain_key_value_domain (aggregate->domain), domain_key_value_domain (argument),
-				     plan);
+  domain_plan_aggregate_accumulator (aggregate->function, domain_key_value_domain (aggregate->domain),
+				     domain_key_value_domain (argument), plan);
 }
 
 /* an analytic function's accumulator plan (domain_plan_analytic_accumulator), from its domain and its argument's */

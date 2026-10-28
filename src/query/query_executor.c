@@ -8479,111 +8479,18 @@ end:
 }
 
 /*
- * qexec_finish_group_by_domains () - the accumulator domains of aggregates that saw only NULL values and the domains
- *   of the hash aggregation lists, before the GROUP BY reads its input
+ * qexec_finish_group_by_domains () - CBRD-27583: every aggregate's accumulator has the domains the compilation decided
+ *   (domain_plan_aggregate_accumulator) and the hash aggregation lists were opened with them
  */
 static void
 qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist)
 {
-  REGU_VARIABLE_LIST group_regu = NULL;
-  AGGREGATE_TYPE *agg_p;
-
-  /* treat case with only NULL values */
-  for (agg_p = buildlist->g_agg_list; agg_p; agg_p = agg_p->next)
+#if !defined (NDEBUG)
+  for (AGGREGATE_TYPE * agg_p = buildlist->g_agg_list; agg_p != NULL; agg_p = agg_p->next)
     {
-      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = &agg_p->accumulator_domain;
-      if (accumulator->value_dom == NULL)
-	{
-	  accumulator->value_dom = &tp_Null_domain;
-	}
-
-      if (accumulator->value2_dom == NULL)
-	{
-	  accumulator->value2_dom = &tp_Null_domain;
-	}
+      assert (agg_p->accumulator_domain.value_dom != NULL && agg_p->accumulator_domain.value2_dom != NULL);
     }
-
-  /* update hash aggregation domains */
-  if (buildlist->g_hash_eligible)
-    {
-      AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
-      int i;
-
-      /* update key domains */
-      group_regu = buildlist->g_hk_sort_regu_list;
-      for (i = 0; i < buildlist->g_hkey_size && group_regu != NULL; i++, group_regu = group_regu->next)
-	{
-	  if (domain_is_variable (context->key_domains[i]))
-	    {
-	      context->key_domains[i] = group_regu->value.domain;
-	    }
-	}
-
-      /* the list columns the setup left variable: an accumulator that saw only NULL values */
-      qexec_setup_hash_aggregate_lists (buildlist);
-    }
-}
-
-/*
- * qexec_setup_hash_aggregate_lists () - the domains of the columns of a GROUP BY's hash aggregation lists (the partial
- *   list and the sorted partial list: the keys, then each aggregate's value, value2 and count) that are still
- *   variable, set before the first row
- *
- * The lists' tuples are laid out by their column domains (qfile_set_layout), and the hash aggregation writes partial
- * results during the scan, so every column takes its domain before a tuple holds a value there: a key its compiled
- * domain, an accumulator the domain its plan names (domain_plan_aggregate_accumulator). A column without one yet -
- * an accumulator that sees only NULL values - takes only NULLs until qexec_finish_group_by_domains gives it the NULL
- * domain. A column that has a domain keeps it: tuples may hold values there already.
- */
-void
-qexec_setup_hash_aggregate_lists (BUILDLIST_PROC_NODE * buildlist)
-{
-  AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
-  if (!buildlist->g_hash_eligible || context == NULL || context->part_list_id == NULL
-      || context->sorted_part_list_id == NULL)
-    {
-      return;
-    }
-  QFILE_TUPLE_VALUE_TYPE_LIST *lists[2] =
-    { &context->part_list_id->type_list, &context->sorted_part_list_id->type_list };
-  bool changed = false;
-  REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list;
-  for (int i = 0; i < buildlist->g_hkey_size && key != NULL; i++, key = key->next)
-    {
-      TP_DOMAIN *domain = key->value.domain;
-      for (int l = 0; l < 2; l++)
-	{
-	  if (domain != NULL && !domain_is_variable (domain) && domain_is_variable (lists[l]->domp[i]))
-	    {
-	      lists[l]->domp[i] = domain;
-	      changed = true;
-	    }
-	}
-    }
-  for (int i = 0; i < buildlist->g_func_count; i++)
-    {
-      const int index = buildlist->g_hkey_size + i * 3;
-      TP_DOMAIN *const accumulator[2] = {
-	context->accumulator_domains[i]->value_dom, context->accumulator_domains[i]->value2_dom
-      };
-      for (int l = 0; l < 2; l++)
-	{
-	  for (int k = 0; k < 2; k++)
-	    {
-	      if (accumulator[k] != NULL && TP_DOMAIN_TYPE (lists[l]->domp[index + k]) == DB_TYPE_VARIABLE)
-		{
-		  lists[l]->domp[index + k] = accumulator[k];
-		  changed = true;
-		}
-	    }
-	}
-    }
-  if (changed)
-    {
-      /* recompute layout after mutating domp */
-      qfile_set_layout (lists[0]);
-      qfile_set_layout (lists[1]);
-    }
+#endif /* !NDEBUG */
 }
 
 /*
@@ -21842,8 +21749,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	       * them again (qdata_agg_operand_prog_ensure ()), as a page batch plan kept from an earlier run of the block
 	       * (a correlated subquery runs once per outer row) expects them */
 	      xasl->proc.buildlist.g_agg_list->operand_prog_link_stamp = 0;
-	      /* the hash aggregation writes partial results during the scan: its lists take their domains now */
-	      qexec_setup_hash_aggregate_lists (&xasl->proc.buildlist);
 	    }
 
 	  if (xasl->proc.buildlist.a_eval_list)
@@ -28094,7 +27999,7 @@ qexec_gby_skip_end_group (THREAD_ENTRY * thread_p, GBY_SKIP_STATE * st, int roll
 }
 
 /* the domain the scan gives a g_val_list value: its regu's, as the hash key columns take theirs
- * (qexec_setup_hash_aggregate_lists ()) */
+ * (qexec_alloc_agg_hash_context ()) */
 static TP_DOMAIN *
 qexec_gby_skip_value_domain (REGU_VARIABLE_LIST scan_regu, const DB_VALUE * val)
 {
@@ -35531,6 +35436,27 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
    * create partial list file
    */
 
+  /* the lists are laid out by their columns' domains, which the compilation decided: the keys' and the accumulators' */
+  regu_list = proc->g_hk_scan_regu_list;
+  for (i = 0; i < proc->g_hkey_size; i++, regu_list = regu_list->next)
+    {
+      if (regu_list->value.domain == NULL || domain_is_variable (regu_list->value.domain))
+	{
+	  error_code = domain_unresolved_error (i, DB_TYPE_VARIABLE);
+	  goto exit_on_error;
+	}
+    }
+  for (i = 0; i < proc->g_func_count; i++)
+    {
+      const AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = proc->agg_hash_context->accumulator_domains[i];
+      if (accumulator->value_dom == NULL || domain_is_variable (accumulator->value_dom)
+	  || accumulator->value2_dom == NULL || domain_is_variable (accumulator->value2_dom))
+	{
+	  error_code = domain_unresolved_error (proc->g_hkey_size + i * 3, DB_TYPE_VARIABLE);
+	  goto exit_on_error;
+	}
+    }
+
   /* compute number of values and alloc type list */
   type_list.type_cnt = proc->g_hkey_size + proc->g_func_count * 3 + 1;
   type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * type_list.type_cnt);
@@ -35552,9 +35478,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* register accumulator domains */
   for (i = 0; i < proc->g_func_count; i++)
     {
-      /* value and value2 are variable */
-      type_list.domp[value_count++] = &tp_Variable_domain;
-      type_list.domp[value_count++] = &tp_Variable_domain;
+      type_list.domp[value_count++] = proc->agg_hash_context->accumulator_domains[i]->value_dom;
+      type_list.domp[value_count++] = proc->agg_hash_context->accumulator_domains[i]->value2_dom;
 
       /* third one is integer counter */
       type_list.domp[value_count++] = &tp_Integer_domain;
