@@ -219,6 +219,8 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
+  int domain_scope;		/* server, load-derived, not serialized: the scope of the correlated values its block
+				 * reads converted once, which a scan filling this list starts anew; 0 none */
 };
 
 /* To handle selected update list, click counter related */
@@ -346,7 +348,6 @@ struct buildlist_proc_node
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
-  int g_agg_domains_resolved;	/* domain status (not serialized) */
 };
 
 typedef struct buildvalue_proc_node BUILDVALUE_PROC_NODE;
@@ -357,7 +358,6 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
-  int agg_domains_resolved;	/* domain status (not serialized) */
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
@@ -371,6 +371,9 @@ struct mergelist_proc_node
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
+  /* load-derived, not serialized: [ls_merge.ls_column_cnt] each merge column pair's comparison, as the
+   * load or resolve_domains resolved it */
+  const struct DOMAIN_COMPARE_PLAN **merge_compares;
 };
 
 typedef struct hashjoin_proc_node
@@ -383,6 +386,22 @@ typedef struct hashjoin_proc_node
   HASHJOIN_STATS_GROUP stats_group;
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
+
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, UPDATE + local subquery) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+  char *remote_key_col;		/* remote WHERE column the per-row value is compared to, NULL when the proc sends
+				 * no WHERE (INSERT SELECT, and the UPDATE shape that updates every remote row) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
+  char *remote_using_index;	/* the statement's USING INDEX clause, sent as written, NULL when there is none */
+};
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
@@ -400,18 +419,12 @@ struct update_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
-};
-
-/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
- * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
-typedef struct remote_dml_sink REMOTE_DML_SINK;
-struct remote_dml_sink
-{
-  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
-  char *url;			/* DBLink connection URL */
-  char *user;			/* DBLink connection user */
-  char *pwd;			/* DBLink connection password */
-  char *table_name;		/* remote target table name */
+  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A local
+   * subquery becomes a bind placeholder; what pt_dblink_dml_is_remote_only_expr accepts is deparsed into
+   * the SET text instead, its value not being computable on this side. */
+  REMOTE_DML_SINK sink;
+  char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
+  int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;
@@ -437,6 +450,9 @@ struct insert_proc_node
   REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
+  char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -452,8 +468,6 @@ struct delete_proc_node
 				 * in conditions */
   /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
   REMOTE_DML_SINK sink;
-  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
-  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -541,11 +555,23 @@ struct cte_proc_node
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 #define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
 #define XASL_CORR_DBLINK		(0x1 << 23)	/* correlated push-down (per-row bind); mutually exclusive with XASL_DBLINK_CURSOR_REWIND */
+#define XASL_NL_SEMIJOIN		(0x1 << 24)	/* this scan proc is the inner of a NL semi join (first-match) */
+#define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
+#define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
+#define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
+#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
+#define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
+/* driven per outer row instead of by the scan block iterator: a NL semi/anti inner and every scan proc after it */
+#define XASL_IS_PER_OUTER_ROW(x)    (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN | XASL_NL_FOLLOWING_JOIN)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
+
+/* qfile_open_list () backward-scan flag: set for the top-most XASL's result or a MERGELIST_PROC child list. */
+#define XASL_LIST_BACKWARD_FLAG(x) \
+  ((XASL_IS_FLAGED ((x), XASL_TOP_MOST_XASL) || XASL_IS_FLAGED ((x), XASL_LIST_BACKWARD)) ? QFILE_FLAG_BACKWARD : 0)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \
@@ -608,12 +634,15 @@ struct cte_proc_node
    || ((func_p)->function == PT_PERCENTILE_CONT) \
    || ((func_p)->function == PT_PERCENTILE_DISC))
 
+#define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
+  (((func_p)->function == PT_MEDIAN) \
+   || ((func_p)->function == PT_PERCENTILE_CONT))
+
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
 #define	PCOL_ISLEAF_TUPLE_OFFSET	2
 #define	PCOL_LEVEL_TUPLE_OFFSET		3
-#define	PCOL_INDEX_STRING_TUPLE_OFFSET	4
-#define	PCOL_PARENTPOS_TUPLE_OFFSET	5
+#define	PCOL_PARENTPOS_TUPLE_OFFSET	4
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
 /* XASL FILE IDENTIFICATION */
@@ -1053,6 +1082,8 @@ struct func_stat
 struct topn_tuples
 {
   SORT_LIST *sort_items;	/* sort items position in tuple and sort order */
+  const TP_DOMAIN **sort_domains;	/* per sort item: the domain its values compare in - the plan's for a variable
+					 * one - or NULL where the values' types resolve */
   struct binary_heap *heap;	/* heap used to hold top-n tuples */
   TOPN_TUPLE *tuples;		/* actual tuples stored in memory */
   int values_count;		/* number of values in a tuple */
@@ -1113,8 +1144,11 @@ namespace memoize
   class storage;
 }
 // *INDENT-ON*
+struct domain_plan;
+
 struct xasl_node
 {
+  struct domain_plan *domain_plan;	/* tree-wide unpack-arena plan, not serialized */
   XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
@@ -1153,6 +1187,9 @@ struct xasl_node
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
   REGU_VARIABLE *limit_offset;	/* offset of limit clause */
   REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
+  /* load-derived, not serialized: the row count's comparison with 0, as the load or resolve_domains resolved
+   * it */
+  const struct DOMAIN_COMPARE_PLAN *limit_compare;
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 

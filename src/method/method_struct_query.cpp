@@ -97,9 +97,10 @@ namespace cubmethod
     charset = lang_charset();
     is_non_null = 0;
 
-    /* col_name, attr_name, class_name, default_value leave as empty */
+    /* col_name, written_col_name, attr_name, class_name, default_value leave as empty */
     // FIXME: to remove warning
     col_name.clear ();
+    written_col_name.clear ();
     attr_name.clear ();
     class_name.clear ();
     default_value_string.clear();
@@ -126,6 +127,7 @@ namespace cubmethod
     this->col_name.assign (col_name);
     str_trim (this->col_name);
 
+    written_col_name.clear ();
     attr_name.clear ();
     class_name.clear ();
     default_value_string.clear();
@@ -140,7 +142,8 @@ namespace cubmethod
   }
 
   column_info::column_info (int db_type, int set_type, short scale, int prec, char charset,
-			    std::string col_name, std::string default_value, char auto_increment,
+			    std::string col_name, std::string written_col_name, std::string default_value,
+			    char auto_increment,
 			    char unique_key, char primary_key, char reverse_index, char reverse_unique,
 			    char foreign_key, char shared, std::string attr_name, std::string class_name,
 			    char is_non_null)
@@ -154,6 +157,9 @@ namespace cubmethod
 
     this->col_name.assign (col_name);
     str_trim (this->col_name);
+
+    this->written_col_name.assign (written_col_name);
+    str_trim (this->written_col_name);
 
     this->attr_name.assign (attr_name);
     this->class_name.assign (class_name);
@@ -187,6 +193,7 @@ namespace cubmethod
     serializator.pack_short (scale);
     serializator.pack_int (prec);
     serializator.pack_string (col_name);
+    serializator.pack_string (written_col_name);
     serializator.pack_string (attr_name);
     serializator.pack_string (class_name);
     serializator.pack_string (default_value_string);
@@ -213,6 +220,7 @@ namespace cubmethod
     deserializator.unpack_int (p);
 
     deserializator.unpack_string (col_name);
+    deserializator.unpack_string (written_col_name);
     deserializator.unpack_string (attr_name);
     deserializator.unpack_string (class_name);
     deserializator.unpack_string (default_value_string);
@@ -252,6 +260,7 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // prec
 
     size += serializator.get_packed_string_size (col_name, size); // col_name
+    size += serializator.get_packed_string_size (written_col_name, size); // written_col_name
     size += serializator.get_packed_string_size (attr_name, size); // attr_name
     size += serializator.get_packed_string_size (class_name, size); // class_name
     size += serializator.get_packed_string_size (default_value_string, size); // default_value_string
@@ -273,6 +282,7 @@ namespace cubmethod
     fprintf (stdout, "class_name: %s\n", class_name.c_str());
     fprintf (stdout, "attr_name: %s\n", attr_name.c_str());
     fprintf (stdout, "col_name: %s\n", col_name.c_str());
+    fprintf (stdout, "written_col_name: %s\n", written_col_name.c_str());
     fprintf (stdout, "default_value_string: %s\n", default_value_string.c_str());
 
     fprintf (stdout, "scale: %d\n", scale);
@@ -379,13 +389,29 @@ namespace cubmethod
   int
   prepare_call_info::set_is_first_out (std::string &sql_stmt)
   {
-    if (!sql_stmt.empty() && sql_stmt[0] == '?')
+    /* skip leading whitespace/comments before detecting the out parameter */
+    std::size_t pos = skip_leading_whitespace_and_comment (sql_stmt, 0);
+    if (pos < sql_stmt.size () && sql_stmt[pos] == '?')
       {
 	is_first_out = true;
 
-	std::size_t found = sql_stmt.find ('=');
+	/* find '=' skipping any comment placed between "?" and "=".  only whitespace, comments and
+	 * a marker number (?:1) can come before '=', so quoted text is not considered here; a quote
+	 * there makes the rest fail the CALL check that follows. */
+	std::size_t found = pos + 1;
+	while (found < sql_stmt.size ())
+	  {
+	    found = skip_leading_whitespace_and_comment (sql_stmt, found);
+	    if (found >= sql_stmt.size () || sql_stmt[found] == '=')
+	      {
+		break;
+	      }
+
+	    found++;
+	  }
+
 	/* '=' is not found */
-	if (found == std::string::npos)
+	if (found >= sql_stmt.size ())
 	  {
 	    return ER_FAILED;
 	  }

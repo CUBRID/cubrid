@@ -2013,6 +2013,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  if (%'CURSOR'% == null) {",
                 "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
+                "  %'+OPT-CHECK-SELECT-LIST-LENGTH'%",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (%'CURSOR'%.fetch()) {",
                 "    %'+SET-INTO-VARIABLES'%",
@@ -2041,6 +2042,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             String resultStr;
             if (node.columnTypeList == null) {
+                // cursor is a SYS_REFCURSOR
                 resultStr = String.format("rs.getObject(%d)", i + 1);
             } else {
                 resultStr =
@@ -2063,11 +2065,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtCursorFetch(StmtCursorFetch node) {
 
+        Object optCheckSelectListLength =
+                node.columnTypeList != null
+                        ? ""
+                        : new CodeTemplate(
+                                "Select list length check in StmtCursorFetch",
+                                Misc.UNKNOWN_LINE_COLUMN,
+                                "%'CURSOR'%.checkSelectListLength(%'INTO-VAR-COUNT'%);",
+                                "%'INTO-VAR-COUNT'%",
+                                Integer.toString(node.intoTargetList.size()));
+
         String[] setIntoTargets = getSetIntoTargetsCode(node);
+
         return new CodeTemplate(
                 "StmtCursorFetch",
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtCursorFetch,
+                "%'+OPT-CHECK-SELECT-LIST-LENGTH'%",
+                optCheckSelectListLength,
                 "%'CURSOR'%",
                 node.id.javaCode(),
                 "%'+SET-INTO-VARIABLES'%",

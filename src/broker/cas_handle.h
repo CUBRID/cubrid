@@ -128,7 +128,20 @@ struct t_srv_handle
   int cur_result_index;
   int num_q_result;
   bool has_result_set;
-  int num_markers;
+  int num_markers;		/* marker count of the prepared (replacement) query = K_replace */
+  int replace_rule_idx;		/* query replace rule index, -1 = no replace */
+  int num_orig_markers;		/* driver-facing marker count (original query) = K_orig,
+				 * valid only when replace_rule_idx >= 0 */
+  char *qr_app_sql;		/* the statement text the client sent; set whenever
+				 * replace_rule_idx >= 0 (no replace without it).  a demote hands it
+				 * over to sql_stmt -- never the rule's normalized ORIG -- because the
+				 * handle recompiles sql_stmt at the next execute */
+  char replace_fallback;	/* 1 = handle was self-healed to the original query after a
+				 * replacement-query execute failure; the next successful recompile
+				 * adopts the compiled statement as prepared (is_prepared -> TRUE) */
+  char qr_demote_pending;	/* 1 = ux_execute_array demoted the rule and the handle still has to
+				 * be swapped back to the original query; fn_execute_array applies it
+				 * after all logging so the logs describe the query that really ran */
   int max_col_size;
   int cursor_pos;
   int schema_type;
@@ -163,6 +176,7 @@ extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
 extern void hm_srv_handle_free (int h_id);
 extern void hm_srv_handle_free_all (bool free_holdable);
 extern void hm_srv_handle_qresult_end_all (bool end_holdable);
+extern void hm_srv_handle_end_transaction_all (void);
 extern T_SRV_HANDLE *hm_find_srv_handle (int h_id);
 extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);

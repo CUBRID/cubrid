@@ -49,8 +49,11 @@
 #include "error_manager.h"
 #include "object_representation.h"
 #include "network.h"
+#include "crypt_opfunc.h"
+#include "authenticate_password.hpp"
 #include "log_comm.h"
 #include "network_interface_sr.h"
+#include "qfile_tuple_layout.h"
 #include "page_buffer.h"
 #include "file_manager.h"
 #include "boot_sr.h"
@@ -2178,7 +2181,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       null_freqs[i] = 0.0;
     }
 
-  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
     {
       status = ER_FAILED;
       (void) return_error_to_client (thread_p, rid);
@@ -4580,7 +4583,6 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-  int deduplicate_key_pos = -1;
 
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4590,10 +4592,8 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid =
-	  xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -5112,6 +5112,46 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 }
 
 /*
+ * sbtree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index.
+ *
+ * return :
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) : packed BTID and fill factor
+ * reqlen (in) :
+ */
+void
+sbtree_compact_overflow (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int fill_factor;
+  INT64 keys_compacted = 0;
+  INT64 pages_freed = 0;
+  INT64 pairs_skipped = 0;
+  int error;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &fill_factor);
+
+  error = xbtree_compact_overflow (thread_p, &btid, fill_factor, &keys_compacted, &pages_freed, &pairs_skipped);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int64 (ptr, keys_compacted);
+  ptr = or_pack_int64 (ptr, pages_freed);
+  ptr = or_pack_int64 (ptr, pairs_skipped);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sdk_totalpgs -
  *
  * return:
@@ -5550,12 +5590,13 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 				     bool *can_end_transaction)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
   OR_BUF buf;
   TP_DOMAIN **domains;
   const PR_TYPE *pr_type;
-  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  int i, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  bool is_null;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -5619,19 +5660,19 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  break;
 	}
 
-      tuple_p = tuple_record.tpl;
-      or_init (&buf, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
-      tuple_p += QFILE_TUPLE_LENGTH_SIZE;
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
-	  flag = QFILE_GET_TUPLE_VALUE_FLAG (tuple_p);
-	  val_length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
-	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && TP_IS_CHAR_TYPE (pr_type->id))
+	  if (!TP_IS_CHAR_TYPE (pr_type->id))
 	    {
-	      buf.ptr = tuple_p;
+	      continue;
+	    }
+
+	  /* the body carries the same compression prefix that or_get_varchar_compression_lengths () expects */
+	  tuple_p = (char *) qfile_slot_get_column_data (&tuple_record, i, &val_length, &is_null);
+	  if (!is_null)
+	    {
+	      or_init (&buf, tuple_p, val_length);
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
 	      if (compressed_size != 0)
 		{
@@ -5645,8 +5686,6 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 		    }
 		}
 	    }
-
-	  tuple_p += val_length;
 	}
     }
 
@@ -6593,16 +6632,91 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 }
 
 /*
+ * sqmgr_bind_variant - Process a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to.
+ *   This function is a counter part to qmgr_bind_variant().
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): packed BIND_VARIANT_REQUEST
+ *   reqlen(in):
+ */
+void
+sqmgr_bind_variant (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BIND_VARIANT_REQUEST req;
+  BIND_VARIANT_REPLY reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIND_VARIANT_REPLY_SIZE) a_reply;
+  char *reply_buf = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 sig = 0;
+  int status, i, j;
+
+  memset (&req, 0, sizeof (req));
+  memset (&reply, 0, sizeof (reply));
+
+  ptr = or_unpack_sha1 (request, &req.sha1);
+  OR_UNPACK_CACHE_TIME (ptr, &req.time_stored);
+  ptr = or_unpack_int (ptr, &req.op);
+  ptr = or_unpack_int (ptr, &req.limit);
+  ptr = or_unpack_int (ptr, &req.variant);
+  ptr = or_unpack_int (ptr, &req.fp.terms);
+  ptr = or_unpack_int64 (ptr, &sig);
+  req.plan_sig = (UINT64) sig;
+  ptr = or_unpack_double (ptr, &req.band);
+  ptr = or_unpack_double (ptr, &req.floor);
+  for (i = 0; i < BIND_WATCH_MAX_TERMS; i++)
+    {
+      ptr = or_unpack_double (ptr, &req.fp.rows[i]);
+    }
+  if (req.fp.terms < 0 || req.fp.terms > BIND_WATCH_MAX_TERMS)
+    {
+      req.fp.terms = 0;
+    }
+
+  status = xcache_bind_variant (thread_p, &req, &reply);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply_buf, status);
+  ptr = or_pack_int (ptr, reply.result);
+  ptr = or_pack_int (ptr, reply.variant);
+  ptr = or_pack_int (ptr, reply.state);
+  ptr = or_pack_int (ptr, reply.compiles);
+  ptr = or_pack_int (ptr, reply.plans);
+  ptr = or_pack_int (ptr, reply.pending);
+  ptr = or_pack_int (ptr, reply.n_records);
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].variant : -1);
+      ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].fp.terms : 0);
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
+	{
+	  ptr = or_pack_double (ptr, (i < reply.n_records) ? reply.records[i].fp.rows[j] : 0.0);
+	}
+    }
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply_buf, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sqmgr_drop_query_plans_by_sha1 - Process a NET_SERVER_QM_QUERY_DROP_SHA1_PLANS request
  *
  * return:
  *
  *   rid(in):
- *   request(in)qmgr_drop_query_plans_by_sha1:
+ *   request(in):
  *   reqlen(in):
  *
  * NOTE:
- * Clear all XASL cache entires out upon request of the client.
+ * Clear sha1 XASL cache entries out upon request of the client.
  * This function is a counter part to qmgr_drop_query_plans_by_sha1().
  */
 void
@@ -6617,6 +6731,38 @@ sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY *thread_p, unsigned int rid, char *
 
   /* call the server routine of query drop plan */
   status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* pack status (DB_IN32) as a reply */
+  (void) or_pack_int (reply, status);
+
+  /* send reply and data to the client */
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sqmgr_drop_query_clones - Process a NET_SERVER_QM_QUERY_DROP_CLONES request
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ *   reqlen(in):
+ */
+void
+sqmgr_drop_query_clones (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int status;
+  char *reply, *sha1;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  or_unpack_string_nocopy (request, &sha1);
+
+  status = xqmgr_drop_query_clones (thread_p, sha1);
   if (status != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -8139,7 +8285,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
 {
   BTREE_STATS stat_info;
   int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
@@ -8160,7 +8306,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   ptr = or_pack_int (ptr, stat_info.leafs);
   ptr = or_pack_int (ptr, stat_info.pages);
   ptr = or_pack_int (ptr, stat_info.height);
-  ptr = or_pack_int (ptr, stat_info.keys);
+  ptr = or_pack_int64 (ptr, stat_info.keys);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -8699,12 +8845,12 @@ srepl_log_get_append_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_LSA *lsa;
+  LOG_LSA lsa;
 
   lsa = xrepl_log_get_append_lsa ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  (void) or_pack_log_lsa (reply, lsa);
+  (void) or_pack_log_lsa (reply, &lsa);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -9498,10 +9644,6 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	{
 	  (void) return_error_to_client (thread_p, rid);
 	}
-    }
-  else if (error == NO_ERROR)
-    {
-      xsession_set_is_keep_session (thread_p, false);
     }
 
   /* get row count */
@@ -11181,15 +11323,8 @@ ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
 static bool
 cdc_check_client_connection ()
 {
-  if (css_check_conn (&cdc_Gl.conn) == NO_ERROR)
-    {
-      /* existing connection is alive */
-      return true;
-    }
-  else
-    {
-      return false;
-    }
+  /* is the connection that opened the CDC session alive? */
+  return log_extract_owner_is_active (&cdc_Session_owner);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -11414,6 +11549,319 @@ smethod_invoke_fold_constants (THREAD_ENTRY *thread_p, unsigned int rid, char *r
 }
 #endif
 
+/*
+ * cdc_flashback_unpack_bounded_string () - unpack a length-prefixed string,
+ *   rejecting a length that would read past the request or misalign later unpacks.
+ *   return: advanced pointer on success, NULL if the length is out of range.
+ *   ptr (in)         : position at the length prefix
+ *   request (in)     : start of the request buffer
+ *   reqlen (in)      : total request length
+ *   out_string (out) : set on success
+ *
+ * or_unpack_string_nocopy() trusts its length prefix unconditionally; a
+ * legitimate peer's length is always -1 or a multiple of OR_INT_SIZE, so
+ * require that here too.
+ */
+static char *
+cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string)
+{
+  int declared_len;
+  char *after_len;
+
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+
+  if (declared_len != -1
+      && (declared_len < OR_INT_SIZE || declared_len > (reqlen - (int) (after_len - request))
+	  || declared_len % OR_INT_SIZE != 0
+	  /* or_pack_string() always NUL-terminates before padding to declared_len, so a
+	   * legitimate peer's string always has a NUL within its own declared span; a
+	   * crafted one without it would let every downstream strlen()/strcmp() consumer
+	   * run past this buffer into adjacent heap memory. */
+	  || memchr (after_len, '\0', declared_len) == NULL))
+    {
+      return NULL;
+    }
+
+  return or_unpack_string_nocopy (ptr, out_string);
+}
+
+/*
+ * cdc_auth_make_response () - digest that answers a CDC challenge.
+ *   return: NO_ERROR, or an error from the hash function.
+ *   thread_p (in):
+ *   nonce (in)         : challenge, as hex
+ *   stored_password (in): password exactly as db_password holds it
+ *   response (out)     : hex digest, CSS_CDC_AUTH_RESPONSE_SIZE bytes
+ *
+ * The client computes the same digest from the password the user typed, so the
+ * password never crosses the channel and a recorded answer dies with its nonce.
+ */
+static int
+cdc_auth_make_response (THREAD_ENTRY *thread_p, const char *nonce, const char *stored_password, char *response)
+{
+  char buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
+  char *digest = NULL;
+  int digest_len, error;
+
+  snprintf (buffer, sizeof (buffer), "%s%s", nonce, stored_password);
+
+  error = crypt_sha_two (thread_p, buffer, (int) strlen (buffer), 256, &digest, &digest_len, false);
+  if (error != NO_ERROR || digest == NULL)
+    {
+      return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  strncpy (response, digest, CSS_CDC_AUTH_RESPONSE_SIZE - 1);
+  response[CSS_CDC_AUTH_RESPONSE_SIZE - 1] = '\0';
+
+  db_private_free_and_init (thread_p, digest);
+
+  return NO_ERROR;
+}
+
+/* a challenge stays answerable this long; the client caps its handshake wait at 30 seconds too */
+#define CDC_AUTH_CHALLENGE_TTL_SEC 30
+
+/* key that signs CDC challenges, made once per server run */
+static char cdc_Auth_key[32];
+static bool cdc_Auth_key_ready = false;
+static pthread_once_t cdc_Auth_key_once = PTHREAD_ONCE_INIT;
+
+static void
+cdc_auth_init_key (void)
+{
+  cdc_Auth_key_ready = (crypt_generate_random_bytes (cdc_Auth_key, sizeof (cdc_Auth_key)) == NO_ERROR);
+}
+
+/*
+ * cdc_auth_sign () - tag that ties a challenge to this connection, account and
+ *   issue time, so the server can recognise its own challenge without storing it.
+ *   tag (out): CSS_CDC_AUTH_RESPONSE_SIZE bytes of hex
+ */
+static int
+cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, INT64 issued_at, char *tag)
+{
+  char msg[CSS_CDC_AUTH_NONCE_SIZE + DB_MAX_USER_LENGTH + 64];
+  int len;
+
+  (void) pthread_once (&cdc_Auth_key_once, cdc_auth_init_key);
+  if (!cdc_Auth_key_ready)
+    {
+      return ER_FAILED;
+    }
+
+  len = snprintf (msg, sizeof (msg), "%s|%d|%d|%s|%lld", nonce, (int) conn->fd, conn->client_id, user_name,
+		  (long long) issued_at);
+  if (len < 0 || len >= (int) sizeof (msg))
+    {
+      return ER_FAILED;
+    }
+
+  return crypt_hmac_sha256_hex (cdc_Auth_key, sizeof (cdc_Auth_key), msg, len, tag, CSS_CDC_AUTH_RESPONSE_SIZE);
+}
+
+/*
+ * cdc_auth_lookup () - read an account's stored password and DBA-group
+ *   membership, at most one lookup at a time per connection (each borrows a
+ *   transaction index, so overlapping requests could otherwise hold many).
+ *   return: NO_ERROR, ER_AU_AUTHORIZATION_FAILURE if a lookup is already running
+ *           on this connection, or another error if the account could not be read.
+ */
+static int
+cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba)
+{
+  bool found;
+
+  if (!ATOMIC_CAS (&thread_p->conn_entry->cdc_auth_busy, 0, 1))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE, 0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
+  found = cdc_get_user_info (thread_p, user_name, stored, stored_size, is_dba);
+  (void) ATOMIC_TAS (&thread_p->conn_entry->cdc_auth_busy, 0);
+
+  return found ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * scdc_auth_challenge () - first half of the CDC channel handshake.
+ *
+ * Sends a fresh nonce, the scheme the password is stored under, the issue time
+ * and a tag over them; nothing is kept on the server. An account that does not
+ * exist gets the same reply shape (scheme 0), and the response step refuses it.
+ */
+void
+scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_BIGINT_SIZE + CSS_CDC_AUTH_NONCE_SIZE + CSS_CDC_AUTH_RESPONSE_SIZE +
+		  2 * MAX_ALIGNMENT) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL;
+  char stored[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  char nonce_bytes[CSS_CDC_AUTH_NONCE_SIZE / 2];
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE];
+  char tag[CSS_CDC_AUTH_RESPONSE_SIZE];
+  INT64 issued_at;
+  bool is_dba = false;
+  int scheme = 0;
+
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) == NULL
+      || user_name == NULL || strlen (user_name) >= DB_MAX_USER_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      goto error;
+    }
+
+  if (crypt_generate_random_bytes (nonce_bytes, sizeof (nonce_bytes)) != NO_ERROR)
+    {
+      goto error;
+    }
+  str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
+
+  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) == NO_ERROR)
+    {
+      scheme = IS_ENCODED_ANY (stored) ? (int) stored[0] : 0;
+    }
+  else if (er_errid () == ER_AU_AUTHORIZATION_FAILURE)
+    {
+      goto error;		/* another handshake step is running on this connection */
+    }
+  memset (stored, 0, sizeof (stored));
+
+  issued_at = (INT64) time (NULL);
+  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, tag) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  ptr = or_pack_int (ptr, scheme);
+  ptr = or_pack_string (ptr, nonce);
+  ptr = or_pack_int64 (ptr, issued_at);
+  ptr = or_pack_string (ptr, tag);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply));
+
+  return;
+
+error:
+
+  return_error_to_client (thread_p, rid);
+  css_send_abort_to_client (thread_p->conn_entry, rid);
+}
+
+/*
+ * cdc_auth_response_matches () - compare two hex digests without leaking how
+ *   far they agree.
+ *   return: true if they are identical.
+ */
+static bool
+cdc_auth_response_matches (const char *expected, const char *given)
+{
+  int i, diff = 0;
+
+  if (strlen (given) != CSS_CDC_AUTH_RESPONSE_SIZE - 1)
+    {
+      return false;
+    }
+
+  for (i = 0; i < CSS_CDC_AUTH_RESPONSE_SIZE - 1; i++)
+    {
+      diff |= (expected[i] ^ given[i]);
+    }
+
+  return (diff == 0);
+}
+
+/*
+ * scdc_auth_response () - second half of the CDC channel handshake.
+ *
+ * The request carries everything to judge it: account, nonce, issue time, tag
+ * and answer. The tag proves the challenge came from this server for this
+ * connection and account; the answer proves the password; the account must be
+ * DBA or in its group. Only then is the connection marked authenticated.
+ */
+void
+scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL, *nonce = NULL, *tag = NULL, *answer = NULL;
+  char expected[CSS_CDC_AUTH_RESPONSE_SIZE];
+  char stored[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  INT64 issued_at = 0, now;
+  bool is_dba = false;
+  int error_code = ER_AU_AUTHORIZATION_FAILURE;
+
+  /* request: user | nonce | issued_at | tag | answer */
+  ptr = (request != NULL) ? cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) : NULL;
+  ptr = (ptr != NULL) ? cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &nonce) : NULL;
+  /* or_unpack_int64 () aligns first, so check the room from the aligned position */
+  if (ptr != NULL && reqlen - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - request) >= OR_BIGINT_SIZE)
+    {
+      ptr = or_unpack_int64 (ptr, &issued_at);
+      ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &tag);
+      ptr = (ptr != NULL) ? cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &answer) : NULL;
+    }
+  else
+    {
+      ptr = NULL;
+    }
+
+  if (ptr == NULL || user_name == NULL || nonce == NULL || tag == NULL || answer == NULL
+      || strlen (user_name) >= DB_MAX_USER_LENGTH || strlen (nonce) != CSS_CDC_AUTH_NONCE_SIZE - 1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  now = (INT64) time (NULL);
+  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, expected) != NO_ERROR
+      || !cdc_auth_response_matches (expected, tag) || issued_at > now || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
+    {
+      /* not a challenge this server issued to this connection for this account, or expired */
+    }
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) != NO_ERROR
+	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
+	   || !cdc_auth_response_matches (expected, answer))
+    {
+      /* unknown account, unreadable password, or a wrong answer */
+    }
+  else if (!is_dba)
+    {
+      /* the password was right, the account just has no business driving CDC */
+      error_code = ER_AU_DBA_ONLY;
+    }
+  else
+    {
+      error_code = NO_ERROR;
+      thread_p->conn_entry->cdc_auth_done = true;
+    }
+  memset (stored, 0, sizeof (stored));
+
+  if (error_code == ER_AU_DBA_ONLY)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+    }
+  else if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE, 0);
+    }
+
+  (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
 void
 scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -11426,6 +11874,11 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   char **extraction_user = NULL;
 
   char *dummy_user = NULL;
+  char *cdc_db_user = NULL;
+
+  SOCKET prev_fd = INVALID_SOCKET;
+  int prev_client_id = -1;
+  bool session_claimed = false;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
@@ -11434,15 +11887,164 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto error;
     }
 
-  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
-   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
-   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
-   * so that a restarted client can reconnect. */
-  if (cdc_Gl.conn.fd != -1)
+  /* CBRD-27436: no client identity on this channel, so CHECK_AUTHORIZATION can't
+   * gate it -- require the challenge-response instead. The db user still leads
+   * the request, but is now only a field to step over. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
     {
-      SOCKET prev_fd = cdc_Gl.conn.fd;
-      int prev_client_id = cdc_Gl.conn.client_id;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
 
+  ptr = cdc_flashback_unpack_bounded_string (request, request, reqlen, &cdc_db_user);
+  if (ptr == NULL || cdc_db_user == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+  if (!log_extract_check_authorization (thread_p, LOG_EXTRACT_CDC))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      goto error;
+    }
+
+  /* CBRD-27436: not yet fully validated -- nothing below may affect *other*
+   * connections' state yet (see the deferred takeover before the success reply). */
+
+  /* These 4 ints are unpacked unconditionally and weren't covered by the
+   * db_user check above -- a short-but-valid request would otherwise read
+   * past the buffer here. */
+  if (reqlen - (int) (ptr - request) < 4 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      4 * OR_INT_SIZE, (reqlen - (int) (ptr - request)));
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
+  ptr = or_unpack_int (ptr, &max_log_item);
+  ptr = or_unpack_int (ptr, &extraction_timeout);
+  ptr = or_unpack_int (ptr, &all_in_cond);
+  ptr = or_unpack_int (ptr, &num_extraction_user);
+
+  /* Bound the count against the remaining request length before the unpack
+   * loop -- each user needs at least a length prefix. */
+  if (num_extraction_user < 0 || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
+  if (num_extraction_user > 0)
+    {
+      /* calloc, not malloc: on an early exit (below) the error path frees every
+       * slot up to num_extraction_user, including ones a failed strdup() never
+       * reached -- those must start out NULL, not uninitialized heap. */
+      extraction_user = (char **) calloc (num_extraction_user, sizeof (char *));
+      if (extraction_user == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      for (int i = 0; i < num_extraction_user; i++)
+	{
+	  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &dummy_user);
+	  if (ptr == NULL || dummy_user == NULL)
+	    {
+	      /* NULL covers both an out-of-range length and a declared-NULL (-1)
+	       * entry -- either way strdup (NULL) would be undefined behavior. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+	      error_code = ER_NET_DATASIZE_MISMATCH;
+	      goto error;
+	    }
+
+	  extraction_user[i] = strdup (dummy_user);
+	  if (extraction_user[i] == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+    }
+
+  /* Unpacked unconditionally right after a loop that may have already
+   * consumed all remaining bytes -- check before reading it. */
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      OR_INT_SIZE, (reqlen - (int) (ptr - request)));
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
+  ptr = or_unpack_int (ptr, &num_extraction_class);
+
+  if (num_extraction_class < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, num_extraction_class);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
+  if (num_extraction_class > 0)
+    {
+      /* Bound the count against the remaining request length -- each class oid
+       * is packed as an int64. or_unpack_int64() aligns the pointer up to
+       * MAX_ALIGNMENT before reading, and the first read also consumes that
+       * padding, so measure from the aligned position; counting from the
+       * unaligned pointer would let the loop read up to MAX_ALIGNMENT-1 bytes
+       * past the request. */
+      char *aligned_ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+      if ((INT64) num_extraction_class > (INT64) (reqlen - (int) (aligned_ptr - request)) / OR_BIGINT_SIZE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+		  (int) ((reqlen - (int) (aligned_ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
+	  error_code = ER_NET_DATASIZE_MISMATCH;
+	  goto error;
+	}
+
+      extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
+      if (extraction_classoids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (UINT64) * num_extraction_class);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      for (int i = 0; i < num_extraction_class; i++)
+	{
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
+	}
+    }
+
+  cdc_log
+  ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
+   __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
+
+  /* Only now, fully validated, do we affect *other* connections: take the session
+   * (checked by log_extract_owner_is_owner () for every other CDC opcode) and close
+   * an incumbent one. Doing this earlier would let a request that fails a later
+   * check still kill a running consumer for nothing. CDC takes a session over
+   * even from a live owner: a restarted client must be able to reconnect.
+   *
+   * The producer has to be paused before cdc_set_configuration() below, which
+   * frees the extraction filter the producer reads in cdc_is_filtered_user()
+   * and cdc_is_filtered_class(). */
+  (void) log_extract_owner_claim (&cdc_Session_owner, thread_p, true, &prev_fd, &prev_client_id);
+  session_claimed = true;
+
+  if (prev_fd != INVALID_SOCKET)
+    {
       if (thread_p->conn_entry->fd != prev_fd)
 	{
 	  /* A new client is requesting a session while the previous one still holds the CDC connection.
@@ -11477,62 +12079,6 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
     }
 
-  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
-  cdc_Gl.conn.status = thread_p->conn_entry->status;
-  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
-
-  ptr = or_unpack_int (request, &max_log_item);
-  ptr = or_unpack_int (ptr, &extraction_timeout);
-  ptr = or_unpack_int (ptr, &all_in_cond);
-  ptr = or_unpack_int (ptr, &num_extraction_user);
-
-  if (num_extraction_user > 0)
-    {
-      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
-      if (extraction_user == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      for (int i = 0; i < num_extraction_user; i++)
-	{
-	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
-
-	  extraction_user[i] = strdup (dummy_user);
-	  if (extraction_user[i] == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
-	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error;
-	    }
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &num_extraction_class);
-
-  if (num_extraction_class > 0)
-    {
-      extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
-      if (extraction_classoids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (UINT64) * num_extraction_class);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      for (int i = 0; i < num_extraction_class; i++)
-	{
-	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
-	}
-    }
-
-  cdc_log
-  ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
-   __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
-
   error_code =
 	  cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
 				 extraction_classoids, num_extraction_class);
@@ -11541,6 +12087,8 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto error;
     }
 
+  log_extract_owner_end_request (&cdc_Session_owner, thread_p);
+
   or_pack_int (reply, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -11548,6 +12096,13 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   return;
 
 error:
+
+  if (session_claimed)
+    {
+      /* The session was taken but could not be set up; leave it ownerless rather
+       * than owned by a connection the client was just told failed. */
+      (void) log_extract_owner_release (&cdc_Session_owner, thread_p);
+    }
 
   if (extraction_user != NULL)
     {
@@ -11584,6 +12139,24 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   time_t input_time;
   int error_code;
 
+  /* CBRD-27436: unlike scdc_start_session(), this request had no identity
+   * check at all -- a client could skip START_SESSION and reach it directly. */
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      goto error;
+    }
+
+  /* Never checked before this unconditional unpack -- a short/absent request
+   * reads past a too-small buffer. */
+  if (request == NULL || reqlen < OR_INT64_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT64_SIZE, reqlen);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread
 
@@ -11602,6 +12175,12 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
+
+      /* The client is about to be told to resume from here, so the volume holding that position has to be
+       * kept from now on. Waiting for the first bundle leaves a window: extraction can come back as
+       * ER_CDC_EXTRACTION_TIMEOUT before the volume is ever recorded, and archive removal is free to run
+       * in between. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
@@ -11643,8 +12222,27 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   char *log_info_list;
   int error_code = NO_ERROR;
   int num_log_info;
+  LOG_EXTRACT_LSA_MATCH lsa_match;
 
   int rc;
+
+  /* CBRD-27436: unguarded -- a client could skip CDC_START_SESSION entirely
+   * and reach it directly (see scdc_find_lsa()). */
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      goto error;
+    }
+
+  /* Never checked before this unconditional unpack -- a short/absent request
+   * reads past a too-small buffer. */
+  if (request == NULL || reqlen < OR_LOG_LSA_ALIGNED_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_LOG_LSA_ALIGNED_SIZE, reqlen);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
 
   or_unpack_log_lsa (request, &start_lsa);
 
@@ -11667,12 +12265,17 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 
       cdc_set_extraction_lsa (&start_lsa);
 
+      /* Same window as in scdc_find_lsa(): record the volume before the first bundle is attempted. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
+
       cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
     }
 
-  if (LSA_EQ (&cdc_Gl.consumer.next_lsa, &start_lsa))
+  /* the client resumes from the next position handed out, or asks for the last bundle again */
+  lsa_match = log_extract_match_lsa (&start_lsa, &cdc_Gl.consumer.next_lsa, &cdc_Gl.consumer.start_lsa, NULL, NULL);
+  if (lsa_match == LOG_EXTRACT_LSA_ISSUED)
     {
       error_code = cdc_make_loginfo (thread_p, &start_lsa);
       if (error_code != NO_ERROR)
@@ -11686,7 +12289,7 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 	  goto error;
 	}
     }
-  else if (LSA_EQ (&cdc_Gl.consumer.start_lsa, &start_lsa))
+  else if (lsa_match == LOG_EXTRACT_LSA_PREVIOUS)
     {
       /* Send again; only the case, where cdc client re-request loginfo metadata requested last time due to a problem like shutdown, will be dealt. */
       error_code = cdc_get_loginfo_metadata (&next_lsa, &total_length, &num_log_info);
@@ -11729,6 +12332,19 @@ error:
 void
 scdc_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
+  /* CBRD-27436: unguarded, reachable by skipping START_SESSION (see
+   * scdc_find_lsa()). This reply carries no error-code framing, so report the
+   * rejection in the packet header and answer with an empty buffer: the caller
+   * fails immediately instead of waiting out its extraction timeout. */
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      thread_p->conn_entry->db_error = ER_AU_DBA_ONLY;
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, NULL, 0);
+      thread_p->conn_entry->db_error = 0;
+      return;
+    }
+
   cdc_log ("%s : size of log info is %d", __func__, cdc_Gl.consumer.log_info_size);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
@@ -11743,18 +12359,50 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  /* CBRD-27436: unguarded -- any client could end a session it never started,
+   * force-disconnecting a legitimate consumer. Check ownership first. */
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      or_pack_int (reply, error_code);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
-  cdc_Gl.conn.fd = -1;
-  cdc_Gl.conn.status = CONN_CLOSED;
-  cdc_Gl.conn.client_id = -1;
+  (void) log_extract_owner_release (&cdc_Session_owner, thread_p);
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
+}
+
+/*
+ * flashback_check_requester () - may the requester run flashback?
+ *   return: true if so; otherwise the request has been refused and no session
+ *           state touched.
+ *
+ * Decided by log_extract_check_authorization (), the function CDC uses too, and
+ * refused the way CHECK_AUTHORIZATION refuses, so the client sees the same reply.
+ */
+static bool
+flashback_check_requester (THREAD_ENTRY *thread_p, unsigned int rid)
+{
+  if (log_extract_check_authorization (thread_p, LOG_EXTRACT_FLASHBACK))
+    {
+      return true;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
+  return_error_to_client (thread_p, rid);
+  css_send_abort_to_client (thread_p->conn_entry, rid);
+
+  return false;
 }
 
 void
@@ -11775,12 +12423,17 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   LC_FIND_CLASSNAME status;
 
-  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, {}, {}, };
 
   time_t start_time = 0;
   time_t end_time = 0;
 
   char *classname = NULL;
+
+  if (!flashback_check_requester (thread_p, rid))
+    {
+      return;
+    }
 
   error_code = flashback_initialize (thread_p);
   if (error_code != NO_ERROR)
@@ -11961,9 +12614,16 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   int threshold_to_remove_archive = 0;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER,
+					{}, {},
+				      };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+
+  if (!flashback_check_requester (thread_p, rid))
+    {
+      return;
+    }
 
   ptr = or_unpack_int (request, &context.trid);
   ptr = or_unpack_string_nocopy (ptr, &context.user);

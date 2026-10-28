@@ -72,6 +72,7 @@ extern int jsp_is_system_generated_pkg (MOP pkg_mop, bool * is_system);
 extern int jsp_is_system_generated_sp (MOP sp_mop, bool * is_system);
 extern int jsp_find_standalone_routine (const char *name, const char *op_name, MOP * sp_mop_p);
 extern MOP jsp_find_package (const char *name);
+extern bool jsp_is_sp_parallel_eligible (const char *name);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);
 

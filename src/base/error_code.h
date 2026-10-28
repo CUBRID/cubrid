@@ -1772,23 +1772,38 @@
 
 #define ER_AU_CANT_ALTER_LOGIN                      -1378
 
-#define ER_PKG_ALREADY_EXIST                        -1379
-#define ER_PKG_BODY_ALREADY_EXIST                   -1380
-#define ER_PKG_NOT_EXIST                            -1381
-#define ER_PKG_BODY_NOT_EXIST                       -1382
-#define ER_PKG_COMPILE_ERROR                        -1383
-#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1384
-#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1385
-#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1386
-#define ER_PKG_DUPLICATE_NAME                       -1387
+#define ER_CDC_ARCHIVE_KEPT                         -1379
 
-#define ER_SP_NOT_EXIST_2                           -1388
+#define ER_SP_PARALLEL_ENABLE_NO_SQL                -1380
 
-#define ER_SP_PKG_ROUTINE_NOT_ALLOWED               -1389
-#define ER_SP_AMBIGUOUS_NAME                        -1390
-#define ER_PKG_CREATE_NOT_ALLOWED_SYSTEM_GENERATED  -1391
+#define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
+#define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
 
-#define ER_LAST_ERROR                               -1392
+#define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
+
+#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+
+#define ER_AU_REJECT_LOGIN                          -1385
+
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
+
+#define ER_PKG_ALREADY_EXIST                        -1387
+#define ER_PKG_BODY_ALREADY_EXIST                   -1388
+#define ER_PKG_NOT_EXIST                            -1389
+#define ER_PKG_BODY_NOT_EXIST                       -1390
+#define ER_PKG_COMPILE_ERROR                        -1391
+#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1392
+#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1393
+#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1394
+#define ER_PKG_DUPLICATE_NAME                       -1395
+
+#define ER_SP_NOT_EXIST_2                           -1396
+
+#define ER_SP_PKG_ROUTINE_NOT_ALLOWED               -1397
+#define ER_SP_AMBIGUOUS_NAME                        -1398
+#define ER_PKG_CREATE_NOT_ALLOWED_SYSTEM_GENERATED  -1399
+
+#define ER_LAST_ERROR                               -1400
 
 /*
  * CAUTION!

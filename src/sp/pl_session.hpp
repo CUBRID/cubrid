@@ -130,7 +130,7 @@ namespace cubpl
       // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
       // In the future, these functions will resolve some cases when it is necessary to set an error for all threads participating in a recursive call e.g. interrupt
       execution_stack *create_and_push_stack (cubthread::entry *thread_p);
-      void pop_and_destroy_stack (const PL_STACK_ID sid);
+      void pop_and_destroy_stack (const PL_STACK_ID sid, bool is_px_stack);
       execution_stack *top_stack ();
 
       /* connection management */
@@ -172,9 +172,21 @@ namespace cubpl
     private:
       void destroy_pl_context_jvm ();
 
+      /* px worker execution: registered in m_stack_map, kept out of the ordered stack */
+      execution_stack *create_px_stack (cubthread::entry *thread_p);
+      void destroy_px_stack (const PL_STACK_ID sid);
+
+      /* unlocked internals of the session parameter state; callers hold m_mutex_session_param */
+      void set_session_param_unlocked (const sys_param &param);
+      void set_session_params_all_required_unlocked (bool is_required);
+
       std::mutex m_mutex_stack;
       std::mutex m_mutex_connection;
       std::mutex m_mutex_cursor;
+      /* guards m_session_params, m_session_param_changed_ids and m_all_session_params_required.
+       * Lock order: m_mutex_connection may be held while taking this one (claim/release
+       * connection mark the state), never the other way around. */
+      std::mutex m_mutex_session_param;
       std::condition_variable m_cond_target_stack_at_top;
       std::condition_variable m_cond_pl_session_done;
 

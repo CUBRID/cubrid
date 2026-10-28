@@ -78,15 +78,18 @@ namespace parallel_query_execute
   {
     public:
       trace_context()
-	:m_mutex (),
-	 m_stats ()
+	:m_mutex ()
       {
       }
-      ~trace_context() = default;
-      using stat = XASL_STATS;
+      ~trace_context()
+      {
+	free (m_px_stats);
+      }
 
       std::mutex m_mutex;
-      std::vector<stat> m_stats;
+      /* everything the jobs counted, summed when each job ends; run_jobs () merges it into the executor's thread.
+       * guarded by m_mutex */
+      UINT64 *m_px_stats = nullptr;
   };
   class job
   {

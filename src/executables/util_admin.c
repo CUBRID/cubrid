@@ -292,11 +292,15 @@ static GETOPT_LONG ua_Acl_Option[] = {
 static UTIL_ARG_MAP ua_Optimize_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {OPTIMIZE_CLASS_NAME_S, {ARG_STRING}, {0}},
+  {OPTIMIZE_NO_HISTOGRAM_S, {ARG_BOOLEAN}, {0}},
+  {OPTIMIZE_NO_HISTOGRAM_CLASSES_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Optimize_Option[] = {
   {OPTIMIZE_CLASS_NAME_L, 1, 0, OPTIMIZE_CLASS_NAME_S},
+  {OPTIMIZE_NO_HISTOGRAM_L, 0, 0, OPTIMIZE_NO_HISTOGRAM_S},
+  {OPTIMIZE_NO_HISTOGRAM_CLASSES_L, 1, 0, OPTIMIZE_NO_HISTOGRAM_CLASSES_S},
   {0, 0, 0, 0}
 };
 
@@ -427,6 +431,7 @@ static UTIL_ARG_MAP ua_Plandump_Option_Map[] = {
   {PLANDUMP_DROP_S, {ARG_BOOLEAN}, {0}},
   {PLANDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {PLANDUMP_SHA1_S, {ARG_STRING}, {0}},
+  {PLANDUMP_DROP_CLONE_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
@@ -434,6 +439,7 @@ static GETOPT_LONG ua_Plandump_Option[] = {
   {PLANDUMP_DROP_L, 0, 0, PLANDUMP_DROP_S},
   {PLANDUMP_OUTPUT_FILE_L, 1, 0, PLANDUMP_OUTPUT_FILE_S},
   {PLANDUMP_SHA1_L, 1, 0, PLANDUMP_SHA1_S},
+  {PLANDUMP_DROP_CLONE_L, 0, 0, PLANDUMP_DROP_CLONE_S},
   {0, 0, 0, 0}
 };
 
@@ -569,7 +575,6 @@ static UTIL_ARG_MAP ua_Unload_Option_Map[] = {
   {UNLOAD_KEEP_STORAGE_ORDER_S, {ARG_BOOLEAN}, {0}},
   {UNLOAD_SPLIT_SCHEMA_FILES_S, {ARG_BOOLEAN}, {0}},
   {UNLOAD_AS_DBA_S, {ARG_BOOLEAN}, {0}},
-  {UNLOAD_SKIP_INDEX_DETAIL_S, {ARG_BOOLEAN}, {0}},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   {UNLOAD_THREAD_COUNT_S, {ARG_INTEGER}, {(void *) 1}},
   {UNLOAD_STRING_BUFFER_SIZE_S, {ARG_INTEGER}, {(void *) 1024}},
   {UNLOAD_REQUEST_PAGES_S, {ARG_INTEGER}, {(void *) 100}},
@@ -602,7 +607,6 @@ static GETOPT_LONG ua_Unload_Option[] = {
   {UNLOAD_KEEP_STORAGE_ORDER_L, 0, 0, UNLOAD_KEEP_STORAGE_ORDER_S},
   {UNLOAD_SPLIT_SCHEMA_FILES_L, 0, 0, UNLOAD_SPLIT_SCHEMA_FILES_S},
   {UNLOAD_AS_DBA_L, 0, 0, UNLOAD_AS_DBA_S},
-  {UNLOAD_SKIP_INDEX_DETAIL_L, 0, 0, UNLOAD_SKIP_INDEX_DETAIL_S},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   {UNLOAD_THREAD_COUNT_L, 1, 0, UNLOAD_THREAD_COUNT_S},
   {UNLOAD_STRING_BUFFER_SIZE_L, 1, 0, UNLOAD_STRING_BUFFER_SIZE_S},
   {UNLOAD_REQUEST_PAGES_L, 1, 0, UNLOAD_REQUEST_PAGES_S},
@@ -965,6 +969,27 @@ static GETOPT_LONG ua_Memmon_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Upgradedb_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {UPGRADE_CHECK_S, {ARG_BOOLEAN}, {0}},
+  {UPGRADE_FORCE_S, {ARG_BOOLEAN}, {0}},
+  {UPGRADE_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+#if !defined(NDEBUG)
+  {UPGRADE_APPLY_SCRIPT_LIST_S, {ARG_STRING}, {0}},
+#endif
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Upgradedb_Option[] = {
+  {UPGRADE_CHECK_L, 0, 0, UPGRADE_CHECK_S},
+  {UPGRADE_FORCE_L, 0, 0, UPGRADE_FORCE_S},
+  {UPGRADE_VERBOSE_L, 0, 0, UPGRADE_VERBOSE_S},
+#if !defined(NDEBUG)
+  {UPGRADE_APPLY_SCRIPT_LIST_L, 1, 0, UPGRADE_APPLY_SCRIPT_LIST_S},
+#endif
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb", ua_Create_Option, ua_Create_Option_Map},
   {RENAMEDB, SA_ONLY, 2, UTIL_OPTION_RENAMEDB, "renamedb", ua_Rename_Option, ua_Rename_Option_Map},
@@ -1009,6 +1034,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {TDE, SA_CS, 1, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
   {FLASHBACK, CS_ONLY, 2, UTIL_OPTION_FLASHBACK, "flashback", ua_Flashback_Option, ua_Flashback_Option_Map},
   {MEMMON, CS_ONLY, 1, UTIL_OPTION_MEMMON, "memmon", ua_Memmon_Option, ua_Memmon_Option_Map},
+  {UPGRADEDB, SA_ONLY, 1, UTIL_OPTION_UPGRADEDB, "upgradedb", ua_Upgradedb_Option, ua_Upgradedb_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

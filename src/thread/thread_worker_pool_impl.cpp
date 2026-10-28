@@ -32,6 +32,28 @@
 
 namespace cubthread
 {
+  thread_local worker_pool *worker_pool::m_current_worker_pool = nullptr;
+
+  bool
+  worker_pool::is_current_thread_worker (void) const
+  {
+    return m_current_worker_pool == this;
+  }
+
+  void
+  worker_pool::register_current_worker_thread (void)
+  {
+    assert (m_current_worker_pool == nullptr);
+    m_current_worker_pool = this;
+  }
+
+  void
+  worker_pool::unregister_current_worker_thread (void)
+  {
+    assert (m_current_worker_pool == this);
+    m_current_worker_pool = nullptr;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // functions
   //////////////////////////////////////////////////////////////////////////
@@ -40,14 +62,6 @@ namespace cubthread
   system_core_count (void)
   {
     return os::resources::cpu::effective ().adjusted_max;
-  }
-
-  void
-  wp_handle_system_error (const char *message, const std::system_error &e)
-  {
-    er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code().value(), e.what ());
-    assert (false);
-    throw e;
   }
 
   //////////////////////////////////////////////////////////////////////////

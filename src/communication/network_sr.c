@@ -434,6 +434,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
 
+  req_p = &net_Requests[NET_SERVER_BTREE_COMPACT_OVERFLOW];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sbtree_compact_overflow;
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
@@ -483,8 +487,14 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
   req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_CLONES];
+  req_p->processing_function = sqmgr_drop_query_clones;
+
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
+
+  req_p = &net_Requests[NET_SERVER_QM_BIND_VARIANT];
+  req_p->processing_function = sqmgr_bind_variant;
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_CACHE];
   req_p->processing_function = sqmgr_dump_query_cache;
@@ -743,7 +753,16 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
   req_p->processing_function = scdc_end_session;
 
-  /* flashback */
+  /* the CDC channel authenticates itself with these two, so they run before any
+   * authorization state exists on the connection */
+  req_p = &net_Requests[NET_SERVER_CDC_AUTH_CHALLENGE];
+  req_p->processing_function = scdc_auth_challenge;
+
+  req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
+  req_p->processing_function = scdc_auth_response;
+
+  /* flashback : DBA-only, checked first thing in each handler with
+   * log_extract_check_authorization (), the function CDC uses too */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
   req_p->processing_function = sflashback_get_summary;
 
@@ -973,6 +992,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_DWB_QUEUE_SUSPENDED:
 		    case THREAD_PGBUF_SUSPENDED:
 		    case THREAD_SLEEP_FUNC_SUSPENDED:
+		    case THREAD_CONCURRENCY_SLOT_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 
@@ -990,6 +1010,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_LOGWR_RESUMED:
 		    case THREAD_ALLOC_BCB_RESUMED:
 		    case THREAD_DWB_QUEUE_RESUMED:
+		    case THREAD_CONCURRENCY_SLOT_RESUMED:
 		      /* thread is in resumed status, we don't need to wake up */
 		      wakeup_now = false;
 		      break;

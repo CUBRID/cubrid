@@ -32,10 +32,10 @@ class connection_list_cl
 {
 private:
   CSS_QUEUE_ENTRY * css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY * next, int rc,
-					  int transid, int invalidate_snapshot, int db_error);
+					  int transid, int invalidate_snapshot, int db_error, bool in_method);
   void css_free_queue_entry (CSS_QUEUE_ENTRY * entry_p);
   int css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id, char *buffer, int buffer_size,
-			       int rc, int transid, int invalidate_snapshot, int db_error);
+			       int rc, int transid, int invalidate_snapshot, int db_error, bool in_method);
   bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
   void css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header);
   void css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header);

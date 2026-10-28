@@ -58,7 +58,6 @@
 #include "cas_str_like.h"
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
-#include "deduplicate_key.h"
 #include "tz_support.h"
 #include "intl_support.h"
 #include "language_support.h"
@@ -80,6 +79,7 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
+#include "query_replace.h"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -199,6 +199,7 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+static int cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -268,6 +269,7 @@ static int class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *a
 static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index);
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
 static int sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle);
+static int sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle);
 static short constraint_dbtype_to_castype (int db_const_type);
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
@@ -288,6 +290,7 @@ static T_FK_INFO_RESULT *add_fk_info_result (T_FK_INFO_RESULT * fk_res, const ch
 static char *get_backslash_escape_string (void);
 static bool need_reconnect_on_rctime (void);
 static void report_abnormal_host_status (int err_code);
+static void ux_database_shutdown_for_reconnect (void);
 
 static int set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values);
 static unsigned char set_extended_cas_type (T_CCI_U_TYPE u_set_type, DB_TYPE db_type);
@@ -296,6 +299,9 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type);
+static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
+static bool call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -320,6 +326,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_EXPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
+  fetch_result,			/* SCH_SCHEMAS */
 };
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
@@ -334,11 +341,9 @@ ux_check_connection (void)
     {
       if (db_ping_server (0, NULL) < 0)
 	{
-	  cas_log_debug (ARG_FILE_LINE, "ux_check_connection: db_ping_server() error");
 	  cas_log_write_and_end (0, true, "SERVER DOWN");
 	  if (as_info->cur_statement_pooling)
 	    {
-	      cas_log_debug (ARG_FILE_LINE, "ux_check_connection: cur_statement_pooling");
 	      return -1;
 	    }
 	  else
@@ -351,9 +356,6 @@ ux_check_connection (void)
 	      strncpy_bufsize (dbuser, database_user);
 	      strncpy_bufsize (dbpasswd, database_passwd);
 
-	      cas_log_debug (ARG_FILE_LINE,
-			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
-			     dbuser);
 	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
@@ -406,7 +408,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       if (database_name[0] != '\0')
 	{
-	  ux_database_shutdown (true);
+	  ux_database_shutdown_for_reconnect ();
 	}
 
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
@@ -414,12 +416,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
       else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
@@ -427,12 +427,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
       else
@@ -440,7 +438,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
@@ -470,8 +467,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  db_enable_trigger ();
 	}
 
-      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: db_login(%s) db_restart(%s) at %s", db_user, db_name,
-		     host_connected);
       p = strchr (db_name, '@');
       if (p)
 	{
@@ -492,8 +487,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       ux_get_default_setting ();
     }
-  else if (shm_appl->cache_user_info == OFF || strcmp (database_user, db_user) != 0
-	   || strcmp (database_passwd, db_passwd) != 0)
+  else
     {
       int err_code;
       /* Already connected to a database, make sure to clear errors from previous clients */
@@ -502,7 +496,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
 	{
-	  ux_database_shutdown (true);
+	  ux_database_shutdown_for_reconnect ();
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
@@ -510,13 +504,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
-    }
-  else
-    {
-      /* Already connected to a database, make sure to clear errors from previous clients */
-      er_clear ();
-      /* check session to see if it is still active and create if isn't */
-      (void) db_find_or_create_session (db_user, program_name);
     }
   return 0;
 
@@ -602,7 +589,6 @@ ux_database_shutdown (bool request_server)
 	  db_shutdown_without_request_to_server ();
 	}
     }
-  cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
@@ -617,9 +603,44 @@ ux_database_shutdown (bool request_server)
   cas_default_lock_timeout = -1;
 }
 
+/*
+ * ux_database_shutdown_for_reconnect () - close the connection to the database server before connecting again,
+ *					    leaving the session of the client alone
+ *
+ * Note: the session id and key are of the client the CAS connects for. cas_set_session_id () sets them for a new
+ *	 client while the CAS is still connected to the server of the previous client. db_shutdown () would end
+ *	 that session on the server the CAS leaves, which may not even be the server of the session, and clear the
+ *	 key. Hide the session from it and restore it after, so that the client finds its session again on the
+ *	 server the CAS connects to.
+ *	 A shard CAS does not take the session of a client (cas_set_session_id () is not called for it), so it
+ *	 shuts down as before.
+ */
+static void
+ux_database_shutdown_for_reconnect (void)
+{
+  SESSION_ID session_id;
+  char session_key[SERVER_SESSION_KEY_SIZE];
+
+  if (cas_shard_flag == ON)
+    {
+      ux_database_shutdown (true);
+      return;
+    }
+
+  session_id = db_get_session_id ();
+  memcpy (session_key, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE);
+
+  /* db_end_session () does not send anything for an empty session */
+  db_set_session_id (DB_EMPTY_SESSION);
+  ux_database_shutdown (true);
+
+  db_set_server_session_key (session_key);
+  db_set_session_id (session_id);
+}
+
 int
 ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-	    unsigned int query_seq_num)
+	    unsigned int query_seq_num, int replace_rule_idx)
 {
   int stmt_id;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -685,16 +706,24 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     {
       T_PREPARE_CALL_INFO *prepare_call_info;
 
-      tmp = sql_stmt;
-      if (sql_stmt[0] == '?')
+      /* skip leading whitespace/comments before detecting the out parameter */
+      tmp = skip_leading_whitespace_and_comment (sql_stmt);
+      if (*tmp == '?')
 	{
 	  is_first_out = 1;
+
+	  /* find '=' skipping any comment placed between "?" and "=".  only whitespace, comments and
+	   * a marker number (?:1) can come before '=', so quoted text is not considered here; a quote
+	   * there makes the rest fail the CALL check below. */
+	  tmp++;
 	  while (*tmp)
 	    {
-	      if (*tmp == '=')
+	      tmp = skip_leading_whitespace_and_comment (tmp);
+	      if (*tmp == '\0' || *tmp == '=')
 		{
 		  break;
 		}
+
 	      tmp++;
 	    }
 
@@ -707,7 +736,8 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  tmp++;
 	}
 
-      ut_trim (tmp);
+      /* skip again after removing "? =" before classifying the statement */
+      tmp = skip_leading_whitespace_and_comment (tmp);
       stmt_type = get_stmt_type (tmp);
       if (stmt_type != CUBRID_STMT_CALL)
 	{
@@ -785,11 +815,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 
   if (stmt_id < 0)
     {
-      stmt_type = get_stmt_type (sql_stmt);
-      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_MAX_STMT_TYPE)
+      /* use the exact node type decided by the parser; read it before closing the session */
+      PT_NODE_TYPE ntype = (session->statements && session->statements[0])
+	? (PT_NODE_TYPE) session->statements[0]->node_type : PT_NODE_NONE;
+
+      if (stmt_id == ER_PT_SEMANTIC
+	  && (ntype == PT_INSERT || ntype == PT_UPDATE || ntype == PT_DELETE
+	      || ntype == PT_MERGE || ntype == PT_METHOD_CALL || ntype == PT_EVALUATE))
 	{
 	  db_close_session (session);
 	  session = NULL;
+	  /* PT_* node types map 1:1 to CUBRID_STMT_*; REPLACE is parsed as PT_INSERT */
+	  stmt_type = (char) ntype;
 	  num_markers = get_num_markers (sql_stmt);
 	}
       else
@@ -810,13 +847,42 @@ prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
+  /* query replace: the replacement (NEW) query was prepared above, so num_markers
+   * is the authoritative K_replace.  obtain K_orig from the original query, validate
+   * the BIND_MAP, and record both counts on the handle.  on an invalid mapping
+   * the rule is unusable: fail the prepare so fn_prepare_internal falls back to
+   * the original query.  (replace_rule_idx is always -1 for CCI_PREPARE_CALL.) */
+  if (replace_rule_idx >= 0)
+    {
+      /* marker counts and BIND_MAP validity depend only on the rule's immutable
+       * texts: compute + validate once per rule per CAS process, then reuse.
+       * only successful validations are cached; a rule that fails validation is disabled
+       * by fn_prepare_internal, so lookup does not return it again. */
+      int k_orig = qr_get_valid_k_orig (replace_rule_idx, num_markers);
+
+      if (k_orig < 0)
+	{
+	  k_orig = get_num_markers ((char *) qr_get_orig_query (replace_rule_idx));
+
+	  if (!qr_validate_markers (replace_rule_idx, k_orig, num_markers))
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  qr_set_valid_k_orig (replace_rule_idx, k_orig, num_markers);
+	}
+
+      srv_handle->replace_rule_idx = replace_rule_idx;
+      srv_handle->num_orig_markers = k_orig;
+    }
+
   net_buf_cp_int (net_buf, srv_h_id, NULL);
 
   result_cache_lifetime = get_client_result_cache_lifetime (session, stmt_id);
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   net_buf_cp_byte (net_buf, stmt_type);
-  net_buf_cp_int (net_buf, num_markers, NULL);
+  net_buf_cp_int (net_buf, (replace_rule_idx >= 0) ? srv_handle->num_orig_markers : num_markers, NULL);
 
   q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
   if (q_result == NULL)
@@ -883,7 +949,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_commit_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -892,7 +957,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
       err_code = db_abort_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -1198,9 +1262,27 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
 
+  /* query replace self-healing: the handle was demoted to the original query
+   * after a replacement-query execute failure and reached here via the
+   * is_prepared == FALSE path, which recompiles srv_handle->sql_stmt but does
+   * not update q_result.  Adopt the freshly compiled statement as prepared so
+   * subsequent executes reuse it instead of recompiling every time.
+   * Must run before the has_stmt_result_set() test below, which would otherwise
+   * decide from the stale stmt_type left by the replacement query's prepare. */
+  if (srv_handle->replace_fallback)
+    {
+      srv_handle->q_result->stmt_id = stmt_id;
+      srv_handle->q_result->stmt_type = stmt_type;
+      srv_handle->is_prepared = TRUE;
+      srv_handle->replace_fallback = 0;
+    }
+
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
-      srv_handle->has_result_set = true;
+      /* the client has a result set to read, so the auto-commit waits for it.  CUBRID_STMT_CALL is the
+       * one exception, and only while the handle is holdable: its value then outlives the commit, so the
+       * commit need not wait.  every other type here keeps the previous behaviour of blocking it. */
+      srv_handle->has_result_set = !call_value_survives_commit (srv_handle, srv_handle->q_result->stmt_type);
 
       if (srv_handle->is_holdable == true)
 	{
@@ -1262,7 +1344,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
 	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 	  net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
-	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+	  net_buf_cp_int (net_buf,
+			  (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
+			  NULL);
 	  err_code =
 	    prepare_column_list_info_set (session, srv_handle->prepare_flag, srv_handle->q_result, net_buf,
 					  client_version);
@@ -1525,7 +1609,13 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       if (has_stmt_result_set (q_result->stmt_type) == true)
 	{
-	  srv_handle->has_result_set = true;
+	  /* as in ux_execute (), only a holdable CUBRID_STMT_CALL lets the auto-commit go ahead.  the
+	   * flag is raised, never cleared: one statement of the batch still holding the client back is
+	   * enough to make the whole handle wait. */
+	  if (!call_value_survives_commit (srv_handle, q_result->stmt_type))
+	    {
+	      srv_handle->has_result_set = true;
+	    }
 
 	  if (srv_handle->is_holdable == true)
 	    {
@@ -1544,6 +1634,15 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->max_col_size = max_col_size;
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
+
+  /* query replace self-healing: adopt the recompiled original as prepared (see
+   * ux_execute).  q_result->stmt_id/stmt_type were already set above for the
+   * is_prepared == FALSE path, so only the handle flag needs flipping. */
+  if (srv_handle->replace_fallback)
+    {
+      srv_handle->is_prepared = TRUE;
+      srv_handle->replace_fallback = 0;
+    }
 
   if (do_commit_after_execute (*srv_handle))
     {
@@ -1596,7 +1695,9 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 	  net_buf_cp_byte (net_buf, srv_handle->q_result[0].stmt_type);
-	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+	  net_buf_cp_int (net_buf,
+			  (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
+			  NULL);
 	  err_code =
 	    prepare_column_list_info_set (session, srv_handle->prepare_flag, &srv_handle->q_result[0], net_buf,
 					  client_version);
@@ -1669,6 +1770,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   call_info = srv_handle->prepare_call_info;
   srv_handle->query_info_flag = FALSE;
   hm_qresult_end (srv_handle, FALSE);
+  srv_handle->is_from_current_transaction = true;
   session = (DB_SESSION *) srv_handle->session;
   num_bind = srv_handle->num_markers;
 
@@ -1740,7 +1842,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
-  srv_handle->has_result_set = true;
+  /* only the tuple count went into net_buf above: the return value and the out arguments stay in
+   * prepare_call_info until the client fetches them.  so the transaction has to stay open until
+   * fetch_call () hands them over, and longer still when the call handed back a cursor. */
+  srv_handle->has_result_set = call_returns_cursor (call_info) || call_has_fetchable_output (call_info);
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1751,6 +1856,11 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
     {
       srv_handle->q_result->is_holdable = true;
       as_info->num_holdable_results++;
+    }
+
+  if (do_commit_after_execute (*srv_handle))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   if (value_list)
@@ -1959,7 +2069,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
-      cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
+      cas_log_write2 (" %s", use_plan_cache ? "(PC)" : "");
 
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
@@ -2107,6 +2217,10 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
   int retried_query_num = 0;
+  void **remap_argv = NULL;	/* rewritten bind vector (query replace); freed after make_bind_value */
+  int failed_rows = 0;		/* rows that errored in this batch */
+  int qr_rep_err = 0;		/* representative error: the first failed row's */
+  int input_stride;		/* bind values consumed per row */
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2137,9 +2251,20 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   num_markers = srv_handle->num_markers;
   if (num_markers < 1)
     {
-      net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-      net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
-      goto return_success;
+      if (srv_handle->replace_rule_idx >= 0 && srv_handle->num_orig_markers > 0)
+	{
+	  /* query replace BIND_MAP case (1): the replacement query has no marker (e.g. a rule
+	   * that pins the original's marker to a constant) while the driver still bound K_orig
+	   * values per row.  fall through: the batch loop below uses num_orig_markers as the
+	   * input stride to derive the row count and executes the replacement once per row
+	   * with no bind value. */
+	}
+      else
+	{
+	  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+	  net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
+	  goto return_success;
+	}
     }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
@@ -2151,9 +2276,76 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     {
       goto return_success;
     }
+
+  /* when the prepared statement was rewritten, the driver lays out the bind
+   * values by the ORIGINAL query's markers (K_orig = num_orig_markers) for each
+   * row, but this handle executes the replacement query whose markers
+   * (K_replace = num_markers) may be reordered/reduced.  rebuild the per-row
+   * bind vector into the replacement layout before make_bind_value
+   */
+  if (srv_handle->replace_rule_idx >= 0)
+    {
+      int num_orig_binds = srv_handle->num_orig_markers;
+      int num_replace_binds = srv_handle->num_markers;
+      const short *src_orig_pos;
+
+      assert (num_replace_binds <= QR_MAX_BINDS);
+
+      src_orig_pos = qr_get_bind_src (srv_handle->replace_rule_idx);
+      if (src_orig_pos != NULL)
+	{
+	  int total_pairs = argc / 2;
+	  int rows, r, j;
+
+	  if (num_orig_binds <= 0 || (total_pairs % num_orig_binds) != 0)
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	      goto execute_array_error;
+	    }
+	  rows = total_pairs / num_orig_binds;
+
+	  remap_argv = (void **) MALLOC (sizeof (void *) * 2 * num_replace_binds * rows);
+	  if (remap_argv == NULL)
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	      goto execute_array_error;
+	    }
+
+	  for (r = 0; r < rows; r++)
+	    {
+	      for (j = 0; j < num_replace_binds; j++)
+		{
+		  int dst = 2 * (r * num_replace_binds + j);
+		  int src = 2 * (r * num_orig_binds + (src_orig_pos[j] - 1));
+
+		  remap_argv[dst] = argv[src];	/* type  */
+		  remap_argv[dst + 1] = argv[src + 1];	/* value */
+		}
+	    }
+
+	  argv = remap_argv;
+	  argc = 2 * num_replace_binds * rows;
+	}
+    }
+
   num_bind_params = num_bind = argc / 2;
 
+  /* values consumed per row.  normally the replacement query's marker count, but a
+   * markerless replacement (K_replace == 0) still receives K_orig values per row from the
+   * driver, so consume those to derive the row count while binding nothing. */
+  input_stride = num_markers;
+  if (srv_handle->replace_rule_idx >= 0 && num_markers == 0 && srv_handle->num_orig_markers > 0)
+    {
+      input_stride = srv_handle->num_orig_markers;
+      if ((num_bind % input_stride) != 0)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	  goto execute_array_error;
+	}
+    }
+
   err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+  FREE_MEM (remap_argv);	/* value_list now owns the bind values */
   if (err_code < 0)
     {
       goto execute_array_error;
@@ -2161,7 +2353,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
   first_value = 0;
 
-  while (num_bind >= num_markers)
+  while (input_stride > 0 && num_bind >= input_stride)
     {
       num_query++;
 
@@ -2175,11 +2367,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-      err_code = set_host_variables (session, num_markers, &(value_list[first_value]));
-      if (err_code != NO_ERROR)
+      if (num_markers > 0)
 	{
-	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  goto exec_db_error;
+	  err_code = set_host_variables (session, num_markers, &(value_list[first_value]));
+	  if (err_code != NO_ERROR)
+	    {
+	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	      goto exec_db_error;
+	    }
 	}
 
       if (is_prepared == FALSE)
@@ -2274,8 +2469,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       net_buf_cp_int (net_buf, res_count, NULL);
       net_buf_cp_object (net_buf, &ins_oid);
 
-      num_bind -= num_markers;
-      first_value += num_markers;
+      num_bind -= input_stride;
+      first_value += input_stride;
 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
@@ -2285,6 +2480,17 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
     exec_db_error:
       err_code = db_error_code ();
+
+      /* query replace: only real errors count toward the demote decision -- db_error_code()
+       * can report 0 on this path, and qr_exec_error_tier() expects a genuine error code. */
+      if (err_code < 0)
+	{
+	  failed_rows++;
+	  if (qr_rep_err == 0)
+	    {
+	      qr_rep_err = err_code;	/* first failed row */
+	    }
+	}
 
       if (err_code < 0)
 	{
@@ -2326,8 +2532,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	  session = NULL;
 	}
 
-      num_bind -= num_markers;
-      first_value += num_markers;
+      num_bind -= input_stride;
+      first_value += input_stride;
 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
@@ -2337,6 +2543,53 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       if (err_code == ER_INTERRUPTED)
 	{
 	  break;
+	}
+    }
+
+  /* query replace: decide whether this batch's failures should demote the rule.
+   * demote = disable for future prepares + self-heal this handle to the original
+   * (num_query>=2 && every row failed, or the per-rule N-strike streak; see
+   * qr_exec_error_tier).  the current batch's per-row errors are already in net_buf.
+   * NOTE: unlike single execute, a self-healed handle re-executed via executeArray
+   * recompiles the original per call (no prepared-plan reuse in this path). */
+  if (srv_handle->replace_rule_idx >= 0)
+    {
+      if (num_query == 0)
+	{
+	  /* nothing executed (e.g. fewer bind values than one row's stride): neither a
+	   * success nor a failure, so leave the N-strike streak untouched. */
+	}
+      else if (failed_rows == 0)
+	{
+	  qr_record_exec_result (srv_handle->replace_rule_idx, true, QR_ERR_DATA, false);
+	  as_info->num_query_replace_execute++;	/* counted once per batch */
+	}
+      else
+	{
+	  QR_ERR_TIER tier = qr_exec_error_tier (qr_rep_err);
+	  bool all_rows = (num_query >= 2 && failed_rows == num_query);
+
+	  if (qr_record_exec_result (srv_handle->replace_rule_idx, false, tier, all_rows))
+	    {
+	      char msg[QR_RELPATH_LEN + 128];
+
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			     "[REPLACE-FAILED] execute_array %d/%d rows failed, disabled", failed_rows, num_query);
+	      snprintf (msg, sizeof (msg), "query replace rule disabled: %s reason=execute_array failed",
+			qr_get_rulepath (srv_handle->replace_rule_idx));
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, msg);
+
+	      qr_set_disabled (srv_handle->replace_rule_idx);
+	      as_info->num_query_replace_fallback++;
+
+	      /* defer the handle swap to fn_execute_array, which applies it after all logging
+	       * so sql.log/slow-log still name the replacement query that really ran. */
+	      srv_handle->qr_demote_pending = 1;
+	    }
+	  else if (num_query - failed_rows > 0)
+	    {
+	      as_info->num_query_replace_execute++;
+	    }
 	}
     }
 
@@ -3275,7 +3528,8 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
     {
       session = (DB_SESSION *) srv_handle->session;
       stmt_id = srv_handle->q_result->stmt_id;
-      num_markers = srv_handle->num_markers;
+      /* report K_orig to the driver when the query was rewritten */
+      num_markers = (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers;
     }
 
   param = NULL;
@@ -3449,6 +3703,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_CROSS_REFERENCE:
       err_code = sch_exported_keys_or_cross_reference (net_buf, true, arg1, arg2, &(srv_handle->session));
       break;
+    case CCI_SCH_SCHEMAS:
+      err_code = sch_schemas (net_buf, arg1, flag, srv_handle);
+      break;
     default:
       err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
       goto schema_info_error;
@@ -3462,7 +3719,7 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
   if (schema_type == CCI_SCH_CLASS || schema_type == CCI_SCH_VCLASS || schema_type == CCI_SCH_ATTRIBUTE
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
       || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
-      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
+      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -4078,6 +4335,10 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	if (type == CCI_U_TYPE_SEQUENCE)
 	  {
 	    err_code = db_make_sequence (&db_val, seq);
+	  }
+	else if (type == CCI_U_TYPE_MULTISET)
+	  {
+	    err_code = db_make_multiset (&db_val, set);
 	  }
 	else
 	  {
@@ -5269,6 +5530,33 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
   return 0;
 }
 
+/*
+ * cas_copy_peeked_string () - NUL-terminated copy of a string value peeked from a query result
+ *   return: 0, or ER_QPROC_INVALID_DATATYPE when the value is not a string or does not fit
+ *   A peeked string value points into the list file page: its bytes are exactly the string, with the next column
+ *   right behind them. Everything that treats the bytes as a C string needs its own copy.
+ */
+static int
+cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size)
+{
+  int size;
+
+  if (DB_IS_NULL (value) || !DB_IS_STRING (value))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  size = db_get_string_size (value);
+  if (size < 0 || (size_t) size >= buf_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  memcpy (buf, db_get_string (value), size);
+  buf[size] = '\0';
+  return 0;
+}
+
 static int
 fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5282,6 +5570,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   DB_VALUE val_class, val_attr;
+  char class_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];	/* unique_name = owner.class fits an identifier (DB_MAX_CLASS_LENGTH) */
+  char attr_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
@@ -5338,7 +5628,14 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = db_get_string (&val_class);
+      /* the value is a peek into the list file page: the bytes are not NUL-terminated (the next column follows
+       * immediately), so take a NUL-terminated copy before handing them to the C-string schema APIs */
+      err_code = cas_copy_peeked_string (&val_class, class_name_buf, sizeof (class_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      class_name = class_name_buf;
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{
@@ -5351,7 +5648,12 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      attr_name = db_get_string (&val_attr);
+      err_code = cas_copy_peeked_string (&val_attr, attr_name_buf, sizeof (attr_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      attr_name = attr_name_buf;
       if (srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE)
 	{
 	  db_attr = db_get_class_attribute (class_obj, attr_name);
@@ -8529,6 +8831,49 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   return 0;
 }
 
+static int
+sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
+  int num_result;
+
+  /* db_user shows a user outside DBA only itself and its groups; db_auth adds the owners of what they were granted. */
+  STRING_APPEND (sql_p, avail_size,
+		 "SELECT name FROM (SELECT name FROM db_user UNION SELECT owner_name FROM db_auth "
+		 "WHERE grantee_name IN (SELECT name FROM db_user)) s WHERE 1 = 1 ");
+
+  if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
+    {
+      if (schema_name)
+	{
+	  STRING_APPEND (sql_p, avail_size, "AND name LIKE UPPER ('%s') ESCAPE '%s' ", schema_name,
+			 get_backslash_escape_string ());
+	}
+    }
+  else
+    {
+      if (schema_name == NULL)
+	{
+	  schema_name = CONST_CAST (char *, "");
+	}
+      STRING_APPEND (sql_p, avail_size, "AND name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY name");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_schemas_meta (net_buf);
+
+  return 0;
+}
+
 static void
 add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew)
 {
@@ -8635,7 +8980,6 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -8732,9 +9076,8 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
-      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -8771,7 +9114,6 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -8888,9 +9230,8 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
-      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -9052,6 +9393,17 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
       net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
+    }
+
+  /* the return value and the out arguments are in net_buf now and fetch_end_flag says nothing is left,
+   * so the auto-commit ux_execute_call () had to skip can be done here.  a cursor is the exception: it
+   * is a server side query that a commit would close, and the client reads it through its own handle.
+   * is_from_current_transaction keeps a late fetch from committing a transaction this call never ran in
+   * (see check_auto_commit_after_getting_result ()). */
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->is_from_current_transaction
+      && !call_returns_cursor (call_info))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   return 0;
@@ -9763,10 +10115,8 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   int err_code;
   T_LOB_HANDLE cas_lob;
   int lob_handle_size;
-  DB_ELO *elo_debug;
 
   err_code = db_create_fbo (&lob_dbval, (lob_type == CCI_U_TYPE_BLOB) ? DB_TYPE_BLOB : DB_TYPE_CLOB);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: result_code=%d", err_code);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -9781,11 +10131,6 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, lob_handle_size, NULL);
   net_buf_cp_lob_handle (net_buf, &cas_lob);
 
-  elo_debug = db_get_elo (&lob_dbval);
-
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
-
   db_value_clear (&lob_dbval);
   return 0;
 }
@@ -9798,11 +10143,8 @@ ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BU
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   err_code = db_elo_write (elo_debug, offset, data, size, &size_written);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: result_code=%d", size_written);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -9826,17 +10168,13 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   if (size + NET_SIZE_INT > NET_BUF_FREE_SIZE (net_buf))
     {
       size = NET_BUF_FREE_SIZE (net_buf) - NET_SIZE_INT;
-      cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
     }
 
   err_code = db_elo_read (elo_debug, offset, data, size, &size_read);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10253,6 +10591,94 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+/*
+ * call_value_survives_commit () - check whether a CALL's result would still be readable after an
+ *                                 auto-commit done right at the end of execute.
+ *   return          : true if the value outlives the commit, false otherwise
+ *   srv_handle (in) : server handle
+ *   stmt_type (in)  : statement type of the result
+ *
+ */
+static bool
+call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type)
+{
+  return stmt_type == CUBRID_STMT_CALL && srv_handle->is_holdable;
+}
+
+/*
+ * call_returns_cursor () - Check whether a CALL executed through ux_execute_call () returns a cursor.
+ *   return         : true if the return value or an OUT argument contains a RESULTSET; false otherwise
+ *   call_info (in) : Call info holding the return value and OUT arguments
+ *
+ * Note: Only the CCI_PREPARE_CALL path can return a cursor (see jsp_is_prepare_call ()).
+ *       Such a cursor is a server-side query that a commit will close, so the transaction must stay open for it.
+ */
+static bool
+call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE *val;
+  int i;
+
+  val = (DB_VALUE *) call_info->dbval_ret;
+  if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+    {
+      return true;
+    }
+
+  if (call_info->dbval_args == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      val = ((DB_VALUE **) call_info->dbval_args)[i];
+      if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * call_has_fetchable_output () - Check whether there are output values that the client has not yet fetched.
+ *   return         : true if there is a return value or an OUT parameter to pass to the client, false otherwise
+ *   call_info (in) : Call info structure holding the return value and OUT parameter information
+ *
+ * Note: This function inspects the information declared by the driver during the execution request.
+ *       (The "?= CALL" syntax sets is_first_out, and every registered OUT parameter is recorded in param_mode.)
+ *       This determines whether a fetch_call () call is still required.
+ *       Until fetched, these values reside temporarily only in prepare_call_info, so an auto-commit 
+ *       that frees the handle may result in data loss.
+ */
+static bool
+call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info)
+{
+  int i;
+
+  if (call_info->is_first_out)
+    {
+      return true;
+    }
+
+  if (call_info->param_mode == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      if (call_info->param_mode[i] & CCI_PARAM_MODE_OUT)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 static int

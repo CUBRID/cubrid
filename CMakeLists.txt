@@ -417,6 +417,7 @@ set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
+set(PARALLEL_MERGE_JOIN_DIR  ${CMAKE_SOURCE_DIR}/src/query/parallel/px_merge_join)
 set(PARALLEL_SCAN_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel/px_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 set(OPTIMIZER_HISTOGRAM_DIR    ${CMAKE_SOURCE_DIR}/src/optimizer/histogram)
@@ -449,6 +450,7 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_hash_join
+  src/query/parallel/px_merge_join
   src/query/parallel/px_scan
   src/query/parallel/px_scan/index
   src/query/parallel
@@ -610,11 +612,32 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
   if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+  endif()
+  # CUBRID compiles its .c sources as C++ on purpose, so the C variable length
+  # arrays in them are a deliberate use of a compiler extension, not a defect.
+  # Clang is the only compiler here that reports them.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-vla-cxx-extension")
+  endif()
+
+  # libstdc++ implements std::atomic<T> for a class type T through the generic
+  # __atomic_* builtins, which take a size argument (bestspace.hpp does this with
+  # its 8 byte L1/L2/L3 types). GCC lowers those inline; Clang emits a call to
+  # __atomic_compare_exchange, which lives in libatomic, and it does so in an
+  # optimised build as well as a debug one - cubridsa fails to link without it at
+  # -O2. Several targets are affected, so the library is added for all of them.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    find_library(LIBATOMIC_LIBRARY NAMES atomic libatomic.so.1)
+    if(LIBATOMIC_LIBRARY)
+      link_libraries(${LIBATOMIC_LIBRARY})
+    else()
+      message(WARNING "libatomic was not found; a Clang build will fail to link.")
+    endif()
   endif()
  
   if(SIZEOF_OFF64_T)
@@ -786,6 +809,7 @@ if(WIN32)
 endif(WIN32)
 
 # include subdirectories
+add_subdirectory(upgrade)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
@@ -810,58 +834,9 @@ if(WIN32)
 endif(WIN32)
 
 # for cmserver
-if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
-  include(ExternalProject)
-  set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/3rdparty")
-  get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
-  get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
-  get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
-  list(APPEND CMS_CONFIGURE_OPTS --enable-64bit)
-  if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    list(APPEND CMS_CONFIGURE_OPTS --enable-debug)
-  endif (CMAKE_BUILD_TYPE)
-  add_custom_target(pre_cubridmanager)
-  if(UNIX)
-    set(CMS_DEPENDS cubridcs cascci cmstat cmdep)
-    externalproject_add(cubridmanager
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      DEPENDS pre_cubridmanager ${CMS_DEPENDS}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
-      CONFIGURE_COMMAND sh <SOURCE_DIR>/autogen.sh
-      COMMAND sh <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --with-cubrid-libdir=<TMP_DIR> --with-cubrid-includedir=<TMP_DIR> ${CMS_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-  else(UNIX)
-    set(CMS_DEPENDS cascci cmstat cmdep)
-    externalproject_add(cubridmanager
-      DEPENDS pre_cubridmanager ${CMS_DEPENDS}
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND cmd /c build.bat --prefix <INSTALL_DIR> --with-cubrid-libdir <TMP_DIR> --with-cubrid-includedir <TMP_DIR> ${CMS_CONFIGURE_OPTS}
-      INSTALL_COMMAND ""
-      BUILD_IN_SOURCE 1
-      )
-  endif(UNIX)
-  externalproject_get_property(cubridmanager TMP_DIR)
-  foreach(required_target ${CMS_DEPENDS})
-    add_custom_command(TARGET pre_cubridmanager PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_LINKER_FILE:${required_target}> ${TMP_DIR})
-  endforeach(required_target)
-  foreach(required_header ${CCI_PUBLIC_HEADERS} ${CMDEP_PUBLIC_HEADERS} ${CMSTAT_PUBLIC_HEADERS})
-    add_custom_command(TARGET pre_cubridmanager PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${required_header} ${TMP_DIR})
-  endforeach(required_header)
-
-  externalproject_get_property(cubridmanager INSTALL_DIR)
-  install(DIRECTORY ${INSTALL_DIR}/
-    DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
-    USE_SOURCE_PERMISSIONS)
-endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
-
+if(WITH_CCI AND WITH_CMSERVER AND UNIX AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server/CMakeLists.txt)
+  add_subdirectory(cubridmanager/server)
+endif()
 # create empty directories
 install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})

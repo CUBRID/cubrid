@@ -98,6 +98,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
@@ -261,6 +262,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/cursor.c
+  ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
   ${QUERY_DIR}/numeric_opfunc.c
@@ -291,13 +293,13 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
-  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
   ${OBJECT_DIR}/object_printer.cpp
@@ -435,6 +437,7 @@ set(PARALLEL_SCAN_SOURCES
   )
 
 set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_sp_eligibility.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )
@@ -488,6 +491,7 @@ set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED tr
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -622,6 +626,7 @@ if(UNIX)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
+  target_link_options(cubridcs PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
@@ -649,3 +654,21 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
+
+# lea_heap.c includes the unmodified 3rd party dlmalloc (malloc_2_8_3.c), which uses
+# the GNU null pointer arithmetic extension. Do not edit that file; silence the
+# diagnostic for this one translation unit instead.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(${HEAPLAYERS_DIR}/lea_heap.c PROPERTIES COMPILE_OPTIONS "-Wno-gnu-null-pointer-arithmetic")
+endif()
+
+# The Bison generated load_grammar.hpp declares a copy assignment operator for
+# stack_symbol_type without the matching copy constructor. Generated file, so
+# suppress the diagnostic for the units that include it rather than patching it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-copy-with-user-provided-copy"
+  )
+endif()

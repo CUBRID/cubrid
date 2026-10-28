@@ -23,9 +23,13 @@
 #ident "$Id$"
 
 #include "config.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_plan.h"
+#include "object_domain_convert.h"
+#endif
 #include <stdio.h>
 
-#include "jansson.h"
+#include "json_builder.h"
 #include "query_dump.h"
 #include "object_primitive.h"
 #include "system_parameter.h"
@@ -39,6 +43,10 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "expr_compile.h"
+#include "query_opfunc.h"
+#endif
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
@@ -111,7 +119,6 @@ static bool qdump_print_value_type_addr (REGU_VARIABLE * value);
 static bool qdump_print_oid (OID * oidptr);
 static bool qdump_print_predicate (PRED_EXPR * predptr);
 static const char *qdump_relation_operator_string (int op);
-static const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
 static bool qdump_print_arith_expression (ARITH_TYPE * arith_p);
 static bool qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr);
 static bool qdump_print_arith (int type, void *ptr);
@@ -126,8 +133,9 @@ static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_N
 #endif /* CUBRID_DEBUG */
 static const char *qdump_hashjoin_type_string (HASH_METHOD hash_method);
 static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
-static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent);
-static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, json_t * parent);
+static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent);
+static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor,
+						trace_json_t * parent);
 
 /*
  * qdump_print_xasl_type () -
@@ -1244,6 +1252,15 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
     }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  if (value_p->plan_item != NULL)
+    {
+      const DOMAIN_PLAN_ITEM *item = value_p->plan_item;
+      const char *classes[] = { "?", "CONST", "ROW", "CORR", "NON_CACHEABLE" };
+      fprintf (foutput, "{plan class=%s resolved=%d ref=%d flags=0x%03x}", classes[item->operand_class],
+	       item->resolved_index, item->ref, item->flags);
+    }
+#endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
@@ -1436,6 +1453,27 @@ qdump_print_oid (OID * oid_p)
   return true;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* A comparison term's resolved comparison: its method, the resolve_domains index of a late-bind one, and the sides
+ * resolve_domains converts once (a literal, a bind or a constant expression) */
+static void
+qdump_print_compare_plan (const DOMAIN_COMPARE_PLAN * comparison)
+{
+  if (comparison == NULL)
+    {
+      return;
+    }
+  const char *methods[] = { "LATE_BIND", "LATE_BIND_SESSION", "VALUES", "DIRECT", "CONVERT", "COLLATIONS", "OBJECT",
+    "RANK", "KEYS"
+  };
+  const int method = (int) comparison->fixed.method;
+  fprintf (foutput, "{compare method=%s index=%d constant=%d,%d}",
+	   method >= 0 && method < (int) (sizeof (methods) / sizeof (methods[0])) ? methods[method] : "?",
+	   comparison->fixed.compare_index, comparison->literal[0] != NULL || comparison->constant[0] != NULL,
+	   comparison->literal[1] != NULL || comparison->constant[1] != NULL);
+}
+#endif
+
 static bool
 qdump_print_comp_eval_term (EVAL_TERM * term_p)
 {
@@ -1450,6 +1488,9 @@ qdump_print_comp_eval_term (EVAL_TERM * term_p)
     {
       qdump_print_value (et_comp_p->rhs);
     }
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  qdump_print_compare_plan (et_comp_p->domain_compare);
+#endif
 
   return true;
 }
@@ -1477,6 +1518,20 @@ qdump_print_alsm_eval_term (EVAL_TERM * term_p)
     }
 
   qdump_print_value (et_alsm_p->elemset);
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  if (et_alsm_p->domain_compare != NULL)
+    {
+      const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = et_alsm_p->domain_compare;
+      const char *kinds[] = { "PAIR", "ROW", "LATE_BIND" };
+      fprintf (foutput, "{elements kind=%s row=%d resolved=%d}",
+	       comparison->kind < sizeof (kinds) / sizeof (kinds[0]) ? kinds[comparison->kind] : "?", comparison->row,
+	       comparison->resolved_elements_index);
+      if (comparison->kind == DOMAIN_ELEMENTS_PAIR)
+	{
+	  qdump_print_compare_plan (&comparison->pair);
+	}
+    }
+#endif
 
   return true;
 }
@@ -1726,7 +1781,434 @@ qdump_relation_operator_string (int op)
     }
 }
 
-static const char *
+/*
+ * qdump_arith_opcode_name () - the OPERATOR_TYPE's own name (T_xxx), for a listing that names an operator the symbol
+ *   table above does not (a function opcode); generated from the enum in storage_common.h
+ */
+const char *
+qdump_arith_opcode_name (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_ADD:
+      return "T_ADD";
+    case T_SUB:
+      return "T_SUB";
+    case T_MUL:
+      return "T_MUL";
+    case T_DIV:
+      return "T_DIV";
+    case T_UNPLUS:
+      return "T_UNPLUS";
+    case T_UNMINUS:
+      return "T_UNMINUS";
+    case T_PRIOR:
+      return "T_PRIOR";
+    case T_CONNECT_BY_ROOT:
+      return "T_CONNECT_BY_ROOT";
+    case T_QPRIOR:
+      return "T_QPRIOR";
+    case T_BIT_NOT:
+      return "T_BIT_NOT";
+    case T_BIT_AND:
+      return "T_BIT_AND";
+    case T_BIT_OR:
+      return "T_BIT_OR";
+    case T_BIT_XOR:
+      return "T_BIT_XOR";
+    case T_BIT_COUNT:
+      return "T_BIT_COUNT";
+    case T_BITSHIFT_LEFT:
+      return "T_BITSHIFT_LEFT";
+    case T_BITSHIFT_RIGHT:
+      return "T_BITSHIFT_RIGHT";
+    case T_INTDIV:
+      return "T_INTDIV";
+    case T_INTMOD:
+      return "T_INTMOD";
+    case T_IF:
+      return "T_IF";
+    case T_IFNULL:
+      return "T_IFNULL";
+    case T_ISNULL:
+      return "T_ISNULL";
+    case T_ACOS:
+      return "T_ACOS";
+    case T_ASIN:
+      return "T_ASIN";
+    case T_ATAN:
+      return "T_ATAN";
+    case T_ATAN2:
+      return "T_ATAN2";
+    case T_COS:
+      return "T_COS";
+    case T_SIN:
+      return "T_SIN";
+    case T_TAN:
+      return "T_TAN";
+    case T_COT:
+      return "T_COT";
+    case T_PI:
+      return "T_PI";
+    case T_DEGREES:
+      return "T_DEGREES";
+    case T_RADIANS:
+      return "T_RADIANS";
+    case T_FORMAT:
+      return "T_FORMAT";
+    case T_CONCAT:
+      return "T_CONCAT";
+    case T_CONCAT_WS:
+      return "T_CONCAT_WS";
+    case T_FIELD:
+      return "T_FIELD";
+    case T_LEFT:
+      return "T_LEFT";
+    case T_RIGHT:
+      return "T_RIGHT";
+    case T_REPEAT:
+      return "T_REPEAT";
+    case T_SPACE:
+      return "T_SPACE";
+    case T_LOCATE:
+      return "T_LOCATE";
+    case T_MID:
+      return "T_MID";
+    case T_STRCMP:
+      return "T_STRCMP";
+    case T_REVERSE:
+      return "T_REVERSE";
+    case T_DISK_SIZE:
+      return "T_DISK_SIZE";
+    case T_LN:
+      return "T_LN";
+    case T_LOG2:
+      return "T_LOG2";
+    case T_LOG10:
+      return "T_LOG10";
+    case T_ADDDATE:
+      return "T_ADDDATE";
+    case T_DATE_ADD:
+      return "T_DATE_ADD";
+    case T_SUBDATE:
+      return "T_SUBDATE";
+    case T_DATE_SUB:
+      return "T_DATE_SUB";
+    case T_DATE_FORMAT:
+      return "T_DATE_FORMAT";
+    case T_STR_TO_DATE:
+      return "T_STR_TO_DATE";
+    case T_MOD:
+      return "T_MOD";
+    case T_POSITION:
+      return "T_POSITION";
+    case T_SUBSTRING:
+      return "T_SUBSTRING";
+    case T_SUBSTRING_INDEX:
+      return "T_SUBSTRING_INDEX";
+    case T_OCTET_LENGTH:
+      return "T_OCTET_LENGTH";
+    case T_BIT_LENGTH:
+      return "T_BIT_LENGTH";
+    case T_CHAR_LENGTH:
+      return "T_CHAR_LENGTH";
+    case T_MD5:
+      return "T_MD5";
+    case T_LOWER:
+      return "T_LOWER";
+    case T_UPPER:
+      return "T_UPPER";
+    case T_LIKE_LOWER_BOUND:
+      return "T_LIKE_LOWER_BOUND";
+    case T_LIKE_UPPER_BOUND:
+      return "T_LIKE_UPPER_BOUND";
+    case T_TRIM:
+      return "T_TRIM";
+    case T_LTRIM:
+      return "T_LTRIM";
+    case T_RTRIM:
+      return "T_RTRIM";
+    case T_LPAD:
+      return "T_LPAD";
+    case T_RPAD:
+      return "T_RPAD";
+    case T_REPLACE:
+      return "T_REPLACE";
+    case T_TRANSLATE:
+      return "T_TRANSLATE";
+    case T_ADD_MONTHS:
+      return "T_ADD_MONTHS";
+    case T_LAST_DAY:
+      return "T_LAST_DAY";
+    case T_MONTHS_BETWEEN:
+      return "T_MONTHS_BETWEEN";
+    case T_SYS_DATE:
+      return "T_SYS_DATE";
+    case T_SYS_TIME:
+      return "T_SYS_TIME";
+    case T_SYS_TIMESTAMP:
+      return "T_SYS_TIMESTAMP";
+    case T_UTC_TIME:
+      return "T_UTC_TIME";
+    case T_UTC_DATE:
+      return "T_UTC_DATE";
+    case T_TIME_FORMAT:
+      return "T_TIME_FORMAT";
+    case T_TIMESTAMP:
+      return "T_TIMESTAMP";
+    case T_UNIX_TIMESTAMP:
+      return "T_UNIX_TIMESTAMP";
+    case T_FROM_UNIXTIME:
+      return "T_FROM_UNIXTIME";
+    case T_SYS_DATETIME:
+      return "T_SYS_DATETIME";
+    case T_YEAR:
+      return "T_YEAR";
+    case T_MONTH:
+      return "T_MONTH";
+    case T_DAY:
+      return "T_DAY";
+    case T_HOUR:
+      return "T_HOUR";
+    case T_MINUTE:
+      return "T_MINUTE";
+    case T_SECOND:
+      return "T_SECOND";
+    case T_QUARTER:
+      return "T_QUARTER";
+    case T_WEEKDAY:
+      return "T_WEEKDAY";
+    case T_DAYOFWEEK:
+      return "T_DAYOFWEEK";
+    case T_DAYOFYEAR:
+      return "T_DAYOFYEAR";
+    case T_TODAYS:
+      return "T_TODAYS";
+    case T_FROMDAYS:
+      return "T_FROMDAYS";
+    case T_TIMETOSEC:
+      return "T_TIMETOSEC";
+    case T_SECTOTIME:
+      return "T_SECTOTIME";
+    case T_MAKEDATE:
+      return "T_MAKEDATE";
+    case T_MAKETIME:
+      return "T_MAKETIME";
+    case T_WEEK:
+      return "T_WEEK";
+    case T_TO_CHAR:
+      return "T_TO_CHAR";
+    case T_TO_DATE:
+      return "T_TO_DATE";
+    case T_TO_TIME:
+      return "T_TO_TIME";
+    case T_TO_TIMESTAMP:
+      return "T_TO_TIMESTAMP";
+    case T_TO_DATETIME:
+      return "T_TO_DATETIME";
+    case T_TO_NUMBER:
+      return "T_TO_NUMBER";
+    case T_CURRENT_VALUE:
+      return "T_CURRENT_VALUE";
+    case T_NEXT_VALUE:
+      return "T_NEXT_VALUE";
+    case T_CAST:
+      return "T_CAST";
+    case T_CAST_NOFAIL:
+      return "T_CAST_NOFAIL";
+    case T_CAST_WRAP:
+      return "T_CAST_WRAP";
+    case T_CASE:
+      return "T_CASE";
+    case T_EXTRACT:
+      return "T_EXTRACT";
+    case T_LOCAL_TRANSACTION_ID:
+      return "T_LOCAL_TRANSACTION_ID";
+    case T_FLOOR:
+      return "T_FLOOR";
+    case T_CEIL:
+      return "T_CEIL";
+    case T_SIGN:
+      return "T_SIGN";
+    case T_POWER:
+      return "T_POWER";
+    case T_ROUND:
+      return "T_ROUND";
+    case T_LOG:
+      return "T_LOG";
+    case T_EXP:
+      return "T_EXP";
+    case T_SQRT:
+      return "T_SQRT";
+    case T_TRUNC:
+      return "T_TRUNC";
+    case T_ABS:
+      return "T_ABS";
+    case T_CHR:
+      return "T_CHR";
+    case T_INSTR:
+      return "T_INSTR";
+    case T_LEAST:
+      return "T_LEAST";
+    case T_GREATEST:
+      return "T_GREATEST";
+    case T_STRCAT:
+      return "T_STRCAT";
+    case T_NULLIF:
+      return "T_NULLIF";
+    case T_COALESCE:
+      return "T_COALESCE";
+    case T_NVL:
+      return "T_NVL";
+    case T_NVL2:
+      return "T_NVL2";
+    case T_DECODE:
+      return "T_DECODE";
+    case T_RAND:
+      return "T_RAND";
+    case T_DRAND:
+      return "T_DRAND";
+    case T_RANDOM:
+      return "T_RANDOM";
+    case T_DRANDOM:
+      return "T_DRANDOM";
+    case T_INCR:
+      return "T_INCR";
+    case T_DECR:
+      return "T_DECR";
+    case T_SYS_CONNECT_BY_PATH:
+      return "T_SYS_CONNECT_BY_PATH";
+    case T_DATE:
+      return "T_DATE";
+    case T_TIME:
+      return "T_TIME";
+    case T_DATEDIFF:
+      return "T_DATEDIFF";
+    case T_TIMEDIFF:
+      return "T_TIMEDIFF";
+    case T_ROW_COUNT:
+      return "T_ROW_COUNT";
+    case T_LAST_INSERT_ID:
+      return "T_LAST_INSERT_ID";
+    case T_DEFAULT:
+      return "T_DEFAULT";
+    case T_LIST_DBS:
+      return "T_LIST_DBS";
+    case T_BIT_TO_BLOB:
+      return "T_BIT_TO_BLOB";
+    case T_BLOB_TO_BIT:
+      return "T_BLOB_TO_BIT";
+    case T_CHAR_TO_CLOB:
+      return "T_CHAR_TO_CLOB";
+    case T_CLOB_TO_CHAR:
+      return "T_CLOB_TO_CHAR";
+    case T_LOB_LENGTH:
+      return "T_LOB_LENGTH";
+    case T_TYPEOF:
+      return "T_TYPEOF";
+    case T_INDEX_CARDINALITY:
+      return "T_INDEX_CARDINALITY";
+    case T_ESTIMATED_TABLE_ROWS:
+      return "T_ESTIMATED_TABLE_ROWS";
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+      return "T_ESTIMATED_AVG_ROW_LENGTH";
+    case T_ESTIMATED_DATA_LENGTH:
+      return "T_ESTIMATED_DATA_LENGTH";
+    case T_ESTIMATED_DATA_FREE:
+      return "T_ESTIMATED_DATA_FREE";
+    case T_EVALUATE_VARIABLE:
+      return "T_EVALUATE_VARIABLE";
+    case T_DEFINE_VARIABLE:
+      return "T_DEFINE_VARIABLE";
+    case T_PREDICATE:
+      return "T_PREDICATE";
+    case T_EXEC_STATS:
+      return "T_EXEC_STATS";
+    case T_ADDTIME:
+      return "T_ADDTIME";
+    case T_BIN:
+      return "T_BIN";
+    case T_FINDINSET:
+      return "T_FINDINSET";
+    case T_HEX:
+      return "T_HEX";
+    case T_ASCII:
+      return "T_ASCII";
+    case T_CONV:
+      return "T_CONV";
+    case T_INET_ATON:
+      return "T_INET_ATON";
+    case T_INET_NTOA:
+      return "T_INET_NTOA";
+    case T_TO_ENUMERATION_VALUE:
+      return "T_TO_ENUMERATION_VALUE";
+    case T_CHARSET:
+      return "T_CHARSET";
+    case T_COLLATION:
+      return "T_COLLATION";
+    case T_WIDTH_BUCKET:
+      return "T_WIDTH_BUCKET";
+    case T_TRACE_STATS:
+      return "T_TRACE_STATS";
+    case T_AES_ENCRYPT:
+      return "T_AES_ENCRYPT";
+    case T_AES_DECRYPT:
+      return "T_AES_DECRYPT";
+    case T_SHA_ONE:
+      return "T_SHA_ONE";
+    case T_SHA_TWO:
+      return "T_SHA_TWO";
+    case T_INDEX_PREFIX:
+      return "T_INDEX_PREFIX";
+    case T_TO_BASE64:
+      return "T_TO_BASE64";
+    case T_FROM_BASE64:
+      return "T_FROM_BASE64";
+    case T_SYS_GUID:
+      return "T_SYS_GUID";
+    case T_UUID:
+      return "T_UUID";
+    case T_UUID_FORMAT:
+      return "T_UUID_FORMAT";
+    case T_SLEEP:
+      return "T_SLEEP";
+    case T_DBTIMEZONE:
+      return "T_DBTIMEZONE";
+    case T_SESSIONTIMEZONE:
+      return "T_SESSIONTIMEZONE";
+    case T_TZ_OFFSET:
+      return "T_TZ_OFFSET";
+    case T_NEW_TIME:
+      return "T_NEW_TIME";
+    case T_FROM_TZ:
+      return "T_FROM_TZ";
+    case T_TO_DATETIME_TZ:
+      return "T_TO_DATETIME_TZ";
+    case T_TO_TIMESTAMP_TZ:
+      return "T_TO_TIMESTAMP_TZ";
+    case T_UTC_TIMESTAMP:
+      return "T_UTC_TIMESTAMP";
+    case T_CRC32:
+      return "T_CRC32";
+    case T_CURRENT_DATETIME:
+      return "T_CURRENT_DATETIME";
+    case T_CURRENT_TIMESTAMP:
+      return "T_CURRENT_TIMESTAMP";
+    case T_CURRENT_DATE:
+      return "T_CURRENT_DATE";
+    case T_CURRENT_TIME:
+      return "T_CURRENT_TIME";
+    case T_CONV_TZ:
+      return "T_CONV_TZ";
+    case T_COLLECTION_TO_STRING:
+      return "T_COLLECTION_TO_STRING";
+    default:
+      return "T_?";
+    }
+}
+
+/* the operator's display symbol (+, -, ...) or "undefined" */
+const char *
 qdump_arith_operator_string (OPERATOR_TYPE opcode)
 {
   switch (opcode)
@@ -2374,6 +2856,14 @@ qdump_print_xasl (xasl_node * xasl_p)
     }
 
   fprintf (foutput, "\n<start of xasl structure %p>\n", xasl_p);
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  if (xasl_p->domain_plan != NULL)
+    {
+      const DOMAIN_PLAN *plan = xasl_p->domain_plan;
+      fprintf (foutput, "domain plan: items=%d resolved=%d refs=%d(+%d) late_bind_nodes=%d\n",
+	       plan->n_items, plan->n_resolved, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_late_bind_nodes);
+    }
+#endif
   qdump_print_xasl_type (xasl_p);
 
   if (xasl_p->flag)
@@ -2427,9 +2917,37 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_SEMIJOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_SEMIJOIN);
+	  fprintf (foutput, "%sXASL_NL_SEMIJOIN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_ANTIJOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_ANTIJOIN);
+	  fprintf (foutput, "%sXASL_NL_ANTIJOIN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NO_MEMOIZE))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NO_MEMOIZE);
+	  fprintf (foutput, "%sXASL_NO_MEMOIZE", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_FOLLOWING_JOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_FOLLOWING_JOIN);
+	  fprintf (foutput, "%sXASL_NL_FOLLOWING_JOIN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
-	  fprintf (foutput, "%d%s", xasl_p->flag, (nflag ? "|" : ""));
+	  fprintf (foutput, "%s%d", (nflag ? "|" : ""), xasl_p->flag);
 	  nflag++;
 	}
 
@@ -2862,15 +3380,15 @@ qdump_xasl_type_string (XASL_NODE * xasl_p)
  *   spec_list_p(in):
  *   proc(in):
  */
-static json_t *
+static trace_json_t *
 qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 {
   TARGET_TYPE type;
   char *class_name = NULL, *index_name = NULL;
   CLS_SPEC_TYPE *cls_node;
   ACCESS_SPEC_TYPE *spec;
-  json_t *scan = NULL, *scan_array = NULL;
-  json_t *part_scan = NULL, *part_scan_array = NULL;
+  trace_json_t *scan = NULL, *scan_array = NULL;
+  trace_json_t *part_scan = NULL, *part_scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
   THREAD_ENTRY *thread_p;
@@ -2884,12 +3402,16 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
   if (num_spec > 1)
     {
-      scan_array = json_array ();
+      scan_array = trace_json_array ();
     }
 
   for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
-      scan = json_object ();
+      scan = trace_json_object ();
+      /* left standing, the next spec stores the same array again - and a
+       * container takes a node over by moving it, so that pulls it out from
+       * under the spec it belongs to */
+      part_scan_array = NULL;
       type = spec->type;
 
       if (type == TARGET_CLASS)
@@ -2933,7 +3455,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		}
 	    }
 
-	  json_object_set_new (scan, "access", json_string (spec_name));
+	  trace_json_object_set_new (scan, "access", trace_json_string (spec_name));
 
 	  if (class_name != NULL)
 	    {
@@ -2956,7 +3478,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	      /* save */
 	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
 
-	      part_scan_array = json_array ();
+	      part_scan_array = trace_json_array ();
 
 	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
@@ -2968,7 +3490,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		      continue;
 		    }
 
-		  part_scan = json_object ();
+		  part_scan = trace_json_object ();
 
 		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
 		    {
@@ -3017,7 +3539,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		      break;
 		    }
 
-		  json_object_set_new (part_scan, "access", json_string (spec_name));
+		  trace_json_object_set_new (part_scan, "access", trace_json_string (spec_name));
 
 		  memcpy (scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
 
@@ -3026,7 +3548,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 		  scan_print_stats_json (&spec->s_id, part_scan);
 
-		  json_array_append_new (part_scan_array, part_scan);
+		  trace_json_array_append_new (part_scan_array, part_scan);
 
 		  if (class_name != NULL)
 		    {
@@ -3045,38 +3567,39 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
       else if (type == TARGET_LIST)
 	{
-	  json_object_set_new (scan, "access", json_string ("temp"));
+	  trace_json_object_set_new (scan, "access", trace_json_string ("temp"));
 	}
       else if (type == TARGET_SHOWSTMT)
 	{
-	  json_object_set_new (scan, "access", json_string ("show"));
+	  trace_json_object_set_new (scan, "access", trace_json_string ("show"));
 	}
       else if (type == TARGET_SET)
 	{
-	  json_object_set_new (scan, "access", json_string ("set"));
+	  trace_json_object_set_new (scan, "access", trace_json_string ("set"));
 	}
       else if (type == TARGET_METHOD)
 	{
-	  json_object_set_new (scan, "access", json_string ("method"));
+	  trace_json_object_set_new (scan, "access", trace_json_string ("method"));
 	}
       else if (type == TARGET_CLASS_ATTR)
 	{
-	  json_object_set_new (scan, "access", json_string ("class_attr"));
+	  trace_json_object_set_new (scan, "access", trace_json_string ("class_attr"));
 	}
       else if (type == TARGET_DBLINK)
 	{
-	  json_object_set_new (scan, "access", json_string ("dblink"));
+	  trace_json_object_set_new (scan, "access", trace_json_string ("dblink"));
 	}
 
       scan_print_stats_json (&spec->s_id, scan);
 
       if (part_scan_array != NULL)
 	{
-	  json_object_set_new (scan, "PARTITION", part_scan_array);
+	  trace_json_object_set_new (scan, "PARTITION", part_scan_array);
 	}
 
 #if !WINDOWS
-      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+      /* a partitioned class goes back to S_HEAP_SCAN after its last partition, as the text dump expects */
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	{
 	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {
@@ -3120,7 +3643,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
       if (scan_array != NULL)
 	{
-	  json_array_append_new (scan_array, scan);
+	  trace_json_array_append_new (scan_array, scan);
 	}
     }
 
@@ -3135,16 +3658,16 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 }
 
 void
-qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, json_t * parent)
+qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, trace_json_t * parent)
 {
-  json_t *input;
-  input = json_object ();
-  json_object_set_new (input, "parallel_workers", json_integer (px_executor->get_parallelism () + 1));
-  json_object_set_new (input, "time", json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
-  json_object_set_new (input, "fetch", json_integer (px_executor->get_stats ().fetches));
-  json_object_set_new (input, "fetch_time", json_integer (px_executor->get_stats ().fetch_time));
-  json_object_set_new (input, "ioread", json_integer (px_executor->get_stats ().ioreads));
-  json_object_set_new (parent, "parallel subquery execution", input);
+  trace_json_t *input;
+  input = trace_json_object ();
+  trace_json_object_set_new (input, "parallel_workers", trace_json_integer (px_executor->get_parallelism () + 1));
+  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
+  trace_json_object_set_new (input, "fetch", trace_json_integer (px_executor->get_stats ().fetches));
+  trace_json_object_set_new (input, "fetch_time", trace_json_integer (px_executor->get_stats ().fetch_time));
+  trace_json_object_set_new (input, "ioread", trace_json_integer (px_executor->get_stats ().ioreads));
+  trace_json_object_set_new (parent, "parallel subquery execution", input);
 }
 
 /*
@@ -3153,20 +3676,20 @@ qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_
  *   xasl_p(in):
  */
 void
-qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
+qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
   ANALYTIC_STATS *astats;
-  json_t *proc, *scan = NULL;
-  json_t *subquery, *groupby, *orderby, *analytic, *parallel;
-  json_t *outer, *inner;
-  json_t *cte_non_recursive_part, *cte_recursive_part;
-  json_t *temp;
-  json_t *func;
+  trace_json_t *proc, *scan = NULL;
+  trace_json_t *subquery, *groupby, *orderby, *analytic, *parallel;
+  trace_json_t *outer, *inner;
+  trace_json_t *cte_non_recursive_part, *cte_recursive_part;
+  trace_json_t *temp;
+  trace_json_t *func;
   xasl_node *xptr;
-  json_t *sq_cache;
-  json_t *memoize;
+  trace_json_t *sq_cache;
+  trace_json_t *memoize;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3179,8 +3702,8 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     }
   else
     {
-      proc = json_object ();
-      json_object_set_new (parent, qdump_xasl_type_string (xasl_p), proc);
+      proc = trace_json_object ();
+      trace_json_object_set_new (parent, qdump_xasl_type_string (xasl_p), proc);
     }
 
   switch (xasl_p->type)
@@ -3192,46 +3715,46 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case INSERT_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      trace_json_object_set_new (proc, "time", trace_json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      trace_json_object_set_new (proc, "fetch", trace_json_integer (xasl_p->xasl_stats.fetches));
+      trace_json_object_set_new (proc, "fetch_time", trace_json_integer (xasl_p->xasl_stats.fetch_time));
+      trace_json_object_set_new (proc, "ioread", trace_json_integer (xasl_p->xasl_stats.ioreads));
       if (xasl_p->func_stats.calls > 0)
 	{
-	  func = json_object ();
-	  json_object_set_new (func, "time", json_integer (xasl_p->func_stats.time));
-	  json_object_set_new (func, "fetch", json_integer (xasl_p->func_stats.fetches));
-	  json_object_set_new (func, "ioread", json_integer (xasl_p->func_stats.ioreads));
-	  json_object_set_new (func, "calls", json_integer (xasl_p->func_stats.calls));
+	  func = trace_json_object ();
+	  trace_json_object_set_new (func, "time", trace_json_integer (xasl_p->func_stats.time));
+	  trace_json_object_set_new (func, "fetch", trace_json_integer (xasl_p->func_stats.fetches));
+	  trace_json_object_set_new (func, "ioread", trace_json_integer (xasl_p->func_stats.ioreads));
+	  trace_json_object_set_new (func, "calls", trace_json_integer (xasl_p->func_stats.calls));
 
-	  json_object_set_new (proc, "func", func);
+	  trace_json_object_set_new (proc, "func", func);
 	}
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
-      subquery = json_array ();
+      trace_json_object_set_new (proc, "time", trace_json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      trace_json_object_set_new (proc, "fetch", trace_json_integer (xasl_p->xasl_stats.fetches));
+      trace_json_object_set_new (proc, "fetch_time", trace_json_integer (xasl_p->xasl_stats.fetch_time));
+      trace_json_object_set_new (proc, "ioread", trace_json_integer (xasl_p->xasl_stats.ioreads));
+      subquery = trace_json_array ();
       if (xasl_p->px_executor)
 	{
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
 	}
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
+	  temp = trace_json_object ();
 	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  trace_json_array_append_new (subquery, temp);
 	}
-      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+      trace_json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
       break;
 
     case MERGELIST_PROC:
-      outer = json_object ();
-      inner = json_object ();
+      outer = trace_json_object ();
+      inner = trace_json_object ();
 
       qdump_print_stats_json (xasl_p->proc.mergelist.outer_xasl, outer);
       qdump_print_stats_json (xasl_p->proc.mergelist.inner_xasl, inner);
@@ -3241,43 +3764,49 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
 	}
 
-      json_object_set_new (proc, "outer", outer);
-      json_object_set_new (proc, "inner", inner);
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  trace_json_object_set_new (proc, "parallel merge workers", trace_json_integer (xasl_p->executed_parallelism));
+	}
+
+      trace_json_object_set_new (proc, "outer", outer);
+      trace_json_object_set_new (proc, "inner", inner);
       break;
 
     case HASHJOIN_PROC:
-      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      trace_json_object_set_new (proc, "time", trace_json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      trace_json_object_set_new (proc, "fetch", trace_json_integer (xasl_p->xasl_stats.fetches));
+      trace_json_object_set_new (proc, "fetch_time", trace_json_integer (xasl_p->xasl_stats.fetch_time));
+      trace_json_object_set_new (proc, "ioread", trace_json_integer (xasl_p->xasl_stats.ioreads));
       if (xasl_p->proc.hashjoin.stats_group.status == HASHJOIN_STATUS_PARALLEL && xasl_p->executed_parallelism > 1)
 	{
-	  json_object_set_new (proc, "parallel workers", json_integer (xasl_p->executed_parallelism));
+	  trace_json_object_set_new (proc, "parallel workers", trace_json_integer (xasl_p->executed_parallelism));
 	}
       qdump_print_hashjoin_stats_json (xasl_p, proc);
       break;
 
     case MERGE_PROC:
-      inner = json_object ();
-      outer = json_object ();
+      inner = trace_json_object ();
+      outer = trace_json_object ();
 
       qdump_print_stats_json (xasl_p->proc.merge.update_xasl, inner);
       qdump_print_stats_json (xasl_p->proc.merge.insert_xasl, outer);
 
-      json_object_set_new (proc, "update", inner);
-      json_object_set_new (proc, "insert", outer);
+      trace_json_object_set_new (proc, "update", inner);
+      trace_json_object_set_new (proc, "insert", outer);
       break;
 
     case CTE_PROC:
-      cte_non_recursive_part = json_object ();
+      cte_non_recursive_part = trace_json_object ();
       qdump_print_stats_json (xasl_p->proc.cte.non_recursive_part, cte_non_recursive_part);
-      json_object_set_new (proc, "non_recursive_part", cte_non_recursive_part);
+      trace_json_object_set_new (proc, "non_recursive_part", cte_non_recursive_part);
 
       if (xasl_p->proc.cte.recursive_part != NULL)
 	{
-	  cte_recursive_part = json_object ();
+	  cte_recursive_part = trace_json_object ();
 	  qdump_print_stats_json (xasl_p->proc.cte.recursive_part, cte_recursive_part);
-	  json_object_set_new (proc, "recursive_part", cte_recursive_part);
+	  trace_json_object_set_new (proc, "recursive_part", cte_recursive_part);
 	}
       break;
 
@@ -3298,18 +3827,21 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (xasl_p->memoize_storage && xasl_p->memoize_storage->hit > 0)
     {
-      memoize = json_object ();
-      json_object_set_new (memoize, "time", json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
-      json_object_set_new (memoize, "hit", json_integer (xasl_p->memoize_storage->hit));
-      json_object_set_new (memoize, "miss", json_integer (xasl_p->memoize_storage->miss));
-      json_object_set_new (memoize, "size", json_integer (xasl_p->memoize_storage->get_current_size () / 1024));
-      json_object_set_new (memoize, "enabled", json_boolean (xasl_p->memoize_storage->is_disabled ()? false : true));
-      json_object_set_new (proc, "MEMOIZE", memoize);
+      memoize = trace_json_object ();
+      trace_json_object_set_new (memoize, "time",
+				 trace_json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
+      trace_json_object_set_new (memoize, "hit", trace_json_integer (xasl_p->memoize_storage->hit));
+      trace_json_object_set_new (memoize, "miss", trace_json_integer (xasl_p->memoize_storage->miss));
+      trace_json_object_set_new (memoize, "size",
+				 trace_json_integer (xasl_p->memoize_storage->get_current_size () / 1024));
+      trace_json_object_set_new (memoize, "enabled",
+				 trace_json_boolean (xasl_p->memoize_storage->is_disabled ()? false : true));
+      trace_json_object_set_new (proc, "MEMOIZE", memoize);
     }
 
   if (scan != NULL)
     {
-      json_object_set_new (proc, "SCAN", scan);
+      trace_json_object_set_new (proc, "SCAN", scan);
       qdump_print_stats_json (xasl_p->scan_ptr, scan);
     }
   else
@@ -3321,103 +3853,103 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
-      sq_cache = json_object ();
-      json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
-      json_object_set_new (sq_cache, "miss", json_integer (SQ_CACHE_MISS (xasl_p)));
-      json_object_set_new (sq_cache, "size", json_integer (SQ_CACHE_SIZE (xasl_p)));
+      sq_cache = trace_json_object ();
+      trace_json_object_set_new (sq_cache, "hit", trace_json_integer (SQ_CACHE_HIT (xasl_p)));
+      trace_json_object_set_new (sq_cache, "miss", trace_json_integer (SQ_CACHE_MISS (xasl_p)));
+      trace_json_object_set_new (sq_cache, "size", trace_json_integer (SQ_CACHE_SIZE (xasl_p)));
       if (SQ_CACHE_ENABLED (xasl_p))
 	{
-	  json_object_set_new (sq_cache, "status", json_string ("enabled"));
+	  trace_json_object_set_new (sq_cache, "status", trace_json_string ("enabled"));
 	}
       else
 	{
-	  json_object_set_new (sq_cache, "status", json_string ("disabled"));
+	  trace_json_object_set_new (sq_cache, "status", trace_json_string ("disabled"));
 	}
-      json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
+      trace_json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
     }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
     {
-      groupby = json_object ();
+      groupby = trace_json_object ();
 
-      json_object_set_new (groupby, "time", json_integer (TO_MSEC (gstats->groupby_time)));
+      trace_json_object_set_new (groupby, "time", trace_json_integer (TO_MSEC (gstats->groupby_time)));
 
       if (gstats->groupby_hash == HS_ACCEPT_ALL)
 	{
-	  json_object_set_new (groupby, "hash", json_true ());
+	  trace_json_object_set_new (groupby, "hash", trace_json_true ());
 	}
       else if (gstats->groupby_hash == HS_REJECT_ALL)
 	{
-	  json_object_set_new (groupby, "hash", json_string ("partial"));
+	  trace_json_object_set_new (groupby, "hash", trace_json_string ("partial"));
 	}
       else
 	{
-	  json_object_set_new (groupby, "hash", json_false ());
+	  trace_json_object_set_new (groupby, "hash", trace_json_false ());
 	}
 
       if (gstats->groupby_sort)
 	{
-	  json_object_set_new (groupby, "sort", json_true ());
-	  json_object_set_new (groupby, "page", json_integer (gstats->groupby_pages));
-	  json_object_set_new (groupby, "ioread", json_integer (gstats->groupby_ioreads));
+	  trace_json_object_set_new (groupby, "sort", trace_json_true ());
+	  trace_json_object_set_new (groupby, "page", trace_json_integer (gstats->groupby_pages));
+	  trace_json_object_set_new (groupby, "ioread", trace_json_integer (gstats->groupby_ioreads));
 	}
       else
 	{
-	  json_object_set_new (groupby, "sort", json_false ());
+	  trace_json_object_set_new (groupby, "sort", trace_json_false ());
 	}
 
-      json_object_set_new (groupby, "rows", json_integer (gstats->rows));
-      json_object_set_new (groupby, "readrows", json_integer (gstats->read_rows));
-      json_object_set_new (proc, "GROUPBY", groupby);
+      trace_json_object_set_new (groupby, "rows", trace_json_integer (gstats->rows));
+      trace_json_object_set_new (groupby, "readrows", trace_json_integer (gstats->read_rows));
+      trace_json_object_set_new (proc, "GROUPBY", groupby);
       if (gstats->parallel_num > 0)
 	{
-	  parallel = json_object ();
-	  json_object_set_new (parallel, "parallel workers", json_integer (gstats->parallel_num));
-	  json_object_set_new (parallel, "min time", json_integer (gstats->px_min_groupby_time));
-	  json_object_set_new (parallel, "max time", json_integer (gstats->px_max_groupby_time));
-	  json_object_set_new (parallel, "min pages", json_integer (gstats->px_min_groupby_pages));
-	  json_object_set_new (parallel, "max pages", json_integer (gstats->px_max_groupby_pages));
-	  json_object_set_new (parallel, "min ioreads", json_integer (gstats->px_min_groupby_ioreads));
-	  json_object_set_new (parallel, "max ioreads", json_integer (gstats->px_max_groupby_ioreads));
-	  json_object_set_new (proc, "PARALLEL GROUPBY", parallel);
+	  parallel = trace_json_object ();
+	  trace_json_object_set_new (parallel, "parallel workers", trace_json_integer (gstats->parallel_num));
+	  trace_json_object_set_new (parallel, "min time", trace_json_integer (gstats->px_min_groupby_time));
+	  trace_json_object_set_new (parallel, "max time", trace_json_integer (gstats->px_max_groupby_time));
+	  trace_json_object_set_new (parallel, "min pages", trace_json_integer (gstats->px_min_groupby_pages));
+	  trace_json_object_set_new (parallel, "max pages", trace_json_integer (gstats->px_max_groupby_pages));
+	  trace_json_object_set_new (parallel, "min ioreads", trace_json_integer (gstats->px_min_groupby_ioreads));
+	  trace_json_object_set_new (parallel, "max ioreads", trace_json_integer (gstats->px_max_groupby_ioreads));
+	  trace_json_object_set_new (proc, "PARALLEL GROUPBY", parallel);
 	}
     }
 
   ostats = &xasl_p->orderby_stats;
   if (ostats->orderby_filesort || ostats->orderby_topnsort || XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
     {
-      orderby = json_object ();
+      orderby = trace_json_object ();
 
-      json_object_set_new (orderby, "time", json_integer (TO_MSEC (ostats->orderby_time)));
+      trace_json_object_set_new (orderby, "time", trace_json_integer (TO_MSEC (ostats->orderby_time)));
 
       if (ostats->orderby_filesort)
 	{
-	  json_object_set_new (orderby, "sort", json_true ());
-	  json_object_set_new (orderby, "page", json_integer (ostats->orderby_pages));
-	  json_object_set_new (orderby, "ioread", json_integer (ostats->orderby_ioreads));
+	  trace_json_object_set_new (orderby, "sort", trace_json_true ());
+	  trace_json_object_set_new (orderby, "page", trace_json_integer (ostats->orderby_pages));
+	  trace_json_object_set_new (orderby, "ioread", trace_json_integer (ostats->orderby_ioreads));
 	}
       else if (ostats->orderby_topnsort)
 	{
-	  json_object_set_new (orderby, "topnsort", json_true ());
+	  trace_json_object_set_new (orderby, "topnsort", trace_json_true ());
 	}
       else
 	{
-	  json_object_set_new (orderby, "skipsort", json_true ());
+	  trace_json_object_set_new (orderby, "skipsort", trace_json_true ());
 	}
 
-      json_object_set_new (proc, "ORDERBY", orderby);
+      trace_json_object_set_new (proc, "ORDERBY", orderby);
       if (ostats->parallel_num > 0)
 	{
-	  parallel = json_object ();
-	  json_object_set_new (parallel, "parallel workers", json_integer (ostats->parallel_num));
-	  json_object_set_new (parallel, "min time", json_integer (ostats->px_min_orderby_time));
-	  json_object_set_new (parallel, "max time", json_integer (ostats->px_max_orderby_time));
-	  json_object_set_new (parallel, "min pages", json_integer (ostats->px_min_orderby_pages));
-	  json_object_set_new (parallel, "max pages", json_integer (ostats->px_max_orderby_pages));
-	  json_object_set_new (parallel, "min ioreads", json_integer (ostats->px_min_orderby_ioreads));
-	  json_object_set_new (parallel, "max ioreads", json_integer (ostats->px_max_orderby_ioreads));
-	  json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
+	  parallel = trace_json_object ();
+	  trace_json_object_set_new (parallel, "parallel workers", trace_json_integer (ostats->parallel_num));
+	  trace_json_object_set_new (parallel, "min time", trace_json_integer (ostats->px_min_orderby_time));
+	  trace_json_object_set_new (parallel, "max time", trace_json_integer (ostats->px_max_orderby_time));
+	  trace_json_object_set_new (parallel, "min pages", trace_json_integer (ostats->px_min_orderby_pages));
+	  trace_json_object_set_new (parallel, "max pages", trace_json_integer (ostats->px_max_orderby_pages));
+	  trace_json_object_set_new (parallel, "min ioreads", trace_json_integer (ostats->px_min_orderby_ioreads));
+	  trace_json_object_set_new (parallel, "max ioreads", trace_json_integer (ostats->px_max_orderby_ioreads));
+	  trace_json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
 	}
 
     }
@@ -3425,80 +3957,80 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   astats = xasl_p->analytic_stats;
   if (astats != NULL)
     {
-      json_t *analytic_array = json_array ();
+      trace_json_t *analytic_array = trace_json_array ();
 
       for (ANALYTIC_STATS * curr = astats; curr != NULL; curr = curr->next)
 	{
-	  analytic = json_object ();
-	  json_object_set_new (analytic, "time", json_integer (TO_MSEC (curr->analytic_time)));
+	  analytic = trace_json_object ();
+	  trace_json_object_set_new (analytic, "time", trace_json_integer (TO_MSEC (curr->analytic_time)));
 
 	  if (curr->analytic_sort)
 	    {
-	      json_object_set_new (analytic, "sort", json_true ());
+	      trace_json_object_set_new (analytic, "sort", trace_json_true ());
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "sort", json_false ());
+	      trace_json_object_set_new (analytic, "sort", trace_json_false ());
 	    }
 
 	  if (curr->analytic_stopkey)
 	    {
-	      json_object_set_new (analytic, "stopkey", json_true ());
+	      trace_json_object_set_new (analytic, "stopkey", trace_json_true ());
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "stopkey", json_false ());
+	      trace_json_object_set_new (analytic, "stopkey", trace_json_false ());
 	    }
 
-	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
-	  json_object_set_new (analytic, "ioread", json_integer (curr->analytic_ioreads));
-	  json_object_set_new (analytic, "rows", json_integer (curr->rows));
+	  trace_json_object_set_new (analytic, "page", trace_json_integer (curr->analytic_pages));
+	  trace_json_object_set_new (analytic, "ioread", trace_json_integer (curr->analytic_ioreads));
+	  trace_json_object_set_new (analytic, "rows", trace_json_integer (curr->rows));
 	  if (curr->parallel_num > 0)
 	    {
-	      parallel = json_object ();
-	      json_object_set_new (parallel, "parallel workers", json_integer (curr->parallel_num));
-	      json_object_set_new (parallel, "min time", json_integer (curr->px_min_analytic_time));
-	      json_object_set_new (parallel, "max time", json_integer (curr->px_max_analytic_time));
-	      json_object_set_new (parallel, "min pages", json_integer (curr->px_min_analytic_pages));
-	      json_object_set_new (parallel, "max pages", json_integer (curr->px_max_analytic_pages));
-	      json_object_set_new (parallel, "min ioreads", json_integer (curr->px_min_analytic_ioreads));
-	      json_object_set_new (parallel, "max ioreads", json_integer (curr->px_max_analytic_ioreads));
-	      json_object_set_new (analytic, "PARALLEL ANALYTIC", parallel);
+	      parallel = trace_json_object ();
+	      trace_json_object_set_new (parallel, "parallel workers", trace_json_integer (curr->parallel_num));
+	      trace_json_object_set_new (parallel, "min time", trace_json_integer (curr->px_min_analytic_time));
+	      trace_json_object_set_new (parallel, "max time", trace_json_integer (curr->px_max_analytic_time));
+	      trace_json_object_set_new (parallel, "min pages", trace_json_integer (curr->px_min_analytic_pages));
+	      trace_json_object_set_new (parallel, "max pages", trace_json_integer (curr->px_max_analytic_pages));
+	      trace_json_object_set_new (parallel, "min ioreads", trace_json_integer (curr->px_min_analytic_ioreads));
+	      trace_json_object_set_new (parallel, "max ioreads", trace_json_integer (curr->px_max_analytic_ioreads));
+	      trace_json_object_set_new (analytic, "PARALLEL ANALYTIC", parallel);
 	    }
-	  json_array_append_new (analytic_array, analytic);
+	  trace_json_array_append_new (analytic_array, analytic);
 	}
 
-      json_object_set_new (proc, "ANALYTIC", analytic_array);
+      trace_json_object_set_new (proc, "ANALYTIC", analytic_array);
     }
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      subquery = json_array ();
+      subquery = trace_json_array ();
       if (xasl_p->px_executor)
 	{
-	  temp = json_object ();
+	  temp = trace_json_object ();
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, temp);
-	  json_array_append_new (subquery, temp);
+	  trace_json_array_append_new (subquery, temp);
 	}
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
+	  temp = trace_json_object ();
 	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  trace_json_array_append_new (subquery, temp);
 	}
-      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+      trace_json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
 
   if (xasl_p->dptr_list != NULL)
     {
-      subquery = json_array ();
+      subquery = trace_json_array ();
       for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
+	  temp = trace_json_object ();
 	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  trace_json_array_append_new (subquery, temp);
 	}
-      json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
+      trace_json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
     }
 }
 
@@ -3729,6 +4261,156 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 }
 
 /*
+ * qdump_print_expr_compile_text () - compiled expression-program section of the SQL
+ *				      trace (see expr_compile.h): one summary line per
+ *				      program (is it active, what does it cover) and its
+ *				      per-step listing (kernels, cells, domains, prologue
+ *				      marks, jump targets), only for a session that shows its
+ *				      plans in detail (csql ;plan detail, XASL_TRACE_PLAN_DETAIL)
+ *				      -- it is the plan's execution shape, not something a user
+ *				      reading a plain trace needs, and the default trace stays
+ *				      what a build without this feature prints
+ */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+void
+qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag)
+{
+  cubxasl::aggregate_list_node * agg_list = NULL, *agg;
+  OUTPTR_LIST *outs[2] = { NULL, NULL };
+  const char *out_names[2] = { "output list", "group output list" };
+  const char *sfx = (tag != NULL) ? tag : "";
+  int i, k;
+
+  /* Nothing of this section is in the default trace: it is the compiler's coverage state
+   * (which lists compiled, how many columns a program covers, who owns an accumulator), and
+   * a user has no knob to act on it -- there is no hint and no parameter that turns the
+   * compiler on or off for a statement.  Printing it by default made every trace-carrying
+   * test answer depend on the coverage of the day and re-blessed again with each coverage
+   * commit.  A session that asks for its plans in detail (csql ;plan detail: the client sends
+   * XASL_TRACE_PLAN_DETAIL with the trace) gets the summary lines and the step listings
+   * together; the default trace stays byte-identical to a build without this feature. */
+  if (!thread_get_thread_entry_info ()->trace_plan_detail)
+    {
+      return;
+    }
+
+  outs[0] = xasl_p->outptr_list;
+  if (xasl_p->type == BUILDLIST_PROC)
+    {
+      agg_list = xasl_p->proc.buildlist.g_agg_list;
+      outs[1] = xasl_p->proc.buildlist.g_outptr_list;
+    }
+  else if (xasl_p->type == BUILDVALUE_PROC)
+    {
+      agg_list = xasl_p->proc.buildvalue.agg_list;
+    }
+
+  if (agg_list != NULL && agg_list->operand_prog_state == 3)
+    {
+      /* every candidate operand is a plain column or a wired constant: no program is
+       * needed, the accumulator's fast path reads such an operand in place */
+      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent,
+	       ' ', sfx);
+    }
+  else if (agg_list != NULL && agg_list->operand_prog_state != 0)
+    {
+      if (agg_list->operand_prog_state != 1)
+	{
+	  /* "not covered" is a diagnostic: this list had compilable candidates and the
+	   * compiler left them interpreted.  A list that never offered a candidate --
+	   * COUNT(*)/GROUPBY_NUM-only, or nothing participates -- is not a missed
+	   * coverage, so it prints nothing (the same policy the output list uses).
+	   * The compiler marks candidates by assigning operand_prog_base >= 0. */
+	  bool had_candidates = false;
+
+	  for (agg = agg_list; agg != NULL; agg = agg->next)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  had_candidates = true;
+		  break;
+		}
+	    }
+	  if (had_candidates)
+	    {
+	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)%s\n", indent, ' ', sfx);
+	    }
+	}
+      else
+	{
+	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active%s\n", indent, ' ', sfx);
+	  for (agg = agg_list, i = 0; agg != NULL; agg = agg->next, i++)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  int root = agg_list->operand_prog_idx[agg->operand_prog_base];
+
+		  fprintf (fp, "%*cagg[%d]: %s", indent + 2, ' ', i,
+			   (root >= 0) ? "operand from program" : "operand interpreted");
+		  if (agg->accumulator.shared_from > 0)
+		    {
+		      /* a sharer adds nothing per row: it reads the owner's accumulator at finalize
+		       * -- an AVG divides that sum by the shared count, a SUM takes it as is */
+		      fprintf (fp, ", shares agg[%d]'s accumulator (%s)", agg->accumulator.shared_from - 1,
+			       (agg->function == PT_AVG) ? "avg = its sum / count at finalize"
+			       : (agg->function == PT_SUM) ? "sum read from it at finalize" : "read at finalize");
+		    }
+		  fprintf (fp, "\n");
+		}
+	    }
+	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
+	}
+    }
+
+  /* data filters of this node's access specs (compiled scan predicates) */
+  {
+    ACCESS_SPEC_TYPE *spec;
+
+    for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
+      {
+	if (spec->where_pred == NULL || spec->where_pred->scan_prog_state == 0)
+	  {
+	    continue;
+	  }
+	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
+		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
+	if (spec->where_pred->scan_prog_state == 1)
+	  {
+	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
+	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
+	  }
+      }
+  }
+
+  for (k = 0; k < 2; k++)
+    {
+      OUTPTR_LIST *out = outs[k];
+
+      /* Only an active program is reported. A list that was never tried (0) or that the
+       * compiler declined (2) runs entirely on the interpreted path, so its trace must stay
+       * byte-identical to a build without this feature -- printing a line for it would make
+       * every such statement's trace differ. */
+      if (out == NULL || out->eval_prog_state != 1)
+	{
+	  continue;
+	}
+      else
+	{
+	  int covered = 0;
+
+	  for (i = 0; i < out->valptr_cnt; i++)
+	    {
+	      covered += (out->eval_prog_idx[i] >= 0) ? 1 : 0;
+	    }
+	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
+		   out->valptr_cnt, sfx);
+	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+	}
+    }
+}
+#endif /* SERVER_MODE || SA_MODE */
+
+/*
  * qdump_print_stats_text () -
  *   return:
  *   fp(in):
@@ -3779,6 +4461,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) xasl_p->func_stats.time, (long long int) xasl_p->func_stats.fetches,
 		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
 	}
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      qdump_print_expr_compile_text (fp, xasl_p, indent, NULL);
+#endif
       break;
 
     case UNION_PROC:
@@ -3806,20 +4491,22 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case MERGELIST_PROC:
+      fprintf (fp, "MERGELIST");
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  fprintf (fp, " (parallel merge workers: %d)", xasl_p->executed_parallelism);
+	}
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp,
-		   "MERGELIST (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+	  fprintf (fp, " (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)",
 		   xasl_p->px_executor->get_parallelism () + 1,
 		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
 		   (long long int) xasl_p->px_executor->get_stats ().fetches,
 		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
 		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
 	}
-      else
-	{
-	  fprintf (fp, "MERGELIST\n");
-	}
+      fprintf (fp, "\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
       break;
@@ -4371,10 +5058,10 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 }
 
 static void
-qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
+qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 {
-  json_t *split, *part_array, *parallel, *build, *probe, *merge, *subquery;
-  json_t *input, *profile;
+  trace_json_t *split, *part_array, *parallel, *build, *probe, *merge, *subquery;
+  trace_json_t *input, *profile;
 
   XASL_NODE *outer_xasl, *inner_xasl;
 
@@ -4476,12 +5163,12 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
-      build = json_object ();
-      json_object_set_new (build, "time", json_integer (TO_MSEC (stats->build.elapsed_time)));
-      json_object_set_new (build, "fetch", json_integer (stats->build.fetches));
-      json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
-      json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
-      json_object_set_new (build, "method", json_string (qdump_hashjoin_type_string (stats->hash_method)));
+      build = trace_json_object ();
+      trace_json_object_set_new (build, "time", trace_json_integer (TO_MSEC (stats->build.elapsed_time)));
+      trace_json_object_set_new (build, "fetch", trace_json_integer (stats->build.fetches));
+      trace_json_object_set_new (build, "ioread", trace_json_integer (stats->build.ioreads));
+      trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
+      trace_json_object_set_new (build, "method", trace_json_string (qdump_hashjoin_type_string (stats->hash_method)));
 
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
@@ -4490,104 +5177,104 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
       else
 	{
-	  json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+	  trace_json_object_set_new (build, "collision_rate", trace_json_real (stats->collision_rate * 100));
 	}
 #endif /* HASHJOIN_COLLISION_RATE */
-      json_object_set_new (parent, "build", build);
+      trace_json_object_set_new (parent, "build", build);
 
 #if HASHJOIN_PROFILE_TIME
-      profile = json_object ();
-      json_object_set_new (profile, "F", json_integer (TO_MSEC (stats->profile.build.fetch)));
-      json_object_set_new (profile, "H", json_integer (TO_MSEC (stats->profile.build.hash)));
-      json_object_set_new (profile, "I", json_integer (TO_MSEC (stats->profile.build.insert)));
-      json_object_set_new (build, "profile", profile);
+      profile = trace_json_object ();
+      trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (stats->profile.build.fetch)));
+      trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (stats->profile.build.hash)));
+      trace_json_object_set_new (profile, "I", trace_json_integer (TO_MSEC (stats->profile.build.insert)));
+      trace_json_object_set_new (build, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
 	{
-	  input = json_object ();
+	  input = trace_json_object ();
 	  qdump_print_stats_json (build_xasl, input);
-	  json_object_set_new (build, "input", input);
+	  trace_json_object_set_new (build, "input", input);
 	}
 
-      probe = json_object ();
-      json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
-      json_object_set_new (probe, "fetch", json_integer (stats->probe.fetches));
-      json_object_set_new (probe, "ioread", json_integer (stats->probe.ioreads));
-      json_object_set_new (probe, "readrows", json_integer (stats->probe.read_rows));
-      json_object_set_new (probe, "readkeys", json_integer (stats->probe.read_keys));
-      json_object_set_new (probe, "rows", json_integer (stats->probe.qualified_rows));
-      json_object_set_new (parent, "probe", probe);
+      probe = trace_json_object ();
+      trace_json_object_set_new (probe, "time", trace_json_integer (TO_MSEC (stats->probe.elapsed_time)));
+      trace_json_object_set_new (probe, "fetch", trace_json_integer (stats->probe.fetches));
+      trace_json_object_set_new (probe, "ioread", trace_json_integer (stats->probe.ioreads));
+      trace_json_object_set_new (probe, "readrows", trace_json_integer (stats->probe.read_rows));
+      trace_json_object_set_new (probe, "readkeys", trace_json_integer (stats->probe.read_keys));
+      trace_json_object_set_new (probe, "rows", trace_json_integer (stats->probe.qualified_rows));
+      trace_json_object_set_new (parent, "probe", probe);
 
 #if HASHJOIN_PROFILE_TIME
-      profile = json_object ();
-      json_object_set_new (profile, "F", json_integer (TO_MSEC (stats->profile.probe.fetch)));
-      json_object_set_new (profile, "H", json_integer (TO_MSEC (stats->profile.probe.hash)));
-      json_object_set_new (profile, "S", json_integer (TO_MSEC (stats->profile.probe.search)));
-      json_object_set_new (profile, "M", json_integer (TO_MSEC (stats->profile.probe.match)));
-      json_object_set_new (profile, "A", json_integer (TO_MSEC (stats->profile.probe.add)));
-      json_object_set_new (probe, "profile", profile);
+      profile = trace_json_object ();
+      trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (stats->profile.probe.fetch)));
+      trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (stats->profile.probe.hash)));
+      trace_json_object_set_new (profile, "S", trace_json_integer (TO_MSEC (stats->profile.probe.search)));
+      trace_json_object_set_new (profile, "M", trace_json_integer (TO_MSEC (stats->profile.probe.match)));
+      trace_json_object_set_new (profile, "A", trace_json_integer (TO_MSEC (stats->profile.probe.add)));
+      trace_json_object_set_new (probe, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
       if (stats->num_parallel_threads > 1)
 	{
-	  parallel = json_object ();
+	  parallel = trace_json_object ();
 
-	  json_object_set_new (parallel, "parallel workers", json_integer (stats->num_parallel_threads));
+	  trace_json_object_set_new (parallel, "parallel workers", trace_json_integer (stats->num_parallel_threads));
 
 	  snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (stats->probe.range.elapsed_time.min),
 		    TO_MSEC (stats->probe.range.elapsed_time.max));
-	  json_object_set_new (parallel, "time", json_string (time_str));
+	  trace_json_object_set_new (parallel, "time", trace_json_string (time_str));
 
 	  snprintf (rows_str, rows_str_size, "%lu..%lu", (unsigned long) stats->probe.range.read_rows.min,
 		    (unsigned long) stats->probe.range.read_rows.max);
-	  json_object_set_new (parallel, "readrows", json_string (rows_str));
+	  trace_json_object_set_new (parallel, "readrows", trace_json_string (rows_str));
 
 	  snprintf (rows_str, rows_str_size, "%lu..%lu", (unsigned long) stats->probe.range.read_keys.min,
 		    (unsigned long) stats->probe.range.read_keys.max);
-	  json_object_set_new (parallel, "readkeys", json_string (rows_str));
+	  trace_json_object_set_new (parallel, "readkeys", trace_json_string (rows_str));
 
 	  snprintf (rows_str, rows_str_size, "%lu..%lu", (unsigned long) stats->probe.range.qualified_rows.min,
 		    (unsigned long) stats->probe.range.qualified_rows.max);
-	  json_object_set_new (parallel, "rows", json_string (rows_str));
+	  trace_json_object_set_new (parallel, "rows", trace_json_string (rows_str));
 
-	  json_object_set_new (probe, "parallel", parallel);
+	  trace_json_object_set_new (probe, "parallel", parallel);
 	}
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
 	{
-	  input = json_object ();
+	  input = trace_json_object ();
 	  qdump_print_stats_json (probe_xasl, input);
-	  json_object_set_new (probe, "input", input);
+	  trace_json_object_set_new (probe, "input", input);
 	}
     }
   else
     {
-      split = json_object ();
-      json_object_set_new (split, "time", json_integer (TO_MSEC (stats->split.elapsed_time)));
-      json_object_set_new (split, "fetch", json_integer (stats->split.fetches));
-      json_object_set_new (split, "ioread", json_integer (stats->split.ioreads));
-      json_object_set_new (split, "partitions", json_integer (part_cnt));
-      json_object_set_new (parent, "split", split);
+      split = trace_json_object ();
+      trace_json_object_set_new (split, "time", trace_json_integer (TO_MSEC (stats->split.elapsed_time)));
+      trace_json_object_set_new (split, "fetch", trace_json_integer (stats->split.fetches));
+      trace_json_object_set_new (split, "ioread", trace_json_integer (stats->split.ioreads));
+      trace_json_object_set_new (split, "partitions", trace_json_integer (part_cnt));
+      trace_json_object_set_new (parent, "split", split);
 
-      build = json_object ();
+      build = trace_json_object ();
       if (stats->num_parallel_threads > 1)
 	{
 	  snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (stats->build.range_elapsed_time.min),
 		    TO_MSEC (stats->build.range_elapsed_time.max));
 
-	  json_object_set_new (build, "time", json_string (time_str));
+	  trace_json_object_set_new (build, "time", trace_json_string (time_str));
 	}
       else
 	{
-	  json_object_set_new (build, "time", json_integer (TO_MSEC (stats->build.elapsed_time)));
+	  trace_json_object_set_new (build, "time", trace_json_integer (TO_MSEC (stats->build.elapsed_time)));
 	}
-      json_object_set_new (build, "fetch", json_integer (stats->build.fetches));
-      json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
-      json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
-      json_object_set_new (build, "method", json_string (hash_method_str));
+      trace_json_object_set_new (build, "fetch", trace_json_integer (stats->build.fetches));
+      trace_json_object_set_new (build, "ioread", trace_json_integer (stats->build.ioreads));
+      trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
+      trace_json_object_set_new (build, "method", trace_json_string (hash_method_str));
 
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
@@ -4596,133 +5283,134 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
       else
 	{
-	  json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+	  trace_json_object_set_new (build, "collision_rate", trace_json_real (stats->collision_rate * 100));
 	}
 #endif /* HASHJOIN_COLLISION_RATE */
 
 #if HASHJOIN_DUMP_PARTITION
-      part_array = json_array ();
+      part_array = trace_json_array ();
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
 	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
-	  input = json_object ();
-	  json_object_set_new (input, "time", json_integer (TO_MSEC (current_stats->build.elapsed_time)));
-	  json_object_set_new (input, "fetch", json_integer (current_stats->build.fetches));
-	  json_object_set_new (input, "ioread", json_integer (current_stats->build.ioreads));
-	  json_object_set_new (input, "rows", json_integer (current_stats->build.qualified_rows));
-	  json_object_set_new (input, "method", json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
-	  json_array_append_new (part_array, input);
+	  input = trace_json_object ();
+	  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (current_stats->build.elapsed_time)));
+	  trace_json_object_set_new (input, "fetch", trace_json_integer (current_stats->build.fetches));
+	  trace_json_object_set_new (input, "ioread", trace_json_integer (current_stats->build.ioreads));
+	  trace_json_object_set_new (input, "rows", trace_json_integer (current_stats->build.qualified_rows));
+	  trace_json_object_set_new (input, "method",
+				     trace_json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
+	  trace_json_array_append_new (part_array, input);
 
 #if HASHJOIN_PROFILE_TIME
-	  profile = json_object ();
-	  json_object_set_new (profile, "F", json_integer (TO_MSEC (current_stats->profile.build.fetch)));
-	  json_object_set_new (profile, "H", json_integer (TO_MSEC (current_stats->profile.build.hash)));
-	  json_object_set_new (profile, "I", json_integer (TO_MSEC (current_stats->profile.build.insert)));
-	  json_object_set_new (input, "profile", profile);
+	  profile = trace_json_object ();
+	  trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (current_stats->profile.build.fetch)));
+	  trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (current_stats->profile.build.hash)));
+	  trace_json_object_set_new (profile, "I", trace_json_integer (TO_MSEC (current_stats->profile.build.insert)));
+	  trace_json_object_set_new (input, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 	}
 
-      json_object_set_new (build, "partition_list", part_array);
+      trace_json_object_set_new (build, "partition_list", part_array);
 #endif /* HASHJOIN_DUMP_PARTITION */
 
-      probe = json_object ();
+      probe = trace_json_object ();
       if (stats->num_parallel_threads > 1)
 	{
 	  snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (stats->probe.range.elapsed_time.min),
 		    TO_MSEC (stats->probe.range.elapsed_time.max));
-	  json_object_set_new (probe, "time", json_string (time_str));
+	  trace_json_object_set_new (probe, "time", trace_json_string (time_str));
 	}
       else
 	{
-	  json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
+	  trace_json_object_set_new (probe, "time", trace_json_integer (TO_MSEC (stats->probe.elapsed_time)));
 	}
-      json_object_set_new (probe, "fetch", json_integer (stats->probe.fetches));
-      json_object_set_new (probe, "ioread", json_integer (stats->probe.ioreads));
-      json_object_set_new (probe, "readrows", json_integer (stats->probe.read_rows));
-      json_object_set_new (probe, "readkeys", json_integer (stats->probe.read_keys));
-      json_object_set_new (probe, "rows", json_integer (stats->probe.qualified_rows));
+      trace_json_object_set_new (probe, "fetch", trace_json_integer (stats->probe.fetches));
+      trace_json_object_set_new (probe, "ioread", trace_json_integer (stats->probe.ioreads));
+      trace_json_object_set_new (probe, "readrows", trace_json_integer (stats->probe.read_rows));
+      trace_json_object_set_new (probe, "readkeys", trace_json_integer (stats->probe.read_keys));
+      trace_json_object_set_new (probe, "rows", trace_json_integer (stats->probe.qualified_rows));
 
 #if HASHJOIN_DUMP_PARTITION
-      part_array = json_array ();
+      part_array = trace_json_array ();
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
 	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
-	  input = json_object ();
-	  json_object_set_new (input, "part_id", json_integer (part_index + 1));
-	  json_object_set_new (input, "time", json_integer (TO_MSEC (current_stats->probe.elapsed_time)));
-	  json_object_set_new (input, "fetch", json_integer (current_stats->probe.fetches));
-	  json_object_set_new (input, "ioread", json_integer (current_stats->probe.ioreads));
-	  json_object_set_new (input, "readrows", json_integer (current_stats->probe.read_rows));
-	  json_object_set_new (input, "readkeys", json_integer (current_stats->probe.read_keys));
-	  json_object_set_new (input, "rows", json_integer (current_stats->probe.qualified_rows));
-	  json_array_append_new (part_array, input);
+	  input = trace_json_object ();
+	  trace_json_object_set_new (input, "part_id", trace_json_integer (part_index + 1));
+	  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (current_stats->probe.elapsed_time)));
+	  trace_json_object_set_new (input, "fetch", trace_json_integer (current_stats->probe.fetches));
+	  trace_json_object_set_new (input, "ioread", trace_json_integer (current_stats->probe.ioreads));
+	  trace_json_object_set_new (input, "readrows", trace_json_integer (current_stats->probe.read_rows));
+	  trace_json_object_set_new (input, "readkeys", trace_json_integer (current_stats->probe.read_keys));
+	  trace_json_object_set_new (input, "rows", trace_json_integer (current_stats->probe.qualified_rows));
+	  trace_json_array_append_new (part_array, input);
 
 #if HASHJOIN_PROFILE_TIME
-	  profile = json_object ();
-	  json_object_set_new (profile, "F", json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
-	  json_object_set_new (profile, "H", json_integer (TO_MSEC (current_stats->profile.probe.hash)));
-	  json_object_set_new (profile, "S", json_integer (TO_MSEC (current_stats->profile.probe.search)));
-	  json_object_set_new (profile, "M", json_integer (TO_MSEC (current_stats->profile.probe.match)));
-	  json_object_set_new (profile, "A", json_integer (TO_MSEC (current_stats->profile.probe.add)));
-	  json_object_set_new (input, "profile", profile);
+	  profile = trace_json_object ();
+	  trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
+	  trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (current_stats->profile.probe.hash)));
+	  trace_json_object_set_new (profile, "S", trace_json_integer (TO_MSEC (current_stats->profile.probe.search)));
+	  trace_json_object_set_new (profile, "M", trace_json_integer (TO_MSEC (current_stats->profile.probe.match)));
+	  trace_json_object_set_new (profile, "A", trace_json_integer (TO_MSEC (current_stats->profile.probe.add)));
+	  trace_json_object_set_new (input, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 	}
 
-      json_object_set_new (probe, "partition_list", part_array);
+      trace_json_object_set_new (probe, "partition_list", part_array);
 #endif /* HASHJOIN_DUMP_PARTITION */
 
       if (stats->num_parallel_threads > 1)
 	{
-	  parallel = json_object ();
-	  json_object_set_new (parallel, "time", json_integer (TO_MSEC (stats->parallel.elapsed_time)));
+	  parallel = trace_json_object ();
+	  trace_json_object_set_new (parallel, "time", trace_json_integer (TO_MSEC (stats->parallel.elapsed_time)));
 
-	  json_object_set_new (parent, "parallel", parallel);
-	  json_object_set_new (parallel, "build", build);
-	  json_object_set_new (parallel, "probe", probe);
+	  trace_json_object_set_new (parent, "parallel", parallel);
+	  trace_json_object_set_new (parallel, "build", build);
+	  trace_json_object_set_new (parallel, "probe", probe);
 	}
       else
 	{
-	  json_object_set_new (parent, "build", build);
-	  json_object_set_new (parent, "probe", probe);
+	  trace_json_object_set_new (parent, "build", build);
+	  trace_json_object_set_new (parent, "probe", probe);
 	}
 
 #if HASHJOIN_PROFILE_TIME
-      merge = json_object ();
-      json_object_set_new (merge, "time", json_integer (TO_MSEC (stats->profile.merge.elapsed_time)));
-      json_object_set_new (merge, "fetch", json_integer (stats->profile.merge.fetches));
-      json_object_set_new (merge, "ioread", json_integer (stats->profile.merge.ioreads));
-      json_object_set_new (merge, "rows", json_integer (stats->profile.merge.qualified_rows));
-      json_object_set_new (parent, "merge", merge);
+      merge = trace_json_object ();
+      trace_json_object_set_new (merge, "time", trace_json_integer (TO_MSEC (stats->profile.merge.elapsed_time)));
+      trace_json_object_set_new (merge, "fetch", trace_json_integer (stats->profile.merge.fetches));
+      trace_json_object_set_new (merge, "ioread", trace_json_integer (stats->profile.merge.ioreads));
+      trace_json_object_set_new (merge, "rows", trace_json_integer (stats->profile.merge.qualified_rows));
+      trace_json_object_set_new (parent, "merge", merge);
 #endif /* HASHJOIN_PROFILE_TIME */
     }
 
   /* parallel subquery or partitioned hash join */
   if (xasl_p->px_executor != NULL || is_partition_parallel)
     {
-      subquery = json_array ();
+      subquery = trace_json_array ();
 
       if (xasl_p->px_executor)
 	{
-	  input = json_object ();
+	  input = trace_json_object ();
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, input);
-	  json_array_append_new (subquery, input);
+	  trace_json_array_append_new (subquery, input);
 	}
 
-      input = json_object ();
+      input = trace_json_object ();
       qdump_print_stats_json (outer_xasl, input);
-      json_array_append_new (subquery, input);
+      trace_json_array_append_new (subquery, input);
 
-      input = json_object ();
+      input = trace_json_object ();
       qdump_print_stats_json (inner_xasl, input);
-      json_array_append_new (subquery, input);
+      trace_json_array_append_new (subquery, input);
 
-      json_object_set_new (parent, "SUBQUERY (uncorrelated)", subquery);
+      trace_json_object_set_new (parent, "SUBQUERY (uncorrelated)", subquery);
     }
 }
 

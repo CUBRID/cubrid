@@ -113,6 +113,8 @@ static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 #if !defined (SERVER_MODE)
 static void css_default_server_timeout_fn (void);
 static CSS_SERVER_TIMEOUT_FN css_server_timeout_fn = css_default_server_timeout_fn;
+static bool css_default_abort_server_wait_fn (void);
+static CSS_ABORT_SERVER_WAIT_FN css_abort_server_wait_fn = css_default_abort_server_wait_fn;
 static bool css_default_check_server_alive_fn (const char *db_name, const char *db_host);
 CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn = css_default_check_server_alive_fn;
 #endif /* !SERVER_MODE */
@@ -202,6 +204,13 @@ css_default_server_timeout_fn (void)
 {
   /* do nothing */
   return;
+}
+
+static bool
+css_default_abort_server_wait_fn (void)
+{
+  /* do nothing */
+  return false;
 }
 
 #elif defined(WINDOWS)
@@ -425,6 +434,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 		{
 		  css_server_timeout_fn ();
 		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
 #endif /* !SERVER_MODE */
 
 	      continue;
@@ -468,6 +484,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	      if (css_server_timeout_fn != NULL)
 		{
 		  css_server_timeout_fn ();
+		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
 		}
 #endif /* !SERVER_MODE */
 
@@ -1032,6 +1055,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	{
 	  if (errno == EINTR)
 	    {
+#if !defined (SERVER_MODE)
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
+#endif /* !SERVER_MODE */
+
 	      continue;
 	    }
 
@@ -1083,6 +1115,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
       /* n < 0 */
       if (unlikely (errno == EINTR))
 	{
+#if !defined (SERVER_MODE)
+	  if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+	    {
+	      /* the client gave this wait up (e.g. it is shutting down) */
+	      errno = EINTR;
+	      return -1;
+	    }
+#endif /* !SERVER_MODE */
+
 	  continue;
 	}
 
@@ -1941,6 +1982,18 @@ css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn)
 {
   css_server_timeout_fn = callback_fn;
 }
+
+/*
+ * css_register_abort_server_wait_fn () - regist the callback function
+ *   return: void
+ *   callback_fn(in): asked when a wait for the server is interrupted by a
+ *                    signal; returning true gives that wait up
+ */
+void
+css_register_abort_server_wait_fn (CSS_ABORT_SERVER_WAIT_FN callback_fn)
+{
+  css_abort_server_wait_fn = callback_fn;
+}
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -2367,7 +2420,6 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
   int i, attr_idx = -1;
   bool attr_info_inited;
   bool scan_cache_inited;
-  char *rec_attr_name_p = NULL, *string = NULL;
   const char *user_name = NULL;
   HFID hfid;
   OID inst_oid;
@@ -2400,55 +2452,24 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
       goto end;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
+  error = or_get_attrid (&recdes, "name", &attr_idx);
+  if (error != NO_ERROR)
     {
-      int alloced_string = 0;
-      bool set_break = false;
-      string = NULL;
-
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
-      rec_attr_name_p = string;
-
-      if (rec_attr_name_p == NULL)
-	{
-	  continue;
-	}
-
-      if (strcmp ("name", rec_attr_name_p) == 0)
-	{
-	  attr_idx = i;
-	  set_break = true;
-	  goto clean_string;
-	}
-
-clean_string:
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
-
-      if (set_break == true)
-	{
-	  break;
-	}
+      ASSERT_ERROR ();
+      goto end;
+    }
+  if (attr_idx == NULL_ATTRID)
+    {
+      assert (false);
+      error = ER_FAILED;
+      goto end;
     }
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  error = heap_get_class_hfid (thread_p, class_oid, &hfid, NULL);
   if (error != NO_ERROR)
     {
-      goto end;
-    }
-
-  if (HFID_IS_NULL (&hfid))
-    {
-      error = ER_FAILED;
       goto end;
     }
 
@@ -2939,6 +2960,36 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
  {
    working_task_count = 0;
  }
+
+#if defined(SERVER_MODE)
+ void
+ css_conn_entry::begin_method_callback ()
+ {
+   ++method_callback_count;
+ }
+
+ void
+ css_conn_entry::end_method_callback ()
+ {
+   size_t count = method_callback_count.load ();
+   while (count > 0 && !method_callback_count.compare_exchange_weak (count, count - 1))
+     {
+     }
+   assert_release_error (count > 0);
+ }
+
+ bool
+ css_conn_entry::has_outstanding_method_callback () const
+ {
+   return method_callback_count.load () > 0;
+ }
+
+ void
+ css_conn_entry::init_method_callback ()
+ {
+   method_callback_count = 0;
+ }
+#endif
 
  void
  css_conn_entry::release_packet (void *buffer)

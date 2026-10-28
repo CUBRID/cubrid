@@ -38,6 +38,7 @@ import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
 import com.cubrid.jsp.context.Context;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -68,6 +69,14 @@ public class MemoryJavaCompiler {
 
         useOptions("-encoding", Context.getSessionCharset().toString());
         useOptions("-classpath", PL_SERVER_PATH);
+
+        // Use a per-compilation (unshared) javac name table so its name entries are
+        // reclaimed by GC after each compile, instead of accumulating in javac's
+        // process-wide SharedNameTable. Without this, every stored-procedure compile
+        // leaves behind a full name table (SharedNameTable$NameImpl[] + thousands of
+        // interned NameImpl), which exhausts the PL server heap over a long-running
+        // server (observed OOM: GC overhead limit exceeded).
+        useOptions("-XDuseUnsharedTable=true");
     }
 
     public synchronized void useOptions(String... options) {
@@ -84,36 +93,47 @@ public class MemoryJavaCompiler {
                 new MemoryFileManager(
                         compiler.getStandardFileManager(null, null, null),
                         fetchReferencedClasses(code.getClassName(), referencedClasses));
-        JavaCompiler.CompilationTask task =
-                compiler.getTask(null, fileManager, collector, options, null, Arrays.asList(code));
+        try {
+            JavaCompiler.CompilationTask task =
+                    compiler.getTask(
+                            null, fileManager, collector, options, null, Arrays.asList(code));
 
-        boolean result = task.call();
-        if (!result || collector.getDiagnostics().size() > 0) {
-            String exceptionMsg = new String("Unable to compile the source");
-            boolean hasErrors = false;
+            boolean result = task.call();
+            if (!result || collector.getDiagnostics().size() > 0) {
+                String exceptionMsg = new String("Unable to compile the source");
+                boolean hasErrors = false;
 
-            for (Diagnostic<? extends JavaFileObject> d : collector.getDiagnostics()) {
-                switch (d.getKind()) {
-                    case NOTE:
-                    case MANDATORY_WARNING:
-                    case WARNING:
-                        break;
-                    case OTHER:
-                    case ERROR:
-                    default:
-                        hasErrors = true;
-                        break;
+                for (Diagnostic<? extends JavaFileObject> d : collector.getDiagnostics()) {
+                    switch (d.getKind()) {
+                        case NOTE:
+                        case MANDATORY_WARNING:
+                        case WARNING:
+                            break;
+                        case OTHER:
+                        case ERROR:
+                        default:
+                            hasErrors = true;
+                            break;
+                    }
+                }
+
+                if (hasErrors) {
+                    throw new RuntimeException(exceptionMsg.toString());
                 }
             }
 
-            if (hasErrors) {
-                throw new RuntimeException(exceptionMsg.toString());
+            assert (code.getClassName() != null);
+
+            return new CompiledCodeSet(fileManager.getCodeList());
+        } finally {
+            // Release the javac file manager and its compilation resources (name
+            // tables, ZipFileIndex caches) so they are not retained across compiles.
+            try {
+                fileManager.close();
+            } catch (IOException e) {
+                Server.log(e);
             }
         }
-
-        assert (code.getClassName() != null);
-
-        return new CompiledCodeSet(fileManager.getCodeList());
     }
 
     // fetch the compiled code of each referenced SP/package from the catalog and wrap every .class

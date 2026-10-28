@@ -68,9 +68,6 @@ struct disk_representation
   int fixed_length;		/* total length of fixed attributes */
   int n_variable;		/* number of variable attributes */
   struct disk_attribute *variable;	/* variable attribute structures */
-#if 0				/* reserved for future use */
-  int repr_reserved_1;
-#endif
 };				/* object disk representation */
 
 
@@ -97,7 +94,7 @@ struct cls_info
 {
   HFID ci_hfid;			/* heap file identifier for the class */
   int ci_tot_pages;		/* total number of pages in the heap file */
-  int ci_tot_objects;		/* total number of objects for this class */
+  INT64 ci_tot_objects;		/* total number of objects for this class */
   unsigned int ci_time_stamp;	/* timestamp of last update */
   OID ci_rep_dir;		/* representation directory record OID */
 };				/* class specific information */

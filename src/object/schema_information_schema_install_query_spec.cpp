@@ -47,7 +47,6 @@
 #include "dbtype_def.h"
 #include "schema_system_catalog_constants.h"
 #include "authenticate.h"
-#include "deduplicate_key.h"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
 #include "tde.h"
@@ -74,58 +73,41 @@
 #define AUTH_CHECK_OWNER(owner_name_expr) \
   "{" owner_name_expr "} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")"
 
-#define AUTH_CHECK_ANY_GRANT(class_of_expr) \
-  "{" class_of_expr "} SUBSETEQ (" \
-    "SELECT SUM (SET {[auth].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
-    "WHERE {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")" \
-  ")"
-
-#define AUTH_CHECK_WRITE_GRANT(class_of_expr) \
-  "{" class_of_expr "} SUBSETEQ (" \
+#define AUTH_CHECK_GRANT(object_of_expr, auth_type) \
+  "{" object_of_expr "} SUBSETEQ (" \
     "SELECT SUM (SET {[auth].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
     "WHERE {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
-    "AND [auth].[auth_type] IN ('INSERT', 'UPDATE', 'DELETE', 'ALTER')" \
-  ")"
-
-#define AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) \
-  "{" sp_of_expr "} SUBSETEQ (" \
-    "SELECT SUM (SET {[auth].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
-    "WHERE {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
-    "AND [auth].[auth_type] = 'EXECUTE'" \
+    "AND [auth].[auth_type] = '" auth_type "'" \
   ")"
 
 /* ----------------------------------------------------------------------------- */
 /* Composite macros (used in query specs) */
 /* ----------------------------------------------------------------------------- */
 
-#define AUTH_CHECK_OBJECT_ANY(owner_name_expr, object_of_expr) \
+#define AUTH_CHECK_OBJECT(owner_name_expr, object_of_expr, auth_type) \
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_ANY_GRANT(object_of_expr) \
+    "OR " AUTH_CHECK_GRANT(object_of_expr, auth_type) \
   ")"
 
-#define AUTH_CHECK_OBJECT_WRITE(owner_name_expr, object_of_expr) \
+#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr, pkg_of_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_WRITE_GRANT(object_of_expr) \
+    "OR " AUTH_CHECK_GRANT(sp_of_expr, "EXECUTE") " " \
+    "OR (" pkg_of_expr " IS NOT NULL AND " AUTH_CHECK_GRANT(pkg_of_expr, "EXECUTE") ")" \
   ")"
 
-#define AUTH_CHECK_SCHEMA(user_name_expr, user_expr) \
+#define AUTH_CHECK_SCHEMA(user_name_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
-    "OR " AUTH_CHECK_OWNER(user_name_expr) " " \
-    "OR EXISTS (" \
-      "SELECT 1 FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
-      "WHERE [auth].[grantor] = " user_expr " " \
-      "AND {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")" \
-    ")" \
+    "OR " AUTH_CHECK_OWNER(user_name_expr) \
   ")"
 
-#define AUTH_CHECK_PRIVILEGE(grantee_name_expr, grantor_name_expr) \
+#define AUTH_CHECK_PRIVILEGE(owner_name_expr, grantee_name_expr, grantor_name_expr) \
   "(" \
-    "{'DBA', " grantee_name_expr ", " grantor_name_expr "} * (" \
+    "{'DBA', " owner_name_expr ", " grantee_name_expr ", " grantor_name_expr "} * (" \
       CURRENT_USER_GROUPS_SUBQUERY \
     ") SETNEQ {}" \
   ")"
@@ -137,23 +119,17 @@
     "OR (" is_public_expr " = 0 AND " AUTH_CHECK_OWNER(owner_name_expr) ")" \
   ")"
 
-#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr, pkg_of_expr) \
-  "(" \
-    AUTH_CHECK_DBA " " \
-    "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) " " \
-    "OR (" pkg_of_expr " IS NOT NULL AND " AUTH_CHECK_EXECUTE_GRANT(pkg_of_expr) ")" \
-  ")"
 
 /* CUBRID does not currently support column privilege.
  * This view returns empty results until column privilege support is implemented.
  */
-const char *sm_define_view_column_privileges_spec (void)
+std::string
+sm_define_view_column_privileges_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "NULL AS [grantor], "
       "NULL AS [grantee], "
@@ -169,16 +145,18 @@ const char *sm_define_view_column_privileges_spec (void)
       "FALSE",
     CT_DUAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_columns_spec (void)
+std::string
+sm_define_view_columns_spec (void)
 {
-  static char stmt [8192];
+  char stmt [8192];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
@@ -192,10 +170,20 @@ const char *sm_define_view_columns_spec (void)
       "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[prec], NULL) AS [character_maximum_length], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
       "IF ([attr].[data_type] IN (%d, %d), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
-      /* DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [numeric_precision], "
-      /* DB_TYPE_INTEGER, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[scale], NULL) AS [numeric_scale], "
+      "CASE "
+        /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column precision */
+        "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN NULL "
+        /* DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+        "WHEN [attr].[data_type] IN (%d, %d, %d, %d, %d, %d) THEN [dom].[prec] "
+        "ELSE NULL "
+      "END AS [numeric_precision], "
+      "CASE "
+        /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column scale */
+        "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN NULL "
+        /* DB_TYPE_INTEGER, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+        "WHEN [attr].[data_type] IN (%d, %d, %d, %d) THEN [dom].[scale] "
+        "ELSE NULL "
+      "END AS [numeric_scale], "
       /* DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
       "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [datetime_precision], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
@@ -217,6 +205,8 @@ const char *sm_define_view_columns_spec (void)
         "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT(', [dom].[prec], ')') "
         /* DB_TYPE_VARBIT */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT VARYING(', [dom].[prec], ')') "
+        /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) is declared without precision */
+        "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN 'NUMERIC' "
         /* DB_TYPE_NUMERIC */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('NUMERIC(', [dom].[prec], ',', [dom].[scale], ')') "
         /* DB_TYPE_SHORT/SMALLINT */
@@ -274,10 +264,12 @@ const char *sm_define_view_columns_spec (void)
       ") AS [key_info] "
         "ON [key_info].[class_of] = [cls] AND [key_info].[key_attr_name] = [attr].[attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
     DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
+    DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
     DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
     DB_TYPE_STRING, DB_TYPE_CHAR,
@@ -286,6 +278,7 @@ const char *sm_define_view_columns_spec (void)
     DB_TYPE_CHAR,
     DB_TYPE_BIT,
     DB_TYPE_VARBIT,
+    DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_NUMERIC,
     DB_TYPE_SHORT,
     DB_TYPE_ENUMERATION,
@@ -300,6 +293,7 @@ const char *sm_define_view_columns_spec (void)
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -307,12 +301,13 @@ const char *sm_define_view_columns_spec (void)
 /* CUBRID does not currently support domains.
  * This view returns empty results until domain support is implemented.
  */
-const char *sm_define_view_domains_spec (void)
+std::string
+sm_define_view_domains_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
@@ -343,16 +338,18 @@ const char *sm_define_view_domains_spec (void)
       "FALSE",
     CT_DUAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_foreign_servers_spec (void)
+std::string
+sm_define_view_foreign_servers_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [foreign_server_catalog], " /* string -> varchar(255) */
       "[srv].[link_name] AS [foreign_server_name], "
@@ -373,19 +370,21 @@ const char *sm_define_view_foreign_servers_spec (void)
       /* CT_SERVER_NAME */
       "[%s] AS [srv] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[srv].[owner].[name]", "[srv]"),
+      "(" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[srv].[owner].[name]") ")",
     CT_SERVER_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_key_column_usage_spec (void)
+std::string
+sm_define_view_key_column_usage_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
@@ -396,34 +395,43 @@ const char *sm_define_view_key_column_usage_spec (void)
       "[idx_key].[key_attr_name] AS [column_name], "
       "([idx_key].[key_order] + 1) AS [ordinal_position], "
       "([ref_key].[key_order] + 1) AS [position_in_unique_constraint], "
-      "[idx].[referential_index].[class_of].[owner].[name] AS [referenced_table_schema], "
-      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name], "
+      "[ref_class].[owner].[name] AS [referenced_table_schema], "
+      "[ref_class].[class_name] AS [referenced_table_name], "
       "[ref_key].[key_attr_name] AS [referenced_column_name] "
     "FROM "
       /* CT_INDEXKEY_NAME */
       "[%s] AS [idx_key] "
       /* CT_INDEX_NAME */
       "INNER JOIN [%s] AS [idx] ON [idx] = [idx_key].[index_of] "
+      /* CT_CLASS_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [idx].[referential_class] "
+      /* CT_INDEX_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_idx] "
+        "ON [ref_idx].[class_of] = [ref_class] AND [ref_idx].[is_primary_key] = 1 "
       /* CT_INDEXKEY_NAME */
-      "LEFT OUTER JOIN [%s] AS [ref_key] ON [ref_key].[index_of] = [idx].[referential_index] AND [ref_key].[key_order] = [idx_key].[key_order] "
+      "LEFT OUTER JOIN [%s] AS [ref_key] "
+        "ON [ref_key].[index_of] = [ref_idx] AND [ref_key].[key_order] = [idx_key].[key_order] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
-      "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ") "
+      AUTH_CHECK_OBJECT("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
+    CT_CLASS_NAME,
+    CT_INDEX_NAME,
     CT_INDEXKEY_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_parameters_spec (void)
+std::string
+sm_define_view_parameters_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp_args].[sp_of].[owner].[name] AS [specific_schema], "
@@ -468,16 +476,18 @@ const char *sm_define_view_parameters_spec (void)
     CT_STORED_PROC_ARGS_NAME,
     CT_DATATYPE_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_partitions_spec (void)
+std::string
+sm_define_view_partitions_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[super].[owner].[name] AS [table_schema], "
@@ -509,7 +519,7 @@ const char *sm_define_view_partitions_spec (void)
       "TABLE ([part_cls].[super_classes]) AS [t] ([super]), "
       "TABLE ([super].[partition]) AS [t2] ([part_info]) "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[super].[owner].[name]", "[super].[class_of]"),
+      AUTH_CHECK_OBJECT("[super].[owner].[name]", "[super].[class_of]", "SELECT"),
     DB_PARTITION_HASH,
     DB_PARTITION_RANGE,
     DB_PARTITION_LIST,
@@ -518,23 +528,25 @@ const char *sm_define_view_partitions_spec (void)
     CT_PARTITION_NAME,
     CT_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_referential_constraints_spec (void)
+std::string
+sm_define_view_referential_constraints_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [unique_constraint_catalog], " /* string -> varchar(255) */
-      "[idx].[referential_index].[class_of].[owner].[name] AS [unique_constraint_schema], "
-      "[idx].[referential_index].[index_name] AS [unique_constraint_name], "
+      "[ref_class].[owner].[name] AS [unique_constraint_schema], "
+      "[ref_pk].[index_name] AS [unique_constraint_name], "
       /* SM_FK_MATCH_NONE, SM_FK_MATCH_PARTIAL, SM_FK_MATCH_FULL */
       "DECODE ([idx].[referential_match_option], %d, 'NONE', %d, 'PARTIAL', %d, 'FULL') AS [match_option], "
       /* SM_FOREIGN_KEY_RESTRICT, SM_FOREIGN_KEY_NO_ACTION, SM_FOREIGN_KEY_SET_NULL */
@@ -542,12 +554,17 @@ const char *sm_define_view_referential_constraints_spec (void)
       /* SM_FOREIGN_KEY_CASCADE, SM_FOREIGN_KEY_RESTRICT, SM_FOREIGN_KEY_NO_ACTION, SM_FOREIGN_KEY_SET_NULL */
       "DECODE ([idx].[delete_rule], %d, 'CASCADE', %d, 'RESTRICT', %d, 'NO ACTION', %d, 'SET NULL') AS [delete_rule], "
       "[idx].[class_of].[class_name] AS [table_name], "
-      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name] "
+      "[ref_class].[class_name] AS [referenced_table_name] "
     "FROM "
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
+      /* CT_CLASS_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [idx].[referential_class] "
+      /* CT_INDEX_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_pk] "
+        "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
     "WHERE "
-      AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
       "AND [idx].[is_foreign_key] = 1",
     SM_FK_MATCH_NONE,
     SM_FK_MATCH_PARTIAL,
@@ -559,18 +576,22 @@ const char *sm_define_view_referential_constraints_spec (void)
     SM_FOREIGN_KEY_RESTRICT,
     SM_FOREIGN_KEY_NO_ACTION,
     SM_FOREIGN_KEY_SET_NULL,
+    CT_INDEX_NAME,
+    CT_CLASS_NAME,
     CT_INDEX_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_routine_privileges_spec (void)
+std::string
+sm_define_view_routine_privileges_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "[auth].[grantor].[name] AS [grantor], "
       "[auth].[grantee].[name] AS [grantee], "
@@ -588,7 +609,7 @@ const char *sm_define_view_routine_privileges_spec (void)
       /* CT_STORED_PROC_NAME */
       "INNER JOIN [%s] AS [sp] ON [sp] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
       /* DB_OBJECT_PROCEDURE */
       "AND [auth].[object_type] = %d "
     /* a grant on a package shows as a row for each of its routines */
@@ -610,7 +631,7 @@ const char *sm_define_view_routine_privileges_spec (void)
       /* CT_STORED_PROC_NAME */
       "INNER JOIN [%s] AS [sp] ON [sp].[pkg_of] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
       /* DB_OBJECT_PACKAGE */
       "AND [auth].[object_type] = %d "
       "AND [sp].[is_system_generated] = 0",
@@ -621,16 +642,18 @@ const char *sm_define_view_routine_privileges_spec (void)
     CT_STORED_PROC_NAME,
     DB_OBJECT_PACKAGE);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_routines_spec (void)
+std::string
+sm_define_view_routines_spec (void)
 {
-  static char stmt [8192];
+  char stmt [8192];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
@@ -670,6 +693,8 @@ const char *sm_define_view_routines_spec (void)
       "'SQL' AS [parameter_style], "
       /* SP_DIRECTIVE_DETERMINISTIC */
       "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_deterministic], "
+      /* SP_DIRECTIVE_PARALLEL_ENABLE */
+      "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_parallel_enabled], "
       "CASE [sp].[sql_data_access] "
         "WHEN %d THEN 'NO SQL' "
         "WHEN %d THEN 'CONTAINS SQL' "
@@ -707,6 +732,7 @@ const char *sm_define_view_routines_spec (void)
     SP_LANG_JAVA,
     SP_LANG_PLCSQL, SP_LANG_JAVA,
     SP_DIRECTIVE_DETERMINISTIC,
+    SP_DIRECTIVE_PARALLEL_ENABLE,
     SP_SQL_TYPE_NO_SQL,
     SP_SQL_TYPE_CONTAINS_SQL,
     SP_SQL_TYPE_READS_SQL_DATA,
@@ -717,16 +743,18 @@ const char *sm_define_view_routines_spec (void)
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_schemata_spec (void)
+std::string
+sm_define_view_schemata_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [catalog_name], " /* string -> varchar(255) */
       "[usr].[name] AS [schema_name], "
@@ -746,21 +774,23 @@ const char *sm_define_view_schemata_spec (void)
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_SCHEMA("[usr].[name]", "[usr]"),
+      "AND " AUTH_CHECK_SCHEMA("[usr].[name]"),
     AU_USER_CLASS_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_sequences_spec (void)
+std::string
+sm_define_view_sequences_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [sequence_catalog], " /* string -> varchar(255) */
       "[serial].[owner].[name] AS [sequence_schema], "
@@ -784,22 +814,23 @@ const char *sm_define_view_sequences_spec (void)
       /* CT_SERIAL_NAME */
       "[%s] AS [serial] "
     "WHERE "
-      "[serial].[class_name] IS NULL "
-      "AND " AUTH_CHECK_OBJECT_ANY("[serial].[owner].[name]", "[serial]"),
+      "[serial].[class_name] IS NULL",
     DB_MAX_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_statistics_spec (void)
+std::string
+sm_define_view_statistics_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
@@ -828,7 +859,6 @@ const char *sm_define_view_statistics_spec (void)
       "IF ([idx].[status] = 1, 'YES', 'NO') AS [is_visible], "
       "[idx_key].[func] AS [expression], "
       "[idx].[filter_expression] AS [filter_condition], "
-      "[idx].[options] & %d AS [deduplicate_level], "
       "[idx].[created_time] AS [create_time], "
       "[idx].[updated_time] AS [update_time], "
       "NULL AS [access_time] "
@@ -842,24 +872,24 @@ const char *sm_define_view_statistics_spec (void)
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]") " "
-      "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ")",
-    OPTION_DEDUPLICATE_MASK,
+      AUTH_CHECK_OBJECT("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_synonyms_spec (void)
+std::string
+sm_define_view_synonyms_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [synonym_catalog], " /* string -> varchar(255) */
       "[syn].[owner].[name] AS [synonym_schema], "
@@ -878,16 +908,18 @@ const char *sm_define_view_synonyms_spec (void)
       AUTH_CHECK_SYNONYM("[syn].[is_public]", "[syn].[owner].[name]"),
     CT_SYNONYM_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_table_constraints_spec (void)
+std::string
+sm_define_view_table_constraints_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
@@ -908,20 +940,22 @@ const char *sm_define_view_table_constraints_spec (void)
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
     "WHERE "
-      AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_table_privileges_spec (void)
+std::string
+sm_define_view_table_privileges_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "[auth].[grantor].[name] AS [grantor], "
       "[auth].[grantee].[name] AS [grantee], "
@@ -936,23 +970,25 @@ const char *sm_define_view_table_privileges_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_PRIVILEGE("[cls].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
       /* DB_OBJECT_CLASS */
       "AND [auth].[object_type] = %d",
     CT_CLASSAUTH_NAME,
     CT_CLASS_NAME,
     DB_OBJECT_CLASS);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_tables_spec (void)
+std::string
+sm_define_view_tables_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
@@ -1000,7 +1036,7 @@ const char *sm_define_view_tables_spec (void)
       "LEFT OUTER JOIN [%s] AS [serial] "
         "ON [serial].[class_name] = [cls].[class_name] AND [serial].[owner] = [cls].[owner] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
@@ -1013,16 +1049,18 @@ const char *sm_define_view_tables_spec (void)
     CT_COLLATION_NAME,
     CT_SERIAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_triggers_spec (void)
+std::string
+sm_define_view_triggers_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [trigger_catalog], " /* string -> varchar(255) */
       "[tr].[owner].[name] AS [trigger_schema], "
@@ -1063,7 +1101,7 @@ const char *sm_define_view_triggers_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
-      AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]") " "
+      AUTH_CHECK_OBJECT("[tr].[owner].[name]", "[cls].[class_of]", "SELECT") " "
       /* DML row/statement triggers per spec */
       "AND [tr].[event] BETWEEN %d AND %d",
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
@@ -1076,16 +1114,18 @@ const char *sm_define_view_triggers_spec (void)
     CT_CLASS_NAME,
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_INSERT);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_views_spec (void)
+std::string
+sm_define_view_views_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[q].[class_of].[owner].[name] AS [table_schema], "
@@ -1107,11 +1147,12 @@ const char *sm_define_view_views_spec (void)
       /* CT_QUERYSPEC_NAME */
       "[%s] AS [q] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]"),
+      AUTH_CHECK_OBJECT("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]", "SELECT"),
     SM_CLASSFLAG_WITHCHECKOPTION,
     SM_CLASSFLAG_LOCALCHECKOPTION,
     CT_QUERYSPEC_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }

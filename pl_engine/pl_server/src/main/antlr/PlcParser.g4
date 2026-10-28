@@ -61,11 +61,11 @@ create_routine
 
 routine_decl
     : PROCEDURE uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN )
-      (authid_spec? deterministic_spec? | deterministic_spec authid_spec)
+      (authid_spec | deterministic_spec | parallel_enable_spec)*
       ((IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body)?
       (COMMENT CHAR_STRING)? (SEMICOLON)?
     | FUNCTION uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) RETURN type_spec
-      (authid_spec? deterministic_spec? | deterministic_spec authid_spec)
+      (authid_spec | deterministic_spec | parallel_enable_spec)*
       ((IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body)?
       (COMMENT CHAR_STRING)? (SEMICOLON)?
     ;
@@ -100,6 +100,10 @@ authid_caller
 deterministic_spec
     : NOT DETERMINISTIC
     | DETERMINISTIC
+    ;
+
+parallel_enable_spec
+    : PARALLEL_ENABLE
     ;
 
 default_value_part

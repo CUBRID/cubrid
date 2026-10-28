@@ -26,6 +26,7 @@
 
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
+#include "query_executor.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
@@ -95,7 +96,7 @@ namespace cubxasl
       REGU_VARIABLE_LIST spawn (const REGU_VARIABLE_LIST src);
 
       SP_TYPE *spawn (const SP_TYPE *src);
-      PL_SIGNATURE_TYPE *spawn (const PL_SIGNATURE_TYPE *src);	/* TODO: unsupported */
+      PL_SIGNATURE_TYPE *spawn (const PL_SIGNATURE_TYPE *src);
 
       /* (XASL_NODE *)->val_list */
       VAL_LIST *spawn (const VAL_LIST *src);
@@ -269,6 +270,37 @@ namespace cubxasl
 	for (int i = 0; i < count; i++)
 	  {
 	    pr_clear_value (&typed_ptr[i]);
+	  }
+      }
+    else if constexpr (std::is_same_v<T, regu_variable_list_node>)
+      {
+	/* a regu variable list holds its regu variables inline,
+	 * so the REGU_VARIABLE case does not clear a constant cloned into it */
+	for (int i = 0; i < count; i++)
+	  {
+	    if (typed_ptr[i].value.type == TYPE_DBVAL)
+	      {
+		pr_clear_value (&typed_ptr[i].value.value.dbval);
+	      }
+	  }
+      }
+    else if constexpr (std::is_same_v<T, FUNCTION_TYPE>)
+      {
+	/* a worker's copy compiles its own REGEXP_* pattern into tmp_obj,
+	 * and qexec_clear_regu_var () frees only the original's */
+	for (int i = 0; i < count; i++)
+	  {
+	    qexec_clear_function_tmp_obj (&typed_ptr[i]);
+	  }
+      }
+    else if constexpr (std::is_same_v<T, PRED_EXPR>)
+      {
+	for (int i = 0; i < count; i++)
+	  {
+	    if (typed_ptr[i].type == T_EVAL_TERM && typed_ptr[i].pe.m_eval_term.et_type == T_RLIKE_EVAL_TERM)
+	      {
+		delete typed_ptr[i].pe.m_eval_term.et.et_rlike.compiled_regex;
+	      }
 	  }
       }
     else

@@ -288,9 +288,13 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  int continue_walk;
 	  int idx = 0;
 
-	  /* rewrite uncorrelated subquery to join query (TODO : correlated) */
-	  qo_rewrite_subqueries (parser, node, &idx, &continue_walk);
+	  /* the SEMI/ANTI JOIN form goes first: it lifts the subquery's own table into the FROM and leaves
+	   * the optimizer to decide whether to materialize it, where the derived table below decides that
+	   * here and always materializes.  What it declines still reaches qo_rewrite_subqueries (). */
+	  qo_rewrite_exists_semi_anti (parser, node);
 
+	  /* rewrite uncorrelated subquery to join query */
+	  qo_rewrite_subqueries (parser, node, &idx, &continue_walk);
 	}
 
       /* rewrite optimization on WHERE, HAVING clause */
@@ -645,7 +649,8 @@ qo_rewrite_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int
 	      if (spec != NULL)
 		{
 		  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-		      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_INNER)
+		      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_INNER
+		      || spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
 		    {
 		      node->next = spec->info.spec.on_cond;
 		      spec->info.spec.on_cond = node;

@@ -114,6 +114,7 @@ extern int expecting_pkg_plcsql_text;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
+static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, container_3 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -315,6 +316,13 @@ typedef enum
   CONN_INFO_OWNER,
 } CONN_INFO_DEFINE;
 
+typedef enum
+{
+  SP_OPTION_AUTHID = 0,
+  SP_OPTION_DETERMINISTIC,
+  SP_OPTION_PARALLEL_ENABLE,
+} SP_OPTION_DEFINE;
+
 FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
@@ -438,7 +446,7 @@ static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
 static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *str, const char *txt, DB_CURRENCY type);
+                   const char *str, const char *txt, PT_CURRENCY type);
 static PT_NODE * pt_create_paren_expr_list (PT_NODE * exp);
 static PT_MISC_TYPE parser_attr_type;
 
@@ -449,15 +457,6 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 					   PT_NODE *node, PT_NODE *coll_node);
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
-
-#define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
-   if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
-   {                                     \
-      PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
-                                     "Names starting with \"%s\" are reserved by CUBRID.", \
-                                     (nm)->info.name.original, DEDUPLICATE_KEY_ATTR_NAME_PREFIX);  \
-   } \
-} while(0)
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -538,7 +537,7 @@ static int g_plcsql_text_pos;
 #if defined(__GNUC__) || defined(__clang__)
   #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
     _Pragma("GCC diagnostic push")                      \
-    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 
   #define END_SUPPRESS_WARNING_BISON_FLEX               \
     _Pragma("GCC diagnostic pop")
@@ -600,6 +599,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> stats_option_list
 %type <number> stats_option
 %type <number> online_parallel
+%type <number> opt_compact_fill_factor
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -651,17 +651,20 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
 %type <number> show_type_id
+%type <number> show_heap_type_id
 %type <number> show_type_id_dot_id
+%type <number> opt_show_scan_mode
 %type <number> kill_type
 %type <number> procedure_or_function
 %type <boolean> opt_analytic_from_last
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
-%type <number> deduplicate_key_mod_level
-%type <number> opt_index_with_clause_no_online
 %type <number> opt_authid
 %type <number> opt_deterministic
+%type <c3> opt_sp_option_list
+%type <c3> sp_option_list
+%type <c2> sp_option_item
 /*}}}*/
 
 /* define rule type (node) */
@@ -1100,9 +1103,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
-%type <c2> opt_index_with_clause
-%type <c2> index_with_item_list
-%type <c2> opt_authid_and_deterministic
+%type <number> opt_index_with_clause
+%type <number> index_with_item_list
 
 /*}}}*/
 
@@ -1523,6 +1525,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ADDDATE
 %token <cptr> AES
 %token <cptr> ANALYZE
+%token <cptr> ANTI
+%token <cptr> APPROX
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
 %token <cptr> AUTHID
@@ -1544,6 +1548,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
+%token <cptr> COMPACT
 %token <cptr> COMPILE
 %token <cptr> COST
 %token <cptr> CRITICAL
@@ -1562,7 +1567,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> EMPTY
 %token <cptr> ENCRYPT
 %token <cptr> ERROR_
+%token <cptr> EXACT
 %token <cptr> EXPLAIN
+%token <cptr> FILL_FACTOR
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
 %token <cptr> FULLSCAN
@@ -1656,6 +1663,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARALLEL
+%token <cptr> PARALLEL_ENABLE
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
@@ -1696,6 +1704,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
 %token <cptr> SEED_
+%token <cptr> SEMI
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -2819,15 +2828,9 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            node->info.index.deduplicate_level =  TO_NUMBER(CONTAINER_AT_1($13));
-                             if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
-                              {
-                                  PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
-                              }
-
 			    node->info.index.comment = $15;
 
-                            int with_online_ret = TO_NUMBER(CONTAINER_AT_0($13));  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = $13;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
                             bool is_invisible = $14;
@@ -3011,16 +3014,11 @@ create_stmt
 		}
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
-          opt_authid_and_deterministic                  /* 7 */
+          opt_sp_option_list                            /* 7 */
 	  is_or_as pl_language_spec		        /* 8, 9 */
 	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{
-			if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
-                          {
-                            push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
-                          }
-
                         PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
@@ -3052,11 +3050,25 @@ create_stmt
                               {
                                 node->info.sp.auth_id = PT_AUTHID_OWNER;
                               }
+                            if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
+                              {
+                                /* DETERMINISTIC | NOT DETERMINISTIC is allowed only for functions */
+                                PT_ERROR (this_parser, node, "DETERMINISTIC can be specified only for FUNCTION");
+                              }
+                            if (((int) TO_NUMBER (CONTAINER_AT_2 ($7)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) != 0)
+                              {
+                                /* PARALLEL_ENABLE is allowed only for functions: a procedure never appears in a
+                                 * query expression, so the declaration could not take effect anywhere */
+                                PT_ERROR (this_parser, node, "PARALLEL_ENABLE can be specified only for FUNCTION");
+                              }
+                            node->info.sp.parallel_enable = 0;
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
 			    node->info.sp.body = $9;
 			    node->info.sp.comment = $10;
+
+			    pt_set_sp_owner_to_table_column_types (node);
 			  }
 
 			$$ = node;
@@ -3074,7 +3086,7 @@ create_stmt
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
-          opt_authid_and_deterministic                  /* 9 */
+          opt_sp_option_list                            /* 9 */
 	  is_or_as pl_language_spec		        /* 10, 11 */
 	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
@@ -3116,6 +3128,8 @@ create_stmt
                               {
                                 node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
                               }
+                            node->info.sp.parallel_enable =
+                              ((int) TO_NUMBER (CONTAINER_AT_2 ($9)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) ? 1 : 0;
 			    node->info.sp.param_list = $6;
 
                             ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
@@ -3145,6 +3159,8 @@ create_stmt
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
+
+			    pt_set_sp_owner_to_table_column_types (node);
 			  }
 
 			$$ = node;
@@ -3950,6 +3966,42 @@ alter_stmt
 
 		  $$ = node;
 		  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER						/* 1 */
+	  INDEX						/* 2 */
+	  identifier					/* 3 */
+	  ON_						/* 4 */
+	  only_class_name				/* 5 */
+	  COMPACT					/* 6 */
+	  opt_compact_fill_factor			/* 7 */
+		{{
+			/* CBRD-27401: ALTER INDEX idx ON tbl COMPACT [WITH FILL_FACTOR = n] */
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+
+			if (node)
+			  {
+			    node->info.index.code = PT_COMPACT_INDEX;
+			    node->info.index.index_name = $3;
+			    node->info.index.fill_factor = $7;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| ALTER						/* 1 */
 	  INDEX						/* 2 */
@@ -5176,6 +5228,35 @@ join_table_spec
 			  }
 			$$ = sopt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| SEMI JOIN table_spec join_condition
+		{{
+			/* SEMI/ANTI JOIN: explicit Trino-style keyword. ON rule (outer-ref conjunct) enforced in semantic check. */
+			PT_NODE *sopt = $3;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = false;
+			    sopt->info.spec.join_type = PT_JOIN_SEMI;
+			    sopt->info.spec.on_cond = $4;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			parser_restore_pseudoc ();
+		}}
+	| ANTI JOIN table_spec join_condition
+		{{
+			PT_NODE *sopt = $3;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = false;
+			    sopt->info.spec.join_type = PT_JOIN_ANTI;
+			    sopt->info.spec.on_cond = $4;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			parser_restore_pseudoc ();
 		}}
 	;
 
@@ -7526,6 +7607,26 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| SHOW show_heap_type_id OF class_name opt_show_scan_mode
+		{{
+			int type = $2;
+			PT_NODE *node, *args = $4;
+			PT_NODE *scan_mode = pt_make_integer_value (this_parser, $5);
+
+			if (scan_mode == NULL)
+			  {
+			    PT_INTERNAL_ERROR (this_parser, "allocate new node");
+			  }
+
+			/* pt_check_table_in_show_heap () inserts the partition type BEFORE the scan mode,
+			 * so the scan mode always stays last */
+			args->next = scan_mode;
+
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
@@ -7678,7 +7779,7 @@ show_type_arg_named
 		}}
 	;
 
-show_type_id
+show_heap_type_id
 	: HEAP HEADER
 		{{
 			$$ = SHOWSTMT_HEAP_HEADER;
@@ -7695,13 +7796,31 @@ show_type_id
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
-	| ALL INDEXES HEADER
+	;
+
+show_type_id
+	: ALL INDEXES HEADER
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_HEADER;
 		}}
 	| ALL INDEXES CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_CAPACITY;
+		}}
+	;
+
+opt_show_scan_mode
+	: /* empty */
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| EXACT
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| APPROX
+		{{
+			$$ = SHOWSTMT_SCAN_APPROX;
 		}}
 	;
 
@@ -9458,8 +9577,6 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-                            node->info.constraint.un.foreign_key.deduplicate_level = $7;
-
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
 			    node->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($11));	/* delete_action */
@@ -9942,7 +10059,6 @@ view_attr_def
 			    node->info.attr_def.attr_name = $1;
 			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
-                            CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			$$ = node;
@@ -10116,8 +10232,6 @@ attr_index_def
 			      }
 			  }
 
-                        node->info.index.deduplicate_level = $5;
-
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 			if ($6)
@@ -10149,7 +10263,6 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-                            CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			parser_save_attr_def_one (node);
@@ -10507,8 +10620,6 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-                            constraint->info.constraint.un.foreign_key.deduplicate_level = $3;
-
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    constraint->info.constraint.un.foreign_key.attrs = parser_copy_tree (this_parser, node->info.attr_def.attr_name);
 
@@ -10723,7 +10834,6 @@ attr_def_comment
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
 				attr_node->info.attr_def.attr_type = parser_attr_type;
-                                CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			$$ = attr_node;
@@ -11820,37 +11930,56 @@ opt_deterministic
                 }}
         ;
 
-opt_authid_and_deterministic
+opt_sp_option_list
         : /* empty */
 		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, NULL);
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, NULL, NULL, FROM_NUMBER (0));
 			$$ = ctn;
 		}}
-        | opt_authid opt_deterministic
+        | sp_option_list
 		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), FROM_NUMBER($2));
-			$$ = ctn;
+			$$ = $1;
 		}}
-        | opt_deterministic opt_authid
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($2), FROM_NUMBER($1));
-			$$ = ctn;
-		}}
-        | opt_authid
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), NULL);
-			$$ = ctn;
-		}}
+        ;
+
+sp_option_list
+        : sp_option_list sp_option_item
+          {{
+                container_3 ctn = $1;
+
+                pt_fill_sp_option_container (this_parser, @$.buffer_pos, &ctn, $2);
+		$$ = ctn;
+           }}
+        | sp_option_item
+          {{
+                container_3 ctn;
+                SET_CONTAINER_3 (ctn, NULL, NULL, FROM_NUMBER (0));
+
+                pt_fill_sp_option_container (this_parser, @$.buffer_pos, &ctn, $1);
+		$$ = ctn;
+           }}
+        ;
+
+sp_option_item
+        : opt_authid
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_AUTHID), FROM_NUMBER ($1));
+                $$ = ctn;
+          }}
         | opt_deterministic
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER($1));
-			$$ = ctn;
-		}}
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_DETERMINISTIC), FROM_NUMBER ($1));
+                $$ = ctn;
+          }}
+        | PARALLEL_ENABLE
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_PARALLEL_ENABLE), FROM_NUMBER (1));
+                $$ = ctn;
+          }}
         ;
 
 is_or_as
@@ -20030,51 +20159,62 @@ opt_encrypt_algorithm
 
 opt_index_with_clause_no_online
         : /* empty */
-          {
-            $$ = DEDUPLICATE_OPTION_AUTO; }
+          { }
         | WITH deduplicate_key_mod_level
-           {
-	     $$ = $2; }
+          { }
         ;
 
 opt_index_with_clause
         : /* empty */
           {
-            container_2 ctn;
-            SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
-            $$ = ctn; }
+            $$ = 0; }
         | WITH index_with_item_list
           {
              $$ = $2;
           }
         ;
 
-index_with_item_list  
+index_with_item_list
         : online_parallel
           {
-                container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER($1), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
-		$$ = ctn;
+		$$ = $1;
           }
         | online_parallel ',' deduplicate_key_mod_level
           {
-                container_2 ctn;
-		SET_CONTAINER_2(ctn, FROM_NUMBER($1), FROM_NUMBER($3));
-		$$ = ctn;
+		$$ = $1;
           }
         | deduplicate_key_mod_level
           {
-                container_2 ctn;
-		SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER($1));
-		$$ = ctn;
+		$$ = 0;
           }
         | deduplicate_key_mod_level ',' online_parallel
           {
-                container_2 ctn;
-		SET_CONTAINER_2(ctn, FROM_NUMBER($3), FROM_NUMBER($1));
-		$$ = ctn;
+		$$ = $3;
           }
-        ;        
+        ;
+
+opt_compact_fill_factor
+	: /* empty */
+	   {{
+		$$ = BTREE_COMPACT_DEFAULT_FILL_FACTOR;
+	   }}
+	| WITH FILL_FACTOR opt_equalsign unsigned_integer
+	   {{
+		/* unsigned_integer keeps a literal that does not fit an int in the bigint member of the value union,
+		 * so reading the int member would silently truncate it: FILL_FACTOR = 4294967386 would pass as 90.
+		 * Anything but an int literal is out of range by definition. */
+		int fill_factor =
+		  ($4->type_enum == PT_TYPE_INTEGER) ? (int) $4->info.value.data_value.i : BTREE_COMPACT_MAX_FILL_FACTOR + 1;
+		if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
+		  {
+		    pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
+				  MSGCAT_SYNTAX_INVALID_FILL_FACTOR_ARGUMENT, BTREE_COMPACT_MIN_FILL_FACTOR,
+				  BTREE_COMPACT_MAX_FILL_FACTOR);
+		    fill_factor = BTREE_COMPACT_DEFAULT_FILL_FACTOR;
+		  }
+		$$ = fill_factor;
+	   }}
+	;
 
 online_parallel
 	: ONLINE
@@ -20096,18 +20236,10 @@ online_parallel
 	   }}
 	;
 
+/* The DEDUPLICATE index feature was removed; the clause is accepted for backward compatibility and ignored. */
 deduplicate_key_mod_level
         : DEDUPLICATE_ '=' unsigned_integer
-               {
-                  int int_val = $3->info.value.data_value.i;
-                  if (int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
-                      {                          
-                        PT_ERRORmf2 (this_parser, $3, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
-                                     DEDUPLICATE_KEY_LEVEL_OFF, DEDUPLICATE_KEY_LEVEL_MAX);
-                      }
-
-                 $$ = int_val;
-               }
+          { }
         ;
 
 opt_comment_spec
@@ -20736,6 +20868,7 @@ identifier
 	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| APPROX                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20757,6 +20890,7 @@ identifier
 	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMPACT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20777,7 +20911,9 @@ identifier
 	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EXACT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FILL_FACTOR            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20868,6 +21004,7 @@ identifier
 	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARALLEL_ENABLE        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -22653,7 +22790,6 @@ dblink_column_definition
                         {
                                 node->info.attr_def.size_constraint = dt->info.data_type.precision;
                         }
-                        CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
                 }
 
                 $$ = node;
@@ -22744,6 +22880,9 @@ extern FILE *yyin;
 void
 _push_msg (int code, int line)
 {
+  /* line comes from the push_msg() macro and is only there to make the call site
+   * identifiable in a debugger. */
+  (void) line;
   g_msg[msg_ptr++] = code;
 }
 
@@ -24138,6 +24277,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_HASH_LIST_SCAN", PT_HINT_NO_HASH_LIST_SCAN),
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
+  INIT_PT_HINT("NO_UNNEST", PT_HINT_NO_UNNEST),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
   INIT_PT_HINT("NO_PARALLEL_SCAN", PT_HINT_NO_PARALLEL_SCAN),
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
@@ -25683,7 +25823,7 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 
 static void
 pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *currency_str, const char *value, DB_CURRENCY type)
+                   const char *currency_str, const char *value, PT_CURRENCY type)
 {
   double dval;
 
@@ -26032,6 +26172,50 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
     unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_9(*ctn));
     set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
     ctn->c10 = FROM_NUMBER(set_bits);
+}
+
+static void
+pt_fill_sp_option_container(PARSER_CONTEXT *parser,  int buffer_pos, container_3 *ctn, container_2 info)
+{
+  /* container order
+  * 1: AUTHID
+  * 2: DETERMINISTIC
+  * 3: bits
+  */
+   PT_NODE* node = pt_top(parser);
+   PARSER_SAVE_ERR_CONTEXT (node, buffer_pos)
+
+   unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_2(*ctn));
+
+   switch(TO_NUMBER (CONTAINER_AT_0(info)))
+     {
+        case SP_OPTION_AUTHID:
+                if (set_bits & (0x01 << SP_OPTION_AUTHID))
+                {
+                    PT_ERROR (parser, node, "AUTHID option was duplicated.");
+                }
+                ctn->c1 = CONTAINER_AT_1(info);
+                break;
+        case SP_OPTION_DETERMINISTIC:
+                if (set_bits & (0x01 << SP_OPTION_DETERMINISTIC))
+                {
+                    PT_ERROR (parser, node, "DETERMINISTIC option was duplicated.");
+                }
+                ctn->c2 = CONTAINER_AT_1(info);
+                break;
+        case SP_OPTION_PARALLEL_ENABLE:
+                if (set_bits & (0x01 << SP_OPTION_PARALLEL_ENABLE))
+                {
+                    PT_ERROR (parser, node, "PARALLEL_ENABLE option was duplicated.");
+                }
+                break;
+        default:
+                assert(0);
+                break;
+    }
+
+    set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
+    ctn->c3 = FROM_NUMBER(set_bits);
 }
 
 static bool

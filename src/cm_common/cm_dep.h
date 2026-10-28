@@ -259,15 +259,15 @@ extern "C"
   int uRetrieveDBLogDirectory (char *dbname, char *target);
   int uReadDBtxtFile (const char *dn, int idx, char *outbuf);
   int get_db_server_pid (char *dbname);
-  int run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
-		 int *exit_status);
+  int run_child (const char *const argv[], int wait_flag, const char *stdin_file, const char *stdout_file,
+		 const char *stderr_file, int *exit_status);
   int cm_util_log_write_result (int error);
   int cm_util_log_write_errid (int message_id, ...);
   int cm_util_log_write_errstr (const char *format, ...);
   int cm_util_log_write_command (int argc, char *argv[]);
 
   int make_temp_filename (char *tempfile, const char *prefix, int size);
-  int make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size);
+  int make_temp_filepath (char *tempfile, const char *tempdir, const char *prefix, int task_code, int size);
 
 #ifdef __cplusplus
 }

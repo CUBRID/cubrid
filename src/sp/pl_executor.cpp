@@ -42,7 +42,7 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
+  invoke_java::invoke_java (int tid, const pl_signature *sig, bool tc, bool no_sql)
     : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
@@ -56,7 +56,7 @@ namespace cubpl
 	compile_id.assign (sig->ext.sp.compile_id);
       }
 
-    pl_arg &arg = sig->arg;
+    const pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
     arg_mode.resize (num_args);
     arg_type.resize (num_args);
@@ -68,6 +68,7 @@ namespace cubpl
       }
 
     transaction_control = (lang == PL_TYPE_PLCSQL) ? true : tc;
+    no_server_side_sql = no_sql;
   }
 
   void
@@ -88,6 +89,7 @@ namespace cubpl
 
     serializator.pack_int (result_type);
     serializator.pack_bool (transaction_control);
+    serializator.pack_bool (no_server_side_sql);
   }
 
   void
@@ -115,12 +117,13 @@ namespace cubpl
 
     size += serializator.get_packed_int_size (size); // return_type
     size += serializator.get_packed_bool_size (size); // transaction_control
+    size += serializator.get_packed_bool_size (size); // no_server_side_sql
     return size;
   }
 
 
 //////////////////////////////////////////////////
-  executor::executor (pl_signature &sig)
+  executor::executor (const pl_signature &sig)
     : m_sig (sig)
     , m_exec_rights_depth (0)
   {
@@ -128,6 +131,10 @@ namespace cubpl
     if (sess)
       {
 	m_stack = sess->create_and_push_stack (nullptr);
+	if (m_stack != nullptr)
+	  {
+	    m_stack->set_parallel_enabled_sp (sig.is_parallel_enabled);
+	  }
       }
   }
 
@@ -145,7 +152,7 @@ namespace cubpl
 
   int
   executor::fetch_args_peek (regu_variable_list_node *val_list_p, VAL_DESCR *val_desc_p, OID *obj_oid_p,
-			     QFILE_TUPLE tuple)
+			     QFILE_TUPLE_RECORD *tplrec)
   {
     int error = NO_ERROR;
     int index = 0;
@@ -176,7 +183,7 @@ namespace cubpl
 	operand = val_list_p;
 	while (operand != NULL)
 	  {
-	    error = fetch_peek_dbval (m_thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+	    error = fetch_peek_dbval (m_thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &value);
 	    if (error != NO_ERROR)
 	      {
 		m_args.clear ();
@@ -301,14 +308,17 @@ namespace cubpl
 	return er_errid ();
       }
 
-    // execution rights
-    assert (m_sig.auth != NULL);
-    error = change_exec_rights (m_sig.auth);
-    if (error != NO_ERROR)
+    /* Functions declared PARALLEL_ENABLE cannot execute SQL through CAS, so they need no CAS user push/pop. */
+    if (!m_stack->is_server_side_sql_forbidden ())
       {
-	goto exit;
+        assert (m_sig.auth != NULL);
+	error = change_exec_rights (m_sig.auth);
+	if (error != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+        rights_pushed = true;
       }
-    rights_pushed = true;
 
     error = request_invoke_command ();
     if (error != NO_ERROR)
@@ -325,7 +335,11 @@ namespace cubpl
 exit:
     if (m_stack != NULL)
       {
-	m_stack->reset_query_handlers ();
+	int cleanup_error = m_stack->reset_query_handlers ();
+	if (error == NO_ERROR)
+	  {
+	    error = cleanup_error;
+	  }
       }
 
     // undo the switches for direct calls that the PL server pushed but did not get to pop,
@@ -422,8 +436,12 @@ exit:
     // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg (tid, &m_sig,
-			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    /* A PARALLEL_ENABLE SP cannot reach CAS, and transaction control is a CAS round trip; saying
+     * so up front makes Java reject it with a clearer message than a refused callback would. */
+    const bool transaction_control = m_sig.is_parallel_enabled
+				     ? false
+				     : ((m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    invoke_java invoke_arg (tid, &m_sig, transaction_control, m_stack->is_server_side_sql_forbidden ());
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
     return error;
@@ -685,12 +703,12 @@ exit:
     cubmem::block blk;
     if (parameter_info)
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info));
+	blk = pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
-					  ARG_FILE_LINE));
+	blk = pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
+			       ARG_FILE_LINE);
       }
 
     if (blk.is_valid ())
@@ -812,8 +830,8 @@ exit:
     query_cursor *cursor = m_stack->get_cursor (qid);
     if (cursor == nullptr)
       {
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
-				     std::string ("cursor closed"), ARG_FILE_LINE));
+	cubmem::block b = pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+					   std::string ("cursor closed"), ARG_FILE_LINE);
 	error = m_stack->send_data_to_java (b);
 	return error;
       }
@@ -868,12 +886,12 @@ exit:
     cubmem::block blk;
     if (s_code != S_ERROR)
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, info));
+	blk = pack_data_block (METHOD_RESPONSE_SUCCESS, info);
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
-					  std::string ("cursor closed"), ARG_FILE_LINE));
+	blk = pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+			       std::string ("cursor closed"), ARG_FILE_LINE);
       }
 
     error = m_stack->send_data_to_java (blk);
@@ -1060,7 +1078,7 @@ exit:
     db_make_null (&res);
     unpacker.unpack_all (attr_name);
 
-    OID *code_oid = &m_sig.ext.sp.code_oid;
+    const OID *code_oid = &m_sig.ext.sp.code_oid;
     if (OID_ISNULL (code_oid))
       {
 	error = ER_FAILED;
@@ -1077,11 +1095,11 @@ exit:
 	dbvalue_java java_packer;
 	java_packer.value = &res;
 
-	blk = std::move (pack_data_block (error, java_packer));
+	blk = pack_data_block (error, java_packer);
       }
     else
       {
-	blk = std::move (pack_data_block (error));
+	blk = pack_data_block (error);
       }
 
     db_value_clear (&res);
@@ -1212,7 +1230,7 @@ exit:
 	  }
       }
 
-    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS));
+    cubmem::block blk = pack_data_block (METHOD_RESPONSE_SUCCESS);
     if (blk.is_valid ())
       {
 	m_stack->send_data_to_java (blk);
