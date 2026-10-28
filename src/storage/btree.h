@@ -457,8 +457,8 @@ struct btree_capacity
   int nleaf_pg_cnt;		/* NonLeaf page count */
   int tot_pg_cnt;		/* Total page count */
   int height;			/* Height of the tree */
-  float sum_rec_len;		/* Sum of all record lengths */
-  float sum_key_len;		/* Sum of all distinct key lengths */
+  int64_t sum_rec_len;		/* Sum of all record lengths; integral, so summed exactly */
+  int64_t sum_key_len;		/* Sum of all distinct key lengths; integral, so summed exactly */
   int avg_key_len;		/* Average key length */
   int avg_rec_len;		/* Average page record length */
   float tot_free_space;		/* Total free space in index */
