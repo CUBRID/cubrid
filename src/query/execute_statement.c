@@ -17651,6 +17651,8 @@ cleanup:
 /* used to generate unique savepoint names */
 static int merge_savepoint_number = 0;
 
+static int merge_at_server (PARSER_CONTEXT * parser, PT_NODE * statement, bool * parser_error_reported);
+
 /*
  * do_check_merge_trigger() -
  *   return: Error code
@@ -17825,6 +17827,105 @@ exit:
 }
 
 /*
+ * merge_at_server () - Build the plan of a MERGE into a remote table and run it once, without the XASL cache.
+ *   return: the number of affected rows, or an error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a MERGE statement into a remote table
+ *   parser_error_reported(out): true when the error is a parser error this function reported
+ *
+ * Note: a MERGE into a remote table always runs at the server. Its plan sends the statement to the remote,
+ *   or sends it there one source row at a time. It has no local class for the client side MERGE to work on.
+ *   do_prepare_merge () caches the plan. This runs it when the plan is not cached: the XASL cache is off, or
+ *   the statement cannot be prepared, as with a long string literal. update_at_server () does the same for
+ *   an UPDATE.
+ */
+static int
+merge_at_server (PARSER_CONTEXT * parser, PT_NODE * statement, bool * parser_error_reported)
+{
+  int error = NO_ERROR;
+  INT64 count = 0;
+  int au_save;
+  XASL_NODE *xasl;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL;
+  QUERY_ID query_id_self = parser->query_id;
+  QFILE_LIST_ID *list_id = NULL;
+  QUERY_FLAG query_flag = DEFAULT_EXEC_MODE;
+  XASL_STREAM stream;
+
+  assert (parser->query_id == NULL_QUERY_ID);
+
+  *parser_error_reported = false;
+  init_xasl_stream (&stream);
+
+  /* mark the beginning of another level of xasl packing */
+  pt_enter_packing_buf ();
+
+  xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, NULL);
+  if (xasl != NULL)
+    {
+      error = xts_map_xasl_to_stream (xasl, &stream);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	}
+    }
+  else
+    {
+      /* a remote MERGE can fail here with only a parser error, as when the sink plan finds no source query */
+      error = er_errid ();
+      if (error == NO_ERROR && pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  error = er_errid ();
+	  *parser_error_reported = true;
+	}
+      ASSERT_ERROR_AND_SET (error);
+    }
+
+  if (error == NO_ERROR)
+    {
+      if (parser->flag.is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
+      AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+      error =
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
+				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
+				   &list_id, query_flag);
+      AU_RESTORE (au_save);
+    }
+
+  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
+  if (stream.buffer)
+    {
+      free_and_init (stream.buffer);
+    }
+
+  if (list_id)
+    {
+      count = list_id->tuple_cnt;
+      cursor_free_self_list_id (list_id);
+    }
+  pt_end_query (parser, query_id_self);
+
+  /* mark the end of another level of xasl packing */
+  pt_exit_packing_buf ();
+
+  if (non_nulls_upd)
+    {
+      parser_free_tree (parser, non_nulls_upd);
+    }
+  if (non_nulls_ins)
+    {
+      parser_free_tree (parser, non_nulls_ins);
+    }
+
+  return (error < NO_ERROR) ? error : count;
+}
+
+/*
  * do_merge () - MERGE statement
  *   return:
  *   parser(in):
@@ -17857,6 +17958,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int au_save = 0;
   int outer_au_save = 0;
   bool insert_only = false;
+  bool parser_error_reported = false;
   PT_NODE *copy_assigns, *save_assigns;
 
   CHECK_MODIFICATION_ERROR ();
@@ -17887,6 +17989,19 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   spec = statement->info.merge.into;
+  if (spec->info.spec.remote_server_name)
+    {
+      /* There is no local class to merge into. The remote MERGE runs at the server, as with a cached plan. A
+       * parser error it reports is in the parser already. Recording it below would show it twice. */
+      result = merge_at_server (parser, statement, &parser_error_reported);
+      if (result < NO_ERROR)
+	{
+	  err = result;
+	  result = 0;
+	}
+      goto exit;
+    }
+
   flat = spec->info.spec.flat_entity_list;
   if (flat == NULL)
     {
@@ -18229,7 +18344,7 @@ exit:
       parser_free_tree (parser, ins_select_stmt);
     }
 
-  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
+  if ((err < NO_ERROR) && er_errid () != NO_ERROR && !parser_error_reported)
     {
       pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number, er_msg (),
 		       NULL);
