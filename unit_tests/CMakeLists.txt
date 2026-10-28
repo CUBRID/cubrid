@@ -45,6 +45,10 @@ option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output
 message("  unit_tests/...")
 
 # Catch2
+if(NOT "${CUBRID_3RDPARTY_ROOT}" STREQUAL "")
+  set(CATCH2_TARGET CubridThirdParty::catch2)
+  include_directories(${CATCH2_INCLUDES})
+else()
 include(ExternalProject)
 set(CATCH2_TARGET catch2)
 externalproject_add(${CATCH2_TARGET}
@@ -58,6 +62,7 @@ externalproject_add(${CATCH2_TARGET}
 )
 set (CATCH2_DIR ${CMAKE_BINARY_DIR}/unit_tests/catch2-prefix/src/catch2)
 include_directories(${CATCH2_DIR}/single_include)
+endif()
 list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
 
 message("   common")
