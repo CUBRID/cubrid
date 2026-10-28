@@ -1497,7 +1497,11 @@ $ LOADDB
 
 1386 HA repl info: 시리얼 "%1$s"의 복제된 _db_serial 이미지를 이 노드에 적용하지 않고 (%2$s) 이 노드의 행을 유지합니다: current_val %3$s, 이미지 %4$s, 블록 끝 %5$s.
 
-1387 마지막 에러
+1387 sub-client %2$d개가 살아 있는 동안에는 %1$s을(를) 실행할 수 없습니다.
+1388 main client가 연결되어 있지 않거나 재시작 중이므로 sub-client를 시작할 수 없습니다.
+1389 %1$s은(는) main client 스레드에서 호출할 수 없습니다.
+
+1390 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
