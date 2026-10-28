@@ -926,7 +926,9 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valpt
 
       if (dbval_p != NULL)
 	{
-	  if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	  /* a host variable's value is the bound value itself (fetch_peek_dbval): it stays for the next evaluation */
+	  if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE)
+	      && reg_var_p->value.type != TYPE_POS_VALUE)
 	    {
 	      /* this may be shared with another regu variable that was already evaluated */
 	      pr_clear_value (dbval_p);
