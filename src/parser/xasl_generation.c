@@ -3919,15 +3919,8 @@ pt_gby_reads_row (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *conti
 
   if (pt_is_aggregate_function (parser, tree))
     {
-      /* groupby_num () numbers the groups as they come out; the others read their accumulators only */
-      if (tree->info.function.function_type == PT_GROUPBY_NUM)
-	{
-	  info->reads_row = true;
-	}
-      else
-	{
-	  *continue_walk = PT_LIST_WALK;
-	}
+      /* an aggregate reads its accumulator; groupby_num () numbers the groups as they come out */
+      *continue_walk = PT_LIST_WALK;
     }
   else
     {

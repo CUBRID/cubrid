@@ -5527,6 +5527,11 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      if (qexec_locate_agg_hentry_in_list (thread_p, info, info->agg_hash_context->temp_key, &found) !=
 		  NO_ERROR)
 		{
+		  if (info->state == SORT_PUT_STOP)
+		    {
+		      /* a group of partial entries only reached the groupby_num () limit */
+		      goto wrapup;
+		    }
 		  goto exit_on_error;
 		}
 
@@ -5586,6 +5591,11 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      if (qexec_locate_agg_hentry_in_list (thread_p, info, info->agg_hash_context->temp_key, &found) !=
 		  NO_ERROR)
 		{
+		  if (info->state == SORT_PUT_STOP)
+		    {
+		      /* a group of partial entries only reached the groupby_num () limit */
+		      goto wrapup;
+		    }
 		  goto exit_on_error;
 		}
 
@@ -5859,6 +5869,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 		{
 		  /* the entry holds every row of the group */
 		  qexec_gby_put_partial_group (thread_p, &gbstate, (AGGREGATE_HASH_KEY *) head->key, value);
+		  if (gbstate.state == SORT_PUT_STOP)
+		    {
+		      break;
+		    }
 		  head = head->act_next;
 		  continue;
 		}
@@ -5991,7 +6005,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	    {
 	      qexec_gby_put_partial_group (thread_p, &gbstate, gbstate.agg_hash_context->curr_part_key,
 					   gbstate.agg_hash_context->curr_part_value);
-	      if (gbstate.state != NO_ERROR)
+	      if (gbstate.state != NO_ERROR && gbstate.state != SORT_PUT_STOP)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -6115,7 +6129,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 					     context->accumulator_domains);
 	  gbstate.part_taken = false;
 	}
-      if (gbstate.state != NO_ERROR || context->part_scan_code == S_ERROR)
+      if ((gbstate.state != NO_ERROR && gbstate.state != SORT_PUT_STOP) || context->part_scan_code == S_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
