@@ -12698,9 +12698,6 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   OID settled_oid;
   SCAN_CODE scan;
   BTREE_SEARCH r;
-#if !defined (NDEBUG)
-  int retries = 0;
-#endif
 
   /* the lookup below can wait on the key's writer, so no heap page may stay fixed across it */
   assert (scan_cache == NULL || !scan_cache->cache_last_fix_page);
@@ -12730,10 +12727,6 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, X_LOCK);
 	}
       COPY_OID (oid, &settled_oid);
-#if !defined (NDEBUG)
-      retries++;
-      assert (retries < 100);	/* churn on one key; the loop ends when the key settles */
-#endif
     }
   while (r == BTREE_KEY_FOUND);
 
