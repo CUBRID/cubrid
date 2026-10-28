@@ -15403,6 +15403,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* the plan about to be looked up or compiled says again whether the statement is a target */
   statement->flag.bind_watch_candidate = 0;
+  statement->info.query.limit_opt_flags = 0;
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
@@ -15456,6 +15457,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * the driver-neutral path chooses among the variants too */
 	      statement->flag.bind_watch_candidate = 1;
 	    }
+	  statement->info.query.limit_opt_flags = stream.xasl_header->xasl_flag & XASL_LIMIT_OPT_FLAGS;
 	}
     }
 
@@ -15481,6 +15483,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
 	{
 	  statement->flag.bind_watch_candidate = 1;
+	}
+      if (contextp->xasl)
+	{
+	  statement->info.query.limit_opt_flags = contextp->xasl->header.xasl_flag & XASL_LIMIT_OPT_FLAGS;
 	}
       AU_RESTORE (au_save);
 

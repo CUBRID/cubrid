@@ -4363,7 +4363,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	}
 
       /* query has to be multi range opt candidate */
-      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
+      if (xasl_header.xasl_flag & XASL_LIMIT_OPT_FLAGS)
 	{
 	  if (db_check_limit_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {
@@ -4555,7 +4555,44 @@ db_untype_null_host_variables (PARSER_CONTEXT * parser)
 }
 
 /*
- * do_set_user_host_variable_types () - CBRD-27583: bind the TYPES of the USING values (db_bind_value_types)
+ * db_show_limit_host_var () - give a host variable of a LIMIT its value (db_show_limit_values)
+ */
+static PT_NODE *
+db_show_limit_host_var (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  const DB_VALUE_ARRAY *values = (const DB_VALUE_ARRAY *) arg;
+
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
+      && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count
+      && node->info.host_var.index < values->size)
+    {
+      DB_VALUE *hv = &parser->host_variables[node->info.host_var.index];
+
+      pr_clear_value (hv);
+      (void) pr_clone_value (&values->vals[node->info.host_var.index], hv);
+    }
+  return node;
+}
+
+/*
+ * db_show_limit_values () - CBRD-27583: the compilation of a bind type signature sees the values of the host
+ *   variables in the statement's LIMIT or ORDERBY_NUM () bound: the MRO and SORT-LIMIT choices read them
+ *   (pt_get_query_limit_value), and each later EXECUTE of the kept tree checks its own values against them
+ *   (do_reexecute_prepared_statement_from_kept_tree). A subquery's LIMIT, which that check does not read, stays unseen.
+ */
+static void
+db_show_limit_values (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE_ARRAY * values)
+{
+  if (statement != NULL && PT_IS_QUERY (statement))
+    {
+      (void) parser_walk_tree (parser, statement->info.query.limit, db_show_limit_host_var, values, NULL, NULL);
+      (void) parser_walk_tree (parser, statement->info.query.orderby_for, db_show_limit_host_var, values, NULL, NULL);
+    }
+}
+
+/*
+ * do_set_user_host_variable_types () - CBRD-27583: bind the TYPES of the USING values (db_bind_value_types), and
+ *   the values of a LIMIT (db_show_limit_values)
  */
 static int
 do_set_user_host_variable_types (DB_SESSION * session, PT_NODE * using_list)
@@ -4582,6 +4619,7 @@ do_set_user_host_variable_types (DB_SESSION * session, PT_NODE * using_list)
       if (err == NO_ERROR)
 	{
 	  db_bind_value_types (parser, values_array.size, values_array.vals);
+	  db_show_limit_values (parser, session->statements[0], &values_array);
 	}
     }
   db_value_clear_array (&values_array);
@@ -4985,7 +5023,11 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
 
   {
     PT_NODE *stmt0 = kept->statements[0];
-    bool replan = force_replan;
+    /* CBRD-27583: the LIMIT values decide again whether the plan's MRO / SORT-LIMIT choice holds, the check
+     * do_get_prepared_statement_info makes on a plan the PREPARE made */
+    bool replan = force_replan
+      || (PT_IS_QUERY (stmt0) && pt_recompile_for_limit_optimizations (kept->parser, stmt0,
+									  stmt0->info.query.limit_opt_flags));
 
     if (db_bind_variant_mode (stmt0) && stmt0->xasl_id != NULL)
       {
@@ -5096,7 +5138,8 @@ compile_text:
    * : the positions the context leaves untyped take the type of their bound value.
    * The SELECT branch shows the compilation the values' TYPES only -- a NULL carrying each
    * value's type header -- so that nothing the set_host_var flag does not guard (the LIKE
-   * rewrite, the MRO / SORT-LIMIT checks) reads a value into a plan that is cached by type. */
+   * rewrite) reads a value into a plan that is cached by type. The values of a LIMIT are shown:
+   * the MRO / SORT-LIMIT choices they decide are checked again at each EXECUTE (db_show_limit_values). */
   if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT || statement->info.execute.bind_before_compile
       || statement->info.execute.recompile)
     {

@@ -3025,6 +3025,8 @@ struct pt_query_info
 				 * checked execution allocates it (parser lifetime). */
   const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
 				 * (bind_variant.h); NULL = the query's base entry */
+  int limit_opt_flags;		/* CBRD-27583: the MRO / SORT-LIMIT bits of its plan's XASL header, which a later
+				 * EXECUTE of a kept tree checks against its LIMIT values */
 };
 
 /* Info for Set Optimization Level statement */

@@ -749,6 +749,9 @@ enum
 					 * query's plans by fingerprint (bind_variant.h) */
 };
 
+/* the plan choices a LIMIT value decides (pt_recompile_for_limit_optimizations) */
+#define XASL_LIMIT_OPT_FLAGS (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED)
+
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
 #define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
