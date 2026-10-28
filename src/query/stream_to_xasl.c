@@ -3460,8 +3460,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	}
     }
 
-  /* each hash key column compares in its compiled domain; a domain that leaves its values' type to the data leaves
-   * the keys to compare by their values (qdata_agg_hkey_compare) */
+  /* each hash key column compares in its compiled domain (qdata_agg_hkey_compare) */
   stx_build_list_proc->g_hk_compares = NULL;
   if (stx_build_list_proc->g_hash_eligible && stx_build_list_proc->g_hkey_size > 0)
     {
@@ -3473,16 +3472,13 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	  goto error;
 	}
       int k = 0;
-      for (REGU_VARIABLE_LIST key = stx_build_list_proc->g_hk_scan_regu_list;
-	   k < n_keys && key != NULL && domain_fixes_values (key->value.domain); key = key->next)
+      for (REGU_VARIABLE_LIST key = stx_build_list_proc->g_hk_scan_regu_list; k < n_keys; key = key->next)
 	{
+	  assert (key != NULL);
+	  assert (domain_fixes_values (key->value.domain));
 	  compares[k++] = key->value.domain;
 	}
-      assert (k == n_keys);
-      if (k == n_keys)
-	{
-	  stx_build_list_proc->g_hk_compares = compares;
-	}
+      stx_build_list_proc->g_hk_compares = compares;
     }
 
   ptr = or_unpack_int (ptr, &offset);

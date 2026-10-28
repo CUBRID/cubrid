@@ -2171,24 +2171,15 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
       db_make_null (result_p);
       return NO_ERROR;
     }
-  TP_DOMAIN_STATUS dom_status;
-  if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
+  /* CBRD-27583: the value has the planned type and the domain fixes its type and collation (checked also for
+   * compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT results) */
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p));
+  /* the plan's converter, which the cast takes in place of its lookup */
+  if (conv == NULL)
     {
-      /* the plan's converter, which the cast takes in place of its lookup */
-      if (conv == NULL)
-	{
-	  return NO_ERROR;
-	}
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+      return NO_ERROR;
     }
-  else
-    {
-      /* CBRD-27583: not reached - a value of another type than planned, or a domain that leaves the value's type or
-       * collation to it (checked also for compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT
-       * results); a release build coerces it by its own type */
-      assert (false);
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       const int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -6142,11 +6133,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      /* exception to deciding before the rows: an argument whose domain leaves its values' type to the data reads the
-       * list's column as the list holds it */
       assert (!domain_is_variable (regu_p->domain));
-      TP_DOMAIN *column_domain = domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
-      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, column_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, regu_p->domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -6475,9 +6463,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  /* get the required column, as CONNECT_BY_ROOT reads its argument */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      TP_DOMAIN *column_domain =
-		domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
-	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, column_domain) != NO_ERROR)
+	      assert (!domain_is_variable (regu_p->domain));
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, regu_p->domain) != NO_ERROR)
 		{
 		  goto error;
 		}

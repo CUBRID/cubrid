@@ -31680,13 +31680,10 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	    {
 	      const DB_VALUE *current = &a_eval_list->current_values[sort_list_idx];
 	      const DB_VALUE *value = &a_eval_list->temp_values[sort_list_idx];
-	      const bool by_value = key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom);
-	      /* CBRD-27583: a key compares in its domain; a key without one is not reached (a release build compares
-	       * the values). Total order: NULL keys are equal and form one group, as they do after the sort
-	       * (CBRD-27469) */
-	      assert (!by_value);
-	      if ((by_value ? tp_value_compare (current, value, 1, 1)
-		   : domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 1)) != DB_EQ)
+	      /* CBRD-27583: a key compares in its domain. Total order: NULL keys are equal and form one group, as they
+	       * do after the sort (CBRD-27469) */
+	      assert (key->pos_descr.dom != NULL && !domain_is_variable (key->pos_descr.dom));
+	      if (domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 1) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
 		  break;
@@ -34412,8 +34409,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  *   sort_items(in): the ORDER BY list
  *   domains(out): one per sort item
  *
- * A key compares with its domain's cmpval; a session variable column has its read's type. A key whose domain leaves
- * its values' type to them, which XASL generation does not make, gets none.
+ * A key compares with its domain's cmpval; a session variable column has its read's type.
  */
 static void
 qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
@@ -34421,8 +34417,8 @@ qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
   int i = 0;
   for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
     {
-      assert (!domain_is_variable (key->pos_descr.dom));
-      domains[i] = domain_is_variable (key->pos_descr.dom) ? NULL : key->pos_descr.dom;
+      assert (key->pos_descr.dom != NULL && !domain_is_variable (key->pos_descr.dom));
+      domains[i] = key->pos_descr.dom;
     }
 }
 
@@ -34676,15 +34672,7 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, con
     }
   else
     {
-      if (domain == NULL)
-	{
-	  /* a key without a domain (qexec_topn_sort_domains): its values' types decide */
-	  cmp = tp_value_compare (left, right, 1, 1);
-	}
-      else
-	{
-	  cmp = domain->type->cmpval (left, right, 1, 1, NULL, domain->collation_id);
-	}
+      cmp = domain->type->cmpval (left, right, 1, 1, NULL, domain->collation_id);
     }
   if (sort_spec->s_order == S_DESC)
     {
