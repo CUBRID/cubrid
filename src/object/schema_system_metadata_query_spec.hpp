@@ -68,7 +68,8 @@
   "WHERE [u].[name] = CURRENT_USER"
 
 #define AUTH_CHECK_USER(user_names_expr) \
-  "({'DBA', " user_names_expr "} * (" CURRENT_USER_GROUPS_SUBQUERY ") SETNEQ {})"
+  "({'DBA'} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
+  "OR {" user_names_expr "} * (" CURRENT_USER_GROUPS_SUBQUERY ") SETNEQ {})"
 
 #define AUTH_CHECK_PRIVILEGE(owner_name_expr, object_of_expr, auth_type) \
   "(" \
