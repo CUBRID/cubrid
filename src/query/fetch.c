@@ -1069,10 +1069,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 	      && (arithptr->opcode == T_STRCAT || arithptr->opcode == T_ADD))
 	    {
-	      /* check for result type: a variable domain reads the values' domains */
-	      const TP_DOMAIN *result_domain = domain;
-	      if (TP_DOMAIN_TYPE (result_domain) == DB_TYPE_VARIABLE
-		  || QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (result_domain)))
+	      /* check for result type; CBRD-27583: XASL generation fixes the node's domain */
+	      assert (TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE);
+	      if (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
 		{
 		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) !=
 		      NO_ERROR)

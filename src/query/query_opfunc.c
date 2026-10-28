@@ -5147,10 +5147,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
 
   if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
@@ -5161,51 +5157,10 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
   type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
 
-  /* string STRCAT date: cast date to string, concat as strings */
-  /* string STRCAT number: cast number to string, concat as strings */
-  if (TP_IS_CHAR_TYPE (type1) && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2)))
-    {
-      cast_dom2 = tp_domain_resolve_value (dbval1_p, NULL);
-    }
-  else if ((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1)) && TP_IS_CHAR_TYPE (type2))
-    {
-      cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
-    }
-  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row reaches
-   * the cast of a value by its type here */
-  assert (cast_dom1 == NULL && cast_dom2 == NULL);
-
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  pr_clear_value (&cast_value1);
-	  pr_clear_value (&cast_value2);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  pr_clear_value (&cast_value1);
-	  pr_clear_value (&cast_value2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
-  type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
+  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row concatenates
+   * a string with a date or a number */
+  assert (!(TP_IS_CHAR_TYPE (type1) && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2))));
+  assert (!((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1)) && TP_IS_CHAR_TYPE (type2)));
 
   if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
@@ -5332,15 +5287,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  if (cast_dom1)
-    {
-      pr_clear_value (&cast_value1);
-    }
-  if (cast_dom2)
-    {
-      pr_clear_value (&cast_value2);
     }
 
   return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
