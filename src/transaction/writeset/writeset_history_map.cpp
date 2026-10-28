@@ -31,8 +31,22 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
+ * probe - read the history of one key and choose the commit it must wait for
+ *
+ *   return: false if the key has no history
+ *   hash(in): key hash
+ *   kind(in): WRITE or REF
+ *   slots(out): both slots of the key, for the trace
+ *   candidate(out): the commit to wait for
+ *   candidate_is_ref(out): true if the candidate came from ref_seq
+ *
+ * Note: A REF waits for write_seq, the last transaction that changed the referenced key. A WRITE waits for the
+ *       later of write_seq and ref_seq, because a later transaction may have referenced the key's previous state.
+ */
 bool
-wset_history_map::find (LOG_WSET_HASH hash, LOG_WSET_SLOTS &slots) const
+wset_history_map::probe (LOG_WSET_HASH hash, LOG_WSET_KIND kind, LOG_WSET_SLOTS &slots, LOG_LSA &candidate,
+			 bool &candidate_is_ref) const
 {
   map_type::const_accessor acc;
 
@@ -43,6 +57,10 @@ wset_history_map::find (LOG_WSET_HASH hash, LOG_WSET_SLOTS &slots) const
 
   LSA_COPY (&slots.write_seq, &acc->second.write_seq);
   LSA_COPY (&slots.ref_seq, &acc->second.ref_seq);
+
+  assert (kind == LOG_WSET_KIND_WRITE || kind == LOG_WSET_KIND_REF);
+  candidate_is_ref = (kind == LOG_WSET_KIND_WRITE && LSA_GT (&slots.ref_seq, &slots.write_seq));
+  LSA_COPY (&candidate, candidate_is_ref ? &slots.ref_seq : &slots.write_seq);
 
   return true;
 }
