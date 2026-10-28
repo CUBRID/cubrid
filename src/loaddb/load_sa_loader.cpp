@@ -2773,8 +2773,13 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
     {
       if (context->attrs[context->next_attr].collection_domain == NULL)
 	{
-	  CHECK_CONTEXT_VALIDITY (context, true);
+	  /*
+	   * Name the attribute before the context is marked invalid. ldr_attr_name ()
+	   * answers the empty string once context->valid is false, and this message is
+	   * the only place the user is told which attribute refused the collection.
+	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+	  CHECK_CONTEXT_VALIDITY (context, true);
 	  CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 	}
       CHECK_ERR (err, ldr_collection_db_collection (context, str, len, &context->attrs[context->next_attr]));
