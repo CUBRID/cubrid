@@ -12385,6 +12385,8 @@ qexec_batch_filter_eligible (const XASL_NODE * xasl)
 #define QEXEC_GBY_KEY_MAX (256)
 #define QEXEC_GBY_EVICT_NOTE (8)	/* LRU head entries noted before a row-path call */
 #define QEXEC_GBY_PROBE_ROWS (2048)	/* rows the node looks up before it judges whether its cache pays */
+#define QEXEC_GBY_REMISS_DIV (8)	/* a cache whose misses on groups the table already has exceed 1/8 of its
+					 * lookups is too small for the table's groups (qexec_batch_gby_consume ()) */
 
 typedef struct qexec_gby_entry QEXEC_GBY_ENTRY;
 struct qexec_gby_entry
@@ -12414,6 +12416,7 @@ struct qexec_batch_gby
   int n_cached;
   INT64 n_lookups;		/* rows looked up in the cache and the ones it had: a cache that misses more than it hits */
   INT64 n_hits;			/* turns the node off (qexec_batch_gby_consume ()) */
+  INT64 n_remisses;		/* misses on a group the table already had: the cache is smaller than the groups */
   unsigned int seen_evictions;	/* the context's evictions the cache is current with (qexec_batch_gby_consume ()) */
   int cap;			/* rows the scratch arrays hold */
   int *pend_row;		/* a chunk's rows of cached groups, in row order, and their entries */
@@ -12829,12 +12832,17 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
       st->off = true;
       qexec_gby_cache_clear (thread_p, st);
     }
-  if (!st->off && st->n_lookups >= QEXEC_GBY_PROBE_ROWS && st->n_hits * 2 < st->n_lookups)
+  if (!st->off && st->n_lookups >= QEXEC_GBY_PROBE_ROWS
+      && (st->n_hits * 2 < st->n_lookups || st->n_remisses * QEXEC_GBY_REMISS_DIV > st->n_lookups))
     {
       /* The cache pays only when a chunk's groups repeat in it.  A table of more groups than the cache keeps, its
        * keys in no order, sends nearly every row through the row path and through the cache's bookkeeping both: a
        * cache that misses more than it hits leaves the rows to the row path alone, as when the table stops taking
-       * them. */
+       * them.  A miss costs more than the row path's call it adds: it flushes the rows gathered before it, so the
+       * flushes shrink to a few rows each, and the entry it adds may clear the full cache.  So a cache that keeps
+       * missing groups the table already has (the table holds a little more groups than the cache, 550 to 700 of
+       * them on lineitem: 1.07 to 1.45 times develop's time) goes off as well.  A new group's miss is not counted:
+       * the row path takes it with or without the cache. */
       st->off = true;
       qexec_gby_cache_clear (thread_p, st);
     }
@@ -12927,6 +12935,10 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
       /* the groups the call freed: the table grows by one for a new group and stays for an existing one, so the
        * existing group a row found outside the cache (more groups than the cache keeps) frees none */
       new_group = (ctx->group_count == groups_before + 1);
+      if (len >= 0 && !new_group)
+	{
+	  st->n_remisses++;
+	}
       evicted = (int) before + (new_group ? 1 : 0) - (int) mht_count (ctx->hash_table);
       if (new_group && evicted > 0 && evicted <= n_note)
 	{
