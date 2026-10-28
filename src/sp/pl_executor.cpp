@@ -279,6 +279,7 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
+    bool rights_pushed = false;
 
     if (m_stack == NULL)
       {
@@ -303,6 +304,7 @@ namespace cubpl
       {
 	goto exit;
       }
+    rights_pushed = true;
 
     error = request_invoke_command ();
     if (error != NO_ERROR)
@@ -322,8 +324,9 @@ exit:
 	m_stack->reset_query_handlers ();
       }
 
-    // restore execution rights
-    if (change_exec_rights (NULL) != NO_ERROR)
+    // restore execution rights. Not when the switch above failed: there is nothing of ours to pop, and a pop
+    // would take off a user pushed by an outer caller instead.
+    if (rights_pushed && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
       }
@@ -336,14 +339,48 @@ exit:
   {
     int error = NO_ERROR;
     int is_restore = (auth_name == NULL) ? 1 : 0;
+    int client_error = NO_ERROR;
 
+    auto get_result = [&] (const cubmem::block & b)
+    {
+      packing_unpacker result_unpacker (b.ptr, (size_t) b.dim);
+      result_unpacker.unpack_int (client_error);
+      return NO_ERROR;
+    };
+
+    // wait for the client to finish the switch. Switching the user can fetch objects from the server in this
+    // transaction, and a transaction must not be worked on by two threads at a time.
+    // The client may have switched the rights by the time an interrupt is noticed. Take its reply regardless,
+    // or a switch that did happen would be taken as failed and not be undone.
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
+	error = m_stack->send_data_to_client_recv (false, get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
+		std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client_recv (false, get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+      }
+
+    if (error == NO_ERROR && client_error != NO_ERROR)
+      {
+	// the client refused the switch, e.g. the owner no longer exists. Running the routine with whatever rights
+	// happen to be in effect is not an option. The client error's own arguments are not sent over, so it cannot
+	// be raised here as it is. Report it wrapped in ER_METHOD_CALLBACK instead.
+	error = client_error;
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_METHOD_CALLBACK, 2, client_error,
+		    (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights");
+	  }
+	else
+	  {
+	    // the routine already failed. Keep its error for the user, but do not lose this one: the client may be
+	    // left with the owner's rights if the restore failed
+	    er_log_debug (ARG_FILE_LINE, "%s (client error %d) after error %d",
+			  (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights",
+			  client_error, er_errid ());
+	  }
       }
 
     if (error != NO_ERROR)
@@ -358,6 +395,7 @@ exit:
 	    // According to the current analysis, the following code should be unreachable.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  }
+
 
 	error = er_errid ();
       }
@@ -579,9 +617,6 @@ exit:
       case METHOD_CALLBACK_END_TRANSACTION:
 	error_code = callback_end_transaction (thread_ref, unpacker);
 	break;
-      case METHOD_CALLBACK_CHANGE_RIGHTS:
-	error_code = callback_change_auth_rights (thread_ref, unpacker);
-	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
@@ -680,7 +715,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
+    error = m_stack->send_data_to_client_recv (true, get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
     return error;
   }
 
@@ -738,7 +773,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (get_execute_info, code, request);
+    error = m_stack->send_data_to_client_recv (true, get_execute_info, code, request);
     request.clear ();
 
     return error;
@@ -844,7 +879,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, request);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
     return error;
   }
 
@@ -863,7 +898,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, request);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
     return error;
   }
 
@@ -881,7 +916,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command, oid);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command, oid);
     return error;
   }
 
@@ -902,7 +937,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, request);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
     return error;
   }
 
@@ -946,7 +981,7 @@ exit:
 	}
     };
 
-    error = m_stack->send_data_to_client_recv (get_make_outresult_info, code, query_id);
+    error = m_stack->send_data_to_client_recv (true, get_make_outresult_info, code, query_id);
 
     return error;
   }
@@ -964,7 +999,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, handler_id);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, handler_id);
     return error;
   }
 
@@ -982,27 +1017,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command);
-    return error;
-  }
-
-  int
-  executor::callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-    int code = METHOD_CALLBACK_CHANGE_RIGHTS;
-
-    int command;
-    std::string auth_name;
-
-    unpacker.unpack_all (command, auth_name);
-
-    auto java_lambda = [&] (const cubmem::block & b)
-    {
-      return m_stack->send_data_to_java (b);
-    };
-
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command, auth_name);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command);
     return error;
   }
 
