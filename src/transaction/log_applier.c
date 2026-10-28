@@ -7841,11 +7841,10 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
     }
   else
     {
-      /* TODO: No case is known to reach here. At startup committed_lsa is set to the required LSA the log is read
-       * again from, and while running it follows the frontier, which never passes a commit not yet read. If this
-       * is ever reached, a labeled operation's items stay in the outer transaction's slot and are applied again
-       * with the outer commit, and its label stays held; detach and drop the items and clear the label here then.
-       * The items count in the trace below shows whether that happens. */
+      /* Not reached in practice: at startup committed_lsa is set to the required LSA the log is read again
+       * from, and while running it follows the frontier, which never passes a commit not yet read. If it were
+       * reached for a labeled operation, its items would stay in the outer transaction's slot and be applied
+       * again with the outer commit; the items count in the trace below would show it. */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "coordinator skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
 		    lrec->trid, (long long) final->pageid, (int) final->offset,
