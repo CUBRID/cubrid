@@ -882,6 +882,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   UINT64 *tran_id;
+  UINT64 del_tran_id;
   int ret = NO_ERROR;
   bool local_tran = false;
 
@@ -895,10 +896,21 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
     {
       local_tran = true;
       lf_tran_start_with_mb (tran_entry, true);
+      del_tran_id = tran_entry->transaction_id;
     }
   else if (!tran_entry->did_incr)
     {
-      lf_tran_start_with_mb (tran_entry, true);
+      /* keep the published id, which may still protect what the caller holds; the entry's own id, drawn after
+       * its unlink, still covers its readers */
+      del_tran_id = ATOMIC_INC_64 (&tran_entry->tran_system->global_transaction_id, 1);
+      if (del_tran_id % tran_entry->tran_system->mati_refresh_interval == 0)
+	{
+	  lf_tran_compute_minimum_transaction_id (tran_entry->tran_system);
+	}
+    }
+  else
+    {
+      del_tran_id = tran_entry->transaction_id;
     }
 
   /* do a retired list cleanup, if possible */
@@ -912,7 +924,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
 
   /* set transaction index of entry */
   tran_id = (UINT64 *) OF_GET_PTR (entry, edesc->of_del_tran_id);
-  *tran_id = tran_entry->transaction_id;
+  *tran_id = del_tran_id;
 
   /* push to local list */
   OF_GET_PTR_DEREF (entry, edesc->of_local_next) = tran_entry->retired_list;

@@ -91,7 +91,7 @@ namespace lockfree
     void
     table::refresh_min_active_tranid_if_due (id assigned_tranid)
     {
-      // called once the caller has published assigned_tranid, never before - see the header.
+      // called once the caller has published its id, never before - see the header.
       if (assigned_tranid % MATI_REFRESH_INTERVAL == 0)
 	{
 	  compute_min_active_tranid ();

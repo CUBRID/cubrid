@@ -2596,7 +2596,8 @@ namespace test_lockfree
 
   // Calibrated: same amplified by-value read. Reports "an entry held under this load was not the entry that
   // was asked for". Note what this says about the unamplified suite - the defect is there either way, and a
-  // green run without the spin means the race did not happen, not that it cannot.
+  // green run without the spin means the race did not happen, not that it cannot. Unamplified, it catches
+  // retire_node () moving an open transaction's published id: 7 arms of 200 on each implementation, 100 runs.
   static int
   case_index_churn ()
   {
@@ -3203,21 +3204,15 @@ namespace test_lockfree
   }
 
   //
-  // case_insert_given_promote () - which of two insert entry points loses a held entry, and why.
+  // case_insert_given_promote () - insert_given () does not lose the entry it hands back.
   //
-  // Every held-entry violation this file produces lands at the insert_given () site and none at the find ()
-  // site, on both implementations. The two paths differ in one thing. insert_given () hands the map an entry the
-  // caller claimed; when the key turns out to be there already the map retires that spare entry before handing
-  // back the one it found - lockfree_hashmap.hpp:1055, lf_list_insert_internal () at lock_free.c:1534 - and
-  // retiring *promotes the caller's published transaction id to a new, higher global id*
-  // (lockfree_transaction_descriptor.cpp:68 -> :109, lf_freelist_retire () at lock_free.c:795-802 ->
-  // lf_tran_start (entry, true)). The thread published id T, walked the chain under it, and is now announcing
-  // T' >> T while still holding an entry T was protecting: anything retired in between is no longer covered by
-  // compute_min_active_tranid (), so the entry it is about to return can be reclaimed and refilled underneath it.
+  // When the key is already there, insert_given () retires the caller's spare entry and then returns the one it
+  // found, still under the transaction that protects it. A retire that moved the published id forward would leave
+  // everything retired in between - the found entry included - to be reclaimed and refilled underneath the caller.
   //
   // find_or_insert () reaches the same output through the same search and never retires on that path, because
   // there is no caller-supplied entry to retire. Two arms, identical load, identical geometry, differing only in
-  // that: if the promote is the mechanism, only the insert_given arm fails.
+  // that, so a retire that moves the published id shows up on the insert_given arm alone.
   //
   // The check has to be looser on the find_or_insert arm: the map claims the entry and copies the key before
   // publishing it, but nothing stamps the magic to LIVE, so a reader may legitimately see CLAIMED. FREE still
@@ -3456,7 +3451,9 @@ namespace test_lockfree
 
   // Calibrated: list_find () made to take the bucket head by value again, with a 20000-iteration spin between
   // that read and start_tran () - the shape PR 7733 measured at 96 records amplified against 0 in 30 runs
-  // unamplified. Reports "a held entry changed identity on one of the two insert paths".
+  // unamplified. Reports "a held entry changed identity on one of the two insert paths". Unamplified, with
+  // retire_node () moving an open transaction's published id: 10 arms of 200 on lockfree::hashmap and 2 on
+  // lf_hash_table over 100 runs, every one on the insert_given arm.
   static int
   case_insert_given_promote ()
   {

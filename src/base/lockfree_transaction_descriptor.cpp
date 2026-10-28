@@ -69,11 +69,24 @@ namespace lockfree
     descriptor::retire_node (reclaimable_node &node)
     {
       bool should_end = !is_tran_started ();
-      start_tran_and_increment_id ();
+      id retire_tranid;
+
+      if (should_end || m_did_incr)
+	{
+	  start_tran_and_increment_id ();
+	  retire_tranid = m_tranid.load (std::memory_order_relaxed);
+	}
+      else
+	{
+	  // keep the published id: the caller may still hold what it protects (insert_given () returns the entry it
+	  // found after retiring its spare). the node's own id, drawn after its unlink, still covers its readers.
+	  retire_tranid = m_table->get_new_global_tranid ();
+	  m_table->refresh_min_active_tranid_if_due (retire_tranid);
+	}
 
       reclaim_retired_list ();
 
-      node.m_retire_tranid = m_tranid.load (std::memory_order_relaxed);
+      node.m_retire_tranid = retire_tranid;
       node.m_retired_next = NULL;
       // add to tail to keep delete ids ordered
       if (m_retired_tail == NULL)
