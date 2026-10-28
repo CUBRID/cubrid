@@ -4817,6 +4817,57 @@ hjoin_rtf_hash (INT64 v)
   return x ^ (x >> 29);
 }
 
+/* the slots for keys the first input's rows may hold: the table starts at HJOIN_RTF_START_SLOTS (or the rows' bound
+ * below it) and doubles while the distinct keys fill more than half of it, up to two slots per row -- a build of
+ * many rows over few keys stays small, and its probes stay in cache */
+#define HJOIN_RTF_START_SLOTS (1 << 12)
+
+/* key k into slots of size mask + 1 (k is not HJOIN_RTF_EMPTY): true when it was not there */
+static bool
+hjoin_rtf_insert (INT64 * slots, UINT64 mask, INT64 k)
+{
+  UINT64 h;
+
+  for (h = hjoin_rtf_hash (k) & mask; slots[h] != HJOIN_RTF_EMPTY && slots[h] != k; h = (h + 1) & mask)
+    {
+      ;
+    }
+  if (slots[h] == HJOIN_RTF_EMPTY)
+    {
+      slots[h] = k;
+      return true;
+    }
+  return false;
+}
+
+/* the filter's slots twice as many, its keys moved: false without the memory (the old slots stay) */
+static bool
+hjoin_rtf_grow (THREAD_ENTRY * thread_p, HJOIN_RUNTIME_FILTER * rtf)
+{
+  UINT64 cap = (rtf->mask + 1) * 2, s;
+  INT64 *slots = (INT64 *) db_private_alloc (thread_p, sizeof (INT64) * cap);
+
+  if (slots == NULL)
+    {
+      return false;
+    }
+  for (s = 0; s < cap; s++)
+    {
+      slots[s] = HJOIN_RTF_EMPTY;
+    }
+  for (s = 0; s <= rtf->mask; s++)
+    {
+      if (rtf->slots[s] != HJOIN_RTF_EMPTY)
+	{
+	  (void) hjoin_rtf_insert (slots, cap - 1, rtf->slots[s]);
+	}
+    }
+  db_private_free_and_init (thread_p, rtf->slots);
+  rtf->slots = slots;
+  rtf->mask = cap - 1;
+  return true;
+}
+
 /* the key as an integer: 1, or 0 for NULL, or -1 for a type the filter does not compare */
 static int
 hjoin_rtf_key (const DB_VALUE * v, bool is_date, INT64 * out)
@@ -4988,7 +5039,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   SCAN_CODE sc;
   int fcol, tcol, val_index, error = NO_ERROR;
   bool f_date, t_date;
-  UINT64 cap, s;
+  UINT64 cap, max_cap, s;
   INT64 k;
 
   /* a cached clone may still carry the filter a worker bound on it in an earlier execution (freed since by that
@@ -5032,10 +5083,11 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
       }
   }
 
-  for (cap = 16; cap < (UINT64) list->tuple_cnt * 2; cap <<= 1)
+  for (max_cap = 16; max_cap < (UINT64) list->tuple_cnt * 2; max_cap <<= 1)
     {
       ;
     }
+  cap = MIN (max_cap, (UINT64) HJOIN_RTF_START_SLOTS);
   /* the leader's: built here, read by the workers through their clones' aliases (hjoin_rtf_bind_clone ()), freed by
    * the leader once they are drained (hjoin_rtf_release ()).  No memory for it is a decline, not an error: the join
    * runs without the filter, so the allocator's error is cleared */
@@ -5070,7 +5122,6 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   while ((sc = qfile_scan_list_next (thread_p, &sid, &tr, PEEK)) == S_SUCCESS)
     {
       bool is_null = false;
-      UINT64 h;
 
       if (qfile_slot_read_column_value (&tr, fcol, dom, &v, false, &is_null) != NO_ERROR)
 	{
@@ -5091,15 +5142,18 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
 	  rtf->has_empty_key = true;
 	  continue;
 	}
-      for (h = hjoin_rtf_hash (k) & rtf->mask; rtf->slots[h] != HJOIN_RTF_EMPTY && rtf->slots[h] != k;
-	   h = (h + 1) & rtf->mask)
+      if (hjoin_rtf_insert (rtf->slots, rtf->mask, k))
 	{
-	  ;
-	}
-      if (rtf->slots[h] == HJOIN_RTF_EMPTY)
-	{
-	  rtf->slots[h] = k;
 	  rtf->n_keys++;
+	  if ((UINT64) rtf->n_keys * 2 > rtf->mask + 1 && rtf->mask + 1 < max_cap && !hjoin_rtf_grow (thread_p, rtf))
+	    {
+	      /* no memory to grow: a decline, as at the allocation above */
+	      qfile_close_scan (thread_p, &sid);
+	      er_clear ();
+	      db_private_free_and_init (thread_p, rtf->slots);
+	      db_private_free_and_init (thread_p, rtf);
+	      return NO_ERROR;
+	    }
 	}
     }
   qfile_close_scan (thread_p, &sid);
