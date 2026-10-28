@@ -311,13 +311,6 @@ struct la_info
   LOG_LSA committed_rep_lsa;	/* last committed replication log lsa */
   LOG_LSA last_committed_lsa;	/* last committed commit log lsa at the beginning of the applylogdb */
   LOG_LSA last_committed_rep_lsa;	/* last committed replication log lsa at the beginning of the applylogdb */
-  /* upper bound of the restart recovery range: max_committed_lsa as stored in _db_ha_apply_info at boot,
-   * or NULL (empty range) when none was stored. Set once at boot; workers only read it. */
-  LOG_LSA recovery_boundary_lsa;
-  /* bound the coordinator has stored in _db_ha_apply_info: no commit above it is handed to a worker until a
-   * larger bound is stored (see la_coordinator_cover_commit). Loaded at boot. */
-  LOG_LSA max_committed_lsa;
-  unsigned long recovery_skipped_counter;	/* re-applicability errors suppressed within the recovery range */
 
   LA_APPLY **repl_lists;
   int repl_cnt;			/* the # of elements of repl_lists */
@@ -509,9 +502,7 @@ static void la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to);
 static int la_find_required_lsa (LOG_LSA * required_lsa);
 
 static int la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY_INFO * ha_apply_info);
-static int la_get_ha_apply_max_committed_lsa (void);
 static int la_insert_ha_apply_info (DB_DATETIME * creation_time);
-static int la_update_ha_apply_max_committed_lsa (const LOG_LSA * lsa);
 static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
@@ -594,7 +585,9 @@ static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static LA_APPLY *la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa);
 static int la_coordinator_submit_task (LA_TASK * task);
+#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
 static int la_coordinator_run_alone (LA_TASK * task);
+#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
 static int la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final);
 static bool la_coordinator_set_commit_dependency (LA_TASK * task);
 static int la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
@@ -650,13 +643,13 @@ static void la_coordinator_add_result_stats (const LA_RESULT * result);
 static int la_coordinator_store_apply_info_at_interval (void);
 static int la_coordinator_record_result (const LA_RESULT * result);
 static int la_coordinator_complete_without_task (const LOG_LSA * lsa);
-static bool la_is_in_recovery_range (const LOG_LSA * commit_lsa);
 static int la_coordinator_pop_result (LA_RESULT * result);
+#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
 static int la_coordinator_wait_until_retired (void);
+#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
 static int la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status);
-static int la_coordinator_cover_commit (const LA_TASK * task);
 static void la_coordinator_trace_schedule (const LA_TASK * task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
 static int la_coordinator_drain_ready (void);
 
@@ -777,63 +770,15 @@ la_coordinator_wait_for_commit_order_slot (void)
 }
 
 /*
- * la_coordinator_cover_commit() - store a larger max_committed_lsa before a task above it is put on the task queue
- *   return: NO_ERROR or an error from storing the bound
- *   task(in): task about to be put on the task queue
- *
- * Note:
- *   The workers commit on their own connections and the coordinator stores max_committed_lsa separately, so the
- *   two are not updated at once. If a worker committed first and the applier stopped before max_committed_lsa
- *   was updated, the restarted applier would apply that transaction again; being above max_committed_lsa, its
- *   re-apply errors (a duplicate key, for example) would not be ignored but counted as failures. So
- *   max_committed_lsa is raised to the task's commit before the task is put on the task queue, and in the same
- *   case the re-apply errors are ignored.
- *   A task without replicated items is not stored: re-applying it cannot fail, and the store would itself be
- *   a commit that a mutual HA peer sends back.
- *
- *   TODO: Not needed if each worker records the commit LSA it applied in the same transaction as the data
- *   (see la_coordinator_run_alone).
- */
-static int
-la_coordinator_cover_commit (const LA_TASK * task)
-{
-  int error;
-
-  assert (task != NULL);
-
-  /* the slot alone does not mean there is something to re-apply: la_log_record_process opens a slot at the
-   * first record of every transaction, including a peer applier's apply-info update that carries no item */
-  if (!task->has_items)
-    {
-      return NO_ERROR;
-    }
-
-  if (!LSA_ISNULL (&la_Info.max_committed_lsa) && LSA_LE (&task->commit_lsa, &la_Info.max_committed_lsa))
-    {
-      return NO_ERROR;
-    }
-
-  error = la_update_ha_apply_max_committed_lsa (&task->commit_lsa);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  LSA_COPY (&la_Info.max_committed_lsa, &task->commit_lsa);
-
-  return NO_ERROR;
-}
-
-/*
  * la_coordinator_enqueue_task() - put a task that passed the gate on the task queue the workers take from
  *   return: NO_ERROR, or an error from waiting for an in-flight slot, the in-flight list or the task queue
  *   task_in(in): the task; copied
  *   sched_status(in): LA_SCHED_DISPATCHED or LA_SCHED_RELEASED, for the schedule trace
  *
  * Note:
- *   Before pushing the task on the task queue, the coordinator stores a larger recovery range bound if the
- *   task is above it, and writes the task into the in-flight list, the ledger it later matches results against
- *   and retires in order. That entry gives the task the sequence number the worker and retire traces report.
+ *   Before pushing the task on the task queue, the coordinator writes the task into the in-flight list, the
+ *   ledger it later matches results against and retires in order. That entry gives the task the sequence number
+ *   the worker and retire traces report.
  */
 static int
 la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status)
@@ -864,11 +809,6 @@ la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_stat
       return error;
     }
 
-  error = la_coordinator_cover_commit (&task);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
   error = la_inflight_push (task.apply, task.tranid, task.rectype, &dispatch_seq);
   if (error != NO_ERROR)
     {
@@ -1047,28 +987,6 @@ la_coordinator_complete_without_task (const LOG_LSA * lsa)
 }
 
 /*
- * la_is_in_recovery_range() - whether a commit lies in the restart recovery range
- *   return: true if commit_lsa is above last_committed_lsa and at or below recovery_boundary_lsa
- *   commit_lsa(in): LSA of the commit
- *
- * Note:
- *   The range is above last_committed_lsa and at or below recovery_boundary_lsa, both set once at start:
- *   - last_committed_lsa: committed_lsa in _db_ha_apply_info (la_get_last_ha_applied_info). A commit at or below
- *     it, or one with an applied-tx marker (LA_APPLIED_TX_MARKER_NAME), is skipped whole by the worker and
- *     touches no row.
- *   - recovery_boundary_lsa: max_committed_lsa in _db_ha_apply_info, the largest commit the previous run
- *     put on the task queue (la_get_ha_apply_max_committed_lsa). NULL, and the range empty, when none was stored.
- *   A worker may or may not have committed each commit in the range before the previous run stopped, so
- *   applied and unapplied transactions are mixed in it.
- */
-static bool
-la_is_in_recovery_range (const LOG_LSA * commit_lsa)
-{
-  return (!LSA_ISNULL (&la_Info.recovery_boundary_lsa) && LSA_GT (commit_lsa, &la_Info.last_committed_lsa)
-	  && LSA_LE (commit_lsa, &la_Info.recovery_boundary_lsa));
-}
-
-/*
  * la_coordinator_pop_result() - take the oldest result, waiting until one arrives or the applier is told to stop
  *   return: NO_ERROR when a result was taken, ER_FAILED on shutdown
  *   result(out): the dequeued result
@@ -1097,6 +1015,7 @@ la_coordinator_pop_result (LA_RESULT * result)
     }
 }
 
+#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
 /*
  * la_coordinator_wait_until_retired() - wait until every task put on the task queue has finished and been retired
  *   return: NO_ERROR, the error of a failed task or of storing the apply info, or ER_FAILED on shutdown
@@ -1104,7 +1023,7 @@ la_coordinator_pop_result (LA_RESULT * result)
  * Note:
  *   Takes each worker result as it arrives and retires the finished tasks in the order they were queued (the
  *   transaction's items are freed and committed_lsa advances), until no queued task is left.
- *   la_coordinator_run_alone uses it to run a commit in the restart recovery range with no other task running.
+ *   la_coordinator_run_alone uses it to run a task with no other task running.
  */
 static int
 la_coordinator_wait_until_retired (void)
@@ -1137,6 +1056,7 @@ la_coordinator_wait_until_retired (void)
 
   return NO_ERROR;
 }
+#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
 
 /*
  * la_coordinator_wait_for_inflight_slot() - wait for a free in-flight slot before handing over a task
@@ -1257,7 +1177,6 @@ la_coordinator_add_result_stats (const LA_RESULT * result)
   la_Info.delete_counter += result->stats.delete_counter;
   la_Info.schema_counter += result->stats.schema_counter;
   la_Info.fail_counter += result->stats.fail_counter;
-  la_Info.recovery_skipped_counter += result->stats.recovery_skipped_counter;
   la_Info.num_unflushed += result->stats.num_unflushed;
   la_Info.total_rows += result->total_rows;
 
@@ -1658,11 +1577,10 @@ la_stop_apply_workers (void)
  *
  * Note:
  *   The statistics rows are stored, and the applied-tx markers at or below committed_lsa deleted, in the same
- *   transaction. The workers commit the replicated transactions themselves, and max_committed_lsa is stored
- *   apart, before a task is queued (la_coordinator_cover_commit).
+ *   transaction. The workers commit the replicated transactions themselves.
  *   A failed update is counted and reported but does not stop the applier unless the server is down, as
- *   in the serial applier. The positions stay at their last stored values until the next store succeeds,
- *   which only widens the range a restart re-applies; restarting here would re-apply that range at once.
+ *   in the serial applier. The positions stay at their last stored values until the next store succeeds; a
+ *   restart reads that range again and skips the commits marked as applied.
  */
 static int
 la_coordinator_commit_apply_info (void)
@@ -3020,146 +2938,6 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 #undef LA_OUT_VALUE_COUNT
 }
 
-/*
- * la_get_ha_apply_max_committed_lsa() - load the stored upper bound of the restart recovery range
- *   return: NO_ERROR or error code
- *
- * Note:
- *   The coordinator stores max_committed_lsa before it puts a commit above it on the task queue (see
- *   la_coordinator_cover_commit), so no transaction above it was committed on the slave by the previous
- *   run. The value is also kept as recovery_boundary_lsa, the end of the restart recovery range for this
- *   run. NULL when nothing was stored, which makes the range empty.
- */
-static int
-la_get_ha_apply_max_committed_lsa (void)
-{
-#define LA_IN_VALUE_COUNT       2
-#define LA_OUT_VALUE_COUNT      2
-
-  int res;
-  int pos;
-  int error = NO_ERROR;
-  int in_value_idx;
-  DB_VALUE in_value[LA_IN_VALUE_COUNT];
-  DB_VALUE out_value[LA_OUT_VALUE_COUNT];
-  int i;
-  char query_buf[LA_QUERY_BUF_SIZE];
-  DB_QUERY_ERROR query_error;
-  DB_QUERY_RESULT *result = NULL;
-
-  LSA_SET_NULL (&la_Info.max_committed_lsa);
-
-  snprintf (query_buf, sizeof (query_buf),
-	    "SELECT max_committed_lsa_pageid, max_committed_lsa_offset FROM %s "
-	    " WHERE db_name = ? AND copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
-
-  in_value_idx = 0;
-  db_make_varchar (&in_value[in_value_idx++], 255, la_Info.act_log.log_hdr->prefix_name,
-		   strlen (la_Info.act_log.log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
-  assert_release (in_value_idx == LA_IN_VALUE_COUNT);
-
-  res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
-  for (i = 0; i < in_value_idx; i++)
-    {
-      db_value_clear (&in_value[i]);
-    }
-
-  if (res < 0)
-    {
-      return res;
-    }
-
-  pos = db_query_first_tuple (result);
-  if (pos == DB_CURSOR_SUCCESS)
-    {
-      error = db_query_get_tuple_valuelist (result, LA_OUT_VALUE_COUNT, out_value);
-      if (error == NO_ERROR && !DB_IS_NULL (&out_value[0]) && !DB_IS_NULL (&out_value[1]))
-	{
-	  la_Info.max_committed_lsa.pageid = db_get_bigint (&out_value[0]);
-	  la_Info.max_committed_lsa.offset = db_get_int (&out_value[1]);
-	}
-
-      for (i = 0; i < LA_OUT_VALUE_COUNT; i++)
-	{
-	  db_value_clear (&out_value[i]);
-	}
-    }
-  else if (pos == DB_CURSOR_ERROR)
-    {
-      error = ER_FAILED;
-    }
-
-  db_query_end (result);
-
-  LSA_COPY (&la_Info.recovery_boundary_lsa, &la_Info.max_committed_lsa);
-
-  return error;
-
-#undef LA_IN_VALUE_COUNT
-#undef LA_OUT_VALUE_COUNT
-}
-
-/*
- * la_update_ha_apply_max_committed_lsa() - store the upper bound of the restart recovery range and commit it
- *   return: NO_ERROR or error code
- *   lsa(in): the new bound
- *
- * Note:
- *   Commits on the coordinator's own connection, which has no other uncommitted change.
- *
- *   TODO: final_lsa could carry this bound instead of a column of its own, removing the catalog change.
- *         The stored final_lsa is what applyinfo shows as the applier's read position and uses for the
- *         delay it reports, so storing a bound ahead of the read position there changes what users see.
- *         Check those uses before switching.
- */
-static int
-la_update_ha_apply_max_committed_lsa (const LOG_LSA * lsa)
-{
-#define LA_IN_VALUE_COUNT       4
-
-  int res;
-  int i;
-  int in_value_idx;
-  DB_VALUE in_value[LA_IN_VALUE_COUNT];
-  char query_buf[LA_QUERY_BUF_SIZE];
-
-  snprintf (query_buf, sizeof (query_buf),
-	    "UPDATE %s SET max_committed_lsa_pageid = ?, max_committed_lsa_offset = ? "
-	    " WHERE db_name = ? AND copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
-
-  in_value_idx = 0;
-  db_make_bigint (&in_value[in_value_idx++], lsa->pageid);
-  db_make_int (&in_value[in_value_idx++], lsa->offset);
-  db_make_varchar (&in_value[in_value_idx++], 255, la_Info.act_log.log_hdr->prefix_name,
-		   strlen (la_Info.act_log.log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
-  assert_release (in_value_idx == LA_IN_VALUE_COUNT);
-
-  res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
-  for (i = 0; i < in_value_idx; i++)
-    {
-      db_value_clear (&in_value[i]);
-    }
-
-  if (res < 0)
-    {
-      return res;
-    }
-
-  if (res == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update _db_ha_apply_info");
-      return ER_FAILED;
-    }
-
-  return db_commit_transaction ();
-
-#undef LA_IN_VALUE_COUNT
-}
-
 static int
 la_insert_ha_apply_info (DB_DATETIME * creation_time)
 {
@@ -3498,12 +3276,6 @@ la_get_last_ha_applied_info (void)
       return ER_FAILED;
     }
   else if (res < 0)
-    {
-      return res;
-    }
-
-  res = la_get_ha_apply_max_committed_lsa ();
-  if (res != NO_ERROR)
     {
       return res;
     }
@@ -6522,42 +6294,12 @@ la_flush_repl_items (bool immediate, LA_STATS * stats)
 		  assert (false);
 		}
 
-	      /* writeset restart recovery: inside the recovery range this transaction's rows
-	       * may already be on the slave, so a re-applicability failure is expected rather
-	       * than a real error. Suppress only the whitelisted (operation, server error) pairs
-	       * - INSERT duplicate key, or DELETE/UPDATE target row missing - by skipping er_set
-	       * and the fail_counter bump and tallying them separately. Every other failure, and
-	       * all failures outside the range, are reported unchanged. */
-	      bool recovery_skip = false;
-	      if (stats->in_recovery_range == true)
-		{
-		  if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
-		    {
-		      recovery_skip = (flush_err->error_code == ER_BTREE_UNIQUE_FAILED);
-		    }
-		  else if (LC_IS_FLUSH_UPDATE (flush_err->operation) == true || flush_err->operation == LC_FLUSH_DELETE)
-		    {
-		      recovery_skip = (flush_err->error_code == ER_OBJ_OBJECT_NOT_FOUND
-				       || flush_err->error_code == ER_HEAP_UNKNOWN_OBJECT);
-		    }
-		}
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, la_err_code, 4, class_name, pkey_str, flush_err->error_code,
+		      server_err_msg);
+	      er_stack_pop ();
 
-	      if (recovery_skip == true)
-		{
-		  stats->recovery_skipped_counter++;
-		  er_log_debug (ARG_FILE_LINE,
-				"ws_repl recovery-range skip reapply error: class %s key %s op %d server error %d\n",
-				class_name, pkey_str, flush_err->operation, flush_err->error_code);
-		}
-	      else
-		{
-		  er_stack_push ();
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, la_err_code, 4, class_name, pkey_str, flush_err->error_code,
-			  server_err_msg);
-		  er_stack_pop ();
-
-		  la_stat_note_error (stats, flush_err->error_code);
-		}
+	      la_stat_note_error (stats, flush_err->error_code);
 
 	      if (la_restart_on_bulk_flush_error (flush_err->error_code) == true)
 		{
@@ -7548,10 +7290,6 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
       return NO_ERROR;
     }
 
-  /* the restart recovery range ends at the last commit the previous run may have applied; applied and
-   * unapplied transactions are mixed there, so the flush error path skips re-apply errors in it */
-  stats->in_recovery_range = la_is_in_recovery_range (commit_lsa);
-
   string_buffer sb;
 
   item = apply->head;
@@ -7593,7 +7331,6 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	  else if (item->log_type == LOG_REPLICATION_STATEMENT)
 	    {
 	      error = la_apply_statement_log (item, stats);
-	      stats->has_statement = true;
 	    }
 	  else
 	    {
@@ -7904,8 +7641,6 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   in-flight list has the same capacity as the queue and la_coordinator_enqueue_task waits for room in it.
  *   Without MULTI_CONN_TO_A_SERVER the worker uses this process's client, which the coordinator also uses to
  *   store the apply info, so each task runs alone: the coordinator waits until it is retired.
- *
- *   With more workers, a commit in the restart recovery range runs alone (la_coordinator_run_alone).
  */
 static int
 la_coordinator_submit_task (LA_TASK * task)
@@ -7951,11 +7686,6 @@ la_coordinator_submit_task (LA_TASK * task)
 #endif
     }
 
-  if (la_is_in_recovery_range (&task->commit_lsa))
-    {
-      return la_coordinator_run_alone (task);
-    }
-
   error = la_coordinator_drain_ready ();
   if (error != NO_ERROR)
     {
@@ -7976,30 +7706,16 @@ la_coordinator_submit_task (LA_TASK * task)
   return error;
 }
 
+#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
 /*
- * la_coordinator_run_alone() - run a commit in the restart recovery range with no other task running
+ * la_coordinator_run_alone() - run a task with no other task running
  *   return: NO_ERROR, or an error from queuing the task or waiting for the tasks to retire
- *   task(in): COMMIT or SYSOP_END task in the range, already on the commit-order ring
+ *   task(in): COMMIT or SYSOP_END task, already on the commit-order ring
  *
  * Note:
- *   Transactions in the range may already be on the slave. Re-applied side by side over that state, two of them
- *   can lock rows the master never had them share and the workers deadlock; the failed task stops the applier,
- *   and the next run replays the same range into the same deadlock. So each commit in the range runs with no
- *   other task running.
- *
- *   Before the task is queued, the ready parked tasks are queued and every queued task is waited for, again
- *   until no task is parked, since a task that retires may make a parked one ready. The task is then queued
- *   and waited for, so the next commit is read only after it has retired.
- *
- *   The commits read before the range, from the required LSA up to the committed LSA this process started
- *   from, are skipped whole by the workers and go out in parallel; the first commit in the range is the one
- *   that waits for them.
- *
- *   TODO: This is needed only because a restarted applier cannot tell which transactions in the range a
- *   worker already committed. If each worker recorded the commit LSA it applied in the same transaction as
- *   the data, the restarted applier could skip those and apply the rest in parallel. This function, the
- *   re-apply error tolerance in the range and the max_committed_lsa store before queuing
- *   (la_coordinator_cover_commit) would then be unnecessary.
+ *   Without MULTI_CONN_TO_A_SERVER the one worker uses this process's client, which the coordinator also uses
+ *   to store the apply info, so the two must never use it at once. Every queued task is waited for, the task
+ *   is queued, and it is waited for too, so the next commit is read only after it has retired.
  */
 static int
 la_coordinator_run_alone (LA_TASK * task)
@@ -8032,6 +7748,7 @@ la_coordinator_run_alone (LA_TASK * task)
 
   return la_coordinator_wait_until_retired ();
 }
+#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
 
 /*
  * la_coordinator_process_sysop_end() - handle a LOG_SYSOP_END record read from the log
@@ -9129,8 +8846,6 @@ la_init (const char *log_path, const int max_mem_size)
   LSA_SET_NULL (&la_Info.final_lsa);
   LSA_SET_NULL (&la_Info.last_committed_lsa);
   LSA_SET_NULL (&la_Info.last_committed_rep_lsa);
-  LSA_SET_NULL (&la_Info.recovery_boundary_lsa);
-  LSA_SET_NULL (&la_Info.max_committed_lsa);
 
   la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;

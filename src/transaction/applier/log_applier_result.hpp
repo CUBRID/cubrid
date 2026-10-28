@@ -41,20 +41,11 @@ struct la_stats
   unsigned long delete_counter;
   unsigned long schema_counter;
   unsigned long fail_counter;
-  unsigned long recovery_skipped_counter;	/* re-applicability errors suppressed inside the recovery range
-						 * (INSERT unique duplicate, DELETE/UPDATE target missing) */
   int last_error_code;		/* the last error counted in fail_counter, for _db_ha_apply_worker_stat; 0 if none */
   time_t last_error_time;	/* when it happened */
   int num_unflushed;
   char last_class_name[DB_MAX_IDENTIFIER_LENGTH];	/* last applied class, for logs and the block-class test hook */
   bool multi_class;		/* rows of more than one class were applied; the done trace then names none */
-
-  bool in_recovery_range;	/* true when this transaction's commit LSA falls inside the restart recovery range
-				 * (the previous run may already have committed it on the slave); set once at
-				 * la_apply_repl_log entry and lets the flush error path suppress re-applicability
-				 * errors */
-  bool has_statement;		/* a statement item was applied; the worker then records the commit LSA in the
-				 * applied-statement marker in the same slave transaction */
 };
 
 typedef struct la_result LA_RESULT;
