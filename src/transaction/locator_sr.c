@@ -4291,7 +4291,7 @@ locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, 
 				    NULL, NULL);
       if (key == NULL)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR_AND_SET (error_code);
 	  break;
 	}
       for (fkref = index->fk; fkref != NULL && *writer == MVCCID_NULL && error_code == NO_ERROR; fkref = fkref->next)
@@ -4678,6 +4678,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			{
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid_ptr->pageid, oid_ptr->slotid, oid_ptr->volid);
+			  er_clear ();
 			  continue;
 			}
 
@@ -5062,6 +5063,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			{
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid_ptr->pageid, oid_ptr->slotid, oid_ptr->volid);
+			  er_clear ();
 			  continue;
 			}
 
@@ -13931,11 +13933,8 @@ exit:
   if (deletes_row && lock_acquired && scan == S_SUCCESS && !evaluated_false && recdes != NULL
       && !OID_IS_ROOTOID (class_oid))
     {
-      if (locator_find_child_writer (thread_p, class_oid, oid, recdes, writers_before, &child_writer) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-      if (child_writer != MVCCID_NULL)
+      err = locator_find_child_writer (thread_p, class_oid, oid, recdes, writers_before, &child_writer);
+      if (err != NO_ERROR || child_writer != MVCCID_NULL)
 	{
 	  /* nothing of this statement is on the row yet */
 	  if (transient)
@@ -13945,6 +13944,10 @@ exit:
 	  else
 	    {
 	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+	    }
+	  if (err != NO_ERROR)
+	    {
+	      return S_ERROR;
 	    }
 	  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
 	    {
