@@ -1096,9 +1096,7 @@ namespace cubschema
       {"schema_counter", "bigint"},
       {"commit_counter", "bigint"},
       {"fail_counter", "bigint"},
-      {"start_time", "datetime"},
-      {"max_committed_lsa_pageid", "bigint"},
-      {"max_committed_lsa_offset", "integer"}
+      {"start_time", "datetime"}
     },
 // constraints
     {
