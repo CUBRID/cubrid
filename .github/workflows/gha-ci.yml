@@ -563,10 +563,46 @@ jobs:
           /entrypoint.sh build $BUILD_ARGS
           echo "ccache, the node's cache, cumulative over develop pushes:"
           ccache -s
-          awk '/Result: cache hit \(direct\)/ {d++} /Result: cache hit \(preprocessed\)/ {p++} /Result: cache miss/ {m++}
-            END {t = d + p + m; if (t) printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %.2f %%\n", d, p, m, 100 * (d + p) / t
-              else print "::warning::no cache hit or miss in " FILENAME ", so ccache changed its log wording or no compile went through it"}' \
-            "$CCACHE_LOGFILE" || echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
+          results="$RUNNER_TEMP/ccache-results.tsv"
+          # Parallel compiles share the log, so one line can land inside another: read from every "[time pid] ".
+          awk -v results="$results" '
+            function entry(s,   pid, f, part, k) {
+              if (!match(s, /^\[[^ ]+ [0-9]+ *\] /)) return
+              pid = substr(s, 1, RLENGTH); gsub(/^\[[^ ]+ | *\] $/, "", pid)
+              s = substr(s, RLENGTH + 1)
+              if (s ~ /^=== CCACHE .* STARTED/) { delete cwd[pid]; delete src[pid] }
+              else if (sub(/^Working directory: /, "", s)) cwd[pid] = s
+              else if (sub(/^Source file: /, "", s)) src[pid] = s
+              else if (sub(/^Result: /, "", s)) {
+                print s "\t" cwd[pid] "\t" src[pid] > results
+                k = s ~ /^cache hit \(direct\)/ ? 1 : s ~ /^cache hit \(preprocessed\)/ ? 2 : s ~ /^cache miss/ ? 3 : 0
+                if (!k) return
+                f = src[pid] ~ /^\// ? src[pid] : cwd[pid] "/" src[pid]
+                part = "CUBRID source"
+                if (cwd[pid] ~ /\/CMakeFiles\/CMakeScratch\//) part = "CMake checks"
+                if (cwd[pid] ~ /\/3rdparty\// || f ~ /\/3rdparty\//) part = "external libraries"
+                n[part, k]++; all[k]++
+              }
+            }
+            function rate(d, p, m) { return d + p + m ? sprintf("%.2f %%", 100 * (d + p) / (d + p + m)) : "-" }
+            {
+              s = $0
+              # entry() resets RSTART: cut both pieces before calling it, or the loop never moves on.
+              while (match(substr(s, 2), /\[[0-9-]+T[0-9:.]+ [0-9]+ *\] /)) { head = substr(s, 1, RSTART); s = substr(s, RSTART + 1); entry(head) }
+              entry(s)
+            }
+            END {
+              if (!(all[1] + all[2] + all[3])) {
+                print "::warning::no cache hit or miss in " FILENAME ", so ccache changed its log wording or no compile went through it"; exit
+              }
+              printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %s\n", all[1], all[2], all[3], rate(all[1], all[2], all[3])
+              split("CUBRID source|external libraries|CMake checks", parts, "|")
+              for (i = 1; i <= 3; i++)
+                printf "  %-19s hit (direct) %d, hit (preprocessed) %d, miss %d, hit rate %s\n", parts[i] ":", n[parts[i], 1], n[parts[i], 2], n[parts[i], 3], rate(n[parts[i], 1], n[parts[i], 2], n[parts[i], 3])
+            }' "$CCACHE_LOGFILE" || echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
+          [ ! -f "$results" ] || { mkdir -p "$BUILD_LOG_DIR" && gzip -c "$results" > "$BUILD_LOG_DIR/ccache-results.tsv.gz" &&
+            echo "ccache, per-file results: $ARTIFACT_URL_BASE/${BUILD_LOG_DIR#"$CI_ROOT"/}/ccache-results.tsv.gz"; } ||
+            echo "::warning::could not keep the ccache results in $BUILD_LOG_DIR"
 
       - name: 4. Publish, staged then moved in with one rename
         env:
