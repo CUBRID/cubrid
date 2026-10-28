@@ -5631,10 +5631,12 @@ sort_px_hand_over_stats (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param)
  *   px_sort_param(in): the worker's parameters
  *
  * Note: The main thread puts SORT_ORDER_WITH_LIMIT, SORT_GROUP_BY and SORT_ANALYTIC alone, reading the input pages
- *       the workers sorted again in sorted (random) order. A worker has no list of its own and would put those pages
- *       in the shared lists, where they are victimized first while the main thread merges; on a small buffer every
- *       read then comes back from disk. In the main thread's list they stay under its transaction's quota, as when
- *       the main thread sorts alone. SORT_ORDER_BY workers put their own share, and keep the shared lists.
+ *       again in sorted (random) order; those pages usually sit in the shared lists (a parallel scan wrote them). A
+ *       worker has no list of its own, so the run pages it writes go to the shared lists too and push the input pages
+ *       out; on a small buffer every read then comes back from disk. In the main thread's private list the run pages
+ *       replace each other once the list reaches its quota (at most PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA), as when the
+ *       main thread sorts alone, and the input pages stay. SORT_ORDER_BY workers put their own share, and keep the
+ *       shared lists.
  */
 static void
 sort_px_borrow_private_lru (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param)
