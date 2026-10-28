@@ -9094,6 +9094,8 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
   bool left_is_set, right_is_set, left_null, right_null;
 
   cmp = DB_UNK;			/* init */
+  /* unpack decides each column pair's comparison */
+  assert (tval_cnt == 0 || compares != NULL);
 
   for (i = 0; i < tval_cnt; i++)
     {
@@ -9133,8 +9135,7 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
       /* both left_dbval, right_dbval is non-null: the comparison unpack decided for the column pair, as
        * tp_value_compare asks it */
       cmp =
-	eval_compare_values_resolved (thread_p, compares != NULL ? &compares[i] : NULL, vd, &left_dbval, &right_dbval,
-				      0, NULL);
+	eval_compare_values_resolved (thread_p, &compares[i], vd, &left_dbval, &right_dbval, 0, NULL);
 
       if (left_is_set && cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
 	{
