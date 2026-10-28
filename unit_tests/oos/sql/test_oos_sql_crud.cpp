@@ -25,6 +25,14 @@
 
 #include "test_oos_sql_common.hpp"
 
+#include "log_impl.h"
+#include "object_representation.h"
+#include "scope_exit.hpp"
+#include "work_space.h"
+
+#include <string>
+#include <vector>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -364,6 +372,103 @@ TEST_F (OosSqlCrud, FixedValuesAcrossNullsAndRepresentations)
 	  EXPECT_EQ (count, 1) << sql;
 	}
     }
+}
+
+TEST_F (OosSqlCrud, GroupedAttributeReadsAcrossOldRepresentation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_crud (id INT, small VARCHAR(100), single_data BIT VARYING, "
+		       "multi_data BIT VARYING, empty_data VARCHAR(100), unused INT)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_crud VALUES "
+		       "(1, 'first', CAST(REPEAT('AA', 4500) AS BIT VARYING), "
+		       "CAST(REPEAT('BB', 20000) AS BIT VARYING), NULL, 8), "
+		       "(2, 'second', CAST(REPEAT('CC', 4500) AS BIT VARYING), "
+		       "CAST(REPEAT('DD', 20000) AS BIT VARYING), NULL, 9)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_crud ADD COLUMN added INT DEFAULT 41"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  auto *thread = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_crud");
+  ASSERT_NE (cls, nullptr);
+  OID class_oid = *WS_OID (cls);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_hfid (thread, &class_oid, &hfid, nullptr), NO_ERROR);
+  DB_OBJLIST *objects = db_fetch_all_objects (cls, DB_FETCH_READ);
+  ASSERT_NE (objects, nullptr);
+  scope_exit free_objects ([&] ()
+  {
+    db_objlist_free (objects);
+  });
+
+  const char *names[] = { "multi_data", "added", "small", "single_data", "id", "empty_data" };
+  ATTR_ID ids[6];
+  for (int i = 0; i < 6; ++i)
+    {
+      DB_ATTRIBUTE *attribute = db_get_attribute (cls, names[i]);
+      ASSERT_NE (attribute, nullptr);
+      ids[i] = db_attribute_id (attribute);
+    }
+  HEAP_CACHE_ATTRINFO attrs;
+  ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, 6, ids, &attrs), NO_ERROR);
+  scope_exit end_attrs ([&] ()
+  {
+    heap_attrinfo_end (thread, &attrs);
+  });
+
+  int rows = 0;
+  for (DB_OBJLIST *item = objects; item != nullptr; item = item->next)
+    {
+      const OID oid = *WS_OID (item->op);
+      HEAP_SCANCACHE scan;
+      ASSERT_EQ (heap_scancache_start (thread, &scan, &hfid, &class_oid, true,
+				       logtb_get_mvcc_snapshot (thread)), NO_ERROR);
+      RECDES record = RECDES_INITIALIZER;
+      const SCAN_CODE status = heap_get_visible_version (thread, &oid, &class_oid, &record, &scan, COPY, NULL_CHN,
+			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+      std::vector<char> bytes;
+      if (status == S_SUCCESS)
+	{
+	  bytes.assign (record.data, record.data + record.length);
+	}
+      EXPECT_EQ (heap_scancache_end (thread, &scan), NO_ERROR);
+      ASSERT_EQ (status, S_SUCCESS);
+      record.data = bytes.data ();
+      record.area_size = static_cast<int> (bytes.size ());
+      ASSERT_TRUE (heap_recdes_contains_oos (&record));
+      ASSERT_NE (OR_GET_MVCC_REPID (record.data), heap_get_class_repr_id (thread, &class_oid));
+
+      for (int pass = 0; pass < 2; ++pass)
+	{
+	  bridge_oos_debug_counters_reset ();
+	  const int error = pass == 0 ? heap_attrinfo_read_dbvalues (thread, &oid, &record, &attrs)
+			    : heap_attrinfo_read_dbvalues_without_oid (thread, &record, &attrs);
+	  ASSERT_EQ (error, NO_ERROR);
+	  const oos_debug_counters counters = bridge_oos_debug_counters_get ();
+	  EXPECT_EQ (counters.read_many_calls, 1ULL);
+	  EXPECT_EQ (counters.read_many_requests, 2ULL);
+
+	  const int id = db_get_int (heap_attrinfo_access (ids[4], &attrs));
+	  ASSERT_TRUE (id == 1 || id == 2);
+	  EXPECT_EQ (db_get_int (heap_attrinfo_access (ids[1], &attrs)), 41);
+	  EXPECT_STREQ (db_get_string (heap_attrinfo_access (ids[2], &attrs)), id == 1 ? "first" : "second");
+	  EXPECT_TRUE (DB_IS_NULL (heap_attrinfo_access (ids[5], &attrs)));
+	  for (int index :
+	       {
+		       0, 3
+	       })
+	    {
+	      const int length = index == 0 ? 20000 : 4500;
+	      const char expected = index == 0 ? (id == 1 ? '\xBB' : '\xDD') : (id == 1 ? '\xAA' : '\xCC');
+	      int bits = 0;
+	      const char *data = db_get_bit (heap_attrinfo_access (ids[index], &attrs), &bits);
+	      ASSERT_EQ (bits, length * 8);
+	      ASSERT_NE (data, nullptr);
+	      EXPECT_EQ (std::string (data, length), std::string (length, expected));
+	    }
+	}
+      ++rows;
+    }
+  EXPECT_EQ (rows, 2);
 }
 
 int

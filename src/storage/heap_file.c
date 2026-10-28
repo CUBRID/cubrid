@@ -11000,6 +11000,44 @@ heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRIBUTE * attre
   raw->length = disk_size;
 }
 
+/* *INDENT-OFF* */
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
+heap_recdes_get_var_offset_pair (const RECDES * recdes, const char *var_table, int offset_size, int location,
+                                int *entry_out, int *next_entry_out)
+/* *INDENT-ON* */
+
+{
+  if (offset_size != OR_BYTE_SIZE && offset_size != OR_SHORT_SIZE && offset_size != OR_INT_SIZE)
+    {
+      assert_release (false);
+      return ER_GENERIC_ERROR;
+    }
+  const int table_bytes = recdes->length - (int) (var_table - recdes->data);
+  if (recdes->length < OR_MVCC_MIN_HEADER_SIZE || table_bytes < 0 || location < 0
+      || location > table_bytes / offset_size - 2)
+    {
+      return ER_FAILED;
+    }
+
+  const char *entry = var_table + location * offset_size;
+  switch (offset_size)
+    {
+    case OR_BYTE_SIZE:
+      *entry_out = OR_GET_BYTE (entry);
+      *next_entry_out = OR_GET_BYTE (entry + OR_BYTE_SIZE);
+      break;
+    case OR_SHORT_SIZE:
+      *entry_out = OR_GET_SHORT (entry);
+      *next_entry_out = OR_GET_SHORT (entry + OR_SHORT_SIZE);
+      break;
+    case OR_INT_SIZE:
+      *entry_out = OR_GET_INT (entry);
+      *next_entry_out = OR_GET_INT (entry + OR_INT_SIZE);
+      break;
+    }
+  return NO_ERROR;
+}
+
 /*
  * heap_recdes_get_var_offset_entry () - Read the raw variable offset table entry
  *   (offset value plus flag bits) of a variable attribute.
@@ -11085,14 +11123,8 @@ heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stu
   int this_offset;
   int next_offset;
 
-  /* The entry after this one bounds the field; both entries must lie inside the record before either is read. */
-  if (location > (recdes->length - header_size) / offset_size - 2)
-    {
-      return ER_FAILED;
-    }
-
-  if (heap_recdes_get_var_offset_entry (recdes, location, &this_entry) != NO_ERROR
-      || heap_recdes_get_var_offset_entry (recdes, location + 1, &next_entry) != NO_ERROR)
+  if (heap_recdes_get_var_offset_pair (recdes, recdes->data + header_size, offset_size, location,
+				       &this_entry, &next_entry) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -11187,64 +11219,25 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
   return NO_ERROR;
 }
 
-/*
- * heap_attrvalue_point_variable () -
- *
- *   return: NO_ERROR, or an error code propagated from the OOS inline-reference read or
- *           raised when the variable offset table header is inconsistent.
- *   recdes(in): Record
- *   attr_info(in): The attribute information structure
- *   attrepr(in): The attribute structure
- *   raw(out): Disk value pointer + length
- *   oos_owned_buffer(out): true iff successful OOS Resolve produced transient raw data.
- *                          Caller must use COPY in data_readval and call recdes_free_data_area
- *                          unless raw->data == oos_scratch.
- *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
- */
 /* *INDENT-OFF* */
-static inline __attribute__ ((always_inline)) int
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
 heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
 			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * is_oos)
 /* *INDENT-ON* */
+
 {
   int offset;
   int this_off, next_off;
   const int location = attrepr->location;
-  const int table_bytes = recdes->length - (int) (layout->var_table - recdes->data);
-
   *is_oos = false;
-  /* Preserve heap_recdes_get_var_offset_entry's header and entry bounds using the
-   * layout already derived from this record, without decoding its header again. */
-  if (recdes->length < OR_MVCC_MIN_HEADER_SIZE || table_bytes < 0 || location < 0
-      || location >= table_bytes / layout->offset_size)
+  int error = heap_recdes_get_var_offset_pair (recdes, layout->var_table, layout->offset_size, location,
+					       &offset, &next_off);
+  if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      return error;
     }
-
-  /* Read both bounding entries with the same width dispatch. Keep the raw first
-   * entry's IS_OOS bit even when the record's summary flag is absent. */
-  const char *entry = layout->var_table + location * layout->offset_size;
-  switch (layout->offset_size)
-    {
-    case OR_BYTE_SIZE:
-      offset = OR_GET_BYTE (entry);
-      next_off = OR_GET_VAR_OFFSET (OR_GET_BYTE (entry + OR_BYTE_SIZE));
-      break;
-    case OR_SHORT_SIZE:
-      offset = OR_GET_SHORT (entry);
-      next_off = OR_GET_VAR_OFFSET (OR_GET_SHORT (entry + OR_SHORT_SIZE));
-      break;
-    case OR_INT_SIZE:
-      offset = OR_GET_INT (entry);
-      next_off = OR_GET_VAR_OFFSET (OR_GET_INT (entry + OR_INT_SIZE));
-      break;
-    default:
-      assert_release (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
-    }
-
+  next_off = OR_GET_VAR_OFFSET (next_off);
   this_off = OR_GET_VAR_OFFSET (offset);
   if (next_off - this_off == 0)
     {
@@ -11298,7 +11291,7 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
  *   length(in): Disk value length
  */
 /* *INDENT-OFF* */
-static inline __attribute__ ((always_inline)) int
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
 heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 				     bool oos_owned_buffer)
 /* *INDENT-ON* */
@@ -11562,7 +11555,7 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
 }
 
 /* *INDENT-OFF* */
-static inline __attribute__ ((always_inline)) int
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
 		     const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
 /* *INDENT-ON* */
@@ -11648,7 +11641,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
  *   Keeps the per-attribute OOS Resolve path and its stack-scratch fast path.
  */
 /* *INDENT-OFF* */
-static inline __attribute__ ((always_inline)) int
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
 heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 					  const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
 /* *INDENT-ON* */
@@ -11704,7 +11697,7 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
  *   grouped Resolve.
  */
 /* *INDENT-OFF* */
-static inline __attribute__ ((always_inline)) int
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
 heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 					       HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record * pending, int header_size)
 /* *INDENT-ON* */
@@ -13874,7 +13867,7 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
   /* fixed attribute                                                  */
   /* Write the fixed attributes values, if unbound, does not matter   */
   /* what value is stored. We need to set the appropriate bit in the  */
-  /* bound bit array for fixed attributes. For variable attributes,   */
+  /* bound bit array for fixed attributes.                          */
   /* The caller derived the bound bitmap from the header and VOT once. */
   buf->ptr = bitmap_bound - attr_info->last_classrepr->fixed_length + value->last_attrepr->location;
 

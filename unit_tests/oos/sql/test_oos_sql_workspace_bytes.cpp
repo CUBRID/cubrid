@@ -470,12 +470,33 @@ TEST_F (OosWorkspaceBytes, InlineVariableOffsetsAndValueOrder)
 		  db_value_clear (&value);
 		}
 	    }
-	  // The record advertises no offset entries. Preserve the existing error
-	  // contract instead of decoding bytes outside its declared length.
-	  record.length = header;
-	  EXPECT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &record, &attrs), ER_FAILED);
-	  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
-	  er_clear ();
+	  ATTR_ID first_id = NULL_ATTRID;
+	  for (int i = 0; i < attrs.read_classrepr->n_attributes; ++i)
+	    {
+	      const OR_ATTRIBUTE &attribute = attrs.read_classrepr->attributes[i];
+	      if (!attribute.is_fixed && attribute.location == 0)
+		{
+		  first_id = attribute.id;
+		}
+	    }
+	  ASSERT_NE (first_id, NULL_ATTRID);
+	  HEAP_CACHE_ATTRINFO first_attr;
+	  ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, 1, &first_id, &first_attr), NO_ERROR);
+	  scope_exit end_first_attr ([&] ()
+	  {
+	    heap_attrinfo_end (thread, &first_attr);
+	  });
+	  for (int entries :
+	       {
+		       0, 1
+	       })
+	    {
+	      SCOPED_TRACE (entries);
+	      record.length = header + entries * width;
+	      EXPECT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &record, &first_attr), ER_FAILED);
+	      EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
+	      er_clear ();
+	    }
 	}
     }
 }
