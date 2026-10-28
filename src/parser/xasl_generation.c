@@ -9363,8 +9363,10 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	}
       else
 	{
-	  /* CBRD-27583: a list a type checking left variable reads as its first column, as a single tuple does */
-	  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	  /* CBRD-27583: a list a type checking left variable, or whose collation it left to an enforced or bound one,
+	   * reads as its first column, as a single tuple does */
+	  if (regu->domain != NULL && (TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
+				       || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL))
 	    {
 	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	    }

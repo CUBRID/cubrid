@@ -2890,10 +2890,10 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
       conv_kind[side] = DOMAIN_HASH_KEY_AS_IS;
       if (*coerce && resolved != domain[side])
 	{
-	  /* tp_value_coerce's: a JSON value converts by its scalar, a string domain whose collation is the values'
-	   * (LEAVE, ENFORCE) takes them as they are - coerced at the row */
-	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON
-	    || TP_DOMAIN_COLLATION_FLAG (resolved) != TP_DOMAIN_COLL_NORMAL ? DOMAIN_HASH_KEY_COERCED
+	  /* tp_value_coerce's: a JSON value converts by its scalar - coerced at the row; XASL generation gives every
+	   * other key a domain of its collation */
+	  assert (TP_DOMAIN_COLLATION_FLAG (resolved) == TP_DOMAIN_COLL_NORMAL);
+	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON ? DOMAIN_HASH_KEY_COERCED
 	    : DOMAIN_HASH_KEY_CONVERTED;
 	}
       domain_compare_key_of (*coerce ? resolved : domain[side], &key[side]);
