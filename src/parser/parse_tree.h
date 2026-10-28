@@ -3146,6 +3146,8 @@ struct pt_merge_info
   PT_NODE *use_hash;		/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *remote_src_query;	/* remote target, local source: the SELECT over the source. Its row holds the
 				 * values bound per MERGE, in pt_dblink_merge_walk_binds () order. */
+  PT_NODE *remote_text_src;	/* remote target, local source: the statement as it was before type checking.
+				 * The remote text is printed from it. No walk visits it. */
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */

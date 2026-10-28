@@ -12106,8 +12106,9 @@ pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE *
 /*
  * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source binds.
  *   The order is that of the one-row USING's columns: ON, SET, UPDATE WHERE, DELETE WHERE, VALUES and
- *   INSERT WHERE. The source SELECT and the remote statement text are both laid out from this walk, so the
- *   two agree column by column.
+ *   INSERT WHERE. The source SELECT is laid out from this walk over the statement, and the remote statement
+ *   text from it over the statement's copy from before type checking. XASL generation checks that the two
+ *   report as many columns and keys.
  *   return: the number of values
  *   parser(in): parser context
  *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape

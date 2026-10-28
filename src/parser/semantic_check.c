@@ -13239,6 +13239,17 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  node = parser_walk_tree (parser, node, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
 
+	  if (merge_src_from != NULL && !pt_has_error (parser))
+	    {
+	      /* A remote MERGE with a local source sends its clauses as written. Type checking below wraps a value in
+	       * a CUBRID cast and folds a cast literal into a CUBRID literal, which another vendor may not take. */
+	      node->info.merge.remote_text_src = parser_copy_tree (parser, node);
+	      if (node->info.merge.remote_text_src == NULL)
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		}
+	    }
+
 	  if (!pt_has_error (parser))
 	    {
 	      /* remove unnecessary variable */
@@ -13254,8 +13265,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	  if (merge_src_from != NULL && node != NULL && !pt_has_error (parser))
 	    {
 	      /* a remote MERGE with a local source: the SELECT whose rows the sink sends. XASL generation walks the
-	       * clauses again for the remote text, and the two walks must meet the same columns. The statement skips
-	       * mq_translate as a remote DML (db_vdb.c), so no rewrite changes the clauses in between. */
+	       * clauses of remote_text_src for the remote text, and the two walks must meet the same columns. It
+	       * refuses the statement when they count different columns. The statement skips mq_translate as a
+	       * remote DML (db_vdb.c), so no rewrite changes the clauses in between. */
 	      node->info.merge.remote_src_query = pt_dblink_merge_src_query (parser, node, merge_src_from, sc_info_ptr);
 	    }
 	}
