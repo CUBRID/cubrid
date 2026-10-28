@@ -191,6 +191,9 @@ static int scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
 static void scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp);
 static void scan_batch_keep_drop (THREAD_ENTRY * thread_p, SCAN_BATCH_KEEP * keep);
+static SCAN_BATCH_KEEP *scan_batch_keep_for (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, SCAN_BATCH_KEEP * keep);
+static void scan_batch_keep_note (SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp, const EXPR_BATCH_INPUTS * in,
+				  bool for_consumer);
 static bool scan_batch_keep_matches (const SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp,
 				     const EXPR_BATCH_INPUTS * in, bool for_consumer);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -7887,6 +7890,17 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
 	}
       scan_batch_keep_drop (thread_p, keep);
     }
+  if (keep != NULL && keep->declined_why != NULL)
+    {
+      /* the build declined these same inputs at an earlier open (a correlated subquery's scan opens once per outer
+       * row): the same answer without building again */
+      if (scan_batch_keep_matches (keep, hsidp, &in, xasl != NULL))
+	{
+	  hsidp->batch_why_not = keep->declined_why;
+	  return hsidp->batch_state;
+	}
+      keep->declined_why = NULL;
+    }
 
   /* a decline here is the row path, not a fault: an allocation that failed on the way leaves no error behind (a parallel
    * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before */
@@ -7894,6 +7908,18 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
     {
+      /* a decline of the inputs, not an allocation that failed on the way (an error, or "out of memory"), is kept for
+       * the next open of the spec from the same inputs */
+      if (spec != NULL && er_errid () == err_before && hsidp->batch_why_not != NULL
+	  && strstr (hsidp->batch_why_not, "memory") == NULL)
+	{
+	  keep = scan_batch_keep_for (thread_p, spec, keep);
+	  if (keep != NULL)
+	    {
+	      scan_batch_keep_note (keep, hsidp, &in, xasl != NULL);
+	      keep->declined_why = hsidp->batch_why_not;
+	    }
+	}
       if (err_before == NO_ERROR)
 	{
 	  er_clear ();
@@ -7934,40 +7960,59 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
 
   /* the keep that will hold this plan between the scan's opens, with what it was built from; without one (no spec,
    * or no memory for it: the batch runs all the same) scan_end_scan () frees the plan as it would without a keep */
-  if (spec != NULL && keep == NULL)
+  if (spec != NULL)
+    {
+      keep = scan_batch_keep_for (thread_p, spec, keep);
+    }
+  if (keep != NULL)
+    {
+      scan_batch_keep_note (keep, hsidp, &in, xasl != NULL);
+      hsidp->batch_spec = spec;
+    }
+  return hsidp->batch_state;
+}
+
+/* the spec's keep, made when it has none (no memory for it: NULL, the batch runs all the same and scan_end_scan ()
+ * frees the plan as it would without a keep) */
+static SCAN_BATCH_KEEP *
+scan_batch_keep_for (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, SCAN_BATCH_KEEP * keep)
+{
+  if (keep == NULL)
     {
       keep = (SCAN_BATCH_KEEP *) db_private_alloc (thread_p, sizeof (SCAN_BATCH_KEEP));
       if (keep == NULL)
 	{
 	  er_clear ();
+	  return NULL;
 	}
-      else
-	{
-	  memset (keep, 0, sizeof (*keep));
-	  spec->batch_keep = keep;
-	}
+      memset (keep, 0, sizeof (*keep));
+      spec->batch_keep = keep;
     }
-  if (keep != NULL)
-    {
-      COPY_OID (&keep->class_oid, &hsidp->cls_oid);
-      keep->scan_prog = in.scan_pred_compiled;
-      keep->pred_expr = hsidp->scan_pred.pred_expr;
-      keep->agg_list = in.agg_list;
-      keep->proj = in.proj;
-      keep->has_gby = (in.gby != NULL);
-      keep->gby_prog = (in.gby != NULL) ? in.gby->proj_prog : NULL;
-      keep->gby_n_aggs = (in.gby != NULL) ? in.gby->n_aggs : 0;
-      keep->gby_n_keys = (in.gby != NULL) ? in.gby->n_keys : 0;
-      keep->for_consumer = (xasl != NULL);
-      keep->pred_attr_cache = in.pred_attr_cache;
-      keep->rest_attr_cache = in.rest_attr_cache;
-      keep->vd = in.vd;
-      keep->has_rtf = (in.rtf != NULL);
-      keep->rtf_is_date = in.rtf_is_date;
-      keep->rtf_val = in.rtf_val;
-      hsidp->batch_spec = spec;
-    }
-  return hsidp->batch_state;
+  return keep;
+}
+
+/* what a plan, or a decline, was built from (scan_batch_keep_matches () compares the next open's with it) */
+static void
+scan_batch_keep_note (SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp, const EXPR_BATCH_INPUTS * in,
+		      bool for_consumer)
+{
+  COPY_OID (&keep->class_oid, &hsidp->cls_oid);
+  keep->scan_prog = in->scan_pred_compiled;
+  keep->pred_expr = hsidp->scan_pred.pred_expr;
+  keep->agg_list = in->agg_list;
+  keep->proj = in->proj;
+  keep->has_gby = (in->gby != NULL);
+  keep->gby_prog = (in->gby != NULL) ? in->gby->proj_prog : NULL;
+  keep->gby_n_aggs = (in->gby != NULL) ? in->gby->n_aggs : 0;
+  keep->gby_n_keys = (in->gby != NULL) ? in->gby->n_keys : 0;
+  keep->for_consumer = for_consumer;
+  keep->pred_attr_cache = in->pred_attr_cache;
+  keep->rest_attr_cache = in->rest_attr_cache;
+  keep->vd = in->vd;
+  keep->has_rtf = (in->rtf != NULL);
+  keep->rtf_is_date = in->rtf_is_date;
+  keep->rtf_val = in->rtf_val;
+  keep->declined_why = NULL;
 }
 
 /* The kept plan was built from this open's inputs.  Per clone, the same through the execution's non-final clears:
@@ -8008,6 +8053,7 @@ scan_batch_keep_drop (THREAD_ENTRY * thread_p, SCAN_BATCH_KEEP * keep)
       expr_batch_plan_free (thread_p, keep->plan);
       keep->plan = NULL;
     }
+  keep->declined_why = NULL;
 }
 
 /* scan_end_scan (): the plan, the chunk and the buffers go to the spec's keep with their per-scan state cleared --

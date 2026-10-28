@@ -141,6 +141,8 @@ struct scan_batch_keep
   bool has_rtf;			/* the plan has the runtime filter's term, on the key in rtf_val */
   bool rtf_is_date;
   const DB_VALUE *rtf_val;
+  const char *declined_why;	/* no plan: the build declined these inputs, and why -- the next open from the same
+				 * inputs goes to the row path without building again */
 };
 
 typedef struct heap_scan_id HEAP_SCAN_ID;

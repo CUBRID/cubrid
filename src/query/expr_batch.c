@@ -233,6 +233,10 @@ struct eb_step
   unsigned char result_type;	/* DB_TYPE; EB_I64 arithmetic: the result must fit it (the kernel's or the node's) */
 };
 
+/* an integer IN list this long or longer is searched by bisection (eb_load_in_list ()): below it the row's walk
+ * over the list costs less than the search */
+#define EB_IN_SORTED_MIN 16
+
 /* a raw filter term "column op constant"; the constant's source is in EB_LEAF_SRC */
 typedef struct eb_leaf EB_LEAF;
 struct eb_leaf
@@ -253,6 +257,8 @@ struct eb_leaf
   int k_n;
   const DB_VALUE **k_list;
   int64_t *k_i64;
+  int64_t *k_sorted;		/* an integer list of EB_IN_SORTED_MIN values or more: its values, sorted, without NULLs */
+  int k_sorted_n;		/* their count, 0 when the row loop walks k_i64 */
   const char **k_strs;
   int *k_lens;
   unsigned char k_has_null;
@@ -1352,6 +1358,7 @@ eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   memset (leaf, 0, sizeof (*leaf));
   leaf->k_list = (const DB_VALUE **) eb_arena_alloc (plan, sizeof (DB_VALUE *) * n);
   leaf->k_i64 = (int64_t *) eb_arena_alloc (plan, sizeof (int64_t) * n);
+  leaf->k_sorted = (n >= EB_IN_SORTED_MIN) ? (int64_t *) eb_arena_alloc (plan, sizeof (int64_t) * n) : NULL;
   leaf->k_strs = (const char **) eb_arena_alloc (plan, sizeof (char *) * n);
   leaf->k_lens = (int *) eb_arena_alloc (plan, sizeof (int) * n);
   if (leaf->k_list == NULL || leaf->k_i64 == NULL || leaf->k_strs == NULL || leaf->k_lens == NULL)
@@ -1566,6 +1573,14 @@ eb_char_end (const char *p, const char *end, INTL_CODESET codeset)
   return (p + w <= end) ? p + w : NULL;
 }
 
+static int
+eb_cmp_i64 (const void *a, const void *b)
+{
+  int64_t x = *(const int64_t *) a, y = *(const int64_t *) b;
+
+  return (x > y) - (x < y);
+}
+
 /* an IN leaf's list for this page: each value of the column's kind (an exact integer for an integer column, a
  * string of its codeset and collation for a string one), else the page goes to the row path */
 static int
@@ -1657,7 +1672,45 @@ eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
 	  return eb_fallback (plan, "an IN list value the batch does not compare");
 	}
     }
+  leaf->k_sorted_n = 0;
+  if (leaf->etype != EB_STR && leaf->k_sorted != NULL)
+    {
+      /* a long list: its values sorted once here, each row bisects them instead of walking the list */
+      int m = 0;
+
+      for (i = 0; i < leaf->k_n; i++)
+	{
+	  if (leaf->k_lens[i] >= 0)
+	    {
+	      leaf->k_sorted[m++] = leaf->k_i64[i];
+	    }
+	}
+      qsort (leaf->k_sorted, (size_t) m, sizeof (int64_t), eb_cmp_i64);
+      leaf->k_sorted_n = m;
+    }
   return NO_ERROR;
+}
+
+/* is v one of the sorted values */
+static inline bool
+eb_sorted_has (const int64_t * a, int n, int64_t v)
+{
+  int lo = 0, hi = n;
+
+  while (lo < hi)
+    {
+      int mid = lo + (hi - lo) / 2;
+
+      if (a[mid] < v)
+	{
+	  lo = mid + 1;
+	}
+      else
+	{
+	  hi = mid;
+	}
+    }
+  return lo < n && a[lo] == v;
 }
 
 /* an IN leaf over the selection: TRUE on a value of the list, UNKNOWN on a NULL column or (no value matching) a
@@ -1745,7 +1798,11 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    {
 	      return eb_fallback (plan, "a pointed cell the batch does not decode");
 	    }
-	  for (i = 0; got > 0 && i < leaf->k_n && !hit; i++)
+	  if (got > 0 && leaf->k_sorted_n > 0)
+	    {
+	      hit = eb_sorted_has (leaf->k_sorted, leaf->k_sorted_n, v);
+	    }
+	  for (i = 0; got > 0 && leaf->k_sorted_n == 0 && i < leaf->k_n && !hit; i++)
 	    {
 	      hit = (leaf->k_lens[i] >= 0 && leaf->k_i64[i] == v);
 	    }
@@ -2316,6 +2373,17 @@ eb_choose_pointed (EXPR_BATCH_PLAN * plan)
       for (i = 0; i < plan->n_proj; i++)
 	{
 	  other_uses += (plan->proj[i].vec == col->vec);
+	}
+      for (i = 0; i < plan->n_shared; i++)
+	{
+	  other_uses += (plan->shared[i].vec == col->vec);
+	}
+      if (leaf_uses + arith_uses + other_uses == 0)
+	{
+	  /* a column a term registered and then did not become a leaf for: nothing reads its vector, so it is not
+	   * decoded (a NUMERIC one would also send its chunk to the row path on a scale it cannot hold) */
+	  v->kind = EB_VK_PTR;
+	  continue;
 	}
       if (other_uses > 0)
 	{

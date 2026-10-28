@@ -6104,7 +6104,12 @@ qexec_gby_mtable_add (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_GBY_
 
 /* The groups the unsorted list folds to, estimated from its first rows when no sketch saw them all: the keys of a
  * sample counted, and the unseen ones estimated from those seen once and twice (Chao1).  A list whose sample
- * repeats no key has about as many groups as rows. */
+ * repeats no key has about as many groups as rows.  The estimate is made over the sample's runs -- a row whose key
+ * is not the row before's starts one -- not its rows: a list clustered on its key (sorted, or a key the scan read in
+ * its order, such as an order's lines) repeats a key only inside its run, so a sample of its first rows counts a few
+ * keys many times and Chao1 over the rows sees nothing unseen (34 to 43 times too few on 3,000,000 rows).  Over the
+ * runs: when no key came back after its run, every run is a new key and the list has about as many groups as runs
+ * (the sample's share of them, extrapolated); otherwise Chao1 over the runs' keys, at most the list's runs. */
 #define QEXEC_GBY_SAMPLE_ROWS (65536)
 
 static int
@@ -6113,25 +6118,26 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
   AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
   const unsigned int size = QEXEC_GBY_SAMPLE_ROWS * 2, mask = size - 1;
   unsigned int *hashes = (unsigned int *) db_private_alloc (thread_p, size * sizeof (unsigned int));
-  int *counts = (int *) db_private_alloc (thread_p, size * sizeof (int));
+  int *runs = (int *) db_private_alloc (thread_p, size * sizeof (int));	/* the runs each key starts */
   QFILE_LIST_SCAN_ID scan;
   QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
-  int n = 0, d = 0, f1 = 0, f2 = 0, rc = NO_ERROR;
+  int n = 0, d = 0, n_runs = 0, rd = 0, rf1 = 0, rf2 = 0, rc = NO_ERROR;
+  unsigned int prev = 0;
   SCAN_CODE sc = S_END;
   unsigned int i;
 
-  if (hashes == NULL || counts == NULL)
+  if (hashes == NULL || runs == NULL)
     {
       db_private_free_and_init (thread_p, hashes);
-      db_private_free_and_init (thread_p, counts);
+      db_private_free_and_init (thread_p, runs);
       return ER_FAILED;
     }
   memset (hashes, 0, size * sizeof (unsigned int));
-  memset (counts, 0, size * sizeof (int));
+  memset (runs, 0, size * sizeof (int));
   if (qfile_open_list_scan (rows, &scan) != NO_ERROR)
     {
       db_private_free_and_init (thread_p, hashes);
-      db_private_free_and_init (thread_p, counts);
+      db_private_free_and_init (thread_p, runs);
       return ER_FAILED;
     }
   while (n < QEXEC_GBY_SAMPLE_ROWS && (sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
@@ -6151,7 +6157,12 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
       for (i = h & mask; hashes[i] != 0 && hashes[i] != h; i = (i + 1) & mask)
 	;
       hashes[i] = h;
-      counts[i]++;
+      if (h != prev)
+	{
+	  runs[i]++;
+	  n_runs++;
+	  prev = h;
+	}
       n++;
     }
   if (sc == S_ERROR && rc == NO_ERROR)
@@ -6163,11 +6174,12 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
   for (i = 0; i < size; i++)
     {
       d += (hashes[i] != 0);
-      f1 += (counts[i] == 1);
-      f2 += (counts[i] == 2);
+      rd += (runs[i] > 0);
+      rf1 += (runs[i] == 1);
+      rf2 += (runs[i] == 2);
     }
   db_private_free_and_init (thread_p, hashes);
-  db_private_free_and_init (thread_p, counts);
+  db_private_free_and_init (thread_p, runs);
   if (n < QEXEC_GBY_SAMPLE_ROWS)
     {
       /* the whole list */
@@ -6175,7 +6187,19 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
     }
   else
     {
-      *groups = MIN ((double) d + (double) f1 * (f1 - 1) / (2.0 * (f2 + 1)), (double) rows->tuple_cnt);
+      /* the list's runs, extrapolated from the sample's share of them */
+      double list_runs = (double) rows->tuple_cnt * n_runs / n;
+
+      if (rd == n_runs)
+	{
+	  /* no key came back after its run */
+	  *groups = list_runs;
+	}
+      else
+	{
+	  *groups = MIN ((double) rd + (double) rf1 * (rf1 - 1) / (2.0 * (rf2 + 1)), list_runs);
+	}
+      *groups = MIN (*groups, (double) rows->tuple_cnt);
     }
   return rc;
 }
