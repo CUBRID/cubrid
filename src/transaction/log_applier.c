@@ -200,8 +200,10 @@ struct la_cache_buffer
 
 /* Page buffers a thread has fixed and not released yet. The cache is shared by the coordinator and the workers,
  * so each thread releases only its own fixes, by buffer; the next pages the read macros fix for a record that
- * crosses a page boundary are released with the rest when the thread finishes its unit of work. */
-#define LA_MAX_PINNED_PAGE_BUFFERS 256
+ * crosses a page boundary are released with the rest when the thread finishes its unit of work. The list starts
+ * with this many entries, doubles when it is full, and halves back toward it when a unit of work ends with no more
+ * than a third of it in use (la_pin_page_buffer, la_release_pinned_page_buffers). */
+#define LA_MIN_PINNED_PAGE_BUFFERS 256
 
 typedef struct la_pinned_page_buffer LA_PINNED_PAGE_BUFFER;
 struct la_pinned_page_buffer
@@ -437,8 +439,9 @@ typedef enum
 LA_INFO la_Info;
 
 static bool la_applier_need_shutdown = false;
-static thread_local LA_PINNED_PAGE_BUFFER la_Pinned_page_buffers[LA_MAX_PINNED_PAGE_BUFFERS];
+static thread_local LA_PINNED_PAGE_BUFFER *la_Pinned_page_buffers = NULL;
 static thread_local int la_Pinned_page_buffer_count = 0;
+static thread_local int la_Pinned_page_buffer_capacity = 0;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 static char la_peer_host[CUB_MAXHOSTNAMELEN + 1];
@@ -492,6 +495,8 @@ static int la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer);
 static int la_expand_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pagesize,
 						 int buffer_size);
+static void la_pin_page_buffer (LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid);
+static void la_free_pinned_page_buffers (void);
 static LA_CACHE_BUFFER *la_get_page_buffer (LOG_PAGEID pageid);
 static LOG_PAGE *la_get_page (LOG_PAGEID pageid);
 static void la_release_page_buffer (LOG_PAGEID pageid);
@@ -513,6 +518,7 @@ static void la_free_applied_tx_markers (void);
 static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
 static int la_insert_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa);
 static void la_end_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context);
+static void la_apply_worker_end_context (LA_APPLY_WORKER_CONTEXT * context);
 static int la_delete_applied_tx_markers (const LOG_LSA * upto_lsa);
 
 static bool la_ignore_on_error (int errid);
@@ -1546,9 +1552,22 @@ la_start_apply_workers (void)
   config.trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
   config.run_task = la_apply_worker_run_task;
   config.request_shutdown = la_request_shutdown;
-  config.end_context = la_end_applied_tx_marker;
+  config.end_context = la_apply_worker_end_context;
 
   return la_worker_start (la_apply_Workers, la_Info.worker_count, &config);
+}
+
+/*
+ * la_apply_worker_end_context() - release what a worker kept for its tasks, before its connection is closed
+ *   context(in/out): the worker's apply context
+ *
+ * Note: runs on the worker thread, so it frees that thread's pinned list too.
+ */
+static void
+la_apply_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
+{
+  la_end_applied_tx_marker (context);
+  la_free_pinned_page_buffers ();
 }
 
 /*
@@ -2335,6 +2354,63 @@ la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pages
   return NULL;
 }
 
+/*
+ * la_pin_page_buffer() - add a fix the calling thread took to its pinned list
+ *   cache_buffer(in): the fixed buffer
+ *   pageid(in): the page id it was fixed for
+ *
+ * Note:
+ *   A full list doubles. Growing past LA_MIN_PINNED_PAGE_BUFFERS is written to the error log: a unit of work
+ *   holds that many fixes, a record spanning that many log pages or fixes not released where they should be. If
+ *   the list cannot grow, the fix is not recorded, so it is never released and the buffer never replaced; the
+ *   cache grows instead of handing a page in use to another one.
+ */
+static void
+la_pin_page_buffer (LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid)
+{
+  if (la_Pinned_page_buffer_count == la_Pinned_page_buffer_capacity)
+    {
+      int new_capacity = (la_Pinned_page_buffer_capacity == 0) ? LA_MIN_PINNED_PAGE_BUFFERS
+	: la_Pinned_page_buffer_capacity * 2;
+      LA_PINNED_PAGE_BUFFER *new_list;
+
+      new_list =
+	(LA_PINNED_PAGE_BUFFER *) realloc (la_Pinned_page_buffers, sizeof (LA_PINNED_PAGE_BUFFER) * new_capacity);
+      if (new_list == NULL)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "la_pin_page_buffer: cannot grow the pinned list past %d, page %lld stays "
+			 "fixed\n", la_Pinned_page_buffer_count, (long long) pageid);
+	  return;
+	}
+
+      la_Pinned_page_buffers = new_list;
+      la_Pinned_page_buffer_capacity = new_capacity;
+      if (new_capacity > LA_MIN_PINNED_PAGE_BUFFERS)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "la_pin_page_buffer: pinned list grown to %d entries, page %lld\n",
+			 new_capacity, (long long) pageid);
+	}
+    }
+
+  la_Pinned_page_buffers[la_Pinned_page_buffer_count].buffer = cache_buffer;
+  la_Pinned_page_buffers[la_Pinned_page_buffer_count].pageid = pageid;
+  la_Pinned_page_buffer_count++;
+}
+
+/*
+ * la_free_pinned_page_buffers() - free the calling thread's pinned list when the thread is done with the cache
+ */
+static void
+la_free_pinned_page_buffers (void)
+{
+  if (la_Pinned_page_buffers != NULL)
+    {
+      free_and_init (la_Pinned_page_buffers);
+    }
+  la_Pinned_page_buffer_count = 0;
+  la_Pinned_page_buffer_capacity = 0;
+}
+
 static LA_CACHE_BUFFER *
 la_get_page_buffer (LOG_PAGEID pageid)
 {
@@ -2377,19 +2453,7 @@ la_get_page_buffer (LOG_PAGEID pageid)
   cache_buffer->fix_count++;
   pthread_mutex_unlock (&cache_pb->mutex);
 
-  if (la_Pinned_page_buffer_count < LA_MAX_PINNED_PAGE_BUFFERS)
-    {
-      la_Pinned_page_buffers[la_Pinned_page_buffer_count].buffer = cache_buffer;
-      la_Pinned_page_buffers[la_Pinned_page_buffer_count].pageid = pageid;
-      la_Pinned_page_buffer_count++;
-    }
-  else
-    {
-      /* Untracked, the fix is never released and the buffer never replaced; the cache grows instead of
-       * handing a page in use to another one. */
-      assert (false);
-      er_log_debug (ARG_FILE_LINE, "la_get_page_buffer: pinned list full, page %lld stays fixed\n", (long long) pageid);
-    }
+  la_pin_page_buffer (cache_buffer, pageid);
 
   return cache_buffer;
 }
@@ -2533,6 +2597,22 @@ la_release_pinned_page_buffers (const LA_CACHE_BUFFER * keep)
   pthread_mutex_unlock (&cache_pb->mutex);
 
   la_Pinned_page_buffer_count = kept;
+
+  /* a large record grew the list; give the memory back step by step once a unit of work leaves it mostly empty */
+  if (la_Pinned_page_buffer_capacity > LA_MIN_PINNED_PAGE_BUFFERS
+      && la_Pinned_page_buffer_count <= la_Pinned_page_buffer_capacity / 3)
+    {
+      int new_capacity = MAX (la_Pinned_page_buffer_capacity / 2, LA_MIN_PINNED_PAGE_BUFFERS);
+      LA_PINNED_PAGE_BUFFER *new_list;
+
+      new_list =
+	(LA_PINNED_PAGE_BUFFER *) realloc (la_Pinned_page_buffers, sizeof (LA_PINNED_PAGE_BUFFER) * new_capacity);
+      if (new_list != NULL)
+	{
+	  la_Pinned_page_buffers = new_list;
+	  la_Pinned_page_buffer_capacity = new_capacity;
+	}
+    }
 }
 
 /*
@@ -3754,7 +3834,7 @@ la_insert_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * 
  * la_end_applied_tx_marker() - drop the worker's compiled marker INSERT
  *   context(in/out): the worker's apply context
  *
- * Note: also the workers' end_context callback, called before the worker's connection is closed.
+ * Note: also called when a worker ends (la_apply_worker_end_context), before its connection is closed.
  */
 static void
 la_end_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context)
@@ -4296,6 +4376,24 @@ la_add_apply_list (int tranid)
   return la_Info.repl_lists[la_Info.cur_repl - 1];
 }
 
+/* LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT for la_log_copy_fromlog: the page read before is copied and no longer
+ * used, so the fix this function took on it is released once the next page is fixed. The caller's page, fixed
+ * before the call and still used by the caller, is never released here. */
+#define LA_LOG_COPY_ADVANCE(result, offset, pageid, pgptr, fixed_pageid) \
+  do { \
+    LOG_PAGEID prev_pageid_ = (pageid); \
+    LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (result, 0, offset, pageid, pgptr); \
+    if ((pageid) != prev_pageid_) { \
+      if ((fixed_pageid) != NULL_PAGEID) { \
+        la_release_page_buffer (fixed_pageid); \
+        (fixed_pageid) = NULL_PAGEID; \
+      } \
+      if ((pgptr) != NULL) { \
+        (fixed_pageid) = (pageid); \
+      } \
+    } \
+  } while (0)
+
 /*
  * la_log_copy_fromlog() - copy a portion of the log
  *   return: none
@@ -4327,6 +4425,7 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
   int area_offset = 0;		/* The area offset */
   int error = NO_ERROR;
   LOG_PAGE *pg;
+  LOG_PAGEID fixed_pageid = NULL_PAGEID;	/* the page this function fixed last and still holds */
 
   pg = log_pgptr;
 
@@ -4334,7 +4433,7 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
   /* NOTES : in case of overflow page, we don't need to fetch the rectype */
   while (rec_type != NULL && rec_length > 0)
     {
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, 0, log_offset, log_pageid, pg);
+      LA_LOG_COPY_ADVANCE (error, log_offset, log_pageid, pg, fixed_pageid);
       if (pg == NULL)
 	{
 	  /* TODO: huh? what happend */
@@ -4355,7 +4454,7 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
   /* The log data is not contiguous */
   while (t_length > 0)
     {
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, 0, log_offset, log_pageid, pg);
+      LA_LOG_COPY_ADVANCE (error, log_offset, log_pageid, pg, fixed_pageid);
       if (pg == NULL)
 	{
 	  /* TODO: huh? what happend */
@@ -4366,6 +4465,11 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
       t_length -= copy_length;
       area_offset += copy_length;
       log_offset += copy_length;
+    }
+
+  if (fixed_pageid != NULL_PAGEID)
+    {
+      la_release_page_buffer (fixed_pageid);
     }
 }
 
@@ -8980,7 +9084,7 @@ la_shutdown (void)
       free_and_init (la_Info.cache_pb);
 
       /* the buffers are gone; the calling thread's pinned entries point at freed memory */
-      la_Pinned_page_buffer_count = 0;
+      la_free_pinned_page_buffers ();
     }
 
   if (la_Info.repl_lists)
