@@ -498,6 +498,13 @@ struct trace_json_t;
 #define PT_SET_VALUE_QUERY(n) \
           ((n)->flag.is_value_query = 1)
 
+/* the cast the semantic check keeps over an untyped NULL to give a set operation or VALUES column the type of the
+ * other rows; the column keeps the name the NULL gave it */
+#define PT_IS_CAST_OF_UNTYPED_NULL(n) \
+          ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_CAST \
+           && PT_EXPR_INFO_IS_FLAGED ((n), PT_EXPR_INFO_CAST_SHOULD_FOLD) && (n)->flag.do_not_fold \
+           && (n)->info.expr.arg1 != NULL && (n)->info.expr.arg1->type_enum == PT_TYPE_NULL)
+
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
           (PT_IS_EXPR_NODE (n) ? (n)->info.expr.is_order_dependent \
@@ -1639,6 +1646,11 @@ typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
 typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
 
 typedef struct parser_node PT_NODE;
+
+/* node-cardinality watch state of a statement, defined in histogram_cl.hpp; the parse tree only
+ * carries the pointer (allocated with parser_alloc (), so it lives and dies with the parser). */
+struct bind_watch_state;
+typedef struct bind_watch_state BIND_WATCH_STATE;
 typedef struct pt_alter_info PT_ALTER_INFO;
 typedef struct pt_alter_user_info PT_ALTER_USER_INFO;
 typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
@@ -2190,8 +2202,8 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2955,9 +2967,12 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (quantized selectivities of host-var predicates); 0 = not recorded.
-				 * See histogram_bind_fingerprint (). */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value state of this prepared statement: the rows each
+				 * host-variable predicate was expected to scan under the current plan,
+				 * and the query's plan variants as last seen. NULL until the first
+				 * checked execution allocates it (parser lifetime). */
+  const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
+				 * (bind_variant.h); NULL = the query's base entry */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3053,8 +3068,8 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -3820,6 +3835,9 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
+					 * target selection for bind-value plan variants, so its
+					 * executions choose among the query's plans by fingerprint */
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.
@@ -3951,6 +3969,8 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  UINT64 bind_plan_sig;		/* signature of the plans chosen by this compile (bind_variant.h): two
+				 * compiles of one query got the same plan when these are equal */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */
@@ -4131,13 +4151,13 @@ typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
  * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
  * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
  * happen, and pt_convert_dblink_dml_query's "no sink" guard becomes a single ==NONE check instead of
- * accumulating a !flag per sink kind as more are added (UPDATE to follow). */
+ * accumulating a !flag per sink kind as more are added. */
 typedef enum dblink_remote_sink_kind
 {
   DBLINK_REMOTE_SINK_NONE = 0,
   DBLINK_REMOTE_SINK_INSERT_SELECT,	/* INSERT INTO remote SELECT ... FROM local */
-  DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ	/* DELETE FROM remote WHERE ... (local subquery) */
-    /* DBLINK_REMOTE_SINK_UPDATE_... to follow */
+  DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ,	/* DELETE FROM remote WHERE ... (local subquery) */
+  DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ	/* UPDATE remote SET ... WHERE ... (local subquery in SET or WHERE) */
 } DBLINK_REMOTE_SINK_KIND;
 
 typedef struct

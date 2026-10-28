@@ -401,6 +401,13 @@ namespace parallel_scan
       {
 	return 0;
       }
+    /* FOR UPDATE: the serial scan locks every row it reads, but workers open their scans without locks
+     * (px_scan_task.cpp), so a FOR UPDATE spec keeps its scan serial (CBRD-27593). */
+    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_FOR_UPDATE))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+	return result;
+      }
     if (arg->type == TARGET_CLASS)
       {
 	if (arg->access == ACCESS_METHOD_SEQUENTIAL)
@@ -428,9 +435,10 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby/groupby skip+desc need globally ordered traversal. */
-		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
-		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
+		/* orderby/groupby skip (ascending or descending) needs globally ordered traversal.
+		 * orderby_desc/groupby_desc only tell the first sort column is DESC and are used only with skip
+		 * (see scan_get_index_oidset ()), so they alone do not prevent a parallel scan. */
+		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -477,6 +485,18 @@ namespace parallel_scan
     return result;
   }
 
+  /* the inner scans task::initialize () can open in a worker */
+  static bool
+  worker_opens (const ACCESS_SPEC_TYPE *spec)
+  {
+    if (spec->type == TARGET_LIST)
+      {
+	return true;
+      }
+    return spec->type == TARGET_CLASS
+	   && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_INDEX);
+  }
+
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg)
   {
@@ -484,6 +504,11 @@ namespace parallel_scan
     if (!arg)
       {
 	return 0;
+      }
+    /* FOR UPDATE inner spec: the workers of the driving scan would read it without row locks (CBRD-27593). */
+    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_FOR_UPDATE))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
     if (arg->type == TARGET_METHOD)
       {
@@ -495,11 +520,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
-    if (arg->type != TARGET_CLASS && arg->type != TARGET_LIST)
+    /* a worker that builds the list or the value itself opens this inner scan (task::initialize ()), and it
+     * opens a heap, a B-tree or a list only; any other inner -- JSON_TABLE, a set, a method -- stays with
+     * the leader, or the worker fails the query on it (CBRD-27674) */
+    if (!worker_opens (arg))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
+	set_flag (result, CANNOT_BUILDVALUE_OPT);
       }
-    else
+    if (arg->type == TARGET_CLASS || arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
 	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
@@ -1039,7 +1068,8 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
+	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	if (arg->proc.cte.non_recursive_part)

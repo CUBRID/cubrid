@@ -139,11 +139,13 @@ namespace hist
       /* sum of bucket approx_ndv == population distinct non-MCV values == ndistinct - nmcv */
       std::int64_t nonmcv_distinct() const noexcept
       {
+	compute_aggregates ();
 	return nonmcv_distinct_;
       }
       /* sum of MCV population frequencies (fraction of all rows) */
       double mcv_total_frequency() const noexcept
       {
+	compute_aggregates ();
 	return mcv_total_freq_;
       }
 
@@ -253,8 +255,12 @@ namespace hist
 
       std::int64_t total_rows_hdr_   = 0;
       double       null_freq_        = 0.0;
-      std::int64_t nonmcv_distinct_  = 0;   /* cached Σ bucket approx_ndv */
-      double       mcv_total_freq_   = 0.0; /* cached Σ mcv freq */
+      /* computed on first use, not by reset (): a probe that needs neither (an equality that hits
+       * an MCV, a range bound) does not pay a pass over every bucket and MCV */
+      void compute_aggregates () const noexcept;
+      mutable bool         aggregates_ready_ = false;
+      mutable std::int64_t nonmcv_distinct_  = 0;   /* cached Σ bucket approx_ndv */
+      mutable double       mcv_total_freq_   = 0.0; /* cached Σ mcv freq */
 
   };
 
