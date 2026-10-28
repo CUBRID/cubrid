@@ -304,8 +304,8 @@ fpcache_entry_init (void *entry)
     (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *));
   if (fpcache_entry->clone_stack == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *)));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   return NO_ERROR;
