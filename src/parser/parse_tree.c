@@ -1210,7 +1210,9 @@ parser_create_parser (void)
   parser->flag.recompile_xasl_pinned = 0;
   parser->auto_param_count = 0;
   parser->flag.return_generated_keys = 0;
-  parser->flag.is_system_generated_stmt = 0;
+  /* SQL is the engine's own unless it came in through the application API (db_open_buffer, ...) or is a trigger
+   * action, so that SQL added inside the engine never shows its plan or trace to the user */
+  parser->flag.is_system_generated_stmt = 1;
   parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;

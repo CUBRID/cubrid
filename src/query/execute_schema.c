@@ -15419,7 +15419,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
     }
 
   /* RUN the query */
-  session = db_open_buffer (query);
+  session = db_open_buffer_local (query);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -15434,7 +15434,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
       goto end;
     }
 
-  stmt_id = db_compile_statement (session);
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);
@@ -15523,7 +15523,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
   *row_count = -1;
 
   lang_set_parser_use_client_charset (false);
-  session = db_open_buffer (query);
+  session = db_open_buffer_local (query);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -15538,7 +15538,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
       goto end;
     }
 
-  stmt_id = db_compile_statement (session);
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);
