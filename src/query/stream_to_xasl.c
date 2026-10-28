@@ -343,7 +343,6 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (pwc == NULL)
     {
-      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -352,7 +351,16 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   *pred = pwc;
 
 end:
+  /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
+  if (pwc == NULL)
+    {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+#if !defined (SERVER_MODE)
+      /* the stand-alone pointer is a global; a freed block must not stay behind it */
+      set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
+    }
 #if defined(SERVER_MODE)
   set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
@@ -402,7 +410,6 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (p_xasl == NULL)
     {
-      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -411,7 +418,16 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   *xasl_unpack_info_ptr = unpack_info_p;
 
 end:
+  /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
+  if (p_xasl == NULL)
+    {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+#if !defined (SERVER_MODE)
+      /* the stand-alone pointer is a global; a freed block must not stay behind it */
+      set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
+    }
 #if defined(SERVER_MODE)
   set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */

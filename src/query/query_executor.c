@@ -5747,6 +5747,9 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qexec_finish_group_by_domains (buildlist);
     }
 
+  /* an initialization that fails part way leaves through wrapup, which clears every field of the state */
+  memset (&gbstate, 0, sizeof (gbstate));
+
   if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
 				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
 				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
