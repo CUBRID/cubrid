@@ -2629,6 +2629,13 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 		  continue;
 		}
 	    }
+	  if (PT_EXPR_INFO_IS_FLAGED (crt_expr, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
+	    {
+	      /* this LIKE already has its derived range next to it: an UPDATE, DELETE or MERGE is rewritten
+	       * once as itself and again as the SELECT it builds from the rewritten search condition
+	       * (pt_translate_dml_query_unbound), and a second range would count the prefix twice */
+	      continue;
+	    }
 	  if (crt_expr == cnf_node && crt_expr->or_next == NULL)
 	    {
 	      /* The LIKE predicate in CNF is not chained in an OR list, so we can easily split it into several
