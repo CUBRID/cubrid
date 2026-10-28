@@ -115,10 +115,10 @@ static int db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
 							   bool force_replan);
-static DB_SESSION *db_prepared_tree_lookup (const DB_SESSION * owner, const char *name);
-static bool db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * subsession);
-static void db_prepared_tree_remove (DB_SESSION * owner, const char *name);
-static void db_prepared_tree_free_all (DB_SESSION * owner);
+static DB_SESSION *db_prepared_tree_take (const char *name, const char *text);
+static void db_prepared_tree_put_back (DB_SESSION * kept);
+static bool db_prepared_tree_register (DB_SESSION * owner, const char *name, const char *text, DB_SESSION * subsession);
+static void db_prepared_tree_remove (const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
@@ -743,43 +743,45 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 int g_open_buffer_control_flags = 0;
 
-/* Per-session registry of the compiled subsessions of SQL-level prepared statements
+/* Per-connection registry of the compiled subsessions of SQL-level prepared statements
  * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests
  * lets the bind-sensitivity check regenerate only the plan and the XASL when the USING
  * values land in a different histogram bucket; parsing, semantic checks and rewrites
  * are not repeated.
  *
- * A kept subsession hangs on its owner session's `kept_trees` list (linked through the
- * subsession's own `next`) and carries the prepared name in `kept_stmt_name`. Prepared
- * names are per-connection and a kept tree never outlives the session that prepared it,
- * so the owner session IS the registry scope: closing it releases the kept trees, with no
- * process-global list, no lock and no owner back-pointer to invalidate. The list is
- * separate from the transient `next` chain (which grows with every non-candidate EXECUTE)
- * so a lookup walks only the kept names. Entries are released on DROP PREPARE, on
- * re-PREPARE of the same name, when a kept tree turns out to be stale, and when the owner
- * session is closed.
+ * The registry has the scope of the prepared names themselves -- the connection -- and not
+ * that of the DB_SESSION that ran the EXECUTE: csql opens a DB_SESSION per input buffer and
+ * CAS one per statement handle, so a tree kept on that session would die before the next
+ * EXECUTE of the same name arrives in another buffer or handle. CUB_THREAD_LOCAL gives each
+ * sub-client of a multi-connection client its own list, like db_Execution_plan.
+ *
+ * A kept subsession carries the prepared name in `kept_stmt_name` and the statement text it
+ * was compiled from in `kept_stmt_text`, and is linked through its own `next`. Entries are
+ * released on DROP PREPARE, on re-PREPARE of the same name, when a kept tree turns out to be
+ * stale or to belong to another text, when the server session ends and when the client is
+ * shut down or restarted (db_free_kept_prepared_trees (), before the workspace that the
+ * trees point into goes away).
+ *
+ * A tree being executed is not on the list (db_prepared_tree_take ()). The execution may run
+ * SQL of its own on this connection (methods, stored procedure callbacks) that DEALLOCATEs or
+ * re-PREPAREs the same name; that must not free the tree under the running statement.
  */
+static CUB_THREAD_LOCAL DB_SESSION *db_Kept_prepared_trees = NULL;
 
 /*
- * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from its
- *   owner's kept list
+ * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from the
+ *   registry
  * return     : the detached subsession or NULL
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
  */
 static DB_SESSION *
-db_prepared_tree_unlink (DB_SESSION * owner, const char *name)
+db_prepared_tree_unlink (const char *name)
 {
   DB_SESSION **prev;
   DB_SESSION *s;
 
-  if (owner == NULL)
-    {
-      return NULL;
-    }
-
-  prev = &owner->kept_trees;
-  for (s = owner->kept_trees; s != NULL; s = s->next)
+  prev = &db_Kept_prepared_trees;
+  for (s = db_Kept_prepared_trees; s != NULL; s = s->next)
     {
       if (s->kept_stmt_name != NULL && strcmp (s->kept_stmt_name, name) == 0)
 	{
@@ -794,7 +796,7 @@ db_prepared_tree_unlink (DB_SESSION * owner, const char *name)
 
 /*
  * db_prepared_tree_close() - release a detached kept subsession
- * kept (in) : subsession already unlinked from the owner's kept list (may be NULL)
+ * kept (in) : subsession already unlinked from the registry (may be NULL)
  */
 static void
 db_prepared_tree_close (DB_SESSION * kept)
@@ -802,49 +804,67 @@ db_prepared_tree_close (DB_SESSION * kept)
   if (kept != NULL)
     {
       free_and_init (kept->kept_stmt_name);
+      free_and_init (kept->kept_stmt_text);
       db_close_session_local (kept);
     }
 }
 
 /*
- * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
- * return     : the kept session or NULL
- * owner (in) : session that owns the prepared name
+ * db_prepared_tree_take() - check out the kept subsession of a prepared statement
+ * return     : the kept session, now off the registry, or NULL
  * name (in)  : prepared statement name
+ * text (in)  : the statement text the server now holds under this name
  *
- * Note: the returned session is owned by `owner`; the caller uses it on the same
- *       connection thread that PREPAREs/EXECUTEs/DROPs this name, which is what scopes
- *       its lifetime.
+ * Note: the caller owns the returned session until it hands it back with
+ *       db_prepared_tree_put_back () or releases it with db_prepared_tree_close ().
+ *       A tree compiled from another text is released here: a re-PREPARE run by SQL nested
+ *       in the execution that registered it reaches the registry before that registration.
  */
 static DB_SESSION *
-db_prepared_tree_lookup (const DB_SESSION * owner, const char *name)
+db_prepared_tree_take (const char *name, const char *text)
+{
+  DB_SESSION *kept = db_prepared_tree_unlink (name);
+
+  if (kept != NULL && (text == NULL || strcmp (kept->kept_stmt_text, text) != 0))
+    {
+      db_prepared_tree_close (kept);
+      return NULL;
+    }
+  return kept;
+}
+
+/*
+ * db_prepared_tree_put_back() - return a checked-out kept subsession to the registry
+ * kept (in) : subsession obtained from db_prepared_tree_take ()
+ *
+ * Note: if the name was kept anew while this one was checked out, the newer tree wins: a
+ *       name has at most one entry.
+ */
+static void
+db_prepared_tree_put_back (DB_SESSION * kept)
 {
   DB_SESSION *s;
 
-  if (owner == NULL)
+  for (s = db_Kept_prepared_trees; s != NULL; s = s->next)
     {
-      return NULL;
-    }
-
-  for (s = owner->kept_trees; s != NULL; s = s->next)
-    {
-      if (s->kept_stmt_name != NULL && strcmp (s->kept_stmt_name, name) == 0)
+      if (strcmp (s->kept_stmt_name, kept->kept_stmt_name) == 0)
 	{
-	  return s;
+	  db_prepared_tree_close (kept);
+	  return;
 	}
     }
-  return NULL;
+  kept->next = db_Kept_prepared_trees;
+  db_Kept_prepared_trees = kept;
 }
 
 /*
  * db_prepared_tree_remove() - drop the kept subsession of a prepared statement
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
  */
 static void
-db_prepared_tree_remove (DB_SESSION * owner, const char *name)
+db_prepared_tree_remove (const char *name)
 {
-  db_prepared_tree_close (db_prepared_tree_unlink (owner, name));
+  db_prepared_tree_close (db_prepared_tree_unlink (name));
 }
 
 /*
@@ -852,27 +872,38 @@ db_prepared_tree_remove (DB_SESSION * owner, const char *name)
  *   replacing any previous tree kept under the same name. On failure the caller keeps
  *   the subsession where it is (the owner's transient chain), so it is still released
  *   with the owner.
- * return          : true when the subsession was moved to the owner's kept list
- * owner (in)      : session that owns the prepared name
+ * return          : true when the subsession was moved to the registry
+ * owner (in)      : session whose transient chain holds the subsession
  * name (in)       : prepared statement name
+ * text (in)       : statement text the subsession was compiled from
  * subsession (in) : compiled subsession holding the post-transform tree
  */
 static bool
-db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * subsession)
+db_prepared_tree_register (DB_SESSION * owner, const char *name, const char *text, DB_SESSION * subsession)
 {
   DB_SESSION **sp;
   char *kept_name;
+  char *kept_text;
 
-  assert (owner != NULL && subsession != NULL);
+  assert (owner != NULL && subsession != NULL && text != NULL);
 
   kept_name = strdup (name);
-  if (kept_name == NULL)
+  kept_text = strdup (text);
+  if (kept_name == NULL || kept_text == NULL)
     {
+      if (kept_name != NULL)
+	{
+	  free_and_init (kept_name);
+	}
+      if (kept_text != NULL)
+	{
+	  free_and_init (kept_text);
+	}
       return false;
     }
 
-  /* move it off the transient chain: both lists link through `next`, and the owner's close
-   * walks each of them, so the subsession must be on exactly one */
+  /* move it off the transient chain: the owner's close walks that chain, and a kept
+   * subsession must outlive the owner */
   for (sp = &owner->next; *sp != NULL; sp = &((*sp)->next))
     {
       if (*sp == subsession)
@@ -884,24 +915,27 @@ db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * su
   subsession->next = NULL;
 
   /* a tree kept under this name from an earlier execution is now superseded */
-  db_prepared_tree_remove (owner, name);
+  db_prepared_tree_remove (name);
 
   subsession->kept_stmt_name = kept_name;
-  subsession->next = owner->kept_trees;
-  owner->kept_trees = subsession;
+  subsession->kept_stmt_text = kept_text;
+  subsession->next = db_Kept_prepared_trees;
+  db_Kept_prepared_trees = subsession;
   return true;
 }
 
 /*
- * db_prepared_tree_free_all() - release every tree kept for a session being closed
- * owner (in) : session being closed
+ * db_free_kept_prepared_trees() - release every tree kept on this connection
+ *
+ * Note: called when the server session ends (its prepared names are gone) and before the
+ *       client is shut down or restarted (the trees reference workspace objects).
  */
-static void
-db_prepared_tree_free_all (DB_SESSION * owner)
+void
+db_free_kept_prepared_trees (void)
 {
-  DB_SESSION *kept = owner->kept_trees;
+  DB_SESSION *kept = db_Kept_prepared_trees;
 
-  owner->kept_trees = NULL;
+  db_Kept_prepared_trees = NULL;
   while (kept != NULL)
     {
       DB_SESSION *next = kept->next;
@@ -992,7 +1026,7 @@ db_open_local (void)
   session->is_subsession_for_prepared = false;
   session->next = NULL;
   session->kept_stmt_name = NULL;
-  session->kept_trees = NULL;
+  session->kept_stmt_text = NULL;
 
   return session;
 }
@@ -2711,8 +2745,17 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * only the USING values are re-bound, and the fixed plan is reused as-is. With
 	   * plan_cache_bind_sensitivity on, the check inside
 	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
-	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
-	  DB_SESSION *kept = db_prepared_tree_lookup (session, statement->info.execute.name->info.name.original);
+	   * values fall in a different histogram bucket; with it off the plan stays fixed.
+	   * The tree is checked out for the execution and handed back afterwards. */
+	  PT_NODE *query = statement->info.execute.query;
+	  const char *text = NULL;
+	  DB_SESSION *kept;
+
+	  if (query != NULL && query->node_type == PT_VALUE && query->type_enum == PT_TYPE_CHAR)
+	    {
+	      text = (const char *) query->info.value.data_value.str->bytes;
+	    }
+	  kept = db_prepared_tree_take (statement->info.execute.name->info.name.original, text);
 
 	  if (kept != NULL)
 	    {
@@ -2727,11 +2770,13 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, do_recompile);
 	      if (err >= 0)
 		{
+		  db_prepared_tree_put_back (kept);
 		  return err;
 		}
 	      if (err != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && err != ER_QPROC_INVALID_XASLNODE
 		  && err != ER_QPROC_RESULT_CACHE_INVALID)
 		{
+		  db_prepared_tree_put_back (kept);
 		  /* a genuine execution error (interrupt, timeout, runtime failure): report
 		   * it instead of silently re-running the statement -- a cancelled query
 		   * must not complete on a second pass, side-effecting expressions
@@ -2742,7 +2787,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		}
 	      /* the kept tree is stale (schema change / cache invalidation); discard it
 	       * and fall back to a fresh compilation of the stored statement text */
-	      db_prepared_tree_remove (session, statement->info.execute.name->info.name.original);
+	      db_prepared_tree_close (kept);
 	      er_clear ();
 	      pt_reset_error (parser);
 	      do_recompile = true;
@@ -3458,7 +3503,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   db_init_prepare_info (&prepare_info);
 
   /* re-PREPARE of the same name invalidates the tree kept for bind-sensitive replans */
-  db_prepared_tree_remove (session, name);
+  db_prepared_tree_remove (name);
 
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
@@ -4415,7 +4460,9 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        * without recompiling -- only statements with a histogram-usable predicate reach
        * here, so a statement whose only host variables are select-list arguments keeps
        * recompiling per execution with generic typing. */
-      (void) db_prepared_tree_register (session, statement->info.execute.name->info.name.original, new_session);
+      (void) db_prepared_tree_register (session, statement->info.execute.name->info.name.original,
+					(const char *) statement->info.execute.query->info.value.data_value.str->bytes,
+					new_session);
     }
 
   return err;
@@ -4432,7 +4479,7 @@ do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
 {
   const char *const name = statement->info.prepare.name->info.name.original;
 
-  db_prepared_tree_remove (session, name);
+  db_prepared_tree_remove (name);
   return csession_delete_prepared_statement (name);
 }
 
@@ -4886,9 +4933,6 @@ db_close_session_local (DB_SESSION * session)
     {
       return;
     }
-  /* the trees kept for this session's prepared statements (a kept subsession is itself
-   * never an owner, so its list is empty) */
-  db_prepared_tree_free_all (session);
   prepared = session->next;
   while (prepared)
     {
