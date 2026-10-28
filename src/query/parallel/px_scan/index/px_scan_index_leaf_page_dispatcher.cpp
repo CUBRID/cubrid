@@ -56,6 +56,7 @@ namespace parallel_index_scan
 
     /* key1 = storage-leftmost lower bound; NULL descent_key → open-bound vertical path. */
     DB_VALUE *descent_key = nullptr;
+    const DOMAIN_KEY_BOUND *descent_bound = nullptr;
     bool closed_bound = false;
     key_val_range *all_ranges = m_ranges->get_key_val_ranges ();
     int num_ranges = m_ranges->get_num_key_ranges ();
@@ -69,6 +70,7 @@ namespace parallel_index_scan
 	    && !DB_IS_NULL (&kvr->key1) && !btree_multicol_key_is_null (&kvr->key1))
 	  {
 	    descent_key = &kvr->key1;
+	    descent_bound = kvr->key1_bound;
 	    closed_bound = true;
 	  }
       }
@@ -85,7 +87,11 @@ namespace parallel_index_scan
 	bool found = false;
 	VPID leaf_vpid;
 	VPID_SET_NULL (&leaf_vpid);
-	int err = btree_locate_key (thread_p, btid_int, descent_key, &leaf_vpid, &slot_id, &leaf, &found);
+	/* of the keys that compare equal to a bound of another type, the first in the scan's direction: the walker checks
+	 * both bounds at each key */
+	int err = btree_locate_key (thread_p, btid_int, descent_key, descent_bound, use_desc_index ? DB_GT : DB_LT,
+				    &leaf_vpid, &slot_id,
+				    &leaf, &found);
 	if (err != NO_ERROR || leaf == NULL)
 	  {
 	    if (leaf != NULL)

@@ -35,6 +35,9 @@
 #endif /* !WINDDOWS */
 
 #include <vector>
+#if defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "network.h"
 #include "network_interface_cl.h"
@@ -111,10 +114,23 @@ namespace
 #define PLAN_DUMP_STREAM_CHUNK_SIZE (64 * 1024)
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
+static CUB_THREAD_LOCAL char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
 /* Contains the name of the current server name. */
-static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+static CUB_THREAD_LOCAL char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * The server host/name connected by the main client, which the sub-clients connect to.
+ * net_Server_host/net_Server_name are thread-local and may be cleared or changed by the main client thread
+ * (e.g., server failure, HA failover), so they are copied here and protected by g_server_name_mutex.
+ */
+static char g_server_host_name[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
+static char g_server_db_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+/* *INDENT-OFF* */
+static std::mutex g_server_name_mutex;
+/* *INDENT-ON* */
+#endif
 
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
@@ -3658,6 +3674,15 @@ end:
     {
       __gv_cvar.css_terminate (false);
     }
+#if defined(MULTI_CONN_TO_A_SERVER)
+  else
+    {
+      std::lock_guard < std::mutex > lock (g_server_name_mutex);
+
+      strcpy (g_server_host_name, net_Server_host);
+      strcpy (g_server_db_name, net_Server_name);
+    }
+#endif
 
   return error;
 }
@@ -3666,13 +3691,47 @@ end:
 int
 net_client_sub_init ()
 {
-  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
+  int error = NO_ERROR;
+
+  {
+    std::lock_guard < std::mutex > lock (g_server_name_mutex);
+
+    strcpy (net_Server_host, g_server_host_name);
+    strcpy (net_Server_name, g_server_db_name);
+  }
+
+  if (net_Server_host[0] != '\0')
+    {
+      if (net_Server_name[0] == '\0')
+	{
+	  error = ER_NET_INVALID_SERVER_NAME;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
+	}
+    }
+  else
+    {
+      error = ER_NET_INVALID_HOST_NAME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
+    }
+
+  if (error == NO_ERROR)
+    {
+      error =
+	__gv_cvar.css_client_sub_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), net_Server_name, net_Server_host,
+				       db_get_client_type ());
+      if (error == ER_CSS_ALLOC)
+	{
+	  __gv_cvar.css_client_sub_terminate (false);
+	}
+    }
+
+  return error;
 }
 
 void
-net_client_sub_final ()
+net_client_sub_final (bool server_error)
 {
-  __gv_cvar.css_client_sub_terminate (net_Server_host);
+  __gv_cvar.css_client_sub_terminate (server_error);
 }
 #endif
 

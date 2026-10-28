@@ -97,7 +97,9 @@ extern int locator_flush_for_multi_update (MOP class_mop);
 extern int locator_all_flush (void);
 extern MOP locator_add_class (MOBJ classobj, const char *classname);
 extern MOP locator_add_instance (MOBJ instance, MOP class_mop);
+#if defined(SA_MODE)
 extern MOP locator_add_root (OID * root_oid, MOBJ class_root);
+#endif
 extern int locator_remove_class (MOP class_mop);
 extern void locator_remove_instance (MOP mop);
 extern MOBJ locator_update_instance (MOP mop);

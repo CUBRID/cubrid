@@ -223,7 +223,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
+		c = btree_compare_key_to_bound (m_btid_int, key, &kvr->key1, kvr->key1_bound, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -241,7 +241,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
+		c = btree_compare_key_to_bound (m_btid_int, key, &kvr->key1, kvr->key1_bound, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -261,7 +261,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
+		c = btree_compare_key_to_bound (m_btid_int, key, &kvr->key1, kvr->key1_bound, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -291,7 +291,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key2))
 	      {
 		start_col = 0;
-		c = btree_compare_search_key (m_btid_int, &kvr->key2, key, &start_col);
+		c = btree_compare_search_key (m_btid_int, &kvr->key2, kvr->key2_bound, key, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -310,7 +310,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key2))
 	      {
 		start_col = 0;
-		c = btree_compare_search_key (m_btid_int, &kvr->key2, key, &start_col);
+		c = btree_compare_search_key (m_btid_int, &kvr->key2, kvr->key2_bound, key, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -331,7 +331,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
+		c = btree_compare_key_to_bound (m_btid_int, key, &kvr->key1, kvr->key1_bound, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
