@@ -80,7 +80,7 @@ la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config)
   int i;
 
   assert (workers != NULL && config != NULL);
-  assert (config->run_task != NULL && config->request_shutdown != NULL);
+  assert (config->run_task != NULL && config->request_shutdown != NULL && config->end_context != NULL);
 
   la_Worker_config = *config;
   la_Worker_count = count;
@@ -270,6 +270,7 @@ end:
 
   if (worker_context_started)
     {
+      la_Worker_config.end_context (&worker_context);
       la_worker_context_final (&worker_context);
     }
 

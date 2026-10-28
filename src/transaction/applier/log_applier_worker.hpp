@@ -92,6 +92,8 @@ struct la_apply_worker_context
   LOG_ZIP *undo_unzip_ptr;
   LOG_ZIP *redo_unzip_ptr;
   LA_RECDES_POOL recdes_pool;
+  struct db_session *marker_session;	/* applied-transaction marker INSERT, compiled once on this connection */
+  int marker_stmt_id;
 };
 
 /* Applies one transaction on the calling worker and fills in its result; owned by log_applier.c. */
@@ -101,6 +103,9 @@ typedef void (*LA_WORKER_RUN_TASK_FUNC) (LA_APPLY_WORKER_CONTEXT *context, LA_TA
 /* Tells the applier to stop: no worker is left, or a worker hit an error it cannot continue after. */
 typedef void (*LA_WORKER_REQUEST_SHUTDOWN_FUNC) (void);
 
+/* Releases what run_task kept in the context; called while the worker's connection is still open. */
+typedef void (*LA_WORKER_END_CONTEXT_FUNC) (LA_APPLY_WORKER_CONTEXT *context);
+
 typedef struct la_worker_config LA_WORKER_CONFIG;
 struct la_worker_config
 {
@@ -109,6 +114,7 @@ struct la_worker_config
   int trace_level;		/* ha_writeset_trace_level, read once at start */
   LA_WORKER_RUN_TASK_FUNC run_task;
   LA_WORKER_REQUEST_SHUTDOWN_FUNC request_shutdown;
+  LA_WORKER_END_CONTEXT_FUNC end_context;
 };
 
 extern int la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config);

@@ -87,6 +87,11 @@ namespace
     shutdown_requests++;
   }
 
+  void
+  end_context_noop (LA_APPLY_WORKER_CONTEXT *)
+  {
+  }
+
   LA_WORKER_CONFIG
   test_config ()
   {
@@ -97,6 +102,7 @@ namespace
     config.trace_level = 0;
     config.run_task = run_task_never;
     config.request_shutdown = request_shutdown;
+    config.end_context = end_context_noop;
     return config;
   }
 
