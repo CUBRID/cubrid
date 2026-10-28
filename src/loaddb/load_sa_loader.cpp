@@ -1211,7 +1211,7 @@ ldr_attr_name (LDR_CONTEXT *context)
   /*
    * next_attr walks the attributes and then the %constructor arguments, so it
    * reaches num_attrs and goes past it. Only 0 .. num_attrs-1 name an attribute;
-   * at num_attrs and beyond the slot is an argument, and ldr_add_attribute_setters ()
+   * at num_attrs and beyond the slot is an argument, and ldr_act_add_attr ()
    * leaves att NULL on it because an argument has no attribute descriptor. Reading
    * the name there dereferences NULL.
    *
@@ -4972,7 +4972,8 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
     }
 
   /*
-   * Allow loaddb to support the typecasts implicitly permitted by INSERT, ensuring identical results between INSERT and loaddb
+   * Allow loaddb to support the typecasts implicitly permitted by INSERT, ensuring
+   * identical results between INSERT and loaddb.
    * These literal kinds are converted to their natural type and handed to the object template, whose
    * check_att_domain () performs the same cast INSERT would.
    */
