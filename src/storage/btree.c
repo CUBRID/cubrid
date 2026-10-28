@@ -30525,11 +30525,22 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	{
 	  /* the restrict check fails at once on this child only if it locks it at once; otherwise the child's holder
 	   * is still writing, and a writer later in the key may be the one to wait for */
-	  if (find_fk_obj->stop_at_child && lock_object (thread_p, oid, class_oid, S_LOCK, LK_COND_LOCK) == LK_GRANTED)
+	  if (find_fk_obj->stop_at_child)
 	    {
-	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, S_LOCK);
-	      bts->end_scan = true;
-	      *stop = true;
+	      lock_result = lock_object (thread_p, oid, class_oid, S_LOCK, LK_COND_LOCK);
+	      if (lock_result == LK_GRANTED)
+		{
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, S_LOCK);
+		  bts->end_scan = true;
+		  *stop = true;
+		}
+	      else if (lock_result != LK_NOTGRANTED_DUE_TIMEOUT)
+		{
+		  int error_code;
+
+		  ASSERT_ERROR_AND_SET (error_code);
+		  return error_code;
+		}
 	    }
 	  return NO_ERROR;
 	}
