@@ -1498,10 +1498,14 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 The secret of session %1$u does not match.
-1388 Cannot end or keep session %1$u because it is not attached to this connection.
+1387 %1$s cannot be executed while %2$d sub-clients are alive.
+1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
+1389 %1$s cannot be called by the main client thread.
 
-1389 Last Error
+1390 The secret of session %1$u does not match.
+1391 Cannot end or keep session %1$u because it is not attached to this connection.
+
+1392 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
