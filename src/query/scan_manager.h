@@ -756,6 +756,7 @@ extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, 
 /* the same for a parallel worker's scan, whose rows go through the rows node (scan_batch_rows_consume ()) */
 extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
 				  val_descr * vd);
+extern bool scan_batch_retry_as_filter (SCAN_ID * scan_id);
 /* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term; proj is
  * a projecting block's output list (its program settled), whose columns the plan computes as vectors.  The spec
  * keeps the plan between the scan's opens (SCAN_BATCH_KEEP) */

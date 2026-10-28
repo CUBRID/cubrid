@@ -8480,6 +8480,24 @@ scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_
   return true;
 }
 
+/* A consumer's open the batch declined (scan_batch_open () returned 2) leaves no plan: the scan may be opened again
+ * as a filter iterator, its rows going on one by one.  True when it may (its state back to untried); false when the
+ * scan is not a heap scan or holds a plan.  A scan the batch declines for itself (grouped, cached, backward) declines
+ * the iterator again on the same checks. */
+bool
+scan_batch_retry_as_filter (SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  if (scan_id->type != S_HEAP_SCAN || hsidp->batch_state != 2 || hsidp->batch_plan != NULL)
+    {
+      return false;
+    }
+  hsidp->batch_state = 0;
+  hsidp->batch_why_not = NULL;
+  return true;
+}
+
 bool
 scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, val_descr * vd)
 {
