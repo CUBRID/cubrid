@@ -1498,11 +1498,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 Cannot perform %1$s inside a query or DML statement.
-1388 Cannot perform %1$s in a trigger.
-1389 Cannot perform a DML operation inside a query or DML statement.
+1387 %1$s cannot be executed while %2$d sub-clients are alive.
+1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
+1389 %1$s cannot be called by the main client thread.
 
-1390 Last Error
+1390 Cannot perform %1$s inside a query or DML statement.
+1391 Cannot perform %1$s in a trigger.
+1392 Cannot perform a DML operation inside a query or DML statement.
+
+1393 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
