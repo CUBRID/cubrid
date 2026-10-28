@@ -12263,6 +12263,7 @@ typedef enum
 {
   PT_DBLINK_MERGE_ADMIT = 0,
   PT_DBLINK_MERGE_REJECT_COLUMN,	/* a column of neither side, a subquery or DEFAULT */
+  PT_DBLINK_MERGE_REJECT_SOURCE_NAME,	/* a source column read without the source's name */
   PT_DBLINK_MERGE_REJECT_ON,	/* an ON term that is neither a key nor a target-only condition, or no key */
   PT_DBLINK_MERGE_REJECT_SHAPE,	/* a value or a WHERE the remote statement cannot carry */
   PT_DBLINK_MERGE_REJECT_SET_KEY,	/* SET writes an ON key column */
@@ -12277,6 +12278,9 @@ pt_dblink_merge_reject_msg (PT_DBLINK_MERGE_VERDICT verdict)
     case PT_DBLINK_MERGE_REJECT_COLUMN:
       return "dblink: remote MERGE with a local source supports only columns of the target and the source; "
 	"a subquery or DEFAULT is not supported";
+    case PT_DBLINK_MERGE_REJECT_SOURCE_NAME:
+      return "dblink: remote MERGE with a local source needs each source column qualified with the source's "
+	"name; the target's invisible columns are not known here, so an unqualified name could be one of them";
     case PT_DBLINK_MERGE_REJECT_ON:
       return "dblink: remote MERGE with a local source supports only an ON that equates target columns with "
 	"source columns, joined by AND; conditions that read only the target may be added; compute a key in the "
@@ -12303,6 +12307,7 @@ struct pt_dblink_merge_reads
   PT_DBLINK_MERGE_REFS refs;
   bool target;			/* it reads a target column */
   bool source;			/* it reads a source column */
+  bool unqualified_source;	/* it reads a source column without the source's name */
   bool unsupported;		/* a column of neither side, a subquery or DEFAULT */
 };
 
@@ -12333,6 +12338,10 @@ pt_dblink_merge_reads_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	  break;
 	case PT_DBLINK_LEAF_LOCAL:
 	  reads->source = true;
+	  if (!PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DOT_NAME))
+	    {
+	      reads->unqualified_source = true;
+	    }
 	  break;
 	default:
 	  reads->unsupported = true;
@@ -12366,7 +12375,7 @@ pt_dblink_merge_scan (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_MERGE_R
 {
   int walk = PT_CONTINUE_WALK;
 
-  reads->target = reads->source = reads->unsupported = false;
+  reads->target = reads->source = reads->unqualified_source = reads->unsupported = false;
 
   pt_dblink_merge_reads_pre (parser, expr, reads, &walk);
   if (walk == PT_CONTINUE_WALK)
@@ -12405,6 +12414,13 @@ pt_dblink_merge_check_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_
   if (reads->unsupported)
     {
       return PT_DBLINK_MERGE_REJECT_COLUMN;
+    }
+
+  /* The target is known by the columns the remote lists, which leave out its invisible ones. An unqualified
+   * name that one of them would take resolves to the source here instead. */
+  if (reads->unqualified_source)
+    {
+      return PT_DBLINK_MERGE_REJECT_SOURCE_NAME;
     }
 
   if (pt_dblink_dml_classify_value (expr, pt_dblink_merge_gate_leaf, &reads->refs) == PT_DBLINK_VALUE_REJECT)
@@ -12503,6 +12519,11 @@ pt_dblink_merge_check_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE 
 
   if (source_col != NULL)
     {
+      if (!PT_NAME_INFO_IS_FLAGED (source_col, PT_NAME_INFO_DOT_NAME))
+	{
+	  check->verdict = PT_DBLINK_MERGE_REJECT_SOURCE_NAME;
+	  return false;
+	}
       check->num_keys++;
       return true;
     }
