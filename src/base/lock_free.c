@@ -1270,13 +1270,11 @@ restart_search:
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 
-	      /* mutex has been locked, no need to keep transaction */
-	      lf_tran_end_with_mb (tran);
-
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
 		  /* while waiting for lock, somebody else deleted the entry; restart the search */
 		  pthread_mutex_unlock (entry_mutex);
+		  lf_tran_end_with_mb (tran);
 
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
@@ -1288,6 +1286,10 @@ restart_search:
 		      goto restart_search;
 		    }
 		}
+
+	      /* the mark was read under the transaction: an entry deleted while we waited for its mutex can be
+	       * reclaimed and claimed for another key as soon as nothing pins it. now the mutex keeps it */
+	      lf_tran_end_with_mb (tran);
 	    }
 
 	  (*entry) = curr;
@@ -1471,13 +1473,11 @@ restart_search:
 		  /* entry has a mutex protecting it's members; lock it */
 		  LF_LOCK_ENTRY (curr);
 
-		  /* mutex has been locked, no need to keep transaction alive */
-		  LF_END_TRAN_FORCE ();
-
 		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
 		      /* while waiting for lock, somebody else deleted the entry; restart the search */
 		      LF_UNLOCK_ENTRY_FORCE ();
+		      LF_END_TRAN_FORCE ();
 
 		      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			{
@@ -1489,6 +1489,9 @@ restart_search:
 			  goto restart_search;
 			}
 		    }
+
+		  /* not before the mark check - see lf_list_find () */
+		  LF_END_TRAN_FORCE ();
 		}
 
 	      LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED ();

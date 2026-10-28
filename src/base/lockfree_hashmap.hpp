@@ -893,13 +893,11 @@ namespace lockfree
 		    /* entry has a mutex protecting it's members; lock it */
 		    lock_entry_mutex (*curr, entry_mutex);
 
-		    /* mutex has been locked, no need to keep transaction */
-		    tdes.end_tran ();
-
 		    if (address_type::is_address_marked (get_nextp_ref (curr)))
 		      {
 			/* while waiting for lock, somebody else deleted the entry; restart the search */
 			unlock_entry_mutex_force (entry_mutex);
+			tdes.end_tran ();
 
 			if (behavior_flags != NULL && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			  {
@@ -913,6 +911,10 @@ namespace lockfree
 			    break;
 			  }
 		      }
+
+		    /* the mark was read under the transaction: an entry deleted while we waited for its mutex can be
+		     * reclaimed and claimed for another key as soon as nothing pins it. now the mutex keeps it */
+		    tdes.end_tran ();
 		  } // m_edesc->using_mutex
 
 		entry = curr;
@@ -991,13 +993,11 @@ namespace lockfree
 			/* entry has a mutex protecting it's members; lock it */
 			lock_entry_mutex (*curr, entry_mutex);
 
-			/* mutex has been locked, no need to keep transaction alive */
-			end_tran_force (tdes);
-
 			if (address_type::is_address_marked (get_nextp_ref (curr)))
 			  {
 			    /* while waiting for lock, somebody else deleted the entry; restart the search */
 			    unlock_entry_mutex_force (entry_mutex);
+			    end_tran_force (tdes);
 
 			    if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			      {
@@ -1010,6 +1010,9 @@ namespace lockfree
 				break;
 			      }
 			  }
+
+			/* not before the mark check - see list_find () */
+			end_tran_force (tdes);
 		      }
 
 		    safeguard_use_mutex_or_tran_started (tdes, entry_mutex);

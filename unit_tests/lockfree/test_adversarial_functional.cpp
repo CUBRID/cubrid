@@ -1692,11 +1692,11 @@ namespace test_lockfree
   }
 
   // Calibration: NOT detected by the amplified by-value read that case_insert_given_promote (),
-  // case_index_churn (), case_shared_transys () and case_alloc_cap_under_load () all catch. That is the
-  // answer this case was written to get, not a missing power: the mutex path re-checks the delete mark after
-  // locking and restarts, so it really is immune to that defect, and find_or_insert () and erase_locked ()
-  // are covered here for the first time. Treat a green run as coverage, not as a regression guard - nothing
-  // is known to make this case fail.
+  // case_index_churn (), case_shared_transys () and case_alloc_cap_under_load () all catch. It does detect
+  // find () and find_or_insert () ending the transaction before the delete-mark re-check: with a 200 000-iteration
+  // spin between the two, 15 runs of 30 failed on each implementation (debug); with the same spin and the
+  // re-check inside the transaction, none. Unamplified it passes either way - treat a green run as coverage, not
+  // as a regression guard.
   static int
   case_mutex_path_identity ()
   {
