@@ -328,6 +328,13 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
   ADD_VIEW_DEFINITION (CTV_HISTOGRAM_NAME, system_catalog_initializer::get_view_db_histogram ());
+  ADD_VIEW_DEFINITION (CTV_SENSITIVITY_LABEL_NAME, system_catalog_initializer::get_view_sensitivity_label ());
+  ADD_VIEW_DEFINITION (CTV_SENSITIVITY_LABEL_GRADE_NAME,
+		       system_catalog_initializer::get_view_sensitivity_label_grade ());
+  ADD_VIEW_DEFINITION (CTV_SENSITIVITY_LABEL_INFO_TYPE_NAME,
+		       system_catalog_initializer::get_view_sensitivity_label_info_type ());
+  ADD_VIEW_DEFINITION (CTV_SENSITIVITY_LABEL_SOURCE_NAME,
+		       system_catalog_initializer::get_view_sensitivity_label_source ());
 }
 
 int
@@ -2414,5 +2421,136 @@ namespace cubschema
     nullptr
 	   );
 
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_sensitivity_label ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SENSITIVITY_LABEL_NAME,
+		   // columns
+    {
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"class_name", format_varchar (255)},
+      {"attr_name", format_varchar (255)},
+      {"grade", format_varchar (255)},
+      {"grade_level", "integer"},
+      {"info_type", format_varchar (255)},
+      {"source", format_varchar (255)},
+      {"labeled_by", format_varchar (255)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_sensitivity_label_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_sensitivity_label_grade ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SENSITIVITY_LABEL_GRADE_NAME,
+		   // columns
+    {
+      {"name", format_varchar (255)},
+      {"grade_level", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_sensitivity_label_grade_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_sensitivity_label_info_type ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SENSITIVITY_LABEL_INFO_TYPE_NAME,
+		   // columns
+    {
+      {"name", format_varchar (255)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_sensitivity_label_info_type_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_sensitivity_label_source ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SENSITIVITY_LABEL_SOURCE_NAME,
+		   // columns
+    {
+      {"name", format_varchar (255)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_sensitivity_label_source_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
   }
 }

@@ -93,6 +93,10 @@ namespace cubschema
       static system_catalog_definition get_view_synonym ();
       static system_catalog_definition get_view_server ();
       static system_catalog_definition get_view_db_histogram ();
+      static system_catalog_definition get_view_sensitivity_label ();
+      static system_catalog_definition get_view_sensitivity_label_grade ();
+      static system_catalog_definition get_view_sensitivity_label_info_type ();
+      static system_catalog_definition get_view_sensitivity_label_source ();
   };
 
 
@@ -175,5 +179,9 @@ std::string sm_define_view_charset_spec (void);
 std::string sm_define_view_synonym_spec (void);
 std::string sm_define_view_server_spec (void);
 std::string sm_define_view_histogram_spec (void);
+std::string sm_define_view_sensitivity_label_spec (void);
+std::string sm_define_view_sensitivity_label_grade_spec (void);
+std::string sm_define_view_sensitivity_label_info_type_spec (void);
+std::string sm_define_view_sensitivity_label_source_spec (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_ */

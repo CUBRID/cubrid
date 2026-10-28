@@ -86,6 +86,10 @@
 #define CTV_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
 #define CTV_HISTOGRAM_NAME      "db_histogram"
+#define CTV_SENSITIVITY_LABEL_NAME            "db_sensitivity_label"
+#define CTV_SENSITIVITY_LABEL_GRADE_NAME      "db_sensitivity_label_grade"
+#define CTV_SENSITIVITY_LABEL_INFO_TYPE_NAME  "db_sensitivity_label_info_type"
+#define CTV_SENSITIVITY_LABEL_SOURCE_NAME     "db_sensitivity_label_source"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
