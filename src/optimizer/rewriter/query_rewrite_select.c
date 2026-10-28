@@ -4257,77 +4257,90 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 }
 
 /*
- * qo_hq_strip_prior () - the operand of a PRIOR expression, or the node itself
+ * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot
+ *   convert: any cast written in the query, or a cast the compiler wrapped
+ *   from a string to another type (its other wrapped casts only widen)
  */
 static PT_NODE *
-qo_hq_strip_prior (PT_NODE * node)
+qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_QPRIOR))
+  bool *found = (bool *) arg;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
-      return node->info.expr.arg1;
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST)
+	   && (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP)
+	       || (node->info.expr.arg1 != NULL && PT_IS_CHAR_STRING_TYPE (node->info.expr.arg1->type_enum)
+		   && !PT_IS_CHAR_STRING_TYPE (node->type_enum))))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return node;
 }
 
 /*
- * qo_hq_is_hashed_apart () - checks whether the hash list scan can hash values
- *   that one PT_EQ conjunct finds equal into different buckets, or fail on them
- * Note: the build values are coerced to the domain of the probe side, so sides
- *       of different types can raise a coercion error (INT into SMALLINT) or
- *       lose precision (DOUBLE into BIGINT). Same-type keys are hashed as is,
- *       JSON by its text and NUMERIC by its unscaled digits, so only NUMERIC
- *       columns of one scale hash alike.
+ * qo_hq_is_unsafe_hash_key () - checks whether one PT_EQ conjunct, as a key of
+ *   the hash list scan, can give a result other than the single-table plan
+ * Note: a JSON key is hashed by its text, so JSON values that compare equal
+ *       ('1.0' and '"1"' against '1') can hash apart. The build key is
+ *       evaluated on every row, even one no parent reaches, so a cast there
+ *       can fail where the single-table plan never evaluates it.
  */
 static bool
-qo_hq_is_hashed_apart (PT_NODE * term)
+qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
 {
   PT_NODE *arg1 = term->info.expr.arg1;
   PT_NODE *arg2 = term->info.expr.arg2;
+  QO_HQ_ARG_CLASS c1 = { false, false };
+  QO_HQ_ARG_CLASS c2 = { false, false };
+  bool found = false;
 
   if (arg1 == NULL || arg2 == NULL)
     {
       return false;
     }
 
-  if (arg1->type_enum != arg2->type_enum || arg1->type_enum == PT_TYPE_JSON)
+  if (arg1->type_enum == PT_TYPE_JSON || arg2->type_enum == PT_TYPE_JSON)
     {
       return true;
     }
 
-  if (arg1->type_enum != PT_TYPE_NUMERIC)
+  (void) parser_walk_tree (parser, arg1, qo_hq_classify_arg_walker, &c1, NULL, NULL);
+  (void) parser_walk_tree (parser, arg2, qo_hq_classify_arg_walker, &c2, NULL, NULL);
+  if (c1.has_prior == c2.has_prior)
     {
       return false;
     }
 
-  arg1 = qo_hq_strip_prior (arg1);
-  arg2 = qo_hq_strip_prior (arg2);
+  (void) parser_walk_tree (parser, c1.has_prior ? arg2 : arg1, qo_hq_cast_walker, &found, NULL, NULL);
 
-  return (arg1 == NULL || arg2 == NULL || !PT_IS_NAME_NODE (arg1) || !PT_IS_NAME_NODE (arg2)
-	  || arg1->data_type == NULL || arg2->data_type == NULL
-	  || arg1->data_type->info.data_type.dec_precision != arg2->data_type->info.data_type.dec_precision);
+  return found;
 }
 
 /*
- * qo_hq_has_hashed_apart_eq_term () - checks the CONNECT BY predicate for an
- *   equality conjunct whose equal values the hash list scan can hash apart
+ * qo_hq_has_unsafe_hash_key () - checks the CONNECT BY predicate for an
+ *   equality conjunct that is unsafe as a hash key (see qo_hq_is_unsafe_hash_key)
  */
 static bool
-qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
+qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
 {
   for (; pred != NULL; pred = pred->next)
     {
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
 	{
-	  if (qo_hq_has_hashed_apart_eq_term (pred->info.expr.arg1)
-	      || qo_hq_has_hashed_apart_eq_term (pred->info.expr.arg2))
+	  if (qo_hq_has_unsafe_hash_key (parser, pred->info.expr.arg1)
+	      || qo_hq_has_unsafe_hash_key (parser, pred->info.expr.arg2))
 	    {
 	      return true;
 	    }
 	  continue;
 	}
 
-      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && qo_hq_is_hashed_apart (pred))
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && qo_hq_is_unsafe_hash_key (parser, pred))
 	{
 	  return true;
 	}
@@ -4350,9 +4363,9 @@ qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
  *       a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
  *       grp = 7 or grp IN (7, 8). An expression over the column
  *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
- *       equality conjunct would be hashed apart (see qo_hq_is_hashed_apart):
- *       sides of different types, a JSON side or NUMERIC sides of different
- *       scales.
+ *       equality conjunct is unsafe as a hash key (see
+ *       qo_hq_is_unsafe_hash_key): a JSON side, or a build side with a cast
+ *       that can fail.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
@@ -4375,8 +4388,8 @@ qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT
       return false;
     }
 
-  /* every equality conjunct becomes a hash key, so one key hashed apart loses children */
-  if (qo_hq_has_hashed_apart_eq_term (connect_by))
+  /* every equality conjunct becomes a hash key */
+  if (qo_hq_has_unsafe_hash_key (parser, connect_by))
     {
       return false;
     }
