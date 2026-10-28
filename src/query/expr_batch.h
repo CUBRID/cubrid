@@ -113,8 +113,10 @@ struct expr_batch_gby_map
   DB_VALUE *const *key_slot;	/* per key: the key column's value-list slot */
 };
 
-/* the runtime filter's lookup (hjoin_rtf_contains ()): a key read as an integer (a DATE as its day count) */
-typedef bool (*EXPR_BATCH_RTF_CONTAINS) (const struct hjoin_runtime_filter * rtf, INT64 key);
+/* the runtime filter's lookup over a chunk's keys (hjoin_rtf_contains_n ()): each read as an integer (a DATE as its
+ * day count), hit[i] set to whether keys[i] is in the filter */
+typedef void (*EXPR_BATCH_RTF_CONTAINS) (const struct hjoin_runtime_filter * rtf, const INT64 * keys, int n,
+					 unsigned char *hit);
 
 /* what the plan is built from: the worker's own clone state, settled for this execution */
 typedef struct expr_batch_inputs EXPR_BATCH_INPUTS;

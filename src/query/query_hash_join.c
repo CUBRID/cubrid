@@ -5201,6 +5201,43 @@ hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key)
   return false;
 }
 
+void
+hjoin_rtf_contains_n (const HJOIN_RUNTIME_FILTER * rtf, const INT64 * keys, int n, unsigned char *hit)
+{
+  UINT64 h[64];
+  int i, j, m;
+
+  for (i = 0; i < n; i += m)
+    {
+      m = MIN (n - i, 64);
+      for (j = 0; j < m; j++)
+	{
+	  h[j] = hjoin_rtf_hash (keys[i + j]) & rtf->mask;
+	  __builtin_prefetch (&rtf->slots[h[j]]);
+	}
+      for (j = 0; j < m; j++)
+	{
+	  INT64 k = keys[i + j];
+	  UINT64 s;
+
+	  if (k == HJOIN_RTF_EMPTY)
+	    {
+	      hit[i + j] = rtf->has_empty_key;
+	      continue;
+	    }
+	  hit[i + j] = 0;
+	  for (s = h[j]; rtf->slots[s] != HJOIN_RTF_EMPTY; s = (s + 1) & rtf->mask)
+	    {
+	      if (rtf->slots[s] == k)
+		{
+		  hit[i + j] = 1;
+		  break;
+		}
+	    }
+	}
+    }
+}
+
 /* The node's sample is complete (HJOIN_RTF_PROBE_SAMPLE rows checked): a filter that dropped fewer than one row in
  * eight of them costs its lookup per row for little, and leaves the node -- this node only: the filter stays for
  * the other nodes that share it (a worker's clone, the leader's node) and is freed by hjoin_rtf_release () as

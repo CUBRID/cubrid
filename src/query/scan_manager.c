@@ -7858,7 +7858,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       in.rtf = xasl->rtf;
       in.rtf_val = xasl->rtf_val;
       in.rtf_is_date = hjoin_rtf_is_date (xasl->rtf);
-      in.rtf_contains = hjoin_rtf_contains;
+      in.rtf_contains = hjoin_rtf_contains_n;
     }
 
   if (keep != NULL && keep->plan != NULL)

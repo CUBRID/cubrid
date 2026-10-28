@@ -561,6 +561,9 @@ extern bool hjoin_rtf_pass (const HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * k
 extern bool hjoin_rtf_sample (XASL_NODE * xasl);
 /* the same lookup on a key already read as an integer (a DATE as its day count): the page batch's leaf */
 extern bool hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key);
+/* the lookup over n keys at once (the page batch's leaf, a chunk at a time): their slots hashed and fetched ahead of
+ * the probes, hit[i] set to whether keys[i] is in the filter */
+extern void hjoin_rtf_contains_n (const HJOIN_RUNTIME_FILTER * rtf, const INT64 * keys, int n, unsigned char *hit);
 extern bool hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf);
 /* a parallel worker's own XASL: the same filter, on the worker's value list cell; unbind adds the clone's counters
  * to orig's (the node the clone was bound from) and drops the alias */

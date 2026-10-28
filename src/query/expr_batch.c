@@ -755,6 +755,8 @@ eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes)
  * entry, its UNKNOWN and NULL-mask bytes) plus the plan's vectors: expr_batch_init () passes this plan's bytes,
  * the build passes the base alone for the most rows any chunk can hold. */
 #define EB_ROW_BASE_BYTES (sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 2)
+/* the most rows a chunk holds (eb_cap_of ()): its arrays on the stack are this long */
+#define EB_CAP_MAX ((int) MAX (8, (EXPR_BATCH_CHUNK_BYTES / EB_ROW_BASE_BYTES) & ~7))
 
 static inline int
 eb_cap_of (size_t per_row)
@@ -4489,8 +4491,13 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 static int
 eb_rtf_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
-  int j, n = 0, seen = 0, kept = 0;
+  /* the keys read first, then looked up together (one call, the slots fetched ahead), then the selection kept:
+   * a row the filter left UNKNOWN stays, a NULL key goes */
+  INT64 keys[EB_CAP_MAX];
+  unsigned char got_key[EB_CAP_MAX], hit[EB_CAP_MAX];
+  int j, n = 0, n_keys = 0, seen = 0, kept = 0;
 
+  assert (batch->n_sel <= EB_CAP_MAX);
   for (j = 0; j < batch->n_sel; j++)
     {
       int r = batch->sel[j];
@@ -4498,9 +4505,9 @@ eb_rtf_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
       double unused = 0;
       int got;
 
+      got_key[j] = 0;
       if (plan->unk[r])
 	{
-	  batch->sel[n++] = r;
 	  continue;
 	}
       got = eb_leaf_side (plan, batch, plan->rtf_vec, plan->rtf_col, r, &key, &unused);
@@ -4509,7 +4516,22 @@ eb_rtf_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	  return eb_fallback (plan, "a pointed cell the batch does not decode");
 	}
       seen++;
-      if (got > 0 && plan->rtf_contains (plan->rtf, (INT64) key))
+      if (got > 0)
+	{
+	  got_key[j] = 1;
+	  keys[n_keys++] = (INT64) key;
+	}
+    }
+  plan->rtf_contains (plan->rtf, keys, n_keys, hit);
+  for (j = 0, n_keys = 0; j < batch->n_sel; j++)
+    {
+      int r = batch->sel[j];
+
+      if (plan->unk[r])
+	{
+	  batch->sel[n++] = r;
+	}
+      else if (got_key[j] && hit[n_keys++])
 	{
 	  batch->sel[n++] = r;
 	  kept++;
