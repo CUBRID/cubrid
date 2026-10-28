@@ -6443,12 +6443,9 @@ qexec_gby_merge_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFIL
 	}
       else
 	{
-	  /* the key reads the row's values (fetched as qexec_gby_agg_tuple () fetches them) */
-	  rc = fetch_val_list (thread_p, rd->regu, &rd->xasl_state->vd, NULL, NULL, &tpl, PEEK);
-	  if (rc == NO_ERROR)
-	    {
-	      rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &tpl, rd->temp_key);
-	    }
+	  /* the key's nodes are positions (g_hk_sort_regu_list) reading the tuple itself: the row's other values are not
+	   * fetched here, the pass that aggregates the part fetches them */
+	  rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &tpl, rd->temp_key);
 	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, n_parts, level) : 0;
 	}
       if (rc == NO_ERROR)
@@ -7134,11 +7131,8 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	  else
 	    {
 	      qfile_slot_set_tuple_ptr_and_layout (&slot, tpl, 0, &from->type_list);
-	      rc = fetch_val_list (thread_p, rd->regu, &rd->xasl_state->vd, NULL, NULL, &slot, PEEK);
-	      if (rc == NO_ERROR)
-		{
-		  rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &slot, rd->temp_key);
-		}
+	      /* the key reads the tuple's positions only, as the serial split does */
+	      rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &slot, rd->temp_key);
 	      /* a key the fetch did not build has unset values: not hashed (as the serial split does not) */
 	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, px->n_parts, 1) : 0;
 	    }
