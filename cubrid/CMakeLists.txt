@@ -108,6 +108,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/memory_hash.c
   ${BASE_DIR}/memory_monitor_api.cpp
   ${BASE_DIR}/memory_monitor_sr.cpp
+  ${BASE_DIR}/memory_wrapper.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -268,6 +269,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/fetch.c
+  ${QUERY_DIR}/fetch_arith_ops.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/qfile_tuple_layout.c
@@ -285,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
   ${QUERY_DIR}/regu_var.cpp
@@ -296,6 +299,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
+  ${QUERY_DIR}/domain_plan.c
+  ${QUERY_DIR}/domain_resolve.c
+  ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
@@ -316,11 +322,11 @@ set(QUERY_HEADERS
   )
 
 set(OBJECT_SOURCES
-  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/set_object.c
@@ -364,6 +370,18 @@ set(PARALLEL_HASH_JOIN_HEADERS
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join_spawn_manager.hpp
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join_task_manager.hpp
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.hpp
+)
+
+set(PARALLEL_MERGE_JOIN_SOURCES
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.cpp
+)
+
+set(PARALLEL_MERGE_JOIN_HEADERS
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.hpp
 )
 
 set(PARALLEL_SCAN_SOURCES
@@ -415,6 +433,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
@@ -424,6 +443,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
@@ -677,6 +697,7 @@ set (CUBRID_LIB_SOURCES
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_HASH_JOIN_SOURCES}
+  ${PARALLEL_MERGE_JOIN_SOURCES}
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
@@ -703,6 +724,7 @@ set (CUBRID_LIB_HEADERS
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   ${PARALLEL_HASH_JOIN_HEADERS}
+  ${PARALLEL_MERGE_JOIN_HEADERS}
   ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
@@ -736,12 +758,21 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
-  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a:libstdc++.a")
+  # keep the replaced global operator new and delete local to libcubrid (see memory_wrapper.cpp)
+  target_link_options(cubrid PRIVATE "LINKER:--version-script=${BASE_DIR}/memory_wrapper.map")
+  set_property(TARGET cubrid APPEND PROPERTY LINK_DEPENDS ${BASE_DIR}/memory_wrapper.map)
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
   add_dependencies(cubrid ${TBB_TARGETS})
+
+  # take libstdc++ from its own archive ahead of cascci, which exports the copy it links statically
+  target_link_libraries(cubrid LINK_PRIVATE -Wl,-Bstatic stdc++ -Wl,-Bdynamic)
+  # bind libcubrid's own function references at link time, so the template instances of the executable
+  # or of cascci do not take them over with a different operator new and delete
+  target_link_options(cubrid PRIVATE "LINKER:-Bsymbolic-functions")
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
@@ -830,3 +861,21 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
+
+# lea_heap.c includes the unmodified 3rd party dlmalloc (malloc_2_8_3.c), which uses
+# the GNU null pointer arithmetic extension. Do not edit that file; silence the
+# diagnostic for this one translation unit instead.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(${HEAPLAYERS_DIR}/lea_heap.c PROPERTIES COMPILE_OPTIONS "-Wno-gnu-null-pointer-arithmetic")
+endif()
+
+# The Bison generated load_grammar.hpp declares a copy assignment operator for
+# stack_symbol_type without the matching copy constructor. Generated file, so
+# suppress the diagnostic for the units that include it rather than patching it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-copy-with-user-provided-copy"
+  )
+endif()

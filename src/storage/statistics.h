@@ -34,6 +34,12 @@
 #define STATS_WITH_FULLSCAN  true
 #define STATS_WITH_SAMPLING  false
 
+/* progress of UPDATE STATISTICS ON ALL CLASSES reported to the server event log */
+#define STATS_PROGRESS_STATISTICS 0	/* phase: class statistics */
+#define STATS_PROGRESS_HISTOGRAM  1	/* phase: histograms */
+#define STATS_PROGRESS_STARTED    0	/* state */
+#define STATS_PROGRESS_FINISHED   1	/* state */
+
 #define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
 
@@ -81,7 +87,6 @@ struct btree_stats
   int pkeys_size;		/* pkeys array size */
   INT64 *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
-  int dedup_idx;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
 #if 0				/* reserved for future use */
   int reserved[BTREE_STATS_RESERVED_NUM];

@@ -25,7 +25,6 @@
 #include "schema_system_catalog_install.hpp"
 
 #include "authenticate.h"
-#include "deduplicate_key.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_catalog.hpp"
 #include "trigger_manager.h"
@@ -302,8 +301,9 @@ sm_define_view_attribute_spec (void)
 	  "[a].[from_class_of].[owner].[name] AS [from_owner_name], "
 	  "[a].[from_attr_name] AS [from_attr_name], "
 	  "[t].[type_name] AS [data_type], "
-	  "[d].[prec] AS [prec], "
-	  "[d].[scale] AS [scale], "
+	  /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column precision or scale */
+	  "IF ([d].[data_type] = %d AND [d].[prec] = %d, NULL, [d].[prec]) AS [prec], "
+	  "IF ([d].[data_type] = %d AND [d].[prec] = %d, NULL, [d].[scale]) AS [scale], "
 	  "IF ("
 	      "[a].[data_type] IN (4, 25, 26, 27, 35), "
 	      /* CT_CHARSET_NAME */
@@ -374,6 +374,8 @@ sm_define_view_attribute_spec (void)
 		    "AND [au].[auth_type] = 'SELECT'"
 		")"
 	    ")",
+	DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
+	DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME,
 	DB_ATTOPT_AUTO_INCREMENT,
@@ -797,20 +799,7 @@ sm_define_view_index_spec (void)
 	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "[i].[class_of].[owner].[name] AS [owner_name], "
-	  "NVL2 ("
-	      "("
-		"SELECT 1 "
-		"FROM "
-		  /* CT_INDEXKEY_NAME */
-		  "[%s] [k] "
-		"WHERE "
-		  "[k].index_of.class_of = [i].class_of "
-		  "AND [k].index_of.index_name = [i].[index_name] "
-		  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-	      "), "
-	      "([i].[key_count] - 1), "
-	      "[i].[key_count]"
-	    ") AS [key_count], "        
+	  "[i].[key_count] AS [key_count], "
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
 	  "[i].[filter_expression] AS [filter_expression], "
@@ -849,7 +838,6 @@ sm_define_view_index_spec (void)
             "WHEN 0 THEN 'BTREE' "
             "ELSE NULL "
             "END AS [index_type], "
-          "[i].[options] & %d AS [deduplicate_key_level], "
 	  "[i].[comment] AS [comment], "
           "[i].[created_time] AS [created_time], "
           "[i].[updated_time] AS [updated_time] "
@@ -897,9 +885,7 @@ sm_define_view_index_spec (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-	    ")",            
-	CT_INDEXKEY_NAME,
-        OPTION_DEDUPLICATE_MASK,
+	    ")",
 	CT_INDEX_NAME,
 	CT_CLASS_NAME,
 	CT_INDEX_NAME,
@@ -933,47 +919,41 @@ sm_define_view_index_key_spec (void)
 	  /* CT_INDEXKEY_NAME */
 	  "[%s] AS [k] "
 	"WHERE "
-          "("
-              "[k].[key_attr_name] IS NULL " 
-              "OR [k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-          ")"
-          " AND ("       
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[k].[index_of].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[k].[index_of].[class_of].[class_of]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[object_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ("
+		    "SELECT "
+		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		    "FROM "
+		      /* AU_USER_CLASS_NAME */
+		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		    "WHERE "
+		      "[u].[name] = CURRENT_USER"
+		  ") "
+	    "AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_INDEXKEY_NAME,
 	AU_USER_CLASS_NAME,
@@ -1549,7 +1529,6 @@ sm_define_view_user_spec (void)
 	  "(SELECT COALESCE (SUM (SET {[g].[name]}), SET {}) "
 	   "FROM TABLE ([u].[groups]) AS [t] ([g])) AS [groups], "
 	  "NULL AS [authorization], "
-	  "[u].[triggers] AS [triggers], "
 	  "CASE [u].[is_loginable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_loginable], "
 	  "CASE [u].[is_system_created] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_system_created], "
 	  "[u].[comment] AS [comment], "
@@ -1728,29 +1707,9 @@ sm_define_view_server_spec (void)
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[ds]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_SERVER_NAME,
 	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));

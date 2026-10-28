@@ -193,6 +193,7 @@ static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 
 PSTAT_GLOBAL pstat_Global;
 
+// TODO: Is pstat_Metadata still used meaningfully even in CS_MODE?
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_FILE_NUM_CREATES, "Num_file_creates"),
@@ -323,6 +324,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* in-flight window: whether a reader found the version it wanted still staged */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_HIT, "Num_prior_inflight_window_hit"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_MISS, "Num_prior_inflight_window_miss"),
+
+  /* previous-version reads that did not copy the page their record starts on */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_FETCHES_SKIPPED, "Num_log_page_fetches_skipped"),
 
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
@@ -649,10 +653,16 @@ static const char *perfmon_stat_thread_stat_name (size_t index);
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
-bool perfmon_Iscollecting_stats = false;
+static CUB_THREAD_LOCAL bool perfmon_Iscollecting_stats = false;
 
 /* Client execution statistics */
-static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+static CUB_THREAD_LOCAL PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+
+void
+disable_perfmon_start_stats ()
+{
+  perfmon_Iscollecting_stats = false;
+}
 
 /*
  * perfmon_start_stats - Start collecting client execution statistics
@@ -1060,56 +1070,6 @@ xperfmon_server_copy_global_stats (UINT64 * to_stats)
       perfmon_copy_values (to_stats, pstat_Global.global_stats);
       perfmon_server_calc_stats (to_stats, true);
     }
-}
-
-UINT64
-perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
-{
-  UINT64 *stats;
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0);
-
-  if (tran_index >= pstat_Global.n_trans)
-    {
-      return 0;
-    }
-
-  assert ((thread_p && thread_p->m_uses_px_stats && thread_p->m_px_orig_thread_entry) || (thread_p == NULL)
-	  || (!thread_p->m_uses_px_stats));
-
-  if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
-    {
-      if (thread_p->m_px_stats != NULL)
-	{
-	  stats = thread_p->m_px_stats;
-	}
-      else
-	{
-	  /* impossible case */
-	  assert (false);
-	  return 0;
-	}
-    }
-  else
-    {
-      /* This routine is called from the query execute scan routine in TRACE ON state.
-       * Therefore, there is no need to call perfmon_get_peek_stats,
-       * which retrieves overall statistical information,
-       * because the server's overall statistical information is not needed,
-       * and only I/O fetch and time information are needed.
-       */
-      stats = pstat_Global.tran_stats[tran_index];
-    }
-
-  if (stats != NULL)
-    {
-      int offset = pstat_Metadata[statistic_id].start_offset;
-      return stats[offset];
-    }
-
-  return 0;
 }
 
 /*
@@ -1925,25 +1885,32 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
   stats[pstat_Metadata[PSTAT_VACUUM_DATA_HIT_RATIO].start_offset] =
     SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
 
-  stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset] =
-    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] -
-	       stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
+  {
+    UINT64 pb_fetches = stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+    UINT64 pb_ioreads = stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+    UINT64 pb_hits = (pb_fetches > pb_ioreads) ? (pb_fetches - pb_ioreads) : 0;
+    stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset] = SAFE_DIV (pb_hits * 100 * 100, pb_fetches);
+  }
 
-  stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] =
-    SAFE_DIV ((stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]
-	       - stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]);
+  {
+    UINT64 log_fetches = stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset];
+    UINT64 log_ioreads = stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset];
+    UINT64 log_hits = (log_fetches > log_ioreads) ? (log_fetches - log_ioreads) : 0;
+    stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] = SAFE_DIV (log_hits * 100 * 100, log_fetches);
+  }
 
   stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset] = 100 * lock_time_usec / 1000;
   stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] = 100 * hold_time_usec / 1000;
   stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] = 100 * fix_time_usec / 1000;
 
-  stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] =
-    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] -
-	       stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] -
-	       stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
+  {
+    UINT64 fix_time = stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset];
+    UINT64 hold_time = stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset];
+    UINT64 lock_time = stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset];
+    UINT64 alloc_time = (hold_time <= fix_time && lock_time <= fix_time - hold_time)
+      ? (fix_time - hold_time - lock_time) : 0;
+    stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] = SAFE_DIV (alloc_time * 100 * 100, fix_time);
+  }
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -3435,7 +3402,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 void
 perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  assert (thread_is_on_trace (thread_p));
+  assert (perfmon_parallel_stats_needed (thread_p));
 
   /*
    * m_px_stats should be NULL.
@@ -3467,6 +3434,115 @@ perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
       thread_p->m_uses_px_stats = false;
     }
   assert (thread_p->m_uses_px_stats == false);
+}
+
+/*
+ * perfmon_parallel_stats_needed () - does a parallel worker of this thread's transaction need its own statistics
+ *                                    array: when the query is traced, or when anyone watches the transaction's
+ *                                    statistics (SHOW EXEC STATISTICS)
+ *
+ * return	 : true or false.
+ * thread_p (in) : The thread that starts the worker.
+ *
+ * Note: without its own array a worker would add to the shared transaction statistics with no
+ *       synchronization; with it, nothing is shared until the parent merges the array once.
+ */
+bool
+perfmon_parallel_stats_needed (THREAD_ENTRY * thread_p)
+{
+  return thread_is_on_trace (thread_p) || perfmon_server_is_stats_on (thread_p);
+}
+
+/*
+ * perfmon_merge_values () - Merge every statistic value of src into dst.
+ *
+ * return   : Void.
+ * dst (in/out) : Statistics values that receive the merge.
+ * src (in)	: Statistics values of a parallel worker.
+ *
+ * Note: counters are added and timers keep the larger maximum. Peek values are set from global state and
+ *       ratios are computed when the statistics are read, so neither is merged, except the page fix time
+ *       that is accumulated in a ratio's slot.
+ */
+void
+perfmon_merge_values (UINT64 * dst, const UINT64 * src)
+{
+  int i, j, offset;
+
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      offset = pstat_Metadata[i].start_offset;
+      switch (pstat_Metadata[i].valtype)
+	{
+	case PSTAT_ACCUMULATE_SINGLE_VALUE:
+	case PSTAT_COMPLEX_VALUE:
+	  for (j = offset; j < offset + pstat_Metadata[i].n_vals; j++)
+	    {
+	      dst[j] += src[j];
+	    }
+	  break;
+
+	case PSTAT_COUNTER_TIMER_VALUE:
+	  dst[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)] += src[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)];
+	  dst[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)] += src[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)];
+	  if (dst[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)] < src[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)])
+	    {
+	      dst[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)] = src[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)];
+	    }
+	  break;
+
+	case PSTAT_COMPUTED_RATIO_VALUE:
+	  /* pgbuf_fix () adds each fix time to this slot, and trace reads it raw as fetch_time */
+	  if (i == PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)
+	    {
+	      dst[offset] += src[offset];
+	    }
+	  break;
+
+	case PSTAT_PEEK_SINGLE_VALUE:
+	default:
+	  break;
+	}
+    }
+}
+
+/*
+ * perfmon_add_values_to_local () - Merge a parallel worker's statistics into this thread's local statistics:
+ *                                  its own array when it is itself a parallel worker, otherwise its
+ *                                  transaction's statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : The thread that owns the worker (the parent).
+ * values (in)   : The worker's statistics values.
+ */
+void
+perfmon_add_values_to_local (THREAD_ENTRY * thread_p, const UINT64 * values)
+{
+  int tran_index;
+
+  assert (pstat_Global.initialized);
+
+  if (values == NULL)
+    {
+      return;
+    }
+
+  if (thread_p != NULL && thread_p->m_uses_px_stats)
+    {
+      if (thread_p->m_px_stats != NULL)
+	{
+	  perfmon_merge_values (thread_p->m_px_stats, values);
+	}
+      return;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (tran_index >= 0 && tran_index < pstat_Global.n_trans
+      && (pstat_Global.is_watching[tran_index] || (thread_p != NULL && thread_p->on_trace)))
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      perfmon_merge_values (pstat_Global.tran_stats[tran_index], values);
+    }
 }
 
 #endif /* SERVER_MODE || SA_MODE */
@@ -4525,7 +4601,7 @@ perfmon_er_log_current_stats (THREAD_ENTRY * thread_p)
 
   _er_log_debug (ARG_FILE_LINE, "%s\n", strbuf);
 
-  delete strbuf;
+  delete[] strbuf;
 }
 #endif // SERVER_MODE || SA_MODE
 // *INDENT-ON*
