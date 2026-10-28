@@ -373,6 +373,14 @@ exit:
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_METHOD_CALLBACK, 2, client_error,
 		    (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights");
 	  }
+	else
+	  {
+	    // the routine already failed. Keep its error for the user, but do not lose this one: the client may be
+	    // left with the owner's rights if the restore failed
+	    er_log_debug (ARG_FILE_LINE, "%s (client error %d) after error %d",
+			  (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights",
+			  client_error, er_errid ());
+	  }
       }
 
     if (error != NO_ERROR)
@@ -387,6 +395,7 @@ exit:
 	    // According to the current analysis, the following code should be unreachable.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  }
+
 
 	error = er_errid ();
       }
