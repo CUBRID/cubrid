@@ -4875,56 +4875,101 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 	    }
 	  break;
 	default:
-	  /* ADD / SUB / MUL */
-	  if (step->etype == EB_I64)
+	  /* ADD / SUB / MUL: the operands' fields read once (a char store may alias them), one loop per operator, the
+	   * overflow gathered over the chunk -- the chunk goes to the row path either way */
+	  if (step->etype == EB_I64 || step->etype == EB_F64)
 	    {
-	      for (j = 0; j < n; j++)
-		{
-		  int r = sel[j];
-		  int64_t x, y, z;
+	      const int am = (a->kind == EB_VK_SCALAR) ? 0 : ~0, cm = (c->kind == EB_VK_SCALAR) ? 0 : ~0;
+	      const unsigned char *an = a->isnull, *cn = c->isnull;
+	      unsigned char *on = out->isnull;
+	      bool ovf = false;
 
-		  if ((mask != NULL && !mask[r]) || EB_NULL_AT (a, r) || EB_NULL_AT (c, r))
+	      if (step->etype == EB_I64)
+		{
+		  const int64_t *ad = (const int64_t *) a->data, *cd = (const int64_t *) c->data;
+		  int64_t *od = (int64_t *) out->data;
+		  const int64_t lo = (step->result_type == (unsigned char) DB_TYPE_INTEGER) ? DB_INT32_MIN
+		    : (step->result_type == (unsigned char) DB_TYPE_SHORT) ? DB_INT16_MIN : INT64_MIN;
+		  const int64_t hi = (step->result_type == (unsigned char) DB_TYPE_INTEGER) ? DB_INT32_MAX
+		    : (step->result_type == (unsigned char) DB_TYPE_SHORT) ? DB_INT16_MAX : INT64_MAX;
+
+#define EB_I64_STEP_LOOP(overflows) \
+  do \
+    { \
+      for (j = 0; j < n; j++) \
+	{ \
+	  int r = sel[j]; \
+	  int64_t z; \
+	  if ((mask != NULL && !mask[r]) || an[r & am] || cn[r & cm]) \
+	    { \
+	      on[r] = 1; \
+	      continue; \
+	    } \
+	  ovf |= (overflows) || z < lo || z > hi; \
+	  od[r] = z; \
+	  on[r] = 0; \
+	} \
+    } \
+  while (0)
+		  if (step->op == EB_OP_ADD)
 		    {
-		      out->isnull[r] = 1;
-		      continue;
+		      EB_I64_STEP_LOOP (__builtin_add_overflow (ad[r & am], cd[r & cm], &z));
 		    }
-		  x = EB_I64_AT (a, r);
-		  y = EB_I64_AT (c, r);
-		  if (step->op == EB_OP_ADD ? __builtin_add_overflow (x, y, &z)
-		      : step->op == EB_OP_SUB ? __builtin_sub_overflow (x, y, &z) : __builtin_mul_overflow (x, y, &z))
+		  else if (step->op == EB_OP_SUB)
 		    {
-		      return eb_fallback (plan, "an integer step overflows");
+		      EB_I64_STEP_LOOP (__builtin_sub_overflow (ad[r & am], cd[r & cm], &z));
 		    }
-		  if ((step->result_type == (unsigned char) DB_TYPE_INTEGER && OR_CHECK_INT_OVERFLOW (z))
-		      || (step->result_type == (unsigned char) DB_TYPE_SHORT && OR_CHECK_SHORT_OVERFLOW (z)))
+		  else
 		    {
-		      return eb_fallback (plan, "an integer step leaves its type");
+		      EB_I64_STEP_LOOP (__builtin_mul_overflow (ad[r & am], cd[r & cm], &z));
 		    }
-		  EB_I64_AT (out, r) = z;
-		  out->isnull[r] = 0;
+#undef EB_I64_STEP_LOOP
+		  if (ovf)
+		    {
+		      return eb_fallback (plan, "an integer step overflows or leaves its type");
+		    }
 		}
-	    }
-	  else if (step->etype == EB_F64)
-	    {
-	      for (j = 0; j < n; j++)
+	      else
 		{
-		  int r = sel[j];
-		  double x, y, z;
+		  const double *ad = (const double *) a->data, *cd = (const double *) c->data;
+		  double *od = (double *) out->data;
 
-		  if ((mask != NULL && !mask[r]) || EB_NULL_AT (a, r) || EB_NULL_AT (c, r))
+#define EB_F64_STEP_LOOP(OP) \
+  do \
+    { \
+      for (j = 0; j < n; j++) \
+	{ \
+	  int r = sel[j]; \
+	  double z; \
+	  if ((mask != NULL && !mask[r]) || an[r & am] || cn[r & cm]) \
+	    { \
+	      on[r] = 1; \
+	      continue; \
+	    } \
+	  z = ad[r & am] OP cd[r & cm]; \
+	  ovf |= OR_CHECK_DOUBLE_OVERFLOW (z); \
+	  od[r] = z; \
+	  on[r] = 0; \
+	} \
+    } \
+  while (0)
+		  if (step->op == EB_OP_ADD)
 		    {
-		      out->isnull[r] = 1;
-		      continue;
+		      EB_F64_STEP_LOOP (+);
 		    }
-		  x = EB_F64_AT (a, r);
-		  y = EB_F64_AT (c, r);
-		  z = (step->op == EB_OP_ADD) ? (x + y) : (step->op == EB_OP_SUB) ? (x - y) : (x * y);
-		  if (OR_CHECK_DOUBLE_OVERFLOW (z))
+		  else if (step->op == EB_OP_SUB)
+		    {
+		      EB_F64_STEP_LOOP (-);
+		    }
+		  else
+		    {
+		      EB_F64_STEP_LOOP (*);
+		    }
+#undef EB_F64_STEP_LOOP
+		  if (ovf)
 		    {
 		      return eb_fallback (plan, "a DOUBLE step overflows");
 		    }
-		  EB_F64_AT (out, r) = z;
-		  out->isnull[r] = 0;
 		}
 	    }
 	  else
