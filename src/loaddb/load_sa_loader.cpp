@@ -2220,6 +2220,15 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_ARGUMENT, 1, context->arg_count);
       CHECK_ERR (err, ER_LDR_UNEXPECTED_ARGUMENT);
+      /*
+       * Leave even when the error stands no longer. context->attrs holds one
+       * descriptor per attribute and per argument, and next_attr has run past the
+       * last one, so there is nothing below to convert into. CHECK_ERR only jumps
+       * for an error that is still an error; when --error-control-file ignores
+       * this one it marks the line to be skipped and falls through, and falling
+       * through here reads off the end of the array.
+       */
+      goto error_exit;
     }
   CHECK_VALIDATION_ONLY (context);
 
@@ -2743,6 +2752,8 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
       context->valid = false;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
       CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      /* No descriptor left to read; ldr_act_meth () explains. */
+      goto error_exit;
     }
 
   if (type == LDR_COLLECTION)
