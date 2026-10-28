@@ -515,6 +515,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
   ${WRITESET_DIR}/writeset.hpp
+  ${WRITESET_DIR}/writeset_history.hpp
   ${WRITESET_DIR}/writeset_history_map.hpp
   ${WRITESET_DIR}/writeset_stat.hpp
   ${WRITESET_DIR}/writeset_types.hpp

@@ -32,7 +32,7 @@
 #include <atomic>
 #include <new>
 
-#include "writeset.hpp"
+#include "writeset_history.hpp"
 #include "writeset_stat.hpp"
 
 #include "error_manager.h"

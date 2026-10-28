@@ -36,7 +36,7 @@
 #include "dbtype.h"
 #include "log_impl.h"
 #include "object_primitive.h"
-#include "writeset.hpp"
+#include "writeset_history.hpp"
 #include "object_domain.h"
 #include "oid.h"
 #include "system_parameter.h"

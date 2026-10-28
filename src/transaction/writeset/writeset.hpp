@@ -29,31 +29,13 @@
 #include "log_lsa.hpp"		/* LOG_LSA */
 #include "dbtype.h"		/* DB_VALUE */
 #include "thread_compat.hpp"	/* THREAD_ENTRY */
-#include "writeset_history_map.hpp"
-
-#include <pthread.h>
+#include "writeset_types.hpp"	/* LOG_WSET_KIND */
 
 /* forward declaration of transaction descriptor (defined in log_impl.h) */
 typedef struct log_tdes LOG_TDES;
 
 /* forward declaration of value domain (defined in object_domain.h) */
 struct tp_domain;
-
-/* global commit history: writeset key hash -> WRITE/REF commit slots. Per-key synchronization is
- * hidden by wset_history_map; the history lock is held shared for per-key access and exclusive only
- * for the rare whole-map clear. */
-typedef struct wset_history LOG_WSET_HISTORY;
-struct wset_history
-{
-  wset_history_map map;		/* key hash -> WRITE/REF slots */
-  LOG_LSA history_start;		/* conservative parent LSA of keys evicted by a full-history clear */
-  LOG_LSA prev_commit_lsa;	/* commit-order baseline, advanced monotonically */
-  pthread_rwlock_t history_lock;	/* shared: per-key probe/publish; exclusive: whole-map clear */
-  pthread_mutex_t seq_lock;	/* guards prev_commit_lsa read-modify-write */
-  INT64 history_size;		/* cached ha_writeset_history_size; per-tx and map capacity */
-};
-
-extern LOG_WSET_HISTORY wset_History;
 
 typedef enum
 {

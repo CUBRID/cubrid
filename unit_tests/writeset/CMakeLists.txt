@@ -42,7 +42,7 @@ target_compile_definitions(test_writeset PRIVATE
   ${COMMON_DEFS}
   )
 
-# The test translation units include writeset.hpp, which pulls in the oneTBB
+# The test translation units include writeset_history.hpp, which pulls in the oneTBB
 # concurrent_hash_map header, so TBB has to be on the include path; the map
 # methods the tests call are instantiated here, so TBB has to be linked too.
 target_include_directories(test_writeset PRIVATE
