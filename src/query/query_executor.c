@@ -265,6 +265,8 @@ struct groupby_state
   bool put_partials;		/* there are no rows to sort: the partial list's sort outputs the groups */
   bool part_taken;		/* the partial entry under the scan went to a group of the sorted rows */
   DB_VALUE *key_slots;		/* g_hkey_size values: what the key slots held before a partial group borrowed them */
+  VPID part_vpid;		/* page of the partial list the sorted entries were last read from */
+  PAGE_PTR part_page;		/* that page, kept fixed while the next entries are on it */
 
   AGGREGATE_HASH_CONTEXT *agg_hash_context;
 
@@ -4607,6 +4609,8 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_lis
   gbstate->put_partials = false;
   gbstate->part_taken = false;
   gbstate->key_slots = NULL;
+  VPID_SET_NULL (&gbstate->part_vpid);
+  gbstate->part_page = NULL;
   gbstate->agg_hash_context = agg_hash_context;
 
   if (qfile_initialize_sort_key_info (&gbstate->key_info, groupby_list, type_list) == NULL)
@@ -5205,10 +5209,25 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  vpid.pageid = key->s.original.pageid;
 	  vpid.volid = key->s.original.volid;
 
-	  page = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
-	  if (page == NULL)
+	  /* sorted entries mostly come in the order they were written, so the page is kept for the next ones; the values
+	   * are copied out below, and qexec_groupby () frees the last page after the sort */
+	  if (state->part_page != NULL && VPID_EQ (&state->part_vpid, &vpid))
 	    {
-	      return ER_FAILED;
+	      page = state->part_page;
+	    }
+	  else
+	    {
+	      if (state->part_page != NULL)
+		{
+		  qmgr_free_old_page_and_init (thread_p, state->part_page, list_idp->tfile_vfid);
+		}
+	      page = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
+	      if (page == NULL)
+		{
+		  return ER_FAILED;
+		}
+	      state->part_page = page;
+	      state->part_vpid = vpid;
 	    }
 
 	  QFILE_GET_OVERFLOW_VPID (&vpid, page);
@@ -5235,14 +5254,10 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 		}
 	      if (status != NO_ERROR)
 		{
-		  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
 		  return ER_FAILED;
 		}
 
 	      data = context->tuple_recdes.data;
-	    }
-	  else
-	    {
 	    }
 
 	  /* read tuple into value */
@@ -5250,10 +5265,8 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 						context->temp_part_value, context->key_domains,
 						context->accumulator_domains) != NO_ERROR)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
 	      return ER_FAILED;
 	    }
-	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
 	}
       else
 	{
@@ -5958,7 +5971,17 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 			 NO_SORT_LIMIT, gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY,
 			 &part_px) != NO_ERROR)
 	{
+	  if (gbstate.part_page != NULL)
+	    {
+	      qmgr_free_old_page_and_init (thread_p, gbstate.part_page,
+					   gbstate.agg_hash_context->part_list_id->tfile_vfid);
+	    }
 	  GOTO_EXIT_ON_ERROR;
+	}
+      /* the last page qexec_hash_gby_put_next () read from */
+      if (gbstate.part_page != NULL)
+	{
+	  qmgr_free_old_page_and_init (thread_p, gbstate.part_page, gbstate.agg_hash_context->part_list_id->tfile_vfid);
 	}
 
       /* write last group */
