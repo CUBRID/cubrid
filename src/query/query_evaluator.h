@@ -150,6 +150,11 @@ extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, in
 				   FILTER_INFO * filter);
 extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification);
 
+struct xasl_node;
+/* An uncorrelated list subquery's IN or NOT IN term: the subquery executed and its hash built (query_hash_lookup.cpp)
+ * before a PX scan starts its workers. */
+extern int eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, xasl_node * subquery, val_descr * vd);
+
 struct DOMAIN_COMPARE_PLAN;
 /* A comparison of two values the load resolved outside a predicate term: FIELD, NULLIF, LEAST and GREATEST,
  * LIMIT's row count, a merge join's column, a PX instnum limit's rounding. */

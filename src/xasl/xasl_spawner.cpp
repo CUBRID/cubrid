@@ -593,7 +593,6 @@ namespace cubxasl
 	return nullptr;
       }
 
-    /* TODO: unsupported */
     dest->list_id = spawn (src->list_id);
 
     dest->sorted = src->sorted;
@@ -604,9 +603,9 @@ namespace cubxasl
   QFILE_LIST_ID *
   spawner::spawn (const QFILE_LIST_ID *src)
   {
-    /* TODO: unsupported */
-    assert_release_error (src == nullptr);
-    return nullptr;
+    /* No copy: the workers read the caller's list, as a PX scan worker reads the leader's (hash_lookup_share). The
+     * caller filled it and destroys it after the workers. Not registered in the cache, so the spawner never frees it. */
+    return const_cast<QFILE_LIST_ID *> (src);
   }
 
   FUNCTION_TYPE *

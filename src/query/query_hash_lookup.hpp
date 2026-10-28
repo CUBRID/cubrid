@@ -38,15 +38,20 @@ struct xasl_node;
 
 typedef struct hash_lookup HASH_LOOKUP;
 
-extern HASH_LOOKUP *hash_lookup_create (THREAD_ENTRY *thread_p);
+/* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
 extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
 extern void hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl);
 
+/* a PX scan worker's clone of the subquery: the leader's table */
+extern int hash_lookup_share (THREAD_ENTRY *thread_p, xasl_node *subquery, const xasl_node *leader);
+
+/* each lookup: the hash, built by the first lookup of the list */
 extern int hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, qfile_list_id *list_id,
 			    const DOMAIN_COMPARE *compare, HASH_LOOKUP **hash);
-extern void hash_lookup_count_read (xasl_node *subquery, INT64 rows);
-extern bool hash_lookup_has_null (const HASH_LOOKUP *hash);
+
+/* the list values of one item, through the hash */
 extern bool hash_lookup_start (HASH_LOOKUP *hash, const DB_VALUE *item);
+extern bool hash_lookup_has_null (const HASH_LOOKUP *hash);
 extern SCAN_CODE hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, DB_VALUE **value);
 extern void hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
 

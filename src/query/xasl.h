@@ -1272,6 +1272,9 @@ struct xasl_node
   memoize::storage *memoize_storage;
   // *INDENT-ON*
   struct hash_lookup *hash_lookup;	/* the hash over this subquery's list for its IN lookups (query_hash_lookup.cpp) */
+  ALSM_EVAL_TERM *hash_lookup_term;	/* the ALL/SOME term that reads this list subquery, set as the term is
+					 * unpacked: a PX scan executes the subquery and builds its hash before its
+					 * workers start (eval_hash_lookup_prepare) */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

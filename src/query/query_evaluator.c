@@ -76,8 +76,7 @@ static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SE
 				 const EVAL_ELEMENTS * elements, const val_descr * vd);
 static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
-				       REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
-				       INT64 * rows);
+				       REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
 static DB_LOGICAL eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 					 REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
 					 XASL_NODE * subquery);
@@ -1074,7 +1073,6 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
  *   rel_operator(in): relational comparison operator
  *   compare(in): the comparison of the item with the list's column resolved for this execution
  *   vd(in): value descriptor of the term's execution
- *   rows(out): the rows of the list read, or NULL
  *
  * Note: This routine tries to determine whether a specific relation
  *              as determined by the relational operator rel_operator holds between
@@ -1097,7 +1095,7 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
  */
 static DB_LOGICAL
 eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
-		     const DOMAIN_COMPARE * compare, const val_descr * vd, INT64 * rows)
+		     const DOMAIN_COMPARE * compare, const val_descr * vd)
 {
   DB_LOGICAL res, t_res;
   QFILE_LIST_SCAN_ID s_id;
@@ -1124,6 +1122,8 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
     {
       return V_ERROR;
     }
+  /* PX scan workers read the leader's list too (hash_lookup_share): read latches, as PX list scans take */
+  s_id.is_read_only = true;
 
   pr_type = list_id->type_list.domp[0]->type;
   if (pr_type == NULL)
@@ -1135,10 +1135,6 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   res = V_FALSE;
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (rows != NULL)
-	{
-	  (*rows)++;
-	}
       if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
@@ -1172,6 +1168,60 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 }
 
 /*
+ * eval_list_lookup_hashed () - a list a hash may answer the R_EQ lookups of: a correlated subquery executes again for
+ *				each outer row, so its list is seldom looked up twice, and NO_SUBQUERY_HASH turns the hash
+ *				off. A PX hash join worker evaluates no term with a subquery (plan_generation.c keeps it
+ *				out of the join's predicates)
+ */
+static bool
+eval_list_lookup_hashed (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
+{
+  return subquery != NULL && XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL)
+    && !XASL_IS_FLAGED (subquery, XASL_NO_SUBQUERY_HASH) && list_id->type_list.type_cnt == 1;
+}
+
+/*
+ * eval_hash_lookup_prepare () - executes an uncorrelated list subquery an IN or NOT IN term looks up, and builds its
+ *				 hash, before the scans that look it up open: a PX scan's workers then share both
+ *				 (hash_lookup_share) in place of executing the subquery and building a hash each
+ *   return: error code
+ *   subquery(in): the subquery; hash_lookup_term is its term
+ *   vd(in): the value descriptor of the main block that evaluates the term
+ */
+int
+eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_descr * vd)
+{
+  const ALSM_EVAL_TERM *et_alsm = subquery->hash_lookup_term;
+  QFILE_LIST_ID *list_id;
+  EVAL_ELEMENTS elements;
+  HASH_LOOKUP *hash;
+
+  /* = SOME looks up R_EQ, and <> ALL its negation (eval_all_list_eval) */
+  if (et_alsm->eq_flag == F_ALL ? et_alsm->rel_op != R_NE : et_alsm->rel_op != R_EQ)
+    {
+      return NO_ERROR;
+    }
+  if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (subquery, XASL_NO_SUBQUERY_HASH))
+    {
+      return NO_ERROR;
+    }
+
+  EXECUTE_REGU_VARIABLE_XASL (thread_p, et_alsm->elemset, vd);
+  if (CHECK_REGU_VARIABLE_XASL_STATUS (et_alsm->elemset) != XASL_SUCCESS)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  list_id = et_alsm->elemset->value.srlist_id->list_id;
+  if (list_id->tuple_cnt == 0 || !eval_list_lookup_hashed (subquery, list_id))
+    {
+      return NO_ERROR;
+    }
+  eval_resolved_elements (et_alsm, vd, &elements);
+  return hash_lookup_get (thread_p, subquery, list_id, elements.all, &hash);
+}
+
+/*
  * eval_some_list_lookup () - eval_some_list_eval; once the subquery's list has a hash (query_hash_lookup.cpp), the list
  *			      values of the item's hash answer in place of the whole list
  *   subquery(in): the subquery whose list list_id is
@@ -1185,12 +1235,9 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
   SCAN_CODE qp_scan;
   DB_LOGICAL res, t_res;
 
-  /* a correlated subquery executes again for each outer row, so its list is seldom looked up twice. NO_SUBQUERY_HASH
-   * turns the hash off */
-  if (rel_operator != R_EQ || !XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL)
-      || XASL_IS_FLAGED (subquery, XASL_NO_SUBQUERY_HASH) || list_id->type_list.type_cnt != 1)
+  if (rel_operator != R_EQ || !eval_list_lookup_hashed (subquery, list_id))
     {
-      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd, NULL);
+      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
     }
   if (hash_lookup_get (thread_p, subquery, list_id, compare, &hash) != NO_ERROR)
     {
@@ -1198,13 +1245,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
     }
   if (hash == NULL || !hash_lookup_start (hash, item))
     {
-      INT64 rows = 0;
-      res = eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd, &rows);
-      if (hash == NULL && res != V_ERROR)
-	{
-	  hash_lookup_count_read (subquery, rows);
-	}
-      return res;
+      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
     }
 
   res = hash_lookup_has_null (hash) ? V_UNKNOWN : V_FALSE;
@@ -1230,7 +1271,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
   subquery->xasl_stats.hash_lookup_count++;
 #if !defined (NDEBUG)
   /* the hash answers as reading the list does */
-  assert (res == V_ERROR || res == eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd, NULL));
+  assert (res == V_ERROR || res == eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd));
 #endif
   return res;
 }

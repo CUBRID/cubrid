@@ -95,6 +95,15 @@ namespace parallel_scan
       {
 	for (xasl_node *subq = xptr->aptr_list; subq != NULL; subq = subq->next)
 	  {
+	    if (subq->hash_lookup_term != NULL)
+	      {
+		/* executed before the workers start (eval_hash_lookup_prepare) unless the term is not hashed */
+		if (subq->status == XASL_SUCCESS)
+		  {
+		    m_lookup_lists.emplace (subq->header.id, subq);
+		  }
+		continue;
+	      }
 	    if (subq->precomp_owner_regu == NULL)
 	      {
 		continue;
@@ -123,6 +132,12 @@ namespace parallel_scan
 	return NULL;
       }
     return &it->second;
+  }
+
+  xasl_node *pre_execution_info::find_lookup_list (XASL_NODE_ID subquery_id) const
+  {
+    auto it = m_lookup_lists.find (subquery_id);
+    return it == m_lookup_lists.end () ? nullptr : it->second;
   }
 
   void pre_execution_info::record_pre_execution_info (XASL_NODE_ID xasl_id, xasl_node *xptr)

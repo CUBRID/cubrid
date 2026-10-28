@@ -339,9 +339,6 @@ extern "C"
   extern bool lang_is_coll_name_allowed (const char *name);
   extern LANG_COLLATION *lang_get_collation (const int coll_id);
   extern LANG_FASTCMP lang_get_coll_fastcmp (const LANG_COLLATION * lang_coll);
-  extern unsigned int lang_hash_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str,
-					      const int size);
-  extern unsigned int lang_hash_utf8_uca (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   extern const char *lang_get_collation_name (const int coll_id);
   extern LANG_COLLATION *lang_get_collation_by_name (const char *coll_name);
   extern int lang_collation_count (void);
@@ -351,6 +348,9 @@ extern "C"
   extern const char *lang_charset_name (const INTL_CODESET codeset);
   extern const char *lang_charset_cubrid_name (const INTL_CODESET codeset);
 
+  extern unsigned int lang_hash_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str,
+					      const int size);
+  extern unsigned int lang_hash_utf8_uca (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, const unsigned char *str1,
 						 const int size1, const unsigned char *str2, const int size2,
 						 const unsigned char *escape, const bool has_last_escape,

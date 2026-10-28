@@ -144,6 +144,9 @@ void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val
 int qdata_hscan_key_eq (const void *key1, const void *key2);
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
+unsigned int qdata_hash_string (const LANG_COLLATION * lang_coll, LANG_FASTCMP fastcmp, const unsigned char *str,
+				int size);
+bool qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
 int qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
 			   REGU_VARIABLE_LIST producers);
@@ -186,9 +189,6 @@ extern HASH_METHOD qdata_hscan_method (const QFILE_LIST_ID * list_id, UINT64 mem
 extern int qdata_hscan_create (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, HASH_METHOD method,
 			       INT64 tuple_cnt, const char *name);
 extern void qdata_hscan_destroy (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
-extern bool qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key);
-extern unsigned int qdata_hash_string (const LANG_COLLATION * lang_coll, LANG_FASTCMP fastcmp, const unsigned char *str,
-				       int size);
 extern void qdata_hscan_set_key (HASH_LIST_SCAN * hash_scan, unsigned int hash_key);
 extern int qdata_hscan_insert (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 			       QFILE_TUPLE_RECORD * tuple_record);
