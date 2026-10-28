@@ -113,9 +113,6 @@ static int rv;
 
 /* ATTRIBUTE LOCATION */
 
-#define OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ(obj, nvars) \
-  (OR_HEADER_SIZE(obj) + OR_VAR_TABLE_SIZE_INTERNAL(nvars, OR_GET_OFFSET_SIZE(obj)))
-
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
@@ -745,7 +742,6 @@ static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 
 /* *INDENT-OFF* */
-static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size);
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
 struct heap_oos_column_plan
@@ -769,32 +765,23 @@ static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRI
 static int heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch,
 					   int oos_scratch_size, bool * oos_owned_buffer,
                                          const heap_pending_record *pending = nullptr);
-STATIC_INLINE int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout,
-                                                HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-                                                RECDES * raw, bool *is_oos) __attribute__ ((ALWAYS_INLINE));
+static int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout,
+                                          HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
+                                          bool *is_oos);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
-static int heap_attrvalue_read_oos (RECDES *recdes, HEAP_ATTRVALUE *value, OR_ATTRIBUTE *attrepr,
-                                   const heap_pending_record *pending);
-/* Let record loops reuse their known record/layout conditions for each attribute. Resolve stays out of line. */
-STATIC_INLINE int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-                                     const HEAP_REC_LAYOUT *layout, const heap_pending_record *pending = nullptr)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-                                                          const HEAP_REC_LAYOUT *layout,
-                                                          const heap_pending_record *pending = nullptr)
-  __attribute__ ((ALWAYS_INLINE));
+static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+                                const HEAP_REC_LAYOUT *layout, const heap_pending_record *pending = nullptr);
+static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+                                                     const HEAP_REC_LAYOUT *layout,
+                                                     const heap_pending_record *pending = nullptr);
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 							    std::vector < RECDES > *oos_payloads,
                                                             const HEAP_REC_LAYOUT *layout,
                                                             const heap_pending_record *pending = nullptr);
-STATIC_INLINE int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
+static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 							  HEAP_CACHE_ATTRINFO * attr_info,
-                                const heap_pending_record *pending = nullptr)
-  __attribute__ ((ALWAYS_INLINE));
-static int heap_attrinfo_read_oos_dbvalues (THREAD_ENTRY *thread_p, RECDES *recdes,
-                                          HEAP_CACHE_ATTRINFO *attr_info, const HEAP_REC_LAYOUT *layout,
-                                          const heap_pending_record *pending);
+                                const heap_pending_record *pending = nullptr, int header_size = -1);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record *pending = nullptr);
@@ -10965,8 +10952,11 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
  * live, derived once per record instead of once per attribute. */
+/* *INDENT-OFF* */
 STATIC_INLINE void
-heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
+heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info,
+                      int header_size = -1)
+/* *INDENT-ON* */
 {
   char *obj = (char *) recdes->data;
   int nvars;
@@ -10977,7 +10967,7 @@ heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEA
   nvars = attr_info->read_classrepr->n_variable;
 
   layout->offset_size = OR_GET_OFFSET_SIZE (obj);
-  layout->var_table = obj + OR_HEADER_SIZE (obj);
+  layout->var_table = obj + (header_size >= 0 ? header_size : OR_HEADER_SIZE (obj));
   layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
   layout->bound_bits =
     OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
@@ -11198,13 +11188,24 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
 }
 
 /*
- * heap_attrvalue_point_variable () - Locate inline bytes or identify an OOS field.
- *   return: NO_ERROR, or an error for an inconsistent variable offset table header.
- *   is_oos(out): true for a non-NULL OOS field; caller must Resolve it before conversion.
+ * heap_attrvalue_point_variable () -
+ *
+ *   return: NO_ERROR, or an error code propagated from the OOS inline-reference read or
+ *           raised when the variable offset table header is inconsistent.
+ *   recdes(in): Record
+ *   attr_info(in): The attribute information structure
+ *   attrepr(in): The attribute structure
+ *   raw(out): Disk value pointer + length
+ *   oos_owned_buffer(out): true iff successful OOS Resolve produced transient raw data.
+ *                          Caller must use COPY in data_readval and call recdes_free_data_area
+ *                          unless raw->data == oos_scratch.
+ *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
  */
-STATIC_INLINE int
+/* *INDENT-OFF* */
+static inline __attribute__ ((always_inline)) int
 heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
 			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * is_oos)
+/* *INDENT-ON* */
 {
   int offset;
   int this_off, next_off;
@@ -11296,9 +11297,11 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
  *   data(in): Disk value pointer
  *   length(in): Disk value length
  */
-static int
+/* *INDENT-OFF* */
+static inline __attribute__ ((always_inline)) int
 heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 				     bool oos_owned_buffer)
+/* *INDENT-ON* */
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -11558,42 +11561,22 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
   value->rd_attrepr = attrepr;
 }
 
-/*
- * heap_attrvalue_read_oos () - Keep Resolve scratch alive through conversion and release.
- * Inline and default values do not need this frame. All paths share DB_VALUE conversion.
- */
-static int
-heap_attrvalue_read_oos (RECDES * recdes, HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr,
-			 const heap_pending_record * pending)
-{
-  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
-  bool oos_owned_buffer = false;
-  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
-  int error;
-
-  error = heap_attrvalue_read_oos_inline (recdes, attrepr->location, &raw, oos_scratch, IO_MAX_PAGE_SIZE,
-					  &oos_owned_buffer, pending);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
-  if (oos_owned_buffer && raw.data != oos_scratch)
-    {
-      recdes_free_data_area (&raw);
-    }
-  return error;
-}
-
-STATIC_INLINE int
+/* *INDENT-OFF* */
+static inline __attribute__ ((always_inline)) int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
 		     const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
+/* *INDENT-ON* */
+
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
+
+  bool oos_owned_buffer = false;
+  /* OOS Resolve uses scratch up to one I/O page and allocates larger values. */
+  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
+  int error;
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -11635,20 +11618,28 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       else
 	{
 	  bool is_oos;
-	  int error = heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &is_oos);
+	  error = heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &is_oos);
+	  if (error == NO_ERROR && is_oos)
+	    {
+	      error = heap_attrvalue_read_oos_inline (recdes, attrepr->location, &raw, oos_scratch,
+						      IO_MAX_PAGE_SIZE, &oos_owned_buffer, pending);
+	    }
 	  if (error != NO_ERROR)
 	    {
 	      return error;
-	    }
-	  if (is_oos)
-	    {
-	      return heap_attrvalue_read_oos (recdes, value, attrepr, pending);
 	    }
 	}
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  return heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, false);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
+  /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
+  if (oos_owned_buffer && raw.data != oos_scratch)
+    {
+      recdes_free_data_area (&raw);
+    }
+
+  return error;
 }
 
 /*
@@ -11656,19 +11647,24 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
  *
  *   Keeps the per-attribute OOS Resolve path and its stack-scratch fast path.
  */
-STATIC_INLINE int
+/* *INDENT-OFF* */
+static inline __attribute__ ((always_inline)) int
 heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 					  const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
+/* *INDENT-ON* */
 {
   int i, ret;
 
-  ret = NO_ERROR;
-  for (i = 0; ret == NO_ERROR && i < attr_info->num_values; i++)
+  for (i = 0; i < attr_info->num_values; i++)
     {
       ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info, layout, pending);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
     }
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -11707,36 +11703,26 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
  *   cardinality: 0 or 1 keeps the per-attribute loop and its stack-scratch fast path; >= 2 uses
  *   grouped Resolve.
  */
-STATIC_INLINE int
+/* *INDENT-OFF* */
+static inline __attribute__ ((always_inline)) int
 heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
-					       HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record * pending)
+					       HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record * pending, int header_size)
+/* *INDENT-ON* */
 {
   HEAP_REC_LAYOUT layout;
+  const HEAP_REC_LAYOUT *layoutp = NULL;
 
   if (recdes != NULL && recdes->data != NULL && attr_info->read_classrepr != NULL)
     {
-      heap_rec_layout_init (&layout, recdes, attr_info);
-      if (heap_recdes_contains_oos (recdes))
-	{
-	  return heap_attrinfo_read_oos_dbvalues (thread_p, recdes, attr_info, &layout, pending);
-	}
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, &layout, pending);
+      heap_rec_layout_init (&layout, recdes, attr_info, header_size);
+      layoutp = &layout;
     }
 
   if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
     {
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, NULL, pending);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, layoutp, pending);
     }
 
-  return heap_attrinfo_read_oos_dbvalues (thread_p, recdes, attr_info, NULL, pending);
-}
-
-/* Grouped Resolve state belongs only to records carrying OOS references. Keep it out of the
- * ordinary read loop, while sharing representation/default handling and conversion with it. */
-static int
-heap_attrinfo_read_oos_dbvalues (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-				 const HEAP_REC_LAYOUT * layout, const heap_pending_record * pending)
-{
 /* *INDENT-OFF* */
   std::vector <RECDES> oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
 /* *INDENT-ON* */
@@ -11752,10 +11738,10 @@ heap_attrinfo_read_oos_dbvalues (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_
 
   if (!grouped_applied)
     {
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, layout, pending);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, layoutp, pending);
     }
 
-  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads, layout, pending);
+  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads, layoutp, pending);
   heap_oos_free_grouped_payloads (oos_payloads);
   return ret;
 }
@@ -11825,8 +11811,8 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	      error = heap_attrvalue_point_variable (recdes, &layout, attr_info, att, &raw, &is_oos);
 	      if (error == NO_ERROR && is_oos)
 		{
-		  error = heap_attrvalue_read_oos_inline (recdes, att->location, &raw, oos_scratch, IO_MAX_PAGE_SIZE,
-							  &oos_owned_buffer, pending);
+		  error = heap_attrvalue_read_oos_inline (recdes, att->location, &raw, oos_scratch,
+							  IO_MAX_PAGE_SIZE, &oos_owned_buffer, pending);
 		}
 	      if (error != NO_ERROR)
 		{
@@ -11925,6 +11911,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
 {
   REPR_ID reprid;		/* The disk representation of the object */
   int ret = NO_ERROR;
+  int header_size = -1;
 
   /* check to make sure the attr_info has been used */
   if (unlikely (attr_info->num_values == -1))
@@ -11938,7 +11925,17 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
 
   if (inst_oid != NULL && recdes != NULL && recdes->data != NULL)
     {
-      reprid = or_rep_id (recdes);
+      /* Match or_rep_id's validation and reuse the header size in the shared layout. */
+      header_size = OR_HEADER_SIZE (recdes->data);
+      if (unlikely (recdes->length < header_size))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+	  reprid = NULL_REPRID;
+	}
+      else
+	{
+	  reprid = OR_GET_MVCC_REPID (recdes->data);
+	}
 
       if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
 	{
@@ -11957,7 +11954,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
    * built once here instead of once per attribute.
    */
 
-  ret = heap_attrinfo_read_dbvalues_with_oos_prefetch (thread_p, recdes, attr_info, pending);
+  ret = heap_attrinfo_read_dbvalues_with_oos_prefetch (thread_p, recdes, attr_info, pending, header_size);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -13104,41 +13101,6 @@ exit_on_error:
 }
 
 /*
- * heap_attrinfo_get_record_payload_size ()
- *
- *   return: size of the payload size of record
- *   attr_info(in/out): the attribute information structure
- */
-/* *INDENT-OFF* */
-static int
-heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size)
-/* *INDENT-ON* */
-{
-  HEAP_ATTRVALUE *value;
-  int size;
-  int i;
-
-  size = 0;
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      value = &attr_info->values[i];
-
-      if (value->last_attrepr->is_fixed != 0)
-	{
-	  (*column_size)[i] = tp_domain_disk_size (value->last_attrepr->domain);
-	  size += (*column_size)[i];
-	}
-      else
-	{
-	  (*column_size)[i] = pr_data_writeval_disk_size (&value->dbvalue);
-	  size += (*column_size)[i];
-	}
-    }
-
-  return size;
-}
-
-/*
  * heap_attrinfo_get_record_header_size ()
  *
  *   return: size of the header size of record
@@ -13197,7 +13159,23 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 /* *INDENT-ON* */
 {
 /* *INDENT-OFF* */
-  std::vector<int> column_size (attr_info->num_values);
+  int small_column_size[8];
+  std::vector<int> large_column_size;
+  int *column_size = small_column_size;
+  if (attr_info->num_values > 8)
+    {
+      try
+        {
+          large_column_size.resize (attr_info->num_values);
+        }
+      catch (const std::bad_alloc &)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                  attr_info->num_values * sizeof (int));
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+      column_size = large_column_size.data ();
+    }
 /* *INDENT-ON* */
   int payload_size, header_size;
   int mvcc_extra;
@@ -13205,23 +13183,36 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
   *has_oos = false;
 
-  /* calcuate the entire size of columns */
-  payload_size = heap_attrinfo_get_record_payload_size (attr_info, &column_size);
-  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+  /* Size each value and select forced columns together. Ordinary rows need no
+   * separate planning pass, and the header depends only on the resulting payload. */
+  payload_size = 0;
   mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
-
-  /* FORCE_OUTLINE bypasses the normal record-size gate, but values must still be larger than the OOS stub so that
-   * moving them out of row shrinks the inline record. */
   for (i = 0; i < attr_info->num_values; i++)
     {
-      if (!attr_info->values[i].last_attrepr->is_fixed
-	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
-	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
+      HEAP_ATTRVALUE *value = &attr_info->values[i];
+      if (value->last_attrepr->is_fixed != 0)
 	{
-	  (*oos_plan)[i].selected = true;
-	  payload_size -= column_size[i];
-	  payload_size += OR_OOS_INLINE_SIZE;
-	  *has_oos = true;
+	  column_size[i] = tp_domain_disk_size (value->last_attrepr->domain);
+	  payload_size += column_size[i];
+	}
+      else
+	{
+	  column_size[i] = pr_data_writeval_disk_size (&value->dbvalue);
+	  if (value->last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+	      && !db_value_is_null (&value->dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
+	    {
+	      if (oos_plan->empty ())
+		{
+		  oos_plan->resize (attr_info->num_values);
+		}
+	      (*oos_plan)[i].selected = true;
+	      payload_size += OR_OOS_INLINE_SIZE;
+	      *has_oos = true;
+	    }
+	  else
+	    {
+	      payload_size += column_size[i];
+	    }
 	}
     }
 
@@ -13241,7 +13232,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	{
 	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
-	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
+	  if ((oos_plan->empty () || !(*oos_plan)[i].selected) && !attr_info->values[i].last_attrepr->is_fixed
 	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      /* *INDENT-OFF* */
@@ -13267,6 +13258,10 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
 	  {
 	    break;
+	  }
+	if (oos_plan->empty ())
+	  {
+	    oos_plan->resize (attr_info->num_values);
 	  }
 	(*oos_plan)[cand.attr_index].selected = true;
 	payload_size -= cand.size;
@@ -13880,9 +13875,8 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
   /* Write the fixed attributes values, if unbound, does not matter   */
   /* what value is stored. We need to set the appropriate bit in the  */
   /* bound bit array for fixed attributes. For variable attributes,   */
-  buf->ptr = (buf->buffer
-	      + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer, attr_info->last_classrepr->n_variable)
-	      + value->last_attrepr->location);
+  /* The caller derived the bound bitmap from the header and VOT once. */
+  buf->ptr = bitmap_bound - attr_info->last_classrepr->fixed_length + value->last_attrepr->location;
 
   if (value->do_increment && (incremented_attrids->find (index) == incremented_attrids->end ()))
     {
@@ -13967,8 +13961,6 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   using namespace oos_log;
 
-  assert (oos_plan != NULL);
-
   value = &attr_info->values[index];
   pr_type = value->last_attrepr->domain->type;
   if (pr_type == NULL)
@@ -13991,7 +13983,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
-  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
+  buf->ptr = OR_VAR_TABLE_ELEMENT_PTR (buf->buffer + header_size, value->last_attrepr->location, offset_size);
 
   /* compute the variable offsets relative to the end of the header (beginning of variable table) */
   if ((buf->ptr + offset_size) > buf->endptr)
@@ -14001,7 +13993,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   else
     {
       length = CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size);
-      if (oos_plan->selected)
+      if (oos_plan != nullptr && oos_plan->selected)
 	{
 	  assert (dbvalue != NULL && db_value_is_null (dbvalue) != true);
 
@@ -14013,7 +14005,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       or_put_offset_internal (buf, length, offset_size);
     }
 
-  if (oos_plan->selected)
+  if (oos_plan != nullptr && oos_plan->selected)
     {
       if (*ptr_varvals + OR_OOS_INLINE_SIZE > buf->endptr)
 	{
@@ -14151,8 +14143,11 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   SCAN_CODE status;
   int i;
 
-  bitmap_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
-				    attr_info->last_classrepr->fixed_length);
+  /* Use the layout just written by transform_header_to_disk rather than decoding
+   * the header and offset width again for each column. */
+  bitmap_bound = (buf->buffer + header_size
+		  + OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, offset_size)
+		  + attr_info->last_classrepr->fixed_length);
   ptr_varvals = (bitmap_bound
 		 + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes
 				       - attr_info->last_classrepr->n_variable));
@@ -14166,11 +14161,11 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	}
       else
 	{
-	  heap_oos_column_plan & plan = (*oos_plan)[i];
-	  assert (!plan.selected || plan.pending_index >= 0 || !OID_ISNULL (&plan.oid));
+	  heap_oos_column_plan *plan = oos_plan->empty ()? nullptr : &(*oos_plan)[i];
+	  assert (plan == nullptr || !plan->selected || plan->pending_index >= 0 || !OID_ISNULL (&plan->oid));
 
 	  status =
-	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, &plan, i, offset_size,
+	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, plan, i, offset_size,
 						      header_size, lob_create_flag);
 	}
       if (status != S_SUCCESS)
@@ -14186,7 +14181,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       /* just access n_variable...                                          */
 
       /* write the offset to the end of the variable attributes table */
-      buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
+      buf->ptr = OR_VAR_TABLE_ELEMENT_PTR (buf->buffer + header_size, attr_info->last_classrepr->n_variable,
+					   offset_size);
       if ((buf->ptr + offset_size) > buf->endptr)
 	{
 	  return S_DOESNT_FIT;
@@ -14236,7 +14232,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   bool is_mvcc_class, is_update;
   bool has_oos;
   // *INDENT-OFF*
-  std::vector<heap_oos_column_plan> oos_plan (attr_info->num_values);
+  std::vector<heap_oos_column_plan> oos_plan;
   std::set<int> incremented_attrids;
   // *INDENT-ON*
 
@@ -14261,11 +14257,22 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
 
   /* determine the layout and the size */
-  if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_plan, &has_oos,
-					   &inline_size_after_oos) != NO_ERROR)
+  /* *INDENT-OFF* */
+  try
     {
+      if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_plan, &has_oos,
+                                              &inline_size_after_oos) != NO_ERROR)
+        {
+          return S_ERROR;
+        }
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+              attr_info->num_values * sizeof (heap_oos_column_plan));
       return S_ERROR;
     }
+  /* *INDENT-ON* */
   mvcc_extra = 0;
   header_size = OR_NON_MVCC_HEADER_SIZE;
   if (is_mvcc_class)
