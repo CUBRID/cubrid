@@ -98,8 +98,10 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
 					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
 					INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
 /* structural (value-independent): true if the statement has a (column op ?) predicate the
- * bind-sensitive planner could price. Used at plan generation to flag a plan built with
- * unbound host-variable markers so the first execution replans under the real values. */
+ * bind-sensitive planner could price -- a candidate operator (=, <, <=, >, >=, a range term,
+ * LIKE / NOT LIKE) on a column whose histogram has rows. Used at plan generation to flag a plan
+ * built with unbound host-variable markers so the first execution replans under the real values;
+ * a statement no value can re-price is not flagged. */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /*===========================================================================*/
