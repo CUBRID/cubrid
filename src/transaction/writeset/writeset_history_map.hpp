@@ -40,10 +40,10 @@ struct wset_slots
   LOG_LSA ref_seq;
 };
 
-/* TODO: Promote the history map to a standalone history-store object instead of embedding it in
- * LOG_WSET_HISTORY. Encapsulate per-key conflict selection in probe (hash, kind), together with
- * publish and clear. Keep transaction-wide candidate aggregation, history_start, and
- * prev_commit_lsa fallback in the upper writeset layer. */
+/* Global history of the writeset: for each key hash, the commit LSA of the last transaction that wrote the key
+ * (write_seq) and of the last one that referenced it (ref_seq). The TBB map locks one key at a time, so
+ * find and publish of different keys run in parallel; clear is not safe against them, so the caller holds
+ * history_lock of LOG_WSET_HISTORY, shared for find and publish and exclusive for clear. */
 class wset_history_map
 {
   public:
