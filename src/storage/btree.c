@@ -26303,8 +26303,10 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
 	}
     }
 
-  /* Keep the parent row lock to commit: the parent learns of this foreign key only after this check
-   * (update_foreign_key_ref ()), so a parent DELETE in between scans no children for it. */
+  /* The parent learns of this foreign key only after this check (update_foreign_key_ref ()), so a parent DELETE in
+   * between would scan no children for it.  xlocator_check_fk_validity () keeps the parent's writers out with SIX on
+   * its class to commit, which covers this row lock; the lock still counts for a partitioned parent, whose rows are
+   * locked on the partition and not on the class holding the SIX. */
   ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
   if (ret_search == BTREE_KEY_NOTFOUND)
     {
