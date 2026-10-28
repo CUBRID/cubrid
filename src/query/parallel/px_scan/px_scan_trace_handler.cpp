@@ -154,7 +154,9 @@ namespace parallel_scan
     if (scan_id != NULL && scan_id->type == S_HEAP_SCAN
 	&& (scan_id->s.hsid.batch_plan != NULL || scan_id->s.hsid.batch_why_not != NULL))
       {
-	/* the page batch of this worker's scan (expr_batch.h), beside the compiler's sections */
+	/* the page batch of this worker's scan (expr_batch.h), beside the compiler's sections: the dump is the first
+	 * worker's to finish (see above), so its page counts are that worker's share, not the scan's, and say so */
+	fprintf (fp, "EXPR_BATCH [px worker]: the counts below are one worker's pages, not the whole scan's\n");
 	expr_batch_dump (fp, scan_id->s.hsid.batch_plan, scan_id->s.hsid.batch_why_not, 0);
       }
     fclose (fp);

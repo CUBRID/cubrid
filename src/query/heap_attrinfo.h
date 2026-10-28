@@ -127,8 +127,8 @@ extern DB_VALUE *heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATT
  *
  * The two representation constants are all a caller that has already matched the record's
  * representation id needs (a page batch decoding every record with one representation,
- * expr_batch.c); heap_file.c wraps it for the callers that hold the attribute cache. Inline
- * because the lazy read derives a layout per record on the scan's hot path.
+ * expr_batch.c).  heap_rec_layout_init () in heap_file.c computes the same four fields from the
+ * attribute cache for the row path's lazy read.
  */
 STATIC_INLINE void
 heap_rec_layout_init_repr_hdr (HEAP_REC_LAYOUT * layout, const char *obj, int hdr_size, int n_variable,
@@ -140,13 +140,6 @@ heap_rec_layout_init_repr_hdr (HEAP_REC_LAYOUT * layout, const char *obj, int hd
   layout->bound_bits = OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + fixed_length : NULL;
 }
 
-/* heap_rec_layout_init_repr () - the same, the header size read from the record (OR_HEADER_SIZE (obj)) */
-STATIC_INLINE void
-heap_rec_layout_init_repr (HEAP_REC_LAYOUT * layout, const char *obj, int n_variable, int fixed_length)
-{
-  heap_rec_layout_init_repr_hdr (layout, obj, OR_HEADER_SIZE (obj), n_variable, fixed_length);
-}
-
 /* Where one attribute sits in records of the class's latest representation: the numbers a
  * reader that decodes straight from record bytes needs, and nothing of the catalog they came
  * from (heap_attrinfo_raw_locator () in heap_file.c). */
@@ -154,7 +147,7 @@ typedef struct heap_raw_locator HEAP_RAW_LOCATOR;
 struct heap_raw_locator
 {
   REPR_ID repid;		/* the representation these offsets belong to */
-  int n_variable;		/* representation constants heap_rec_layout_init_repr () takes */
+  int n_variable;		/* representation constants heap_rec_layout_init_repr_hdr () takes */
   int fixed_length;
   bool is_fixed;		/* fixed area (location = byte offset) or variable area (location = table index) */
   int location;

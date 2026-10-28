@@ -3448,15 +3448,6 @@ eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
 }
 
 /*
- * eval_data_filter () -
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
- * 	 oid(in): pointer to OID
- *   recdesp(in): pointer to RECDES (record descriptor)
- *   filterp(in): pointer to FILTER_INFO (filter information)
- *
- * Note: evaluate data filter(predicates) given as FILTER_INFO.
- */
-/*
  * eval_data_filter_ensure_prog () - the data filter's compiled form for this execution
  *   filterp(in): the filter; its predicate root carries the compiled form (scan_prog)
  *
@@ -3496,6 +3487,15 @@ eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filterp)
     }
 }
 
+/*
+ * eval_data_filter () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ * 	 oid(in): pointer to OID
+ *   recdesp(in): pointer to RECDES (record descriptor)
+ *   filterp(in): pointer to FILTER_INFO (filter information)
+ *
+ * Note: evaluate data filter(predicates) given as FILTER_INFO.
+ */
 DB_LOGICAL
 eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCANCACHE * scan_cache,
 		  FILTER_INFO * filterp)

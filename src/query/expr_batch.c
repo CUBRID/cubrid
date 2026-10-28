@@ -180,7 +180,7 @@ typedef struct eb_repr EB_REPR;
 struct eb_repr
 {
   REPR_ID repid;
-  int n_variable;		/* representation constants heap_rec_layout_init_repr () takes */
+  int n_variable;		/* representation constants heap_rec_layout_init_repr_hdr () takes */
   int fixed_length;
   EB_LOC *cols;			/* the plan's columns, in their order */
   EB_LOC *keys;			/* the plan's keys, in their order */

@@ -8441,7 +8441,10 @@ scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TY
 	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, NULL, true) == 1);
 }
 
-/* the kept rows' records copied out of the page, the rows pointed at the copies */
+/* the kept rows' records copied out of the page, the rows pointed at the copies.  Only each row's RECDES.data moves:
+ * the chunk's record layouts (batch->layout) and the pointed column vectors (EB_VK_PTR) still point into the page, so
+ * after the page is let go a row is read through its RECDES only -- the row path's fetch, which derives its own
+ * layout -- never through the chunk's vectors */
 static int
 scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {

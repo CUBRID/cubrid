@@ -3491,7 +3491,6 @@ expr_scan_pred_root_shape (const void *compiled, int *n_kids)
 }
 
 static const DB_VALUE *expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd);
-static bool expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 static bool expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 
 static bool expr_pred_term_raw_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
@@ -3997,19 +3996,12 @@ expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd)
   return (vidx >= 0) ? &vd->dbval_ptr[vidx] : NULL;
 }
 
-/* A term the compiler left to eval_pred_comp0 () because its sides differ in type: a NUMERIC
- * column against an integer constant ("l_quantity < 24", the literal auto-parameterized).
- * eval_value_rel_cmp () coerces the constant to NUMERIC and compares exactly, which a typed
- * loop reproduces.  Only the constants that coercion takes without loss are offered
- * (expr_numeric_cmp_const_ok ()); the batch checks the value again when a page starts, a host
- * variable being rebindable between executions. */
-static bool
-expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
-{
-  return expr_pred_term_numeric_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
-}
-
-/* the same for a term of an interpreted filter (a PRED_EXPR the compiler left alone) */
+/* the same for a term of an interpreted filter (a PRED_EXPR the compiler left alone), such as one left to
+ * eval_pred_comp0 () because its sides differ in type: a NUMERIC column against an integer constant ("l_quantity <
+ * 24", the literal auto-parameterized).  eval_value_rel_cmp () coerces the constant to NUMERIC and compares exactly,
+ * which a typed loop reproduces.  Only the constants that coercion takes without loss are offered
+ * (expr_numeric_cmp_const_ok ()); the batch checks the value again when a page starts, a host variable being
+ * rebindable between executions. */
 static bool
 expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
@@ -4270,11 +4262,11 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
 /*
  * expr_pred_raw_leaves () - an interpreted data filter as raw leaves
  *   return: the terms of its AND chain (left to right, the order eval_pred () visits them), or -1 when a term
- *	     is not "NUMERIC column op exact-numeric constant" or the chain is longer than cap
+ *	     is neither a raw leaf nor an OR term, or the chain is longer than cap
  *
- * A filter whose terms all compare a NUMERIC column with an integer constant has nothing the compiler takes
- * (eval_pred_comp0 () coerces the constant per row), so it stays interpreted; a page batch runs such terms as
- * raw leaves all the same (expr_scan_pred_numeric_term_info ()).
+ * A filter the compiler left interpreted (a NUMERIC column against an integer constant that eval_pred_comp0 ()
+ * coerces per row, a string comparison, an IN list) still has terms a page batch runs as raw leaves: each term
+ * as expr_pred_term_raw_info () reads it, an OR term by its disjuncts (expr_pred_or_raw_leaves ()).
  */
 int
 expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap)

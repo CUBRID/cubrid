@@ -10989,7 +10989,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
  * live, derived once per record instead of once per attribute.  The body is written out here
- * rather than through heap_rec_layout_init_repr () (the same four lines, for a caller that holds
+ * rather than through heap_rec_layout_init_repr_hdr () (the same four lines, for a caller that holds
  * the representation constants and not the cache: the page batch): one call less in the
  * inliner's count for heap_attrvalue_read (), which this feeds. */
 STATIC_INLINE void

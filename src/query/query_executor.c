@@ -1821,12 +1821,13 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   for (p = list; p; p = p->next)
     {
       /* The page batch's plan the spec kept between its scan's opens (SCAN_BATCH_KEEP), and what a scan torn down
-       * without scan_end_scan () still holds of the batch.  This list is cleared at is_final only -- a non-final
-       * clear, the rewind of a correlated subquery for its next outer row, leaves the plan for that open -- so the
-       * plan goes with the execution: the leaves hold the host variables it resolved through this execution's
-       * value descriptor.  On the thread that executed the clone, whose private heap holds the plan's arrays: the
-       * leader clears its tree, a parallel scan worker clears its own clone in finalize (), the parallel aptr task
-       * its block (qexec_clear_xasl_for_parallel_aptr ()), and a clone retired to the cache is cleared with
+       * without scan_end_scan () still holds of the batch.  Only the final clear gets here -- every caller of
+       * qexec_clear_xasl () passes is_final, and the rewind of a correlated subquery for its next outer row is
+       * qexec_clear_head_lists (), which clears its list files only -- so the plan stays for the next open of the
+       * same execution and goes with the execution: the leaves hold the host variables it resolved through this
+       * execution's value descriptor.  On the thread that executed the clone, whose private heap holds the plan's
+       * arrays: the leader clears its tree, a parallel scan worker clears its own clone in finalize (), the parallel
+       * aptr task its block (qexec_clear_xasl_for_parallel_aptr ()), and a clone retired to the cache is cleared with
        * is_final by the thread that ran it. */
       assert (is_final);
       scan_batch_keep_free (thread_p, p);
@@ -2357,8 +2358,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     }
   if (xasl->type == HASHJOIN_PROC)
     {
+      /* the runtime filter and the build input's hashes, when the join did not run to release them.  Both are in
+       * the private heap of the thread that executed the block, which is the one clearing it: the leader here, a
+       * parallel aptr task in qexec_clear_xasl_for_parallel_aptr (), which releases them the same way */
       hjoin_rtf_release (thread_p, xasl);
-      /* the build input's hashes, when the join did not run to release them */
       hjoin_prehash_release (thread_p, &xasl->proc.hashjoin.prehash);
     }
   xasl->executed_parallelism = 0;
@@ -2903,6 +2906,13 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   query_save_state = xasl->query_in_progress;
 
   xasl->query_in_progress = true;
+  if (xasl->type == HASHJOIN_PROC)
+    {
+      /* a hash join inside the block the task executed made its runtime filter and build hashes on this thread
+       * (qexec_execute_mainblock ()), in its private heap: released here, as qexec_clear_xasl () does */
+      hjoin_rtf_release (thread_p, xasl);
+      hjoin_prehash_release (thread_p, &xasl->proc.hashjoin.prehash);
+    }
   qexec_clear_xasl_head (thread_p, xasl);
 
 #if defined (ENABLE_COMPOSITE_LOCK)
@@ -12287,14 +12297,18 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 /*
  * qexec_batch_eligible () - can this block take its scan's rows a page at a time (expr_batch.h)?
- *   return: true when the block is a BUILDVALUE over one sequential heap scan and nothing
- *           runs per row besides the aggregates
+ *   return: true when the block's rows go to a consumer the batch feeds -- a BUILDVALUE's aggregates, a
+ *           BUILDLIST's projection, or its hash GROUP BY -- over one sequential heap scan, and nothing else runs
+ *           per row
  *   xasl(in): the block, its first spec opened
  *
- * Everything the row loop of qexec_intprt_fnc () does per row besides accumulating -- the
- * object fetches, the correlated subqueries, the join and if predicates, inst_num (), the
- * hierarchy, the single-tuple stop -- keeps the block on the row path.  The scan and the
- * aggregates themselves are judged by scan_batch_open () and the plan it builds.
+ * The questions in order: the block's kind (a BUILDVALUE with aggregates; a BUILDLIST projection or hash GROUP BY,
+ * not a sort-only GROUP BY, ROLLUP, analytics or a DML scan), then its one spec (a sequential heap scan of a class,
+ * no locking read, not the min/max index scan), then what its row loop does besides -- the object fetches, the
+ * correlated subqueries, the join and if predicates, inst_num (), the hierarchy, the single-tuple stop -- each of
+ * which keeps the block on the row path.  Whether the scan may hold its page (scan_id->fixed) is not asked here:
+ * the scan is not open yet, and scan_batch_open () asks it with the scan, as it judges the filter and the
+ * aggregates by the plan it builds.
  *
  * A partitioned class runs partition by partition, each one a scan block: the block loop asks
  * again at every block and scan_batch_open () builds that partition's plan.  The scan it sees
@@ -20533,6 +20547,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* nothing to do */
 	    }
 
+	  if (xptr->type == HASHJOIN_PROC)
+	    {
+	      /* no filter until this execution builds one: a cached plan's join keeps the last execution's count, and
+	       * a block with a px executor below never looks for a filter (stx_build_hashjoin_proc ()) */
+	      xptr->proc.hashjoin.rtf_keys = -1;
+	    }
 	  if (xptr->type == HASHJOIN_PROC && !xasl->px_executor)
 	    {
 	      /* runtime filter: the input expected smaller runs now, and its keys filter the other one's outermost
