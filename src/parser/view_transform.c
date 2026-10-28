@@ -1594,6 +1594,8 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   PT_NODE *tmp_query = NULL;
 
   assert (PT_IS_SELECT (statement));
+  /* static SQL does not remove the select list when compiled (see mq_is_removable_select_list ()) */
+  assert (!parser->flag.is_parsing_static_sql);
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
       PT_INTERNAL_ERROR (parser, "remove select list");
@@ -1727,19 +1729,6 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
-  if (parser->flag.is_parsing_static_sql)
-    {
-      /* as_attr_list entries are bare column-name declarations for the derived table's exposed
-       * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
-       * select.list items copied above may carry one over from how the outer query referenced
-       * this spec (e.g. "A.col1 AS out1") -- discard it so it can't leak into the printed spec.
-       * scoped to static SQL: rewritten_query is the only printer that turns on PT_PRINT_ALIAS
-       * for this kind of spec, so elsewhere this alias_print is already harmless. */
-      for (col = as_attr_list; col != NULL; col = col->next)
-	{
-	  col->alias_print = NULL;
-	}
-    }
 
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
