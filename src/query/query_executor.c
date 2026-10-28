@@ -13729,14 +13729,25 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	      continue;
 	    }
-	  else if (qexec_batch_filter_eligible (xasl)
-		   && (opened == 0 || scan_batch_retry_as_filter (&xasl->curr_spec->s_id)))
+	  else if (qexec_batch_filter_eligible (xasl))
 	    {
 	      /* the row loop below takes the rows, but the filter can still run a chunk at a time, as it does for the
 	       * blocks the page batch does not take (the branch below): a GROUP BY without a map (opened == 0) never
 	       * opened the page batch, and a consumer the batch declined (an aggregate, an output column it does not
-	       * reproduce) leaves the scan to try again as a filter iterator (scan_batch_retry_as_filter ()) */
-	      (void) scan_batch_open_filter (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, &xasl_state->vd);
+	       * reproduce) leaves the scan to try again as a filter iterator (scan_batch_retry_as_filter ()).  When
+	       * the filter is declined too, the trace keeps the consumer's cause: the block was the consumer's first */
+	      const char *consumer_why = xasl->curr_spec->s_id.s.hsid.batch_why_not;
+
+	      if (opened == 0)
+		{
+		  (void) scan_batch_open_filter (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, &xasl_state->vd);
+		}
+	      else if (scan_batch_retry_as_filter (&xasl->curr_spec->s_id)
+		       && !scan_batch_open_filter (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec,
+						   &xasl_state->vd) && consumer_why != NULL)
+		{
+		  xasl->curr_spec->s_id.s.hsid.batch_why_not = consumer_why;
+		}
 	    }
 	}
       else if (qexec_batch_filter_eligible (xasl))
