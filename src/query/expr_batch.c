@@ -1470,6 +1470,11 @@ eb_str_eq_class (const unsigned char *a, int na, const unsigned char *b, int nb,
   int n = (na < nb) ? na : nb, i;
   const unsigned char *tail;
 
+  if (!ti && na != nb)
+    {
+      /* trailing spaces count: strings of other lengths differ, whatever their bytes */
+      return false;
+    }
   if (memcmp (a, b, (size_t) n) != 0)
     {
       for (i = 0; i < n; i++)
@@ -5330,52 +5335,70 @@ expr_batch_agg_sum_rest (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch,
     {
       return eb_agg_sum_numeric (v, batch, pos, sum, n_added);
     }
-  /* the typed adds of qdata_sum_acc_add_dbv (), without the DB_VALUE; the same overflow checks per value */
-  for (j = pos; j < batch->n_sel; j++)
+  /* the typed adds of qdata_sum_acc_add_dbv (), without the DB_VALUE; the same overflow checks per value, in the
+   * same order.  The type is chosen once and the sum kept in a local, written back once (or at the overflow) */
+#define EB_SUM_INT_LOOP(overflows) \
+  do \
+    { \
+      INT64 acc = sum->v.int_sum; \
+      for (j = pos; j < batch->n_sel; j++) \
+	{ \
+	  int r = batch->sel[j]; \
+	  if (EB_NULL_AT (v, r)) \
+	    { \
+	      continue; \
+	    } \
+	  if (overflows) \
+	    { \
+	      sum->v.int_sum = acc; \
+	      goto overflow; \
+	    } \
+	  n++; \
+	} \
+      sum->v.int_sum = acc; \
+    } \
+  while (0)
+  switch (v->dbtype)
     {
-      int r = batch->sel[j];
+    case DB_TYPE_SHORT:
+      EB_SUM_INT_LOOP ((acc += EB_I64_AT (v, r), OR_CHECK_SHORT_OVERFLOW (acc)));
+      break;
+    case DB_TYPE_INTEGER:
+      EB_SUM_INT_LOOP ((acc += EB_I64_AT (v, r), OR_CHECK_INT_OVERFLOW (acc)));
+      break;
+    case DB_TYPE_BIGINT:
+      EB_SUM_INT_LOOP (__builtin_add_overflow (acc, EB_I64_AT (v, r), &acc));
+      break;
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+      {
+	double acc = sum->v.dbl_sum;
 
-      if (EB_NULL_AT (v, r))
-	{
-	  continue;
-	}
-      switch (v->dbtype)
-	{
-	case DB_TYPE_SHORT:
-	  sum->v.int_sum += EB_I64_AT (v, r);
-	  if (OR_CHECK_SHORT_OVERFLOW (sum->v.int_sum))
-	    {
-	      goto overflow;
-	    }
-	  break;
-	case DB_TYPE_INTEGER:
-	  sum->v.int_sum += EB_I64_AT (v, r);
-	  if (OR_CHECK_INT_OVERFLOW (sum->v.int_sum))
-	    {
-	      goto overflow;
-	    }
-	  break;
-	case DB_TYPE_BIGINT:
-	  if (__builtin_add_overflow (sum->v.int_sum, EB_I64_AT (v, r), &sum->v.int_sum))
-	    {
-	      goto overflow;
-	    }
-	  break;
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	  sum->v.dbl_sum += EB_F64_AT (v, r);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (sum->v.dbl_sum))
-	    {
-	      goto overflow;
-	    }
-	  break;
-	default:
-	  assert (false);
-	  *n_added = n;
-	  return ER_FAILED;
-	}
-      n++;
+	for (j = pos; j < batch->n_sel; j++)
+	  {
+	    int r = batch->sel[j];
+
+	    if (EB_NULL_AT (v, r))
+	      {
+		continue;
+	      }
+	    acc += EB_F64_AT (v, r);
+	    if (OR_CHECK_DOUBLE_OVERFLOW (acc))
+	      {
+		sum->v.dbl_sum = acc;
+		goto overflow;
+	      }
+	    n++;
+	  }
+	sum->v.dbl_sum = acc;
+      }
+      break;
+    default:
+      assert (false);
+      *n_added = n;
+      return ER_FAILED;
     }
+#undef EB_SUM_INT_LOOP
   *n_added = n;
   return NO_ERROR;
 

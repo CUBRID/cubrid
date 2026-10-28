@@ -4181,20 +4181,22 @@ end:
  */
 int
 qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
-				aggregate_hash_key *key, tp_domain **key_dom)
+				aggregate_hash_key *key, tp_domain **key_dom, bool copy)
 {
   QFILE_TUPLE_WALK walk;
   bool is_null;
   int i, rc = NO_ERROR;
 
-  /* the walk sizes the NULL bitmap by the tuple's column count -- the list's type_cnt (key columns, three per
+  /* copy false: the values point into the tuple and last as long as it stays fixed -- enough for a key that is only
+   * hashed (a split choosing the key's partition); a key kept past the tuple is copied.
+   * The walk sizes the NULL bitmap by the tuple's column count -- the list's type_cnt (key columns, three per
    * aggregate, the tuple count), not the key's: past 32 columns the bitmap takes another word and the key
    * columns sit further in */
   qfile_tuple_walk_init (&walk, tuple, hdr_size, type_cnt);
   for (i = 0; i < key->val_count; i++)
     {
       (void) pr_clear_value (key->values[i]);
-      rc = qfile_tuple_walk_read_value (&walk, key_dom[i], key->values[i], true, &is_null);
+      rc = qfile_tuple_walk_read_value (&walk, key_dom[i], key->values[i], copy, &is_null);
       if (rc != NO_ERROR)
 	{
 	  return rc;

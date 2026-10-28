@@ -6409,7 +6409,7 @@ qexec_gby_merge_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFIL
       if (partials)
 	{
 	  rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, from->type_list.type_cnt,
-					       rd->temp_part_key, rd->ctx->key_domains);
+					       rd->temp_part_key, rd->ctx->key_domains, false);
 	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, n_parts, level) : 0;
 	}
       else
@@ -7099,7 +7099,7 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	  if (partials)
 	    {
 	      rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl, from->type_list.hdr_size, from->type_list.type_cnt,
-						   rd->temp_part_key, rd->ctx->key_domains);
+						   rd->temp_part_key, rd->ctx->key_domains, false);
 	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, px->n_parts, 1) : 0;
 	    }
 	  else
@@ -7919,6 +7919,14 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       if (n_workers > 0)
 	{
 	  n_parts_done = n_parts;
+	}
+      else
+	{
+	  /* the leader merges alone (no worker free, or a reader the workers cannot take): the partitions back to
+	   * what the budget needs, not the few-a-worker count, and an allocation that refused the workers is not
+	   * this query's error */
+	  n_parts = qexec_gby_merge_n_parts ((double) bytes, budget);
+	  er_clear ();
 	}
     }
   if (n_parts > 1 && n_parts_done < n_parts)

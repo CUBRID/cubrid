@@ -2363,6 +2363,18 @@ mht_count (const MHT_TABLE * ht)
   return ht->nentries;
 }
 
+/* a hash reduced to [0, ht_size): the full range (ht_size UINT_MAX, a caller that keeps the whole hash, as the hash
+ * GROUP BY's key does) is the hash itself but for UINT_MAX, without the division */
+static inline unsigned int
+mht_reduce (unsigned int hash, unsigned int ht_size)
+{
+  if (ht_size == UINT_MAX)
+    {
+      return (hash == UINT_MAX) ? 0 : hash;
+    }
+  return hash % ht_size;
+}
+
 /*
  * mht_get_hash_number - get linear hash number or string hash number
  *   return: the hash value of the hash key
@@ -2519,7 +2531,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  else
 	    {
 	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
-	      hashcode %= ht_size;
+	      hashcode = mht_reduce (hashcode, ht_size);
 	    }
 	  break;
 	case DB_TYPE_SET:
@@ -2552,7 +2564,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	    /* Memory addresses are compared in mr_cmpval_elo,
 	     * so no additional processing is needed. */
 	    hashcode = GET_PTR_FOR_HASH (val);
-	    hashcode %= ht_size;
+	    hashcode = mht_reduce (hashcode, ht_size);
 	  }
 	  break;
 	case DB_TYPE_ENUMERATION:
@@ -2573,7 +2585,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		len = (int) strlen (json_body);
 
 		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
-		hashcode %= ht_size;
+		hashcode = mht_reduce (hashcode, ht_size);
 		db_private_free (NULL, json_body);
 	      }
 	  }
@@ -2663,7 +2675,7 @@ mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size)
   key ^= (key >> 4);
   key *= c2;
   key ^= (key >> 15);
-  return (key % ht_size);
+  return mht_reduce (key, ht_size);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
