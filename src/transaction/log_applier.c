@@ -7693,6 +7693,8 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   queue in commit order and nothing is parked: a parked task would let a later independent one pass it, and
  *   one worker is meant to apply the log in commit order. The queue cannot be full here, because the
  *   in-flight list has the same capacity as the queue and la_coordinator_enqueue_task waits for room in it.
+ *   Without MULTI_CONN_TO_A_SERVER the worker uses this process's client, which the coordinator also uses to
+ *   store the apply info, so each task runs alone: the coordinator waits until it is retired.
  *
  *   With more workers, a commit in the restart recovery range runs alone (la_coordinator_run_alone).
  */
@@ -7732,7 +7734,12 @@ la_coordinator_submit_task (LA_TASK * task)
     {
       /* nothing is ever parked with one worker, so the FIFO queue alone carries the commit order */
       assert (la_pending_is_empty ());
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
       return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
+#else
+      /* the worker shares this thread's client: run each task alone so that the two never use it at once */
+      return la_coordinator_run_alone (task);
+#endif
     }
 
   if (la_is_in_recovery_range (&task->commit_lsa))
@@ -8931,6 +8938,19 @@ la_init (const char *log_path, const int max_mem_size)
    * can never index past the per-worker arrays */
   la_Info.worker_count = prm_get_integer_value (PRM_ID_HA_APPLY_WORKER_COUNT);
   la_Info.worker_count = MAX (1, MIN (la_Info.worker_count, LA_MAX_WORKER_COUNT));
+#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
+  /* without MULTI_CONN_TO_A_SERVER a worker has no connection of its own and uses this process's client,
+   * so only one worker can run, and it runs each task alone (la_coordinator_submit_task) */
+  if (la_Info.worker_count > 1)
+    {
+      char msg[LINE_MAX];
+
+      snprintf (msg, sizeof (msg), "applylogdb is built without MULTI_CONN_TO_A_SERVER: ha_apply_worker_count=%d "
+		"is reduced to one apply worker", la_Info.worker_count);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, msg);
+      la_Info.worker_count = 1;
+    }
+#endif
   if (la_Info.worker_count == 1)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
