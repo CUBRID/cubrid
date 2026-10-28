@@ -233,6 +233,11 @@ cas_init_ssl (int sd)
 	  cas_log_write_and_end (0, true, "SSL: Accept failed - the client did not go on with the TLS handshake for %d "
 				 "seconds", NET_DEFAULT_TIMEOUT);
 	}
+      else if (saved_errno == EINTR)
+	{
+	  /* SIGUSR1 (query cancel) is ignored outside request processing, so only SIGTERM/SIGINT interrupts this */
+	  cas_log_write_and_end (0, true, "SSL: Accept failed - interrupted by a signal to shut down the CAS");
+	}
       else if (ssl_error == SSL_ERROR_SYSCALL && saved_errno != 0)
 	{
 	  cas_log_write_and_end (0, true, "SSL: Accept failed - %s", strerror (saved_errno));
