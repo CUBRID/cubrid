@@ -5007,9 +5007,6 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   switch (TP_DOMAIN_TYPE (attdesc->att->domain))
     {
     case DB_TYPE_CHAR:
-      ldr_store_convert (attdesc, LDR_STR, true, false);
-      break;
-
     case DB_TYPE_VARCHAR:
       ldr_store_convert (attdesc, LDR_STR, true, false);
       break;
