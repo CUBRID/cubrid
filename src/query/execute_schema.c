@@ -5118,11 +5118,19 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
-	      newpci->obj = ws_find_class (newpci->pname);
+	      /* part_name keeps the case the user typed, but subclass names are stored in lower case and the
+	       * workspace class name cache compares them case-sensitively. sm_find_class () normalizes the name. */
+	      newpci->obj = sm_find_class (newpci->pname);
 	      if (newpci->obj == NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  /* Never leave with NO_ERROR here: the new partitions are already created, and the statement would
+		   * succeed without updating the reused partition or moving its rows. */
 		  error = er_errid ();
+		  if (error == NO_ERROR || error == ER_LC_UNKNOWN_CLASSNAME)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
+		      error = ER_PARTITION_NOT_EXIST;
+		    }
 		  goto end_create;
 		}
 
