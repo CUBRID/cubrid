@@ -2869,11 +2869,19 @@ bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
  *   (column op ?) in either argument order, and hand back its column and host-variable nodes.
  *   Both the fingerprint walk and the predicate-candidate walk must agree on what counts as
  *   such a predicate; keeping the test here prevents the two from drifting apart.
- * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}
+ * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=, LIKE, NOT LIKE}
  * node (in)      : expression node to test
  * out_name (out) : the column node (end of a path expression), NULL if not matched
  * out_hv (out)   : the host-variable node, NULL if not matched
  * out_reversed (out) : true when the host variable is on the left ('? op col')
+ *
+ * Note: the candidates are what qo_expr_selectivity () prices with the bound VALUE -- equality
+ *       and the comparisons (histogram_get_equal/comp_selectivity) and LIKE / NOT LIKE
+ *       (qo_like_selectivity -> histogram_get_like_selectivity). A LIKE qualifies only when the
+ *       pattern is the host variable itself, column on the left: `col LIKE ? ESCAPE '\\'` wraps
+ *       the pattern in a PT_LIKE_ESCAPE expression the planner prices at the default, and
+ *       `? LIKE col` matches the bound string against a column pattern the histogram cannot
+ *       estimate -- a fingerprint on either would replan for an estimate that never lands.
  */
 /* only USER host variables count: their value is unknown until EXECUTE, which is what the
  * unpeeked-plan flag and the bind fingerprint are about. Auto-parameterized literals
@@ -2965,7 +2973,7 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
     }
 
   PT_OP_TYPE op = node->info.expr.op;
-  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE && op != PT_LIKE && op != PT_NOT_LIKE)
     {
       return false;
     }
@@ -2985,6 +2993,12 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
 	  *out_hv = a2;
 	}
       return true;
+    }
+
+  if (op == PT_LIKE || op == PT_NOT_LIKE)
+    {
+      /* `? LIKE col`: the pattern is the column (see the note above) */
+      return false;
     }
 
   if (a1 != NULL && a1->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a1)
@@ -3353,6 +3367,8 @@ bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_
 	  case PT_GE:
 	  case PT_LT:
 	  case PT_LE:
+	  case PT_LIKE:
+	  case PT_NOT_LIKE:
 	    bind_term_add (ctx, name, " NULL", 0.0, 0);
 	    break;
 	  default:
@@ -3377,6 +3393,12 @@ bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_
 	break;
       case PT_LE:
 	opstr = reversed ? ">=?" : "<=?";
+	break;
+      case PT_LIKE:
+	opstr = " LIKE ?";
+	break;
+      case PT_NOT_LIKE:
+	opstr = " NOT LIKE ?";
 	break;
       default:
 	return node;
@@ -3403,6 +3425,21 @@ bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_
 	break;
       case PT_LE:
 	histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
+	break;
+      case PT_LIKE:
+      case PT_NOT_LIKE:
+	histogram_get_like_selectivity (name, val, &sel, &ok);
+	if (ok)
+	  {
+	    /* clamped as qo_like_selectivity () does (the estimate is floored at one row but not
+	     * capped: MCV frequencies summed over a fully sampled column can exceed 1 by a rounding
+	     * step), then complemented as qo_expr_selectivity () does for NOT LIKE */
+	    sel = MIN (1.0, MAX (0.0, sel));
+	    if (node->info.expr.op == PT_NOT_LIKE)
+	      {
+		sel = 1.0 - sel;
+	      }
+	  }
 	break;
       default:
 	return node;
