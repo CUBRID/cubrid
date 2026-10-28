@@ -7310,6 +7310,28 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * 
   return scan_batch_open_internal (thread_p, scan_id, spec, xasl, agg_list, vd, gby, proj, false);
 }
 
+/* The heap scan's data filter compiled as its first row compiles it (eval_data_filter ()).  The row path compiles
+ * the filter before the row reaches the block's programs (its projection, its aggregate operands), and they read
+ * the values the filter computed (expr_prog_share_current ()): a page batch settles those programs before any row,
+ * so it compiles the filter first, for the programs to be the ones the row path would run. */
+void
+scan_batch_settle_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp;
+  FILTER_INFO data_filter;
+
+  if (scan_id == NULL || scan_id->type != S_HEAP_SCAN || scan_id->s.hsid.scan_pred.pred_expr == NULL)
+    {
+      return;
+    }
+  hsidp = &scan_id->s.hsid;
+  data_filter =
+  {
+  &hsidp->scan_pred, &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL,
+      NULL, 0, -1};
+  eval_data_filter_ensure_prog (thread_p, &data_filter);
+}
+
 /* scan_batch_open (); cached_ok: the scan may read its pages through a local copy (the filter iterator fixes the
  * page itself for each chunk).  xasl is NULL for the filter iterators (scan_batch_open_filter (), _rows ()): their
  * rows go on to the row loop, which checks the runtime filter itself. */
@@ -7321,7 +7343,6 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   SCAN_BATCH_KEEP *keep = (spec != NULL) ? spec->batch_keep : NULL;
   EXPR_BATCH_INPUTS in;
-  FILTER_INFO data_filter;
   int err_before;
 
   if (hsidp->batch_state != 0)
@@ -7370,11 +7391,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
     }
 
   /* the filter's compiled form, now instead of on the first row */
-  data_filter =
-  {
-  &hsidp->scan_pred, &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL,
-      NULL, 0, -1};
-  eval_data_filter_ensure_prog (thread_p, &data_filter);
+  scan_batch_settle_filter (thread_p, scan_id);
 
   memset (&in, 0, sizeof (in));
   in.pred_attr_cache = hsidp->pred_attrs.attr_cache;

@@ -741,6 +741,9 @@ extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, 
 extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
 				  val_descr * vd);
 extern bool scan_batch_retry_as_filter (SCAN_ID * scan_id);
+/* the heap scan's data filter compiled now, as its first row would compile it: before the block's programs are
+ * settled for a page batch, which share the filter's values */
+extern void scan_batch_settle_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 /* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term; proj is
  * a projecting block's output list (its program settled), whose columns the plan computes as vectors.  The spec
  * keeps the plan between the scan's opens (SCAN_BATCH_KEEP) */

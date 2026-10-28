@@ -478,6 +478,8 @@ namespace parallel_scan
 	     * settled first, as the row path's write () would settle it on the first row */
 	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
 	      {
+		/* the filter first, as the first row compiles it: the operand program shares its values */
+		scan_batch_settle_filter (&thread_ref, m_scan_id);
 		(void) qdata_agg_operand_prog_ensure (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd);
 		/* ensure () also linked SUM/AVG over one program cell; write_finalize () merges into the leader's
 		 * list, which has no program and finds only the operand-equal links: keep just those, as the
@@ -503,6 +505,8 @@ namespace parallel_scan
 	     * this worker's hash table from the chunks (qexec_batch_gby_consume ()) */
 	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
 	      {
+		/* the filter first, as the first row compiles it: the programs settled below share its values */
+		scan_batch_settle_filter (&thread_ref, m_scan_id);
 		if (m_xasl->proc.buildlist.groupby_list == NULL)
 		  {
 		    /* the output list's program settled as the first row's write () would settle it: the plan

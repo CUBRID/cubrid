@@ -14126,6 +14126,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  const valptr_list_node *proj = NULL;
 	  int opened;
 
+	  /* the filter first, as the first row compiles it: the programs settled below share its values */
+	  scan_batch_settle_filter (thread_p, &xasl->curr_spec->s_id);
 	  if (xasl->type == BUILDVALUE_PROC)
 	    {
 	      agg_list = xasl->proc.buildvalue.agg_list;
