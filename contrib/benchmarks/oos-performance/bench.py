@@ -105,17 +105,24 @@ def process_identity(pid):
     proc = Path(f"/proc/{pid}")
     # Keep the process start time to detect PID reuse during a measurement.
     stat = (proc / "stat").read_text().rsplit(")", 1)[1].split()
-    return {"pid": pid, "start_ticks": int(stat[19]), "executable": str((proc / "exe").resolve(strict=True))}
+    cmdline = (proc / "cmdline").read_bytes().split(b"\0")
+    if cmdline[-1] == b"":
+        cmdline.pop()
+    return {"pid": pid, "start_ticks": int(stat[19]), "executable": str((proc / "exe").resolve(strict=True)),
+            "argv": [os.fsdecode(arg) for arg in cmdline]}
 
 
-def measure(args):
-    identity = process_identity(args.server_pid)
+def validate_server(pid, database):
+    identity = process_identity(pid)
     install = Path(os.environ["CUBRID"]).resolve()
     if Path(identity["executable"]) != (install / "bin/cub_server").resolve():
         raise ValueError("server PID and selected CUBRID installation do not match")
-    environment = dict(item.split(b"=", 1) for item in Path(f"/proc/{args.server_pid}/environ").read_bytes().split(b"\0")
+    argv = identity["argv"]
+    if len(argv) != 2 or os.path.basename(argv[0]) != "cub_server" or os.fsencode(argv[1]) != os.fsencode(database):
+        raise ValueError("server PID is not the cub_server for the requested database")
+    environment = dict(item.split(b"=", 1) for item in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
                        if b"=" in item)
-    for name in ("CUBRID", "CUBRID_DATABASES", "CUBRID_CONF"):
+    for name in ("CUBRID", "CUBRID_DATABASES", "CUBRID_CONF", "CUBRID_CONF_FILE"):
         if environment.get(name.encode(), b"") != os.environ.get(name, "").encode():
             raise ValueError(f"server PID and client environment disagree on {name}")
     executable = shutil.which("csql")
@@ -125,6 +132,13 @@ def measure(args):
     if client != (install / "bin/csql").resolve(strict=True):
         raise ValueError(f"csql executable {client} does not match selected CUBRID installation {install}; "
                          f"put {install / 'bin'} first in PATH")
+    if process_identity(pid) != identity:
+        raise ValueError("server process changed during preflight")
+    return identity, client
+
+
+def measure(args):
+    identity, client = validate_server(args.server_pid, args.database)
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     manifest = {
