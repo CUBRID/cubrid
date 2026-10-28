@@ -4625,47 +4625,63 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	    }
 	  continue;
 	}
-      /* a term the compiled filter evaluates itself, on each row still in the selection, in
-       * row order: the same calls eval_data_filter () makes for that row's term */
-      n = 0;
-      for (j = 0; j < batch->n_sel; j++)
-	{
-	  int r = batch->sel[j];
-	  EXPR_BATCH_ROW *row = &batch->rows[r];
-	  DB_LOGICAL ev;
+      /* terms the compiled filter evaluates itself (a run of them, kids i .. last), on each row still in the
+       * selection, in row order: the row's attribute cache armed once, then the run's terms in order until one is
+       * FALSE -- the same calls eval_data_filter () makes for that row's terms */
+      {
+	int last = i, k;
 
-	  if (plan->arm_pred_cache
-	      && heap_attrinfo_read_dbvalues_lazy (thread_p, &row->oid, &row->recdes,
-						   plan->pred_attr_cache) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  ev = expr_scan_pred_eval_kid (plan->filter, i, thread_p, vd, &row->oid);
-	  if (ev == V_ERROR)
-	    {
-	      /* the row path raises it at this row, after the terms before it */
-	      return eb_fallback (plan, "a filter term raises an error on the row");
-	    }
-	  if (ev == V_FALSE)
-	    {
-	      continue;
-	    }
-	  if (ev == V_UNKNOWN)
-	    {
-	      plan->unk[r] = 1;
-	    }
-	  if (plan->n_shared_rows > 0)
-	    {
-	      int rc = eb_share_snapshot (plan, i, r, ev);
+	while (last + 1 < plan->n_kids && plan->kid_leaf[last + 1] == -1)
+	  {
+	    last++;
+	  }
+	n = 0;
+	for (j = 0; j < batch->n_sel; j++)
+	  {
+	    int r = batch->sel[j];
+	    EXPR_BATCH_ROW *row = &batch->rows[r];
+	    DB_LOGICAL ev = V_TRUE;
 
-	      if (rc != NO_ERROR)
-		{
-		  return rc;
-		}
-	    }
-	  batch->sel[n++] = r;
-	}
-      batch->n_sel = n;
+	    if (plan->arm_pred_cache
+		&& heap_attrinfo_read_dbvalues_lazy (thread_p, &row->oid, &row->recdes,
+						     plan->pred_attr_cache) != NO_ERROR)
+	      {
+		return ER_FAILED;
+	      }
+	    for (k = i; k <= last; k++)
+	      {
+		ev = expr_scan_pred_eval_kid (plan->filter, k, thread_p, vd, &row->oid);
+		if (ev == V_ERROR)
+		  {
+		    /* the row path raises it at this row, after the terms before it */
+		    return eb_fallback (plan, "a filter term raises an error on the row");
+		  }
+		if (ev == V_FALSE)
+		  {
+		    break;
+		  }
+		if (ev == V_UNKNOWN)
+		  {
+		    plan->unk[r] = 1;
+		  }
+		if (plan->n_shared_rows > 0)
+		  {
+		    int rc = eb_share_snapshot (plan, k, r, ev);
+
+		    if (rc != NO_ERROR)
+		      {
+			return rc;
+		      }
+		  }
+	      }
+	    if (ev != V_FALSE)
+	      {
+		batch->sel[n++] = r;
+	      }
+	  }
+	batch->n_sel = n;
+	i = last;
+      }
     }
   /* an AND chain is TRUE only when every term was: the UNKNOWN rows leave now */
   n = 0;
