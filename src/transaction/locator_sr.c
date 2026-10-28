@@ -13997,6 +13997,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
       UPDATE_MVCC_REEV_ASSIGNMENT *assign = mvcc_reev_data->curr_assigns;
       int rc;
       DB_VALUE *dbval = NULL;
+      HEAP_ATTRVALUE *value;
 
       if (heap_attrinfo_clear_dbvalues (mvcc_reev_data->curr_attrinfo) != NO_ERROR)
 	{
@@ -14024,6 +14025,16 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	    }
 	  if (rc != NO_ERROR)
 	    {
+	      ev_res = V_ERROR;
+	      goto end;
+	    }
+
+	  /* the select phase checked NOT NULL (cons_pred) on the values it computed, not on these */
+	  value = heap_attrvalue_locate (assign->att_id, mvcc_reev_data->curr_attrinfo);
+	  if (value != NULL && value->last_attrepr != NULL && value->last_attrepr->is_notnull
+	      && DB_IS_NULL (&value->dbvalue))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
 	      ev_res = V_ERROR;
 	      goto end;
 	    }
