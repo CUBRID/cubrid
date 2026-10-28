@@ -6640,7 +6640,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
     locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
 						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
 						 LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true,
-						 !LOCATOR_LOCKED_AT_SELECT (lock_policy));
+						 idx_action_flag != FOR_MOVE
+						 && !LOCATOR_LOCKED_AT_SELECT (lock_policy));
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
