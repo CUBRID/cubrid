@@ -169,6 +169,21 @@ extern "C"
   extern void pt_end_query (PARSER_CONTEXT * parser, QUERY_ID query_id_self);
 
   extern void pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values);
+  extern bool pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain);
+  extern bool pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
+  extern bool pt_host_var_bind_domains_differ (const PARSER_CONTEXT * parser);
+  extern void pt_take_host_var_bind_domains (PARSER_CONTEXT * parser, const PARSER_CONTEXT * first);
+  extern int pt_value_format_class (const DB_VALUE * val);
+  extern DB_BIGINT pt_value_elt_index (const DB_VALUE * val);
+  extern DB_BIGINT pt_elt_index_signature (int format_class, DB_BIGINT elt_index);
+  extern int *pt_host_var_format_classes (PARSER_CONTEXT * parser);
+  extern int pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
+  extern bool pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern int pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern bool pt_host_var_is_context_typed (const TP_DOMAIN * expected);
+  extern bool pt_host_var_is_leave_typed (const TP_DOMAIN * expected);
+  extern bool pt_host_var_is_char_typed (const TP_DOMAIN * expected);
+  extern int pt_host_var_leave_collation (DB_TYPE type, int collation);
   extern DB_VALUE *pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name);
@@ -612,6 +627,27 @@ extern "C"
   extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE num_op,
 					      bool is_gby_num);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
+  extern void pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern void pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern TP_DOMAIN *pt_host_var_value_domain (PARSER_CONTEXT * parser, int index);
+  extern TP_DOMAIN *pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected);
+  extern bool pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index);
+  extern bool pt_is_padded_host_var (const PARSER_CONTEXT * parser, int index);
+  extern bool pt_padded_host_var_position_exists (const PARSER_CONTEXT * parser, int user, TP_DOMAIN * domain);
+  extern TP_DOMAIN *pt_host_var_position_domain (PARSER_CONTEXT * parser, int index);
+  extern bool pt_host_var_stand_in (PARSER_CONTEXT * parser, int index, const TP_DOMAIN * domain);
+  extern int pt_host_var_occurrence_class (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent,
+					   PT_NODE * grandparent);
+  extern const char *pt_host_var_coerce_target (const PARSER_CONTEXT * parser, int index, DB_TYPE type,
+						const char *target, char *buf, int size);
+  extern bool pt_cast_bind_copy_value (const DB_VALUE * source, DB_VALUE * dest, const TP_DOMAIN * domain);
+  extern int pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE * source);
+  extern void pt_set_agnostic_host_variable (const DB_VALUE * val, DB_VALUE * hv);
+  extern PT_NODE *pt_bind_comparison_mate (PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent, bool * bind_is_lhs);
+  extern bool pt_bind_comparison_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * mate,
+					 bool bind_is_lhs, TP_DOMAIN ** target);
+  extern TP_DOMAIN *pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * hv,
+					    PT_NODE * parent, PT_NODE * grandparent);
   extern void pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination);
   extern void pt_set_fill_default_in_path_expression (PT_NODE * node);
   extern PT_NODE *pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assignment);

@@ -472,6 +472,9 @@ extern "C"
   extern TP_DOMAIN_STATUS tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest,
 							const TP_DOMAIN * desired_domain, bool force, DB_TYPE src_type,
 							TP_VALUE_CONVERTER converter);
+  extern TP_DOMAIN_STATUS tp_value_coerce_with_converter (const DB_VALUE * src, DB_VALUE * dest,
+							  const TP_DOMAIN * desired_domain, DB_TYPE src_type,
+							  TP_VALUE_CONVERTER converter);
 
   extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
 							 const TP_DOMAIN * desired_domain, bool implicit_coercion,
@@ -515,7 +518,14 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest,
 								   const TP_DOMAIN * desired_domain);
+  extern TP_DOMAIN_STATUS tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALUE * dest,
+									     const TP_DOMAIN * desired_domain,
+									     DB_TYPE src_type,
+									     TP_VALUE_CONVERTER converter);
   extern TP_DOMAIN_STATUS tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern TP_DOMAIN_STATUS tp_value_auto_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest,
+							     const TP_DOMAIN * desired_domain, DB_TYPE src_type,
+							     TP_VALUE_CONVERTER converter);
   extern int tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val_type);
   extern TP_DOMAIN *tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2);
   extern int tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result);
