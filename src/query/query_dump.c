@@ -23,10 +23,6 @@
 #ident "$Id$"
 
 #include "config.h"
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_plan.h"
-#include "object_domain_convert.h"
-#endif
 #include <stdio.h>
 
 #include "json_builder.h"
@@ -1252,15 +1248,6 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
     }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (value_p->plan_item != NULL)
-    {
-      const DOMAIN_PLAN_ITEM *item = value_p->plan_item;
-      const char *classes[] = { "?", "CONST", "ROW", "CORR", "NON_CACHEABLE" };
-      fprintf (foutput, "{plan class=%s resolved=%d ref=%d flags=0x%03x}", classes[item->operand_class],
-	       item->resolved_index, item->ref, item->flags);
-    }
-#endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
@@ -1453,27 +1440,6 @@ qdump_print_oid (OID * oid_p)
   return true;
 }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* A comparison term's resolved comparison: its method, the resolve_domains index of a late-bind one, and the sides
- * resolve_domains converts once (a literal, a bind or a constant expression) */
-static void
-qdump_print_compare_plan (const DOMAIN_COMPARE_PLAN * comparison)
-{
-  if (comparison == NULL)
-    {
-      return;
-    }
-  const char *methods[] = { "LATE_BIND", "LATE_BIND_SESSION", "VALUES", "DIRECT", "CONVERT", "COLLATIONS", "OBJECT",
-    "RANK", "KEYS"
-  };
-  const int method = (int) comparison->fixed.method;
-  fprintf (foutput, "{compare method=%s index=%d constant=%d,%d}",
-	   method >= 0 && method < (int) (sizeof (methods) / sizeof (methods[0])) ? methods[method] : "?",
-	   comparison->fixed.compare_index, comparison->literal[0] != NULL || comparison->constant[0] != NULL,
-	   comparison->literal[1] != NULL || comparison->constant[1] != NULL);
-}
-#endif
-
 static bool
 qdump_print_comp_eval_term (EVAL_TERM * term_p)
 {
@@ -1488,9 +1454,6 @@ qdump_print_comp_eval_term (EVAL_TERM * term_p)
     {
       qdump_print_value (et_comp_p->rhs);
     }
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  qdump_print_compare_plan (et_comp_p->domain_compare);
-#endif
 
   return true;
 }
@@ -1518,20 +1481,6 @@ qdump_print_alsm_eval_term (EVAL_TERM * term_p)
     }
 
   qdump_print_value (et_alsm_p->elemset);
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (et_alsm_p->domain_compare != NULL)
-    {
-      const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = et_alsm_p->domain_compare;
-      const char *kinds[] = { "PAIR", "ROW", "LATE_BIND" };
-      fprintf (foutput, "{elements kind=%s row=%d resolved=%d}",
-	       comparison->kind < sizeof (kinds) / sizeof (kinds[0]) ? kinds[comparison->kind] : "?", comparison->row,
-	       comparison->resolved_elements_index);
-      if (comparison->kind == DOMAIN_ELEMENTS_PAIR)
-	{
-	  qdump_print_compare_plan (&comparison->pair);
-	}
-    }
-#endif
 
   return true;
 }
@@ -2856,14 +2805,6 @@ qdump_print_xasl (xasl_node * xasl_p)
     }
 
   fprintf (foutput, "\n<start of xasl structure %p>\n", xasl_p);
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (xasl_p->domain_plan != NULL)
-    {
-      const DOMAIN_PLAN *plan = xasl_p->domain_plan;
-      fprintf (foutput, "domain plan: items=%d resolved=%d refs=%d(+%d) late_bind_nodes=%d\n",
-	       plan->n_items, plan->n_resolved, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_late_bind_nodes);
-    }
-#endif
   qdump_print_xasl_type (xasl_p);
 
   if (xasl_p->flag)
@@ -3764,6 +3705,12 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
 	}
 
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  trace_json_object_set_new (proc, "parallel merge workers", trace_json_integer (xasl_p->executed_parallelism));
+	}
+
       trace_json_object_set_new (proc, "outer", outer);
       trace_json_object_set_new (proc, "inner", inner);
       break;
@@ -4525,20 +4472,22 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case MERGELIST_PROC:
+      fprintf (fp, "MERGELIST");
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  fprintf (fp, " (parallel merge workers: %d)", xasl_p->executed_parallelism);
+	}
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp,
-		   "MERGELIST (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+	  fprintf (fp, " (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)",
 		   xasl_p->px_executor->get_parallelism () + 1,
 		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
 		   (long long int) xasl_p->px_executor->get_stats ().fetches,
 		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
 		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
 	}
-      else
-	{
-	  fprintf (fp, "MERGELIST\n");
-	}
+      fprintf (fp, "\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
       break;

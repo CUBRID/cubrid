@@ -365,16 +365,9 @@ struct eb_slot_map
 #define EB_LINE (64)
 #define EB_BLOCK_BYTES (4096)
 
-#define EB_MAX_CONST_RANGES (4)
-
 struct expr_batch_plan
 {
   int cap;			/* rows a chunk holds (expr_batch_init ()) */
-  /* constant expressions of the operand program (a resolved value and the CAST it gates): their steps run
-   * before the page, their result read as a scalar */
-  int n_const_ranges;
-  int const_from[EB_MAX_CONST_RANGES];
-  int const_to[EB_MAX_CONST_RANGES];
   HL_HEAPID arena;		/* the lines (eb_arena_alloc ()), 0 until the first */
   int n_masks;			/* the NULL-mask depth the steps reach */
   REPR_ID repid;		/* build time: the representation the attribute caches describe (reprs[0] once built) */
@@ -2211,7 +2204,7 @@ eb_build_proj (EB_BUILD * b)
   const EXPR_PROG *prog;
   REGU_VARIABLE_LIST rl;
   const char *why0 = b->why_not;
-  int n_vecs0 = plan->n_vecs, n_cols0 = plan->n_cols, n_steps0 = plan->n_steps, n_const0 = plan->n_const_ranges;
+  int n_vecs0 = plan->n_vecs, n_cols0 = plan->n_cols, n_steps0 = plan->n_steps;
   int k, rc;
 
   if (list == NULL || list->valptr_cnt <= 0)
@@ -2254,7 +2247,6 @@ eb_build_proj (EB_BUILD * b)
 	  plan->n_vecs = n_vecs0;
 	  plan->n_cols = n_cols0;
 	  plan->n_steps = n_steps0;
-	  plan->n_const_ranges = n_const0;
 	  plan->n_shared_used = 0;
 	  for (i = 0; i < plan->n_shared; i++)
 	    {
@@ -2643,45 +2635,6 @@ eb_build_program (EB_BUILD * b)
 	      b->cell_vec[info.out_cell] = out;
 	    }
 	  break;
-	case EXPR_STEP_RESOLVED:
-	  {
-	    /* a constant expression: its gate and the steps up to jump_to, each a CAST of a constant, run once
-	     * before the page (expr_prog_run_steps ()); the gate's cell is then the value */
-	    int k;
-
-	    if (info.out_cell < 0 || info.jump_to <= i + 1 || info.jump_to > prog->n_steps
-		|| plan->n_const_ranges >= EB_MAX_CONST_RANGES)
-	      {
-		return eb_decline (b, "a constant expression the batch cannot run before the page");
-	      }
-	    for (k = i + 1; k < info.jump_to; k++)
-	      {
-		EXPR_STEP_INFO ki;
-		int src;
-
-		expr_prog_step_info (prog, k, &ki);
-		src = (ki.cls == EXPR_STEP_CAST) ? eb_program_cell_vec (b, ki.arg1_cell) : -1;
-		if (src < 0 || plan->vecs[src].kind != EB_VK_SCALAR || ki.out_cell != info.out_cell)
-		  {
-		    return eb_decline (b, "a constant expression the batch cannot run before the page");
-		  }
-		if (b->n_pending > 0 && b->pending_pop[b->n_pending - 1] <= k)
-		  {
-		    return eb_decline (b, "a constant expression the batch cannot run before the page");
-		  }
-	      }
-	    plan->const_from[plan->n_const_ranges] = i;
-	    plan->const_to[plan->n_const_ranges] = info.jump_to;
-	    plan->n_const_ranges++;
-	    b->cell_vec[info.out_cell] =
-	      eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, NULL, &prog->cells[info.out_cell], EB_SC_EXACT);
-	    if (b->cell_vec[info.out_cell] < 0)
-	      {
-		return ER_FAILED;
-	      }
-	    i = info.jump_to - 1;
-	    break;
-	  }
 	case EXPR_STEP_JUMP_NULL_ARITH:
 	  in1 = eb_program_cell_vec (b, info.arg1_cell);
 	  if (in1 < 0 || info.jump_to <= i || b->n_pending >= EB_MASK_DEPTH)
@@ -3075,7 +3028,11 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
 	{
 	case PT_SUM:
 	case PT_AVG:
-	  if (!SUM_ACC_IS_AGG_SUPPORTED_TYPE (plan->vecs[vec].dbtype))
+	  /* the node planned the word accumulator for its argument's type (accumulator_takes), which the vector's
+	   * values are of: the row path then adds every value, the first one included, in that accumulator */
+	  if (!SUM_ACC_IS_AGG_SUPPORTED_TYPE (plan->vecs[vec].dbtype) || !agg->accumulator_domain.accumulator_takes
+	      || sum_acc_agg_sum_type_for ((DB_TYPE) plan->vecs[vec].dbtype) !=
+	      sum_acc_agg_sum_type_for (agg->opr_dbtype))
 	    {
 	      return eb_decline (b, "a SUM/AVG operand type the word accumulator does not take");
 	    }
@@ -3338,7 +3295,11 @@ eb_build_gby (EB_BUILD * b)
 	{
 	case PT_SUM:
 	case PT_AVG:
-	  if (!SUM_ACC_IS_AGG_SUPPORTED_TYPE (plan->vecs[vec].dbtype))
+	  /* the node planned the word accumulator for its argument's type (accumulator_takes), which the vector's
+	   * values are of: the row path then adds every value, the first one included, in that accumulator */
+	  if (!SUM_ACC_IS_AGG_SUPPORTED_TYPE (plan->vecs[vec].dbtype) || !agg->accumulator_domain.accumulator_takes
+	      || sum_acc_agg_sum_type_for ((DB_TYPE) plan->vecs[vec].dbtype) !=
+	      sum_acc_agg_sum_type_for (agg->opr_dbtype))
 	    {
 	      return eb_decline (b, "a SUM/AVG operand type the word accumulator does not take");
 	    }
@@ -3770,7 +3731,8 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 	}
       if (DB_VALUE_DOMAIN_TYPE (src) != v->dbtype)
 	{
-	  /* the kernel would have taken the row through the interpreter */
+	  /* a guard: the plan is compiled per bind-type signature, so the value has the type the step was built
+	   * for; one of another type is the row path's */
 	  return eb_fallback (plan, "a scalar bound to another type");
 	}
       switch (v->dbtype)
@@ -3842,7 +3804,8 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	      || (DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_CHAR)
 	      || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation)
 	    {
-	      /* a host variable bound to something the leaf was not built for this execution */
+	      /* a constant the leaf does not compare as built (a guard: the plan fixes a bound value's type,
+	       * codeset and collation per signature) */
 	      return eb_fallback (plan, "a string constant the batch does not take");
 	    }
 	  leaf->k_str = db_get_string (k);
@@ -3878,7 +3841,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	}
       if (DB_VALUE_DOMAIN_TYPE (k) != leaf->k_type)
 	{
-	  /* the leaf compares against something else than it was resolved for: its own guard case */
+	  /* a guard: the plan fixes the constant's type (a plan per bind-type signature) */
 	  return eb_fallback (plan, "a filter constant bound to another type");
 	}
       /* the types eb_add_raw_leaf () admits a scalar leaf for; eb_etype_of () is wider (the aggregates) */
@@ -3920,7 +3883,7 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
 
   if (!expr_numeric_cmp_const_ok (k))
     {
-      /* rebound to another type: the leaf's own guard case */
+      /* a guard: the constant is of the type the plan was compiled for (expr_numeric_cmp_const_ok ()) */
       return EXPR_BATCH_FALLBACK;
     }
   ok = (DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_NUMERIC) ? numeric_agg_expr_from_dbv (k, &nv)
@@ -5169,22 +5132,10 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
     }
   if (plan->prog != NULL)
     {
-      int c;
-
       rc = expr_prog_prepare_execution (plan->prog, thread_p, vd);
       if (rc != NO_ERROR)
 	{
 	  return rc;
-	}
-      for (c = 0; c < plan->n_const_ranges; c++)
-	{
-	  rc = expr_prog_run_steps (plan->prog, plan->const_from[c], plan->const_to[c], thread_p, vd);
-	  if (rc != NO_ERROR)
-	    {
-	      /* the row path raises it at the page's first row */
-	      er_clear ();
-	      return eb_fallback (plan, "a constant expression raised an error");
-	    }
 	}
     }
   rc = eb_load_scalars (plan);

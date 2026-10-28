@@ -73,6 +73,7 @@ namespace parallel_scan
        * goes to, and this worker's copy of the table's state brought in line after the node changed it */
       QFILE_LIST_ID *gby_list ();
       void gby_sync ();
+      void set_orig_vd (VAL_DESCR *orig_vd);
 
     private:
       void get_valid_read_spec ();
@@ -102,6 +103,7 @@ namespace parallel_scan
       bool g_hash_eligible;
       AGGREGATE_HASH_STATE hgby_state = HS_NONE;	/* furthest hash state of the workers that hashed rows */
       trace_handler *trace_handler_p;
+      VAL_DESCR *orig_vd = nullptr;	/* leader's: flushes the leader's top-N heap at the merge */
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
       parallel_scan::atomic_instnum instnum_draw;	/* ATOMIC_DRAW */

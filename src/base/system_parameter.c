@@ -590,7 +590,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
 #define PRM_NAME_MAX_HASH_LIST_SCAN_SIZE "max_hash_list_scan_size"
-#define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
+#define PRM_NAME_MAX_CONNECT_BY_DFS_SIZE "max_connect_by_dfs_size"
 #define PRM_NAME_OPTIMIZER_RESERVE_03 "optimizer_reserve_03"
 #define PRM_NAME_OPTIMIZER_RESERVE_04 "optimizer_reserve_04"
 #define PRM_NAME_OPTIMIZER_RESERVE_05 "optimizer_reserve_05"
@@ -786,6 +786,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_INDEX_BUILD_BUFFER_SIZE "index_build_buffer_size"
 #define PRM_NAME_INDEX_BUILD_PARALLELISM "index_build_parallelism"
 #define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
+#define PRM_NAME_PARALLEL_MERGE_JOIN "parallel_merge_join"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
@@ -2120,9 +2121,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-27583: in the plan key, since a bind type signature's plan holds the PLUS concat-or-add choice */
   {PRM_ID_PLUS_AS_CONCAT,
    PRM_NAME_PLUS_AS_CONCAT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -3577,14 +3579,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_OPTIMIZER_RESERVE_02,
-   PRM_NAME_OPTIMIZER_RESERVE_02,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
+  {PRM_ID_MAX_CONNECT_BY_DFS_SIZE,
+   PRM_NAME_MAX_CONNECT_BY_DFS_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_SIZE_UNIT),
+   PRM_BIGINT,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 128 * 1024 * 1024 /* 128 MB */ }},
+   {false, {.bi = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5249,6 +5252,17 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_MERGE_JOIN,
+   PRM_NAME_PARALLEL_MERGE_JOIN,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_TCP_KEEPALIVE_IDLE,
    PRM_NAME_TCP_KEEPALIVE_IDLE,
    (PRM_FOR_SERVER),
@@ -5768,6 +5782,20 @@ static const int *PARAM_VALUE_SHARE[] = {
 SESSION_PARAM *cached_session_parameters = NULL;
 #endif /* CS_MODE */
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * session parameter values of the sub-client of the current thread (see sysprm_set_sub_client_session_parameters ())
+ *
+ * TODO: It is read by prm_get_* () for every session parameter, and in a shared library each access may call
+ *       __tls_get_addr () (general-dynamic TLS model). If it matters on hot paths (e.g., parser, type conversion),
+ *       consider __attribute__ ((tls_model ("initial-exec"))) for this variable only. It is small (a pointer), so
+ *       it fits in the static TLS surplus even when libcubridcs is loaded by dlopen () (e.g., the cubrid utility).
+ *       Do not apply initial-exec to the whole library for that reason.
+ */
+CUB_THREAD_LOCAL SESSION_PARAM *sysprm_Sub_client_session_params = NULL;
+#define PRM_SUB_CLIENT_SESSION_PARAM(id) (&sysprm_Sub_client_session_params[prm_Def_session_idx[(id)]])
+#endif
+
 /*
  * Keyword searches do a intl_mbs_ncasecmp(), using the LENGTH OF THE TABLE KEY
  * as the limit, so make sure that overlapping keywords are ordered
@@ -6107,10 +6135,13 @@ static bool prm_set_default_internal (SYSPRM_PARAM * prm);
 static int sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
 static const int *sysprm_find_shared_system_parameter (SYSPRM_PARAM * prm);
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER))
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id);
 #endif /* SERVER_MODE */
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+static bool sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value);
+#endif
 
 #if defined (CS_MODE)
 static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
@@ -6386,6 +6417,43 @@ sysprm_check_id_order ()
 }
 #endif
 
+
+#if defined (CS_MODE)
+void
+sysprm_load_session_parameters ()
+{
+  int i;
+  int num_session_prms;
+  SESSION_PARAM *sprm = NULL;
+
+  /* cache session parameters */
+  if (cached_session_parameters != NULL)
+    {
+      /* free previous cache */
+      sysprm_free_session_parameters (&cached_session_parameters);
+    }
+  cached_session_parameters = sysprm_alloc_session_parameters ();
+  num_session_prms = 0;
+  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
+	{
+	  assert (prm_Def_session_idx[i] == num_session_prms);
+	  sprm = &cached_session_parameters[num_session_prms++];
+	  sprm->prm_id = (PARAM_ID) i;
+	  sprm->flag = (GET_PRM (i)->dynamic_flag);
+	  sprm->datatype = GET_PRM (i)->datatype;
+	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
+	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+      else
+	{
+	  assert (prm_Def_session_idx[i] == -1);
+	}
+    }
+}
+#endif /* CS_MODE */
+
 /*
  * sysprm_load_and_init_internal - Read system parameters from the init files
  *   return: NO_ERROR or ER_FAILED
@@ -6407,10 +6475,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   struct stat stat_buf;
   int r = NO_ERROR;
   char *s;
-#if defined (CS_MODE)
-  SESSION_PARAM *sprm = NULL;
-  int num_session_prms;
-#endif
 
 #ifndef NDEBUG
   sysprm_check_id_order ();
@@ -6585,31 +6649,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 
 #if defined (CS_MODE)
-  /* cache session parameters */
-  if (cached_session_parameters != NULL)
-    {
-      /* free previous cache */
-      sysprm_free_session_parameters (&cached_session_parameters);
-    }
-  cached_session_parameters = sysprm_alloc_session_parameters ();
-  num_session_prms = 0;
-  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
-    {
-      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
-	{
-	  assert (prm_Def_session_idx[i] == num_session_prms);
-	  sprm = &cached_session_parameters[num_session_prms++];
-	  sprm->prm_id = (PARAM_ID) i;
-	  sprm->flag = (GET_PRM (i)->dynamic_flag);
-	  sprm->datatype = GET_PRM (i)->datatype;
-	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
-	  sysprm_update_session_prm_flag_allocated (sprm);
-	}
-      else
-	{
-	  assert (prm_Def_session_idx[i] == -1);
-	}
-    }
+  sysprm_load_session_parameters ();
 #endif /* CS_MODE */
 
 #if !defined(NDEBUG)
@@ -8456,7 +8496,20 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
       if (PRM_IS_FOR_CLIENT (prm))
 	{
 	  /* set the value here */
-	  sysprm_set_sysprm_value_from_parameter (&prm_value->value, prm);
+#if defined (MULTI_CONN_TO_A_SERVER)
+	  if (PRM_SUB_CLIENT_SESSION (prm->id))
+	    {
+	      /* the value of the session of the sub-client of this thread */
+	      SYSPRM_PARAM sub_client_prm = *prm;
+
+	      sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (prm->id)->value;
+	      sysprm_set_sysprm_value_from_parameter (&prm_value->value, &sub_client_prm);
+	    }
+	  else
+#endif
+	    {
+	      sysprm_set_sysprm_value_from_parameter (&prm_value->value, prm);
+	    }
 	}
       else
 	{
@@ -9643,6 +9696,23 @@ sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag
    * on server */
 #endif /* SERVER_MODE */
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (PRM_SUB_CLIENT_SESSION (prm->id))
+    {
+      /* update the session parameter of the sub-client of this thread, not prm_Def shared with the other clients */
+      (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm->id), value);
+
+      /* Set the cached parsed session timezone region of this thread */
+      if (prm->id == PRM_ID_TIMEZONE
+	  && tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ()) != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_PARAM;
+	}
+
+      return PRM_ERR_NO_ERROR;
+    }
+#endif
+
   sysprm_set_system_parameter_value (prm, value, set_flag);
 
   /* Set the cached parsed system timezone region on the server */
@@ -9929,6 +9999,14 @@ prm_set_default (SYSPRM_PARAM * prm)
     {
       return ER_FAILED;
     }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (PRM_SUB_CLIENT_SESSION (prm->id))
+    {
+      /* set a copy of the default value to the session parameter of the sub-client of this thread */
+      return sysprm_set_value_internal (prm, prm->default_value.v, false, true);
+    }
+#endif
 
   if (!prm_set_default_internal (prm))
     {
@@ -10867,6 +10945,12 @@ prm_get_value (PARAM_ID prm_id)
 	}
     }
 #endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (PRM_SUB_CLIENT_SESSION (prm_id))
+    {
+      return &(PRM_SUB_CLIENT_SESSION_PARAM (prm_id)->value);
+    }
+#endif
 
   switch (GET_PRM (prm_id)->datatype)
     {
@@ -10887,6 +10971,31 @@ prm_get_value (PARAM_ID prm_id)
   return NULL;
 }
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * sysprm_set_sub_client_session_value () - set a session parameter of the sub-client of this thread
+ *
+ * return      : true if prm_id is a session parameter of the sub-client of this thread and the value is set to it,
+ *		 false otherwise (the caller sets prm_Def)
+ * prm_id (in) : parameter id
+ * value (in)  : new value; a string or an integer list is owned by the parameter, as prm_set_*_value () does
+ *
+ * Note: prm_get_* () reads the session parameters of a sub-client from sysprm_Sub_client_session_params, so
+ *	 prm_set_*_value () must write them there too, not to prm_Def shared with the other connections.
+ */
+static bool
+sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value)
+{
+  if (!PRM_SUB_CLIENT_SESSION (prm_id))
+    {
+      return false;
+    }
+
+  (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm_id), value);
+  return true;
+}
+#endif
+
 /*
  * prm_set_integer_value () - set a new value to a parameter of type integer
  *
@@ -10901,6 +11010,18 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.i = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_INT (GET_PRM (prm_id)->value) = value;
 
@@ -10920,6 +11041,18 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.b = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_BOOL (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10938,6 +11071,18 @@ prm_set_float_value (PARAM_ID prm_id, float value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.f = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_FLOAT (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10955,6 +11100,18 @@ prm_set_string_value (PARAM_ID prm_id, char *value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.str = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
@@ -10984,6 +11141,18 @@ prm_set_integer_list_value (PARAM_ID prm_id, int *value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.integer_list = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
       free_and_init (PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value));
@@ -11010,6 +11179,18 @@ prm_set_bigint_value (PARAM_ID prm_id, UINT64 value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.bi = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_BIGINT (GET_PRM (prm_id)->value) = value;
 
@@ -11262,6 +11443,106 @@ sysprm_free_session_parameters (SESSION_PARAM ** session_parameters_ptr)
 
   free_and_init (*session_parameters_ptr);
 }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * sysprm_set_sub_client_session_parameters () - set the session parameter values of the sub-client of this thread
+ *
+ * return : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ * session_params (in) : session parameter values (an array of NUM_SESSION_PRM entries)
+ *
+ * Note: The values are copied into the thread-local sysprm_Sub_client_session_params, which is used instead of
+ *	 prm_Def for the session parameters on this thread, like the session parameters of a connection on server.
+ *	 prm_Def is shared with the main client and the other sub-clients, so it must not be changed by a sub-client.
+ */
+int
+sysprm_set_sub_client_session_parameters (const SESSION_PARAM * session_params)
+{
+  SESSION_PARAM *params;
+  int i;
+  char *timezone;
+
+  assert (session_params != NULL);
+
+  params = sysprm_alloc_session_parameters ();
+  if (params == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < NUM_SESSION_PRM; i++)
+    {
+      params[i].prm_id = session_params[i].prm_id;
+      params[i].flag = session_params[i].flag;
+      params[i].datatype = session_params[i].datatype;
+      PRM_CLEAR_BIT (PRM_ALLOCATED, params[i].flag);
+
+      /* duplicate the values that need memory allocation */
+      if (params[i].datatype == PRM_STRING)
+	{
+	  if (session_params[i].value.str != NULL)
+	    {
+	      char *str = strdup (session_params[i].value.str);
+
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  strlen (session_params[i].value.str) + 1);
+		  sysprm_free_session_parameters (&params);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      params[i].value.str = str;
+	    }
+	}
+      else if (params[i].datatype == PRM_INTEGER_LIST)
+	{
+	  if (session_params[i].value.integer_list != NULL)
+	    {
+	      size_t size = (session_params[i].value.integer_list[0] + 1) * sizeof (int);
+	      int *list = (int *) malloc (size);
+
+	      if (list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		  sysprm_free_session_parameters (&params);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      memcpy (list, session_params[i].value.integer_list, size);
+	      params[i].value.integer_list = list;
+	    }
+	}
+      else
+	{
+	  /* no memory allocation */
+	  params[i].value = session_params[i].value;
+	}
+      sysprm_update_session_prm_flag_allocated (&params[i]);
+    }
+
+  sysprm_free_sub_client_session_parameters ();
+  sysprm_Sub_client_session_params = params;
+
+  /* Set the cached parsed session timezone region of this thread */
+  timezone = prm_get_string_value (PRM_ID_TIMEZONE);
+  if (timezone != NULL)
+    {
+      (void) tz_str_to_region (timezone, strlen (timezone), tz_get_client_tz_region_session ());
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * sysprm_free_sub_client_session_parameters () - free the session parameter values of the sub-client of this thread
+ *
+ * return : void
+ */
+void
+sysprm_free_sub_client_session_parameters (void)
+{
+  sysprm_free_session_parameters (&sysprm_Sub_client_session_params);
+}
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
 /*
  * sysprm_pack_sysprm_value () - Packs a sysprm_value.
@@ -11849,6 +12130,9 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
   return NO_ERROR;
 }
 
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE) || (defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER))
 /*
  * sysprm_set_session_parameter_value - set a new value for the session
  *					parameter identified by id.
@@ -11959,7 +12243,7 @@ sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_I
 
   return PRM_ERR_NO_ERROR;
 }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || (CS_MODE && MULTI_CONN_TO_A_SERVER) */
 
 /*
  * sysprm_compare_values () - compare two system parameter values
@@ -12232,6 +12516,27 @@ sysprm_print_parameters_for_qry_string (void)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+      if (PRM_SUB_CLIENT_SESSION (i))
+	{
+	  /* print the value of the session of the sub-client of this thread, if it differs from the default value */
+	  SYSPRM_PARAM sub_client_prm = *GET_PRM (i);
+
+	  sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (i)->value;
+	  if (PRM_IS_FOR_QRY_STRING (&sub_client_prm) && sysprm_compare_values (&sub_client_prm) != 0)
+	    {
+	      n = prm_print (&sub_client_prm, ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+	      ptr += n;
+	      len -= n;
+
+	      *ptr++ = ';';
+	      len--;
+	      assert (len > 0);
+	    }
+	  continue;
+	}
+#endif
+
       if (PRM_PRINT_QRY_STRING (i))
 	{
 	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
@@ -12291,10 +12596,27 @@ sysprm_print_parameters_for_ha_repl (void)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
-      if (!PRM_IS_FOR_HA_CONTEXT (GET_PRM (i)))
+      SYSPRM_PARAM *prm = GET_PRM (i);
+      bool is_different;
+
+      if (!PRM_IS_FOR_HA_CONTEXT (prm))
 	{
 	  continue;
 	}
+
+      is_different = PRM_IS_DIFFERENT (prm);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+      /* copy-initialized, since SYSPRM_PARAM has const members and cannot be assigned */
+      SYSPRM_PARAM sub_client_prm = *prm;
+
+      if (PRM_SUB_CLIENT_SESSION (i))
+	{
+	  /* print the value of the session of the sub-client of this thread, not prm_Def of the main client */
+	  sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (i)->value;
+	  prm = &sub_client_prm;
+	  is_different = (sysprm_compare_values (prm) != 0);
+	}
+#endif
 
       if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
@@ -12320,12 +12642,12 @@ sysprm_print_parameters_for_ha_repl (void)
 		}
 	    }
 	}
-      else if (!PRM_IS_DIFFERENT (GET_PRM (i)))
+      else if (!is_different)
 	{
 	  continue;
 	}
 
-      n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
+      n = prm_print (prm, ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
       ptr += n;
       len -= n;
 

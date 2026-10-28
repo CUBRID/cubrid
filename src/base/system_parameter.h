@@ -35,6 +35,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "chartype.h"
+#include "db_multi_threads_connections.h"
 
 typedef enum
 {
@@ -323,7 +324,7 @@ enum param_id
   PRM_ID_USE_BTREE_FENCE_KEY,
   PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN,
   PRM_ID_MAX_HASH_LIST_SCAN_SIZE,
-  PRM_ID_OPTIMIZER_RESERVE_02,
+  PRM_ID_MAX_CONNECT_BY_DFS_SIZE,
   PRM_ID_OPTIMIZER_RESERVE_03,
   PRM_ID_OPTIMIZER_RESERVE_04,
   PRM_ID_OPTIMIZER_RESERVE_05,
@@ -508,6 +509,7 @@ enum param_id
   PRM_ID_INDEX_BUILD_BUFFER_SIZE,
   PRM_ID_INDEX_BUILD_PARALLELISM,
   PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
+  PRM_ID_PARALLEL_MERGE_JOIN,
 
   PRM_ID_TCP_KEEPALIVE_IDLE,
   PRM_ID_TCP_KEEPALIVE_INTERVAL,
@@ -759,6 +761,18 @@ extern "C"
  * future clients that connect to broker
  */
   extern SESSION_PARAM *cached_session_parameters;
+#if defined (MULTI_CONN_TO_A_SERVER)
+  /*
+   * Session parameter values of the sub-client of the current thread. NULL on the other threads (e.g., the main
+   * client), which use prm_Def. It is set when the session of the sub-client is created.
+   */
+  extern CUB_THREAD_LOCAL SESSION_PARAM *sysprm_Sub_client_session_params;
+#define PRM_SUB_CLIENT_SESSION(id) \
+  (((GET_PRM (id))->static_flag & PRM_FOR_SESSION) && sysprm_Sub_client_session_params != NULL)
+
+  extern int sysprm_set_sub_client_session_parameters (const SESSION_PARAM * session_params);
+  extern void sysprm_free_sub_client_session_parameters (void);
+#endif
 #endif				/* CS_MODE */
 
   extern const char *prm_get_name (PARAM_ID prm_id);
@@ -872,6 +886,12 @@ extern "C"
 	return PRM_GET_INT_P (prm_get_value (prm_id));
       }
 #endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+    if (PRM_SUB_CLIENT_SESSION (prm_id))
+      {
+	return PRM_GET_INT_P (prm_get_value (prm_id));
+      }
+#endif
     return PRM_GET_INT (GET_PRM (prm_id)->value);
   }
 
@@ -888,6 +908,12 @@ extern "C"
 
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_BOOL_P (prm_get_value (prm_id));
+      }
+#endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+    if (PRM_SUB_CLIENT_SESSION (prm_id))
       {
 	return PRM_GET_BOOL_P (prm_get_value (prm_id));
       }
@@ -912,6 +938,12 @@ extern "C"
 	return PRM_GET_FLOAT_P (prm_get_value (prm_id));
       }
 #endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+    if (PRM_SUB_CLIENT_SESSION (prm_id))
+      {
+	return PRM_GET_FLOAT_P (prm_get_value (prm_id));
+      }
+#endif
     return PRM_GET_FLOAT (GET_PRM (prm_id)->value);
   }
 
@@ -928,6 +960,12 @@ extern "C"
 
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_STRING_P (prm_get_value (prm_id));
+      }
+#endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+    if (PRM_SUB_CLIENT_SESSION (prm_id))
       {
 	return PRM_GET_STRING_P (prm_get_value (prm_id));
       }
@@ -953,6 +991,12 @@ extern "C"
 	return PRM_GET_INTEGER_LIST_P (prm_get_value (prm_id));
       }
 #endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+    if (PRM_SUB_CLIENT_SESSION (prm_id))
+      {
+	return PRM_GET_INTEGER_LIST_P (prm_get_value (prm_id));
+      }
+#endif
     return PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value);
   }
 
@@ -969,6 +1013,12 @@ extern "C"
 
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_BIGINT_P (prm_get_value (prm_id));
+      }
+#endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+    if (PRM_SUB_CLIENT_SESSION (prm_id))
       {
 	return PRM_GET_BIGINT_P (prm_get_value (prm_id));
       }

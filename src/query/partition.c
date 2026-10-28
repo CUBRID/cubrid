@@ -24,11 +24,14 @@
 #include "partition_sr.h"
 
 #include "dbtype.h"
+#include "domain_rules.h"
 #include "fetch.h"
 #include "heap_file.h"
+#include "object_domain_convert.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_aggregate.hpp"
+#include "query_evaluator.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -57,6 +60,21 @@ typedef enum pruning_op
   PO_NOT_IN,
   PO_IS_NULL
 } PRUNING_OP;
+
+/* CBRD-27583: the predicate term a value to prune by comes from, with what XASL generation decided for it.
+ * Pruning without one (a row's or an index key's partition expression, an IN list's elements once converted, a
+ * partition expression's result) prunes by values of the partition key's domain, compared by that domain. */
+typedef struct pruning_term PRUNING_TERM;
+struct pruning_term
+{
+  const COMP_EVAL_TERM *comp;	/* the comparison term, whose comparison a range or list partition's values meet the
+				 * value by; NULL: an IN (SOME, ALL) list */
+  int key_side;			/* the comparison's side of the partition expression: 0 lhs, 1 rhs */
+  const TP_DOMAIN *prune_domain;	/* the domain the value (the list's elements) is converted into to be hashed, to
+					 * have a partition expression evaluated on it or (a list) to be compared;
+					 * NULL: none decided */
+  const DOMAIN_PRUNE_CONVERSION *prune;	/* its converter */
+};
 
 #define NELEMENTS 1024		/* maximum number of partitions */
 #define _WORDSIZE 8 * sizeof(int)
@@ -140,9 +158,22 @@ static bool partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const RE
 static bool partition_do_regu_variables_contain (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left,
 						 const REGU_VARIABLE * right);
 static MATCH_STATUS partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNING_OP op,
-				     PRUNING_BITSET * pruned);
+				     const PRUNING_TERM * term, PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
-					    PRUNING_BITSET * pruned);
+					    const PRUNING_TERM * term, PRUNING_BITSET * pruned);
+static bool partition_values_match (const DB_VALUE * left, const DB_VALUE * right);
+static bool partition_types_agree (DB_TYPE type, DB_TYPE domain_type);
+static DB_VALUE_COMPARE_RESULT partition_list_has (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, DB_SEQ * values,
+						   const DB_VALUE * value);
+static TP_DOMAIN_STATUS partition_convert_value (const PRUNING_TERM * term, const TP_DOMAIN * target,
+						 const DB_VALUE * value, DB_VALUE * holder, const DB_VALUE ** result);
+static DB_VALUE_COMPARE_RESULT partition_compare_key (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term,
+						      const DB_VALUE * key, const DB_VALUE * value);
+static bool partition_term_value (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const REGU_VARIABLE * arg,
+				  const DB_VALUE * raw, DB_VALUE * holder, const DB_VALUE ** value);
+static MATCH_STATUS partition_prune_elements (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
+					      const PRUNING_TERM * term, PRUNING_BITSET * pruned);
+static const PRUNING_TERM *partition_comparison_term (const COMP_EVAL_TERM * comp, int key_side, PRUNING_TERM * term);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * attr_key,
 					 bool * is_present);
 static int partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * src, DB_VALUE * value_p,
@@ -150,11 +181,11 @@ static int partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU
 static int partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * value_p,
 					      bool * is_value);
 static MATCH_STATUS partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
-					   PRUNING_BITSET * pruned);
+					   const PRUNING_TERM * term, PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
-					  PRUNING_BITSET * pruned);
+					  const PRUNING_TERM * term, PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
-					  PRUNING_BITSET * pruned);
+					  const PRUNING_TERM * term, PRUNING_BITSET * pruned);
 static int partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
 						OID * partition_oid, HFID * partition_hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -174,7 +205,7 @@ static void partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VA
 static bool partition_supports_pruning_op_for_function (const PRUNING_OP op, const REGU_VARIABLE * part_expr);
 static MATCH_STATUS partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left,
 						  const REGU_VARIABLE * right, REGU_VARIABLE * part_expr,
-						  PRUNING_OP op, PRUNING_BITSET * pruned);
+						  PRUNING_OP op, const PRUNING_TERM * term, PRUNING_BITSET * pruned);
 
 /* PRUNING_BITSET manipulation functions */
 
@@ -968,6 +999,45 @@ cleanup:
 }
 
 /*
+ * partition_values_match () - CBRD-27583: whether a constant of a predicate's expression is the partition
+ *   expression's: of its type (and collation) and equal by that type's cmpval; a constant of another type makes another
+ *   expression
+ */
+static bool
+partition_values_match (const DB_VALUE * left, const DB_VALUE * right)
+{
+  if (DB_IS_NULL (left) || DB_IS_NULL (right))
+    {
+      return DB_IS_NULL (left) && DB_IS_NULL (right);
+    }
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (left);
+  if (type != DB_VALUE_DOMAIN_TYPE (right))
+    {
+      return false;
+    }
+  int collation = 0;
+  if (TP_IS_CHAR_TYPE (type))
+    {
+      collation = db_get_string_collation (left);
+      if (collation != db_get_string_collation (right))
+	{
+	  return false;
+	}
+    }
+  return pr_type_from_id (type)->cmpval (left, right, 0, 1, NULL, collation) == DB_EQ;
+}
+
+/*
+ * partition_types_agree () - CBRD-27583: whether a value's type is a domain's, the string types counting as one
+ *			      (fetch_convert_regu_value)
+ */
+static bool
+partition_types_agree (DB_TYPE type, DB_TYPE domain_type)
+{
+  return type == domain_type || (TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (domain_type));
+}
+
+/*
  * partition_do_regu_variables_match () - check if two regu variables match
  * return :
  * pinfo (in) :
@@ -990,45 +1060,17 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
   switch (left->type)
     {
     case TYPE_DBVAL:
-      /* use dbval; a query's constant against the partition expression's: the key pair table's comparison of their
-       * types */
-      if (domain_compare_by_type_pair (&left->value.dbval, &right->value.dbval, 1, 0, NULL) != DB_EQ)
-	{
-	  return false;
-	}
-      else
-	{
-	  return true;
-	}
+      /* use dbval; a query's constant against the partition expression's */
+      return partition_values_match (&left->value.dbval, &right->value.dbval);
 
     case TYPE_CONSTANT:
       /* use varptr */
-      if (domain_compare_by_type_pair (left->value.dbvalptr, right->value.dbvalptr, 1, 1, NULL) != DB_EQ)
-	{
-	  return false;
-	}
-      else
-	{
-	  return true;
-	}
+      return partition_values_match (left->value.dbvalptr, right->value.dbvalptr);
 
     case TYPE_POS_VALUE:
-      {
-	/* each reference reads its own value */
-	const DB_VALUE *val_left, *val_right;
-
-	val_left = REGU_RESOLVED_VALUE (pinfo->vd, left);
-	val_right = REGU_RESOLVED_VALUE (pinfo->vd, right);
-
-	if (domain_compare_by_type_pair (val_left, val_right, 1, 1, NULL) != DB_EQ)
-	  {
-	    return false;
-	  }
-	else
-	  {
-	    return true;
-	  }
-      }
+      /* use val_pos for host variable references */
+      return partition_values_match (pinfo->vd->dbval_ptr + left->value.val_pos,
+				     pinfo->vd->dbval_ptr + right->value.val_pos);
 
     case TYPE_INARITH:
     case TYPE_OUTARITH:
@@ -1077,20 +1119,62 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 }
 
 /*
+ * partition_list_has () - CBRD-27583: whether a list partition's values hold one equal to a value
+ * return : DB_EQ if one is, DB_NE if none is, DB_UNK if a comparison has no answer (the term does not prune)
+ * pinfo (in)	  : pruning context
+ * term (in)	  : the term the value comes from (partition_compare_key)
+ * values (in)	  : the partition's values
+ * value (in)	  : the value
+ */
+static DB_VALUE_COMPARE_RESULT
+partition_list_has (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, DB_SEQ * values, const DB_VALUE * value)
+{
+  DB_VALUE_COMPARE_RESULT result = DB_NE;
+  const int size = db_set_size (values);
+
+  if (DB_IS_NULL (value))
+    {
+      /* equal to no value; IS NULL finds a partition's NULL */
+      return DB_NE;
+    }
+
+  for (int j = 0; j < size && result == DB_NE; j++)
+    {
+      DB_VALUE col;
+
+      if (db_set_get (values, j, &col) != NO_ERROR)
+	{
+	  return DB_UNK;
+	}
+      if (!DB_IS_NULL (&col))
+	{
+	  const DB_VALUE_COMPARE_RESULT compared = partition_compare_key (pinfo, term, &col, value);
+	  result = compared == DB_EQ ? DB_EQ : compared == DB_UNK ? DB_UNK : DB_NE;
+	}
+      pr_clear_value (&col);
+    }
+
+  return result;
+}
+
+/*
  * partition_prune_list () - Perform pruning for LIST type partitions
  * return : match status
  * pinfo (in)	  : pruning context
  * val (in)	  : the value to which the partition expression is compared
  * op (in)	  : operator to apply
+ * term (in)	  : the term val comes from (partition_compare_key)
  * pruned (in/out): pruned partitions
  */
 static MATCH_STATUS
-partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op, PRUNING_BITSET * pruned)
+partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op, const PRUNING_TERM * term,
+		      PRUNING_BITSET * pruned)
 {
   OR_PARTITION *part;
   int size = 0, i = 0, j;
   DB_SEQ *part_collection = NULL;
   DB_COLLECTION *val_collection = NULL;
+  DB_VALUE_COMPARE_RESULT has;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
   for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
@@ -1107,66 +1191,38 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
       switch (op)
 	{
 	case PO_IN:
+	case PO_NOT_IN:
 	  {
-	    DB_VALUE col;
 	    bool found = false;
 
-	    /* Perform intersection on part_values and val. If the result is not empty then this partition should be
-	     * added to the pruned list */
+	    /* Perform intersection on part_values and val. PO_IN adds this partition to the pruned list when the
+	     * result is not empty, PO_NOT_IN when it is */
 	    if (!db_value_type_is_collection (val))
 	      {
 		return MATCH_NOT_FOUND;
 	      }
 
 	    val_collection = db_get_set (val);
-	    for (j = 0; j < size; j++)
+	    size = db_set_size (val_collection);
+	    for (j = 0; j < size && !found; j++)
 	      {
-		db_set_get (part_collection, j, &col);
-		if (db_set_ismember (val_collection, &col))
+		DB_VALUE col;
+
+		if (db_set_get (val_collection, j, &col) != NO_ERROR)
 		  {
-		    pr_clear_value (&col);
-		    found = true;
-		    break;
+		    return MATCH_NOT_FOUND;
 		  }
+		has = partition_list_has (pinfo, term, part_collection, &col);
 		pr_clear_value (&col);
-	      }
-
-	    if (found)
-	      {
-		/* add this partition */
-		pruningset_add (pruned, i);
-	      }
-
-	    status = MATCH_OK;
-	    break;
-	  }
-
-	case PO_NOT_IN:
-	  {
-	    DB_VALUE col;
-	    bool found = false;
-
-	    /* Perform intersection on part_values and val. If the result is empty then this partition should be added
-	     * to the pruned list */
-	    if (!db_value_type_is_collection (val))
-	      {
-		status = MATCH_NOT_FOUND;
-	      }
-
-	    val_collection = db_get_set (val);
-	    for (j = 0; j < size; j++)
-	      {
-		db_set_get (part_collection, j, &col);
-		if (db_set_ismember (val_collection, &col))
+		if (has == DB_UNK)
 		  {
-		    pr_clear_value (&col);
-		    found = true;
-		    break;
+		    er_clear ();
+		    return MATCH_NOT_FOUND;
 		  }
-		pr_clear_value (&col);
+		found = has == DB_EQ;
 	      }
 
-	    if (!found)
+	    if (found == (op == PO_IN))
 	      {
 		/* add this partition */
 		pruningset_add (pruned, i);
@@ -1189,7 +1245,13 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 
 	case PO_EQ:
 	  /* Add this partition if part_values contains val. */
-	  if (db_set_ismember (part_collection, (DB_VALUE *) val))
+	  has = partition_list_has (pinfo, term, part_collection, val);
+	  if (has == DB_UNK)
+	    {
+	      er_clear ();
+	      return MATCH_NOT_FOUND;
+	    }
+	  if (has == DB_EQ)
 	    {
 	      /* add this partition */
 	      pruningset_add (pruned, i);
@@ -1217,15 +1279,18 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
  * pinfo (in)	  : pruning context
  * val (in)	  : the value to which the partition expression is compared
  * op (in)	  : operator to apply
+ * term (in)	  : the term val comes from, whose conversion of it into the partition key's type it hashes
  * pruned (in/out): pruned partitions
  */
 static MATCH_STATUS
-partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRUNING_OP op, PRUNING_BITSET * pruned)
+partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRUNING_OP op, const PRUNING_TERM * term,
+		      PRUNING_BITSET * pruned)
 {
   int idx = 0;
   int hash_size = PARTITIONS_COUNT (pinfo);
   TP_DOMAIN *col_domain = NULL;
   DB_VALUE val;
+  const DB_VALUE *key = NULL;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
   db_make_null (&val);
@@ -1234,25 +1299,24 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
   switch (op)
     {
     case PO_EQ:
-      if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (val_p))
+      /* type checking might not have coerced val to the type of the column: the term's conversion does it */
+      if (partition_convert_value (term, col_domain, val_p, &val, &key) != DOMAIN_COMPATIBLE)
 	{
-	  /* We have a problem here because type checking might not have coerced val to the type of the column. If this
-	   * is the case, we have to do it here */
-	  if (tp_value_cast (val_p, &val, col_domain, false) == DOMAIN_INCOMPATIBLE)
-	    {
-	      /* We cannot set an error here because this is not considered to be an error when scanning regular
-	       * tables. We can consider this predicate to be always false so status to MATCH_OK to simulate the case
-	       * when no appropriate partition was found. */
-	      er_clear ();
-	      status = MATCH_OK;
-	    }
+	  /* We cannot set an error here because this is not considered to be an error when scanning regular
+	   * tables. We can consider this predicate to be always false so status to MATCH_OK to simulate the case
+	   * when no appropriate partition was found. */
+	  er_clear ();
+	  pr_clear_value (&val);
+	  key = &val;
 	}
-      else
+      else if (key == NULL)
 	{
-	  pr_clone_value (val_p, &val);
+	  /* no conversion decided for the value's type */
+	  status = MATCH_NOT_FOUND;
+	  break;
 	}
 
-      idx = mht_get_hash_number (hash_size, &val);
+      idx = mht_get_hash_number (hash_size, key);
 
       /* Start from 1 because we're using position 0 for the master class */
       pruningset_add (pruned, idx);
@@ -1272,6 +1336,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 	    goto cleanup;
 	  }
 
+	/* the elements have the partition key's type (partition_prune_elements, partition_prune_for_function) */
 	values = db_get_set (val_p);
 	size = db_set_size (values);
 	if (size < 0)
@@ -1292,15 +1357,16 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 		goto cleanup;
 	      }
 
-	    if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (&col))
+	    if (DB_IS_NULL (&col))
 	      {
-		/* A failed coercion is not an error in this case, we should just skip over it */
-		if (tp_value_cast (val_p, &val, col_domain, false) == DOMAIN_INCOMPATIBLE)
-		  {
-		    pr_clear_value (&col);
-		    er_clear ();
-		    continue;
-		  }
+		/* equal to no key */
+		continue;
+	      }
+	    if (DB_VALUE_DOMAIN_TYPE (&col) != TP_DOMAIN_TYPE (col_domain))
+	      {
+		pr_clear_value (&col);
+		status = MATCH_NOT_FOUND;
+		goto cleanup;
 	      }
 
 	    idx = mht_get_hash_number (hash_size, &col);
@@ -1336,10 +1402,12 @@ cleanup:
  * pinfo (in)	   : pruning context
  * val(in)	   : the value to which the partition expression is compared
  * op (in)	   : operator to apply
+ * term (in)	   : the term val comes from (partition_compare_key)
  * pruned (in/out) : pruned partitions
  */
 static MATCH_STATUS
-partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op, PRUNING_BITSET * pruned)
+partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op, const PRUNING_TERM * term,
+		       PRUNING_BITSET * pruned)
 {
   int i = 0, error = NO_ERROR;
   int added = 0;
@@ -1348,6 +1416,9 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
   int rmin = DB_UNK, rmax = DB_UNK;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
+  db_make_null (&min);
+  db_make_null (&max);
+
   if (db_value_type_is_collection (val))
     {
       PRUNING_BITSET new_pruned;
@@ -1355,6 +1426,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
       DB_VALUE col;
       int size, j;
 
+      /* the elements have the partition key's type (partition_prune_elements, partition_prune_for_function) */
       values = db_get_set (val);
       size = db_set_size (values);
       if (size < 0)
@@ -1373,8 +1445,17 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	      goto cleanup;
 	    }
 
+	  if (!DB_IS_NULL (&col)
+	      && !partition_types_agree (DB_VALUE_DOMAIN_TYPE (&col),
+					 TP_DOMAIN_TYPE (pinfo->partition_pred->func_regu->domain)))
+	    {
+	      pr_clear_value (&col);
+	      status = MATCH_NOT_FOUND;
+	      goto cleanup;
+	    }
+
 	  pruningset_init (&new_pruned, PARTITIONS_COUNT (pinfo));
-	  status = partition_prune_range (pinfo, &col, op, &new_pruned);
+	  status = partition_prune_range (pinfo, &col, op, NULL, &new_pruned);
 	  if (j > 0)
 	    {
 	      if (op == PO_EQ)
@@ -1396,9 +1477,6 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 
       return status;
     }
-
-  db_make_null (&min);
-  db_make_null (&max);
 
   for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
     {
@@ -1430,9 +1508,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	}
       else
 	{
-	  /* the bounds are the partition expression's type, the catalog's and not the plan's: the key pair table's
-	   * comparison of the two types */
-	  rmin = domain_compare_by_type_pair (&min, val, 1, 1, NULL);
+	  rmin = partition_compare_key (pinfo, term, &min, val);
 	}
 
       if (DB_IS_NULL (&max))
@@ -1448,7 +1524,18 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	       * some limit cases like val > max-- which should not match any partition */
 	      (void) partition_decrement_value (&max);
 	    }
-	  rmax = domain_compare_by_type_pair (val, &max, 1, 1, NULL);
+	  /* val against max */
+	  rmax = partition_compare_key (pinfo, term, &max, val);
+	  rmax = rmax == DB_LT ? DB_GT : rmax == DB_GT ? DB_LT : rmax;
+	}
+
+      if (rmin == DB_UNK || rmax == DB_UNK)
+	{
+	  /* the term does not prune */
+	  er_clear ();
+	  status = MATCH_NOT_FOUND;
+	  added = 0;
+	  goto cleanup;
 	}
 
       status = MATCH_OK;
@@ -1543,21 +1630,23 @@ cleanup:
  * pinfo (in)	   : pruning context
  * val (in)	   : value to use for pruning
  * op (in)	   : operation to be applied for value
+ * term (in)	   : the term val comes from; NULL: val has the partition key's domain
  * pruned (in/out) : pruned partitions
  */
 static MATCH_STATUS
-partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op, PRUNING_BITSET * pruned)
+partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op, const PRUNING_TERM * term,
+			PRUNING_BITSET * pruned)
 {
   switch (pinfo->partition_type)
     {
     case DB_PARTITION_HASH:
-      return partition_prune_hash (pinfo, val, op, pruned);
+      return partition_prune_hash (pinfo, val, op, term, pruned);
 
     case DB_PARTITION_RANGE:
-      return partition_prune_range (pinfo, val, op, pruned);
+      return partition_prune_range (pinfo, val, op, term, pruned);
 
     case DB_PARTITION_LIST:
-      return partition_prune_list (pinfo, val, op, pruned);
+      return partition_prune_list (pinfo, val, op, term, pruned);
 
     default:
       return MATCH_NOT_FOUND;
@@ -1567,18 +1656,240 @@ partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRU
 }
 
 /*
+ * partition_convert_value () - CBRD-27583: a term's value (an IN list's element) in the type pruning casts it
+ *				into - the partition key's to hash it, an attribute's to evaluate a partition
+ *				expression on it - by the conversion XASL generation decided for the term
+ * return : the conversion's status; DOMAIN_COMPATIBLE with *result NULL where the term decided none for the value's
+ *	    type: the term does not prune
+ * term (in)	 : the term the value comes from; NULL: none
+ * target (in)	 : the domain pruning casts into
+ * value (in)	 : the value
+ * holder (in/out): a value holding nothing, *result where the value converts
+ * result (out)	 : the value in the target's type: value itself where it has it (no cast), or holder
+ */
+static TP_DOMAIN_STATUS
+partition_convert_value (const PRUNING_TERM * term, const TP_DOMAIN * target, const DB_VALUE * value,
+			 DB_VALUE * holder, const DB_VALUE ** result)
+{
+  *result = NULL;
+  if (DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) == TP_DOMAIN_TYPE (target))
+    {
+      *result = value;
+      return DOMAIN_COMPATIBLE;
+    }
+  if (term == NULL || term->prune == NULL || term->prune->conv == NULL
+      || TP_DOMAIN_TYPE (term->prune_domain) != TP_DOMAIN_TYPE (target)
+      || DB_VALUE_DOMAIN_TYPE (value) != term->prune->source)
+    {
+      return DOMAIN_COMPATIBLE;
+    }
+
+  const TP_DOMAIN_STATUS status = tp_value_convert (term->prune->conv, term->prune_domain, value, holder);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      *result = holder;
+    }
+  return status;
+}
+
+/*
+ * partition_compare_key () - CBRD-27583: a range partition's bound or a list partition's value against the
+ *			      value a term prunes by, as the term's row compares its two sides (the comparison the
+ *			      unpack decided, with the bound in the partition expression's place); without a term,
+ *			      two values of the partition key's domain, by that domain's cmpval
+ * return : the key against the value: DB_LT, DB_EQ or DB_GT, NULL first (a NULL never meets the term's comparison);
+ *	    DB_UNK where they do not compare (the term does not prune)
+ * pinfo (in) : pruning context
+ * term (in)  : the comparison term the value comes from (partition_term_value); NULL: none
+ * key (in)   : a bound, or a list partition's value: the partition key's domain
+ * value (in) : the value
+ */
+static DB_VALUE_COMPARE_RESULT
+partition_compare_key (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const DB_VALUE * key, const DB_VALUE * value)
+{
+  if (DB_IS_NULL (key) || DB_IS_NULL (value))
+    {
+      /* NULL first, the total order the comparison gave a NULL before */
+      return DB_IS_NULL (key) ? (DB_IS_NULL (value) ? DB_EQ : DB_LT) : DB_GT;
+    }
+  if (term != NULL)
+    {
+      bool can_compare = true;
+      const DB_VALUE *lhs = term->key_side == 0 ? key : value;
+      const DB_VALUE *rhs = term->key_side == 0 ? value : key;
+      const DB_VALUE_COMPARE_RESULT result =
+	eval_compare_values_resolved (pinfo->thread_p, term->comp->compare, pinfo->vd, lhs, rhs, 1, &can_compare);
+      if (!can_compare || result == DB_UNK)
+	{
+	  return DB_UNK;
+	}
+      return term->key_side == 0 ? result : result == DB_LT ? DB_GT : result == DB_GT ? DB_LT : result;
+    }
+
+  const TP_DOMAIN *domain = pinfo->partition_pred->func_regu->domain;
+  if (!partition_types_agree (DB_VALUE_DOMAIN_TYPE (key), TP_DOMAIN_TYPE (domain))
+      || !partition_types_agree (DB_VALUE_DOMAIN_TYPE (value), TP_DOMAIN_TYPE (domain)))
+    {
+      return DB_UNK;
+    }
+  return domain->type->cmpval (key, value, 1, 1, NULL, domain->collation_id);
+}
+
+/*
+ * partition_term_value () - CBRD-27583: a comparison term's value as its row reads it - through the value regu's
+ *			     own conversion, which the read of a constant or a bind here skipped - where the term's
+ *			     comparison can meet a range or list partition's values with it: the partition key in its
+ *			     key side's place, a string key in its collation
+ * return : false: the term does not prune
+ * pinfo (in)	  : pruning context
+ * term (in)	  : the comparison term
+ * arg (in)	  : its value's regu
+ * raw (in)	  : the value read (partition_get_value_from_regu_var)
+ * holder (in/out): a value holding nothing, *value where the regu converts
+ * value (out)	  : the value as the row reads it
+ */
+static bool
+partition_term_value (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const REGU_VARIABLE * arg,
+		      const DB_VALUE * raw, DB_VALUE * holder, const DB_VALUE ** value)
+{
+  const REGU_VARIABLE *key = term->key_side == 0 ? term->comp->lhs : term->comp->rhs;
+  const DOMAIN_COMPARE *compare = term->comp->compare;
+  const TP_DOMAIN *key_domain = pinfo->partition_pred->func_regu->domain;
+
+  *value = raw;
+  if (DB_IS_NULL (raw))
+    {
+      /* compared by a NULL's total order (partition_compare_key), not by the term's comparison */
+      return true;
+    }
+  if (db_value_type_is_collection (raw) || key->conv != NULL)
+    {
+      return false;
+    }
+  if (arg->conv != NULL && (arg->type == TYPE_DBVAL || arg->type == TYPE_POS_VALUE))
+    {
+      if (tp_value_convert (arg->conv, arg->domain, raw, holder) != DOMAIN_COMPATIBLE)
+	{
+	  er_clear ();
+	  return false;
+	}
+      *value = holder;
+    }
+
+  if (compare == NULL)
+    {
+      /* the term's row compares by the values */
+      return true;
+    }
+  if (!partition_types_agree ((DB_TYPE) compare->source[term->key_side], TP_DOMAIN_TYPE (key_domain))
+      || !partition_types_agree (DB_VALUE_DOMAIN_TYPE (*value), (DB_TYPE) compare->source[1 - term->key_side])
+      || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (key_domain)) && compare->collation != TP_DOMAIN_COLLATION (key_domain)))
+    {
+      return false;
+    }
+  return true;
+}
+
+/*
+ * partition_prune_elements () - CBRD-27583: prune by an IN (SOME, ALL) list of values of one domain: its
+ *				 elements converted into the partition key's type by the conversion XASL generation
+ *				 decided, then pruned as values of the key's domain. A conversion that is not exact
+ *				 changes nothing for an equality (the element is equal to no row's key); a list that
+ *				 converts prunes for no other operator.
+ * return : match status
+ * pinfo (in)	  : pruning context
+ * val (in)	  : the list
+ * op (in)	  : operator to apply
+ * term (in)	  : the IN term
+ * pruned (in/out): pruned partitions
+ */
+static MATCH_STATUS
+partition_prune_elements (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
+			  const PRUNING_TERM * term, PRUNING_BITSET * pruned)
+{
+  const TP_DOMAIN *key_domain = pinfo->partition_pred->func_regu->domain;
+  DB_COLLECTION *values, *converted_values;
+  DB_VALUE converted_val;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
+  int size;
+
+  if (term->prune == NULL || TP_DOMAIN_TYPE (term->prune_domain) != TP_DOMAIN_TYPE (key_domain)
+      || !db_value_type_is_collection (val) || (term->prune->conv != NULL && op != PO_IN && op != PO_EQ))
+    {
+      return MATCH_NOT_FOUND;
+    }
+  if (term->prune->conv == NULL)
+    {
+      /* elements of the key's type */
+      return partition_prune_db_val (pinfo, val, op, NULL, pruned);
+    }
+
+  values = db_get_set (val);
+  size = db_set_size (values);
+  if (size < 0)
+    {
+      return MATCH_NOT_FOUND;
+    }
+  converted_values = db_col_create (DB_TYPE_SEQUENCE, size, NULL);
+  if (converted_values == NULL)
+    {
+      pinfo->error_code = ER_FAILED;
+      return MATCH_NOT_FOUND;
+    }
+  db_make_sequence (&converted_val, converted_values);
+
+  for (int i = 0; i < size; i++)
+    {
+      DB_VALUE element, holder;
+      const DB_VALUE *key = NULL;
+      int error;
+
+      db_make_null (&holder);
+      if (db_set_get (values, i, &element) != NO_ERROR)
+	{
+	  goto end;
+	}
+      if (partition_convert_value (term, key_domain, &element, &holder, &key) != DOMAIN_COMPATIBLE || key == NULL)
+	{
+	  /* an element that does not convert, or not of the list's type: the term does not prune */
+	  er_clear ();
+	  pr_clear_value (&element);
+	  pr_clear_value (&holder);
+	  goto end;
+	}
+      error = db_col_put (converted_values, i, (DB_VALUE *) key);
+      pr_clear_value (&element);
+      pr_clear_value (&holder);
+      if (error != NO_ERROR)
+	{
+	  pinfo->error_code = error;
+	  goto end;
+	}
+    }
+
+  status = partition_prune_db_val (pinfo, &converted_val, op, NULL, pruned);
+
+end:
+  pr_clear_value (&converted_val);
+  return status;
+}
+
+/*
  * partition_prune () - perform pruning on the specified partitions list
  * return : match status
  * pinfo (in)	  : pruning context
  * val (in)	  : the value to which the partition expression is compared
  * op (in)	  : operator to apply
+ * term (in)	  : the term arg is a side of; NULL: arg's value has the partition key's domain
  * pruned (in/out): pruned partitions
  */
 static MATCH_STATUS
-partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNING_OP op, PRUNING_BITSET * pruned)
+partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNING_OP op, const PRUNING_TERM * term,
+		 PRUNING_BITSET * pruned)
 {
   MATCH_STATUS status = MATCH_NOT_FOUND;
-  DB_VALUE val;
+  DB_VALUE val, holder;
+  const DB_VALUE *value = NULL;
   bool is_value = false;
 
   if (arg == NULL && op != PO_IS_NULL)
@@ -1590,6 +1901,8 @@ partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNI
     {
       db_make_null (&val);
       is_value = true;
+      /* no comparison: the partitions that hold NULL */
+      term = NULL;
     }
   else if (partition_get_value_from_regu_var (pinfo, arg, &val, &is_value) != NO_ERROR)
     {
@@ -1604,8 +1917,24 @@ partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNI
       return MATCH_NOT_FOUND;
     }
 
-  status = partition_prune_db_val (pinfo, &val, op, pruned);
+  db_make_null (&holder);
+  if (term != NULL && term->comp == NULL)
+    {
+      status = partition_prune_elements (pinfo, &val, op, term, pruned);
+    }
+  else if (term != NULL && pinfo->partition_type != DB_PARTITION_HASH)
+    {
+      if (partition_term_value (pinfo, term, arg, &val, &holder, &value))
+	{
+	  status = partition_prune_db_val (pinfo, value, op, term, pruned);
+	}
+    }
+  else
+    {
+      status = partition_prune_db_val (pinfo, &val, op, term, pruned);
+    }
 
+  pr_clear_value (&holder);
   pr_clear_value (&val);
 
   return status;
@@ -1642,7 +1971,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_POS_VALUE:
       {
-	const DB_VALUE *arg_val = REGU_RESOLVED_VALUE (pinfo->vd, regu);
+	const DB_VALUE *arg_val = pinfo->vd->dbval_ptr + regu->value.val_pos;
 	if (pr_clone_value (arg_val, value_p) != NO_ERROR)
 	  {
 	    goto error;
@@ -1801,8 +2130,8 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 
     case TYPE_POS_VALUE:
       {
-	/* each reference reads its own value */
-	const DB_VALUE *val = REGU_RESOLVED_VALUE (pinfo->vd, key);
+	/* use val_pos for host variable references */
+	const DB_VALUE *val = pinfo->vd->dbval_ptr + key->value.val_pos;
 	error = pr_clone_value (val, attr_key);
 
 	*is_present = true;
@@ -1926,6 +2255,27 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
 }
 
 /*
+ * partition_comparison_term () - CBRD-27583: a comparison term as the term a value to prune by comes from, with
+ *				  the partition expression (the attribute a partition expression is evaluated on) on
+ *				  side key_side: the conversion of the value XASL generation decided for its other side
+ * return : term
+ * comp (in)	: the comparison term
+ * key_side (in): 0 lhs, 1 rhs
+ * term (out)	: the term
+ */
+static const PRUNING_TERM *
+partition_comparison_term (const COMP_EVAL_TERM * comp, int key_side, PRUNING_TERM * term)
+{
+  const bool decided = comp->prune_domain != NULL && comp->prune_side == 1 - key_side;
+
+  term->comp = comp;
+  term->key_side = key_side;
+  term->prune_domain = decided ? comp->prune_domain : NULL;
+  term->prune = decided ? comp->prune : NULL;
+  return term;
+}
+
+/*
  * partition_match_pred_expr () - get partitions matching a predicate
  *				  expression
  * return : match status
@@ -2016,29 +2366,33 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    /* see if part_expr matches right or left */
 	    REGU_VARIABLE *left, *right;
 	    PRUNING_OP op;
+	    const COMP_EVAL_TERM *comp = &pr->pe.m_eval_term.et.et_comp;
+	    PRUNING_TERM term;
 
-	    left = pr->pe.m_eval_term.et.et_comp.lhs;
-	    right = pr->pe.m_eval_term.et.et_comp.rhs;
-	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_comp.rel_op);
+	    left = comp->lhs;
+	    right = comp->rhs;
+	    op = partition_rel_op_to_pruning_op (comp->rel_op);
 
 	    status = MATCH_NOT_FOUND;
 	    if (partition_do_regu_variables_match (pinfo, left, part_expr))
 	      {
-		status = partition_prune (pinfo, right, op, pruned);
+		status = partition_prune (pinfo, right, op, partition_comparison_term (comp, 0, &term), pruned);
 	      }
 	    else if (partition_do_regu_variables_match (pinfo, right, part_expr))
 	      {
-		status = partition_prune (pinfo, left, op, pruned);
+		status = partition_prune (pinfo, left, op, partition_comparison_term (comp, 1, &term), pruned);
 	      }
 	    else if (partition_supports_pruning_op_for_function (op, part_expr))
 	      {
 		if (partition_do_regu_variables_contain (pinfo, left, part_expr))
 		  {
-		    status = partition_prune_for_function (pinfo, left, right, part_expr, op, pruned);
+		    status = partition_prune_for_function (pinfo, left, right, part_expr, op,
+							   partition_comparison_term (comp, 0, &term), pruned);
 		  }
 		else if (partition_do_regu_variables_contain (pinfo, right, part_expr))
 		  {
-		    status = partition_prune_for_function (pinfo, right, left, part_expr, op, pruned);
+		    status = partition_prune_for_function (pinfo, right, left, part_expr, op,
+							   partition_comparison_term (comp, 1, &term), pruned);
 		  }
 	      }
 	    break;
@@ -2048,6 +2402,8 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	  {
 	    REGU_VARIABLE *regu, *list;
 	    PRUNING_OP op;
+	    const ALSM_EVAL_TERM *alsm = &pr->pe.m_eval_term.et.et_alsm;
+	    const PRUNING_TERM term = { NULL, 0, alsm->prune_domain, alsm->prune };
 
 	    regu = pr->pe.m_eval_term.et.et_alsm.elem;
 	    list = pr->pe.m_eval_term.et.et_alsm.elemset;
@@ -2066,13 +2422,13 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	      }
 	    if (partition_do_regu_variables_match (pinfo, regu, part_expr))
 	      {
-		status = partition_prune (pinfo, list, op, pruned);
+		status = partition_prune (pinfo, list, op, &term, pruned);
 	      }
 	    else if (partition_supports_pruning_op_for_function (op, part_expr))
 	      {
 		if (partition_do_regu_variables_contain (pinfo, regu, part_expr))
 		  {
-		    status = partition_prune_for_function (pinfo, regu, list, part_expr, op, pruned);
+		    status = partition_prune_for_function (pinfo, regu, list, part_expr, op, &term, pruned);
 		  }
 	      }
 	  }
@@ -2103,11 +2459,14 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
  * right (in)	  : right operand
  * part_expr (in) : partition key expression
  * op (in)	  : pruning operator
+ * term (in)	  : the term right is a side of, whose conversion of right's value into left's domain it evaluates the
+ *		    partition key expression on
  * pruned (in/out): pruned partitions
  */
 static MATCH_STATUS
 partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left, const REGU_VARIABLE * right,
-			      REGU_VARIABLE * part_expr, PRUNING_OP op, PRUNING_BITSET * pruned)
+			      REGU_VARIABLE * part_expr, PRUNING_OP op, const PRUNING_TERM * term,
+			      PRUNING_BITSET * pruned)
 {
   MATCH_STATUS status = MATCH_NOT_FOUND;
   DB_VALUE val, casted_val;
@@ -2115,11 +2474,12 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
   DB_COLLECTION *new_collection = NULL;
   DB_VALUE old_collection_val, new_collection_val, part_key_val;
   TP_DOMAIN_STATUS dom_status;
+  const DB_VALUE *attribute_value = NULL;
   bool is_value;
 
   if (right == NULL)
     {
-      status = partition_prune (pinfo, right, op, pruned);
+      status = partition_prune (pinfo, right, op, NULL, pruned);
       return status;
     }
 
@@ -2156,6 +2516,8 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      pinfo->error_code = ER_FAILED;
 	      goto cleanup;
 	    }
+	  /* new_collection_val owns it from here: every goto cleanup frees it */
+	  db_make_collection (&new_collection_val, new_collection);
 
 	  for (int i = 0; i < size; i++)
 	    {
@@ -2179,24 +2541,21 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		  continue;
 		}
 
-	      if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&old_collection_val))
+	      dom_status =
+		partition_convert_value (term, left->domain, &old_collection_val, &casted_val, &attribute_value);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  dom_status = tp_value_cast (&old_collection_val, &casted_val, left->domain, false);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &old_collection_val, left->domain);
 
-		  if (dom_status != DOMAIN_COMPATIBLE)
-		    {
-		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &old_collection_val, left->domain);
-
-		      pinfo->error_code = ER_FAILED;
-		      goto cleanup;
-		    }
-
-		  partition_set_cache_dbvalp_for_attribute (part_expr, &casted_val);
+		  pinfo->error_code = ER_FAILED;
+		  goto cleanup;
 		}
-	      else
+	      if (attribute_value == NULL)
 		{
-		  partition_set_cache_dbvalp_for_attribute (part_expr, &old_collection_val);
+		  /* no conversion decided for the element's type: the term does not prune */
+		  goto cleanup;
 		}
+	      partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
 
 	      if (partition_get_value_from_regu_var (pinfo, part_expr, &part_key_val, &is_value) == NO_ERROR)
 		{
@@ -2216,36 +2575,28 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		}
 	    }
 
-	  if (db_make_collection (&new_collection_val, new_collection) != NO_ERROR)
-	    {
-	      pinfo->error_code = ER_FAILED;
-	      goto cleanup;
-	    }
-
-	  status = partition_prune_db_val (pinfo, &new_collection_val, op, pruned);
+	  /* values of the partition expression: the partition key's domain */
+	  status = partition_prune_db_val (pinfo, &new_collection_val, op, NULL, pruned);
 	}
       else
 	{
-	  if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&val))
+	  dom_status = partition_convert_value (term, left->domain, &val, &casted_val, &attribute_value);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      dom_status = tp_value_cast (&val, &casted_val, left->domain, false);
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &val, left->domain);
 
-	      if (dom_status != DOMAIN_COMPATIBLE)
-		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &val, left->domain);
-
-		  pinfo->error_code = ER_FAILED;
-		  goto cleanup;
-		}
-
-	      partition_set_cache_dbvalp_for_attribute (part_expr, &casted_val);
+	      pinfo->error_code = ER_FAILED;
+	      goto cleanup;
 	    }
-	  else
+	  if (attribute_value == NULL)
 	    {
-	      partition_set_cache_dbvalp_for_attribute (part_expr, &val);
+	      /* no conversion decided for the value's type: the term does not prune */
+	      goto cleanup;
 	    }
+	  partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
 
-	  status = partition_prune (pinfo, part_expr, op, pruned);
+	  /* the partition expression's value: the partition key's domain */
+	  status = partition_prune (pinfo, part_expr, op, NULL, pruned);
 	}
     }
 
@@ -2499,7 +2850,7 @@ partition_match_key_range (PRUNING_CONTEXT * pinfo, const KEY_RANGE * key_range,
     }
   else
     {
-      lstatus = partition_prune (pinfo, key_range->key1, lop, &left);
+      lstatus = partition_prune (pinfo, key_range->key1, lop, NULL, &left);
       if (pinfo->error_code != NO_ERROR)
 	{
 	  return MATCH_NOT_FOUND;
@@ -2513,7 +2864,7 @@ partition_match_key_range (PRUNING_CONTEXT * pinfo, const KEY_RANGE * key_range,
     }
   else
     {
-      rstatus = partition_prune (pinfo, key_range->key2, rop, &right);
+      rstatus = partition_prune (pinfo, key_range->key2, rop, NULL, &right);
       if (pinfo->error_code != NO_ERROR)
 	{
 	  return MATCH_NOT_FOUND;
@@ -3526,7 +3877,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
       op = PO_IS_NULL;
     }
 
-  status = partition_prune_db_val (pinfo, result, op, &pruned);
+  status = partition_prune_db_val (pinfo, result, op, NULL, &pruned);
   count = pruningset_popcount (&pruned);
   if (status != MATCH_OK)
     {
@@ -4064,7 +4415,7 @@ partition_decrement_value (DB_VALUE * val)
  *
  * Note: this function search for the partition which could contain the key
  * value and places the corresponding partition oid and btid in class_oid and
- * btid arguments
+ * btid arguments; where no partition can hold the key, all three are NULL
  */
 int
 partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, HFID * class_hfid,
@@ -4080,6 +4431,14 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * c
   if (error != NO_ERROR)
     {
       return error;
+    }
+  if (pos < 0)
+    {
+      /* no partition can hold the key: no index has it, which the callers read as a key not found */
+      OID_SET_NULL (class_oid);
+      HFID_SET_NULL (class_hfid);
+      BTID_SET_NULL (btid);
+      return NO_ERROR;
     }
 
   COPY_OID (&partition_oid, &pcontext->partitions[pos + 1].class_oid);
@@ -4347,6 +4706,7 @@ partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
   int error = NO_ERROR;
   ATTR_ID *btree_attr_ids = NULL;
   int btree_num_attr = 0;
+  DB_VALUE *expression_value = NULL;
 
   if (pcontext == NULL)
     {
@@ -4402,13 +4762,20 @@ partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
       goto cleanup;
     }
 
-  /* just use the corresponding db_value from attribute information */
   if (pcontext->attr_info.values[0].state == HEAP_UNINIT_ATTRVALUE)
     {
       error = ER_FAILED;
       goto cleanup;
     }
-  error = pr_clone_value (&pcontext->attr_info.values[0].dbvalue, partition_key);
+  /* the partition expression over the key's attribute, as a row's routing computes it
+   * (partition_find_partition_for_record): the partitions' bounds and hash are the expression's */
+  error =
+    fetch_peek_dbval (thread_p, pcontext->partition_pred->func_regu, NULL, class_oid, NULL, NULL, &expression_value);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  error = pr_clone_value (expression_value, partition_key);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -4436,7 +4803,7 @@ cleanup:
  *  key(in)                               - The key to be located.
  *  class_oid(in/out)                     - The correct OID of the object that contains the key.
  *  btid(in/out)                          - The correct BTID of the tree that contains the key.
- *  position(out)                         - The number of the partition that holds the key.
+ *  position(out)                         - The number of the partition that holds the key; -1: no partition can.
  *
  *  NOTE:
  *            - At the entry of the function, btid and class_oid should refer to the btid and oid, respectively,
@@ -4459,6 +4826,8 @@ partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID
       assert_release (pcontext != NULL);
       return ER_FAILED;
     }
+  /* until a partition is found: none holds the key */
+  *position = -1;
 
   if (pcontext->pruning_type == DB_PARTITION_CLASS)
     {
@@ -4478,13 +4847,13 @@ partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID
     }
 
   pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
-  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, &pruned);
+  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, NULL, &pruned);
   pr_clear_value (&partition_key);
 
   if (status == MATCH_NOT_FOUND)
     {
-      /* This can happen only if there's no partition that can hold the key value (for example, if this is called by ON
-       * DUPLICATE KEY UPDATE but the value that is being inserted will throw an error anyway) */
+      /* No partition can hold the key value (a foreign key outside every range or list, or ON DUPLICATE KEY UPDATE of
+       * a value that the insert refuses anyway): *position -1 */
       return NO_ERROR;
     }
   else if (pruningset_popcount (&pruned) != 1)
