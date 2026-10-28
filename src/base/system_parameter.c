@@ -1213,7 +1213,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PB_NBUFFERS,
    PRM_NAME_PB_NBUFFERS,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -1224,7 +1224,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PAGE_BUFFER_SIZE,
    PRM_NAME_PAGE_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -5620,9 +5620,10 @@ SYSPRM_PARAM prm_Def[] = {
    * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
    * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
    * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
-   * free; the Mackert-Lohman formula degrades safely to "no caching" when
-   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
-   * default equals the former 32768 on every page size. */
+   * free. cost_effective_cache_pages is a floor of the cache the optimizer assumes: the
+   * server's data_buffer_pages is used when larger (CBRD-27474), so 0 or a small value does not
+   * lower the cache below the buffer. It is denominated in pages (not bytes) so the default
+   * equals the former 32768 on every page size. */
   {PRM_ID_COST_SEQ_PAGE,
    PRM_NAME_COST_SEQ_PAGE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
