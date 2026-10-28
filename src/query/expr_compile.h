@@ -368,6 +368,7 @@ struct expr_raw_leaf_info
   const REGU_VARIABLE *k_set;	/* "column IN (constants)": the set (a TYPE_FUNC of literals and host variables) */
   const DB_VALUE *sub_start;	/* "SUBSTRING (column, start, length) IN (constants)": the two constants */
   const DB_VALUE *sub_len;
+  bool sub_substr;		/* ... and the function is SUBSTR, whose empty result is NULL, not SUBSTRING */
   const void *or_src;		/* an interpreted filter's OR term (a PRED_EXPR) for expr_pred_or_raw_leaves (); nothing
 				 * else is set */
 };

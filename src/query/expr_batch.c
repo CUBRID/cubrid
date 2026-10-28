@@ -261,7 +261,8 @@ struct eb_leaf
   const DB_VALUE *sub_len_v;
   int sub_start;
   int sub_len;
-  bool sub_empty_is_null;	/* an empty SUBSTRING is NULL (oracle_style_empty_string), not the empty string */
+  bool sub_substr;		/* the function is SUBSTR (misc_operand), not SUBSTRING */
+  bool sub_empty_is_null;	/* an empty result is NULL (SUBSTR, or oracle_style_empty_string), not the empty string */
   /* an OR of AND chains of leaves: or_n disjuncts, or_len[d] leaves each, their indexes in or_leaf (vec is -1) */
   int or_n;
   const int *or_len;
@@ -1391,6 +1392,7 @@ eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   leaf->k_n = n;
   leaf->sub_start_v = info->sub_start;
   leaf->sub_len_v = info->sub_len;
+  leaf->sub_substr = info->sub_substr;
   leaf->vec = vec;
   leaf->col = eb_col_of_vec (plan, vec);
   leaf->vec2 = -1;
@@ -1588,8 +1590,10 @@ eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
 	}
       leaf->sub_start = db_get_int (leaf->sub_start_v);
       leaf->sub_len = db_get_int (leaf->sub_len_v);
-      /* the row path's empty SUBSTRING is a zero-size string, which this parameter makes NULL (db_make_db_char ()) */
-      leaf->sub_empty_is_null = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
+      /* the row path's empty SUBSTRING is a zero-size string, which this parameter makes NULL (db_make_db_char ());
+       * SUBSTR returns NULL for a start past the string's last character (db_string_substring ()), the only way a
+       * start and a length of 1 or more leave it empty */
+      leaf->sub_empty_is_null = leaf->sub_substr || prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
     }
   for (i = 0; i < leaf->k_n; i++)
     {
@@ -1712,7 +1716,7 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 		}
 	      if (empty)
 		{
-		  /* the row's result is the row path's, not a reason to hand the chunk back: NULL under
+		  /* the row's result is the row path's, not a reason to hand the chunk back: NULL for SUBSTR or under
 		   * oracle_style_empty_string (UNKNOWN, as a NULL column), else the empty string compared as one */
 		  if (leaf->sub_empty_is_null)
 		    {

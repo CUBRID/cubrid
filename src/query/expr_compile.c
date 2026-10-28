@@ -4113,6 +4113,8 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
 	{
 	  return false;
 	}
+      /* SUBSTR and SUBSTRING share the opcode; db_string_substring () tells them apart by misc_operand */
+      out->sub_substr = (a->misc_operand == SUBSTR);
       col = a->leftptr;
       ct = DB_TYPE_VARCHAR;
     }
