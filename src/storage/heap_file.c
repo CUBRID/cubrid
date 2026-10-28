@@ -10330,13 +10330,26 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
+      int max_attrs = (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs
+		       + attr_info->last_classrepr->n_class_attrs);
+
+      /* the function index result is requested on top of the class attributes */
+      for (i = 0; i < requested_num_attrs; i++)
+	{
+	  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrids[i]))
+	    {
+	      max_attrs++;
+	    }
+	}
+
+      if (requested_num_attrs > max_attrs)
+	{
 #ifndef NDEBUG
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
 #endif
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+	  requested_num_attrs = max_attrs;
+	}
     }
 
   if (requested_num_attrs > 0)

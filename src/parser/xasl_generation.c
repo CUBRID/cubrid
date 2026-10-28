@@ -7735,19 +7735,15 @@ pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_p
 }
 
 /*
- * pt_func_index_missing_arg_cons () - get the function index of a scan plan whose function arguments are not all
- *   regular key columns
+ * pt_func_index_scan_cons () - get the function index of an index scan plan
  *   return: the function index constraint, or NULL
  *   plan(in): plan
  */
 static SM_CLASS_CONSTRAINT *
-pt_func_index_missing_arg_cons (QO_PLAN * plan)
+pt_func_index_scan_cons (QO_PLAN * plan)
 {
   QO_INDEX_ENTRY *index_entry;
   SM_CLASS_CONSTRAINT *cons;
-  SM_ATTRIBUTE **atts;
-  int arg_start, k, m;
-  bool found;
 
   if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->plan_un.scan.index == NULL)
     {
@@ -7766,26 +7762,7 @@ pt_func_index_missing_arg_cons (QO_PLAN * plan)
       return NULL;
     }
 
-  atts = cons->attributes;
-  arg_start = cons->func_index_info->attr_index_start;
-  for (k = arg_start; atts[k] != NULL; k++)
-    {
-      found = false;
-      for (m = 0; m < arg_start && atts[m] != NULL; m++)
-	{
-	  if (atts[m]->id == atts[k]->id)
-	    {
-	      found = true;
-	      break;
-	    }
-	}
-      if (!found)
-	{
-	  return cons;
-	}
-    }
-
-  return NULL;
+  return cons;
 }
 
 /*
@@ -7905,8 +7882,8 @@ pt_add_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * spec, SM_CLASS
 }
 
 /*
- * pt_make_func_index_cover () - make the routing entry of a function index scan whose function arguments are not
- *   all stored in the key, adding the pseudo result attribute to the spec
+ * pt_make_func_index_cover () - make the routing entry of a function index scan, adding the pseudo result
+ *   attribute to the spec
  *   return: the entry, or NULL
  *   parser(in):
  *   plan(in): plan
@@ -7919,7 +7896,7 @@ pt_make_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
   PT_NODE *spec, *attr;
   PT_FUNC_INDEX_COVER *entry;
 
-  cons = pt_func_index_missing_arg_cons (plan);
+  cons = pt_func_index_scan_cons (plan);
   if (cons == NULL)
     {
       return NULL;
@@ -13263,10 +13240,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      if (fi_cover != NULL)
 		{
-		  fi_cons = pt_func_index_missing_arg_cons (plan);
+		  fi_cons = pt_func_index_scan_cons (plan);
 		  if (where_key_part != NULL && key_offsets != NULL)
 		    {
-		      /* the key holds no raw argument; the key filter reads the routed result attribute instead */
+		      /* the key filter reads the routed result attribute instead of recomputing the function */
 		      pt_remove_func_index_attrs (parser, fi_cons, false, &key_attrs, key_offsets);
 		      key_offsets[pt_length_of_list (key_attrs)] =
 			pt_find_attribute (parser, fi_cover->result_attr, table_info->attribute_list);
@@ -17191,7 +17168,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* route function index expressions of covered scans while the output list is built */
   saved_func_idx_cover = symbols->func_idx_cover_list;
   symbols->func_idx_cover_list = NULL;
-  pt_collect_func_index_cover (parser, qo_plan);
+  /* grouping and aggregation evaluate the function from the raw argument, as qo_is_coverage_index assumes */
+  if (select_node->info.query.q.select.group_by == NULL && !pt_has_aggregate (parser, select_node))
+    {
+      pt_collect_func_index_cover (parser, qo_plan);
+    }
 
   if (pt_has_aggregate (parser, select_node))
     {
