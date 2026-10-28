@@ -11925,6 +11925,280 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
   return spec;
 }
 
+/* The two specs of a remote MERGE with a local source. Its clauses are name-resolved, so a column belongs to
+ * the spec its spec_id names. */
+typedef struct pt_dblink_merge_refs PT_DBLINK_MERGE_REFS;
+struct pt_dblink_merge_refs
+{
+  UINTPTR target_id;		/* the INTO spec, in the derived dblink table shape */
+  UINTPTR source_id;		/* the USING spec */
+};
+
+/* pt_dblink_dml_classify_value leaves for a MERGE value. A target column is sent as written. A source column
+ * is bound. */
+static PT_DBLINK_LEAF_KIND
+pt_dblink_merge_value_leaf (PT_NODE * node, void *arg)
+{
+  PT_DBLINK_MERGE_REFS *refs = (PT_DBLINK_MERGE_REFS *) arg;
+
+  if (node->node_type != PT_NAME || node->info.name.meta_class != PT_NORMAL)
+    {
+      return PT_DBLINK_LEAF_NONE;
+    }
+
+  if (node->info.name.spec_id == refs->target_id)
+    {
+      return PT_DBLINK_LEAF_REMOTE;
+    }
+  if (node->info.name.spec_id == refs->source_id)
+    {
+      return PT_DBLINK_LEAF_LOCAL;
+    }
+
+  return PT_DBLINK_LEAF_NONE;
+}
+
+/* Is term an ON key? A key is "target column = source column", in either order. Returns the source column,
+ * or NULL when term is not a key. *target_col, when asked for, gets the target side. The source side must be
+ * a bare column. The sink checks key values for duplicates before sending, and reads each value from one
+ * USING column. */
+static PT_NODE *
+pt_dblink_merge_on_key (PARSER_CONTEXT * parser, PT_NODE * term, PT_DBLINK_MERGE_REFS * refs, PT_NODE ** target_col)
+{
+  PT_NODE *col, *val;
+  int i;
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      col = (i == 0) ? term->info.expr.arg1 : term->info.expr.arg2;
+      val = (i == 0) ? term->info.expr.arg2 : term->info.expr.arg1;
+      if (col == NULL || val == NULL)
+	{
+	  continue;
+	}
+
+      if (pt_dblink_merge_value_leaf (col, refs) == PT_DBLINK_LEAF_REMOTE
+	  && pt_dblink_merge_value_leaf (val, refs) == PT_DBLINK_LEAF_LOCAL)
+	{
+	  if (target_col != NULL)
+	    {
+	      *target_col = col;
+	    }
+	  return val;
+	}
+    }
+
+  return NULL;
+}
+
+/* Called once per AND-ed term of the ON. A key comes with its two columns. Any other term comes with NULLs.
+ * Returning false stops the walk. */
+typedef bool (*PT_DBLINK_MERGE_TERM_FN) (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+					 PT_NODE * source_col, void *arg);
+
+/* The one walk over the ON's terms, in the order written. Every pass over the ON goes through it, so they all
+ * meet the keys in the same order. That order is the order the keys are bound in. */
+static bool
+pt_dblink_merge_walk_on (PARSER_CONTEXT * parser, PT_NODE * cond, PT_DBLINK_MERGE_REFS * refs,
+			 PT_DBLINK_MERGE_TERM_FN fn, void *arg)
+{
+  PT_NODE *target_col = NULL, *source_col;
+
+  for (; cond != NULL; cond = cond->next)
+    {
+      if (cond->node_type == PT_EXPR && cond->info.expr.op == PT_AND)
+	{
+	  /* arg1/arg2 head no lists of their own. So this walks only the two sides. */
+	  if (!pt_dblink_merge_walk_on (parser, cond->info.expr.arg1, refs, fn, arg)
+	      || !pt_dblink_merge_walk_on (parser, cond->info.expr.arg2, refs, fn, arg))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      source_col = pt_dblink_merge_on_key (parser, cond, refs, &target_col);
+      if (!fn (parser, cond, (source_col != NULL) ? target_col : NULL, source_col, arg))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/* the specs of merge, for the walks below */
+static void
+pt_dblink_merge_init_refs (PT_NODE * merge, PT_DBLINK_MERGE_REFS * refs)
+{
+  refs->target_id = merge->info.merge.into->info.spec.id;
+  refs->source_id = merge->info.merge.using_clause->info.spec.id;
+}
+
+/* The source columns a statement binds, in the order of its one-row USING. Each occurrence of a source
+ * column is one bound value. Everything else is sent as written. A value is sent only when it is columns,
+ * literals, + - * / and conditions over them. So only an expression's operands are looked into. */
+typedef struct pt_dblink_merge_binds PT_DBLINK_MERGE_BINDS;
+struct pt_dblink_merge_binds
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_DBLINK_MERGE_BIND_FN fn;
+  void *arg;
+  int count;
+};
+
+/* expr alone, not the list it heads */
+static void
+pt_dblink_merge_bind_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool is_key, PT_DBLINK_MERGE_BINDS * binds)
+{
+  if (expr == NULL)
+    {
+      return;
+    }
+
+  switch (pt_dblink_merge_value_leaf (expr, &binds->refs))
+    {
+    case PT_DBLINK_LEAF_LOCAL:
+      binds->fn (parser, expr, is_key, binds->arg);
+      binds->count++;
+      return;
+    case PT_DBLINK_LEAF_REMOTE:
+      return;
+    default:
+      break;
+    }
+
+  if (expr->node_type == PT_EXPR)
+    {
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg1, is_key, binds);
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg2, is_key, binds);
+    }
+}
+
+/* the same over a list. The list is a VALUES row or a search condition (an implicit AND). */
+static void
+pt_dblink_merge_bind_list (PARSER_CONTEXT * parser, PT_NODE * list, PT_DBLINK_MERGE_BINDS * binds)
+{
+  for (; list != NULL; list = list->next)
+    {
+      pt_dblink_merge_bind_expr (parser, list, false, binds);
+    }
+}
+
+/* pt_dblink_merge_walk_on callback: the source column of a key is bound as a key. Any other term reads no
+ * source column. */
+static bool
+pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+			      void *arg)
+{
+  if (source_col != NULL)
+    {
+      pt_dblink_merge_bind_expr (parser, source_col, true, (PT_DBLINK_MERGE_BINDS *) arg);
+    }
+  return true;
+}
+
+/*
+ * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source binds.
+ *   The order is that of the one-row USING's columns: ON, SET, UPDATE WHERE, DELETE WHERE, VALUES and
+ *   INSERT WHERE. The source SELECT and the remote statement text are both laid out from this walk, so the
+ *   two agree column by column.
+ *   return: the number of values
+ *   parser(in): parser context
+ *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
+ *   fn(in): called with each source column and whether it is the source side of an ON key
+ *   arg(in): passed to fn
+ *
+ * Note: A source column is reported as an ON key's source side, or under arg1 and arg2 of the expressions
+ *   in the other clauses. One in an ON term that is not a key, under arg3, or in a function or a subquery is
+ *   not reported. The caller refuses those shapes before it walks.
+ */
+int
+pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn, void *arg)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PT_DBLINK_MERGE_BINDS binds;
+  PT_NODE *assign;
+
+  memset (&binds, 0, sizeof (binds));
+  pt_dblink_merge_init_refs (merge, &binds.refs);
+  binds.fn = fn;
+  binds.arg = arg;
+
+  pt_dblink_merge_walk_on (parser, info->search_cond, &binds.refs, pt_dblink_merge_bind_on_term, &binds);
+
+  for (assign = info->update.assignment; assign != NULL; assign = assign->next)
+    {
+      /* the LHS is a target column, sent as written */
+      pt_dblink_merge_bind_expr (parser, assign->info.expr.arg2, false, &binds);
+    }
+  pt_dblink_merge_bind_list (parser, info->update.search_cond, &binds);
+  pt_dblink_merge_bind_list (parser, info->update.del_search_cond, &binds);
+
+  if (info->insert.value_clauses != NULL)
+    {
+      pt_dblink_merge_bind_list (parser, info->insert.value_clauses->info.node_list.list, &binds);
+    }
+  pt_dblink_merge_bind_list (parser, info->insert.search_cond, &binds);
+
+  return binds.count;
+}
+
+/* what pt_dblink_merge_walk_keys carries over the walk */
+typedef struct pt_dblink_merge_keys PT_DBLINK_MERGE_KEYS;
+struct pt_dblink_merge_keys
+{
+  PT_DBLINK_MERGE_KEY_FN fn;
+  void *arg;
+  int count;
+};
+
+/* pt_dblink_merge_walk_on callback: report a key's two columns */
+static bool
+pt_dblink_merge_key_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+			  void *arg)
+{
+  PT_DBLINK_MERGE_KEYS *keys = (PT_DBLINK_MERGE_KEYS *) arg;
+
+  if (source_col != NULL)
+    {
+      keys->fn (parser, target_col, source_col, keys->arg);
+      keys->count++;
+    }
+  return true;
+}
+
+/*
+ * pt_dblink_merge_walk_keys () - Call fn once per ON key of a remote MERGE with a local source, with its target
+ *   column and its source column. The keys come in the order pt_dblink_merge_walk_binds () reports them.
+ *   return: the number of keys
+ *   parser(in): parser context
+ *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
+ *   fn(in): called with each key's target column and source column
+ *   arg(in): passed to fn
+ */
+int
+pt_dblink_merge_walk_keys (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_KEY_FN fn, void *arg)
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_DBLINK_MERGE_KEYS keys;
+
+  pt_dblink_merge_init_refs (merge, &refs);
+
+  keys.fn = fn;
+  keys.arg = arg;
+  keys.count = 0;
+
+  pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &refs, pt_dblink_merge_key_term, &keys);
+
+  return keys.count;
+}
+
 static void
 pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
