@@ -96,6 +96,8 @@ typedef struct tr_trigger
   const char *comment;
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
+  char *block_sp_name;		/* unique name of the internal procedure that runs a PL/CSQL block action */
+  char *block_source;		/* PL/CSQL block text as written by the user */
 } TR_TRIGGER;
 
 
@@ -225,6 +227,8 @@ extern const char *TR_ATT_PROPERTIES;
 extern const char *TR_ATT_COMMENT;
 extern const char *TR_ATT_CREATED_TIME;
 extern const char *TR_ATT_UPDATED_TIME;
+extern const char *TR_ATT_ACTION_BLOCK_SP;
+extern const char *TR_ATT_ACTION_BLOCK;
 
 extern CUB_THREAD_LOCAL int tr_Current_depth;
 extern CUB_THREAD_LOCAL int tr_Maximum_depth;

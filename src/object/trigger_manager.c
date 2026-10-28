@@ -130,6 +130,8 @@ const char *TR_ATT_PROPERTIES = "properties";
 const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
+const char *TR_ATT_ACTION_BLOCK_SP = "action_block_sp";
+const char *TR_ATT_ACTION_BLOCK = "action_block";
 
 /*
  * The trigger manager state below is per connection (thread-local for multiple connections), because it refers to
@@ -415,6 +417,8 @@ tr_make_trigger (void)
   trigger->comment = NULL;
   trigger->created_time = DATETIME_NULL_VALUE;
   trigger->updated_time = DATETIME_NULL_VALUE;
+  trigger->block_sp_name = NULL;
+  trigger->block_source = NULL;
 
   return trigger;
 }
@@ -463,6 +467,14 @@ tr_clear_trigger (TR_TRIGGER * trigger)
   if (trigger->comment != NULL)
     {
       free_and_init (trigger->comment);
+    }
+  if (trigger->block_sp_name != NULL)
+    {
+      free_and_init (trigger->block_sp_name);
+    }
+  if (trigger->block_source != NULL)
+    {
+      free_and_init (trigger->block_source);
     }
 }
 
@@ -1140,6 +1152,28 @@ trigger_to_object (TR_TRIGGER * trigger)
       goto error;
     }
 
+  if (trigger->block_sp_name != NULL)
+    {
+      db_make_string_copy (&value, trigger->block_sp_name);
+      err = dbt_put_internal (obt_p, TR_ATT_ACTION_BLOCK_SP, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  if (trigger->block_source != NULL)
+    {
+      db_make_string_copy (&value, trigger->block_source);
+      err = dbt_put_internal (obt_p, TR_ATT_ACTION_BLOCK, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
     {
       goto error;
@@ -1204,6 +1238,8 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   trigger->condition = NULL;
   trigger->action = NULL;
   trigger->comment = NULL;
+  trigger->block_sp_name = NULL;
+  trigger->block_source = NULL;
 
   /*
    * Save the cache coherency number so we know when to re-calculate the
@@ -1445,6 +1481,37 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
       if (tmp != NULL)
 	{
 	  trigger->comment = strdup (tmp);
+	}
+    }
+  db_value_clear (&value);
+
+  /* ACTION_BLOCK_SP, ACTION_BLOCK: set only for a PL/CSQL block action */
+  if (db_get (object, TR_ATT_ACTION_BLOCK_SP, &value))
+    {
+      goto error;
+    }
+
+  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
+    {
+      tmp = db_get_string (&value);
+      if (tmp != NULL)
+	{
+	  trigger->block_sp_name = strdup (tmp);
+	}
+    }
+  db_value_clear (&value);
+
+  if (db_get (object, TR_ATT_ACTION_BLOCK, &value))
+    {
+      goto error;
+    }
+
+  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
+    {
+      tmp = db_get_string (&value);
+      if (tmp != NULL)
+	{
+	  trigger->block_source = strdup (tmp);
 	}
     }
   db_value_clear (&value);

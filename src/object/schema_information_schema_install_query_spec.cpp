@@ -1047,7 +1047,7 @@ sm_define_view_triggers_spec (void)
       "[tr].[target_attribute] AS [event_object_column], "
       "NULL AS [action_order], "
       "[tr].[condition] AS [action_condition], "
-      "[tr].[action_definition] AS [action_statement], "
+      "NVL ([tr].[action_block], [tr].[action_definition]) AS [action_statement], "
       /* row events: TR_EVENT_UPDATE/DELETE/INSERT; statement events: TR_EVENT_STATEMENT_*; NULL for COMMIT/ROLLBACK */
       "CASE "
         "WHEN [tr].[event] IN (%d, %d, %d) THEN 'ROW' "
