@@ -13968,7 +13968,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 
   /* A row other than the one being updated is read with PEEK under a scan cache ended before the assignments run,
    * so they must not read it.  The parser locks such an UPDATE at select (pt_to_upd_del_query (),
-   * pt_update_must_abort_reevaluation ()). */
+   * pt_upd_del_reevaluates_at_force ()). */
   if (locator_mvcc_reev_reads_other_row (mvcc_reev_data, oid))
     {
       assert (false);

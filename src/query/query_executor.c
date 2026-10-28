@@ -29254,8 +29254,8 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
     {
       /* The plan does not scan this class with a spec of its own, so there are no filters to re-evaluate
        * with.  A statement shaped that way is meant to keep its select-phase locks and carry no
-       * reevaluation class at all -- pt_delete_must_abort_reevaluation () and its UPDATE twin turn away
-       * a derived table, a spec below a subquery, a class hierarchy and a partitioned class -- so getting
+       * reevaluation class at all -- pt_upd_del_reevaluates_at_force () turns away a derived table, a
+       * spec below a subquery, a class hierarchy and a partitioned class -- so getting
        * here means a shape slipped past them.  Fail the statement and say so: the other answers are to
        * modify a version the predicate never saw, or to skip it without a word. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
