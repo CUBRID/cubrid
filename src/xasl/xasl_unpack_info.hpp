@@ -76,9 +76,14 @@ struct xasl_unpack_info
   int track_allocated_bufers;
 
   bool use_xasl_clone;		/* true, if uses xasl clone */
-  bool index_stream;		/* a filter or function index predicate: loaded without resolve_domains */
-  bool index_stream_late_bind;	/* such a stream holds a regu resolve_domains would resolve: the unresolved-domain check
-				 * (load) */
+  bool index_stream;		/* a filter or function index predicate or expression: its domains need not describe its
+				 * values (stx_decide_stream_compare) */
+#if !defined (NDEBUG)
+  /* CBRD-27583: what the compiler left without a domain (VARIABLE): regus, operator nodes, list positions */
+  int n_undecided_regu;
+  int n_undecided_arith;
+  int n_undecided_position;
+#endif
 };
 
 XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
