@@ -6727,13 +6727,26 @@ qexec_gby_px_map (DB_VALUE * const *orig, DB_VALUE * vals, int n, const DB_VALUE
   return NULL;
 }
 
+/* would a worker's fetch of this node write the leader's execution state: a node whose domain the execution resolves
+ * on its first value (fetch_peek_dbval_slow () -> fetch_read_plan_domain () -> qexec_set_node_domain ()) and that
+ * has not taken it yet -- every value so far was NULL.  Once set, the fetch only reads it. */
+static bool
+qexec_gby_px_node_unsettled (const val_descr * vd, const REGU_VARIABLE * regu)
+{
+  return qexec_node_domain_is_variable (vd, regu->plan_item)
+    || (regu->type == TYPE_POSITION && qexec_position_domain_is_variable (vd, regu->value.pos_descr.plan_item));
+}
+
 /* a worker's reader (see above): false when the GROUP BY reads its tuples or aggregates in a form this does not
  * copy -- a regu that is not a tuple position, an aggregate that is not COUNT, SUM, AVG, MIN or MAX over a plain
- * column, a DISTINCT one */
+ * column, a DISTINCT one -- or when a worker would write the leader's execution state, which only its owner thread
+ * writes: a node whose domain is not settled (qexec_gby_px_node_unsettled ()), a SUM or AVG whose operand
+ * coercion reads a temporary the execution converts once (qexec_execution_temporary () asserts its owner) */
 static bool
 qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_PX_READER * wr, const char **why)
 {
   BUILDLIST_PROC_NODE *proc = &gbstate->xasl->proc.buildlist;
+  const val_descr *vd = &gbstate->xasl_state->vd;
   REGU_VARIABLE_LIST r;
   AGGREGATE_TYPE *agg;
   DB_VALUE **orig = NULL;
@@ -6787,6 +6800,11 @@ qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXE
 	  *why = "a value the tuple does not hold";
 	  goto fail;
 	}
+      if (qexec_gby_px_node_unsettled (vd, &r->value))
+	{
+	  *why = "a value whose domain is not settled";
+	  goto fail;
+	}
       wr->regu_nodes[i] = *r;
       wr->regu_nodes[i].value.vfetch_to = &wr->vals[i];
       wr->regu_nodes[i].next = (i + 1 < n_regu) ? &wr->regu_nodes[i + 1] : NULL;
@@ -6794,6 +6812,11 @@ qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXE
     }
   for (r = gbstate->g_hk_regu_list, i = 0; r != NULL; r = r->next, i++)
     {
+      if (qexec_gby_px_node_unsettled (vd, &r->value))
+	{
+	  *why = "a key whose domain is not settled";
+	  goto fail;
+	}
       wr->hk_nodes[i] = *r;
       if (r->value.type == TYPE_POSITION)
 	{
@@ -6828,6 +6851,17 @@ qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXE
       if (agg->option == Q_DISTINCT || agg->sort_list != NULL)
 	{
 	  *why = "a DISTINCT or ordered aggregate";
+	  goto fail;
+	}
+      if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->plan_item != NULL
+	  && qexec_accumulator_domain (vd, agg->plan_item)->temporary >= 0)
+	{
+	  *why = "a SUM or AVG whose operand coercion the execution converts once";
+	  goto fail;
+	}
+      if (agg->operands != NULL && qexec_gby_px_node_unsettled (vd, &agg->operands->value))
+	{
+	  *why = "an aggregate operand whose domain is not settled";
 	  goto fail;
 	}
       *a = *agg;
@@ -6866,8 +6900,9 @@ qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXE
   wr->rd.agg_template = proc->g_agg_list;
   wr->rd.ctx = gbstate->agg_hash_context;
   /* the leader's vd, shared read-only: the nodes a worker gets are TYPE_POSITION / TYPE_CONSTANT copies whose
-   * fetch never writes the execution domain (qexec_set_node_domain () is reached only from arithmetic regus);
-   * widening the set above means giving each worker its own vd (qexec_deep_copy_xasl_state (), as px_scan does) */
+   * domains are settled, so their fetch only reads the execution domain, and no SUM or AVG reads a temporary (both
+   * checked above); widening the set above means giving each worker its own vd (qexec_deep_copy_xasl_state (), as
+   * px_scan does) */
   wr->rd.xasl_state = gbstate->xasl_state;
   wr->rd.first_aggregated = true;
   *why = NULL;
