@@ -2153,6 +2153,19 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     }
   else
     {
+      /*
+       * No collection is open, so the opening brace was refused and this element has
+       * nowhere to go. A %constructor line is the way in: ldr_act_meth () takes the
+       * brace, reports it and steps over the slot, and the elements still arrive here
+       * behind it - with next_attr already past the last descriptor, so there is no
+       * attrs[next_attr] to convert against either. The brace reported the error;
+       * drop the element without adding another.
+       */
+      if (context->collection == NULL)
+	{
+	  goto error_exit;
+	}
+
       switch (type)
 	{
 	case LDR_COLLECTION:
