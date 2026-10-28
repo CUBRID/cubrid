@@ -1788,7 +1788,11 @@
 
 #define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
-#define ER_LAST_ERROR                               -1387
+#define ER_SUB_CLIENTS_ALIVE                        -1387
+#define ER_MAIN_CLIENT_NOT_READY                    -1388
+#define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
+
+#define ER_LAST_ERROR                               -1390
 
 
 /*

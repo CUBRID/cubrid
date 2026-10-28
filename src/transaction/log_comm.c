@@ -65,7 +65,7 @@ struct tran_state_name
 };
 typedef struct tran_state_name TRAN_STATE_NAME;
 
-static TRAN_STATE_NAME log_Tran_state_names[] = {
+static const TRAN_STATE_NAME log_Tran_state_names[] = {
   {TRAN_RECOVERY,
    "TRAN_RECOVERY"},
   {TRAN_ACTIVE,
@@ -105,7 +105,7 @@ struct isolation_name
 };
 typedef struct isolation_name TRAN_ISOLATION_NAME;
 
-static TRAN_ISOLATION_NAME log_Isolation_names[] = {
+static const TRAN_ISOLATION_NAME log_Isolation_names[] = {
   {TRAN_SERIALIZABLE, "SERIALIZABLE"},
   {TRAN_REPEATABLE_READ, "REPEATABLE READ"},
   {TRAN_READ_COMMITTED, "COMMITTED READ"},
