@@ -133,7 +133,7 @@ namespace cubpl
 	    sql_semantics_request request;
 	    respone_unpacker.unpack_all (request);
 
-	    error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
+	    error_code = m_stack->send_data_to_client_recv (true, bypass_block, request);
 	  }
 	else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
 	  {
@@ -141,7 +141,7 @@ namespace cubpl
 	    global_semantics_request request;
 	    respone_unpacker.unpack_all (request);
 
-	    error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
+	    error_code = m_stack->send_data_to_client_recv (true, bypass_block, request);
 	  }
 	else
 	  {

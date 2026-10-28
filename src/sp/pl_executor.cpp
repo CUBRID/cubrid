@@ -354,12 +354,12 @@ exit:
     // or a switch that did happen would be taken as failed and not be undone.
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client_recv (get_result, false, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
+	error = m_stack->send_data_to_client_recv (false, get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
 		std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client_recv (get_result, false, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client_recv (false, get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
       }
 
     if (error == NO_ERROR && client_error != NO_ERROR)
@@ -706,7 +706,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (get_prepare_info, true, code, sql, flag, m_stack->get_tran_id ());
+    error = m_stack->send_data_to_client_recv (true, get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
     return error;
   }
 
@@ -764,7 +764,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (get_execute_info, true, code, request);
+    error = m_stack->send_data_to_client_recv (true, get_execute_info, code, request);
     request.clear ();
 
     return error;
@@ -870,7 +870,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, true, code, request);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
     return error;
   }
 
@@ -889,7 +889,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, true, code, request);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
     return error;
   }
 
@@ -907,7 +907,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, true, code, command, oid);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command, oid);
     return error;
   }
 
@@ -928,7 +928,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, true, code, request);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
     return error;
   }
 
@@ -972,7 +972,7 @@ exit:
 	}
     };
 
-    error = m_stack->send_data_to_client_recv (get_make_outresult_info, true, code, query_id);
+    error = m_stack->send_data_to_client_recv (true, get_make_outresult_info, code, query_id);
 
     return error;
   }
@@ -990,7 +990,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, true, code, handler_id);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, handler_id);
     return error;
   }
 
@@ -1008,7 +1008,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (java_lambda, true, code, command);
+    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command);
     return error;
   }
 

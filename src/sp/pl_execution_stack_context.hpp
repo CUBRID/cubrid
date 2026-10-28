@@ -131,9 +131,9 @@ namespace cubpl
       // check_preexisting_error: false to have func process the reply even if the transaction is interrupted
       //                          or an error is already set
       template <typename ... Args>
-      int send_data_to_client_recv (const xs_callback_func &func, bool check_preexisting_error, Args &&... args)
+      int send_data_to_client_recv (bool check_preexisting_error, const xs_callback_func &func, Args &&... args)
       {
-	return xs_callback_send_and_receive (m_thread_p, func, check_preexisting_error, m_client_header,
+	return xs_callback_send_and_receive (m_thread_p, check_preexisting_error, func, m_client_header,
 					     std::forward<Args> (args)...);
       }
 

@@ -73,8 +73,8 @@ int xs_callback_send_no_receive (cubthread::entry *thread_p, Args &&... args)
 }
 
 template <typename ... Args>
-int xs_callback_send_and_receive (cubthread::entry *thread_p, const xs_callback_func &func,
-				  bool check_preexisting_error, Args &&... args)
+int xs_callback_send_and_receive (cubthread::entry *thread_p, bool check_preexisting_error,
+				  const xs_callback_func &func, Args &&... args)
 {
   int error_code = NO_ERROR;
 
