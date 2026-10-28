@@ -751,7 +751,8 @@ extern "C"
   {
     PT_DBLINK_LEAF_NONE,	/* neither: looked into, or rejected */
     PT_DBLINK_LEAF_REMOTE,	/* a column of the remote target, sent as written */
-    PT_DBLINK_LEAF_LOCAL	/* one value computed here and bound */
+    PT_DBLINK_LEAF_LOCAL,	/* one value computed here and bound */
+    PT_DBLINK_LEAF_OPERAND	/* sent as written around its arg1, which is classified in its place */
   } PT_DBLINK_LEAF_KIND;
 
   typedef PT_DBLINK_LEAF_KIND (*PT_DBLINK_LEAF_FN) (PT_NODE * node, void *arg);
@@ -762,6 +763,7 @@ extern "C"
   extern int pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn,
 					 void *arg);
   extern int pt_dblink_merge_check_keys (PARSER_CONTEXT * parser, PT_NODE * merge);
+  extern bool pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

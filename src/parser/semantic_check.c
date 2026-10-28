@@ -13264,11 +13264,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  if (merge_src_from != NULL && node != NULL && !pt_has_error (parser))
 	    {
-	      /* a remote MERGE with a local source: the SELECT whose rows the sink sends. XASL generation walks the
+	      /* a remote MERGE with a local source: the gate, then the SELECT whose rows the sink sends. The walks
+	       * that build it report only the source columns of the shapes the gate admits. XASL generation walks the
 	       * clauses of remote_text_src for the remote text, and the two walks must meet the same columns. It
 	       * refuses the statement when they count different columns. The statement skips mq_translate as a
 	       * remote DML (db_vdb.c), so no rewrite changes the clauses in between. */
-	      if (pt_dblink_merge_check_keys (parser, node) == NO_ERROR)
+	      if (pt_dblink_merge_check_keys (parser, node) == NO_ERROR && pt_dblink_merge_is_inscope (parser, node))
 		{
 		  node->info.merge.remote_src_query =
 		    pt_dblink_merge_src_query (parser, node, merge_src_from, sc_info_ptr);
