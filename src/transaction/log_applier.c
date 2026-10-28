@@ -473,6 +473,11 @@ la_clock_ns (void)
  * worker (statement items) compiling at the same time trip assertions such as parser_pop_hint_node. */
 static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* commit LSAs the previous run marked as applied above last_committed_lsa, sorted; set at startup, read-only
+ * while the workers run (see LA_APPLIED_TX_MARKER_NAME) */
+static LOG_LSA *la_Applied_tx_markers = NULL;
+static int la_Applied_tx_marker_count = 0;
+
 static void la_stat_describe_applier (LA_STAT_APPLIER * applier);
 
 #if defined (WINDOWS)
@@ -511,9 +516,13 @@ static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
 static int la_delete_ha_apply_info (void);
-static int la_create_applied_stmt_marker (void);
-static int la_read_applied_stmt_marker (LOG_LSA * marker_lsa);
-static int la_update_applied_stmt_marker (const LOG_LSA * commit_lsa);
+static int la_create_applied_tx_marker (void);
+static int la_load_applied_tx_markers (void);
+static void la_free_applied_tx_markers (void);
+static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
+static int la_insert_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa);
+static void la_end_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context);
+static int la_delete_applied_tx_markers (const LOG_LSA * upto_lsa);
 
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
@@ -1044,9 +1053,9 @@ la_coordinator_complete_without_task (const LOG_LSA * lsa)
  *
  * Note:
  *   The range is above last_committed_lsa and at or below recovery_boundary_lsa, both set once at start:
- *   - last_committed_lsa: committed_lsa in _db_ha_apply_info, or the applied statement marker if larger
- *     (la_get_last_ha_applied_info, la_apply_log_file). A commit at or below it is skipped whole by the
- *     worker and touches no row.
+ *   - last_committed_lsa: committed_lsa in _db_ha_apply_info (la_get_last_ha_applied_info). A commit at or below
+ *     it, or one with an applied-tx marker (LA_APPLIED_TX_MARKER_NAME), is skipped whole by the worker and
+ *     touches no row.
  *   - recovery_boundary_lsa: max_committed_lsa in _db_ha_apply_info, the largest commit the previous run
  *     put on the task queue (la_get_ha_apply_max_committed_lsa). NULL, and the range empty, when none was stored.
  *   A worker may or may not have committed each commit in the range before the previous run stopped, so
@@ -1407,9 +1416,9 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
  *
  * Note:
  *   The transaction's items are applied, its remaining changes are flushed and it commits on the slave, in
- *   that order; a failed step skips the ones after it and its error goes into result. A transaction with a
- *   statement item also marks its commit in the same slave transaction, so the statement does not run again
- *   after a restart (la_create_applied_stmt_marker).
+ *   that order; a failed step skips the ones after it, rolls the slave transaction back and puts its error into
+ *   result. A transaction that applied an item also marks its commit in the same slave transaction, so a
+ *   restart does not apply it again (LA_APPLIED_TX_MARKER_NAME).
  */
 static void
 la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
@@ -1432,26 +1441,24 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
 		     result->error);
     }
 
-  if (result->error != NO_ERROR)
+  if (result->error == NO_ERROR)
     {
-      return;
+      result->error = la_apply_worker_flush_task (context, task, trace_level, &result->stats);
     }
 
-  result->error = la_apply_worker_flush_task (context, task, trace_level, &result->stats);
-  if (result->error != NO_ERROR)
+  /* a restart must not apply this transaction again: mark it in the same slave transaction (see
+   * LA_APPLIED_TX_MARKER_NAME) */
+  if (result->error == NO_ERROR && total_rows > 0)
     {
-      return;
+      result->error = la_insert_applied_tx_marker (context, &task->commit_lsa);
     }
 
-  /* a statement must not run again after a restart: mark it in the same slave transaction (see
-   * la_create_applied_stmt_marker) */
-  if (result->stats.has_statement)
+  if (result->error != NO_ERROR)
     {
-      result->error = la_update_applied_stmt_marker (&task->commit_lsa);
-      if (result->error != NO_ERROR)
-	{
-	  return;
-	}
+      /* the changes applied so far stay in the open slave transaction; roll them back, or the next task this
+       * worker takes before the applier stops would commit them without their marker */
+      (void) db_abort_transaction ();
+      return;
     }
 
   result->error = la_apply_worker_commit_task (context, task, trace_level, &result->stats, worker_applied_item_count);
@@ -1620,6 +1627,7 @@ la_start_apply_workers (void)
   config.trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
   config.run_task = la_apply_worker_run_task;
   config.request_shutdown = la_request_shutdown;
+  config.end_context = la_end_applied_tx_marker;
 
   return la_worker_start (la_apply_Workers, la_Info.worker_count, &config);
 }
@@ -1649,8 +1657,9 @@ la_stop_apply_workers (void)
  *   return: NO_ERROR, or the commit error, or ER_NET_CANT_CONNECT_SERVER when the server is down
  *
  * Note:
- *   The statistics rows are stored in the same transaction. The workers commit the replicated transactions
- *   themselves, and max_committed_lsa is stored apart, before a task is queued (la_coordinator_cover_commit).
+ *   The statistics rows are stored, and the applied-tx markers at or below committed_lsa deleted, in the same
+ *   transaction. The workers commit the replicated transactions themselves, and max_committed_lsa is stored
+ *   apart, before a task is queued (la_coordinator_cover_commit).
  *   A failed update is counted and reported but does not stop the applier unless the server is down, as
  *   in the serial applier. The positions stay at their last stored values until the next store succeeds,
  *   which only widens the range a restart re-applies; restarting here would re-apply that range at once.
@@ -1664,6 +1673,14 @@ la_coordinator_commit_apply_info (void)
   if (res > 0)
     {
       LA_STAT_APPLIER applier;
+
+      /* the commits at or below committed_lsa are skipped by their position, so their markers go in the same
+       * transaction; a failure leaves them for the next store */
+      if (la_delete_applied_tx_markers (&la_Info.committed_lsa) < 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "cannot delete applied-tx markers up to %lld|%d\n",
+			(long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
+	}
 
       la_stat_describe_applier (&applier);
       la_stat_store (&applier, la_update_query_execute_with_values);
@@ -3685,10 +3702,7 @@ la_delete_ha_apply_info (void)
   /* the replication starts over from the beginning, so a marker from the old stream must not skip its commits */
   if (res >= 0)
     {
-      LOG_LSA null_lsa;
-
-      LSA_SET_NULL (&null_lsa);
-      (void) la_update_applied_stmt_marker (&null_lsa);
+      (void) la_delete_applied_tx_markers (NULL);
     }
 
   (void) db_commit_transaction ();
@@ -3699,49 +3713,38 @@ la_delete_ha_apply_info (void)
 }
 
 /*
- * The applied-statement marker, table ha_applied_stmt_marker on the slave: one row holding the commit LSA of the
- * last transaction with a statement item (a DDL, or a DML replicated as a statement with the USE_SBR hint) that
- * the slave committed.
+ * The applied-transaction marker, table ha_applied_tx_marker on the slave: one row per transaction a worker
+ * applied, holding the copied log it came from and its commit LSA. A worker commits a transaction on its own
+ * connection before the coordinator stores the apply info, so a restart can meet a commit that is already on
+ * the slave. The worker inserts the marker in the same slave transaction as the data, so the marker exists
+ * exactly when the data is committed, and a restart skips the commits that have one. The markers at or below
+ * the stored committed_lsa are deleted when it is stored. The copied log path keeps apart the markers of the
+ * appliers a node runs, one per remote node.
  *
- * A restart applies the transactions of its recovery range again. Applying a row item again does no harm: it
- * carries the resulting row, so it gives the same row or fails on a key and the error is ignored. Applying a
- * statement item again runs the statement again: a DDL fails, and a DML such as "SET n = n + 1" succeeds a
- * second time and leaves the slave different from the master. So a statement transaction must never be applied
- * twice.
+ * A row change must not be applied twice. An INSERT of key 1 followed by an UPDATE of key 1 to 2 brings key 1
+ * back on the second pass, and the slave keeps a row the master does not have.
  *
- * The worker writes the marker in the same slave transaction as the statement, so the two commit or roll back
- * together. One row is enough because a statement transaction is a barrier on the slave: its label is the
- * previous commit, so it runs after every earlier commit, and the master raises its history floor to it, so
- * every later commit waits for it. When it is committed, every commit at or below its commit LSA is committed.
- * At startup the marker raises last_committed_lsa, and the commits at or below it are skipped whole.
+ * A statement must not run twice either. A DDL fails the second time, and a DML replicated as a statement,
+ * such as "UPDATE t SET n = n + 1", succeeds again and leaves n different from the master.
  */
-#define LA_APPLIED_STMT_MARKER_NAME "ha_applied_stmt_marker"
+#define LA_APPLIED_TX_MARKER_NAME "ha_applied_tx_marker"
 
 /*
- * la_create_applied_stmt_marker() - create the marker table with its one row if it does not exist yet
+ * la_create_applied_tx_marker() - create the marker table if it does not exist yet
  *   return: NO_ERROR or error code
  *
  * Note: runs on the coordinator connection at startup, before the workers start, and commits.
  */
 static int
-la_create_applied_stmt_marker (void)
+la_create_applied_tx_marker (void)
 {
   char query_buf[LA_QUERY_BUF_SIZE];
   int res;
 
   snprintf (query_buf, sizeof (query_buf),
-	    "CREATE TABLE IF NOT EXISTS [%s] (commit_pageid BIGINT, commit_offset INTEGER);",
-	    LA_APPLIED_STMT_MARKER_NAME);
-  res = la_update_query_execute_with_values (query_buf, 0, NULL, true);
-  if (res < 0)
-    {
-      (void) db_abort_transaction ();
-      return res;
-    }
-
-  snprintf (query_buf, sizeof (query_buf),
-	    "INSERT INTO [%s] (commit_pageid, commit_offset) SELECT -1, -1 FROM db_root "
-	    "WHERE NOT EXISTS (SELECT 1 FROM [%s]);", LA_APPLIED_STMT_MARKER_NAME, LA_APPLIED_STMT_MARKER_NAME);
+	    "CREATE TABLE IF NOT EXISTS [%s] (copied_log_path VARCHAR(4096), commit_pageid BIGINT, "
+	    "commit_offset INTEGER, PRIMARY KEY (copied_log_path, commit_pageid, commit_offset));",
+	    LA_APPLIED_TX_MARKER_NAME);
   res = la_update_query_execute_with_values (query_buf, 0, NULL, true);
   if (res < 0)
     {
@@ -3753,82 +3756,288 @@ la_create_applied_stmt_marker (void)
 }
 
 /*
- * la_read_applied_stmt_marker() - read the commit LSA of the last statement transaction committed on the slave
+ * la_load_applied_tx_markers() - load the commit LSAs of this copied log marked above last_committed_lsa
  *   return: NO_ERROR or error code
- *   marker_lsa(out): the marker, or NULL LSA when none was recorded
+ *
+ * Note: runs at startup, before the workers start. The set is sorted and not changed until shutdown, so the
+ *       workers read it without a lock (la_applied_tx_marker_exists).
  */
 static int
-la_read_applied_stmt_marker (LOG_LSA * marker_lsa)
+la_load_applied_tx_markers (void)
 {
   char query_buf[LA_QUERY_BUF_SIZE];
   DB_QUERY_RESULT *result = NULL;
   DB_QUERY_ERROR query_error;
+  DB_VALUE in_value[4];
   DB_VALUE out_value[2];
   int au_save;
   int res;
+  int count = 0;
   int error = NO_ERROR;
 
-  LSA_SET_NULL (marker_lsa);
+  la_free_applied_tx_markers ();
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT commit_pageid, commit_offset FROM [%s];",
-	    LA_APPLIED_STMT_MARKER_NAME);
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT commit_pageid, commit_offset FROM [%s] WHERE copied_log_path = ? "
+	    "AND (commit_pageid > ? OR (commit_pageid = ? AND commit_offset > ?)) "
+	    "ORDER BY commit_pageid, commit_offset;", LA_APPLIED_TX_MARKER_NAME);
+
+  db_make_varchar (&in_value[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
+  db_make_bigint (&in_value[1], la_Info.last_committed_lsa.pageid);
+  db_make_bigint (&in_value[2], la_Info.last_committed_lsa.pageid);
+  db_make_int (&in_value[3], la_Info.last_committed_lsa.offset);
 
   AU_SAVE_AND_DISABLE (au_save);
-  res = db_execute (query_buf, &result, &query_error);
+  pthread_mutex_lock (&la_sql_compile_mutex);
+  res = db_execute_with_values (query_buf, &result, &query_error, 4, in_value);
+  pthread_mutex_unlock (&la_sql_compile_mutex);
+  AU_RESTORE (au_save);
+
+  db_value_clear (&in_value[0]);
+
   if (res < 0)
     {
-      AU_RESTORE (au_save);
       return res;
     }
 
-  if (res > 0 && db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
+  if (res > 0)
     {
-      error = db_query_get_tuple_valuelist (result, 2, out_value);
-      if (error == NO_ERROR)
+      la_Applied_tx_markers = (LOG_LSA *) malloc (sizeof (LOG_LSA) * res);
+      if (la_Applied_tx_markers == NULL)
 	{
-	  if (!DB_IS_NULL (&out_value[0]) && !DB_IS_NULL (&out_value[1]) && db_get_bigint (&out_value[0]) >= 0)
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_LSA) * res);
+	  (void) db_query_end (result);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
+	{
+	  do
 	    {
-	      marker_lsa->pageid = db_get_bigint (&out_value[0]);
-	      marker_lsa->offset = db_get_int (&out_value[1]);
+	      db_make_null (&out_value[0]);
+	      db_make_null (&out_value[1]);
+	      error = db_query_get_tuple_valuelist (result, 2, out_value);
+	      if (error != NO_ERROR)
+		{
+		  db_value_clear (&out_value[0]);
+		  db_value_clear (&out_value[1]);
+		  break;
+		}
+
+	      if (count < res)
+		{
+		  la_Applied_tx_markers[count].pageid = db_get_bigint (&out_value[0]);
+		  la_Applied_tx_markers[count].offset = db_get_int (&out_value[1]);
+		  count++;
+		}
+	      db_value_clear (&out_value[0]);
+	      db_value_clear (&out_value[1]);
 	    }
-	  db_value_clear (&out_value[0]);
-	  db_value_clear (&out_value[1]);
+	  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS);
 	}
     }
 
   (void) db_query_end (result);
-  AU_RESTORE (au_save);
+  la_Applied_tx_marker_count = count;
 
-  return error;
+  if (error != NO_ERROR)
+    {
+      la_free_applied_tx_markers ();
+      return error;
+    }
+
+  if (count > 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "applied-tx markers loaded: %d, from %lld|%d to %lld|%d\n", count,
+		    (long long) la_Applied_tx_markers[0].pageid, (int) la_Applied_tx_markers[0].offset,
+		    (long long) la_Applied_tx_markers[count - 1].pageid, (int) la_Applied_tx_markers[count - 1].offset);
+    }
+
+  return NO_ERROR;
 }
 
 /*
- * la_update_applied_stmt_marker() - record the commit LSA of a statement transaction in its own slave transaction
+ * la_free_applied_tx_markers() - release the loaded marker set
+ */
+static void
+la_free_applied_tx_markers (void)
+{
+  if (la_Applied_tx_markers != NULL)
+    {
+      free_and_init (la_Applied_tx_markers);
+    }
+  la_Applied_tx_marker_count = 0;
+}
+
+/*
+ * la_applied_tx_marker_exists() - whether the previous run committed this commit on the slave
+ *   return: true if a marker for commit_lsa was loaded at startup
+ *   commit_lsa(in): commit LSA of the transaction
+ */
+static bool
+la_applied_tx_marker_exists (const LOG_LSA * commit_lsa)
+{
+  int low = 0;
+  int high = la_Applied_tx_marker_count - 1;
+
+  while (low <= high)
+    {
+      int mid = low + (high - low) / 2;
+
+      if (LSA_EQ (&la_Applied_tx_markers[mid], commit_lsa))
+	{
+	  return true;
+	}
+
+      if (LSA_LT (&la_Applied_tx_markers[mid], commit_lsa))
+	{
+	  low = mid + 1;
+	}
+      else
+	{
+	  high = mid - 1;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * la_insert_applied_tx_marker() - mark a commit as applied, in the worker's open slave transaction
  *   return: NO_ERROR or error code
- *   commit_lsa(in): the commit LSA, or NULL LSA to clear the marker
+ *   context(in/out): the worker's apply context, which keeps the compiled INSERT
+ *   commit_lsa(in): commit LSA of the transaction being applied
  *
- * Note: does not commit. The worker calls it right before committing the statement transaction, so the marker
- *       and the statement commit together; la_delete_ha_apply_info clears it within its own transaction.
+ * Note:
+ *   Does not commit; the worker calls it right before committing the transaction. The INSERT is compiled once
+ *   per worker connection and then run with new values, so a commit does not parse and compile it again; both
+ *   steps hold la_sql_compile_mutex. After an error the compiled statement is dropped and compiled again on the
+ *   next call.
  */
 static int
-la_update_applied_stmt_marker (const LOG_LSA * commit_lsa)
+la_insert_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa)
 {
   char query_buf[LA_QUERY_BUF_SIZE];
-  DB_VALUE in_value[2];
+  DB_QUERY_RESULT *result = NULL;
+  DB_VALUE in_value[3];
+  int au_save;
   int res;
 
-  snprintf (query_buf, sizeof (query_buf), "UPDATE [%s] SET commit_pageid = ?, commit_offset = ?;",
-	    LA_APPLIED_STMT_MARKER_NAME);
+  AU_SAVE_AND_DISABLE (au_save);
 
-  db_make_bigint (&in_value[0], LSA_ISNULL (commit_lsa) ? -1 : commit_lsa->pageid);
-  db_make_int (&in_value[1], LSA_ISNULL (commit_lsa) ? -1 : commit_lsa->offset);
+  if (context->marker_session == NULL)
+    {
+      snprintf (query_buf, sizeof (query_buf),
+		"INSERT INTO [%s] (copied_log_path, commit_pageid, commit_offset) VALUES (?, ?, ?);",
+		LA_APPLIED_TX_MARKER_NAME);
 
-  res = la_update_query_execute_with_values (query_buf, 2, &in_value[0], true);
+      pthread_mutex_lock (&la_sql_compile_mutex);
+      context->marker_session = db_open_buffer (query_buf);
+      context->marker_stmt_id = (context->marker_session != NULL) ? db_compile_statement (context->marker_session) : -1;
+      pthread_mutex_unlock (&la_sql_compile_mutex);
+
+      if (context->marker_session == NULL || context->marker_stmt_id <= 0)
+	{
+	  res = er_errid ();
+	  la_end_applied_tx_marker (context);
+	  AU_RESTORE (au_save);
+	  return (res != NO_ERROR) ? res : ER_FAILED;
+	}
+    }
+
+  db_make_varchar (&in_value[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
+  db_make_bigint (&in_value[1], commit_lsa->pageid);
+  db_make_int (&in_value[2], commit_lsa->offset);
+
+  /* the execution compiles the statement again when the server asks for it, for example after the table size
+   * changed a lot, so it runs under the compile mutex too */
+  pthread_mutex_lock (&la_sql_compile_mutex);
+  res = db_push_values (context->marker_session, 3, in_value);
+  if (res == NO_ERROR)
+    {
+      res = db_execute_and_keep_statement (context->marker_session, context->marker_stmt_id, &result);
+      if (res >= 0 && result != NULL)
+	{
+	  (void) db_query_end (result);
+	}
+    }
+  pthread_mutex_unlock (&la_sql_compile_mutex);
+
+  AU_RESTORE (au_save);
 
   db_value_clear (&in_value[0]);
-  db_value_clear (&in_value[1]);
 
-  return (res < 0) ? res : NO_ERROR;
+  if (res < 0)
+    {
+      la_end_applied_tx_marker (context);
+      return res;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * la_end_applied_tx_marker() - drop the worker's compiled marker INSERT
+ *   context(in/out): the worker's apply context
+ *
+ * Note: also the workers' end_context callback, called before the worker's connection is closed.
+ */
+static void
+la_end_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context)
+{
+  if (context->marker_session != NULL)
+    {
+      pthread_mutex_lock (&la_sql_compile_mutex);
+      db_close_session (context->marker_session);
+      pthread_mutex_unlock (&la_sql_compile_mutex);
+    }
+
+  context->marker_session = NULL;
+  context->marker_stmt_id = 0;
+}
+
+/*
+ * la_delete_applied_tx_markers() - delete markers of this copied log, in the caller's open transaction
+ *   return: error code, or the number of rows deleted
+ *   upto_lsa(in): delete the markers at or below it; NULL deletes all markers of this copied log
+ *
+ * Note: does not commit. The coordinator calls it with committed_lsa in the transaction that stores it, and
+ *       with NULL when the replication starts over (la_delete_ha_apply_info).
+ */
+static int
+la_delete_applied_tx_markers (const LOG_LSA * upto_lsa)
+{
+  char query_buf[LA_QUERY_BUF_SIZE];
+  DB_VALUE in_value[4];
+  int in_value_count = 1;
+  int res;
+
+  db_make_varchar (&in_value[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
+
+  if (upto_lsa == NULL)
+    {
+      snprintf (query_buf, sizeof (query_buf), "DELETE FROM [%s] WHERE copied_log_path = ?;",
+		LA_APPLIED_TX_MARKER_NAME);
+    }
+  else
+    {
+      snprintf (query_buf, sizeof (query_buf),
+		"DELETE FROM [%s] WHERE copied_log_path = ? "
+		"AND (commit_pageid < ? OR (commit_pageid = ? AND commit_offset <= ?));", LA_APPLIED_TX_MARKER_NAME);
+      db_make_bigint (&in_value[1], upto_lsa->pageid);
+      db_make_bigint (&in_value[2], upto_lsa->pageid);
+      db_make_int (&in_value[3], upto_lsa->offset);
+      in_value_count = 4;
+    }
+
+  res = la_update_query_execute_with_values (query_buf, in_value_count, &in_value[0], true);
+
+  db_value_clear (&in_value[0]);
+
+  return res;
 }
 
 static bool
@@ -7303,10 +7512,10 @@ la_apply_statement_log (LA_ITEM * item, LA_STATS * stats)
  *
  * Note:
  *   A SYSOP_END task is an independent serial fragment; an aborted transaction never reaches here.
- *   Re-apply is decided per transaction, not per item, so a transaction is never applied partially.
- *   Row items are PK-based and tolerate re-apply; a statement item may not.
+ *   Re-apply is decided per transaction, not per item, so a transaction is never applied partially. A commit
+ *   at or below last_committed_lsa, or one the previous run marked as applied, is skipped whole: applying a
+ *   transaction twice is not safe for a key change or a statement (LA_APPLIED_TX_MARKER_NAME).
  *   Only the items are freed; the slot is freed when the coordinator retires the task.
- *   TODO: handle statement re-apply in the restart recovery range (errors, non-idempotent statement DML).
  */
 static int
 la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA * commit_lsa, int *total_rows,
@@ -7325,7 +7534,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
       return NO_ERROR;
     }
 
-  already_committed = LSA_LE (commit_lsa, &la_Info.last_committed_lsa);
+  already_committed = (LSA_LE (commit_lsa, &la_Info.last_committed_lsa) || la_applied_tx_marker_exists (commit_lsa));
   if (apply->head == NULL || already_committed)
     {
       /* nothing to apply: free the items only; the coordinator frees the slot at retire */
@@ -8993,6 +9202,9 @@ la_shutdown (void)
 
   la_stop_apply_workers ();
 
+  /* the workers read the marker set while they run */
+  la_free_applied_tx_markers ();
+
   /* parked tasks point at the apply slots freed below; see la_pending_clear */
   la_pending_clear ();
 
@@ -10222,24 +10434,18 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       return error;
     }
 
-  /* the commits at or below the last statement transaction committed on the slave are all applied (see
-   * LA_APPLIED_STMT_MARKER_NAME); skip them whole, so that no statement among them runs again */
-  error = la_create_applied_stmt_marker ();
+  /* the commits the previous run applied above the stored position are skipped whole by the workers (see
+   * LA_APPLIED_TX_MARKER_NAME) */
+  error = la_create_applied_tx_marker ();
   if (error == NO_ERROR)
     {
-      LOG_LSA marker_lsa;
-
-      error = la_read_applied_stmt_marker (&marker_lsa);
-      if (error == NO_ERROR && !LSA_ISNULL (&marker_lsa) && LSA_GT (&marker_lsa, &la_Info.last_committed_lsa))
-	{
-	  LSA_COPY (&la_Info.last_committed_lsa, &marker_lsa);
-	}
+      error = la_load_applied_tx_markers ();
     }
   if (error != NO_ERROR)
     {
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	      "Failed to initialize " LA_APPLIED_STMT_MARKER_NAME);
+	      "Failed to initialize " LA_APPLIED_TX_MARKER_NAME);
       er_stack_pop ();
       la_shutdown ();
       return error;
@@ -10845,6 +11051,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     {
       char error_str[LINE_MAX];
 
+      /* a worker still running could commit a marker of the old stream after the markers are deleted */
+      la_stop_apply_workers ();
       la_delete_ha_apply_info ();
       (void) la_update_last_deleted_arv_num (la_Info.log_path_lockf_vdes, -1);
 
