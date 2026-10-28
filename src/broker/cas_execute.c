@@ -269,6 +269,7 @@ static int class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *a
 static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index);
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
 static int sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle);
+static int sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle);
 static short constraint_dbtype_to_castype (int db_const_type);
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
@@ -325,6 +326,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_EXPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
+  fetch_result,			/* SCH_SCHEMAS */
 };
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
@@ -704,16 +706,24 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     {
       T_PREPARE_CALL_INFO *prepare_call_info;
 
-      tmp = sql_stmt;
-      if (sql_stmt[0] == '?')
+      /* skip leading whitespace/comments before detecting the out parameter */
+      tmp = skip_leading_whitespace_and_comment (sql_stmt);
+      if (*tmp == '?')
 	{
 	  is_first_out = 1;
+
+	  /* find '=' skipping any comment placed between "?" and "=".  only whitespace, comments and
+	   * a marker number (?:1) can come before '=', so quoted text is not considered here; a quote
+	   * there makes the rest fail the CALL check below. */
+	  tmp++;
 	  while (*tmp)
 	    {
-	      if (*tmp == '=')
+	      tmp = skip_leading_whitespace_and_comment (tmp);
+	      if (*tmp == '\0' || *tmp == '=')
 		{
 		  break;
 		}
+
 	      tmp++;
 	    }
 
@@ -726,7 +736,8 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  tmp++;
 	}
 
-      ut_trim (tmp);
+      /* skip again after removing "? =" before classifying the statement */
+      tmp = skip_leading_whitespace_and_comment (tmp);
       stmt_type = get_stmt_type (tmp);
       if (stmt_type != CUBRID_STMT_CALL)
 	{
@@ -804,11 +815,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 
   if (stmt_id < 0)
     {
-      stmt_type = get_stmt_type (sql_stmt);
-      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_MAX_STMT_TYPE)
+      /* use the exact node type decided by the parser; read it before closing the session */
+      PT_NODE_TYPE ntype = (session->statements && session->statements[0])
+	? (PT_NODE_TYPE) session->statements[0]->node_type : PT_NODE_NONE;
+
+      if (stmt_id == ER_PT_SEMANTIC
+	  && (ntype == PT_INSERT || ntype == PT_UPDATE || ntype == PT_DELETE
+	      || ntype == PT_MERGE || ntype == PT_METHOD_CALL || ntype == PT_EVALUATE))
 	{
 	  db_close_session (session);
 	  session = NULL;
+	  /* PT_* node types map 1:1 to CUBRID_STMT_*; REPLACE is parsed as PT_INSERT */
+	  stmt_type = (char) ntype;
 	  num_markers = get_num_markers (sql_stmt);
 	}
       else
@@ -3685,6 +3703,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_CROSS_REFERENCE:
       err_code = sch_exported_keys_or_cross_reference (net_buf, true, arg1, arg2, &(srv_handle->session));
       break;
+    case CCI_SCH_SCHEMAS:
+      err_code = sch_schemas (net_buf, arg1, flag, srv_handle);
+      break;
     default:
       err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
       goto schema_info_error;
@@ -3698,7 +3719,7 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
   if (schema_type == CCI_SCH_CLASS || schema_type == CCI_SCH_VCLASS || schema_type == CCI_SCH_ATTRIBUTE
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
       || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
-      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
+      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -8806,6 +8827,49 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
 
   net_buf_cp_int (net_buf, num_result, NULL);
   schema_primarykey_meta (net_buf);
+
+  return 0;
+}
+
+static int
+sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
+  int num_result;
+
+  /* db_user shows a user outside DBA only itself and its groups; db_auth adds the owners of what they were granted. */
+  STRING_APPEND (sql_p, avail_size,
+		 "SELECT name FROM (SELECT name FROM db_user UNION SELECT owner_name FROM db_auth "
+		 "WHERE grantee_name IN (SELECT name FROM db_user)) s WHERE 1 = 1 ");
+
+  if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
+    {
+      if (schema_name)
+	{
+	  STRING_APPEND (sql_p, avail_size, "AND name LIKE UPPER ('%s') ESCAPE '%s' ", schema_name,
+			 get_backslash_escape_string ());
+	}
+    }
+  else
+    {
+      if (schema_name == NULL)
+	{
+	  schema_name = CONST_CAST (char *, "");
+	}
+      STRING_APPEND (sql_p, avail_size, "AND name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY name");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_schemas_meta (net_buf);
 
   return 0;
 }

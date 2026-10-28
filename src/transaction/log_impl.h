@@ -892,8 +892,6 @@ typedef struct cdc_consumer
 
 typedef struct cdc_global
 {
-  css_conn_entry conn;
-
   CDC_PRODUCER producer;
   CDC_CONSUMER consumer;
 

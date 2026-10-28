@@ -167,7 +167,7 @@ static CUB_THREAD_LOCAL bool db_Is_sub_client_registered = false;
 
 /*
  * db_register_sub_client () - register the calling thread as a sub-client
- *   return: NO_ERROR, or ER_FAILED if the main client is not ready
+ *   return: NO_ERROR, or ER_MAIN_CLIENT_NOT_READY if the main client is not ready
  *   client_credential(out): copy of the credential of the main client
  */
 static int
@@ -179,8 +179,11 @@ db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   if (g_ready_to_sub.load (std::memory_order_acquire) == false)
     {
-      // TODO: Assign independent error codes.
-      return ER_FAILED;
+      /*
+       * The error is not set: the main client may be finalizing or initializing the error manager in db_restart ()
+       * or db_shutdown () (see db_shutdown_sub ()).
+       */
+      return ER_MAIN_CLIENT_NOT_READY;
     }
 
   *client_credential = gv_client_credential;
@@ -223,6 +226,31 @@ db_close_sub_client_registration (void)
   /* no more sub-clients can be started from now on */
   (void) g_ready_to_sub.store (false, std::memory_order_release);
   return g_num_sub_clients;
+}
+
+/*
+ * db_check_no_sub_client_and_block () - check that no sub-client is alive, and block the start of new sub-clients
+ *   return: NO_ERROR, or ER_SUB_CLIENTS_ALIVE if a sub-client is alive (nothing is blocked then)
+ *   api_name(in): the API of the main client, for the error message
+ *
+ * Note: It is called before the main client finalizes the client modules shared with the sub-clients.
+ *       The check and the block are done under g_sub_client_mutex, so that no sub-client can be registered
+ *       between them and the finalization.
+ */
+static int
+db_check_no_sub_client_and_block (const char *api_name)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  if (g_num_sub_clients > 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENTS_ALIVE, 2, api_name, g_num_sub_clients);
+      return ER_SUB_CLIENTS_ALIVE;
+    }
+
+  /* no more sub-clients can be started from now on */
+  (void) g_ready_to_sub.store (false, std::memory_order_release);
+  return NO_ERROR;
 }
 #endif
 
@@ -1024,23 +1052,17 @@ db_restart (const char *program, int print_version, const char *volume)
   BOOT_CLIENT_CREDENTIAL client_credential;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  {
-    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
-
-    if (g_num_sub_clients > 0)
-      {
-	/* restarting the main client finalizes the client modules shared with the alive sub-clients */
-	er_log_debug (ARG_FILE_LINE, "db_restart: %d sub-clients are still alive\n", g_num_sub_clients);
-	return ER_FAILED;
-      }
-
-    /*
-     * No more sub-clients can be started until this restart succeeds, since it finalizes and initializes the client
-     * modules shared with them. It is still true if the main client is restarted without db_shutdown ()
-     * (e.g., after a server failure). If the restart fails, it is left false: there is no main client to share.
-     */
-    (void) g_ready_to_sub.store (false, std::memory_order_release);
-  }
+  /*
+   * Restarting the main client finalizes and initializes the client modules shared with the sub-clients, so no
+   * sub-client can be alive or started until this restart succeeds. It is still true if the main client is restarted
+   * without db_shutdown () (e.g., after a server failure). If the restart fails, the start of sub-clients is left
+   * blocked: there is no main client to share.
+   */
+  error = db_check_no_sub_client_and_block ("db_restart");
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 #endif
 
   if (program == NULL || volume == NULL)
@@ -1123,8 +1145,9 @@ db_restart_sub (int sub_index)
   if (db_is_main_client_thread ())
     {
       /* the main client thread cannot be restarted as a sub-client */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENT_ON_MAIN_THREAD, 1, "db_restart_sub");
       assert (false);
-      return ER_FAILED;
+      return ER_SUB_CLIENT_ON_MAIN_THREAD;
     }
 
   /*
@@ -1249,19 +1272,12 @@ db_shutdown (void)
   int error = NO_ERROR;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  {
-    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
-
-    if (g_num_sub_clients > 0)
-      {
-	/* shutting down the main client finalizes the client modules shared with the alive sub-clients */
-	er_log_debug (ARG_FILE_LINE, "db_shutdown: %d sub-clients are still alive\n", g_num_sub_clients);
-	return ER_FAILED;
-      }
-
-    /* no more sub-clients can be started from now on */
-    (void) g_ready_to_sub.store (false, std::memory_order_release);
-  }
+  /* shutting down the main client finalizes the client modules shared with the sub-clients */
+  error = db_check_no_sub_client_and_block ("db_shutdown");
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 #endif
 
   (void) db_end_session ();
@@ -1283,6 +1299,14 @@ db_shutdown (void)
 void
 db_shutdown_without_request_to_server (void)
 {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  /* finalizing the client modules shared with the alive sub-clients is skipped, as at exit */
+  if (db_check_no_sub_client_and_block ("db_shutdown_without_request_to_server") != NO_ERROR)
+    {
+      return;
+    }
+#endif
+
   boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 
@@ -1301,8 +1325,9 @@ db_shutdown_sub ()
   if (db_is_main_client_thread ())
     {
       /* the main client must not be shut down as a sub-client */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SUB_CLIENT_ON_MAIN_THREAD, 1, "db_shutdown_sub");
       assert (false);
-      return ER_FAILED;
+      return ER_SUB_CLIENT_ON_MAIN_THREAD;
     }
 
   if (db_Is_sub_client_registered == false)

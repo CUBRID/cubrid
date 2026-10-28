@@ -88,6 +88,8 @@ struct ws_repl_obj
   bool has_index;
   int operation;
   RECDES *recdes;
+  char *packed_prior_value;	/* _db_serial write-back: the value it replaced, or NULL */
+  int packed_prior_value_length;
 };
 
 typedef struct ws_repl_list WS_REPL_LIST;
@@ -153,6 +155,7 @@ struct db_object
 				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
   unsigned trigger_involved:1;	/* set if mop is involved in trigger, it is used only for cdc */
+  unsigned serial_restart:1;	/* a _db_serial row its DDL restarts: its current_val and started stand */
 };
 
 
@@ -401,6 +404,7 @@ struct ws_statistics
   while (0)
 
 #define WS_IS_TRIGGER_INVOLVED(mop) ((mop)->trigger_involved)
+#define WS_IS_SERIAL_RESTART(mop) ((mop)->serial_restart)
 
 #define WS_SET_TRIGGER_INVOLVED(mop) \
   do \
@@ -688,7 +692,8 @@ public:
    ~ws_repl ();
 
   int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-			       RECDES * recdes, int operation, bool has_index);
+			       RECDES * recdes, int operation, bool has_index, char *packed_prior_value,
+			       int packed_prior_value_length);
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);
