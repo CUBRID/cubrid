@@ -4017,46 +4017,45 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 }
 
 /* Decode columns for the given rows: one column (only_col), or every decoded column not
- * decoded yet this chunk (-1); a pointed column is never decoded.  Record-outer, so each
- * record's bytes are touched once for its columns. */
+ * decoded yet this chunk (-1); a pointed column is never decoded.  Column-outer: what a column
+ * decides once (decoded, pointed, fixed or NUMERIC, its vector's type) is decided before its
+ * rows, and a chunk's records are one page's, in cache for every column. */
 static int
 eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col)
 {
+  const int c_from = (only_col >= 0) ? only_col : 0;
+  const int c_to = (only_col >= 0) ? only_col + 1 : plan->n_cols;
   int j, c, rc;
 
-  for (j = 0; j < n; j++)
+  for (c = c_from; c < c_to; c++)
     {
-      int r = (rows != NULL) ? rows[j] : j;
-      const HEAP_REC_LAYOUT *lay = &batch->layout[r];
-      const EB_LOC *locs = plan->reprs[batch->repr_ix[r]].cols;
+      const EB_COL *col = &plan->cols[c];
+      EB_VEC *v = &plan->vecs[col->vec];
+      unsigned char *isnull = v->isnull;
 
-      for (c = (only_col >= 0) ? only_col : 0; c < plan->n_cols; c++)
+      if (col->decoded || v->kind == EB_VK_PTR)
 	{
-	  const EB_COL *col = &plan->cols[c];
-	  EB_VEC *v = &plan->vecs[col->vec];
+	  continue;
+	}
+      if (col->is_fixed)
+	{
+	  const bool to_f64 = (v->etype == EB_F64);
 
-	  if (only_col >= 0 && c != only_col)
+	  for (j = 0; j < n; j++)
 	    {
-	      break;
-	    }
-	  if (col->decoded || v->kind == EB_VK_PTR)
-	    {
-	      continue;
-	    }
-	  if (col->is_fixed)
-	    {
+	      int r = (rows != NULL) ? rows[j] : j;
 	      int64_t i = 0;
 	      double d = 0;
 
-	      rc = eb_cell_fixed (col, &locs[c], lay, &i, &d);
+	      rc = eb_cell_fixed (col, &plan->reprs[batch->repr_ix[r]].cols[c], &batch->layout[r], &i, &d);
 	      if (rc < 0)
 		{
 		  return eb_fallback (plan, "a column cell the batch does not decode");
 		}
-	      v->isnull[r] = (rc == 0);
+	      isnull[r] = (rc == 0);
 	      if (rc > 0)
 		{
-		  if (v->etype == EB_F64)
+		  if (to_f64)
 		    {
 		      ((double *) v->data)[r] = d;
 		    }
@@ -4066,36 +4065,38 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 		    }
 		}
 	    }
-	  else
-	    {
-	      NUMERIC_AGG_EXPR_VAL num;
+	  continue;
+	}
+      for (j = 0; j < n; j++)
+	{
+	  int r = (rows != NULL) ? rows[j] : j;
+	  NUMERIC_AGG_EXPR_VAL num;
 
-	      rc = eb_cell_num (col, &locs[c], lay, &num);
-	      if (rc < 0)
+	  rc = eb_cell_num (col, &plan->reprs[batch->repr_ix[r]].cols[c], &batch->layout[r], &num);
+	  if (rc < 0)
+	    {
+	      return eb_fallback (plan, "a NUMERIC cell beyond the word domain or of another scale");
+	    }
+	  isnull[r] = (rc == 0);
+	  if (rc == 0)
+	    {
+	      continue;
+	    }
+	  if (v->etype == EB_N64)
+	    {
+	      if (num.coefficient > (uint128_t) INT64_MAX)
 		{
-		  return eb_fallback (plan, "a NUMERIC cell beyond the word domain or of another scale");
+		  return eb_fallback (plan, "a NUMERIC wider than its column vector");
 		}
-	      v->isnull[r] = (rc == 0);
-	      if (rc == 0)
-		{
-		  continue;
-		}
-	      if (v->etype == EB_N64)
-		{
-		  if (num.coefficient > (uint128_t) INT64_MAX)
-		    {
-		      return eb_fallback (plan, "a NUMERIC wider than its column vector");
-		    }
-		  ((int64_t *) v->data)[r] = num.is_negative ? -(int64_t) num.coefficient : (int64_t) num.coefficient;
-		}
-	      else if (!eb_num_put (v, r, &num))
-		{
-		  return eb_fallback (plan, "a NUMERIC cell beyond 127 bits");
-		}
+	      ((int64_t *) v->data)[r] = num.is_negative ? -(int64_t) num.coefficient : (int64_t) num.coefficient;
+	    }
+	  else if (!eb_num_put (v, r, &num))
+	    {
+	      return eb_fallback (plan, "a NUMERIC cell beyond 127 bits");
 	    }
 	}
     }
-  for (c = (only_col >= 0) ? only_col : 0; c < ((only_col >= 0) ? only_col + 1 : plan->n_cols); c++)
+  for (c = c_from; c < c_to; c++)
     {
       plan->cols[c].decoded = 1;
     }
