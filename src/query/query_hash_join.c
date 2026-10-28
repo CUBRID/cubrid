@@ -1329,6 +1329,21 @@ error_exit:
   goto cleanup;
 }
 
+/* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position */
+static UINT64
+hjoin_hybrid_entry_bytes (void)
+{
+  return 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
+}
+
+/* the most tuples the smaller input may have for the join to build one context (hjoin_check_partition ():
+ * part_cnt is 1 exactly up to this many) */
+static INT64
+hjoin_single_context_max_tuples (UINT64 mem_limit)
+{
+  return (INT64) ((double) mem_limit * PARTITION_FILL_FACTOR / (double) hjoin_hybrid_entry_bytes ());
+}
+
 /*
  * hjoin_check_partition() -
  *   return: One of the following HASHJOIN_STATUS values:
@@ -1365,10 +1380,9 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
     (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
   assert (min_tuple_cnt >= 0);
 
-  /* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position.
-   * Linear estimate is enough: min_tuple_cnt is INT64, and the partition count is only approximate
-   * (each partition re-selects its method). */
-  per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
+  /* Linear estimate is enough: min_tuple_cnt is INT64, and the partition count is only approximate (each partition
+   * re-selects its method).  hjoin_single_context_max_tuples () is the same bound for one context. */
+  per_entry_size = hjoin_hybrid_entry_bytes ();
 
   part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
@@ -5327,6 +5341,10 @@ hjoin_prehash_arm (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
   ph->cnt = 0;
   ph->null_cnt = 0;
   ph->mem_limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  /* an inner join builds from its smaller input, from one context only up to this many tuples: past it the armed
+   * input's hashes cannot be the build's.  Another join type's build side is the type's (hjoin_init_context ()),
+   * which may stay one context with a big input when the other is small */
+  ph->max_cnt = (hj->merge_info.join_type == JOIN_INNER) ? hjoin_single_context_max_tuples (ph->mem_limit) : INT64_MAX;
   input->hj_prehash = ph;
 }
 
@@ -5364,6 +5382,18 @@ hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph)
   ph->null_cap = 0;
 }
 
+/* the hashes no longer stand for the input's list: taken off the input too, so its later tuples make no call
+ * (qexec_end_one_iteration () tests input->hj_prehash); hjoin_prehash_release () still frees the arrays through ph */
+static void
+hjoin_prehash_invalidate (HJOIN_PREHASH * ph)
+{
+  ph->valid = false;
+  if (ph->input != NULL && ph->input->hj_prehash == ph)
+    {
+      ph->input->hj_prehash = NULL;
+    }
+}
+
 /*
  * hjoin_prehash_drop () - the input wrote a tuple whose hash it did not take: its hashes no longer stand for its list
  *   return: none
@@ -5373,7 +5403,7 @@ void
 hjoin_prehash_drop (XASL_NODE * input)
 {
   assert (input->hj_prehash != NULL);
-  input->hj_prehash->valid = false;
+  hjoin_prehash_invalidate (input->hj_prehash);
 }
 
 /* an array of elem_size-byte elements, doubled: the new array (*cap updated), or NULL with the hashes dropped past
@@ -5387,7 +5417,7 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
 
   if ((UINT64) new_cap * elem_size > ph->mem_limit)
     {
-      ph->valid = false;
+      hjoin_prehash_invalidate (ph);
       return NULL;
     }
   if (array == NULL)
@@ -5401,7 +5431,7 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
   if (new_array == NULL)
     {
       er_clear ();
-      ph->valid = false;
+      hjoin_prehash_invalidate (ph);
       return NULL;
     }
   *cap = new_cap;
@@ -5493,8 +5523,14 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
     }
   if (thread_p != ph->owner || list_id == NULL)
     {
-      /* written by another thread (a parallel subquery's worker): the arrays are the owner's */
+      /* written by another thread (a parallel subquery's worker): the arrays are the owner's, and so is the input's
+       * pointer -- only the flag is lowered here */
       ph->valid = false;
+      return;
+    }
+  if (ph->cnt >= ph->max_cnt)
+    {
+      hjoin_prehash_invalidate (ph);
       return;
     }
   if (ph->cnt == 0)
@@ -5503,7 +5539,7 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
     }
   else if (ph->tfile != list_id->tfile_vfid)
     {
-      ph->valid = false;
+      hjoin_prehash_invalidate (ph);
       return;
     }
   if (ph->cnt == ph->cap)
@@ -5523,7 +5559,7 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
       col = ph->key_cols[k];
       if (col < 0 || col >= descr->f_cnt || col >= list_id->type_list.type_cnt)
 	{
-	  ph->valid = false;
+	  hjoin_prehash_invalidate (ph);
 	  return;
 	}
       v = descr->f_valp[col];
@@ -5547,7 +5583,7 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
 	}
       if (!hjoin_prehash_value_ok (v, list_id->type_list.domp[col]))
 	{
-	  ph->valid = false;
+	  hjoin_prehash_invalidate (ph);
 	  return;
 	}
       hash_val = qdata_hash_scan_key_step (hash_val, v, UINT_MAX);

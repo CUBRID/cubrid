@@ -3671,7 +3671,7 @@ void
 qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
 {
   unsigned int w;
-  unsigned char rank = 1;
+  unsigned char rank;
 
   /* the key's hash mixed again: an integer key's is little more than the integer */
   h ^= h >> 16;
@@ -3680,11 +3680,8 @@ qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
   h *= 0x846ca68bu;
   h ^= h >> 16;
   w = h << 10;
-  while (rank <= 22 && (w & 0x80000000u) == 0)
-    {
-      rank++;
-      w <<= 1;
-    }
+  /* 1 + the leading zeros of the 22 bits after the prefix, 23 when all are zero */
+  rank = (w == 0) ? 23 : (unsigned char) (__builtin_clz (w) + 1);
   if (regs[h >> 22] < rank)
     {
       regs[h >> 22] = rank;

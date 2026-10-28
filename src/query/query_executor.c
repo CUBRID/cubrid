@@ -4807,12 +4807,17 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       return rc;
     }
-  /* the key hashed once: the sketch takes the hash, the table its bucket (qdata_hash_agg_hkey_bucket ()) */
+  /* the key hashed once: the table takes its bucket (qdata_hash_agg_hkey_bucket ()), the sketch the hash */
   h = qdata_hash_agg_hkey (key, 0xffffffffu);
-  qdata_key_sketch_add_hashed (context->key_sketch, h);
 
   /* probe hash table */
   value = (AGGREGATE_HASH_VALUE *) mht_get_hash (context->hash_table, (void *) key, h);
+  if (value == NULL)
+    {
+      /* the sketch counts distinct keys and a key it has is a no-op: a group's key went in when the group was made
+       * (again if it was evicted and comes back), so the rows of a group the table has need not touch it */
+      qdata_key_sketch_add_hashed (context->key_sketch, h);
+    }
   if (value == NULL && !proc->g_output_first_tuple
       && (context->slab != NULL
 	  || (context->slab =

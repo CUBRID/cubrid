@@ -293,6 +293,7 @@ typedef struct hjoin_prehash
   INT64 null_cnt;
   INT64 null_cap;
   UINT64 mem_limit;		/* max_hash_list_scan_size: the arrays never grow past it */
+  INT64 max_cnt;		/* the tuples past which the hashes cannot be the build's (an inner join's one context) */
 } HJOIN_PREHASH;
 
 /* HASHJOIN_FETCH_INFO */
