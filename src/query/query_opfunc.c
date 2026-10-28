@@ -5180,13 +5180,15 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  /* CBRD-27583: the other operand is the value: one of another type than planned takes the node's domain by the
 	   * converter its operand's type found at unpack, as the row coerced it before */
 	  const int i = DB_IS_NULL (dbval1_p) ? 1 : 0;
-	  const DB_TYPE type = i == 0 ? type1 : type2;
-	  if (arith != NULL && domain_p == arith->domain && type != planned && type == arith->conv_type[i])
+	  if (arith != NULL && domain_p == arith->domain && arith->conv[i] != NULL && arith->conv_type[i] != planned)
 	    {
-	      dom_status = tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p, type,
-							      arith->conv[i]);
-	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR
-		: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, i == 0 ? dbval1_p : dbval2_p, domain_p);
+	      assert ((i == 0 ? type1 : type2) == arith->conv_type[i]);
+	      dom_status =
+		tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p,
+						   arith->conv_type[i], arith->conv[i]);
+	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+											   i == 0 ? dbval1_p : dbval2_p,
+											   domain_p);
 	    }
 	}
       else
