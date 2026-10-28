@@ -50,9 +50,11 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <math.h>
+#if defined(CHECK_BUNDLED_SSL_KEY)
 #include <openssl/evp.h>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
+#endif /* CHECK_BUNDLED_SSL_KEY */
 #endif /* WINDOWS */
 
 #if defined(LINUX)
@@ -162,7 +164,9 @@ static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_in
 static int get_cubrid_version (void);
 #endif
 static int admin_check_ssl_files (void);
+#if defined(CHECK_BUNDLED_SSL_KEY)
 static bool admin_has_bundled_ssl_key (const char *cert_file);
+#endif /* CHECK_BUNDLED_SSL_KEY */
 #endif /* !WINDOWS */
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
@@ -4326,6 +4330,7 @@ get_upper_str (char *upper_str, int size, const char *value)
 }
 
 #if !defined(WINDOWS)
+#if defined(CHECK_BUNDLED_SSL_KEY)
 /*
  * SHA-256 of the public keys (DER SubjectPublicKeyInfo) of the private keys shipped as conf/cas_ssl_cert.key,
  * which are public. A certificate reissued with one of these keys still matches. Same value as
@@ -4339,20 +4344,24 @@ static const unsigned char bundled_ssl_key_spki_sha256[][32] = {
   {0xF9, 0x2B, 0x39, 0x42, 0x73, 0x47, 0x67, 0xCD, 0x8C, 0x9F, 0x8F, 0xF0, 0x7D, 0x9F, 0x5E, 0xAD,
    0xF1, 0x1E, 0xD6, 0x5B, 0x41, 0xDC, 0xE0, 0xF8, 0xF2, 0x23, 0x09, 0xEC, 0xE2, 0xF6, 0x35, 0x17}
 };
+#endif /* CHECK_BUNDLED_SSL_KEY */
 
 /*
  * admin_check_ssl_files () - check the SSL private key and certificate before a broker with SSL=ON starts
  *   return: 0, or -1 with admin_err_msg set if the key is not a regular file or others may have read it
  *
  * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
- * Sets admin_warn_msg if the certificate is for a private key shipped with CUBRID.
+ * With CHECK_BUNDLED_SSL_KEY, which only the cubrid_broker utility that prints the warning builds with, so that the
+ * others do not link OpenSSL, sets admin_warn_msg if the certificate is for a private key shipped with CUBRID.
  * A missing or unreadable file is left to the CAS, which reports it on SSL connection.
  */
 static int
 admin_check_ssl_files (void)
 {
   char key[BROKER_PATH_MAX];
+#if defined(CHECK_BUNDLED_SSL_KEY)
   char cert[BROKER_PATH_MAX];
+#endif /* CHECK_BUNDLED_SSL_KEY */
   struct stat sbuf;
   unsigned int mode;
 
@@ -4404,6 +4413,7 @@ admin_check_ssl_files (void)
 	}
     }
 
+#if defined(CHECK_BUNDLED_SSL_KEY)
   snprintf (cert, sizeof (cert), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
   if (admin_has_bundled_ssl_key (cert))
     {
@@ -4411,10 +4421,12 @@ admin_check_ssl_files (void)
 		"WARNING: the system uses the SSL private key shipped with CUBRID, which is public: %s. "
 		"Anyone can impersonate this service. Generate a new private key and certificate.", key);
     }
+#endif /* CHECK_BUNDLED_SSL_KEY */
 
   return 0;
 }
 
+#if defined(CHECK_BUNDLED_SSL_KEY)
 /*
  * admin_has_bundled_ssl_key () - whether the first certificate in the file is for a private key shipped with CUBRID
  *   return: true if the SHA-256 of its public key is in bundled_ssl_key_spki_sha256
@@ -4473,4 +4485,5 @@ admin_has_bundled_ssl_key (const char *cert_file)
 
   return bundled;
 }
+#endif /* CHECK_BUNDLED_SSL_KEY */
 #endif /* !WINDOWS */
