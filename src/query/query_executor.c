@@ -264,6 +264,7 @@ struct groupby_state
   bool no_first_tuple;		/* hash aggregation keeps no first rows: a group may be in the partial list alone */
   bool put_partials;		/* there are no rows to sort: the partial list's sort outputs the groups */
   bool part_taken;		/* the partial entry under the scan went to a group of the sorted rows */
+  DB_VALUE *key_slots;		/* g_hkey_size values: what the key slots held before a partial group borrowed them */
 
   AGGREGATE_HASH_CONTEXT *agg_hash_context;
 
@@ -4602,6 +4603,10 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_lis
 
   gbstate->g_hk_regu_list = g_hk_regu_list;
   gbstate->hash_eligible = hash_eligible;
+  gbstate->no_first_tuple = false;
+  gbstate->put_partials = false;
+  gbstate->part_taken = false;
+  gbstate->key_slots = NULL;
   gbstate->agg_hash_context = agg_hash_context;
 
   if (qfile_initialize_sort_key_info (&gbstate->key_info, groupby_list, type_list) == NULL)
@@ -4697,6 +4702,11 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
     {
       db_private_free_and_init (thread_p, gbstate->gby_rec.data);
       gbstate->gby_rec.area_size = 0;
+    }
+
+  if (gbstate->key_slots)
+    {
+      db_private_free_and_init (thread_p, gbstate->key_slots);
     }
   gbstate->output_tplrec = NULL;
   /*
@@ -5739,6 +5749,14 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       GOTO_EXIT_ON_ERROR;
     }
   gbstate.no_first_tuple = (gbstate.hash_eligible && buildlist->g_first_tuple == XASL_G_FIRST_TUPLE_NONE);
+  if (gbstate.no_first_tuple)
+    {
+      gbstate.key_slots = (DB_VALUE *) db_private_alloc (thread_p, buildlist->g_hkey_size * sizeof (DB_VALUE));
+      if (gbstate.key_slots == NULL)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
 
   /*
    * Create a new listfile to receive the results.
@@ -5787,9 +5805,11 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   /* check for quick finalization scenarios */
   if (list_id->tuple_cnt == 0)
     {
-      if (!gbstate.hash_eligible || gbstate.agg_hash_context->tuple_count == 0)
+      if (!gbstate.hash_eligible
+	  || (gbstate.agg_hash_context->tuple_count == 0 && gbstate.agg_hash_context->part_list_id->tuple_cnt == 0))
 	{
-	  /* no tuples hash aggregated and empty unsorted list; no reason to continue */
+	  /* no tuples hash aggregated and empty unsorted list; no reason to continue (parallel scan workers leave
+	   * their groups in the partial list alone) */
 	  qfile_destroy_list (thread_p, list_id);
 	  qfile_close_list (thread_p, gbstate.output_file);
 	  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
@@ -22938,7 +22958,8 @@ exit_on_error:
  *   value(in): the group's accumulators; they move to the group
  *
  * Note: without first rows (XASL_G_FIRST_TUPLE_NONE) the output reads the keys and the aggregates only, so the key
- *       values are put where a row of the group would have put them.
+ *       values are put where a row of the group would have put them.  Those slots are given back as they were: the key
+ *       of the sorted row being located in the partial list points into them (qexec_build_agg_hkey ()).
  */
 static void
 qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
@@ -22956,10 +22977,7 @@ qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, A
 
   for (regu = gbstate->g_hk_regu_list; regu != NULL; regu = regu->next, i++)
     {
-      if (DB_NEED_CLEAR (regu->value.vfetch_to))
-	{
-	  pr_clear_value (regu->value.vfetch_to);
-	}
+      gbstate->key_slots[i] = *regu->value.vfetch_to;
       pr_share_value (key->values[i], regu->value.vfetch_to);
     }
   assert (i == key->val_count);
@@ -22967,7 +22985,19 @@ qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, A
   qdata_load_agg_hvalue_in_agg_list (value, gbstate->g_dim[0].d_agg_list, false);
   gbstate->input_recs += value->tuple_count;
 
+  /* the group took the entry's word sums along with its values: the entry is read into again for another group, and a
+   * sum left active there would be taken instead of what is read (qexec_hash_gby_put_next () composes into it) */
+  for (i = 0; i < value->func_count; i++)
+    {
+      value->accumulators[i].sum_acc.is_active = false;
+    }
+
   (void) qexec_gby_finalize_group_dim (thread_p, gbstate, NULL);
+
+  for (regu = gbstate->g_hk_regu_list, i = 0; regu != NULL; regu = regu->next, i++)
+    {
+      *regu->value.vfetch_to = gbstate->key_slots[i];
+    }
 }
 
 /*
