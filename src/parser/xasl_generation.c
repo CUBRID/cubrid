@@ -24801,6 +24801,90 @@ pt_reev_reads_no_spec (PT_NODE * spec_list)
 }
 
 /*
+ * pt_reev_class_reached_by_actions () - can a referential action of a statement on this class change one of its rows?
+ *   return: true when a CASCADE or SET NULL foreign key, followed from the class's primary key, leads back to the class
+ *   parser(in): parser context
+ *   statement(in): the DELETE or the UPDATE
+ *   class_op(in): the class the statement changes
+ *
+ * Note: the statement would write such a row before reaching it as a target, and the force phase takes a version of
+ *	 its own transaction for the one the select phase evaluated.  Every such action is followed, whichever the
+ *	 statement fires.  A walk longer than the classes it can keep counts as reached, and so does a class that
+ *	 cannot be read.  A plan cached before a foreign key closes a cycle through classes other than this one keeps
+ *	 its decision: adding the key changes only the two classes it joins.
+ */
+static bool
+pt_reev_class_reached_by_actions (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT * class_op)
+{
+#define PT_REEV_MAX_FK_CLASSES 32
+  OID classes[PT_REEV_MAX_FK_CLASSES];
+  int n_classes = 1, i, j;
+  SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *pk;
+  SM_FOREIGN_KEY_INFO *fk;
+  DB_OBJECT *op;
+
+  if (class_op == NULL)
+    {
+      return true;
+    }
+  COPY_OID (&classes[0], ws_oid (class_op));
+  for (i = 0; i < n_classes; i++)
+    {
+      op = (i == 0) ? class_op : ws_mop (&classes[i], NULL);
+      if (op == NULL)
+	{
+	  return true;
+	}
+      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) != NO_ERROR)
+	{
+	  int error = er_errid ();
+
+	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (error) || ER_IS_SERVER_DOWN_ERROR (error) || error == ER_INTERRUPTED)
+	    {
+	      /* the transaction is gone: fail the statement here, not where the error would surface later */
+	      PT_ERRORc (parser, statement, er_msg ());
+	    }
+	  else
+	    {
+	      er_clear ();
+	    }
+	  return true;
+	}
+
+      pk = classobj_find_class_primary_key (class_);
+      for (fk = (pk != NULL) ? pk->fk_info : NULL; fk != NULL; fk = fk->next)
+	{
+	  if (fk->is_dropped
+	      || (fk->delete_action != SM_FOREIGN_KEY_CASCADE && fk->delete_action != SM_FOREIGN_KEY_SET_NULL
+		  && fk->update_action != SM_FOREIGN_KEY_CASCADE && fk->update_action != SM_FOREIGN_KEY_SET_NULL))
+	    {
+	      continue;
+	    }
+	  if (OID_EQ (&fk->self_oid, &classes[0]))
+	    {
+	      return true;
+	    }
+	  for (j = 1; j < n_classes && !OID_EQ (&fk->self_oid, &classes[j]); j++)
+	    {
+	      ;
+	    }
+	  if (j == n_classes)
+	    {
+	      if (n_classes == PT_REEV_MAX_FK_CLASSES)
+		{
+		  return true;
+		}
+	      COPY_OID (&classes[n_classes++], &fk->self_oid);
+	    }
+	}
+    }
+
+  return false;
+#undef PT_REEV_MAX_FK_CLASSES
+}
+
+/*
  * pt_reev_check_row_local () - can the force phase evaluate this node again from the row alone?
  *   return: node
  *   parser(in): parser context
@@ -24919,6 +25003,12 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
   if (spec->info.spec.derived_table != NULL || spec->info.spec.path_entities != NULL
       || spec->info.spec.flat_entity_list == NULL || spec->info.spec.flat_entity_list->next != NULL
       || select_spec->info.spec.derived_table != NULL || select_spec->info.spec.path_entities != NULL)
+    {
+      return false;
+    }
+
+  /* no referential action of its own writes a row of its class before it reaches the row */
+  if (pt_reev_class_reached_by_actions (parser, statement, spec->info.spec.flat_entity_list->info.name.db_object))
     {
       return false;
     }
