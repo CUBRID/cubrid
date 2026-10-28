@@ -280,6 +280,54 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 }
 
 /*
+ * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0
+ *   returns: hash value
+ *   value(in): key value
+ *   ht_size(in): hash table size (in buckets)
+ */
+static unsigned int
+qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
+{
+  DB_VALUE zero;
+
+  if (value != NULL && !DB_IS_NULL (value))
+    {
+      /* mht_get_hash_number hashes the raw bits (as qexec_connect_by_hash_column folds) */
+      switch (DB_VALUE_DOMAIN_TYPE (value))
+	{
+	case DB_TYPE_FLOAT:
+	  if (db_get_float (value) == 0.0f)
+	    {
+	      db_make_float (&zero, 0.0f);
+	      return mht_get_hash_number (ht_size, &zero);
+	    }
+	  break;
+
+	case DB_TYPE_DOUBLE:
+	  if (db_get_double (value) == 0.0)
+	    {
+	      db_make_double (&zero, 0.0);
+	      return mht_get_hash_number (ht_size, &zero);
+	    }
+	  break;
+
+	case DB_TYPE_MONETARY:
+	  if (db_get_monetary (value)->amount == 0.0)
+	    {
+	      db_make_monetary (&zero, db_get_monetary (value)->type, 0.0);
+	      return mht_get_hash_number (ht_size, &zero);
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  return mht_get_hash_number (ht_size, value);
+}
+
+/*
  * qdata_hash_scan_key () - compute hash of aggregate key
  *   returns: hash value
  *   key(in): key
@@ -296,7 +344,7 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = ROTL32 (hash_val, 13);
-      tmp_hash_val = mht_get_hash_number (ht_size, ckey->values[i]);
+      tmp_hash_val = qdata_hash_scan_value (ckey->values[i], ht_size);
       hash_val ^= tmp_hash_val;
       if (hash_val == 0)
 	{
