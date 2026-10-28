@@ -3454,11 +3454,13 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       goto error;
     }
 
-  /* A chain-order heap scan is kept away by the dealloc mark checked above, but a parallel heap scan or a statistics
-   * sample reaches pages through the heap file's page list and waits without the mark; give the page up to it. */
+  /* A chain-order heap scan is kept away by the dealloc mark checked above, but scans that reach pages through the
+   * heap file's page list (parallel heap scan, statistics sampling, parallel index build, parallel SHOW HEAP
+   * CAPACITY) wait without the mark; give the page up to them. */
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
-      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid,
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Candidate heap page %d|%d to remove has waiters without dealloc mark.", page_vpid.volid,
 			     page_vpid.pageid);
       goto error;
     }
@@ -3624,9 +3626,12 @@ error:
 	  *page_ptr = crt_watcher.pgptr;
 	}
       assert (crt_watcher.pgptr == *page_ptr);
-      /* the page goes back to the caller still latched, so that it reports the page's free space to bestspace */
-      *page_ptr = pgbuf_fix (thread_p, &page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      pgbuf_ordered_unfix (thread_p, &crt_watcher);
+      if (crt_watcher.pgptr != NULL)
+	{
+	  /* the page goes back to the caller still latched, so that it reports the page's free space to bestspace */
+	  *page_ptr = pgbuf_fix (thread_p, &page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_ordered_unfix (thread_p, &crt_watcher);
+	}
     }
   else
     {
