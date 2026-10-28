@@ -7144,10 +7144,11 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
  *
  * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
- * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE: a floating NUMERIC hashes a value
- * normalized and a fixed one its scaled digits, and a floating key can hold fixed values (a CONNECT BY PRIOR column),
- * while numbers the comparison finds equal are one DOUBLE up to 15 digits. Two fixed NUMERICs whose common domain is
- * floating have none.
+ * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE, an exact NUMERIC hash costing too much
+ * per key: a floating NUMERIC hashes a value normalized and a fixed one its scaled digits, and a floating key can
+ * hold fixed values (a CONNECT BY PRIOR column). Equal values hash alike only up to 15 digits: past 2^53 a value
+ * written in two scales can round to two DOUBLEs and the scan misses the pair (CBRD-27798). Two fixed NUMERICs
+ * whose common domain is floating have none.
  */
 static bool
 pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
