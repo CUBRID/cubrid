@@ -142,7 +142,8 @@ struct eb_vec
   void *data;			/* the plan's cap elements, or 1 for a scalar */
   unsigned char *isnull;	/* the plan's cap bytes, or 1 for a scalar */
   short *scales;		/* NUMERIC step result: the scale of each element, negative for NUMERIC (p, -s); else NULL */
-  unsigned char *precs;		/* NUMERIC shared value: the precision of each element's DB_VALUE; else NULL */
+  unsigned char *precs;		/* NUMERIC shared value: the precision of each element's DB_VALUE, EB_PREC_FLOAT
+				 * set for a floating one (its precision the header's); else NULL */
   short scale;			/* NUMERIC column or scalar: the scale of every element */
   short col;			/* EB_VK_COL / EB_VK_PTR: the column (plan->cols) */
   unsigned char kind;		/* eb_vec_kind */
@@ -514,6 +515,11 @@ static int eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch);
 static void eb_choose_pointed (EXPR_BATCH_PLAN * plan);
 static int eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch);
 static void eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE * out);
+
+/* a shared NUMERIC element read from a floating NUMERIC (domain precision DB_DEFAULT_NUMERIC_PRECISION, its own
+ * precision and scale in the value's header -- what a node of the floating NUMERIC domain computes): the element's
+ * precs keeps the header's precision with this mark, so the element packs back into the same value */
+#define EB_PREC_FLOAT (0x80)
 
 /* ---------------------------------------------------------------------------------------- */
 /* element access: a scalar has one element at index 0 */
@@ -4756,7 +4762,13 @@ eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev)
 	      {
 		return eb_fallback (plan, "a shared NUMERIC beyond the word domain");
 	      }
-	    v->precs[r] = (unsigned char) DB_VALUE_PRECISION (src);
+	    {
+	      int prec, scale;
+	      bool is_float;
+
+	      db_get_numeric_precision_and_scale (src, &prec, &scale, &is_float);
+	      v->precs[r] = (unsigned char) (is_float ? (EB_PREC_FLOAT | prec) : prec);
+	    }
 	    break;
 	  }
 	default:
@@ -5237,6 +5249,7 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 	    uint128_t c = num->coefficient;
 	    int precision = (vec->precs != NULL) ? vec->precs[EB_IDX (vec, r)] : vs->precision;
 	    int scale = (vec->precs != NULL) ? num->scale : vs->scale;
+	    const bool is_float = (vec->precs != NULL && (precision & EB_PREC_FLOAT) != 0);
 	    int i;
 
 	    for (i = DB_NUMERIC_BUF_SIZE - 1; i >= 0; i--)
@@ -5244,7 +5257,8 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 		buf[i] = (unsigned char) (c & 0xFF);
 		c >>= 8;
 	      }
-	    db_make_numeric (out, buf, precision, scale, DB_NUMERIC_BUF_SIZE, num->is_negative, false);
+	    db_make_numeric (out, buf, precision & ~EB_PREC_FLOAT, scale, DB_NUMERIC_BUF_SIZE, num->is_negative,
+			     is_float);
 	  }
 	else
 	  {
