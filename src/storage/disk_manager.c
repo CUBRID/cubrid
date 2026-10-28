@@ -4434,6 +4434,7 @@ error:
    * disk_reserve_sectors_in_volume (), which returns ER_FAILED when the cache promised sectors the sector table
    * does not have. That is the case disk_check () below can actually repair. */
   if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED	/* temp_file_max_size_in_pages reached */
       || PGBUF_IS_LATCH_REFUSED_ERROR (error_code)	/* a page fix was refused, or its wait timed out */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
@@ -4519,7 +4520,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining > disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
