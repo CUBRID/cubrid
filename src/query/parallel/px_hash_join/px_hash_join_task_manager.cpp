@@ -26,7 +26,6 @@
 #include "error_manager.h"		/* assert_release_error, er_errid, er_set, ... */
 #include "fetch.h"			/* fetch_val_list */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
-#include "log_impl.h"			/* logtb_get_check_interrupt, logtb_is_interrupted_tran, ... */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "object_primitive.h"		/* pr_clear_value */
 #include "object_representation.h"	/* QFILE_GET_NEXT_VPID, QFILE_GET_TUPLE_COUNT */
@@ -44,101 +43,6 @@ namespace parallel_query
 {
   namespace hash_join
   {
-    /*
-     * task_manager
-     */
-
-    task_manager::task_manager (worker_manager *worker_manager, cubthread::entry &main_thread_ref)
-      : m_worker_manager (worker_manager)
-      , m_main_thread_ref (main_thread_ref)
-      , m_main_error_context (main_thread_ref.get_error_context())
-      , m_all_tasks_done_cv ()
-      , m_active_tasks_mutex ()
-      , m_active_tasks (0)
-      , m_has_error (false)
-    {
-      assert (m_worker_manager != nullptr);
-    }
-
-    void
-    task_manager::push_task (base_task *task)
-    {
-      assert (task != nullptr);
-      {
-	std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
-	++m_active_tasks;
-      }
-      m_worker_manager->push_task (task);
-    }
-
-    void
-    task_manager::end_task ()
-    {
-      m_worker_manager->pop_task ();
-      std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
-      --m_active_tasks;
-      if (m_active_tasks == 0)
-	{
-	  m_all_tasks_done_cv.notify_all ();
-	}
-    }
-
-    void
-    task_manager::join ()
-    {
-      std::unique_lock<std::mutex> lock (m_active_tasks_mutex);
-      m_all_tasks_done_cv.wait (lock, [this] { return m_active_tasks == 0; });
-      m_worker_manager->wait_workers ();
-    }
-
-    void
-    task_manager::handle_error (cubthread::entry &thread_ref)
-    {
-      if (!m_has_error.exchange (true, std::memory_order_acq_rel))
-	{
-	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	  notify_stop ();
-	}
-      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
-    }
-
-    void
-    task_manager::notify_stop ()
-    {
-      std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
-      m_all_tasks_done_cv.notify_all ();
-    }
-
-    bool
-    task_manager::check_interrupt (cubthread::entry &thread_ref)
-    {
-      bool dummy = false;
-      if (logtb_get_check_interrupt (&thread_ref)
-	  && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
-	{
-	  /* logtb_set_tran_index_interrupt sets ER_INTERRUPTING with ER_NOTIFICATION_SEVERITY,
-	   * so er_errid may return NO_ERROR in this case. */
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    }
-
-	  handle_error (thread_ref);
-	  return true;
-	}
-      return false;
-    }
-
-    void
-    task_manager::clear_interrupt (cubthread::entry &thread_ref)
-    {
-      bool dummy = false;
-      if (logtb_get_check_interrupt (&thread_ref))
-	{
-	  (void) logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
-	}
-    }
-
     /*
      * base_task
      */
@@ -195,7 +99,7 @@ namespace parallel_query
       unsigned int hash_key;
       UINT32 part_cnt, part_index, part_id;
 
-      bool is_outer_join = false;
+      bool has_null_fill_side = false;
       bool need_skip_next = false;
 
       int error = NO_ERROR;
@@ -207,7 +111,7 @@ namespace parallel_query
       part_list_id = m_split_info->part_list_id;
       part_cnt = m_manager->context_cnt;
 
-      is_outer_join = IS_OUTER_JOIN_TYPE (m_manager->join_type);
+      has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (m_manager->join_type);
 
       temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (&thread_ref, part_cnt * sizeof (QFILE_LIST_ID *));
       if (temp_part_list_id == nullptr)
@@ -229,7 +133,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -329,10 +233,12 @@ namespace parallel_query
 		{
 		  need_skip_next = false;	/* init */
 
-		  if (is_outer_join)
+		  if (has_null_fill_side)
 		    {
-		      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-		      * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+		      /* In joins that NULL-fill one side,
+		       * tuples with NULL in any join column are placed in the last partition.
+		       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+		       */
 		      part_id = part_cnt - 1;
 		    }
 		  else
@@ -344,7 +250,7 @@ namespace parallel_query
 	      else
 		{
 		  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-		  part_id = (is_outer_join) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
+		  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
 
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
@@ -414,7 +320,12 @@ namespace parallel_query
 		    else
 		      {
 			qfile_destroy_list (&thread_ref, part_list_id[part_id]);
-			qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+			if (qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+			  {
+			    m_task_manager.handle_error (thread_ref);
+			    has_error = true;
+			    break;
+			  }
 			QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 		      }
 		  }
@@ -434,7 +345,20 @@ namespace parallel_query
 		    }
 		}
 
+	      /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
+	      if (qfile_reopen_list_as_append_mode (&thread_ref, temp_part_list_id[part_id]) != NO_ERROR)
+		{
+		  assert_release_error (er_errid () != NO_ERROR);
+		  m_task_manager.handle_error (thread_ref);
+		  has_error = true;
+		  break;
+		}
+
 	      error = qfile_add_tuple_to_list (&thread_ref, temp_part_list_id[part_id], tuple_record.tpl);
+
+	      /* close before the error check so that the list is closed on every path */
+	      qfile_close_list (&thread_ref, temp_part_list_id[part_id]);
+
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -442,7 +366,10 @@ namespace parallel_query
 		  has_error = true;
 		  break;
 		}
-	      assert (VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
+
+	      /* without a memory buffer, the page is in the temp file */
+	      assert (temp_part_list_id[part_id]->tfile_vfid->membuf_npages == 0
+		      || VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
 	    }
 	  while (true);		/* next tuple */
 
@@ -499,7 +426,13 @@ namespace parallel_query
 		  else
 		    {
 		      qfile_destroy_list (&thread_ref, part_list_id[part_index]);
-		      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
+		      if (qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
+					      QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+			{
+			  m_task_manager.handle_error (thread_ref);
+			  has_error = true;
+			  break;
+			}
 		    }
 		}
 	      else
@@ -574,7 +507,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -758,7 +691,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -823,7 +756,7 @@ namespace parallel_query
 	}
       m_context->hash_scan.hash_list_scan_type = single_context->hash_scan.hash_list_scan_type;
 
-      if (IS_OUTER_JOIN_TYPE (m_manager->join_type))
+      if (IS_NULL_FILL_JOIN_TYPE (m_manager->join_type))
 	{
 	  execute_outer (thread_ref);
 	}
@@ -1147,6 +1080,13 @@ cleanup:
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
+		    }
+
+		  if (m_manager->join_type == JOIN_SEMI)
+		    {
+		      /* semi join: one match is enough to emit this row, so stop scanning. */
+		      qfile_slot_reset (&build->tuple_record);
+		      break;
 		    }
 		}
 	      while (true);
@@ -1494,6 +1434,16 @@ cleanup:
 		    }			/* if (m_context->during_join_pred != nullptr) */
 
 		  any_key_matched = true;
+
+		  if (m_manager->join_type == JOIN_ANTI)
+		    {
+		      /* anti join: one match is enough to suppress this row, so stop scanning.
+		       * The unnested subquery condition becomes the ON clause,
+		       * so after_join_pred does not decide the match.
+		       */
+		      qfile_slot_reset (&build->tuple_record);
+		      break;
+		    }
 
 		  if (m_context->after_join_pred != nullptr)
 		    {

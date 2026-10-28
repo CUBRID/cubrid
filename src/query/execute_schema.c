@@ -3267,33 +3267,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
-      bool has_deduplicate_key_col = false;
-
-      // Class or shared attributes are not considered. These are not indexed columns.
-      // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
-      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
-	{
-	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
-	    {
-	      ((PT_INDEX_INFO *) idx_info)->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
-	    }
-	  else
-	    {
-	      if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-		{
-		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
-		  t_info->deduplicate_level = param_dedup_level;
-		}
-
-	      if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
-		{
-		  has_deduplicate_key_col = true;
-		  nnames++;
-		}
-	    }
-	}
-
       attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
       if (attnames == NULL)
 	{
@@ -3331,10 +3304,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  c = c->next;
 	}
 
-      if (has_deduplicate_key_col)
-	{
-	  nnames--;		// get count of real columns, except hidden column
-	}
       attnames[i] = NULL;
 
       if (nnames == 1 && idx_info->prefix_length)
@@ -3358,25 +3327,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    {
 	      func_index_info->col_id = idx_info->func_pos;
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
-	    }
-	}
-
-      if (has_deduplicate_key_col)
-	{
-	  SM_CLASS *class_ = NULL;
-	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
-
-	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  if (class_->constraints == NULL
-	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
-	    {
-	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
-					    nnames, DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
 	    }
 	}
     }
@@ -5168,11 +5118,19 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
-	      newpci->obj = ws_find_class (newpci->pname);
+	      /* part_name keeps the case the user typed, but subclass names are stored in lower case and the
+	       * workspace class name cache compares them case-sensitively. sm_find_class () normalizes the name. */
+	      newpci->obj = sm_find_class (newpci->pname);
 	      if (newpci->obj == NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  /* Never leave with NO_ERROR here: the new partitions are already created, and the statement would
+		   * succeed without updating the reused partition or moving its rows. */
 		  error = er_errid ();
+		  if (error == NO_ERROR || error == ER_LC_UNKNOWN_CLASSNAME)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
+		      error = ER_PARTITION_NOT_EXIST;
+		    }
 		  goto end_create;
 		}
 
@@ -8700,58 +8658,6 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
       att_names[i++] = p->info.name.original;
     }
 
-  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
-    {
-      fk_info->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
-    }
-  else
-    {
-      if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-	{
-	  fk_info->deduplicate_level = param_dedup_level;
-	}
-
-      if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
-	{
-	  SM_CLASS *class_ = NULL;
-	  SM_CLASS_CONSTRAINT *free_cons = NULL;
-	  SM_CLASS_CONSTRAINT *check_cons;
-
-	  if (ctemplate->op != NULL)
-	    {
-	      error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
-	      check_cons = class_->constraints;
-	    }
-	  else
-	    {
-	      error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
-	      free_cons = check_cons;
-	    }
-
-	  att_names[i] = NULL;
-	  if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
-	    {
-	      // adjust for FK: add deduplicate_key_attr column
-	      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
-	    }
-
-	  if (free_cons != NULL)
-	    {
-	      classobj_free_class_constraints (free_cons);
-	    }
-	}
-    }
   att_names[i] = NULL;
 
   if (fk_info->referenced_attrs != NULL)
@@ -8833,9 +8739,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
   if (max_attrs > 0)
     {
-      // If there is an FK, one more space is allocated in advance because deduplicate_key_attr information will be added.
-      // max_attrs +  [ deduplicate_key_attr ] + NULL
-      buf_size = (max_attrs + 2) * sizeof (char *);
+      buf_size = (max_attrs + 1) * sizeof (char *);
 
       att_names = (char **) malloc (buf_size);
 
@@ -11008,6 +10912,18 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		  error = do_recreate_filter_index_constr (parser, saved_constr->filter_predicate, alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
+		      PT_NODE *error_msg = parser->error_msgs;
+		      if (error_msg != NULL && error_msg->node_type == PT_ZZ_ERROR_MSG
+			  && error_msg->info.error_msg.error_message != NULL)
+			{
+			  /* the predicate recompiled under the changed column type: the user sees the ALTER statement, so
+			   * the message names the index whose predicate failed */
+			  char *message = pt_append_string (parser, NULL, "filter index '");
+			  message = pt_append_string (parser, message, saved_constr->name);
+			  message = pt_append_string (parser, message, "': ");
+			  error_msg->info.error_msg.error_message =
+			    pt_append_string (parser, message, error_msg->info.error_msg.error_message);
+			}
 		      goto exit;
 		    }
 		}
@@ -12428,6 +12344,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		{
 		  assert (attr_chg_properties->name_space == ID_ATTRIBUTE);
 
+		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
+	  else if (att->header.name_space == ID_ATTRIBUTE && SM_IS_CONSTRAINT_INDEX_FAMILY (sm_cls_constr->type)
+		   && sm_cls_constr->filter_predicate != NULL)
+	    {
+	      /* an index whose key does not hold the attribute but whose filter
+	       * predicate reads it keeps a predicate stream compiled against the attribute's type; saved, it is
+	       * compiled anew and rebuilt with the change, as an index over the attribute is */
+	      const SM_PREDICATE_INFO *pred = sm_cls_constr->filter_predicate;
+	      bool reads_attribute = false;
+	      for (int i = 0; i < pred->num_attrs && !reads_attribute; i++)
+		{
+		  reads_attribute = pred->att_ids[i] == att->id;
+		}
+	      if (reads_attribute)
+		{
 		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
 		  if (error != NO_ERROR)
 		    {
@@ -15773,7 +15710,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT_INFO * con
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   SM_FUNCTION_INFO *fi_info_ws = NULL;
   int error = NO_ERROR;
   const char *class_name = NULL;
@@ -15974,7 +15911,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
 {
   PT_NODE **stmt;
   PT_NODE *where_predicate;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PARSER_VARCHAR *filter_expr = NULL;
   PRED_EXPR_WITH_CONTEXT *filter_predicate;
   int error;

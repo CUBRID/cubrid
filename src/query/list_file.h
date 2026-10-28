@@ -114,7 +114,8 @@ typedef enum
 {
   QFILE_PROHIBIT_DEPENDENT = 0,
   QFILE_SKIP_DEPENDENT = 1,
-  QFILE_MOVE_DEPENDENT = 2
+  QFILE_MOVE_DEPENDENT = 2,
+  QFILE_COPY_DEPENDENT = 3
 } QFILE_DEPENDENT_MODE;
 
 #if defined (SERVER_MODE)
@@ -235,7 +236,7 @@ extern int qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, const QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 					    QFILE_TUPLE_DESCRIPTOR * tpl_descr, QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
-extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
+extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2, bool list1_empty);
 #if !defined(NDEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
@@ -260,8 +261,6 @@ extern void qfile_close_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_id
 
 /* Miscellaneous */
 extern bool qfile_has_next_page (PAGE_PTR page_p);
-extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
-					      valptr_list_node * valptr_list_p);
 extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR curr_page_p,
 					 VPID * vpid_p, QFILE_TUPLE tuple_p, int col_num, DB_VALUE * value_p,
 					 TP_DOMAIN * domain);

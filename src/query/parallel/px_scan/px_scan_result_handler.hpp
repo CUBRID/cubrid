@@ -61,7 +61,7 @@ namespace parallel_scan
       using tls = std::conditional_t<result_type == RESULT_TYPE::MERGEABLE_LIST, mergeable_list_tls, xasl_snapshot_tls>;
     public:
       result_handler (QUERY_ID query_id, interrupt *interrupt_p, err_messages_with_lock *err_messages_p, int parallelism,
-		      bool g_agg_domain_resolve_need, XASL_NODE *orig_xasl_tree_for_domain_resolve);
+		      XASL_NODE *orig_xasl_tree_for_domain_resolve);
       void read_initialize (THREAD_ENTRY *thread_p);
       SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
       void read_finalize (THREAD_ENTRY *thread_p);
@@ -69,6 +69,7 @@ namespace parallel_scan
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
       void set_trace_handler (trace_handler *trace_handler_p);
+      void set_orig_vd (VAL_DESCR *orig_vd);
 
     private:
       void get_valid_read_spec ();
@@ -96,8 +97,9 @@ namespace parallel_scan
       int active_results;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
-      bool g_agg_domain_resolve_need;	/* the original aggregate nodes still wait for domains the workers resolve */
+      AGGREGATE_HASH_STATE hgby_state = HS_NONE;	/* furthest hash state of the workers that hashed rows */
       trace_handler *trace_handler_p;
+      VAL_DESCR *orig_vd = nullptr;	/* leader's: flushes the leader's top-N heap at the merge */
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
       parallel_scan::atomic_instnum instnum_draw;	/* ATOMIC_DRAW */
@@ -123,9 +125,7 @@ namespace parallel_scan
 	: writer_result_p (nullptr),
 	  vd (nullptr),
 	  xasl (nullptr),
-	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
-	  g_agg_domains_resolved (TRUE),
 	  is_topn (false),
 	  write_initialized (false) {}
       ~mergeable_list_tls() = default;
@@ -133,10 +133,7 @@ namespace parallel_scan
       QFILE_TUPLE_RECORD tpl_buf;
       VAL_DESCR *vd;
       XASL_NODE *xasl;
-      std::vector<DB_VALUE> dbvals_for_domain_resolve;
-      bool val_list_domain_resolved;
       AGGREGATE_HASH_STATE agg_hash_state;
-      int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
       /* write_initialize () went through; write_finalize () may use xasl and the hash context. */
