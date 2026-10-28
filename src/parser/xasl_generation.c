@@ -24877,7 +24877,7 @@ static bool
 pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
 				 bool has_partitioned, bool has_lob)
 {
-  PT_NODE *spec, *select_spec, *where, *limit, *assignments = NULL;
+  PT_NODE *spec, *select_spec, *where, *limit, *using_index, *assignments = NULL;
   bool row_local = true;
 
   if (statement->node_type == PT_DELETE)
@@ -24885,6 +24885,7 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
       spec = statement->info.delete_.spec;
       where = statement->info.delete_.search_cond;
       limit = statement->info.delete_.limit;
+      using_index = statement->info.delete_.using_index;
 
       /* qexec_execute_delete () schedules the removal of a row's LOB files before the force phase re-checks it */
       if (has_lob)
@@ -24898,6 +24899,7 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
       spec = statement->info.update.spec;
       where = statement->info.update.search_cond;
       limit = statement->info.update.limit;
+      using_index = statement->info.update.using_index;
       assignments = statement->info.update.assignment;
 
       if (statement->info.update.order_by != NULL || statement->info.update.check_where != NULL
@@ -24925,6 +24927,14 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
   if (limit != NULL || aptr_statement->info.query.q.select.group_by != NULL)
     {
       return false;
+    }
+  for (; using_index != NULL; using_index = using_index->next)
+    {
+      /* USING INDEX ... KEYLIMIT counts rows as LIMIT does */
+      if (using_index->node_type == PT_NAME && using_index->info.name.indx_key_limit != NULL)
+	{
+	  return false;
+	}
     }
 
   (void) parser_walk_tree (parser, where, pt_reev_check_row_local, &row_local, NULL, NULL);
