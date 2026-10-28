@@ -955,36 +955,6 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
   return error;
 }
 
-/* Select the history slot that one writeset entry must wait for. */
-static void
-wset_select_candidate (const LOG_WSET_ENTRY &entry, const LOG_WSET_SLOTS &slots, LOG_LSA *candidate_out,
-		       bool *candidate_is_ref_out)
-{
-  *candidate_is_ref_out = false;
-
-  if (entry.kind == LOG_WSET_KIND_REF)
-    {
-      LSA_COPY (candidate_out, &slots.write_seq);
-      return;
-    }
-
-  if (entry.kind != LOG_WSET_KIND_WRITE)
-    {
-      assert (false);
-      LSA_COPY (candidate_out, &slots.write_seq);
-      return;
-    }
-
-  if (LSA_GT (&slots.ref_seq, &slots.write_seq))
-    {
-      LSA_COPY (candidate_out, &slots.ref_seq);
-      *candidate_is_ref_out = true;
-      return;
-    }
-
-  LSA_COPY (candidate_out, &slots.write_seq);
-}
-
 /*
  * wset_find_dependency_from_history - find the current transaction's dependency in history
  *
@@ -1030,14 +1000,13 @@ wset_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *wset_paren
       LOG_LSA candidate;
       bool candidate_is_ref;
 
-      if (!wset_History.map.find (e.hash, slots))
+      if (!wset_History.map.probe (e.hash, e.kind, slots, candidate, candidate_is_ref))
 	{
 	  WSET_TRACE (3, "PROBE trid=%d kind=%s hash=%016llx result=MISS\n",
 		      tdes->trid, wset_kind_name (e.kind), (unsigned long long) e.hash);
 	  continue;
 	}
 
-      wset_select_candidate (e, slots, &candidate, &candidate_is_ref);
       WSET_TRACE (3,
 		  "PROBE trid=%d kind=%s hash=%016llx write_seq=%lld|%d ref_seq=%lld|%d candidate=%lld|%d source=%s\n",
 		  tdes->trid, wset_kind_name (e.kind), (unsigned long long) e.hash,
