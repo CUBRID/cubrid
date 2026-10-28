@@ -12477,7 +12477,7 @@ struct qexec_gby_entry
 {
   unsigned int hash;
   int len;			/* -1: empty */
-  unsigned char *bytes;
+  unsigned char *bytes;		/* a QEXEC_GBY_KEY_MAX buffer of the cache's pool (key_pool) */
   AGGREGATE_HASH_VALUE *value;
   AGGREGATE_HASH_KEY *key;	/* a copy: touches the group in the table's LRU */
   int count;			/* a flush's scratch: rows, first slot, rows placed, last row */
@@ -12498,6 +12498,9 @@ struct qexec_batch_gby
   QEXEC_GBY_ENTRY *cache;	/* invariant: every entry's value is a live group of the table, and a group has at most
 				 * one entry (qexec_gby_cache_evicted () drops the entries of the groups the table freed) */
   int n_cached;
+  unsigned char *key_pool;	/* the entries' key buffers, one per entry the cache holds at most (half its slots), */
+  unsigned char **pool_free;	/* allocated with the cache: a new group takes one off this stack, a dropped one returns */
+  int n_pool_free;
   INT64 n_lookups;		/* rows looked up in the cache and the ones it had: a cache that misses more than it hits */
   INT64 n_hits;			/* turns the node off (qexec_batch_gby_consume ()) */
   INT64 n_remisses;		/* misses on a group the table already had: the cache is smaller than the groups */
@@ -12509,17 +12512,40 @@ struct qexec_batch_gby
   int *order;			/* a flush's entries, in first-row order */
 };
 
+/* the key bytes' hash, eight bytes a step (only the cache's slot choice: equal bytes hash equal) */
 static unsigned int
 qexec_gby_hash_bytes (const unsigned char *p, int len)
 {
-  unsigned int h = 2166136261u;
-  int i;
+  UINT64 h = (UINT64) len * 0x9E3779B97F4A7C15ULL, w;
+  int i = 0;
 
-  for (i = 0; i < len; i++)
+  for (; i + 8 <= len; i += 8)
     {
-      h = (h ^ p[i]) * 16777619u;
+      memcpy (&w, p + i, 8);
+      h = (h ^ w) * 0xC2B2AE3D27D4EB4FULL;
+      h ^= h >> 31;
     }
-  return h;
+  if (i < len)
+    {
+      w = 0;
+      memcpy (&w, p + i, (size_t) (len - i));
+      h = (h ^ w) * 0xC2B2AE3D27D4EB4FULL;
+    }
+  h ^= h >> 29;
+  return (unsigned int) (h ^ (h >> 32));
+}
+
+/* the pool's buffers all free again (the cache emptied) */
+static void
+qexec_gby_pool_reset (QEXEC_BATCH_GBY * st)
+{
+  int k;
+
+  for (k = 0; k < QEXEC_GBY_CACHE_SIZE / 2; k++)
+    {
+      st->pool_free[k] = st->key_pool + QEXEC_GBY_KEY_MAX * (size_t) k;
+    }
+  st->n_pool_free = QEXEC_GBY_CACHE_SIZE / 2;
 }
 
 static QEXEC_GBY_ENTRY *
@@ -12561,7 +12587,7 @@ qexec_gby_cache_clear (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
 
       if (e->len >= 0)
 	{
-	  db_private_free_and_init (thread_p, e->bytes);
+	  e->bytes = NULL;
 	  if (e->key != NULL)
 	    {
 	      qdata_free_agg_hkey (thread_p, e->key);
@@ -12571,6 +12597,7 @@ qexec_gby_cache_clear (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
 	}
     }
   st->n_cached = 0;
+  qexec_gby_pool_reset (st);
 }
 
 /* drop the entry in slot i, then shift the entries of its probe run back so lookups still find them */
@@ -12581,7 +12608,8 @@ qexec_gby_cache_remove (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, unsigned 
   unsigned int j = i, home;
   QEXEC_GBY_ENTRY *e = &st->cache[i];
 
-  db_private_free_and_init (thread_p, e->bytes);
+  st->pool_free[st->n_pool_free++] = e->bytes;
+  e->bytes = NULL;
   if (e->key != NULL)
     {
       qdata_free_agg_hkey (thread_p, e->key);
@@ -12628,15 +12656,25 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
   if (st->cache == NULL)
     {
       st->cache = (QEXEC_GBY_ENTRY *) db_private_alloc (thread_p, sizeof (QEXEC_GBY_ENTRY) * QEXEC_GBY_CACHE_SIZE);
-      if (st->cache == NULL)
+      st->key_pool = (unsigned char *) db_private_alloc (thread_p, (QEXEC_GBY_CACHE_SIZE / 2) * QEXEC_GBY_KEY_MAX);
+      st->pool_free =
+	(unsigned char **) db_private_alloc (thread_p, (QEXEC_GBY_CACHE_SIZE / 2) * sizeof (unsigned char *));
+      if (st->cache == NULL || st->key_pool == NULL || st->pool_free == NULL)
 	{
+	  db_private_free_and_init (thread_p, st->cache);
+	  db_private_free_and_init (thread_p, st->key_pool);
+	  db_private_free_and_init (thread_p, st->pool_free);
+	  er_clear ();
 	  return;		/* only an accelerator: the rows keep the row path */
 	}
       for (k = 0; k < QEXEC_GBY_CACHE_SIZE; k++)
 	{
 	  st->cache[k].len = -1;
+	  st->cache[k].bytes = NULL;
+	  st->cache[k].key = NULL;
 	}
       st->n_cached = 0;
+      qexec_gby_pool_reset (st);
     }
   if (st->n_cached >= QEXEC_GBY_CACHE_SIZE / 2)
     {
@@ -12659,22 +12697,15 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
   for (i = h & (QEXEC_GBY_CACHE_SIZE - 1); st->cache[i].len >= 0; i = (i + 1) & (QEXEC_GBY_CACHE_SIZE - 1))
     ;
   e = &st->cache[i];
-  e->bytes = (unsigned char *) db_private_alloc (thread_p, MAX (1, len));
   e->key = qdata_copy_agg_hkey (thread_p, ctx->temp_key);
-  if (e->bytes == NULL || e->key == NULL)
+  if (e->key == NULL)
     {
-      if (e->bytes != NULL)
-	{
-	  db_private_free_and_init (thread_p, e->bytes);
-	}
-      if (e->key != NULL)
-	{
-	  qdata_free_agg_hkey (thread_p, e->key);
-	  e->key = NULL;
-	}
       er_clear ();
       return;
     }
+  /* at most half the slots are used, and the pool has a buffer for each of them */
+  assert (st->n_pool_free > 0 && len <= QEXEC_GBY_KEY_MAX);
+  e->bytes = st->pool_free[--st->n_pool_free];
   memcpy (e->bytes, key, len);
   e->hash = h;
   e->len = len;
@@ -13087,6 +13118,8 @@ qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
     }
   qexec_gby_cache_clear (thread_p, st);
   db_private_free_and_init (thread_p, st->cache);
+  db_private_free_and_init (thread_p, st->key_pool);
+  db_private_free_and_init (thread_p, st->pool_free);
   db_private_free_and_init (thread_p, st->pend_row);
   db_private_free_and_init (thread_p, st->pend_ent);
   db_private_free_and_init (thread_p, st->grp_rows);
