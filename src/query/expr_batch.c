@@ -444,6 +444,10 @@ struct expr_batch_plan
   INT64 pages_fallback;
   const char *fallback_why;	/* the last chunk's cause for the row path */
   bool gave_up;			/* the rest of the scan goes to the row path (expr_batch_plan_note_page ()) */
+  /* the leaves' constants (eb_load_leaf_constants ()) are the scan's: loaded at its first chunk, the cause kept when
+   * they sent it to the row path */
+  bool consts_loaded;
+  const char *consts_why;
 };
 
 /* the batch gives up on a scan once this many pages are in and the row path took more than half of them */
@@ -5014,10 +5018,21 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
 	  return rc;
 	}
     }
-  rc = eb_load_leaf_constants (plan);
-  if (rc != NO_ERROR)
+  /* the leaves' constants are literals, host variables and the filter's prologue: fixed for the scan, so the IN
+   * lists, their sort and the string matchers are set up at its first chunk only */
+  if (!plan->consts_loaded)
     {
-      return rc;
+      rc = eb_load_leaf_constants (plan);
+      plan->consts_loaded = true;
+      if (rc != NO_ERROR)
+	{
+	  plan->consts_why =
+	    (plan->fallback_why != NULL) ? plan->fallback_why : "a filter constant the batch does not take";
+	}
+    }
+  if (plan->consts_why != NULL)
+    {
+      return eb_fallback (plan, plan->consts_why);
     }
   rc = eb_filter (plan, batch, thread_p, vd);
   if (rc != NO_ERROR)
@@ -5830,10 +5845,11 @@ expr_batch_reset (EXPR_BATCH * batch)
 }
 
 /* The plan's per-scan state, so that the next scan it serves counts from nothing: the trace's pages, the pages
- * handed back, the give-up those counts decided, the last chunk's fallback cause, the per-chunk decode marks and the
- * mask depth (a give-up judged on one open's pages does not hold the next open to the row path with no cause shown).  What the plan learned of the class stays -- the representations it decodes (reprs, repids) and the ones
- * it rejected -- and so does what it built from the clone: the arena and the lines carved from it, the columns,
- * the vectors and their sources, the steps, the leaves, the keys, the shared values, the projection columns, the
+ * handed back, the give-up those counts decided, the last chunk's fallback cause, the leaves' constants (the next
+ * scan may run under other host variables), the per-chunk decode marks and the mask depth (a give-up judged on one
+ * open's pages does not hold the next open to the row path with no cause shown).  What the plan learned of the class
+ * stays -- the representations it decodes (reprs, repids) and the ones it rejected -- and so does what it built from
+ * the clone: the arena and the lines carved from it, the columns, the vectors and their sources, the steps, the leaves, the keys, the shared values, the projection columns, the
  * compiled filter and the operand program.  The runtime filter is the execution's (expr_batch_plan_rebind ()). */
 void
 expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan)
@@ -5845,6 +5861,8 @@ expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan)
   plan->gave_up = false;
   plan->fallback_why = NULL;
   plan->mask_depth = 0;
+  plan->consts_loaded = false;
+  plan->consts_why = NULL;
   for (i = 0; i < plan->n_cols; i++)
     {
       plan->cols[i].decoded = 0;
