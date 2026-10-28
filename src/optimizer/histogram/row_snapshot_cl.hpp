@@ -23,7 +23,7 @@
  * optimizer how many rows survive but not WHICH keys they carry: `it.info = 'release dates'
  * AND it.id = mi.info_type_id` is priced at 1/NDV of mi.info_type_id whatever id 'release dates'
  * has. For a table declared ROW_SNAPSHOT (CREATE/ALTER TABLE), UPDATE STATISTICS also keeps its
- * rows -- all of them up to statistics_row_snapshot_rows, a uniform sample of that many beyond --
+ * rows -- all of them, and none when there are more than statistics_row_snapshot_rows --
  * as one more _db_histogram row of the class under a reserved key_attr. The declaration is a class
  * flag (SM_CLASSFLAG_ROW_SNAPSHOT), so it travels with the schema (SHOW CREATE TABLE, unloaddb,
  * HA); the rows are a statistic. The optimizer applies the constant filters of such a node to the
@@ -52,8 +52,8 @@ typedef struct sm_class SM_CLASS;
  * dot, so no column's histogram can take this row. */
 #define ROW_SNAPSHOT_KEY_ATTR ".row_snapshot"
 
-/* the largest snapshot kept, packed; over it the sample is thinned evenly until it fits */
-#define ROW_SNAPSHOT_MAX_BYTES (1024 * 1024)
+/* the largest snapshot kept, packed; a table whose rows take more keeps none */
+#define ROW_SNAPSHOT_MAX_BYTES (4 * 1024 * 1024)
 /* the most rows a snapshot can hold: the upper bound of statistics_row_snapshot_rows */
 #define ROW_SNAPSHOT_MAX_ROWS 10000
 
@@ -61,7 +61,7 @@ typedef struct sm_class SM_CLASS;
 struct row_snapshot
 {
   int n_attrs;			/* columns kept */
-  int n_rows;			/* rows kept: all of the table's, or a uniform sample of them */
+  int n_rows;			/* rows kept: all of the table's */
   int table_rows;		/* rows of the table when they were collected */
   int *attr_ids;		/* column id per slot; -1 = a column that no longer matches the class */
   DB_VALUE *values;		/* n_rows x n_attrs, row-major */
@@ -82,8 +82,8 @@ typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 /* statistics_row_snapshot_rows; 0 = the feature is off */
 extern int row_snapshot_max_rows (void);
 
-/* UPDATE STATISTICS: when classop is declared ROW_SNAPSHOT, keep its rows (a sample of
- * statistics_row_snapshot_rows of them when it has more), thinned to fit ROW_SNAPSHOT_MAX_BYTES.
+/* UPDATE STATISTICS: when classop is declared ROW_SNAPSHOT, keep all of its rows, or none when it
+ * has more than statistics_row_snapshot_rows of them or they take more than ROW_SNAPSHOT_MAX_BYTES.
  * Does nothing for other classes or while the feature is off. A failure to read the rows only
  * leaves the class without a snapshot; a failure to write the catalog is returned. */
 extern int row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullscan);

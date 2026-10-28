@@ -5716,15 +5716,15 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   /* row snapshot (CBRD-27478): how many rows UPDATE STATISTICS keeps for a table declared
-   * ROW_SNAPSHOT -- all of them up to this count, a uniform sample beyond it; 0 turns both the
+   * ROW_SNAPSHOT -- all of them up to this count, none beyond it; 0 turns both the
    * collection and the use off. In the query string because it changes plans. */
   {PRM_ID_STATISTICS_ROW_SNAPSHOT_ROWS,
    PRM_NAME_STATISTICS_ROW_SNAPSHOT_ROWS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 1000}},
-   {false, {.i = 1000}},
+   {false, {.i = 10000}},
+   {false, {.i = 10000}},
    {false, {.i = 10000}},
    {false, {.i = 0}},
    (char *) NULL,

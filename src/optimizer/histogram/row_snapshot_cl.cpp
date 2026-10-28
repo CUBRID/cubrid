@@ -23,7 +23,6 @@
 #include "row_snapshot_cl.hpp"
 
 #include <cstring>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -101,18 +100,14 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
   std::vector<std::string> names;
   std::vector<int> ids;
   std::vector<DB_VALUE> values;	/* the kept rows, n_attrs values each */
-  std::vector<int> row_size;	/* packed size of each kept row */
-  std::vector<int> keep;	/* the rows written out, after the byte cap */
   std::string query;
-  std::mt19937_64 rng (0x27478);
   DB_QUERY_RESULT *result = NULL;
   DB_QUERY_ERROR query_error;
-  INT64 seen = 0;
   int n_attrs, n_rows = 0, size, pos, i, c, error = NO_ERROR;
   bool usable = true;
   char *blob = NULL;
   OR_BUF buf;
-  char sample_pred[64];
+  char limit_clause[32];
 
   if (max_rows <= 0 || sm_get_class_flag (classop, SM_CLASSFLAG_ROW_SNAPSHOT) <= 0)
     {
@@ -157,16 +152,9 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
   query += " FROM [";
   query += class_name;
   query += "]";
-  if (total_rows > max_rows)
-    {
-      /* A table over the limit keeps a uniform sample of max_rows rows, so its estimates move smoothly
-       * as it grows instead of switching method at the limit. The server filters to about a quarter
-       * more rows than needed and the reservoir below trims them to exactly max_rows. DRANDOM, not
-       * DRAND: DRAND is evaluated once per statement, so it would keep every row or none. */
-      snprintf (sample_pred, sizeof (sample_pred), " WHERE DRANDOM () < %.9f",
-		MIN (1.0, 1.25 * (double) max_rows / (double) total_rows));
-      query += sample_pred;
-    }
+  /* one row past the limit tells a table that has grown over it, whatever total_rows estimated */
+  snprintf (limit_clause, sizeof (limit_clause), " LIMIT %d", max_rows + 1);
+  query += limit_clause;
 
   /* Reading the rows is part of the statistics, not of the statement: a failure here leaves the
    * class without a snapshot (the optimizer then prices it as before) instead of failing the
@@ -177,93 +165,40 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
       return row_snapshot_drop (classop);
     }
   values.reserve ((size_t) MIN (total_rows, (INT64) max_rows) * n_attrs);
+  size = row_snapshot_fixed_size (n_attrs);
   for (pos = db_query_first_tuple (result); pos == DB_CURSOR_SUCCESS && usable; pos = db_query_next_tuple (result))
     {
-      int slot, rs = 0;
-
-      /* reservoir: the first max_rows rows fill it, each later row replaces a random one with
-       * probability max_rows / seen */
-      seen++;
-      if (n_rows < max_rows)
+      /* All of the table or nothing: a sample would price a value it holds by its share of the
+       * sample and a value it misses by the histogram, so a plan would turn on which rows the
+       * sample happened to take. Over either limit the table keeps no snapshot. */
+      if (n_rows == max_rows || size > ROW_SNAPSHOT_MAX_BYTES)
 	{
-	  slot = n_rows++;
-	  values.resize ((size_t) n_rows * n_attrs);
-	  row_size.push_back (0);
-	  for (c = 0; c < n_attrs; c++)
-	    {
-	      db_make_null (&values[ (size_t) slot * n_attrs + c]);
-	    }
+	  usable = false;
+	  break;
 	}
-      else
-	{
-	  INT64 r = (INT64) (rng () % (std::uint64_t) seen);
-
-	  if (r >= max_rows)
-	    {
-	      continue;
-	    }
-	  slot = (int) r;
-	  for (c = 0; c < n_attrs; c++)
-	    {
-	      pr_clear_value (&values[ (size_t) slot * n_attrs + c]);
-	    }
-	}
+      values.resize ((size_t) (n_rows + 1) * n_attrs);
       for (c = 0; c < n_attrs; c++)
 	{
-	  DB_VALUE *v = &values[ (size_t) slot * n_attrs + c];
+	  DB_VALUE *v = &values[ (size_t) n_rows * n_attrs + c];
 
+	  db_make_null (v);
 	  if (db_query_get_tuple_value (result, c, v) != NO_ERROR)
 	    {
 	      usable = false;
 	      break;
 	    }
-	  rs += or_packed_value_size (v, 0, 1, 0);
+	  size += or_packed_value_size (v, 0, 1, 0);
 	}
-      row_size[slot] = rs;
+      n_rows++;
     }
-  if (pos < 0)
+  if (pos < 0 || size > ROW_SNAPSHOT_MAX_BYTES)
     {
       usable = false;
     }
   db_query_end (result);
   er_clear ();
 
-  /* the byte cap: fewer rows, still spread evenly over the kept ones, rather than none */
-  size = row_snapshot_fixed_size (n_attrs);
-  for (i = 0; i < n_rows; i++)
-    {
-      size += row_size[i];
-    }
   if (usable && n_rows > 0)
-    {
-      int m = n_rows;
-
-      while (m > 0)
-	{
-	  int sz = row_snapshot_fixed_size (n_attrs);
-
-	  keep.clear ();
-	  for (i = 0; i < m; i++)
-	    {
-	      keep.push_back ((int) ((INT64) i * n_rows / m));
-	      sz += row_size[keep.back ()];
-	    }
-	  if (sz <= ROW_SNAPSHOT_MAX_BYTES)
-	    {
-	      size = sz;
-	      break;
-	    }
-	  /* shrink in proportion to the overshoot, at least one row */
-	  m = MIN (m - 1, (int) ((double) m * (ROW_SNAPSHOT_MAX_BYTES - row_snapshot_fixed_size (n_attrs))
-				 / (double) (sz - row_snapshot_fixed_size (n_attrs))));
-	}
-      if (m <= 0)
-	{
-	  usable = false;
-	}
-    }
-
-  if (usable && !keep.empty ())
     {
       blob = (char *) malloc (size);
       if (blob == NULL)
@@ -271,12 +206,12 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
 	  usable = false;
 	}
     }
-  if (usable && !keep.empty ())
+  if (usable && n_rows > 0)
     {
       or_init (&buf, blob, size);
       if (or_put_int (&buf, ROW_SNAPSHOT_MAGIC) != NO_ERROR || or_put_int (&buf, ROW_SNAPSHOT_VERSION) != NO_ERROR
 	  || or_put_int (&buf, size) != NO_ERROR || or_put_int (&buf, n_attrs) != NO_ERROR
-	  || or_put_int (&buf, (int) keep.size ()) != NO_ERROR
+	  || or_put_int (&buf, n_rows) != NO_ERROR
 	  || or_put_int (&buf, (int) MIN (total_rows, (INT64) INT_MAX)) != NO_ERROR)
 	{
 	  usable = false;
@@ -285,12 +220,9 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
 	{
 	  usable = (or_put_int (&buf, ids[i]) == NO_ERROR);
 	}
-      for (int k : keep)
+      for (i = 0; usable && i < n_rows * n_attrs; i++)
 	{
-	  for (c = 0; usable && c < n_attrs; c++)
-	    {
-	      usable = (or_put_value (&buf, &values[ (size_t) k * n_attrs + c], 0, 1, 0) == NO_ERROR);
-	    }
+	  usable = (or_put_value (&buf, &values[i], 0, 1, 0) == NO_ERROR);
 	}
       if (usable && buf.ptr - blob != size)
 	{
@@ -303,7 +235,7 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
       pr_clear_value (&values[i]);
     }
 
-  if (usable && !keep.empty ())
+  if (usable && n_rows > 0)
     {
       error = histogram_store_blob (classop, ROW_SNAPSHOT_KEY_ATTR, blob, size, with_fullscan);
     }
