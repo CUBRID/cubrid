@@ -174,8 +174,7 @@ static char *xts_pack_compare (char *ptr, const TP_DOMAIN * lhs, const TP_DOMAIN
 static bool xts_term_compares_values (const COMP_EVAL_TERM * term);
 static int xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided,
 				       DOMAIN_COMPARE_KEY * item);
-static TP_DOMAIN *xts_hash_join_key_domain (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl,
-					    int other_pos);
+static TP_DOMAIN *xts_join_key_domain (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos);
 static char *xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node);
 static char *xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan);
 static char *xts_pack_accumulator_plan (char *ptr, const DOMAIN_ACCUMULATOR_PLAN * plan);
@@ -3671,14 +3670,14 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
       /* CBRD-27583: each merge column pair's comparison from the two lists' column domains */
       for (int k = 0; k < merge_list_info->ls_merge.ls_column_cnt && ptr != NULL; k++)
 	{
-	  ptr = xts_pack_compare (ptr, domain_list_column_joined (merge_list_info->outer_xasl,
-								  merge_list_info->ls_merge.ls_outer_column[k],
-								  merge_list_info->inner_xasl,
-								  merge_list_info->ls_merge.ls_inner_column[k]),
-				  domain_list_column_joined (merge_list_info->inner_xasl,
-							     merge_list_info->ls_merge.ls_inner_column[k],
-							     merge_list_info->outer_xasl,
-							     merge_list_info->ls_merge.ls_outer_column[k]));
+	  ptr = xts_pack_compare (ptr, xts_join_key_domain (merge_list_info->outer_xasl,
+							    merge_list_info->ls_merge.ls_outer_column[k],
+							    merge_list_info->inner_xasl,
+							    merge_list_info->ls_merge.ls_inner_column[k]),
+				  xts_join_key_domain (merge_list_info->inner_xasl,
+						       merge_list_info->ls_merge.ls_inner_column[k],
+						       merge_list_info->outer_xasl,
+						       merge_list_info->ls_merge.ls_outer_column[k]));
 	}
     }
   return ptr;
@@ -6736,10 +6735,10 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
       const QFILE_LIST_MERGE_INFO *merge = &merge_list_info->ls_merge;
       for (int k = 0; k < merge->ls_column_cnt; k++)
 	{
-	  const TP_DOMAIN *outer = domain_list_column_joined (merge_list_info->outer_xasl, merge->ls_outer_column[k],
-							      merge_list_info->inner_xasl, merge->ls_inner_column[k]);
-	  const TP_DOMAIN *inner = domain_list_column_joined (merge_list_info->inner_xasl, merge->ls_inner_column[k],
-							      merge_list_info->outer_xasl, merge->ls_outer_column[k]);
+	  const TP_DOMAIN *outer = xts_join_key_domain (merge_list_info->outer_xasl, merge->ls_outer_column[k],
+							merge_list_info->inner_xasl, merge->ls_inner_column[k]);
+	  const TP_DOMAIN *inner = xts_join_key_domain (merge_list_info->inner_xasl, merge->ls_inner_column[k],
+							merge_list_info->outer_xasl, merge->ls_outer_column[k]);
 	  const int compare_size = xts_sizeof_compare (outer, inner);
 	  if (compare_size == ER_FAILED)
 	    {
@@ -7548,12 +7547,12 @@ xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decide
 }
 
 /*
- * xts_hash_join_key_domain () - CBRD-27583: a hash join key column's domain (domain_list_column_joined); a pair whose
- *   both columns are NULL-typed (NULL binds under arithmetic on both sides) is decided as that NULL domain against
- *   itself: its values match no row
+ * xts_join_key_domain () - CBRD-27583: a hash or merge join key column's domain (domain_list_column_joined); a
+ *   pair whose both columns are NULL-typed (NULL binds under arithmetic on both sides) is decided as that NULL domain
+ *   against itself: its values match no row
  */
 static TP_DOMAIN *
-xts_hash_join_key_domain (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos)
+xts_join_key_domain (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos)
 {
   TP_DOMAIN *domain = domain_list_column_joined (xasl, pos, other_xasl, other_pos);
   if (domain == NULL)
@@ -7583,10 +7582,10 @@ xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
   for (int i = 0; i < info->ls_column_cnt && fixed; i++)
     {
       fixed =
-	xts_hash_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
-				  info->ls_inner_column[i]) != NULL
-	&& xts_hash_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
-				     info->ls_outer_column[i]) != NULL;
+	xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+			     info->ls_inner_column[i]) != NULL
+	&& xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+				info->ls_outer_column[i]) != NULL;
     }
   ptr = or_pack_int (ptr, fixed ? 1 : 0);
   bool coerce = false;
@@ -7595,12 +7594,12 @@ xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
       /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
       TP_DOMAIN *outer =
 	(TP_DOMAIN *)
-	domain_key_value_domain (xts_hash_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
-							   info->ls_inner_column[i]));
+	domain_key_value_domain (xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+						      info->ls_inner_column[i]));
       TP_DOMAIN *inner =
 	(TP_DOMAIN *)
-	domain_key_value_domain (xts_hash_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
-							   info->ls_outer_column[i]));
+	domain_key_value_domain (xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+						      info->ls_outer_column[i]));
       TP_DOMAIN *outer_own =
 	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->outer.xasl, info->ls_outer_column[i]));
       TP_DOMAIN *inner_own =
@@ -7635,10 +7634,10 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
   for (int i = 0; i < info->ls_column_cnt && fixed; i++)
     {
       fixed =
-	xts_hash_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
-				  info->ls_inner_column[i]) != NULL
-	&& xts_hash_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
-				     info->ls_outer_column[i]) != NULL;
+	xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+			     info->ls_inner_column[i]) != NULL
+	&& xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+				info->ls_outer_column[i]) != NULL;
     }
   int size = OR_INT_SIZE;
   bool coerce = false;
@@ -7647,12 +7646,12 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
       /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
       TP_DOMAIN *outer =
 	(TP_DOMAIN *)
-	domain_key_value_domain (xts_hash_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
-							   info->ls_inner_column[i]));
+	domain_key_value_domain (xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+						      info->ls_inner_column[i]));
       TP_DOMAIN *inner =
 	(TP_DOMAIN *)
-	domain_key_value_domain (xts_hash_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
-							   info->ls_outer_column[i]));
+	domain_key_value_domain (xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+						      info->ls_outer_column[i]));
       TP_DOMAIN *outer_own =
 	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->outer.xasl, info->ls_outer_column[i]));
       TP_DOMAIN *inner_own =
