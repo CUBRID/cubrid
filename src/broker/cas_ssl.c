@@ -64,6 +64,7 @@
 #include "cas_common.h"
 #include "cas_log.h"
 #include "cas_network.h"
+#include "cas_common_main.h"
 #include "cas_ssl.h"
 
 #define CERT_FILENAME_LEN	512
@@ -88,6 +89,7 @@ static int cas_ssl_passwd_cb (char *buf, int size, int rwflag, void *userdata);
 static int cas_ssl_validity_check (SSL_CTX * ctx, const char *cert);
 static void cas_ssl_time_to_str (const ASN1_TIME * t, char *buf, size_t size);
 static void cas_ssl_set_io_timeout (int sd, int timeout_sec);
+static bool cas_ssl_interrupted_by_signal (int ret);
 
 int
 cas_init_ssl (int sd)
@@ -286,7 +288,12 @@ cas_ssl_read (int sd, char *buf, int size)
   fcntl (sd, F_SETFL, flags);
 #endif
 
-  nread = SSL_read (ssl, buf, size);
+  do
+    {
+      errno = 0;
+      nread = SSL_read (ssl, buf, size);
+    }
+  while (nread <= 0 && cas_ssl_interrupted_by_signal (nread));
 
 #if defined(WINDOWS)
   argp = SOCKET_NONBLOCK;
@@ -317,7 +324,12 @@ cas_ssl_write (int sd, const char *buf, int size)
   fcntl (sd, F_SETFL, flags);
 #endif
 
-  nwrite = SSL_write (ssl, buf, size);
+  do
+    {
+      errno = 0;
+      nwrite = SSL_write (ssl, buf, size);
+    }
+  while (nwrite <= 0 && cas_ssl_interrupted_by_signal (nwrite));
 
 #if defined(WINDOWS)
   argp = SOCKET_NONBLOCK;
@@ -491,6 +503,26 @@ cas_ssl_set_io_timeout (int sd, int timeout_sec)
 
   setsockopt (sd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &tv, sizeof (tv));
   setsockopt (sd, SOL_SOCKET, SO_SNDTIMEO, (const char *) &tv, sizeof (tv));
+}
+
+/*
+ * cas_ssl_interrupted_by_signal () - whether SSL_read ()/SSL_write () failed only because a signal other than a
+ *                                    shutdown request interrupted it, so that it is to be called again as it was
+ *   return:
+ *   ret(in): what SSL_read ()/SSL_write () returned, with errno cleared before the call
+ *
+ * The I/O timeout set in cas_init_ssl () makes a blocking read or write fail with EINTR on any signal, SA_RESTART or
+ * not, and the socket BIO reports that as "retry". The query cancel signal (SIGUSR1) must not end the session, so it
+ * is retried as the plaintext path retries its poll; a shutdown signal still ends the read or write.
+ */
+static bool
+cas_ssl_interrupted_by_signal (int ret)
+{
+  int saved_errno = errno;
+  int ssl_error = SSL_get_error (ssl, ret);
+
+  return ((ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) && saved_errno == EINTR
+	  && !cas_shutdown_signo);
 }
 
 /*
