@@ -54,7 +54,7 @@ set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4c
 set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
 set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
-# CI shares CUBRID_DOWNLOAD_CACHE among the builds on a node. One build at a time checks and fetches a
+# CUBRID_DOWNLOAD_CACHE holds tarballs fetched ahead of the build. One build at a time checks and fetches a
 # tarball under the lock; a file a failed or killed fetch left behind fails the hash and is fetched again.
 # The hash is checked here, not by EXPECTED_HASH, which makes a failed fetch fatal and leaves no retry.
 function(use_download_cache url_var hash)
