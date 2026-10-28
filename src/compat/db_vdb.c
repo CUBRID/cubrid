@@ -5025,9 +5025,12 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
     PT_NODE *stmt0 = kept->statements[0];
     /* CBRD-27583: the LIMIT values decide again whether the plan's MRO / SORT-LIMIT choice holds, the check
      * do_get_prepared_statement_info makes on a plan the PREPARE made */
-    bool replan = force_replan
-      || (PT_IS_QUERY (stmt0) && pt_recompile_for_limit_optimizations (kept->parser, stmt0,
-									  stmt0->info.query.limit_opt_flags));
+    bool replan = force_replan;
+
+    if (!replan && PT_IS_QUERY (stmt0))
+      {
+	replan = pt_recompile_for_limit_optimizations (kept->parser, stmt0, stmt0->info.query.limit_opt_flags);
+      }
 
     if (db_bind_variant_mode (stmt0) && stmt0->xasl_id != NULL)
       {
