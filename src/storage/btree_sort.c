@@ -394,8 +394,7 @@ static int btsort_merge_count_active_infiles (const BTSORT_PARAM * sort_param);
 static int btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles);
 static int btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half,
 					  bool put_to_caller);
-static int btsort_merge_in_section_size (int tot_buffers, int in_sections);
-static void btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx);
+static void btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx, bool put_to_caller);
 static void btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx);
 static void btsort_merge_bind_input (BTSORT_MERGE_INPUT * in, BTSORT_PARAM * owner, int file_idx);
 static int btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_INPUT * in) __attribute__ ((noinline));
@@ -2390,32 +2389,23 @@ exit:
 }
 
 /*
- * btsort_merge_in_section_size () - Pages of the sort buffer each active input file gets as its input section
- *   return: the input section size in pages, at least 1
- *   tot_buffers(in): pages of the sort buffer
- *   in_sections(in): active input files, one section each
- *
- * Note: Half of the buffer is kept for the output section, since a merge pass writes about as much as it reads; the
- *       other half is divided evenly among the inputs, since the input runs are about the same size.
- */
-static int
-btsort_merge_in_section_size (int tot_buffers, int in_sections)
-{
-  /* half of the buffer goes to the output section */
-  return MAX (1, tot_buffers / (2 * in_sections));
-}
-
-/*
  * btsort_merge_assign_sections () - Split internal_memory into one section per active input file and the
  *                                        output section
  *   return: void
  *   ctx(in/out): merge state; reads act_infiles, sets the section sizes and addresses
+ *   put_to_caller(in): true when the records of the pass go to put_fn, so the pass has no output section to size
+ *
+ * Note: The buffer is divided evenly among the inputs and the output, and what the division leaves over goes to
+ *       the output section, so the output never has fewer pages than an input; at a high fan-in the remainder makes
+ *       it the larger one (128 pages over 64 inputs: one page per input, 64 for the output). The output pages go to
+ *       the output file through the page buffer one at a time (btsort_write_area ()), so the output needs no more
+ *       pages than an input. A pass whose records go to put_fn divides the whole buffer among its inputs.
  */
 static void
-btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx)
+btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx, bool put_to_caller)
 {
   BTSORT_PARAM *sort_param = ctx->sort_param;
-  int sectsize = btsort_merge_in_section_size (sort_param->tot_buffers, ctx->act_infiles);
+  int sectsize = MAX (1, sort_param->tot_buffers / (ctx->act_infiles + (put_to_caller ? 0 : 1)));
   int i;
 
   ctx->out.sectsize = sort_param->tot_buffers - sectsize * ctx->act_infiles;
@@ -3129,9 +3119,6 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  ctx.file_next_page[i] = 0;
 	}
 
-      /* Distribute the internal memory to the input and output sections */
-      btsort_merge_assign_sections (&ctx);
-
       ctx.out.file_idx = ctx.out_half;
 
       /* Runs this pass produces; the pass that produces one is the last */
@@ -3156,6 +3143,9 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  /* put_fn is performed by the parent thread; it reads the file that receives the result */
 	  sort_param->px_result_file_idx = ctx.out.file_idx;
 	}
+
+      /* Distribute the internal memory to the input and output sections */
+      btsort_merge_assign_sections (&ctx, put_to_caller);
 
       /* Create or grow the output files for the runs of this pass; the final run of a serial merge goes to put_fn
        * and takes no pages */
@@ -3201,7 +3191,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		    }
 
 		  /* There are more than one active input files; redistribute buffers */
-		  btsort_merge_assign_sections (&ctx);
+		  btsort_merge_assign_sections (&ctx, put_to_caller);
 		}
 	    }
 
@@ -4781,10 +4771,10 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
  *   return: half of the number of temporary files (the number of input files of a merge pass, its fan-in)
  *   tot_buffers(in): total number of buffers in the sort buffer
  *
- * Note: Half of the buffers go to the input files, one page each at full fan-in, and the other half to the output
- *       section; so a merge pass reads from as many files as half the sort buffer holds pages, but from at least
- *       BTSORT_MIN_HALF_FILES (fewer files cannot merge). The leader of a parallel sort has its own bound,
- *       BTSORT_PX_LEADER_FANIN.
+ * Note: A merge pass reads from as many files as half the sort buffer holds pages, one page per input at full
+ *       fan-in, but from at least BTSORT_MIN_HALF_FILES (fewer files cannot merge). In a sweep of one to eight pages
+ *       per input, one page cost the fewest instructions; fan-ins above half the buffer were not measured, so the
+ *       other half goes to the output section. The leader of a parallel sort has its own bound, BTSORT_PX_LEADER_FANIN.
  *
  *       index_build_merge_fanin caps the count; 0, the default, sets no cap. A cap changes nothing while the runs are
  *       no more than the cap. Beyond it, the merge takes one more pass, which writes and reads the sort data once more,
