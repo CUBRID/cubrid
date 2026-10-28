@@ -12786,10 +12786,16 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   if (remote_target)
     {
       parser_walk_tree (parser, source, pt_get_server_name_list, snl, NULL, NULL);
-      if (snl->local_cnt > 0)
+      if (snl->local_cnt > 0 && (snl->server_cnt > 0 || snl->has_dblink_query))
 	{
-	  /* not allowed to merge multi-server */
+	  /* a source that mixes local and remote tables */
 	  PT_ERROR (parser, source, "dblink: multi-remote DML is not allowed");
+	}
+      else if (snl->local_cnt > 0)
+	{
+	  /* The source reads only local tables. It is evaluated here, and each row is sent as one MERGE.
+	   * Its shapes are checked after the semantic check (pt_dblink_merge_is_inscope). */
+	  snl->sink_kind = DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC;
 	}
       else
 	{
@@ -14170,6 +14176,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
+      return;
+    }
+
+  /* Remote MERGE + local source: no pushdown qstr either. The remote does not have the source. The USING
+   * source and the clauses stay as trees for the per-row push. The sink is set up on the target. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, into_spec, snl);
       return;
     }
 
