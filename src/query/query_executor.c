@@ -5294,6 +5294,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
       if (qdata_agg_hkey_eq (context->curr_part_key, context->temp_part_key) && context->sorted_count > 0)
 	{
 	  AGGREGATE_TYPE *agg_list = state->g_output_agg_list;
+	  AGGREGATE_HASH_KEY *swap_key;
 	  int i = 0;
 
 	  /* same key, compose accumulators */
@@ -5319,6 +5320,12 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	  /* a group evicted from the hash table more than once has one entry per eviction */
 	  context->curr_part_value->tuple_count += context->temp_part_value->tuple_count;
+
+	  /* keys can be equal and still differ ('true' and '"true"' in JSON): a group output from its partial entries shows
+	   * the last one in sort order, as a sorted GROUP BY shows the key of its group's last row */
+	  swap_key = context->curr_part_key;
+	  context->curr_part_key = context->temp_part_key;
+	  context->temp_part_key = swap_key;
 	}
       else
 	{
