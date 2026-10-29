@@ -3956,9 +3956,11 @@ public class SpLib {
         }
 
         if (e.trim().length() == 0) {
-            // '' or a whitespace-only string is NULL with numeric_empty_string_as_null,
-            // and 0 otherwise, the same as the other numeric types
-            if (Context.getSystemParameterBool(SysParam.NUMERIC_EMPTY_STRING_AS_NULL)) {
+            // '' is NULL with oracle_style_empty_string. Otherwise an empty or whitespace-only
+            // string is NULL with numeric_empty_string_as_null, and 0 like the other numeric types
+            if ((e.length() == 0
+                            && Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING))
+                    || Context.getSystemParameterBool(SysParam.NUMERIC_EMPTY_STRING_AS_NULL)) {
                 return null;
             }
             return NUMERIC_ZERO;
