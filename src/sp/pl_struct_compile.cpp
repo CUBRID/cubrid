@@ -158,7 +158,7 @@ namespace cubpl
 	  {
 	  case PLCSQL_COMPILE_TYPE_SP:
 	  {
-	    deserializator.unpack_all (translated_code, class_name, compiled_code, java_signature, sql_data_access);
+	    deserializator.unpack_all (translated_code, class_name, compile_id, compiled_code, java_signature, sql_data_access);
 
 	    int dependencies_size = 0;
 	    deserializator.unpack_int (dependencies_size);
@@ -175,7 +175,7 @@ namespace cubpl
 
 	  case PLCSQL_COMPILE_TYPE_PKG_SPEC:
 	  {
-	    deserializator.unpack_all (translated_code, class_name, compiled_code);
+	    deserializator.unpack_all (translated_code, class_name, compile_id, compiled_code);
 
 	    // dependencies
 	    int dependencies_size = 0;
@@ -638,13 +638,13 @@ namespace cubpl
   idx, err_id, err_msg
 
 #define GLOBAL_SEMANTICS_RESPONSE_UDPF_PACKER_ARGS() \
-  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), ret, args
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), ret, args, target_class, unique_name
 
 #define GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS() \
   GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS()
 
-#define GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS() \
-  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), c_info
+#define GLOBAL_SEMANTICS_RESPONSE_ID_TYPE_PACKER_ARGS() \
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), t_info
 
   global_semantics_response_common::global_semantics_response_common ()
     : idx (-1)
@@ -728,28 +728,29 @@ namespace cubpl
 // global_semantics_responses_column
 //////////////////////////////////////////////////////////////////////////
 
-  global_semantics_response_column::global_semantics_response_column ()
-    : c_info ()
+  global_semantics_response_id_type::global_semantics_response_id_type ()
+    : t_info ()
   {
     //
   }
 
   void
-  global_semantics_response_column::pack (cubpacking::packer &serializator) const
+  global_semantics_response_id_type::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS());
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_ID_TYPE_PACKER_ARGS());
   }
 
   size_t
-  global_semantics_response_column::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  global_semantics_response_id_type::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS ());
+    return serializator.get_all_packed_size_starting_offset (start_offset,
+	   GLOBAL_SEMANTICS_RESPONSE_ID_TYPE_PACKER_ARGS ());
   }
 
   void
-  global_semantics_response_column::unpack (cubpacking::unpacker &deserializator)
+  global_semantics_response_id_type::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS ());
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_ID_TYPE_PACKER_ARGS ());
   }
 
 //////////////////////////////////////////////////////////////////////////

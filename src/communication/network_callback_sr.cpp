@@ -75,12 +75,12 @@ int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block
 	 (char *) mem.get_read_ptr (), (int) mem.get_size ());
 }
 
-int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func)
+int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func, bool check_preexisting_error)
 {
   cubmem::block buffer (0, nullptr);
 
-  int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
-  if (error == NO_ERROR && er_errid () == NO_ERROR)
+  int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim, check_preexisting_error);
+  if (error == NO_ERROR && (!check_preexisting_error || er_errid () == NO_ERROR))
     {
       error = func (buffer);
     }
@@ -123,8 +123,9 @@ int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block
   return method_dispatch (unpacker);
 }
 
-int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func)
+int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func, bool check_preexisting_error)
 {
+  // check_preexisting_error does not matter: interrupts and errors are not looked at here
   std::queue <cubmem::extensible_block> &queue = xs_get_data_queue_from_cl ();
 
   assert (!queue.empty());

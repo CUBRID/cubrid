@@ -54,7 +54,9 @@ cubmem::block pack_data_block (Args &&... args)
 //////////////////////////////////////////////////////////////////////////
 using xs_callback_func = std::function <int (cubmem::block &)>;
 
-int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func);
+// check_preexisting_error: false to hand the reply to func even if the transaction is interrupted
+//                          or an error is already set
+int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func, bool check_preexisting_error);
 int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem);
 void xs_callback_begin_wait (cubthread::entry *thread_p);
 void xs_callback_end_wait (cubthread::entry *thread_p);
@@ -73,7 +75,8 @@ int xs_callback_send_no_receive (cubthread::entry *thread_p, Args &&... args)
 }
 
 template <typename ... Args>
-int xs_callback_send_and_receive (cubthread::entry *thread_p, const xs_callback_func &func, Args &&... args)
+int xs_callback_send_and_receive (cubthread::entry *thread_p, const xs_callback_func &func,
+				  bool check_preexisting_error, Args &&... args)
 {
   const cubmem::extensible_block b = pack_data (std::forward<Args> (args)...);
   int error_code;
@@ -82,7 +85,7 @@ int xs_callback_send_and_receive (cubthread::entry *thread_p, const xs_callback_
   error_code = xs_callback_send (thread_p, b);
   if (error_code == NO_ERROR)
     {
-      error_code = xs_callback_receive (thread_p, func);
+      error_code = xs_callback_receive (thread_p, func, check_preexisting_error);
     }
   xs_callback_end_wait (thread_p);
 

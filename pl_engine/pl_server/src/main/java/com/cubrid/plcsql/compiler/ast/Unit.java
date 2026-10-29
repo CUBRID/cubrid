@@ -37,16 +37,19 @@ public abstract class Unit extends AstNode {
 
     public final boolean connectionRequired;
     public final String owner;
-    public final String compileSeqNo;
 
-    public Unit(
-            ParserRuleContext ctx, boolean connectionRequired, String owner, String compileSeqNo) {
+    public Unit(ParserRuleContext ctx, boolean connectionRequired, String owner) {
         super(ctx);
 
         this.connectionRequired = connectionRequired;
         this.owner = owner;
-        this.compileSeqNo = compileSeqNo;
     }
 
     public abstract String getClassName();
+
+    // Injective, length-prefixed encoding of (owner, name) into a Java class name:
+    //   <kind>_<ownerLen>_<owner>_<name>
+    protected static String encodeClassName(String kind, String owner, String name) {
+        return String.format("%s_%d_%s_%s", kind, owner.length(), owner, name);
+    }
 }

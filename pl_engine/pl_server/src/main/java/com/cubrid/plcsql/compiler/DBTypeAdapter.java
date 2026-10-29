@@ -54,7 +54,6 @@ public class DBTypeAdapter {
             case DBType.DB_TIME:
             case DBType.DB_DATETIME:
             case DBType.DB_TIMESTAMP:
-            case DBType.DB_RESULTSET:
                 return true;
         }
 
@@ -67,6 +66,21 @@ public class DBTypeAdapter {
 
     public static Type getValueType(InstanceStore iStore, int dbType) {
         return getType(iStore, dbType, false, -1, (short) -1); // ignore precision and scale
+    }
+
+    // type code of a package variable or constant stored in the catalog.
+    // PL-only types, which do not have their DB types, get special codes.
+    public static int getPkgVarDbType(Type ty) {
+        switch (ty.idx) {
+            case Type.IDX_BOOLEAN:
+                return DBType.DB_PL_BOOLEAN;
+            case Type.IDX_SYS_REFCURSOR:
+                return DBType.DB_PL_SYS_REFCURSOR;
+            case Type.IDX_RECORD:
+                return DBType.DB_PL_RECORD;
+            default:
+                return ty.dbType;
+        }
     }
 
     public static String getSqlTypeName(int dbType) {
@@ -198,8 +212,6 @@ public class DBTypeAdapter {
                 return Type.DATETIME;
             case DBType.DB_TIMESTAMP:
                 return Type.TIMESTAMP;
-            case DBType.DB_RESULTSET:
-                return Type.SYS_REFCURSOR;
             default:
                 assert false : "unreachable";
                 throw new RuntimeException("unreachable");

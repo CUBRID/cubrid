@@ -37,10 +37,11 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class DeclParamIn extends DeclParam {
 
     public boolean hasDefault() {
-        return defaultVal != null;
+        return hasDefault;
     }
 
-    public final Expr defaultVal;
+    private final boolean hasDefault;
+    public Expr defaultVal; // a routine parameter gets it when the routine declaration is visited
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -52,8 +53,10 @@ public class DeclParamIn extends DeclParam {
             String name,
             String comment,
             TypeSpec typeSpec,
+            boolean hasDefault,
             Expr defaultVal) {
         super(ctx, name, comment, typeSpec);
+        this.hasDefault = hasDefault;
         this.defaultVal = defaultVal;
     }
 
@@ -69,7 +72,7 @@ public class DeclParamIn extends DeclParam {
         }
 
         DeclParamIn other = (DeclParamIn) o;
-        return this.name.equals(other.name) && this.typeSpec.type == other.typeSpec.type;
+        return this.name.equals(other.name) && this.typeSpec.isSameAs(other.typeSpec);
     }
 
     @Override

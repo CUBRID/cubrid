@@ -55,6 +55,7 @@ import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -455,7 +456,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         // We first try an exact match against colName ("col") to honor the JDBC convention, then
         // fall back to an exact match against writtenColName ("T.col") for backward compatibility.
 
-        String colName = columnName.toLowerCase();
+        String colName = columnName.toLowerCase(Locale.ROOT);
 
         // first, try exact match against the (unqualified) column name
         Integer index = statementHandler.getColNameIndex().get(colName);

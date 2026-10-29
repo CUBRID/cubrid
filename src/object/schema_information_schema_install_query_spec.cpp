@@ -91,6 +91,14 @@
     "OR " AUTH_CHECK_GRANT(object_of_expr, auth_type) \
   ")"
 
+#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr, pkg_of_expr) \
+  "(" \
+    AUTH_CHECK_DBA " " \
+    "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
+    "OR " AUTH_CHECK_GRANT(sp_of_expr, "EXECUTE") " " \
+    "OR (" pkg_of_expr " IS NOT NULL AND " AUTH_CHECK_GRANT(pkg_of_expr, "EXECUTE") ")" \
+  ")"
+
 #define AUTH_CHECK_SCHEMA(user_name_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
@@ -427,7 +435,7 @@ sm_define_view_parameters_spec (void)
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp_args].[sp_of].[owner].[name] AS [specific_schema], "
-      "IF ([sp_args].[sp_of].[pkg_name] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
+      "IF ([sp_args].[sp_of].[pkg_of] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
       "([sp_args].[index_of] + 1) AS [ordinal_position], "
       /* SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT */
       "DECODE ([sp_args].[mode], %d, 'IN', %d, 'OUT', %d, 'INOUT') AS [parameter_mode], "
@@ -458,7 +466,7 @@ sm_define_view_parameters_spec (void)
       /* CT_DATATYPE_NAME — LEFT JOIN so OUT CURSOR (type_id=28, not in _db_data_type) rows survive */
       "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "EXECUTE") " "
+      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[pkg_of]") " "
       "AND [sp_args].[sp_of].[is_system_generated] = 0",
     SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT,
     DB_TYPE_RESULTSET,
@@ -589,7 +597,7 @@ sm_define_view_routine_privileges_spec (void)
       "[auth].[grantee].[name] AS [grantee], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
-      "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
+      "IF ([sp].[pkg_of] IS NOT NULL, CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
@@ -603,10 +611,36 @@ sm_define_view_routine_privileges_spec (void)
     "WHERE "
       AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
       /* DB_OBJECT_PROCEDURE */
-      "AND [auth].[object_type] = %d",
+      "AND [auth].[object_type] = %d "
+    /* a grant on a package shows as a row for each of its routines */
+    "UNION ALL "
+    "SELECT "
+      "[auth].[grantor].[name] AS [grantor], "
+      "[auth].[grantee].[name] AS [grantee], "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [specific_schema], "
+      "CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]) AS [specific_name], "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [routine_schema], "
+      "[sp].[sp_name] AS [routine_name], "
+      "'EXECUTE' AS [privilege_type], "
+      "'NO' AS [is_grantable] "
+    "FROM "
+      /* CT_CLASSAUTH_NAME */
+      "[%s] AS [auth] "
+      /* CT_STORED_PROC_NAME */
+      "INNER JOIN [%s] AS [sp] ON [sp].[pkg_of] = [auth].[object_of] "
+    "WHERE "
+      AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      /* DB_OBJECT_PACKAGE */
+      "AND [auth].[object_type] = %d "
+      "AND [sp].[is_system_generated] = 0",
     CT_CLASSAUTH_NAME,
     CT_STORED_PROC_NAME,
-    DB_OBJECT_PROCEDURE);
+    DB_OBJECT_PROCEDURE,
+    CT_CLASSAUTH_NAME,
+    CT_STORED_PROC_NAME,
+    DB_OBJECT_PACKAGE);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -616,14 +650,14 @@ sm_define_view_routine_privileges_spec (void)
 std::string
 sm_define_view_routines_spec (void)
 {
-  char stmt [4096];
+  char stmt [8192];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
-      "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
+      "IF ([sp].[pkg_of] IS NOT NULL, CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
@@ -651,7 +685,7 @@ sm_define_view_routines_spec (void)
       /* SP_LANG_PLCSQL */
       "IF ([sp].[lang] = %d "
           "AND (" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[sp].[owner].[name]") "), "
-          "[sp_code].[scode], NULL) AS [routine_definition], "
+          "[sp].[code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
       "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
@@ -679,16 +713,14 @@ sm_define_view_routines_spec (void)
       /* CT_STORED_PROC_NAME */
       "[%s] AS [sp] "
       /* CT_DATATYPE_NAME */
-      "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type] "
-      /* CT_STORED_PROC_CODE_NAME */
-      "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
+      "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type], "
       /* CT_ROOT_NAME */
       "[%s] AS [root], "
       /* CT_CHARSET_NAME */
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_OBJECT("[sp].[owner].[name]", "[sp]", "EXECUTE") " "
+      "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]", "[sp].[pkg_of]") " "
       "AND [sp].[is_system_generated] = 0",
     SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
     SP_TYPE_FUNCTION, DB_TYPE_RESULTSET,
@@ -708,7 +740,6 @@ sm_define_view_routines_spec (void)
     SP_DIRECTIVE_RIGHTS_CALLER,
     CT_STORED_PROC_NAME,
     CT_DATATYPE_NAME,
-    CT_STORED_PROC_CODE_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
   // *INDENT-ON*
