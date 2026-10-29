@@ -108,6 +108,7 @@ static int hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan,
 			    QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE_RECORD * tuple_record);
 static HJOIN_PREHASH *hjoin_prehash_for_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 					       HASHJOIN_CONTEXT * context);
+static void hjoin_prehash_done (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 #if !defined (NDEBUG)
 static int hjoin_prehash_check (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * build, HASH_SCAN_KEY * key,
 				bool is_null_row, UINT32 hash_key, HASH_METHOD hash_method);
@@ -1023,6 +1024,8 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
     }
 
   assert (status == HASHJOIN_STATUS_PARTITION);
+  /* each partition builds from its own list: the input's hashes stand for none of them */
+  hjoin_prehash_done (thread_p, manager);
 
   error = hjoin_prepare_partition (thread_p, manager, &split_info);
   if (error != NO_ERROR)
@@ -3106,6 +3109,11 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       stats->build.qualified_rows = build->list_id->tuple_cnt;
     }
 
+  if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE: the one build the hashes were for */
+    {
+      hjoin_prehash_done (thread_p, manager);
+    }
+
   /* qfile_close_scan is called by the caller. */
 
   if (scan_code == S_ERROR || error != NO_ERROR)
@@ -4877,6 +4885,23 @@ hjoin_prehash_arm (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
     {
       return;
     }
+  if (hj->domain_info.decided)
+    {
+      /* the key converters were decided at unpack: a build that converts a key of this input into the keys' common
+       * domain hashes the converted value, never the written one (hjoin_prehash_for_build ()) -- known before any
+       * tuple is written, so the input is not armed */
+      const HASHJOIN_INPUT_DOMAIN_INFO *di =
+	(input == hj->outer.xasl) ? &hj->domain_info.outer : &hj->domain_info.inner;
+      int k;
+
+      for (k = 0; di->converters != NULL && k < hj->merge_info.ls_column_cnt; k++)
+	{
+	  if (di->converters[k] != NULL)
+	    {
+	      return;
+	    }
+	}
+    }
 
   ph->input = input;
   ph->owner = thread_p;
@@ -5181,6 +5206,26 @@ hjoin_prehash_for_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 	}
     }
   return ph;
+}
+
+/*
+ * hjoin_prehash_done () - the input's hashes past the one build that could read them
+ *   return: none
+ *   thread_p(in): the thread running the join
+ *   manager(in/out): the join
+ *
+ * The single build is done, or the join split into partitions, each built from a list of its own: the arrays go
+ * now instead of with the join (hjoin_clear_manager ()), so that they are not held through the probe.  Only the
+ * thread that armed them frees them (hjoin_prehash_arm ()); another leaves them to the join's clear.
+ */
+static void
+hjoin_prehash_done (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+{
+  if (manager->prehash != NULL && manager->prehash->owner == thread_p)
+    {
+      hjoin_prehash_release (thread_p, manager->prehash);
+      manager->prehash = NULL;
+    }
 }
 
 #if !defined (NDEBUG)
