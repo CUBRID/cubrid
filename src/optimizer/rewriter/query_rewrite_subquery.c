@@ -470,8 +470,7 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 
   for (cnf = on_cond; cnf != NULL; cnf = cnf->next)
     {
-      /* a conjunct linking one of the inner tables to the one outer table.  The check takes one inner id and
-       * counts a name of another inner table as neither side, so ask once per inner table */
+      /* the check takes one inner id: ask once per inner table */
       for (spec = inner_spec; spec != NULL && !has_direct_join; spec = spec->next)
 	{
 	  has_direct_join = pt_semi_anti_has_direct_join_conjunct (parser, cnf, spec->info.spec.id,
@@ -582,12 +581,12 @@ qo_move_spec_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subq, PT_N
 static PT_NODE *
 qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, QO_UNNEST_INFO * info, int *idx)
 {
-  PT_NODE *subq = info->subq, *spec, *prev_spec, *cnf, *next, *name, *attr, *new_attr;
+  PT_NODE *subq = info->subq, *spec, *prev_spec, *cnf, *next, *name, *attr, *new_attr, *ref_nodes;
   PT_NODE *on_cond = NULL, *where = NULL, *references = NULL;
   UINTPTR ref;
 
-  /* the synthesized equality of an IN form heads on_cond and owns the select item.  A WHERE conjunct naming the
-   * enclosing query (outer_spec, the one spec of it the ON may name) joins the ON; the rest stays the WHERE */
+  /* the synthesized equality of an IN form heads on_cond and owns the select item; a WHERE conjunct naming the outer
+   * spec joins the ON, the rest stays */
   if (info->is_in_form)
     {
       on_cond = info->on_cond;
@@ -617,11 +616,11 @@ qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, QO_UNNEST_
    * nothing and the sort would: read the derived table as EXISTS does, with every row */
   subq->info.query.all_distinct = PT_ALL;
 
-  /* the derived table selects the inner columns the ON names, and the ON reads them through its as_attr_list, the
-   * way a merged view's columns are substituted */
+  /* the derived table selects the inner columns the ON names: search the ON alone, not the specs and their JOIN ... ON */
   for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
     {
-      references = parser_append_node (mq_get_references (parser, on_cond, spec), references);
+      ref_nodes = mq_get_references_helper (parser, on_cond, spec, false);
+      references = parser_append_node (ref_nodes, references);
     }
   assert (references != NULL);	/* the direct-join conjunct names an inner column */
   parser_free_tree (parser, subq->info.query.q.select.list);
