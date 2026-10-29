@@ -36,6 +36,7 @@
 #include "object_print.h" /* help_print_info */
 #include "jsp_cl.h" /* jsp_find_stored_procedure */
 #include "transform.h" /* DB_MAX_SERIAL_NAME_LENGTH */
+#include "locator_cl.h" /* locator_flush_instance */
 
 // ================================================================
 // authenticate methods
@@ -943,6 +944,14 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *trigger
     }
 
   error = au_change_trigger_owner (trigger_mop, owner_mop);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_make_error (return_val, error);
+      return;
+    }
+
+  error = locator_flush_instance (trigger_mop);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
