@@ -826,6 +826,34 @@ namespace cubxasl
     return const_cast<PL_SIGNATURE_TYPE *> (src);
   }
 
+  OUTPTR_LIST *
+  spawner::spawn (const OUTPTR_LIST *src)
+  {
+    OUTPTR_LIST *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
+    if (dest == nullptr)
+      {
+	return nullptr;
+      }
+
+    /* ref: stx_restore_outptr_list; the compiled program is not copied, the copy compiles its own */
+    dest->valptrp = spawn (src->valptrp);
+    if (src->valptrp != nullptr && dest->valptrp == nullptr)
+      {
+	return nullptr;
+      }
+    dest->valptr_cnt = src->valptr_cnt;
+
+    return dest;
+  }
+
   VAL_LIST *
   spawner::spawn (const VAL_LIST *src)
   {
