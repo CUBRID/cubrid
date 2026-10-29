@@ -639,6 +639,8 @@ static int la_flush_repl_items (bool immediate, LA_STATS * stats);
 static int la_coordinator_init_resources (void);
 static int la_start_apply_workers (void);
 static void la_stop_apply_workers (void);
+static void la_free_unretired_fragments (void);
+static void la_free_pending_fragment (const LA_TASK * task, void *arg);
 static int la_coordinator_commit_apply_info (void);
 static int la_coordinator_collect_and_retire (void);
 static int la_coordinator_collect_results (void);
@@ -9031,6 +9033,54 @@ la_init (const char *log_path, const int max_mem_size)
   return;
 }
 
+/*
+ * la_free_unretired_fragments() - free the slots of the serial fragments that have not retired
+ *
+ * Note:
+ *   Called when the applier shuts down, after the workers have stopped. A serial fragment owns a slot of its own
+ *   that is freed only when its task retires (la_coordinator_release_apply_slot). applylogdb restarts the applier
+ *   inside the same process after the server goes down, so a fragment left on the in-flight list or the pending
+ *   list would leave its slot behind on every restart. Any other task points at a repl_lists slot, which
+ *   la_shutdown frees.
+ */
+static void
+la_free_unretired_fragments (void)
+{
+  LA_INFLIGHT_ENTRY *entry;
+  int i;
+
+  for (i = 0; (entry = la_inflight_entry_at (i)) != NULL; i++)
+    {
+      if (entry->rectype == LOG_SYSOP_END && entry->apply != NULL)
+	{
+	  la_free_all_repl_items (entry->apply);
+	  free_and_init (entry->apply);
+	}
+    }
+
+  la_pending_foreach (la_free_pending_fragment, NULL);
+}
+
+/*
+ * la_free_pending_fragment() - la_pending_foreach callback that frees a parked serial fragment's slot
+ *   task(in): parked task
+ *   arg(in): unused
+ *
+ * Note:
+ *   The task keeps pointing at the freed slot; la_pending_clear drops it right after.
+ */
+static void
+la_free_pending_fragment (const LA_TASK * task, void *arg)
+{
+  LA_APPLY *apply = task->apply;
+
+  if (task->rectype == LOG_SYSOP_END && apply != NULL)
+    {
+      la_free_all_repl_items (apply);
+      free_and_init (apply);
+    }
+}
+
 static void
 la_shutdown (void)
 {
@@ -9040,6 +9090,9 @@ la_shutdown (void)
 
   /* the workers read the marker set while they run */
   la_free_applied_tx_markers ();
+
+  /* only a retired fragment frees its slot, and the next run in this process would not see these */
+  la_free_unretired_fragments ();
 
   /* parked tasks point at the apply slots freed below; see la_pending_clear */
   la_pending_clear ();
