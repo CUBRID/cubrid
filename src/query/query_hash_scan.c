@@ -284,8 +284,10 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
  *   returns: hash value
  *   value(in): key value
  *   ht_size(in): hash table size (in buckets)
+ *
+ * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too.
  */
-static unsigned int
+unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 {
   DB_VALUE zero;

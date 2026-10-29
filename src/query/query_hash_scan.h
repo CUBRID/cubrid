@@ -137,6 +137,7 @@ void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
+unsigned int qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size);
 unsigned int qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size);
 unsigned int qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method);
 

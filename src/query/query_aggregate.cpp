@@ -38,6 +38,7 @@
 #include "expr_batch.h"
 #include "expr_compile.h"
 #include "query_executor.h"
+#include "query_hash_scan.h"	// qdata_hash_scan_value
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
@@ -3620,6 +3621,10 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   returns: hash value
  *   key(in): key
  *   ht_size(in): hash table size (in buckets)
+ *
+ * Keys the comparison finds equal hash alike: a FLOAT, DOUBLE or MONETARY -0 hashes as +0
+ * (qdata_hash_scan_value ()).  The hash merge of the GROUP BY leftovers (qexec_gby_hash_merge ()) meets two groups
+ * only when their hashes are equal, and goes out without the sort that brings a -0 group and a +0 group together.
  */
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
@@ -3632,7 +3637,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = ROTL32 (hash_val, 13);
-      hash_val ^= mht_get_hash_number (ht_size, ckey->values[i]);
+      hash_val ^= qdata_hash_scan_value (ckey->values[i], ht_size);
     }
 
   return hash_val;
@@ -3920,7 +3925,9 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
   /* add to list file */
   if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {
-      qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+      /* a page that cannot be had fails the entry: a parallel merge pairs a group's tuple and its partial entry by
+       * their order in two lists (qexec_gby_px_finish ()), so a lost entry would shift every group after it */
+      error = qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
     }
   else
     {
