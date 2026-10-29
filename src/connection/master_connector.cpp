@@ -116,6 +116,7 @@ namespace cubconn::master
     if (!m_events.add_descriptor (m_eventfd, EPOLLIN, ctx))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector: add_descriptor failed\n");
+
 	/* m_conn was allocated as an int. it must be released as an int. */
 	delete reinterpret_cast<int *> (ctx->m_conn);
 	delete ctx;
