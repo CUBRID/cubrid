@@ -9163,6 +9163,9 @@ la_shutdown (void)
 	{
 	  if (la_Info.repl_lists[i] != NULL)
 	    {
+	      /* a slot still holds the items of a transaction not yet applied: one whose commit is not read yet,
+	       * or whose commit task waits on the pending list or the in-flight list */
+	      la_free_all_repl_items (la_Info.repl_lists[i]);
 	      free_and_init (la_Info.repl_lists[i]);
 	    }
 	}
