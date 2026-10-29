@@ -21339,6 +21339,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  if (xasl->proc.buildlist.g_agg_list != NULL)
 	    {
 	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list, &xasl_state->vd);
+	      /* that reset the links the compiled operand program derives by cell: this run's first evaluation derives
+	       * them again (qdata_agg_operand_prog_ensure ()), as a page batch plan kept from an earlier run of the block
+	       * (a correlated subquery runs once per outer row) expects them */
+	      xasl->proc.buildlist.g_agg_list->operand_prog_link_stamp = 0;
 	      /* the hash aggregation writes partial results during the scan: its lists take their domains now */
 	      qexec_setup_hash_aggregate_lists (&xasl->proc.buildlist);
 	    }
@@ -21358,6 +21362,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  if (xasl->proc.buildvalue.agg_list != NULL)
 	    {
 	      qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list, &xasl_state->vd);
+	      /* as for a GROUP BY's list above: the cell links come back on this run's first evaluation */
+	      xasl->proc.buildvalue.agg_list->operand_prog_link_stamp = 0;
 	    }
 	}
 
