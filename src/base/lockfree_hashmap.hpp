@@ -269,8 +269,8 @@ namespace lockfree
   hashmap<Key, T>::init (tran::system &transys, size_t hash_size, size_t freelist_block_size,
 			 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
-    // answer ER_OUT_OF_VIRTUAL_MEMORY as lf_hash_init () does (lock_free.c:1927-1946): a bad_alloc would unwind
-    // through C callers - xcache_initialize (), spage_boot (), catalog_initialize () - and end in std::terminate
+    // answer ER_OUT_OF_VIRTUAL_MEMORY as lf_hash_init () does: a bad_alloc would unwind through C callers -
+    // xcache_initialize (), spage_boot (), catalog_initialize () - and end in std::terminate
     try
       {
 	m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count, entry_uninit { &edesc });
@@ -716,12 +716,10 @@ namespace lockfree
 	fn = m_freelist->claim (tdes);
 	if (fn == NULL)
 	  {
-	    // out of memory. lf_freelist_alloc_block () raised this before answering NULL
-	    // (lock_free.c:640-646) and the callers are written to find it: xcache_new_entry () runs
-	    // ASSERT_ERROR_AND_SET (xasl_cache.c:1574-1578), which assert (false)s and degrades to ER_FAILED
-	    // when nothing is set. Raised here rather than in alloc_list (): a short block there is not yet a
-	    // failure - alloc_block () keeps it - and the freelist is generic code with no
-	    // business in the error manager.
+	    // out of memory. lf_freelist_alloc_block () raised this before answering NULL and the callers are written
+	    // to find it: xcache_insert () runs ASSERT_ERROR_AND_SET, which assert (false)s and degrades to ER_FAILED
+	    // when nothing is set. Raised here rather than in alloc_list (): a short block there is not yet a failure -
+	    // alloc_block () keeps it - and the freelist is generic code with no business in the error manager.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (free_node_type));
 	    if (is_local_tran)
 	      {
@@ -872,7 +870,7 @@ namespace lockfree
     // before the head is read, never after: list_head is the bucket slot, and a head loaded outside the
     // transaction can be unlinked, retired and reclaimed while this thread is invisible to
     // compute_min_active_tranid (). lf_list_find () takes the slot by address for the same reason and reads it
-    // at :1247, after lf_tran_start_with_mb (). Taking it by value here dropped that ordering.
+    // only after lf_tran_start_with_mb (). Taking it by value here dropped that ordering.
     tdes.start_tran ();
     bool restart_search = true;
 

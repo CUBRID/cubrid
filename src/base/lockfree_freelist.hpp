@@ -44,7 +44,7 @@ namespace lockfree
   // It has to be a member, not an override. Destroying the freelist destroys its transaction table, whose
   // descriptors reclaim whatever they still hold - and that runs from ~freelist ()'s body, where a derived
   // class's override is already gone but a member is still alive. A virtual here silently skipped the hook at
-  // every teardown; see 72114cc6b. A member cannot.
+  // every teardown. A member cannot.
   template <class T>
   struct no_node_reclaim
   {
@@ -280,10 +280,10 @@ namespace lockfree
       {
 	if (!alloc_block ())
 	  {
-	    // out of memory. legacy lf_freelist_claim () answered NULL here and its callers - xcache_new_entry ()
-	    // among them - already expect that. It also ended the transaction it had opened
-	    // (lock_free.c:850-857): a descriptor left holding a published id pins the table's minimum active id
-	    // and stops reclamation for this table for the life of the process.
+	    // out of memory. legacy lf_freelist_claim () answered NULL here and its callers - xcache_insert ()
+	    // among them - already expect that. It also ended the transaction it had opened: a descriptor left
+	    // holding a published id pins the table's minimum active id and stops reclamation for this table for
+	    // the life of the process.
 	    if (is_local_tran)
 	      {
 		tdes.end_tran ();
