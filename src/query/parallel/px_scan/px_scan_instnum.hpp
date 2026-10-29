@@ -50,10 +50,10 @@ namespace parallel_scan
     ATOMIC_DRAW,		/* WHERE ROWNUM <= N -> workers draw from a shared counter */
   };
 
-  /* rhs of a single-term "inst_num() <= ?" (or "< ?") instnum_pred, else nullptr; *compare gets the term's resolved
-   * comparison. */
+  /* rhs of a single-term "inst_num() <= ?" (or "< ?") instnum_pred, else nullptr; *term gets the term, whose comparison
+   * unpack decided. */
   inline REGU_VARIABLE *
-  get_instnum_upper_limit_rhs (XASL_NODE *x, bool *is_less_than, const DOMAIN_COMPARE_PLAN **compare = nullptr)
+  get_instnum_upper_limit_rhs (XASL_NODE *x, bool *is_less_than, const COMP_EVAL_TERM **term = nullptr)
   {
     if (x == nullptr || x->instnum_pred == nullptr || x->instnum_val == nullptr)
       {
@@ -89,9 +89,9 @@ namespace parallel_scan
       {
 	*is_less_than = (comp->rel_op == R_LT);
       }
-    if (compare != nullptr)
+    if (term != nullptr)
       {
-	*compare = comp->domain_compare;
+	*term = comp;
       }
     return comp->rhs;
   }
@@ -105,8 +105,7 @@ namespace parallel_scan
       bool limit_resolved = false;
       INT64 limit = 0;
       REGU_VARIABLE *limit_rhs = nullptr;
-      const DOMAIN_COMPARE_PLAN *limit_compare =
-	      nullptr;	/* the instnum term's resolved comparison: inst_num() against the limit */
+      const COMP_EVAL_TERM *limit_term = nullptr;	/* the instnum term: inst_num() against the limit */
       std::atomic<INT64> counter {0};
 
       /* A scan block reset rebuilds the handler while the output list keeps the rows already emitted;
