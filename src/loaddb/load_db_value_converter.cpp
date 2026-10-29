@@ -301,16 +301,32 @@ namespace cubload
 
     if (status != DOMAIN_COMPATIBLE)
       {
-	/*
-	 * Let the engine name its own failure, through the call INSERT makes. A cast
-	 * that overflowed is not a domain conflict: INSERT says
-	 * ER_IT_DATA_OVERFLOW for it, and so did the standalone loader before the
-	 * conversion moved ahead of the object template, which used to make this same
-	 * call. Reporting one code for every kind of failure also broke
-	 * --error-control-file, which filters by code - a file naming -427 no longer
-	 * matched the overflow it was written for.
-	 */
-	error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, &natural, &domain);
+	if (status == DOMAIN_INCOMPATIBLE)
+	  {
+	    /*
+	     * A value the column's type cannot take keeps the code it has always had
+	     * here. --error-control-file names codes, so a file written against an
+	     * earlier version lists ER_OBJ_DOMAIN_CONFLICT for this one; reported as the
+	     * engine's ER_TP_CANT_COERCE instead, the file stops matching and a row that
+	     * used to be skipped fails the whole load. The message is also the better of
+	     * the two for a loader: it names the attribute, where ER_TP_CANT_COERCE names
+	     * only the two domains.
+	     */
+	    error_code = ER_OBJ_DOMAIN_CONFLICT;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+	  }
+	else
+	  {
+	    /*
+	     * Let the engine name the rest, through the call INSERT makes. A cast that
+	     * overflowed is not a domain conflict: INSERT says ER_IT_DATA_OVERFLOW for
+	     * it, and so did the standalone loader before the conversion moved ahead of
+	     * the object template, which used to make this same call. Reporting one code
+	     * for every kind of failure also broke --error-control-file, which filters by
+	     * code - a file naming -427 no longer matched the overflow it was written for.
+	     */
+	    error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, &natural, &domain);
+	  }
 
 	db_value_clear (&natural);
 	db_value_clear (val);
