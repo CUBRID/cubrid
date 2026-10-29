@@ -127,8 +127,7 @@ struct serial_entry
   // *INDENT-ON*
 };
 
-/* _db_serial class OID; loaded once at boot, read-only afterwards. Used as the class OID
- * when X-locking a serial's OID on a cache-miss install. */
+/* _db_serial class OID; loaded once at boot, read-only afterwards. */
 static OID db_serial_class_oid = OID_INITIALIZER;
 
 /* Lock-free hash keyed by serial OID. find () pins an entry by the lock-free transaction, not by its mutex, so a FAST
