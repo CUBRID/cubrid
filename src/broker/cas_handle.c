@@ -42,7 +42,6 @@
 #define SRV_HANDLE_ALLOC_SIZE		256
 
 static void srv_handle_content_free (T_SRV_HANDLE * srv_handle);
-static void col_update_info_free (T_QUERY_RESULT * q_result);
 static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 extern bool tran_is_in_libcas (void);
 
@@ -364,8 +363,9 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	  q_result[i].column_info = NULL;
 	  if (free_flag == TRUE)
 	    {
-	      col_update_info_free (&(q_result[i]));
+	      hm_col_update_info_free (&(q_result[i]));
 	      FREE_MEM (q_result[i].null_type_column);
+	      FREE_MEM (q_result[i].column_types);
 	    }
 	}
 
@@ -472,8 +472,8 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
     }
 }
 
-static void
-col_update_info_free (T_QUERY_RESULT * q_result)
+void
+hm_col_update_info_free (T_QUERY_RESULT * q_result)
 {
   int i;
 

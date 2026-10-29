@@ -1226,6 +1226,11 @@ cgw_set_bindparam (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, int bind_num, void *
 
   net_arg_get_char (type, net_type);
   net_arg_get_size (&data_size, net_value);
+  if (data_size <= 0)
+    {
+      /* a NULL a V13 driver sent with its declared type binds as a NULL; the remote DBMS types it */
+      type = CCI_U_TYPE_NULL;
+    }
 
   // Oracle ODBC does not support the BIGINT type.
   // So, change it to Numeric type.

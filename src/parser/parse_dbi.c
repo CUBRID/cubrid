@@ -3077,12 +3077,13 @@ pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val
 
 /*
  * pt_value_has_domain_type () - CBRD-27583: whether a bound value has the type a value-typed position was compiled
- *   for: the DB_TYPE, and for a string its codeset and collation (a NULL has type DB_TYPE_NULL)
+ *   for: the DB_TYPE, and for a string its codeset and collation (a NULL the driver sent without a type has type
+ *   DB_TYPE_NULL; one it sent with a declared type has that type, as a value of it)
  */
 bool
 pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain)
 {
-  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
   if (type != TP_DOMAIN_TYPE (domain))
     {
       return false;
@@ -3241,13 +3242,15 @@ pt_host_var_leave_collation (DB_TYPE type, int collation)
 /* CBRD-27583: whether a value is one the compilation of a position's plan took: a value-typed position's value of its
  * compiled domain, a LEAVE position's value of the compiled value's collation, a CHAR position's VARCHAR of the
  * compiled VARCHAR's collation or another value of the compiled CHAR (a LEAVE CHAR one's of the collation); and a
- * NULL at a comparison operand, or at an NVL family operand whose node keeps its domain without it */
+ * NULL at a comparison operand, or a NULL without a type at an NVL family operand whose node keeps its domain without
+ * it (CBRD-27679: a NULL with a declared type gives the node its type, as a value of it) */
 static bool
 pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
 {
   const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
   if (DB_IS_NULL (val) && (PT_HOST_VAR_CLASS (format_class) == PT_HOST_VAR_CLASS_COMPARE
-			   || (format_class & PT_HOST_VAR_NULL_MATCHES)))
+			   || ((format_class & PT_HOST_VAR_NULL_MATCHES)
+			       && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL)))
     {
       return true;
     }
@@ -3260,7 +3263,7 @@ pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB
   const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
   if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
     {
-      const bool sent_varchar = !DB_IS_NULL (val) && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
+      const bool sent_varchar = DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
       if (sent_varchar != (TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR))
 	{
 	  return false;
@@ -3278,7 +3281,7 @@ pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB
     {
       return pt_value_has_domain_type (val, compiled);
     }
-  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
   return pt_host_var_leave_collation (type, TP_IS_CHAR_TYPE (type) ? db_get_string_collation (val) : -1)
     == pt_host_var_leave_collation (TP_DOMAIN_TYPE (compiled), compiled->collation_id);
 }

@@ -107,7 +107,6 @@ static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, i
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
-static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -1655,7 +1654,6 @@ db_compile_statement_local (DB_SESSION * session)
 	{
 	  return err;
 	}
-      db_untype_null_host_variables (parser);
     }
 
   /*
@@ -2955,7 +2953,6 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
       /* DML compiles with the values bound: a client-side trigger UPDATE evaluates them at compile */
       pt_set_host_variables (typed->parser, count, values);
       typed->parser->flag.set_host_var = 0;
-      db_untype_null_host_variables (typed->parser);
     }
   /* the statements the session has compiled so far (a prefix: the CAS compiles each one just before it executes it);
    * a later one may read a table an earlier one creates, so it compiles at its turn, in this compilation */
@@ -4507,9 +4504,9 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 
 /*
  * db_bind_value_types () - CBRD-27583: bind the TYPES of an execution's values, not the values: each host variable
- *   becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a NULL value a
- *   plain NULL. The compilation of their bind type signature reads the types; the code the set_host_var flag does not
- *   guard reads NULLs and bakes no value into a plan the cache keys by type.
+ *   becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a NULL the
+ *   driver sent without a type a plain NULL. The compilation of their bind type signature reads the types; the code
+ *   the set_host_var flag does not guard reads NULLs and bakes no value into a plan the cache keys by type.
  */
 static void
 db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
@@ -4518,7 +4515,7 @@ db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values
     {
       const DB_VALUE *val = &values[i];
       DB_VALUE *hv = &parser->host_variables[i];
-      const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
       pr_clear_value (hv);
       if (type == DB_TYPE_NULL)
 	{
@@ -4531,25 +4528,6 @@ db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values
       if (TP_IS_CHAR_TYPE (type))
 	{
 	  db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));
-	}
-    }
-}
-
-/*
- * db_untype_null_host_variables () - CBRD-27583: a NULL value bound for a compilation is a plain NULL, whatever type
- *   header the driver gave it: the signature of a NULL is NULL (pt_value_has_domain_type), and a typed NULL in
- *   the host variables of a compilation stands for a value of that type (db_bind_value_types)
- */
-static void
-db_untype_null_host_variables (PARSER_CONTEXT * parser)
-{
-  for (int i = 0; i < parser->host_var_count; i++)
-    {
-      DB_VALUE *hv = &parser->host_variables[i];
-      if (DB_IS_NULL (hv) && DB_VALUE_DOMAIN_TYPE (hv) != DB_TYPE_NULL)
-	{
-	  pr_clear_value (hv);
-	  db_make_null (hv);
 	}
     }
 }
@@ -5165,7 +5143,6 @@ compile_text:
 	{
 	  return err;
 	}
-      db_untype_null_host_variables (new_session->parser);
 
       idx = db_compile_statement (new_session);
       if (idx < 0)

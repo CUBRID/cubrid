@@ -70,11 +70,22 @@ struct t_col_update_info
   char updatable;
 };
 
+/* the type of a result column as the client last received it */
+typedef struct t_column_type T_COLUMN_TYPE;
+struct t_column_type
+{
+  int precision;
+  short scale;
+  unsigned char cas_type;
+  char charset;
+};
+
 typedef struct t_query_result T_QUERY_RESULT;
 struct t_query_result
 {
   void *result;
   char *null_type_column;
+  T_COLUMN_TYPE *column_types;
   T_COL_UPDATE_INFO *col_update_info;
   void *column_info;
   int copied;
@@ -182,6 +193,7 @@ extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);
 extern void hm_session_free (T_SRV_HANDLE * srv_handle);
 extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
+extern void hm_col_update_info_free (T_QUERY_RESULT * q_result);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
 #endif
