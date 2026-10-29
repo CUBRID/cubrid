@@ -1491,13 +1491,17 @@ $ LOADDB
 
 1383 %1$s에서 질의 노드의 도메인이 확정되지 않았습니다 (질의 %2$s, 노드 %3$d, 도메인 %4$s).
 
-1384 세션변수 @%1$s 를 읽는 문장 안에서 그 변수가 %2$s 와 %3$s 를 함께 가집니다. 값을 한 타입으로 CAST 하십시오.
+1384 세션변수 @%1$s 의 타입은 이 문장에서 %2$s 이며, %3$s 가 아닙니다.
 
 1385 유효하지 않은 사용자명 또는 비밀번호입니다.
 
 1386 HA repl info: 시리얼 "%1$s"의 복제된 _db_serial 이미지를 이 노드에 적용하지 않고 (%2$s) 이 노드의 행을 유지합니다: current_val %3$s, 이미지 %4$s, 블록 끝 %5$s.
 
-1387 마지막 에러
+1387 sub-client %2$d개가 살아 있는 동안에는 %1$s을(를) 실행할 수 없습니다.
+1388 main client가 연결되어 있지 않거나 재시작 중이므로 sub-client를 시작할 수 없습니다.
+1389 %1$s은(는) main client 스레드에서 호출할 수 없습니다.
+
+1390 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2012,7 +2016,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
-344 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
+344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 
 
 
