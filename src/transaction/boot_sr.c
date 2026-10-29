@@ -3193,6 +3193,7 @@ xboot_get_server_session_key (void)
  *       recovery tasks, such transaction is assigned to the client and
  *       and the transaction state is returned as a side effect.
  */
+
 int
 xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential, int client_lock_wait,
 		       TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
@@ -3285,6 +3286,17 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     {
 #if defined (SERVER_MODE)
       thread_p->conn_entry->set_tran_index (tran_index);
+
+      /* CBRD-27445: the declared user is trusted only once this connection proved its password */
+      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type)
+	  && !css_consume_auth_proof (thread_p->conn_entry, client_credential->get_db_user ()))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+	  logtb_release_tran_index (thread_p, tran_index);
+	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
+	  client_credential->db_user = db_user_save;
+	  return NULL_TRAN_INDEX;
+	}
 #endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
