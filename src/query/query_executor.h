@@ -34,7 +34,6 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
-#include "domain_state.h"
 #include "query_list.h"
 #include "system.h"
 #include "thread_compat.hpp"
@@ -42,7 +41,8 @@
 #include <time.h>
 
 // forward definitions
-struct DOMAIN_COMPARE_PLAN;
+struct buildlist_proc_node;
+struct DOMAIN_COMPARE;
 struct func_pred;
 struct function_node;
 struct pred_expr_with_context;
@@ -78,7 +78,7 @@ struct upddel_class_instances_lock_info
 typedef struct val_descr VAL_DESCR;
 struct val_descr
 {
-  DB_VALUE *dbval_ptr;		/* Array of values */
+  const DB_VALUE *dbval_ptr;	/* Array of values; the server neither copies nor changes a bound value (CBRD-27583, design 5) */
   int dbval_cnt;		/* Value Count */
   DB_DATETIME sys_datetime;
   DB_TIMESTAMP sys_epochtime;
@@ -94,11 +94,6 @@ struct xasl_state
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
-  const char *query_alias;	/* the statement's text (xasl_node.query_alias), which the unresolved-domain check
-				 * (execution) names */
-  RESOLVED_DOMAIN_TABLE resolved_domain;	/* what resolve_domains resolved before the first row */
-  DOMAIN_EXECUTION_STATE domain_execution;	/* what the rows change: the nodes' execution domains, the values
-						 * converted once per scope */
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
@@ -121,8 +116,7 @@ extern DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p
 							 int *left_ind, tp_domain ** left_dom,
 							 QFILE_TUPLE_RECORD * rght, int *rght_ind,
 							 tp_domain ** rght_dom, int tval_cnt,
-							 const DOMAIN_COMPARE_PLAN * const *compares,
-							 const VAL_DESCR * vd);
+							 const DOMAIN_COMPARE * compares, const VAL_DESCR * vd);
 
 /* one input side (outer or inner) of an inner merge */
 typedef struct qexec_merge_side QEXEC_MERGE_SIDE;
@@ -149,12 +143,12 @@ extern SCAN_CODE qexec_merge_side_jump (THREAD_ENTRY * thread_p, QEXEC_MERGE_SID
 extern SCAN_CODE qexec_merge_side_skip_null_keys (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side);
 extern DB_VALUE_COMPARE_RESULT qexec_merge_side_cmp (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * outer,
 						     QEXEC_MERGE_SIDE * inner,
-						     const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd);
+						     const DOMAIN_COMPARE * compares, const VAL_DESCR * vd);
 extern SCAN_CODE qexec_merge_group_forward (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
 					    QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
 					    QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner, int group_cnt,
 					    int *cnt_out, DB_VALUE_COMPARE_RESULT * val_cmp,
-					    const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd);
+					    const DOMAIN_COMPARE * compares, const VAL_DESCR * vd);
 extern int qexec_merge_group_backward (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
 				       QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
 				       QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner, int group_cnt);
@@ -174,9 +168,9 @@ struct qexec_merge_hooks
 extern int qexec_merge_inner_loop (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
 				   QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
 				   QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner,
-				   const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd,
+				   const DOMAIN_COMPARE * compares, const VAL_DESCR * vd,
 				   const QEXEC_MERGE_HOOKS * hooks);
-extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state, bool own_load);
+extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern void qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern int qexec_check_limit_clause (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state,
 				     bool * empty_result);
@@ -206,6 +200,7 @@ extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p,
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
+extern void qexec_setup_hash_aggregate_lists (buildlist_proc_node * buildlist);
 extern int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd);
 extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);

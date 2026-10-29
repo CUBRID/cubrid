@@ -30,7 +30,7 @@
 #include "query_list.h"
 #include "thread_compat.hpp"
 
-struct DOMAIN_COMPARE_PLAN;
+struct DOMAIN_COMPARE;
 typedef struct val_descr VAL_DESCR;
 
 namespace parallel_query
@@ -40,7 +40,7 @@ namespace parallel_query
     /* executed == false with NO_ERROR: gate, partitioning or worker reservation said no; run the serial merge.
      * executed_parallelism is set only when executed; hint_degree follows compute_parallel_degree */
     int try_parallel_merge (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
-			    QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, const DOMAIN_COMPARE_PLAN *const *compares,
+			    QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, const DOMAIN_COMPARE *compares,
 			    const VAL_DESCR *vd, int hint_degree,
 			    QFILE_LIST_ID **result_list_id, bool &executed, int &executed_parallelism);
   } /* namespace merge_join */
