@@ -2711,6 +2711,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->batch_why_not = NULL;
   hsidp->batch_iter = false;
   hsidp->batch_page_more = false;
+  hsidp->batch_off_page = false;
   hsidp->batch_pos = 0;
   hsidp->batch_slot = 0;
   hsidp->batch_last_slot = 0;
@@ -5244,6 +5245,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      scan_id->partition_stats->batch_pages += scan_id->scan_stats.batch_pages - old_scan_stats.batch_pages;
 	      scan_id->partition_stats->batch_pages_rowpath +=
 		scan_id->scan_stats.batch_pages_rowpath - old_scan_stats.batch_pages_rowpath;
+	      scan_id->partition_stats->batch_pages_offpage +=
+		scan_id->scan_stats.batch_pages_offpage - old_scan_stats.batch_pages_offpage;
 	      break;
 
 	    case S_INDX_SCAN:
@@ -7744,6 +7747,7 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
   batch->n_rows = 0;
   batch->n_sel = 0;
   hsidp->batch_vpid = *vpid;
+  hsidp->batch_off_page = false;
   if (expr_batch_plan_gave_up (hsidp->batch_plan))
     {
       /* the row path kept taking this scan's pages (expr_batch_plan_note_page ()): this one goes to it untried, and
@@ -7771,6 +7775,13 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
 	  /* with rows collected, their records are peeked from the page the scan holds, and learning reads the class
 	   * record (heap_classrepr_get ()), whose ordered fix may let that page go and fix it again: the chunk goes
 	   * out as it is, and the next call meets the record first, with nothing collected, and learns it then */
+	  if (code == S_DOESNT_FIT)
+	    {
+	      /* nothing collected: the walk stopped at a record whose visible version is not on the page -- the
+	       * heap's layout, not the plan's decline (scan_batch_note_page ()) */
+	      hsidp->batch_off_page = true;
+	      hsidp->batch_why_not = EXPR_BATCH_WHY_OFF_PAGE;
+	    }
 	  return code;
 	}
       /* the walk stopped, nothing collected, at a record of a representation the plan has not met: learned now
@@ -7778,6 +7789,7 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
        * way) */
       if (expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid) != NO_ERROR)
 	{
+	  hsidp->batch_why_not = "a record of a representation the batch does not decode";
 	  return code;
 	}
       /* learned with nothing collected yet: the walk goes on from that record, now a row */
@@ -8230,8 +8242,7 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      return S_ERROR;
 	    }
-	  scan_id->scan_stats.batch_pages_rowpath++;
-	  expr_batch_plan_note_page (hsidp->batch_plan, true);
+	  scan_batch_note_page (scan_id, true);
 	  hsidp->batch_page_more = false;
 	  /* a local copy of the page the scan read earlier is not this walk's */
 	  VPID_SET_NULL (&scan_cache->local_cache_vpid);
@@ -8240,8 +8251,7 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       if (!hsidp->batch_page_more)
 	{
-	  scan_id->scan_stats.batch_pages++;
-	  expr_batch_plan_note_page (hsidp->batch_plan, false);
+	  scan_batch_note_page (scan_id, false);
 	}
       if (batch->n_sel > 0)
 	{
@@ -8323,6 +8333,35 @@ scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot)
       hsidp->curr_oid.pageid = hsidp->batch_vpid.pageid;
       hsidp->curr_oid.slotid = after_slot;
     }
+}
+
+/*
+ * scan_batch_note_page () - a page the walk is done with, for the trace and the plan's give-up
+ *   return: none
+ *   scan_id(in/out): the heap scan (the consumer's, the filter iterator's, a parallel worker's)
+ *   rowpath(in): the page went to the row path from a chunk's first slot -- the plan declined the chunk, it gave
+ *                up, or the walk stopped at a record of the page (scan_batch_collect_chunk ())
+ *
+ * The walk stopped, nothing collected, at a record whose visible version is not on the page (batch_off_page): the
+ * rows before it were taken, and the record is the heap's layout, not something the plan declined.  The trace
+ * counts such pages apart, and the plan leaves them out of its give-up (expr_batch_plan_note_page ()).
+ */
+void
+scan_batch_note_page (SCAN_ID * scan_id, bool rowpath)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  bool off_page = rowpath && hsidp->batch_off_page;
+
+  if (!rowpath)
+    {
+      scan_id->scan_stats.batch_pages++;
+    }
+  else
+    {
+      scan_id->scan_stats.batch_pages_rowpath++;
+      scan_id->scan_stats.batch_pages_offpage += off_page ? 1 : 0;
+    }
+  expr_batch_plan_note_page (hsidp->batch_plan, rowpath, off_page);
 }
 
 /*
@@ -9063,10 +9102,16 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */
 	      const char *why = scan_id->s.hsid.batch_why_not;
 
-	      fprintf (fp, ", batch pages: %llu (row path: %llu%s%s)",
+	      fprintf (fp, ", batch pages: %llu (row path: %llu",
 		       (unsigned long long int) scan_id->scan_stats.batch_pages,
-		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath,
-		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
+		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath);
+	      if (scan_id->scan_stats.batch_pages_offpage > 0)
+		{
+		  /* of those, the pages handed over at a record whose visible version is not on the page */
+		  fprintf (fp, ", at records off the page: %llu",
+			   (unsigned long long int) scan_id->scan_stats.batch_pages_offpage);
+		}
+	      fprintf (fp, "%s%s)", (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
 		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? why : "");
 	    }
 	  else

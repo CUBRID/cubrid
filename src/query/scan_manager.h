@@ -176,6 +176,8 @@ struct heap_scan_id
    * hands out the rows it kept one by one */
   bool batch_iter;
   bool batch_page_more;		/* the held page has rows past the chunk */
+  bool batch_off_page;		/* the walk stopped, nothing collected, at a record whose visible version is not on
+				 * the page (scan_batch_collect_chunk ()) */
   int batch_pos;		/* the next kept row of the chunk to hand out */
   int batch_slot;		/* the page walk's position (scan_batch_collect_chunk ()) */
   int batch_last_slot;		/* the slot of the row handed out last */
@@ -219,6 +221,7 @@ struct parallel_heap_scan_id
   const char *batch_why_not;
   bool batch_iter;
   bool batch_page_more;
+  bool batch_off_page;
   int batch_pos;
   int batch_slot;
   int batch_last_slot;
@@ -557,7 +560,8 @@ struct scan_stats
   UINT64 read_rows;		/* # of rows read */
   UINT64 qualified_rows;	/* # of rows qualified by data filter */
   UINT64 batch_pages;		/* heap scan: pages the page batch evaluated ... */
-  UINT64 batch_pages_rowpath;	/* ... and pages it handed back to the row path */
+  UINT64 batch_pages_rowpath;	/* ... and pages it handed back to the row path ... */
+  UINT64 batch_pages_offpage;	/* ... of which at a record whose visible version is not on the page */
 
   /* for btree scan */
   UINT64 read_keys;		/* # of keys read */
@@ -776,6 +780,8 @@ extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_i
 extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
 					   PGSLOTID * slot);
 extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot);
+/* a page the walk is done with: taken by the batch, or handed to the row path (the trace's counts and the plan's) */
+extern void scan_batch_note_page (SCAN_ID * scan_id, bool rowpath);
 /* the projection node: each row the chunk kept gets the row path's tail -- its predicate and
  * rest columns fetched into the value list -- and is handed to emit (the serial block's
  * qexec_end_one_iteration (), a parallel worker's result handler) */

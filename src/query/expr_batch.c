@@ -436,6 +436,7 @@ struct expr_batch_plan
   int n_row_kids;
   INT64 pages;
   INT64 pages_fallback;
+  INT64 pages_off_page;		/* of pages_fallback: at a record whose visible version is not on the page */
   const char *fallback_why;	/* the last chunk's cause for the row path */
   bool gave_up;			/* the rest of the scan goes to the row path (expr_batch_plan_note_page ()) */
   /* the leaves' constants (eb_load_leaf_constants ()) are the scan's: loaded at its first chunk, the cause kept when
@@ -5673,15 +5674,28 @@ expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan)
 /* A page in, taken or handed back.  A scan whose pages keep going to the row path pays for the batch's
  * collection and run on each before the row path walks it again: once EB_GIVE_UP_MIN_PAGES pages are in and more
  * than half of them went that way, the plan gives up and the pages after them go to the row path without a try
- * (scan_batch_collect_chunk ()); the trace's last cause says so. */
+ * (scan_batch_collect_chunk ()); the trace's last cause says so.  A page handed over at a record whose visible
+ * version is not on the page (off_page: relocated, overflow, an older version in the log) is the heap's, not the
+ * plan's: the rows before that record were taken, and the row path walks only the rest.  Such pages stay out of
+ * both counts, so that a table whose records grew out of their pages keeps its batch. */
 void
-expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
+expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback, bool off_page)
 {
+  INT64 tried, declined;
+
   if (plan != NULL)
     {
+      assert (fallback || !off_page);
       plan->pages++;
       plan->pages_fallback += fallback ? 1 : 0;
-      if (!plan->gave_up && plan->pages >= EB_GIVE_UP_MIN_PAGES && plan->pages_fallback * 2 > plan->pages)
+      if (off_page)
+	{
+	  plan->pages_off_page++;
+	  plan->fallback_why = EXPR_BATCH_WHY_OFF_PAGE;
+	}
+      tried = plan->pages - plan->pages_off_page;
+      declined = plan->pages_fallback - plan->pages_off_page;
+      if (!plan->gave_up && tried >= EB_GIVE_UP_MIN_PAGES && declined * 2 > tried)
 	{
 	  plan->gave_up = true;
 	  plan->fallback_why = "the batch gave up: the row path took more than half of the first pages";
@@ -5887,7 +5901,7 @@ done:
 void
 expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent)
 {
-  char reprs[64] = "";
+  char reprs[64] = "", off_page[64] = "";
   int i, n_pointed = 0;
 
   if (plan == NULL)
@@ -5904,12 +5918,16 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
       /* more than the representation the plan was built from: the ones it learned from the scan's records */
       snprintf (reprs, sizeof (reprs), ", representations %d", plan->n_reprs);
     }
+  if (plan->pages_off_page > 0)
+    {
+      snprintf (off_page, sizeof (off_page), ", at records off the page %lld", (long long) plan->pages_off_page);
+    }
 
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
-	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld%s%s%s)\n",
+	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld%s%s%s%s)\n",
 	   indent, ' ', plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
 	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
-	   (long long) plan->pages, (long long) plan->pages_fallback, reprs,
+	   (long long) plan->pages, (long long) plan->pages_fallback, off_page, reprs,
 	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
   if (plan->n_proj > 0)
     {
@@ -5947,6 +5965,7 @@ expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan)
 
   plan->pages = 0;
   plan->pages_fallback = 0;
+  plan->pages_off_page = 0;
   plan->gave_up = false;
   plan->fallback_why = NULL;
   plan->mask_depth = 0;

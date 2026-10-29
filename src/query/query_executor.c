@@ -13898,6 +13898,7 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
 	  part->qualified_rows += now->qualified_rows - t->before.qualified_rows;
 	  part->batch_pages += now->batch_pages - t->before.batch_pages;
 	  part->batch_pages_rowpath += now->batch_pages_rowpath - t->before.batch_pages_rowpath;
+	  part->batch_pages_offpage += now->batch_pages_offpage - t->before.batch_pages_offpage;
 	}
     }
 }
@@ -13968,15 +13969,13 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	}
       if (chunk != S_DOESNT_FIT)
 	{
-	  s_id->scan_stats.batch_pages++;
-	  expr_batch_plan_note_page (hsidp->batch_plan, false);
+	  scan_batch_note_page (s_id, false);
 	  continue;
 	}
       /* the chunk and the rest of its page go to the row path -- expr_batch_run () declined the chunk, the walk
        * stopped at a record the page does not answer for (heap_page_collect_visible ()), or the plan gave up:
        * nothing of the chunk was accumulated */
-      s_id->scan_stats.batch_pages_rowpath++;
-      expr_batch_plan_note_page (hsidp->batch_plan, true);
+      scan_batch_note_page (s_id, true);
       qexec_batch_trace_end (thread_p, &trace, s_id);
       scan_batch_page_rowmode (s_id, true, chunk_start);
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)

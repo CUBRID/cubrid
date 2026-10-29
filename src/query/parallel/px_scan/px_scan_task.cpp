@@ -937,8 +937,7 @@ namespace parallel_scan
 	    if (scan_code == S_END && rc == NO_ERROR)
 	      {
 		/* every chunk of the page was accumulated: the slot is done (the row loop's own S_END) */
-		m_scan_id->scan_stats.batch_pages++;
-		expr_batch_plan_note_page (hsidp->batch_plan, false);
+		scan_batch_note_page (m_scan_id, false);
 		return S_END;
 	      }
 	    if (stop)
@@ -948,8 +947,7 @@ namespace parallel_scan
 	    /* the row path for the chunk and the rest of the page; a local copy of the page a cached scan read earlier
 	     * is not this walk's */
 	    VPID_SET_NULL (&hsidp->scan_cache.local_cache_vpid);
-	    m_scan_id->scan_stats.batch_pages_rowpath++;
-	    expr_batch_plan_note_page (hsidp->batch_plan, true);
+	    scan_batch_note_page (m_scan_id, true);
 	    m_slot_iterator.resume_after (chunk_start);
 	  }
       }

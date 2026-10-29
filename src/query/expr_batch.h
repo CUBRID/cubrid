@@ -259,11 +259,12 @@ extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * n
 extern const REPR_ID *expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n);
 extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid);
 
-/* trace: pages taken and pages handed back to the row path (a declined chunk, or a record the page does not
- * answer for).  Counting
- * the pages, the plan gives up on the scan when the row path keeps taking them: expr_batch_plan_gave_up () is
- * true from then on, and the scan's remaining pages go to the row path without a batch try. */
-extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
+/* trace: pages taken and pages handed back to the row path -- a declined chunk, or off_page: a record whose visible
+ * version the page does not hold (EXPR_BATCH_WHY_OFF_PAGE).  Counting the pages, the plan gives up on the scan
+ * when the row path keeps taking them for the plan's own declines: expr_batch_plan_gave_up () is true from then on,
+ * and the scan's remaining pages go to the row path without a batch try. */
+#define EXPR_BATCH_WHY_OFF_PAGE "a record whose visible version is not on the page (relocated, overflow, or in the log)"
+extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback, bool off_page);
 extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
