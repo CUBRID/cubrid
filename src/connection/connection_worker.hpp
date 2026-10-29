@@ -207,6 +207,7 @@ namespace cubconn::connection
       bool notify ();
       bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
 			       int wait_time = 0 /* no wait */);
+      bool has_queued_messages () const;
 
     private:
       /* connection pool */
