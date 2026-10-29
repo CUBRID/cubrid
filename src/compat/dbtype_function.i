@@ -1656,39 +1656,16 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
 
-      switch (byte_size)
+      if (byte_size == DB_NUMERIC_BUF_SIZE)
 	{
-	case 4:
-	  /* value_size (1) = byte_size(4) - header_size(3) */
-	  memset (value->data.num.d.buf, 0, 16);
-	  memcpy (value->data.num.d.buf + 16, num, 1);
-	  break;
-	case 8:
-	  /* value_size (5) = byte_size(8) - header_size(3) */
-	  memset (value->data.num.d.buf, 0, 12);
-	  memcpy (value->data.num.d.buf + 12, num, 5);
-	  break;
-	case 12:
-	  /* value_size (9) = byte_size(12) - header_size(3) */
-	  memset (value->data.num.d.buf, 0, 8);
-	  memcpy (value->data.num.d.buf + 8, num, 9);
-	  break;
-	case 16:
-	  /* value_size (13) = byte_size(16) - header_size(3) */
-	  memset (value->data.num.d.buf, 0, 4);
-	  memcpy (value->data.num.d.buf + 4, num, 13);
-	  break;
-	case DB_NUMERIC_BUF_SIZE:
 	  /* reached via call paths other than mr_data_*val_numeric() or mr_data_*mem_numeric(). */
-	case 20:
-	  /* value_size (17) = byte_size(20) - header_size(3) */
 	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
-	  break;
-	default:
-	  /* unreachable: byte_size must be one of {4,8,12,16,DB_NUMERIC_BUF_SIZE(17),20} */
+	}
+      else if (!numeric_repr_read_disk (value->data.num.d.buf, num, byte_size))
+	{
+	  /* unreachable: byte_size is DB_NUMERIC_BUF_SIZE or the size of a disk value */
 	  assert_release_error (false);
 	  error = ER_FAILED;
-	  break;
 	}
     }
   else
