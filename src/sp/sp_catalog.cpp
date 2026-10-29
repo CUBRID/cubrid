@@ -247,7 +247,7 @@ static int sp_builtin_init ()
   a.index_of = 1;
   a.arg_name = "cnt";
   a.data_type = DB_TYPE_INTEGER;
-  a.mode = SP_MODE_OUT;
+  a.mode = SP_MODE_INOUT;
   a.comment  = "";
 
   v.args.push_back (a);

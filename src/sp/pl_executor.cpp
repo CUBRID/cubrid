@@ -311,13 +311,13 @@ namespace cubpl
     /* Functions declared PARALLEL_ENABLE cannot execute SQL through CAS, so they need no CAS user push/pop. */
     if (!m_stack->is_server_side_sql_forbidden ())
       {
-        assert (m_sig.auth != NULL);
+	assert (m_sig.auth != NULL);
 	error = change_exec_rights (m_sig.auth);
 	if (error != NO_ERROR)
 	  {
 	    goto exit;
 	  }
-        rights_pushed = true;
+	rights_pushed = true;
       }
 
     error = request_invoke_command ();

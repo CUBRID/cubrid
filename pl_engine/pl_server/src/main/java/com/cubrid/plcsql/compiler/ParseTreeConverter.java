@@ -1247,7 +1247,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // This has an owner name or package name and the target function is not the SP
                 // being defined nor in the package being defined.
                 // Take this as a global function call.
-                setConnectionRequired(ctx);
 
                 String uniqName =
                         Misc.getNormalizedText(
@@ -2925,8 +2924,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StmtRollback(ctx);
     }
 
-    private static final Set<String> dbmsOutputProc = new HashSet<>(
-                    Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT"));
+    private static final Set<String> dbmsOutputProc =
+            new HashSet<>(
+                    Arrays.asList(
+                            "DISABLE",
+                            "ENABLE",
+                            "GET_LINE",
+                            "GET_LINES",
+                            "NEW_LINE",
+                            "PUT_LINE",
+                            "PUT"));
 
     @Override
     public Stmt visitProcedure_call(Procedure_callContext ctx) {
@@ -2945,13 +2952,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (ctx.proc_call_name().DBMS_OUTPUT() != null) {
 
-				if (parallelEnabled) {
-					throw new SemanticError(
-							Misc.getLineColumnOf(ctx),
-							"Stored functions declared with PARALLEL_ENABLE cannot use DBMS_OUTPUT package");
-				}
+                if (dbmsOutputProc.contains(name)) {
 
-				if (dbmsOutputProc.contains(name)) {
+                    if (parallelEnabled) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx),
+                                "Stored functions declared with PARALLEL_ENABLE cannot use DBMS_OUTPUT package");
+                    }
+
                     // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
                     // migration from Oracle, in the current implementation.
                     // NOTE: users cannot define a procedure of this name because of '$'
@@ -2959,7 +2967,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s112
-                            "no such procedure " + Misc.getNormalizedText(ctx.proc_call_name(), false));
+                            "no such procedure "
+                                    + Misc.getNormalizedText(ctx.proc_call_name(), false));
                 }
             }
 
@@ -3498,29 +3507,31 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 isPublic = (topLevelStmt == CREATE_SP || topLevelStmt == CREATE_PKG_SPEC);
 
-                // The option list accepts the specifications in any order and any number, so reject
-                // repetitions here. Placed after the branch above on purpose: a local routine rejects
-                // AUTHID and PARALLEL_ENABLE outright there, and what is left for it to check is a
-                // repeated DETERMINISTIC.
+                if (!ctx.parallel_enable_spec().isEmpty()) {
+                    parallelEnabled = true;
+                }
+
+                // The option list accepts the specifications in any order and any number, so
+                // reject repetitions here. A local routine does not need these two checks: it
+                // rejects AUTHID and PARALLEL_ENABLE outright above.
                 if (ctx.authid_spec().size() > 1) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.authid_spec().get(1)), // s441
                             "AUTHID is specified more than once");
-                }
-                if (ctx.deterministic_spec().size() > 1) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.deterministic_spec().get(1)), // s442
-                            "DETERMINISTIC is specified more than once");
                 }
                 if (ctx.parallel_enable_spec().size() > 1) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.parallel_enable_spec().get(1)), // s443
                             "PARALLEL_ENABLE is specified more than once");
                 }
+            }
 
-                if (!ctx.parallel_enable_spec().isEmpty()) {
-                    parallelEnabled = true;
-                }
+            // DETERMINISTIC is allowed for a local routine as well, so check its repetition for
+            // both
+            if (ctx.deterministic_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.deterministic_spec().get(1)), // s442
+                        "DETERMINISTIC is specified more than once");
             }
 
             // push a temporary symbol table, in order not to corrupt the current symbol table with

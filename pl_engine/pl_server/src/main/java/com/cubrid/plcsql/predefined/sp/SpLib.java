@@ -768,6 +768,15 @@ public class SpLib {
         status[0] = iArr[0];
     }
 
+    public static void DBMS_OUTPUT$GET_LINES(String[] lines, Integer[] numlines) {
+        if (numlines[0] == null) {
+            throw new VALUE_ERROR("numlines must be non-null");
+        }
+        int[] iArr = new int[] {numlines[0]}; // in: the number of lines to get
+        DBMS_OUTPUT.getLines(lines, iArr);
+        numlines[0] = iArr[0]; // out: the number of lines got
+    }
+
     public static void DBMS_OUTPUT$NEW_LINE() {
         DBMS_OUTPUT.newLine();
     }

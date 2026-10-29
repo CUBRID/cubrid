@@ -127,7 +127,8 @@ public class DBMS_OUTPUT {
             }
         }
 
-        cnt[0] = strs.length;
+        // strs is null when DBMS_OUTPUT is disabled or there is no line to get
+        cnt[0] = (strs == null) ? 0 : strs.length;
         line[0] = builder.toString();
     }
 

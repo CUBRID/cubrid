@@ -201,9 +201,36 @@ public class SymbolStack {
                                                 "status",
                                                 null,
                                                 TypeSpec.getBogus(null, Type.INT),
-                                                true)),
+                                                false)),
                         0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
+
+        // get_lines
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$GET_LINES",
+                        null,
+                        null,
+                        null,
+                        true,
+                        new NodeList<DeclParam>()
+                                .addNode(
+                                        new DeclParamOut(
+                                                null,
+                                                "lines",
+                                                null,
+                                                TypeSpec.getBogus(null, Type.STRING_ANY),
+                                                false))
+                                .addNode(
+                                        new DeclParamOut(
+                                                null,
+                                                "numlines",
+                                                null,
+                                                TypeSpec.getBogus(null, Type.INT),
+                                                true)),
+                        0);
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINES", dp);
 
         // new_line
         dp =
