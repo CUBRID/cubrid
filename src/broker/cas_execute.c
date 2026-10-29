@@ -7215,9 +7215,14 @@ column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13)
       && (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL) && result != NULL
-      && result->type == T_SELECT && col_idx < result->res.s.cursor_id.list_id.type_list.type_cnt)
+      && result->type == T_SELECT)
     {
-      return result->res.s.cursor_id.list_id.type_list.domp[col_idx];
+      /* an OID-including result carries the row's OID in its first list column (cursor_get_tuple_value) */
+      const int list_idx = col_idx + (result->res.s.cursor_id.is_oid_included ? 1 : 0);
+      if (list_idx < result->res.s.cursor_id.list_id.type_list.type_cnt)
+	{
+	  return result->res.s.cursor_id.list_id.type_list.domp[list_idx];
+	}
     }
   return domain;
 }
@@ -7235,10 +7240,15 @@ column_types_changed (DB_SESSION * session, const T_QUERY_RESULT * q_result, T_B
   T_COLUMN_TYPE type;
   int i = 0;
 
-  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) || q_result->column_types == NULL
-      || q_result->stmt_type != CUBRID_STMT_SELECT || session->type_list == NULL)
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) || q_result->stmt_type != CUBRID_STMT_SELECT
+      || session->type_list == NULL)
     {
       return false;
+    }
+  if (q_result->column_types == NULL)
+    {
+      /* the column info last sent kept no types (out of memory): send it again */
+      return true;
     }
 
   for (col = session->type_list[q_result->stmt_id - 1]; col != NULL; col = col->next)

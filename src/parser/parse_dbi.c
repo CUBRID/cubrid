@@ -2805,7 +2805,9 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
   dt = NULL;
 
   val_type = DB_VALUE_DOMAIN_TYPE (val);
-  if (DB_IS_NULL (val) && val_type == DB_TYPE_NULL)
+  /* a NULL OBJECT, collection or JSON has no class, elements or document to read its domain from */
+  if (DB_IS_NULL (val) && (val_type == DB_TYPE_NULL || val_type == DB_TYPE_OBJECT || TP_IS_SET_TYPE (val_type)
+			   || val_type == DB_TYPE_JSON))
     {
       node->type_enum = PT_TYPE_NULL;
       return node;
