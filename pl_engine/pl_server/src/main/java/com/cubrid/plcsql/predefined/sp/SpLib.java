@@ -3951,8 +3951,17 @@ public class SpLib {
     }
 
     public static BigDecimal convStringToNumeric(String e) {
-        if (e == null || e.length() == 0) {
+        if (e == null) {
             return null;
+        }
+
+        if (e.trim().length() == 0) {
+            // '' or a whitespace-only string is NULL with numeric_empty_string_as_null,
+            // and 0 otherwise, the same as the other numeric types
+            if (Context.getSystemParameterBool(SysParam.NUMERIC_EMPTY_STRING_AS_NULL)) {
+                return null;
+            }
+            return NUMERIC_ZERO;
         }
 
         return strToBigDecimal(e);
@@ -4296,6 +4305,7 @@ public class SpLib {
     private static final Long LONG_ZERO = Long.valueOf(0L);
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
+    private static final BigDecimal NUMERIC_ZERO = BigDecimal.ZERO;
 
     // TODO: update the locale with the value got from the server
     private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy", Locale.US);
