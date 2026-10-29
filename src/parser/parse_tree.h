@@ -1691,6 +1691,8 @@ typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree
 typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
+typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
+typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
 
 typedef struct parser_node PT_NODE;
 
@@ -3960,6 +3962,34 @@ typedef struct remote_cols
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
+/* an edit of the original text of a PL/CSQL static SQL statement: replace [start, end) with text */
+struct pt_static_sql_edit
+{
+  int start;			/* byte offset in the original text */
+  int end;			/* byte offset in the original text, start for an insertion */
+  const char *text;		/* replacement */
+  int host_var_index;		/* index of the host variable for a replaced PL/CSQL variable, otherwise -1 */
+};
+
+/* a column list implied in the original text of a PL/CSQL static SQL statement (e.g. SELECT *), which is expanded
+ * in the text so that the columns are fixed at compile time as they are in the compiled tree */
+typedef enum
+{
+  PT_SS_STAR_ALL,		/* "*" in a select list; pos is the end of "*" */
+  PT_SS_STAR_QUALIFIED,		/* "name.*" in a select list; pos is the end of "name" */
+  PT_SS_INSERT_COLUMNS,		/* INSERT without a column list; pos is the end of the class name */
+  PT_SS_MERGE_INSERT_COLUMNS	/* INSERT of MERGE without a column list; pos is not used */
+} PT_STATIC_SQL_STAR_KIND;
+
+struct pt_static_sql_star
+{
+  PT_STATIC_SQL_STAR_KIND kind;
+  int pos;
+  PT_NODE *columns;		/* copy of the expanded names */
+  bool qualify;			/* qualify the columns with their range variables */
+  PT_STATIC_SQL_STAR *next;
+};
+
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -4072,6 +4102,14 @@ struct parser_context
 
   char **external_into_label;
   int external_into_label_cnt;
+
+  /* PL/CSQL static SQL: edits to the original SQL text that replace PL/CSQL variables with host variables,
+   * remove the INTO clause and write the implied column lists (see pt_collect_static_sql_edits ()) */
+  PT_STATIC_SQL_EDIT *static_sql_edits;
+  int static_sql_edit_count;
+  int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
+  int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
+  PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
@@ -4115,6 +4153,8 @@ struct parser_context
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
+    unsigned is_verifying_static_sql_text:1;	/* compile the edited text of a PL/CSQL static SQL without preparing it, so that
+						 * the verification leaves no XASL cache entry (see make_static_sql_text ()) */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
     unsigned print_host_var_source:1;	/* CBRD-27583: a plan dump or trace print: a derived host variable
 					 * position prints as the user position it is derived from */
