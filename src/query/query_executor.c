@@ -7459,6 +7459,13 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
 	      piece_partials[v] = px->pieces[((size_t) v * px->n_parts + p) * 2 + 1];
 	    }
 	  rc = qexec_gby_merge_partition (thread_p, &job, piece_rows, piece_partials, px->n_workers);
+	  /* partition p is this worker's alone in the round, folded or split by now: its pieces go at once rather than
+	   * at the merge's end, so the round does not hold every partition's copy of the input to the last */
+	  for (v = 0; v < px->n_workers; v++)
+	    {
+	      qexec_gby_merge_free_list (thread_p, &px->pieces[((size_t) v * px->n_parts + p) * 2]);
+	      qexec_gby_merge_free_list (thread_p, &px->pieces[((size_t) v * px->n_parts + p) * 2 + 1]);
+	    }
 	}
       if (out_rows != NULL)
 	{
