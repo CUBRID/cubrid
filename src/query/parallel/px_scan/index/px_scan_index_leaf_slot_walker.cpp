@@ -67,7 +67,8 @@ namespace parallel_index_scan
       m_is_covering (false),
       m_use_desc_index (false),
       m_slot_key_valid (false),
-      m_slot_clear_key (false)
+      m_slot_clear_key (false),
+      m_key_values_ready (false)
   {
     db_make_null (&m_slot_key);
   }
@@ -392,6 +393,8 @@ namespace parallel_index_scan
 	/* MVCC pre-filtered in collect_oid_callback. */
 	HEAP_CACHE_ATTRINFO *attr_info = nullptr;
 	REGU_VARIABLE_LIST regu_list = nullptr;
+	/* a group by skip scan reads the key's values once per key record: its objects share them (CBRD-27664) */
+	const bool key_values_kept = m_key_values_ready && isidp->gby_skip != nullptr;
 
 	if (isidp->rest_attrs.num_attrs > 0)
 	  {
@@ -404,7 +407,7 @@ namespace parallel_index_scan
 	    regu_list = isidp->scan_pred.regu_list;
 	  }
 
-	if (attr_info != nullptr)
+	if (attr_info != nullptr && !key_values_kept)
 	  {
 	    int read_err = btree_attrinfo_read_dbvalues (thread_p, &m_slot_key, nullptr,
 			   isidp->bt_attr_ids, isidp->bt_num_attrs, attr_info,
@@ -433,13 +436,14 @@ namespace parallel_index_scan
 	m_scan_id->scan_stats.data_qualified_rows++;
 	m_scan_id->scan_stats.qualified_rows++;
 
-	if (regu_list != nullptr && m_scan_id->val_list != nullptr)
+	if (regu_list != nullptr && m_scan_id->val_list != nullptr && !key_values_kept)
 	  {
 	    if (fetch_val_list (thread_p, regu_list, m_vd, &isidp->cls_oid, oid, nullptr, PEEK) != NO_ERROR)
 	      {
 		return S_ERROR;
 	      }
 	  }
+	m_key_values_ready = true;
 
 	return S_SUCCESS;
       }
@@ -721,6 +725,7 @@ namespace parallel_index_scan
 	m_slot_key = key;
 	m_slot_key_valid = true;
 	m_slot_clear_key = clear_key;
+	begin_key_record ();
 
 	/* Hand the OID buffer + pending overflow chain head to the FSM; try_publish happens after leaf-OID drain. */
 	m_drain_fsm->begin_leaf_drain (std::move (leaf_oids), leaf_rec_info.ovfl);
