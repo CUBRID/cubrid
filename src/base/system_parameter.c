@@ -2119,9 +2119,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-27583: in the plan key, since a bind type signature's plan holds the PLUS concat-or-add choice */
   {PRM_ID_PLUS_AS_CONCAT,
    PRM_NAME_PLUS_AS_CONCAT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
