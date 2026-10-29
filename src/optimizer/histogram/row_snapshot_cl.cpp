@@ -466,7 +466,8 @@ row_snapshot_columns (SM_CLASS *class_)
   SM_ATTRIBUTE *att;
   int n = 0;
 
-  if (class_ == NULL || (class_->flags & SM_CLASSFLAG_ROW_SNAPSHOT) == 0)
+  /* not the catalog: tools query it all the time and its estimates matter little */
+  if (class_ == NULL || class_->class_type != SM_CLASS_CT || (class_->flags & SM_CLASSFLAG_SYSTEM) != 0)
     {
       return NULL;
     }
@@ -507,7 +508,7 @@ ROW_SNAPSHOT *
 row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, const ROW_SNAPSHOT_FILTER *filters,
 		   int n_filters, int max_rows)
 {
-  /* the read is a statement on a declared class with the same filters: planning it must not read
+  /* the read is a statement on the same class with the same filters: planning it must not read
    * again. The client runs one statement at a time, so a plain flag will do. */
   static bool in_read = false;
   std::string query;

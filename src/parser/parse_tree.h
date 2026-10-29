@@ -1378,7 +1378,6 @@ typedef enum
   PT_COMPACT_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
-  PT_CHANGE_ROW_SNAPSHOT,
   PT_CHANGE_COLUMN_COMMENT,
   PT_CHANGE_INDEX_COMMENT,
   PT_CHANGE_INDEX_STATUS,
@@ -1434,9 +1433,7 @@ typedef enum
   PT_TABLE_OPTION_COLLATION,
   PT_TABLE_OPTION_COMMENT,
   PT_TABLE_OPTION_ENCRYPT,
-  PT_TABLE_OPTION_DONT_REUSE_OID,
-  PT_TABLE_OPTION_ROW_SNAPSHOT,
-  PT_TABLE_OPTION_NO_ROW_SNAPSHOT
+  PT_TABLE_OPTION_DONT_REUSE_OID
 } PT_TABLE_OPTION_TYPE;
 
 typedef enum
@@ -1972,10 +1969,6 @@ struct pt_alter_info
     {
       PT_NODE *tbl_comment;	/* PT_VALUE, comment for table/view */
     } comment;
-    struct
-    {
-      bool on;			/* PT_CHANGE_ROW_SNAPSHOT: ROW_SNAPSHOT (true) or NO_ROW_SNAPSHOT (false) */
-    } row_snapshot;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */

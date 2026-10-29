@@ -6181,11 +6181,6 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " comment = ");
       q = pt_append_varchar (parser, q, r1);
       break;
-    case PT_CHANGE_ROW_SNAPSHOT:
-      q =
-	pt_append_nulstring (parser, q,
-			     p->info.alter.alter_clause.row_snapshot.on ? " row_snapshot" : " no_row_snapshot");
-      break;
     case PT_CHANGE_COLLATION:
       if (p->info.alter.alter_clause.collation.charset != -1)
 	{
@@ -8320,12 +8315,6 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TABLE_OPTION_DONT_REUSE_OID:
       q = pt_append_nulstring (parser, q, "dont_reuse_oid");
-      break;
-    case PT_TABLE_OPTION_ROW_SNAPSHOT:
-      q = pt_append_nulstring (parser, q, "row_snapshot");
-      break;
-    case PT_TABLE_OPTION_NO_ROW_SNAPSHOT:
-      q = pt_append_nulstring (parser, q, "no_row_snapshot");
       break;
     case PT_TABLE_OPTION_AUTO_INCREMENT:
       q = pt_append_nulstring (parser, q, "auto_increment = ");

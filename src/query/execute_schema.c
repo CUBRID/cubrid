@@ -79,7 +79,6 @@
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
-#define UNIQUE_SAVEPOINT_CHANGE_ROW_SNAPSHOT "cHANGErOWsNAPSHOT"
 #define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
@@ -271,7 +270,6 @@ static int do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const
 static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
-static int do_alter_change_row_snapshot (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_cache_empty_histogram (MOP class_obj);
 
@@ -1995,9 +1993,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 	case PT_CHANGE_TABLE_COMMENT:
 	  error_code = do_alter_change_tbl_comment (parser, crt_clause);
-	  break;
-	case PT_CHANGE_ROW_SNAPSHOT:
-	  error_code = do_alter_change_row_snapshot (parser, crt_clause);
 	  break;
 	case PT_CHANGE_COLUMN_COMMENT:
 	  error_code = do_alter_change_col_comment (parser, crt_clause);
@@ -9820,7 +9815,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
   bool found_reuse_oid_option = false, reuse_oid = false;
-  bool row_snapshot = false;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -9941,12 +9935,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      found_reuse_oid_option = true;
 	      reuse_oid = false;
 	      break;
-	    case PT_TABLE_OPTION_ROW_SNAPSHOT:
-	      row_snapshot = true;
-	      break;
-	    case PT_TABLE_OPTION_NO_ROW_SNAPSHOT:
-	      row_snapshot = false;
-	      break;
 	    case PT_TABLE_OPTION_CHARSET:
 	      tbl_opt_charset = tbl_opt;
 	      break;
@@ -9959,17 +9947,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    default:
 	      break;
 	    }
-	}
-
-      if (row_snapshot
-	  && (node->info.create_entity.entity_type != PT_CLASS || node->info.create_entity.partition_info != NULL
-	      || node->info.create_entity.supclass_list != NULL))
-	{
-	  /* the optimizer reads the rows of the table when it plans (CBRD-27478): a plain table only -- not a view,
-	   * not a partitioned table, whose rows live in its partitions, and not one in an inheritance chain */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-	  error = er_errid ();
-	  goto error_exit;
 	}
 
       if (tbl_opt_encrypt)
@@ -10149,10 +10126,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
-	  if (source_class->flags & SM_CLASSFLAG_ROW_SNAPSHOT)
-	    {
-	      row_snapshot = true;
-	    }
 
 	  tde_algo = (TDE_ALGORITHM) source_class->tde_algorithm;
 	  if (tde_algo != TDE_ALGORITHM_NONE)
@@ -10187,14 +10160,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      /* Need to flush class mop in order to reflect reuse_oid flag into catalog table. Without flushing it,
 	       * catalog information is incorrect under non-autocommit mode. */
-	      do_flush_class_mop = true;
-	    }
-	}
-      if (error == NO_ERROR && row_snapshot)
-	{
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ROW_SNAPSHOT, 1);
-	  if (error == NO_ERROR)
-	    {
 	      do_flush_class_mop = true;
 	    }
 	}
@@ -11512,86 +11477,6 @@ exit:
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
-    }
-  return error;
-}
-
-/*
- * do_alter_change_row_snapshot() - ALTER TABLE ... ROW_SNAPSHOT | NO_ROW_SNAPSHOT (CBRD-27478)
- *   return: Error code
- *   parser(in): Parser context
- *   alter(in): Parse tree of a PT_CHANGE_ROW_SNAPSHOT clause
- *
- * Turns on or off the class flag that lets the optimizer read the rows a constant filter selects
- * from the table while it plans (row_snapshot_cl.hpp).
- * Only a plain table qualifies: not a view, a system class, a partitioned table or a partition, or
- * a class in an inheritance chain.
- */
-static int
-do_alter_change_row_snapshot (PARSER_CONTEXT * const parser, PT_NODE * const alter)
-{
-  int error = NO_ERROR;
-  const char *entity_name;
-  DB_OBJECT *class_obj;
-  SM_CLASS *class_ = NULL;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
-  bool on = alter->info.alter.alter_clause.row_snapshot.on;
-  bool tran_saved = false;
-
-  entity_name = alter->info.alter.entity_name->info.name.original;
-  class_obj = db_find_class (entity_name);
-  if (class_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ROW_SNAPSHOT);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  tran_saved = true;
-
-  /* exclusive lock on the class */
-  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-  error = au_fetch_class (class_obj, &class_, AU_FETCH_UPDATE, AU_ALTER);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-  error = sm_partitioned_class_type (class_obj, &partition_type, NULL, NULL);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-  if (class_->class_type != SM_CLASS_CT || sm_is_system_class (class_obj) || partition_type != DB_NOT_PARTITIONED_CLASS
-      || class_->inheritance != NULL || class_->users != NULL)
-    {
-      error = ER_SM_INVALID_CLASS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto exit;
-    }
-
-  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ROW_SNAPSHOT, on ? 1 : 0);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-  error = locator_flush_class (class_obj);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-exit:
-  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ROW_SNAPSHOT);
     }
   return error;
 }

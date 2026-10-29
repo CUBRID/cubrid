@@ -22,11 +22,9 @@
  * Histograms are kept per column, so a constant filter on one column of a code table tells the
  * optimizer how many rows survive but not WHICH keys they carry: `it.info = 'release dates'
  * AND it.id = mi.info_type_id` is priced at 1/NDV of mi.info_type_id whatever id 'release dates'
- * has. For a table declared ROW_SNAPSHOT (CREATE/ALTER TABLE), the optimizer reads the rows its
- * constant filters select from the table itself while it plans, and prices each equi-join of the
- * node by those rows' keys, through the other column's histogram. The declaration is a class flag
- * (SM_CLASSFLAG_ROW_SNAPSHOT), so it travels with the schema (SHOW CREATE TABLE, unloaddb, HA);
- * nothing else is stored.
+ * has. For a node joined by an equality, the optimizer reads the rows its constant filters
+ * select from the table itself while it plans, and prices each equi-join of the node by those
+ * rows' keys, through the other column's histogram. Nothing is stored.
  *
  * The read goes through an index (a filter column has to lead one) and stops past
  * row_snapshot_max_rows rows, so it costs the same whatever the size of the table, and a filter
@@ -73,8 +71,8 @@ typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 /* row_snapshot_max_rows; 0 = the feature is off */
 extern int row_snapshot_max_rows (void);
 
-/* the columns of a class declared ROW_SNAPSHOT that a read can return, with no rows: what the
- * filters resolve their columns against. NULL when the class is not declared or has none. */
+/* the columns of a user class that a read can return, with no rows: what the filters resolve
+ * their columns against. NULL for a system class or a class with none. */
 extern ROW_SNAPSHOT *row_snapshot_columns (SM_CLASS *class_);
 
 /* read the rows of classop that pass every filter, at most max_rows of them. NULL when no filter

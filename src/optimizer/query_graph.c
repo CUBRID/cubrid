@@ -8518,8 +8518,8 @@ qo_assign_eq_classes (QO_ENV * env)
  * A code/dimension table filtered by a constant and joined to a large table on its key gets the
  * join estimated at 1/NDV, because the planner does not know WHICH key the constant selects:
  * histograms are kept per column, so the pair ('release dates', 16) is lost at collection time
- * (JOB 19c: 124x underestimate, 37x slower than the reference). For the node of a table declared
- * ROW_SNAPSHOT this pass reads the rows its constant sargs select from the table, through an index
+ * (JOB 19c: 124x underestimate, 37x slower than the reference). For a node joined by an equality
+ * this pass reads the rows its constant sargs select from the table, through an index
  * (row_snapshot_cl.hpp), and, for every equi-join term the node takes part in, replaces the term's
  * selectivity with the mean over those rows of the OTHER column's equality estimate for that row's
  * key:
@@ -8528,8 +8528,8 @@ qo_assign_eq_classes (QO_ENV * env)
  *
  * The node's own selectivity becomes k over the table's rows. Nothing else changes: no derived
  * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
- * the index scan cost already reads. Every failure along the way -- a table not declared or not
- * joined by an equality, a predicate the pass cannot evaluate, no index on a filter column, no
+ * the index scan cost already reads. Every failure along the way -- a node not joined by an
+ * equality, a system class, a predicate the pass cannot evaluate, no index on a filter column, no
  * row or more than row_snapshot_max_rows rows selected, a key the histogram cannot price, a join
  * between two snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
  */
@@ -8566,7 +8566,7 @@ qo_row_snapshot_apply (QO_ENV * env)
       snapshots[n] = NULL;
     }
 
-  /* (a) every declared node: the rows its constant sargs select, k of them */
+  /* (a) every filtered node joined by an equality: the rows its constant sargs select, k of them */
   for (n = 0; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
@@ -8613,7 +8613,7 @@ qo_row_snapshot_apply (QO_ENV * env)
       columns = row_snapshot_columns (QO_NODE_INFO (node)->info[0].smclass);
       if (columns == NULL)
 	{
-	  continue;		/* not declared ROW_SNAPSHOT */
+	  continue;		/* a system class */
 	}
       spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
       n_filters = bitset_cardinality (&(QO_NODE_SARGS (node)));

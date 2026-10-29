@@ -5715,9 +5715,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* row snapshot (CBRD-27478): the most rows the optimizer reads from a table declared ROW_SNAPSHOT
-   * for one constant filter while it plans -- a filter that selects more keeps the histogram
-   * estimate; 0 turns the reading off. In the query string because it changes plans. */
+  /* row snapshot (CBRD-27478): the most rows the optimizer reads from a table for the constant
+   * filters of a node joined by an equality while it plans -- a filter that selects more keeps
+   * the histogram estimate; 0 turns the reading off. In the query string because it changes
+   * plans. */
   {PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
    PRM_NAME_ROW_SNAPSHOT_MAX_ROWS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),

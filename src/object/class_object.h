@@ -308,8 +308,7 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
-  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16,	/* reserved flag for supplemental log. */
-  SM_CLASSFLAG_ROW_SNAPSHOT = 32	/* the optimizer reads the rows a constant filter selects (CBRD-27478) */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* reserved flag for supplemental log. */
 } SM_CLASS_FLAG;
 
 /*
