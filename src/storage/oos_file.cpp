@@ -566,7 +566,6 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
   VPID candidate_vpid = VPID_INITIALIZER;
   int best_array_index = -1;
   int notfound_cnt = 0;
-  int old_wait_msecs;
   VPID hdr_vpid;
 
   *out_pgptr = NULL;
@@ -577,9 +576,6 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
     {
       VPID_SET_NULL (&hdr_vpid);
     }
-
-  /* Set zero-wait mode */
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 
   while (found == OOS_FINDSPACE_NOTFOUND)
     {
@@ -764,9 +760,6 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	    }
 	}
     }
-
-  /* Restore wait mode */
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 
   return found;
 }
