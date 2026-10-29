@@ -1902,8 +1902,9 @@ validate_trigger (TR_TRIGGER * trigger)
  *
  * Note:
  *    The procedure is named after the trigger owner, so changing the owner renames it.
- *    A client that cached the trigger before another transaction changed the owner keeps calling the old name
- *    until it reads the trigger again.
+ *    A cached trigger keeps calling the old name until it is read again.
+ *    This happens when another transaction changed the owner after the trigger was cached,
+ *    and when a running action changed the owner of its own trigger.
  *    The error of the failed call is kept here. The caller clears it when the procedure has moved.
  */
 static bool
@@ -4647,7 +4648,10 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 		  goto compile_stmt_again;
 		}
 
-	      /* the owner of a PL/CSQL block action may have been changed by another transaction */
+	      /*
+	       * the owner of a PL/CSQL block action may have been changed
+	       * by another transaction or by the action itself
+	       */
 	      if (pt_status < 0 && !reloaded && er_errid () == ER_SP_NOT_EXIST && reload_moved_block_trigger (trigger))
 		{
 		  reloaded = true;
@@ -6613,6 +6617,8 @@ end:
  *    The procedure name carries the owner, and the action calls it by that name,
  *    so the procedure, its name in the trigger and the call are changed together.
  *    Nothing is done for a trigger without a PL/CSQL block action.
+ *    The trigger is read from its object, not from the cache.
+ *    The cache may hold the activities of a running action, which may itself be changing the owner.
  */
 int
 tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
@@ -6620,7 +6626,9 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   TR_TRIGGER *trigger;
   PARSER_CONTEXT *parser = NULL;
   MOP sp_mop;
+  DB_VALUE old_sp_value;
   DB_VALUE value;
+  const char *old_sp_name;
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char new_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -6630,21 +6638,23 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   int save;
   int error = NO_ERROR;
 
+  db_make_null (&old_sp_value);
+
   AU_SAVE_AND_DISABLE (save);
 
-  trigger = tr_map_trigger (trigger_object, true);
-  if (trigger == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  if (trigger->block_sp_name == NULL)
+  error = db_get (trigger_object, TR_ATT_ACTION_BLOCK_SP, &old_sp_value);
+  if (error != NO_ERROR)
     {
       goto end;
     }
 
-  sp_mop = jsp_find_stored_procedure (trigger->block_sp_name, DB_AUTH_NONE);
+  if (DB_IS_NULL (&old_sp_value))
+    {
+      goto end;
+    }
+  old_sp_name = db_get_string (&old_sp_value);
+
+  sp_mop = jsp_find_stored_procedure (old_sp_name, DB_AUTH_NONE);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -6659,7 +6669,7 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
     }
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   snprintf (new_sp_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
-	    sm_remove_qualifier_name (trigger->block_sp_name));
+	    sm_remove_qualifier_name (old_sp_name));
 
   /* the owner name may need quoting, for example a reserved word */
   new_source_len = strlen ("CALL [].[]()") + strlen (new_sp_name) + 1;
@@ -6670,7 +6680,7 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
       goto end;
     }
   snprintf (new_source, new_source_len, "CALL [%s].[%s]()", downcase_owner_name,
-	    sm_remove_qualifier_name (trigger->block_sp_name));
+	    sm_remove_qualifier_name (old_sp_name));
 
   /* au_change_sp_owner compiles the procedure again for the new owner and reports errors to a parser */
   parser = parser_create_parser ();
@@ -6700,6 +6710,22 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
       goto end;
     }
 
+  /*
+   * While an action of this trigger is running, its compiled statement must not be freed.
+   * The cache is then left as it is, and the next firing reads the trigger again (eval_action).
+   */
+  trigger = tr_map_trigger (trigger_object, false);
+  if (trigger == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger->action->in_use > 0
+      || (trigger->condition != NULL && trigger->condition->in_use > 0))
+    {
+      goto end;
+    }
+
   new_block_sp_name = strdup (new_sp_name);
   if (new_block_sp_name == NULL)
     {
@@ -6707,7 +6733,8 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
       goto end;
     }
 
-  /* the cached action is compiled again from the new call when it is used next */
+  /* the cached action is compiled again from the new call when it is used next, and run as the new owner */
+  trigger->owner = owner;
   free_and_init (trigger->block_sp_name);
   trigger->block_sp_name = new_block_sp_name;
   free_and_init (trigger->action->source);
@@ -6730,6 +6757,8 @@ end:
     {
       free_and_init (new_source);
     }
+
+  pr_clear_value (&old_sp_value);
 
   AU_RESTORE (save);
 
