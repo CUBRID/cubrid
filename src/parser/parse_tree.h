@@ -561,7 +561,44 @@ struct trace_json_t;
              i < (parser_->host_var_count + parser_->auto_param_count); i++, hv++) \
             db_value_clear(hv); \
         free_and_init(parser_->host_variables); \
-	free_and_init(parser_->host_var_expected_domains);} while (0)
+	free_and_init(parser_->host_var_expected_domains); \
+	free_and_init(parser_->host_var_compiled_domains); \
+	free_and_init(parser_->host_var_format_classes); \
+	free_and_init(parser_->host_var_elt_indexes); \
+	free_and_init(parser_->host_var_derived_from); \
+	free_and_init(parser_->host_var_derived_pads); \
+	free_and_init(parser_->host_var_bind_domains); \
+	parser_->host_var_derived_count = 0;} while (0)
+
+/* CBRD-27583: the auto-parameterized literals among the positions after the user's (the rest are derived positions) */
+#define PT_AUTO_PARAM_LITERAL_COUNT(parser_) ((parser_)->auto_param_count - (parser_)->host_var_derived_count)
+
+/* CBRD-27583: host_var_format_classes holds the format class of the bound value (db_check_time_date_format; NULL for a
+ * NULL value, unknown without a value) and the bit marking a STR_TO_DATE format position */
+#define PT_HOST_VAR_FORMAT_NULL 0xfe
+#define PT_HOST_VAR_FORMAT_UNKNOWN 0xff
+#define PT_HOST_VAR_FORMAT_POSITION 0x100
+#define PT_HOST_VAR_FORMAT_CLASS(c_) ((c_) & 0xff)
+/* CBRD-27583: host_var_format_classes' mark of an ELT index position, and host_var_elt_indexes' values of no index:
+ * no value bound, a NULL, a value that is no BIGINT */
+#define PT_HOST_VAR_ELT_POSITION 0x200
+/* CBRD-27583: the kind of every occurrence of a user position where a NULL cannot change the answer
+ * (pt_classify_host_var_positions; none for any other position): an IS [NOT] NULL / ISNULL operand, a comparison
+ * operand whose mate holds no bind, an NVL / IFNULL / COALESCE / NVL2 operand; and for the last, whether a NULL takes
+ * this compilation's plan (the node's domain is the one it has without the operand) */
+#define PT_HOST_VAR_CLASS_AGNOSTIC 0x400
+#define PT_HOST_VAR_CLASS_COMPARE 0x800
+#define PT_HOST_VAR_CLASS_NVL_ARG 0xc00
+#define PT_HOST_VAR_CLASS(c_) ((c_) & 0xc00)
+#define PT_HOST_VAR_NULL_MATCHES 0x1000
+/* CBRD-27583: a position that took its bind domain (host_var_bind_domains): the client's bind converts its value into
+ * it, and the compilation planned it so (pt_take_host_var_bind_domains) */
+#define PT_HOST_VAR_BIND_DOMAIN 0x2000
+/* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
+#define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
+#define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
+#define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
 
 #define SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
@@ -570,6 +607,12 @@ struct trace_json_t;
                  CLEAR_HOST_VARIABLES(parser_); } \
              parser_->host_variables = parent_parser->host_variables; \
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
+	     parser_->host_var_compiled_domains = parent_parser->host_var_compiled_domains; \
+	     parser_->host_var_format_classes = parent_parser->host_var_format_classes; \
+	     parser_->host_var_elt_indexes = parent_parser->host_var_elt_indexes; \
+	     parser_->host_var_derived_from = parent_parser->host_var_derived_from; \
+	     parser_->host_var_derived_pads = parent_parser->host_var_derived_pads; \
+	     parser_->host_var_derived_count = parent_parser->host_var_derived_count; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
              parser_->flag.set_host_var = 1; } } while (0)
@@ -578,6 +621,11 @@ struct trace_json_t;
     do { if (parent_parser) { \
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
+	     parser_->host_var_compiled_domains = NULL; \
+	     parser_->host_var_format_classes = NULL; \
+	     parser_->host_var_elt_indexes = NULL; \
+	     parser_->host_var_derived_from = NULL; parser_->host_var_derived_count = 0; \
+	     parser_->host_var_derived_pads = NULL; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
@@ -961,7 +1009,8 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
-  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),
+  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),	/* the cache key text: the bind count suffix and (CBRD-27583) the type of
+						 * each host variable token */
   PT_PRINT_DBLINK_INFO = (0x1 << 29),	/* If you use DBLINK, specify it when generating the SHA hash value. */
   /* print lower case */
   PT_PRINT_LOWER = (0x1 << 30)
@@ -2475,6 +2524,11 @@ struct pt_host_var_info
   /* for processing subquery's result cache */
   int saved;			/* for saving the main query's host_var indexes */
   PT_NODE *next;		/* for linking to same host_var indexes */
+  bool rule_cast;		/* CBRD-27583: the expected domain is the type rule's target for a value-typed comparison
+				 * (pt_typed_bind_comparison), not the context's: the position keeps its compiled domain */
+  TP_DOMAIN *pads_to;		/* CBRD-27583: of a bind copy an equality with a CHAR column made
+				 * (qo_reduce_equality_terms), the column's CHAR(n) it reads the value padded into; it
+				 * neither types nor presets its user position (type checking runs again on the copy) */
 };
 
 /* Info for lists of PT_NODE */
@@ -2971,6 +3025,8 @@ struct pt_query_info
 				 * checked execution allocates it (parser lifetime). */
   const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
 				 * (bind_variant.h); NULL = the query's base entry */
+  int limit_opt_flags;		/* CBRD-27583: the MRO / SORT-LIMIT bits of its plan's XASL header, which a later
+				 * EXECUTE of a kept tree checks against its LIMIT values */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3383,6 +3439,8 @@ struct pt_execute_info
   int bind_before_compile;	/* not 0 when the recompile exists to adapt the plan to the bound
 				 * values (LIKE / MRO / SORT-LIMIT checks): compile after binding,
 				 * the way every recompile worked before the unpeeked-plan path */
+  int plan_at_execute;		/* CBRD-27583: the PREPARE made no plan (a value-typed position): each bind type
+				 * signature is compiled at its first EXECUTE and kept (no replan verdict) */
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
@@ -3936,11 +3994,45 @@ struct parser_context
 
   QUERY_ID query_id;		/* id assigned to current query */
   DB_VALUE *host_variables;	/* host variables place holder; DB_VALUE array */
-  TP_DOMAIN **host_var_expected_domains;	/* expected domains for host variables */
+  TP_DOMAIN **host_var_expected_domains;	/* expected domains for host variables: what the client casts each value
+						 * into before it sends it (the context's domain; CBRD-27583: or the rule's
+						 * target of a value-typed comparison bind) */
+  TP_DOMAIN **host_var_compiled_domains;	/* CBRD-27583: [host_var_count] the domain of the value a position was
+						 * bound with when its plan was compiled, for the positions the context
+						 * left untyped (value-typed positions); NULL for a context-typed
+						 * position. The plan is the plan of these bound types: a later value of
+						 * another type gets another plan (pt_set_host_variables flags it) */
+  int *host_var_format_classes;	/* CBRD-27583: [host_var_count] the STR_TO_DATE format class
+				 * (db_check_time_date_format) of the value a position was compiled with, in the
+				 * compilation of a bind type signature; PT_HOST_VAR_FORMAT_POSITION marks a position
+				 * a STR_TO_DATE typed its result by; and the PT_HOST_VAR_CLASS of its occurrences */
+  DB_BIGINT *host_var_elt_indexes;	/* CBRD-27583: [host_var_count] the value a position was compiled
+					 * with as an ELT index (PT_HOST_VAR_ELT_*), in the compilation of a bind type
+					 * signature; PT_HOST_VAR_ELT_POSITION in host_var_format_classes marks an ELT's
+					 * index, whose value picks the branch the plan types the result by */
+  int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
+				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
+				 * the user position whose value the client converts into it, else -1 */
+  bool *host_var_derived_pads;	/* CBRD-27583: [host_var_count + auto_param_count] with host_var_derived_from:
+				 * a derived position of a bind copy (PT_HOST_VAR_INFO.pads), whose CHAR(n) the client
+				 * fills a VARCHAR value padded into, unlike any other CHAR position (pt_set_host_variables) */
+  TP_DOMAIN **host_var_bind_domains;	/* CBRD-27583: [host_var_count] in the compilation of a bind type
+					 * signature, a position's bind domain: the last expected domain the first
+					 * translation's type checking gave a node of it (pt_preset_hostvar's writes,
+					 * not a rule cast's target or an AGNOSTIC position's INTEGER), which the bind
+					 * casts the bound value into; NULL for none */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  int host_var_derived_count;	/* CBRD-27583: how many of the auto_param_count positions are derived positions */
+  int session_variable_count;	/* CBRD-27583: the session variables the statement mq_translate translated last
+				 * reads or assigns (pt_type_session_variables) */
+  const char **session_variable_names;	/* [session_variable_count] their names */
+  TP_DOMAIN **session_variable_domains;	/* [session_variable_count] the type each has for the statement: the
+					 * one its assignments give, else the session's, else the NULL type */
+  bool *session_variable_assigned;	/* [session_variable_count] whether an assignment gave that type */
+  bool *session_variable_read;	/* [session_variable_count] whether XASL generation generated a read of it */
   UINT64 bind_plan_sig;		/* signature of the plans chosen by this compile (bind_variant.h): two
 				 * compiles of one query got the same plan when these are equal */
 
@@ -4015,8 +4107,28 @@ struct parser_context
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_unloading_plcsql_def:1;
     unsigned is_parsing_trigger:1;
+    unsigned bind_signature_changed:1;	/* CBRD-27583: a value pushed into a value-typed position has another type
+					 * than the plan was compiled for: the statement needs the plan of the new
+					 * signature */
+    unsigned bind_domains_differ:1;	/* CBRD-27583: this compilation of a bind type signature planned a
+					 * position with another type than the bind converts its value into: it
+					 * made no plan, the text compiles again (pt_take_host_var_bind_domains) */
+    unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
+					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
+					 * that execution only */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
+    unsigned print_host_var_source:1;	/* CBRD-27583: a plan dump or trace print: a derived host variable
+					 * position prints as the user position it is derived from */
+    unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or
+					 * not (the INSERT of CREATE ... AS SELECT): it makes the derived positions
+					 * its nodes need */
+    unsigned has_session_variable:1;	/* CBRD-27583: the grammar made a session variable node in this parser, the
+					 * only place one is made: pt_has_session_variable walks a tree only then */
+    unsigned has_str_to_date_or_elt:1;	/* CBRD-27583: the grammar made a STR_TO_DATE or ELT node in this parser, the
+					 * only place one is made: only then can type checking mark a STR_TO_DATE
+					 * format or ELT index position, and pt_set_host_var_format_classes computes
+					 * the values' format classes and ELT indexes */
   } flag;
 };
 
