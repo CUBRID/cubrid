@@ -10159,9 +10159,11 @@ check_ha_repl_constraint (DB_OBJECT * class_obj)
  *   return          : Error code (NO_ERROR if valid)
  *   superclass_name(in): Name of the class being altered
  *   class_obj(in)   : Class whose direct and indirect subclasses are checked
+ *   classes_to_drop(in): Classes excluded from validation, or NULL outside DROP
  */
 static int
-check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT * class_obj)
+check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT * class_obj,
+					DB_OBJLIST * classes_to_drop)
 {
   SM_CLASS *class_ = NULL;
   DB_OBJLIST *subclass = NULL;
@@ -10176,7 +10178,12 @@ check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT 
 
   for (subclass = class_->users; subclass != NULL; subclass = subclass->next)
     {
-      if (sm_is_replication_class (subclass->op))
+      if (WS_IS_DELETED (subclass->op))
+	{
+	  continue;
+	}
+
+      if (!ml_find (classes_to_drop, subclass->op) && sm_is_replication_class (subclass->op))
 	{
 	  error = check_ha_repl_constraint (subclass->op);
 	  if (error != NO_ERROR)
@@ -10195,7 +10202,7 @@ check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT 
 	    }
 	}
 
-      error = check_ha_repl_constraints_in_subclasses (superclass_name, subclass->op);
+      error = check_ha_repl_constraints_in_subclasses (superclass_name, subclass->op, classes_to_drop);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -10228,12 +10235,12 @@ validate_subclasses_after_drop (const char *superclass_name, DB_OBJLIST * subcla
     {
       const char *subclass_name = NULL;
 
-      if (WS_IS_DELETED (subclass->op) || ml_find (classes_to_drop, subclass->op))
+      if (WS_IS_DELETED (subclass->op))
 	{
 	  continue;
 	}
 
-      if (sm_is_replication_class (subclass->op))
+      if (!ml_find (classes_to_drop, subclass->op) && sm_is_replication_class (subclass->op))
 	{
 	  error = check_ha_repl_constraint (subclass->op);
 	  if (error != NO_ERROR)
@@ -10251,7 +10258,7 @@ validate_subclasses_after_drop (const char *superclass_name, DB_OBJLIST * subcla
 	    }
 	}
 
-      error = check_ha_repl_constraints_in_subclasses (superclass_name, subclass->op);
+      error = check_ha_repl_constraints_in_subclasses (superclass_name, subclass->op, classes_to_drop);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -10293,7 +10300,7 @@ check_ha_repl_constraints_in_hierarchy (DB_OBJECT * class_obj)
       return error;
     }
 
-  return check_ha_repl_constraints_in_subclasses (superclass_name, class_obj);
+  return check_ha_repl_constraints_in_subclasses (superclass_name, class_obj, NULL);
 }
 
 /*
