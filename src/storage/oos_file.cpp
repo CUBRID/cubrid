@@ -2877,7 +2877,14 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 
   try
     {
-      std::vector<bool> done (requests.size (), false);
+      char small_done[8] = { 0 };
+      std::vector<char> large_done;
+      char *done = small_done;
+      if (requests.size () > sizeof (small_done))
+	{
+	  large_done.resize (requests.size (), 0);
+	  done = large_done.data ();
+	}
       std::vector<oos_read_continuation> continuations;
 
       for (std::size_t i = 0; i < requests.size (); i++)

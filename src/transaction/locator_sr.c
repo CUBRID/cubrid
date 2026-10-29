@@ -71,6 +71,8 @@
 #include "xserver_interface.h"
 #include "catalog_class.h"
 #include "es_posix.h"
+#include <optional>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -5537,7 +5539,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      heap_pending_record * pending, bool from_workspace)
 {
   /* *INDENT-OFF* */
-  heap_pending_record received;
+  std::optional<heap_pending_record> received;
   RECDES converted;
   /* *INDENT-ON* */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -6111,8 +6113,16 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
+      /* Server-side UPDATE already owns its prepared record. Only received inputs
+       * can need a second owner for conversion; keep it alive through heap/index writes. */
+      /* *INDENT-OFF* */
+      if (from_copyarea || from_workspace)
+        {
+          received.emplace ();
+        }
       error_code = locator_finalize_oos_record (thread_p, class_oid, &recdes, from_copyarea, from_workspace,
-						pending, &received, &converted);
+                                               pending, received ? &*received : nullptr, &converted);
+      /* *INDENT-ON* */
       if (error_code != NO_ERROR)
 	{
 	  goto error;

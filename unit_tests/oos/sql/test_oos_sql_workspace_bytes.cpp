@@ -27,6 +27,12 @@
 #include "scope_exit.hpp"
 #include "work_space.h"
 
+#if defined(LINUX)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
+#include <cstring>
 #include <map>
 #include <string>
 #include <vector>
@@ -298,6 +304,224 @@ TEST_F (OosWorkspaceBytes, TinyNullAndEmptyValues)
 {
   check ("id INT, a BIT VARYING, b VARCHAR, c BIT VARYING", "1, NULL, '', X''",
   "id=1 AND a IS NULL AND b='' AND c=X''", {{false, false, false}, OR_BYTE_SIZE});
+}
+
+TEST_F (OosWorkspaceBytes, OrdinaryVariableBytesAndLengths)
+{
+  check ("id INT, a BIT VARYING, b VARCHAR, c BIT VARYING",
+	 "1, REPEAT(X'ABCD', 1700), 'short inline text', X'0123456789ABCDEF'",
+	 "id=1 AND a=CAST(REPEAT(X'ABCD', 1700) AS BIT VARYING) AND BIT_LENGTH(a)=27200"
+	 " AND b='short inline text' AND LENGTH(b)=17 AND c=X'0123456789ABCDEF' AND BIT_LENGTH(c)=64",
+  {{false, false, false}, OR_SHORT_SIZE});
+  ASSERT_GE (exec_sql ("INSERT INTO ws_bytes VALUES(2, NULL, '', X'')"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO ws_bytes VALUES(3, REPEAT(X'EF', 8000), 'OOS neighbor', X'1234')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int count = 0;
+  const char *predicate =
+	  "(id=1 AND a=CAST(REPEAT(X'ABCD',1700) AS BIT VARYING) AND BIT_LENGTH(a)=27200"
+	  " AND b='short inline text' AND c=X'0123456789ABCDEF')"
+	  " OR (id=2 AND a IS NULL AND b='' AND LENGTH(b)=0 AND c=X'')"
+	  " OR (id=3 AND a=CAST(REPEAT(X'EF',8000) AS BIT VARYING) AND BIT_LENGTH(a)=64000"
+	  " AND b='OOS neighbor' AND LENGTH(b)=12 AND c=X'1234')";
+  for (const char *projection :
+       { "id,a,b,c", "c,b,a,id", "b,a,c,id,a,b"
+       })
+    {
+      // Projection order and repeated references use the same mixed table scan.
+      const std::string query = std::string ("SELECT ") + projection + " FROM ws_bytes WHERE " + predicate;
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_GE (exec_sql_with_result (query.c_str (), &result), 0) << db_error_string (1);
+      ASSERT_NE (result, nullptr);
+      count = 0;
+      for (int cursor = db_query_first_tuple (result); cursor == DB_CURSOR_SUCCESS; cursor = db_query_next_tuple (result))
+	{
+	  ++count;
+	  for (int i = 0; i < db_query_column_count (result); ++i)
+	    {
+	      DB_VALUE value;
+	      db_make_null (&value);
+	      ASSERT_EQ (db_query_get_tuple_value (result, i, &value), NO_ERROR);
+	      db_value_clear (&value);
+	    }
+	}
+      db_query_end (result);
+      EXPECT_EQ (count, 4);
+    }
+  ASSERT_GE (exec_sql ("UPDATE ws_bytes SET a=X'A5', b='changed' WHERE id=2"), 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM ws_bytes WHERE id=2 AND a=X'A5' AND b='changed'", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_GE (exec_sql ("UPDATE ws_bytes SET a=NULL, b='' WHERE id=2"), 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM ws_bytes WHERE id=2 AND a IS NULL AND b=''", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+}
+
+TEST_F (OosWorkspaceBytes, OrdinaryOldNullsAndVariableDefault)
+{
+  check ("a BIT VARYING, b VARCHAR", "NULL, ''",
+	 "a IS NULL AND b='' AND LENGTH(b)=0 AND c='new variable default'",
+  {{false, false, false}, OR_BYTE_SIZE},
+  "ALTER TABLE ws_bytes ADD c VARCHAR DEFAULT 'new variable default'",
+  {{false, false}, OR_BYTE_SIZE});
+}
+
+TEST_F (OosWorkspaceBytes, InlineVariableOffsetsAndValueOrder)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE ws_bytes(a VARCHAR, b SEQUENCE OF INTEGER, c BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO ws_bytes VALUES('inline bytes', {11,22,33}, X'0123456789ABCDEF')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  auto *thread = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("ws_bytes");
+  ASSERT_NE (cls, nullptr);
+  const OID class_oid = *WS_OID (cls);
+  DB_OBJLIST *objects = db_fetch_all_objects (cls, DB_FETCH_READ);
+  ASSERT_NE (objects, nullptr);
+  const OID oid = *WS_OID (objects->op);
+  db_objlist_free (objects);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_hfid (thread, &class_oid, &hfid, nullptr), NO_ERROR);
+  RECDES stored = RECDES_INITIALIZER;
+  std::vector<char> stored_bytes;
+  ASSERT_NO_FATAL_FAILURE (capture (oid, class_oid, hfid, stored_bytes, stored));
+  ASSERT_FALSE (heap_recdes_contains_oos (&stored));
+  const int header = OR_HEADER_SIZE (stored.data);
+  const int nvars = 3;
+  std::vector<std::string> fields;
+  for (int i = 0; i < nvars; ++i)
+    {
+      int start, end;
+      ASSERT_EQ (heap_recdes_get_var_offset_entry (&stored, i, &start), NO_ERROR);
+      ASSERT_EQ (heap_recdes_get_var_offset_entry (&stored, i + 1, &end), NO_ERROR);
+      fields.emplace_back (stored.data + header + OR_GET_VAR_OFFSET (start),
+			   OR_GET_VAR_OFFSET (end) - OR_GET_VAR_OFFSET (start));
+    }
+  ATTR_ID ids[3];
+  const char *names[] = { "a", "b", "c" };
+  for (int i = 0; i < nvars; ++i)
+    {
+      ids[i] = db_attribute_id (db_get_attribute (cls, names[i]));
+    }
+  // Repack actual SQL-written fields. INT offsets are explicit even though the
+  // payload is small; a large logical OOS value would not prove that decoder.
+  for (int width :
+       {
+	       OR_BYTE_SIZE, OR_SHORT_SIZE, OR_INT_SIZE
+       })
+    {
+      for (bool reordered :
+	   {
+		   false, true
+	   })
+	{
+	  SCOPED_TRACE (std::to_string (width) + (reordered ? " reordered" : " ordered"));
+	  const int table_size = OR_VAR_TABLE_SIZE_INTERNAL (nvars, width);
+	  std::vector<char> bytes (stored.data, stored.data + header);
+	  bytes.resize (header + table_size, 0);
+	  int word = OR_GET_INT (bytes.data ()) & ~OR_OFFSET_SIZE_FLAG;
+	  OR_SET_VAR_OFFSET_SIZE (word, width);
+	  OR_PUT_INT (bytes.data (), word);
+	  int offsets[nvars + 1];
+	  const int order[] = { 2, 0, 1 };
+	  for (int i = 0; i < nvars; ++i)
+	    {
+	      const int location = reordered ? order[i] : i;
+	      offsets[location] = bytes.size () - header;
+	      bytes.insert (bytes.end (), fields[location].begin (), fields[location].end ());
+	    }
+	  offsets[nvars] = bytes.size () - header;
+	  for (int i = 0; i <= nvars; ++i)
+	    {
+	      const int entry = i == nvars ? OR_SET_VAR_LAST_ELEMENT (offsets[i]) : offsets[i];
+	      OR_PUT_OFFSET_INTERNAL (bytes.data () + header + i * width, entry, width);
+	    }
+	  RECDES record = { (int) bytes.size (), (int) bytes.size (), REC_HOME, bytes.data () };
+	  ASSERT_EQ (OR_GET_OFFSET_SIZE (record.data), width);
+	  HEAP_CACHE_ATTRINFO attrs;
+	  ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, 3, ids, &attrs), NO_ERROR);
+	  scope_exit end_attrs ([&] ()
+	  {
+	    heap_attrinfo_end (thread, &attrs);
+	  });
+	  for (int pass = 0; pass < 3; ++pass)
+	    {
+	      if (pass == 1)
+		{
+		  ASSERT_EQ (heap_attrinfo_read_dbvalues_without_oid (thread, &record, &attrs), NO_ERROR);
+		}
+	      else if (pass == 2)
+		{
+		  ASSERT_EQ (heap_attrinfo_read_dbvalues_lazy (thread, &oid, &record, &attrs), NO_ERROR);
+		  for (int i = attrs.num_values - 1; i >= 0; --i)
+		    {
+		      ASSERT_NE (heap_attrvalue_peek_lazy (&attrs.values[i], &attrs), nullptr);
+		    }
+		}
+	      else
+		{
+		  ASSERT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &record, &attrs), NO_ERROR);
+		}
+	      EXPECT_STREQ (db_get_string (heap_attrinfo_access (ids[0], &attrs)), "inline bytes");
+	      int bits = 0;
+	      const char *data = db_get_bit (heap_attrinfo_access (ids[2], &attrs), &bits);
+	      ASSERT_EQ (bits, 64);
+	      EXPECT_EQ (std::string (data, 8), std::string ("\x01\x23\x45\x67\x89\xAB\xCD\xEF", 8));
+	      DB_SET *collection = db_get_set (heap_attrinfo_access (ids[1], &attrs));
+	      ASSERT_NE (collection, nullptr);
+	      ASSERT_EQ (db_set_size (collection), 3);
+	      for (int element = 0; element < 3; ++element)
+		{
+		  DB_VALUE value;
+		  db_make_null (&value);
+		  ASSERT_EQ (db_set_get (collection, element, &value), NO_ERROR);
+		  EXPECT_EQ (db_get_int (&value), (element + 1) * 11);
+		  db_value_clear (&value);
+		}
+	    }
+	  ATTR_ID first_id = NULL_ATTRID;
+	  for (int i = 0; i < attrs.read_classrepr->n_attributes; ++i)
+	    {
+	      const OR_ATTRIBUTE &attribute = attrs.read_classrepr->attributes[i];
+	      if (!attribute.is_fixed && attribute.location == 0)
+		{
+		  first_id = attribute.id;
+		}
+	    }
+	  ASSERT_NE (first_id, NULL_ATTRID);
+	  HEAP_CACHE_ATTRINFO first_attr;
+	  ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, 1, &first_id, &first_attr), NO_ERROR);
+	  scope_exit end_first_attr ([&] ()
+	  {
+	    heap_attrinfo_end (thread, &first_attr);
+	  });
+	  for (int entries :
+	       {
+		       0, 1
+	       })
+	    {
+	      SCOPED_TRACE (entries);
+	      record.length = header + entries * width;
+	      EXPECT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &record, &first_attr), ER_FAILED);
+	      EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
+	      er_clear ();
+	    }
+#if defined(LINUX)
+	  const size_t page_size = sysconf (_SC_PAGESIZE);
+	  void *mapping = mmap (nullptr, 2 * page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	  ASSERT_NE (mapping, MAP_FAILED);
+	  scope_exit unmap ([&] ()
+	  {
+	    munmap (mapping, 2 * page_size);
+	  });
+	  ASSERT_EQ (mprotect ((char *) mapping + page_size, page_size, PROT_NONE), 0);
+	  char *guarded = (char *) mapping + page_size - header - width;
+	  std::memcpy (guarded, bytes.data (), header + width);
+	  OR_PUT_INT (guarded, OR_GET_INT (guarded) | (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS));
+	  RECDES truncated = { header + width, header + width, REC_HOME, guarded };
+	  EXPECT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &truncated, &attrs), ER_FAILED);
+	  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
+	  er_clear ();
+#endif
+	}
+    }
 }
 
 TEST_F (OosWorkspaceBytes, LargestFirstAndPreferInline)
