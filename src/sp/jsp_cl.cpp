@@ -1072,6 +1072,9 @@ jsp_create_system_generated_procedure (const char *create_sql)
       goto end;
     }
 
+  /* store the user specified name in info.name.original, as statements from users get it */
+  parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
+
   statement = pt_compile (parser, statement);
   if (statement == NULL || pt_has_error (parser))
     {
