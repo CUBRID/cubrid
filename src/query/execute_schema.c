@@ -10163,7 +10163,7 @@ check_ha_repl_constraint (DB_OBJECT * class_obj)
  */
 static int
 check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT * class_obj,
-					DB_OBJLIST * classes_to_drop)
+					 DB_OBJLIST * classes_to_drop)
 {
   SM_CLASS *class_ = NULL;
   DB_OBJLIST *subclass = NULL;
