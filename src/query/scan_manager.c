@@ -7416,18 +7416,14 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       hsidp->batch_why_not = "a scan the batch does not take (qualification)";
       return hsidp->batch_state;
     }
-  if (xasl != NULL && !scan_id->fixed)
-    {
-      /* A consumer (an aggregate, a projection, a hash GROUP BY) reads the chunk's rows from the page the batch
-       * holds, and hands some of them to the row path while it is held.  The block decided this scan may not keep
-       * its page fixed (qexec_execute_mainblock_internal (): an index scan beside it, a correlated subquery, or
-       * compiled so), because something that runs under it fixes pages of its own, and an ordered fix of those lets
-       * this page go and fixes it again under the chunk.  The filter iterators (xasl == NULL) copy the rows they
-       * keep out of the page before any of that runs, so they are not held to it. */
-      hsidp->batch_why_not =
-	"the scan does not hold its page: another scan beside it may unfix the page under the chunk";
-      return hsidp->batch_state;
-    }
+  /* A consumer (an aggregate, a projection, a hash GROUP BY) reads the chunk's rows from the page the batch holds,
+   * and hands some of them to the row path while it is held, so its scan keeps its page fixed.  A block that decided
+   * otherwise (qexec_execute_mainblock_internal (): an index scan beside it, a correlated subquery, or compiled so)
+   * opened its driving scan as a cached one (qexec_is_cached_scan_eligible (): not fixed, not grouped), refused
+   * just above; a parallel worker's scan takes both flags from the leader's open.  Should a page still be let go and
+   * fixed again under a chunk, expr_batch_run () hands that chunk back.  The filter iterators (xasl == NULL) copy
+   * the rows they keep out of the page before any of that runs, so they are not held to it. */
+  assert (xasl == NULL || scan_id->fixed);
 
   /* the filter's compiled form, now instead of on the first row */
   scan_batch_settle_filter (thread_p, scan_id);
