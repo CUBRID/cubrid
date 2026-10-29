@@ -563,9 +563,9 @@ namespace test_lockfree
     static void
     wl_tran_only (const spec &sp, Hash &hash, Tran tr)
     {
-      // nothing but the epoch mark: start_tran () publishes the transaction id, end_tran () retires it. this is
-      // the operation 19a937ba1 changed from a plain store bracketed by two MEMORY_BARRIER () into a seq_cst
-      // store plus a release store.
+      // nothing but the epoch mark: start_tran () publishes the transaction id, end_tran () retires it. this is a
+      // seq_cst store plus a release store here; on the legacy path it is lf_tran_start_with_mb () and
+      // lf_tran_end_with_mb (), a plain store with a MEMORY_BARRIER () after it and one before it.
       for (size_t i = 0; i < sp.m_p1; ++i)
 	{
 	  hash.start_tran (tr);
@@ -597,8 +597,8 @@ namespace test_lockfree
     static void
     wl_claim_hold_retire (const spec &sp, Hash &hash, Tran tr)
     {
-      // claim m_p2 entries, hold them, then retire the batch. the retired run is what a8f630f8a splices and what
-      // the max_alloc_cnt cap of d8dafcf56 decides to free instead of recycle.
+      // claim m_p2 entries, hold them, then retire the batch. the retired run is what reclaim_run () splices and what
+      // the max_alloc_cnt cap decides to free instead of recycle.
       std::vector<adv_entry *> held;
       held.reserve (sp.m_p2);
       size_t acc = 0;
@@ -679,9 +679,9 @@ namespace test_lockfree
 	}
     }
 
-    // find () and nothing else, over a table whose chain length is known exactly. this is the path 7ecd01fc6
-    // changed: list_find () used to take the bucket head by value, loaded once at the call site, and now takes
-    // it by reference and loads it inside the transaction, re-reading the slot on every restart iteration.
+    // find () and nothing else, over a table whose chain length is known exactly. this is the path where list_find ()
+    // used to take the bucket head by value, loaded once at the call site, and now takes it by reference and loads it
+    // inside the transaction, re-reading the slot on every restart iteration.
     template <typename Hash, typename Tran>
     static void
     wl_find_heavy (const spec &sp, Hash &hash, Tran tr)
@@ -1252,7 +1252,7 @@ namespace test_lockfree
     suite_tran (size_t reps)
     {
       say ("");
-      say ("#### SUITE tran - nothing but start_tran ()/end_tran (), the 19a937ba1 barrier change");
+      say ("#### SUITE tran - nothing but start_tran ()/end_tran (), the epoch-mark barriers");
       size_t tcs[4] = { 1, 4, 16, 64 };
       for (size_t i = 0; i < 4; i++)
 	{
@@ -1294,7 +1294,7 @@ namespace test_lockfree
     suite_cap (size_t reps)
     {
       say ("");
-      say ("#### SUITE cap - max_alloc_cnt, the d8dafcf56 growth cap. 16 threads hold 512 entries each, so the");
+      say ("#### SUITE cap - max_alloc_cnt, the growth cap. 16 threads hold 512 entries each, so the");
       say ("####            live set is ~8192; a cap below that forces every reclaim to free and every claim to");
       say ("####            allocate. uncapped first, for the baseline.");
       size_t caps[6] = { 0, 100000, 8192, 2048, 1024, 128 };
@@ -1350,7 +1350,7 @@ namespace test_lockfree
     {
       say ("");
       say ("#### SUITE find - find () and nothing else, over a prefilled table of an exact chain length. this is");
-      say ("####              the path 7ecd01fc6 changed: list_find () took the bucket head by value and now");
+      say ("####              the path where list_find () took the bucket head by value and now");
       say ("####              takes it by reference, so the slot is loaded inside the transaction and re-read on");
       say ("####              every restart iteration. chain length separates a per-node cost in the walk from a");
       say ("####              per-call cost outside it; threads separate an instruction cost from a coherence");
@@ -1508,9 +1508,9 @@ namespace test_lockfree
     static void
     suite_micro (size_t reps)
     {
-      // c95223f65 removed a T construction and destruction from every retire. This harness's entry type has a
-      // defaulted constructor, so the fix cannot show up in any A/B number above; size what it saves for an
-      // entry type that really initializes its mutex, as xasl_cache_ent does.
+      // to_free_node () no longer constructs and destroys a T on every retire. This harness's entry type has a
+      // defaulted constructor, so the fix cannot show up in any A/B number above; size what it saves for an entry type
+      // that really initializes its mutex, as xasl_cache_ent does.
       say ("");
       say ("#### SUITE micro - what one pthread_mutex_init/destroy pair costs, single thread");
       const size_t iters = 2000000;
@@ -1788,12 +1788,12 @@ namespace test_lockfree
       // the one the real caller passes, but the real entry's own heap-allocated members are not here, so this
       // sizes the map's overhead per entry and nothing else.
       //
-      //   LK_RES         sizeof 120, lock_manager.c:1272 - obj_hash_size = MAX (initial_object_locks = 10000,
+      //   LK_RES         sizeof 120, lock_manager.c - obj_hash_size = MAX (initial_object_locks = 10000,
       //                  MIN (num_trans * lock_escalation * 3 / 1000, 2^23)); with the default lock_escalation
       //                  100000 and ~101 transactions that is 30300 buckets, block 2 x 500, cap = 100000
-      //   xasl_cache_ent sizeof 272, xasl_cache.c:335 - hash size = max_plan_cache_entries (default 1000),
+      //   xasl_cache_ent sizeof 272, xasl_cache.c - hash size = max_plan_cache_entries (default 1000),
       //                  block count 2, block size 500
-      //   session_state  sizeof 312, session.c:621 - hash size 1000, block size 2, block count 50
+      //   session_state  sizeof 312, session.c - hash size 1000, block size 2, block count 50
       say ("");
       if (!mem_supported ())
 	{

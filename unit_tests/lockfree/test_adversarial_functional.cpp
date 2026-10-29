@@ -393,10 +393,9 @@ namespace test_lockfree
   //
   // case_f_init_error_dropped () - freelist_claim () must answer NULL when f_init fails.
   //
-  // lf_freelist_claim () tests f_init's answer (lock_free.c:825-833) and callers are written to that contract -
-  // xcache_new_entry () checks for NULL (xasl_cache.c:1574). The rewrite dropped the answer and handed the entry
-  // back as ready. The f_init that can fail is fpcache_entry_init (), which leaves clone_stack NULL on a failed
-  // malloc, and filter_pred_cache.c:389 dereferences it.
+  // lf_freelist_claim () tests f_init's answer and callers are written to that contract - xcache_insert () checks for
+  // NULL. The rewrite dropped the answer and handed the entry back as ready. The f_init that can fail is
+  // fpcache_entry_init (), which leaves clone_stack NULL on a failed malloc, and fpcache_retire () writes through it.
   //
   static int
   case_f_init_error_dropped ()
@@ -473,10 +472,9 @@ namespace test_lockfree
   // case_oom_freelist_state () - what the new freelist looks like when every allocation fails.
   //
   // A node larger than the address space makes new (std::nothrow) answer NULL without touching a page, so the
-  // out-of-memory path runs deterministically. claim () must answer NULL, and must leave the transaction it
-  // started ENDED - a descriptor keeping a published id pins the table's minimum active id and stops
-  // reclamation for good, and lf_freelist_claim () does end it (lock_free.c:850-857). The freelist must also
-  // survive its own destructor with nothing allocated.
+  // out-of-memory path runs deterministically. claim () must answer NULL, and must leave the transaction it started
+  // ENDED - a descriptor keeping a published id pins the table's minimum active id and stops reclamation for good, and
+  // lf_freelist_claim () does end it. The freelist must also survive its own destructor with nothing allocated.
   //
   // The legacy side is read, not run: er_set () asserts with no error manager in this binary.
   //
@@ -2039,12 +2037,12 @@ namespace test_lockfree
   //
   // case_shared_transys () - several hash maps on one transaction system.
   //
-  // This is the shape production takes on this branch and nowhere else: thread_manager.cpp:119 builds one
-  // lockfree::tran::system and every hash table in the server shares it, where the legacy path gives each table
-  // its own lf_tran_system (lock_free.c:467-501). The soundness argument for the batched reclaim added here -
-  // reclaim_run () splicing a whole run onto one available list - rests on each freelist building its own
-  // tran::table, so nothing else can retire into its descriptors (lockfree_freelist.hpp:611). Four live maps on
-  // one system is the smallest load that can contradict that.
+  // This is the shape production takes with new_lfhash on and nowhere else: manager::init_lockfree_system () builds one
+  // lockfree::tran::system and every lockfree_hashmap table in the server shares it, where the legacy path gives each
+  // table its own lf_tran_system (lf_initialize_transaction_systems ()). The soundness argument for the batched
+  // reclaim, in which reclaim_run () splices a whole run onto one available list, rests on each freelist building its
+  // own tran::table in its constructor, so nothing else can retire into its descriptors. Four live maps on one system
+  // is the smallest load that can contradict that.
   //
   // The legacy side is run in *its* production shape, one transaction system per table: giving it one shared
   // system would put nodes of four different freelists on one retired list, which is a legacy hazard the server
@@ -2956,10 +2954,10 @@ namespace test_lockfree
   //
   // case_erase_locked_liveness () - erase () and erase_locked () racing on one key.
   //
-  // list_delete () marks the next pointer first and only then waits for the entry mutex
-  // (lockfree_hashmap.hpp:1201, :1224). A thread calling erase () therefore holds a mark and blocks on a mutex
-  // that a thread inside erase_locked () is holding - while that thread's own mark CAS keeps failing on the mark
-  // already there and hash_erase_internal () restarts it forever (:1201, :1364). Neither can finish.
+  // list_delete () marks the next pointer first and only then waits for the entry mutex. A thread calling erase ()
+  // therefore holds a mark and blocks on a mutex that a thread inside erase_locked () is holding - while that thread's
+  // own mark CAS keeps failing on the mark already there and hash_erase_internal () restarts it forever. Neither can
+  // finish.
   //
   // serial.c and session.c both use LF_EM_USING_MUTEX and call both erase_locked () and erase () on the same
   // table, so this is reachable, and lf_list_delete () has the same order - this is a property of the design and
