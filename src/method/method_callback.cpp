@@ -1020,20 +1020,30 @@ exit:
 	if (user == NULL)
 	  {
 	    error = ER_FAILED;
+	    if (er_errid () == NO_ERROR)
+	      {
+		// au_find_user () can return NULL without an error: when the lookup by the unique index finds nothing
+		// with no error and the query that follows finds no row either, or when the buffer for that query
+		// cannot be allocated. Without an error, the METHOD_CALL handling in net_client_request_with_callback ()
+		// and net_client_request_method_callback () (network_cl.c) fails 'assert (er_errid () != NO_ERROR)' in
+		// a debug build, and sends ER_NET_SERVER_DATA_RECEIVE in a release build. Set an error instead, which
+		// goes to the server along with METHOD_ERROR.
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, auth_user_name.c_str ());
+	      }
 	  }
 	else
 	  {
-	    error = au_perform_push_user (user);
+	    au_perform_push_user (user);
 	  }
       }
     else // POP
       {
-	error = au_perform_pop_user ();
+	au_perform_pop_user ();
       }
 
-    // reply with the outcome. The server waits for it before it goes on with the transaction, because switching
-    // the user can fetch objects from the server in the same transaction.
-    return xs_pack_and_queue (error);
+    // no response
+
+    return error;
   }
 
 //////////////////////////////////////////////////////////////////////////
