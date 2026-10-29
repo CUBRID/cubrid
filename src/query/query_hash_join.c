@@ -4592,10 +4592,22 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
 	  qfile_close_scan (thread_p, &sid);
 	  goto fail;
 	}
-      if (is_null || hjoin_rtf_key (&v, f_date, &k) != 1)
+      if (is_null)
 	{
 	  pr_clear_value (&v);
 	  continue;
+	}
+      if (hjoin_rtf_key (&v, f_date, &k) != 1)
+	{
+	  /* the column is read in its domain, a type hjoin_rtf_type_ok () took, so every value keys.  One that did
+	   * not would leave its key out of the set, and the probe rows with that key would be dropped
+	   * (hjoin_rtf_pass ()): the join runs without the filter, as when its memory is not had */
+	  assert (false);
+	  pr_clear_value (&v);
+	  qfile_close_scan (thread_p, &sid);
+	  db_private_free_and_init (thread_p, rtf->slots);
+	  db_private_free_and_init (thread_p, rtf);
+	  return NO_ERROR;
 	}
       pr_clear_value (&v);
       if (k == HJOIN_RTF_EMPTY)
