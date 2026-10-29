@@ -131,14 +131,13 @@ namespace cubschema
     return v;
   } ();
 
-  static const identifier_store sm_catalog_class_names (sm_system_class_names, false);
-  static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
+  static const identifier_store sm_catalog_class_names (sm_system_class_names);
+  static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names);
 }
 
 bool sm_check_system_class_by_name (const std::string_view name)
 {
-  // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-  return identifier_store::check_identifier_is_valid (name, false)
+  return identifier_store::check_identifier_is_valid (name)
 	 && (sm_is_system_class (name) || sm_is_system_vclass (name));
 }
 
