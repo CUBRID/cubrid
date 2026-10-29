@@ -448,8 +448,6 @@ static PT_NODE *pt_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 static XASL_NODE *pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id);
 static SELUPD_LIST *pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulist,
 						 SELUPD_LIST * selupd_list, DB_OBJECT * target_class);
-static OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr,
-				   UNBOX unbox);
 static void pt_to_fetch_proc_list_recurse (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static XASL_NODE *pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * root);
@@ -17100,7 +17098,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulis
  *   selupd_list_ptr(in):
  *   unbox(in):
  */
-static OUTPTR_LIST *
+OUTPTR_LIST *
 pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr, UNBOX unbox)
 {
   OUTPTR_LIST *outlist;
@@ -17896,6 +17894,7 @@ ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NO
     {
       return NULL;
     }
+  pt_set_list_position_domains (scan_regu_list, xasl->val_list, listfile, NULL);
 
   xasl->spec_list =
     pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, scan_regu_list, NULL, NULL, NULL);
