@@ -11032,6 +11032,9 @@ heap_recdes_get_var_offset_pair (const RECDES * recdes, const char *var_table, i
       *entry_out = OR_GET_INT (entry);
       *next_entry_out = OR_GET_INT (entry + OR_INT_SIZE);
       break;
+    default:
+      assert_release (false);
+      return ER_GENERIC_ERROR;
     }
   return NO_ERROR;
 }
