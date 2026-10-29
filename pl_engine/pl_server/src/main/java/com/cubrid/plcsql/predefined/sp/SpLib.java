@@ -129,6 +129,8 @@ public class SpLib {
             } else {
                 if (cause instanceof Error) {
                     throw (Error) cause;
+                } else if (cause instanceof PlcsqlRuntimeError) {
+                    throw ((PlcsqlRuntimeError) cause).nestInCaller();
                 } else if (cause instanceof RuntimeException) {
                     throw (RuntimeException) cause;
                 } else {
