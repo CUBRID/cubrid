@@ -1781,23 +1781,27 @@
 
 #define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
-#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+#define ER_SES_VARIABLE_TYPE_FIXED                  -1384
 
 #define ER_AU_REJECT_LOGIN                          -1385
 
 #define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
-#define ER_PKG_ALREADY_EXIST                        -1387
-#define ER_PKG_BODY_ALREADY_EXIST                   -1388
-#define ER_PKG_NOT_EXIST                            -1389
-#define ER_PKG_BODY_NOT_EXIST                       -1390
-#define ER_PKG_COMPILE_ERROR                        -1391
-#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1392
-#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1393
-#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1394
-#define ER_PKG_DUPLICATE_NAME                       -1385
+#define ER_SUB_CLIENTS_ALIVE                        -1387
+#define ER_MAIN_CLIENT_NOT_READY                    -1388
+#define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_LAST_ERROR                               -1396
+#define ER_PKG_ALREADY_EXIST                        -1390
+#define ER_PKG_BODY_ALREADY_EXIST                   -1391
+#define ER_PKG_NOT_EXIST                            -1392
+#define ER_PKG_BODY_NOT_EXIST                       -1393
+#define ER_PKG_COMPILE_ERROR                        -1394
+#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1395
+#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1396
+#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1397
+#define ER_PKG_DUPLICATE_NAME                       -1398
+
+#define ER_LAST_ERROR                               -1399
 
 /*
  * CAUTION!

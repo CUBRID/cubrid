@@ -1492,23 +1492,27 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
 
 1385 Invalid username or password.
 
 1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 Package "%1$s" already exists.
-1388 Package Body "%1$s" already exists.
-1389 Package "%1$s" does not exist.
-1390 Package Body "%1$s" does not exist.
-1391 Package compile error: %1$s
-1392 The owner or a member of DBA group can %1$s a package.
-1393 Dropping a system generated package is not allowed.
-1394 Package Procedure's unique name exceeds 255 characters.
-1395 Duplicate package name '%1$s' in the name list.
+1387 %1$s cannot be executed while %2$d sub-clients are alive.
+1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
+1389 %1$s cannot be called by the main client thread.
 
-1396 Last Error
+1390 Package "%1$s" already exists.
+1391 Package Body "%1$s" already exists.
+1392 Package "%1$s" does not exist.
+1393 Package Body "%1$s" does not exist.
+1394 Package compile error: %1$s
+1395 The owner or a member of DBA group can %1$s a package.
+1396 Dropping a system generated package is not allowed.
+1397 Package Procedure's unique name exceeds 255 characters.
+1398 Duplicate package name '%1$s' in the name list.
+
+1399 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2024,6 +2028,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
+344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 
 339 Package "%1$s" does not exist.
 
