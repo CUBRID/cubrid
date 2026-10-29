@@ -458,8 +458,8 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
    * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
-   * on any unbound name in the value clause. A target with its columns, in the derived dblink table shape, is
-   * bound, so it is checked like a local one. */
+   * on any unbound name in the value clause. A target with its columns, in the derived
+   * dblink table shape, is bound, so it is checked like a local one. */
   if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       *continue_walk = PT_STOP_WALK;
@@ -525,8 +525,9 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
-   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
-   * post callback must not decrement it either, or *level_p underflows. */
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec that is
+   * not in the derived dblink table shape, so this post callback must not decrement it
+   * either, or *level_p underflows. */
   if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       return node;
@@ -4208,7 +4209,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       if (!ok && spec->info.spec.remote_server_name != NULL && name->info.name.original != NULL)
 	{
 	  /* Report a column a remote DML target lacks as db_get_attribute_force () does for a local class.
-	   * pt_bind_name_or_path_in_scope () clears it when another scope binds the name. */
+	   * pt_bind_name_or_path_in_scope () clears it once the name is found in any spec. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name->info.name.original);
 	}
       if (col && !name->info.name.spec_id)
