@@ -119,6 +119,10 @@ namespace wstest
    * table (a primary key versus a unique key) pass their own VFID explicitly. */
   inline const VFID WS_DEFAULT_VFID = vfid_of (0, 1000);
 
+  /* The child table's own primary-key index in the FK cases. The hash is the index VFID and the key, not the
+   * class, so a child key written on WS_DEFAULT_VFID would land in the parent's slots. */
+  inline const VFID WS_CHILD_VFID = vfid_of (0, 1001);
+
   /* a transaction descriptor with only the writeset-related fields prepared;
    * the writeset functions touch nothing else of log_tdes */
   inline log_tdes *

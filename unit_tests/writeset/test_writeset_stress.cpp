@@ -536,7 +536,7 @@ namespace
     for (int i = 0; i < rows; i++)
       {
 	db_make_int (&v, child_base + i);
-	wset_add_write_key (tx, child_cls, &WS_DEFAULT_VFID, &v);
+	wset_add_write_key (tx, child_cls, &WS_CHILD_VFID, &v);
 	db_make_int (&v, parent_base + i % parent_count);
 	wset_add_ref_key (tx, parent_cls, &WS_DEFAULT_VFID, &v, int_domain);
       }
