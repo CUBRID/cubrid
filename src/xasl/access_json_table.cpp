@@ -118,6 +118,7 @@ namespace cubxasl
       m_path = NULL;
       m_column_name = NULL;
       m_output_value_pointer = NULL;
+      m_converter = NULL;
       m_function = json_table_column_function::JSON_TABLE_EXTRACT;
       m_on_error.m_default_value = NULL;
       m_on_error.m_behavior = json_table_column_behavior_type::JSON_TABLE_RETURN_NULL;
@@ -154,7 +155,8 @@ namespace cubxasl
       pr_clear_value (m_output_value_pointer);
       db_make_json_from_doc_store_and_release (*m_output_value_pointer, docp);
 
-      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+      status_cast = tp_value_cast_with_converter (m_output_value_pointer, m_output_value_pointer, m_domain, false,
+		    DB_TYPE_JSON, m_converter);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
 	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
@@ -184,7 +186,8 @@ namespace cubxasl
 
       db_make_short (m_output_value_pointer, result ? 1 : 0);
 
-      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+      status_cast = tp_value_cast_with_converter (m_output_value_pointer, m_output_value_pointer, m_domain, false,
+		    DB_TYPE_SHORT, m_converter);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
 	  return ER_FAILED;
