@@ -46,7 +46,7 @@ static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NOD
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
-static PT_NODE *qo_check_nondeterministic_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static const char *qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node);
 static bool qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * col);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -1477,7 +1477,7 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
 }
 
 /*
- * qo_check_nondeterministic_pre () - find a node whose value may differ between evaluations
+ * qo_check_unmatchable_pre () - find a node that keeps an expression from being matched by its printed text
  *   return: node
  *   parser(in): parser context
  *   node(in): node to check
@@ -1485,11 +1485,16 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
  *   continue_walk(in/out): walk control
  */
 static PT_NODE *
-qo_check_nondeterministic_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   bool *found = (bool *) arg;
 
   if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      *found = true;
+    }
+  /* a money value prints rounded to two decimals, so different amounts can print the same */
+  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_MONETARY)
     {
       *found = true;
     }
@@ -1574,7 +1579,7 @@ qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * c
 {
   PT_NODE *term, *arg1, *arg2, *other, *val, *col_next;
   const char *col_str, *other_str;
-  bool nondeterministic = false;
+  bool unmatchable = false;
 
   if (where == NULL || (col->node_type != PT_EXPR && col->node_type != PT_FUNCTION))
     {
@@ -1583,9 +1588,9 @@ qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * c
 
   col_next = col->next;
   col->next = NULL;
-  (void) parser_walk_tree (parser, col, qo_check_nondeterministic_pre, &nondeterministic, NULL, NULL);
+  (void) parser_walk_tree (parser, col, qo_check_unmatchable_pre, &unmatchable, NULL, NULL);
   col->next = col_next;
-  if (nondeterministic)
+  if (unmatchable)
     {
       return false;
     }
