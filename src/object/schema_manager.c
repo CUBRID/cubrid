@@ -134,7 +134,7 @@ typedef struct schema_def
  *    currently is called only from AU_SET_USER
  */
 
-static SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
+static CUB_THREAD_LOCAL SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
 
 #define WC_PERIOD L'.'
 
@@ -244,23 +244,28 @@ const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
  *    doubly linked list for faster removal.
 */
 
-SM_DESCRIPTOR *sm_Descriptors = NULL;
+static CUB_THREAD_LOCAL SM_DESCRIPTOR *sm_Descriptors = NULL;
 
 /* ROOT_CLASS GLOBALS */
 /* Global root class structure */
-ROOT_CLASS sm_Root_class;
+CUB_THREAD_LOCAL ROOT_CLASS sm_Root_class;
 
 /* Global MOP for the root class object.  Used by the locator */
-MOP sm_Root_class_mop = NULL;
+CUB_THREAD_LOCAL MOP sm_Root_class_mop = NULL;
 
 /* Name of the root class */
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = NULL;
+#else
 HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+#endif
 
-static unsigned int local_schema_version = 0;
-static unsigned int global_schema_version = 0;
+
+static CUB_THREAD_LOCAL unsigned int local_schema_version = 0;
+static CUB_THREAD_LOCAL unsigned int global_schema_version = 0;
 
 static int domain_search (MOP dclass_mop, MOP class_mop);
 static int annotate_method_files (MOP classmop, SM_CLASS * class_);
@@ -2022,11 +2027,14 @@ sm_get_method_source_file (MOP obj, const char *name)
  */
 
 void
-sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
+sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub)
 {
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
 
-  COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+  if (!is_sub)
+    {
+      COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+    }
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
@@ -2039,6 +2047,7 @@ sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
   sm_Descriptors = NULL;
 }
 
+#if defined(SA_MODE)
 /*
  * sm_create_root() - Called when the database is first created.
  *    Sets up the root class globals, used later when the root class
@@ -2065,6 +2074,7 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   /* Sets up sm_Root_class_mop and Rootclass_oid */
   locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
 }
+#endif
 
 /*
  * sm_free_resident_classes_virtual_query_cache () - free virual query cache of resident classes
@@ -4363,6 +4373,8 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
+  /* both phases report their progress against the same start */
+  INT64 run_start_msec = stats_progress_clock_msec ();
 
   /* make sure the workspace is flushed before calculating stats */
   if (locator_all_flush () != NO_ERROR)
@@ -4371,7 +4383,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ );
+  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ , run_start_msec);
   if (error != NO_ERROR)
     {
       /* do not build histograms over a failed server-side statistics update */
@@ -4409,7 +4421,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
 
   if (!no_histogram)
     {
-      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip);
+      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip, run_start_msec);
       if (error != NO_ERROR)
 	{
 	  return error;

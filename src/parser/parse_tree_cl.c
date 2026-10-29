@@ -71,6 +71,8 @@
 #define PT_MEMB_ERR_BUF_SIZE    256
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
+/* CBRD-27583: the cache key text prints a LIMIT rewritten into a numbering predicate too: the plan reads its binds */
+#define PT_PRINT_LIMIT(parser, rewrite_limit) ((rewrite_limit) || ((parser)->custom_print & PT_PRINT_HOST_VAR_COUNT))
 
 #define PT_APPLY_WALK(parser, ptr, arg) do { \
          if((ptr))                           \
@@ -3046,7 +3048,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   PT_PRINT_VALUE_FUNC saved_print_db_value;
   unsigned int saved_dont_prt_long_string;
 
-  if (parser->auto_param_count <= 0)
+  if (PT_AUTO_PARAM_LITERAL_COUNT (parser) <= 0)
     {
       /* nothing was auto-parameterized: the values are still visible in the printed text */
       return NULL;
@@ -3140,23 +3142,9 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
       if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
 	{
 	  char host_var_count[12];
-	  if ((node->info.query.is_subquery == PT_IS_SUBQUERY || node->info.query.is_subquery == PT_IS_UNION_QUERY
-	       || node->info.query.is_subquery == PT_IS_UNION_SUBQUERY
-	       || node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && node->info.query.correlation_level == 0
-	      && (node->info.query.hint & PT_HINT_QUERY_CACHE))
-	    {
-	      /* 
-	       * This condition is identical to the one used in do_prepare_subquery_pre function to call do_prepare_subquery.
-	       * Both functions must maintain the same condition to ensure consistency.
-	       * Be careful not to modify only one of them.
-	       */
-	      snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count);
-	    }
-	  else
-	    {
-	      snprintf (host_var_count, sizeof (host_var_count), "%d",
-			parser->host_var_count + parser->auto_param_count);
-	    }
+	  /* CBRD-27583: a QUERY_CACHE subquery's context counts its own positions (do_subquery_positions), so its text
+	   * names as many as the same query's at the top */
+	  snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count + parser->auto_param_count);
 	  string = pt_append_nulstring (parser, string, ";bind_var_cnt=");
 	  string = pt_append_nulstring (parser, string, host_var_count);
 	}
@@ -9505,7 +9493,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   q = pt_print_using_index_clause (parser, q, p->info.delete_.using_index);
 
-  if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
+  if (p->info.delete_.limit && PT_PRINT_LIMIT (parser, p->info.delete_.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.delete_.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -9595,7 +9583,7 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -13464,6 +13452,184 @@ pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 /*
+ * pt_put_decimal () - the decimal text of a number at out, as sprintf's "%lld" writes it: the key text is made at every
+ *   compilation, and its tokens are a few small integers each
+ *   return: the end of the text (its terminating NUL)
+ */
+static char *
+pt_put_decimal (char *out, DB_BIGINT number)
+{
+  char digits[24];
+  int count = 0;
+  unsigned long long rest = number < 0 ? -(unsigned long long) number : (unsigned long long) number;
+
+  if (number < 0)
+    {
+      *out++ = '-';
+    }
+  do
+    {
+      digits[count++] = (char) ('0' + rest % 10);
+      rest /= 10;
+    }
+  while (rest != 0);
+  while (count > 0)
+    {
+      *out++ = digits[--count];
+    }
+  *out = '\0';
+  return out;
+}
+
+/*
+ * pt_print_host_var_type () - CBRD-27583: the type token of a host variable in the XASL cache key text, so that a
+ *   statement has one plan per bind type signature. A user host variable prints the domain the plan reads: the
+ *   expected domain its context gave it, else the value domain a typed compilation took (host_var_compiled_domains),
+ *   else '?' (a compilation without values, which no execution shares). A derived position prints its domain, an
+ *   auto-parameter its literal's. A string carries its codeset and collation - a literal's collation comes from the
+ *   session, not the text.
+ */
+static void
+pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
+{
+  const TP_DOMAIN *domain = NULL;
+  DB_TYPE type = DB_TYPE_NULL;
+  /* DB_TYPE_UNKNOWN is DB_TYPE_NULL: a NULL bind's position is typed, its token is the NULL type's */
+  bool typed = false;
+  int codeset = 0, collation = 0;
+
+  if (index < parser->host_var_count)
+    {
+      if (parser->host_var_expected_domains != NULL
+	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index]))
+	{
+	  domain = parser->host_var_expected_domains[index];
+	  if (pt_host_var_is_char_typed (domain) && parser->host_var_compiled_domains != NULL
+	      && parser->host_var_compiled_domains[index] != NULL
+	      && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[index]) == DB_TYPE_VARCHAR)
+	    {
+	      /* a CHAR position prints the VARCHAR the client sends as it is (any other value is cast into the CHAR) */
+	      domain = parser->host_var_compiled_domains[index];
+	    }
+	}
+      else if (parser->host_var_compiled_domains != NULL)
+	{
+	  domain = parser->host_var_compiled_domains[index];
+	}
+      if (domain != NULL)
+	{
+	  typed = true;
+	  type = TP_DOMAIN_TYPE (domain);
+	  codeset = domain->codeset;
+	  collation = domain->collation_id;
+	}
+      const TP_DOMAIN *value =
+	parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[index] : NULL;
+      if (domain != NULL && value != NULL && pt_host_var_is_leave_typed (domain))
+	{
+	  /* a LEAVE string position prints the value's codeset and collation, or the NULL type for a NULL */
+	  const int leave = pt_host_var_leave_collation (TP_DOMAIN_TYPE (value), value->collation_id);
+	  if (leave == -2)
+	    {
+	      type = DB_TYPE_NULL;
+	    }
+	  else if (leave >= 0)
+	    {
+	      codeset = value->codeset;
+	      collation = value->collation_id;
+	    }
+	}
+    }
+  else if (pt_is_derived_host_var (parser, index))
+    {
+      typed = true;
+      domain = parser->host_var_expected_domains[index];
+      if (pt_host_var_is_char_typed (domain))
+	{
+	  /* the type the derived bind gives, as the regu takes it (pt_make_regu_hostvar) */
+	  domain = pt_host_var_sent_domain (parser, index, (TP_DOMAIN *) domain);
+	}
+      type = TP_DOMAIN_TYPE (domain);
+      codeset = domain->codeset;
+      collation = domain->collation_id;
+    }
+  else if (parser->host_variables != NULL && index < parser->host_var_count + parser->auto_param_count)
+    {
+      const DB_VALUE *val = &parser->host_variables[index];
+      typed = true;
+      type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  codeset = db_get_string_codeset (val);
+	  collation = db_get_string_collation (val);
+	}
+    }
+
+  if (!typed)
+    {
+      strcpy (out, ":?");
+    }
+  else if (TP_IS_CHAR_TYPE (type))
+    {
+      char *end;
+
+      *out = ':';
+      end = pt_put_decimal (out + 1, (int) type);
+      *end = '.';
+      end = pt_put_decimal (end + 1, codeset);
+      *end = '.';
+      (void) pt_put_decimal (end + 1, collation);
+    }
+  else
+    {
+      *out = ':';
+      (void) pt_put_decimal (out + 1, (int) type);
+    }
+  if (index < parser->host_var_count && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[index] & PT_HOST_VAR_FORMAT_POSITION))
+    {
+      /* a STR_TO_DATE format: its class types the result, a NULL one as the NULL literal */
+      const int format_class = PT_HOST_VAR_FORMAT_CLASS (parser->host_var_format_classes[index]);
+      if (format_class == PT_HOST_VAR_FORMAT_NULL)
+	{
+	  *out = ':';
+	  (void) pt_put_decimal (out + 1, (int) DB_TYPE_NULL);
+	}
+      else
+	{
+	  char *end = out + strlen (out);
+
+	  *end++ = ':';
+	  *end++ = 'f';
+	  (void) pt_put_decimal (end, format_class);
+	}
+    }
+  if (index < parser->host_var_count && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[index] & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL)
+    {
+      /* an ELT index: its value picks the branch that types the result */
+      const DB_BIGINT elt_index =
+	pt_elt_index_signature (parser->host_var_format_classes[index], parser->host_var_elt_indexes[index]);
+      if (elt_index == PT_HOST_VAR_ELT_NULL)
+	{
+	  strcat (out, ":en");
+	}
+      else if (elt_index == PT_HOST_VAR_ELT_INVALID || elt_index == PT_HOST_VAR_ELT_UNKNOWN)
+	{
+	  strcat (out, ":ex");
+	}
+      else
+	{
+	  char *end = out + strlen (out);
+
+	  *end++ = ':';
+	  *end++ = 'e';
+	  (void) pt_put_decimal (end, elt_index);
+	}
+    }
+}
+
+/*
  * pt_print_host_var () -
  *   return:
  *   parser(in):
@@ -13534,7 +13700,17 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  sprintf (s, ":%d", p->info.host_var.index);
+	  /* CBRD-27583: the plan dump and the trace show a derived position as the user position it is derived
+	   * from, as they showed the user's ? before; any other text keeps its own number: the cache key's, the
+	   * internal texts parsed again (?:N reads the index back) and the texts compared by their print */
+	  const int index = parser->flag.print_host_var_source
+	    && pt_is_derived_host_var (parser, p->info.host_var.index)
+	    ? parser->host_var_derived_from[p->info.host_var.index] : p->info.host_var.index;
+	  sprintf (s, ":%d", index);
+	  if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+	    {
+	      pt_print_host_var_type (parser, p->info.host_var.index, s + strlen (s));
+	    }
 	}
       q = pt_append_nulstring (parser, q, s);
     }
@@ -13887,7 +14063,7 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -15611,7 +15787,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+      if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.limit);
 	  q = pt_append_nulstring (parser, q, " limit ");
@@ -16235,7 +16411,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -16564,7 +16740,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.update.limit && p->info.update.rewrite_limit)
+  if (p->info.update.limit && PT_PRINT_LIMIT (parser, p->info.update.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.update.limit);
       b = pt_append_nulstring (parser, b, " limit ");
