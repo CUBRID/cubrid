@@ -5828,7 +5828,8 @@ eb_repr_attr (const OR_CLASSREP * rep, ATTR_ID attrid)
  * the representation lacks (the row path supplies its default value), a column of another type or domain, the
  * table full, the representation unreadable -- rejects it, and the rejected id is remembered so it is not fetched
  * again (the row path takes a page from its first record).  NO_ERROR when the representation is (now) decoded, ER_FAILED
- * when it is not; no error is set either way (a capability, not a fault). */
+ * when it is not; no error is set either way (a capability, not a fault) -- but an interrupt the class record's fix
+ * met, ER_INTERRUPTED, which stays set and goes up, the representation neither learned nor rejected. */
 int
 expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid)
 {
@@ -5946,6 +5947,12 @@ done:
     }
   db_private_free_and_init (thread_p, cols);
   db_private_free_and_init (thread_p, keys);
+  if (!ok && er_errid () == ER_INTERRUPTED)
+    {
+      /* pgbuf_fix () took the transaction's interrupt flag down when it raised this, so nothing after would see the
+       * interrupt again: it is not about the representation, and goes up as expr_batch_run () lets one go */
+      return ER_INTERRUPTED;
+    }
   if (!ok && plan->n_rejected < EB_MAX_REPRS)
     {
       plan->rejected[plan->n_rejected++] = repid;

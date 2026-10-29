@@ -7743,6 +7743,7 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH *batch = hsidp->batch;
   SCAN_CODE code;
+  int rc;
 
   batch->n_rows = 0;
   batch->n_sel = 0;
@@ -7786,8 +7787,14 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
 	}
       /* the walk stopped, nothing collected, at a record of a representation the plan has not met: learned now
        * when its columns and keys read as the plan's do, else remembered as one the row path keeps (no error either
-       * way) */
-      if (expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid) != NO_ERROR)
+       * way, but an interrupt the class record's fix met) */
+      rc = expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid);
+      if (rc == ER_INTERRUPTED)
+	{
+	  batch->n_rows = 0;
+	  return S_ERROR;
+	}
+      if (rc != NO_ERROR)
 	{
 	  hsidp->batch_why_not = "a record of a representation the batch does not decode";
 	  return code;
