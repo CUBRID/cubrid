@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "jsp_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -205,6 +206,7 @@ static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, c
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
+static bool reload_moved_block_trigger (TR_TRIGGER * trigger);
 
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
 static int find_user_trigger_objects (DB_OBJLIST ** objects);
@@ -1894,6 +1896,54 @@ validate_trigger (TR_TRIGGER * trigger)
 }
 
 /*
+ * reload_moved_block_trigger() - Reads a trigger again when the procedure of its PL/CSQL block action was not found.
+ *    return: true if the procedure has moved and the action is to be run again
+ *    trigger(in/out): trigger structure
+ *
+ * Note:
+ *    The procedure is named after the trigger owner, so changing the owner renames it.
+ *    A client that cached the trigger before another transaction changed the owner keeps calling the old name
+ *    until it reads the trigger again.
+ *    The error of the failed call is kept here. The caller clears it when the procedure has moved.
+ */
+static bool
+reload_moved_block_trigger (TR_TRIGGER * trigger)
+{
+  char *old_sp_name;
+  bool moved = false;
+  int save;
+
+  /* reading the trigger again frees its activities, which a nested firing may still be running */
+  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger->action->in_use > 0
+      || (trigger->condition != NULL && trigger->condition->in_use > 0))
+    {
+      return false;
+    }
+
+  old_sp_name = strdup (trigger->block_sp_name);
+  if (old_sp_name == NULL)
+    {
+      return false;
+    }
+
+  er_stack_push ();
+
+  AU_SAVE_AND_DISABLE (save);
+  if (validate_trigger (trigger) == NO_ERROR && trigger->block_sp_name != NULL
+      && strcmp (old_sp_name, trigger->block_sp_name) != 0)
+    {
+      moved = true;
+    }
+  AU_RESTORE (save);
+
+  er_stack_pop ();
+
+  free_and_init (old_sp_name);
+
+  return moved;
+}
+
+/*
  * tr_map_trigger() - This creates a trigger cache structure for a trigger instance and optionally validates the cache.
  *    return: trigger structure
  *    object(in): trigger object handle
@@ -3541,6 +3591,8 @@ tr_check_correlation (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *w
  *    action_type(in): action type
  *    action_source(in): action expression source
  *    comment(in): trigger comment
+ *    block_sp_name(in): unique name of the internal procedure of a PL/CSQL block action, or NULL
+ *    block_source(in): PL/CSQL block text of the action, or NULL
  *
  * Note:
  *      Errors: ER_TR_TRIGGER_EXISTS:
@@ -3558,7 +3610,7 @@ DB_OBJECT *
 tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, DB_TRIGGER_EVENT event,
 		   DB_OBJECT * class_mop, const char *attribute, DB_TRIGGER_TIME cond_time, const char *cond_source,
 		   DB_TRIGGER_TIME action_time, DB_TRIGGER_ACTION action_type, const char *action_source,
-		   const char *comment)
+		   const char *comment, const char *block_sp_name, const char *block_source)
 {
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
@@ -3597,6 +3649,19 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   trigger->event = event;
   trigger->class_mop = class_mop;
   trigger->comment = (comment == NULL) ? NULL : strdup (comment);
+
+  if (block_sp_name != NULL)
+    {
+      assert (block_source != NULL);
+
+      trigger->block_sp_name = strdup (block_sp_name);
+      trigger->block_source = strdup (block_source);
+      if (trigger->block_sp_name == NULL || trigger->block_source == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (block_source) + 1);
+	  goto error;
+	}
+    }
 
   if (class_mop != NULL)
     {
@@ -4052,7 +4117,29 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 
       if (error == NO_ERROR || rollback)
 	{
-	  if (!rollback)
+	  if (!rollback && trigger->block_sp_name != NULL)
+	    {
+	      /*
+	       * The internal procedure of a PL/CSQL block action goes with the trigger.
+	       * It belongs to the trigger owner, who may not be the user dropping the class of the trigger.
+	       */
+	      MOP save_user = Au_user;
+
+	      error = AU_SET_USER (trigger->owner);
+	      if (error == NO_ERROR)
+		{
+		  error = jsp_drop_system_generated_procedure (trigger->block_sp_name);
+		}
+	      AU_SET_USER (save_user);
+
+	      if (error == ER_SP_NOT_EXIST)
+		{
+		  er_clear ();
+		  error = NO_ERROR;
+		}
+	    }
+
+	  if (!rollback && error == NO_ERROR)
 	    {
 	      /*
 	       * if this isn't a rollback, delete the object, otherwise
@@ -4433,6 +4520,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
   TR_RECURSION_DECISION dec;
   bool is_statement = false;
   bool used_cached_statement = true;
+  bool reloaded = false;
 
   if (trigger->object)
     {
@@ -4556,6 +4644,29 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 		  free_compiled_statement (act);
 
 		  er_clear ();
+		  goto compile_stmt_again;
+		}
+
+	      /* the owner of a PL/CSQL block action may have been changed by another transaction */
+	      if (pt_status < 0 && !reloaded && er_errid () == ER_SP_NOT_EXIST && reload_moved_block_trigger (trigger))
+		{
+		  reloaded = true;
+		  er_clear ();
+
+		  /* follow the trigger as read again, which may have been made inactive as well */
+		  if (trigger->status != TR_STATUS_ACTIVE)
+		    {
+		      break;
+		    }
+
+		  /* execute_activity sets the user back after the action */
+		  error = AU_SET_USER (trigger->owner);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+
+		  act = trigger->action;
 		  goto compile_stmt_again;
 		}
 
@@ -6080,7 +6191,8 @@ tr_trigger_action (DB_OBJECT * trigger_object, char **action)
 	  break;
 
 	case TR_ACT_EXPRESSION:
-	  *action = ws_copy_string (trigger->action->source);
+	  /* a PL/CSQL block action shows the block, not the call to its internal procedure */
+	  *action = ws_copy_string (trigger->block_source != NULL ? trigger->block_source : trigger->action->source);
 	  break;
 
 	case TR_ACT_REJECT:
@@ -6487,6 +6599,139 @@ end:
     {
       tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
     }
+
+  return error;
+}
+
+/*
+ * tr_change_block_procedure_owner() - Moves the internal procedure of a PL/CSQL block action to a new owner.
+ *    return: error code
+ *    trigger_object(in): trigger object whose owner is changing
+ *    owner(in): new owner
+ *
+ * Note:
+ *    The procedure name carries the owner, and the action calls it by that name,
+ *    so the procedure, its name in the trigger and the call are changed together.
+ *    Nothing is done for a trigger without a PL/CSQL block action.
+ */
+int
+tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
+{
+  TR_TRIGGER *trigger;
+  PARSER_CONTEXT *parser = NULL;
+  MOP sp_mop;
+  DB_VALUE value;
+  char *owner_name = NULL;
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char new_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *new_block_sp_name;
+  char *new_source = NULL;
+  size_t new_source_len;
+  int save;
+  int error = NO_ERROR;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  trigger = tr_map_trigger (trigger_object, true);
+  if (trigger == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  if (trigger->block_sp_name == NULL)
+    {
+      goto end;
+    }
+
+  sp_mop = jsp_find_stored_procedure (trigger->block_sp_name, DB_AUTH_NONE);
+  if (sp_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  owner_name = au_get_user_name (owner);
+  if (owner_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+  snprintf (new_sp_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
+	    sm_remove_qualifier_name (trigger->block_sp_name));
+
+  /* the owner name may need quoting, for example a reserved word */
+  new_source_len = strlen ("CALL [].[]()") + strlen (new_sp_name) + 1;
+  new_source = (char *) malloc (new_source_len);
+  if (new_source == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, new_source_len);
+      goto end;
+    }
+  snprintf (new_source, new_source_len, "CALL [%s].[%s]()", downcase_owner_name,
+	    sm_remove_qualifier_name (trigger->block_sp_name));
+
+  /* au_change_sp_owner compiles the procedure again for the new owner and reports errors to a parser */
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = au_change_sp_owner (parser, sp_mop, owner);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  db_make_string (&value, new_sp_name);
+  error = db_put_internal (trigger_object, TR_ATT_ACTION_BLOCK_SP, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  db_make_string (&value, new_source);
+  error = db_put_internal (trigger_object, TR_ATT_ACTION, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  new_block_sp_name = strdup (new_sp_name);
+  if (new_block_sp_name == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, strlen (new_sp_name) + 1);
+      goto end;
+    }
+
+  /* the cached action is compiled again from the new call when it is used next */
+  free_and_init (trigger->block_sp_name);
+  trigger->block_sp_name = new_block_sp_name;
+  free_and_init (trigger->action->source);
+  trigger->action->source = new_source;
+  new_source = NULL;
+  free_compiled_statement (trigger->action);
+
+end:
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
+
+  if (owner_name != NULL)
+    {
+      db_ws_free_and_init (owner_name);
+    }
+
+  if (new_source != NULL)
+    {
+      free_and_init (new_source);
+    }
+
+  AU_RESTORE (save);
 
   return error;
 }

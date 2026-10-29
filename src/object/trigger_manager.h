@@ -274,7 +274,8 @@ extern bool tr_set_execution_state (bool new_state);
 extern DB_OBJECT *tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority,
 				     DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute,
 				     DB_TRIGGER_TIME cond_time, const char *cond_source, DB_TRIGGER_TIME action_time,
-				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment);
+				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment,
+				     const char *block_sp_name, const char *block_source);
 
 /* Trigger location */
 
@@ -292,6 +293,7 @@ extern int tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag);
 
 extern int tr_drop_trigger (DB_OBJECT * obj, bool call_from_api);
 extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush);
+extern int tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner);
 
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);

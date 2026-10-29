@@ -35,6 +35,8 @@
 #include "object_primitive.h" /* pr_clear_value */
 #include "authenticate_access_auth.hpp" /* au_object_revoke_all_privileges */
 
+#define UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER "cHANGEtRIGGERoWNER"
+
 int
 au_check_owner (DB_VALUE *creator_val)
 {
@@ -312,6 +314,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  bool has_savepoint = false;
   int save = 0;
   int error = NO_ERROR;
 
@@ -396,6 +399,15 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (trigger_old_name));
 
+  /* the name, the owner and the internal procedure of a PL/CSQL block action change together or not at all */
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+  has_savepoint = true;
+
   error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
     {
@@ -418,6 +430,14 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       goto end;
     }
 
+  /* the internal procedure of a PL/CSQL block action belongs to the trigger owner */
+  error = tr_change_block_procedure_owner (trigger_mop, owner_mop);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
   trigger = tr_map_trigger (trigger_mop, false);
   if (trigger != NULL && trigger->class_mop == NULL)
     {
@@ -430,6 +450,11 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 
 end:
   AU_RESTORE (save);
+
+  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER);
+    }
 
   return error;
 }
