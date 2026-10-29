@@ -244,6 +244,8 @@ static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
 static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
+static void qo_get_null_padded_nodes (QO_ENV * env, QO_NODE * node, BITSET * padded);
+static void qo_order_terms_after_null_padding (QO_ENV * env);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -603,6 +605,8 @@ qo_optimize_helper (QO_ENV * env)
 	    }
 	}
     }
+
+  qo_order_terms_after_null_padding (env);
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
@@ -6482,6 +6486,120 @@ qo_discover_edges (QO_ENV * env)
 }
 
 /*
+ * qo_get_null_padded_nodes () - get the nodes an outer join fills with NULL
+ *   return:
+ *   env(in):
+ *   node(in): LEFT or RIGHT OUTER join node
+ *   padded(out):
+ */
+static void
+qo_get_null_padded_nodes (QO_ENV * env, QO_NODE * node, BITSET * padded)
+{
+  QO_NODE *p_node;
+  int k;
+
+  BITSET_CLEAR (*padded);
+
+  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER)
+    {
+      bitset_add (padded, QO_NODE_IDX (node));
+      return;
+    }
+
+  /* not QO_NODE_OUTER_DEP_SET (): it also holds ORDERED/LEADING hint dependencies */
+  k = QO_NODE_IDX (node);
+  do
+    {
+      p_node = QO_ENV_NODE (env, --k);
+      bitset_add (padded, k);
+    }
+  while (k > 0 && QO_NODE_IS_ANSI_JOIN (p_node));
+}
+
+/*
+ * qo_order_terms_after_null_padding () - keep a WHERE term or an inner join ON term that reads a node an outer
+ *                                        join fills with NULL from being evaluated before that outer join
+ *   return:
+ *   env(in):
+ */
+static void
+qo_order_terms_after_null_padding (QO_ENV * env)
+{
+  QO_NODE *node, *on_node;
+  QO_TERM *term;
+  BITSET padded;
+  BITSET_ITERATOR iter;
+  int n, i, t;
+
+  bitset_init (&padded, env);
+
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_LEFT_OUTER && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_RIGHT_OUTER)
+	{
+	  continue;
+	}
+
+      qo_get_null_padded_nodes (env, node, &padded);
+
+      for (i = 0; i < env->nterms; i++)
+	{
+	  term = QO_ENV_TERM (env, i);
+
+	  /* QO_TC_DURING_JOIN: an inner join ON term reclassified below for another outer join */
+	  if (QO_TERM_CLASS (term) != QO_TC_SARG && QO_TERM_CLASS (term) != QO_TC_JOIN
+	      && QO_TERM_CLASS (term) != QO_TC_OTHER && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
+	    {
+	      continue;
+	    }
+
+	  on_node = NULL;
+	  if (QO_ON_COND_TERM (term))
+	    {
+	      /* ON terms of outer and semi/anti joins are ordered by qo_analyze_term () */
+	      on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
+	      if (QO_NODE_PT_JOIN_TYPE (on_node) != PT_JOIN_INNER || QO_NODE_IDX (on_node) <= n)
+		{
+		  continue;
+		}
+	    }
+
+	  if (!bitset_intersects (&(QO_TERM_NODES (term)), &padded))
+	    {
+	      continue;
+	    }
+
+	  QO_TERM_SET_FLAG (term, QO_TERM_READS_NULL_PADDED);
+
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t > n)
+		{
+		  QO_ADD_OUTER_DEP_SET (QO_ENV_NODE (env, t), node);
+		}
+	    }
+
+	  if (on_node == NULL)
+	    {
+	      continue;
+	    }
+
+	  QO_ADD_OUTER_DEP_SET (on_node, node);
+
+	  if (!QO_IS_EDGE_TERM (term))
+	    {
+	      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+	      QO_TERM_JOIN_TYPE (term) = NO_JOIN;
+	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	    }
+	}
+    }
+
+  bitset_delset (&padded);
+}
+
+/*
  * qo_classify_outerjoin_terms () -
  *   return:
  *   env(in):
@@ -8521,8 +8639,9 @@ qo_generate_implied_join_terms (QO_ENV * env)
  *	  root_arr[i] is the canonical root of segment i.
  *
  * Note: Unions only unconditional inner-join equi-join edge terms.  Conditional
- *   equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must not
- *   seed the closure: an inner term derived across an outer-join boundary changes results.
+ *   equalities (outer-join edge, AFTER/DURING_JOIN, an inner term reading a node a preceding
+ *   outer join fills with NULL; cf. the global eq_root) must not seed the closure: an inner
+ *   term derived across an outer-join boundary changes results.
  */
 static void
 qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
@@ -8541,7 +8660,8 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       PT_NODE *tpe;
       int r1, r2;
 
-      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
+      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm)
+	  || QO_TERM_IS_FLAGED (jterm, QO_TERM_READS_NULL_PADDED))
 	{
 	  continue;
 	}
