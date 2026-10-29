@@ -3208,6 +3208,28 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  qdump_print_insert_proc_node (&xasl_p->proc.merge.insert_xasl->proc.insert);
 	  fprintf (foutput, "\n");
 	}
+      if (xasl_p->proc.merge.sink.is_remote)
+	{
+	  MERGE_PROC_NODE *merge_p = &xasl_p->proc.merge;
+	  int i;
+
+	  /* the remote sink of a MERGE with a local source. The connection's password is left out. */
+	  fprintf (foutput, "\n---->remote sink: table %s, target alias %s, source alias %s, %d binds:",
+		   merge_p->sink.table_name ? merge_p->sink.table_name : "(null)",
+		   merge_p->remote_target_alias ? merge_p->remote_target_alias : "(null)",
+		   merge_p->remote_source_alias ? merge_p->remote_source_alias : "(null)", merge_p->remote_num_binds);
+	  for (i = 0; i < merge_p->remote_num_binds && merge_p->remote_bind_cast != NULL; i++)
+	    {
+	      fprintf (foutput, " c%d %s", i + 1, merge_p->remote_bind_cast[i] ? merge_p->remote_bind_cast[i] : "?");
+	    }
+	  fprintf (foutput, ", %d keys at", merge_p->remote_num_keys);
+	  for (i = 0; i < merge_p->remote_num_keys && merge_p->remote_key_pos != NULL; i++)
+	    {
+	      fprintf (foutput, " c%d", merge_p->remote_key_pos[i] + 1);
+	    }
+	  fprintf (foutput, "\n---->remote clauses: %s\n",
+		   merge_p->remote_clause_text ? merge_p->remote_clause_text : "(null)");
+	}
       break;
 
     case CTE_PROC:

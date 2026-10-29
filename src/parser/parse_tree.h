@@ -3202,6 +3202,10 @@ struct pt_merge_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *no_use_hash;		/* NO_USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *use_hash;		/* USE_HASH hint's arguments (PT_NAME list) */
+  PT_NODE *remote_src_query;	/* remote target, local source: the SELECT over the source. Its row holds the
+				 * values bound per MERGE, in pt_dblink_merge_walk_binds () order. */
+  PT_NODE *remote_text_src;	/* remote target, local source: the statement as it was before type checking.
+				 * The remote text is printed from it. No walk visits it. */
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */
@@ -4260,7 +4264,7 @@ enum cdc_ddl_object_type
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
 /* Which remote DML value-push sink (if any) a statement is routed to. A statement is exactly one of
- * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
+ * INSERT/DELETE/UPDATE/MERGE, so these are mutually exclusive by construction -- unlike the bool pair this
  * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
  * happen, and pt_convert_dblink_dml_query's "no sink" guard becomes a single ==NONE check instead of
  * accumulating a !flag per sink kind as more are added. */
@@ -4269,7 +4273,8 @@ typedef enum dblink_remote_sink_kind
   DBLINK_REMOTE_SINK_NONE = 0,
   DBLINK_REMOTE_SINK_INSERT_SELECT,	/* INSERT INTO remote SELECT ... FROM local */
   DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ,	/* DELETE FROM remote WHERE ... (local subquery) */
-  DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ	/* UPDATE remote SET ... WHERE ... (local subquery in SET or WHERE) */
+  DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ,	/* UPDATE remote SET ... WHERE ... (local subquery in SET or WHERE) */
+  DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC	/* MERGE INTO remote USING local ON (...) */
 } DBLINK_REMOTE_SINK_KIND;
 
 typedef struct

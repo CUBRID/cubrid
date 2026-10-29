@@ -458,8 +458,9 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
    * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
-   * on any unbound name in the value clause. */
-  if (spec->info.spec.remote_server_name)
+   * on any unbound name in the value clause. A target with its columns, in the derived
+   * dblink table shape, is bound, so it is checked like a local one. */
+  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -524,9 +525,10 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
-   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
-   * post callback must not decrement it either, or *level_p underflows. */
-  if (spec->info.spec.remote_server_name)
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec that is
+   * not in the derived dblink table shape, so this post callback must not decrement it
+   * either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       return node;
     }
@@ -1284,65 +1286,74 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      REMOTE_COLS *remote;
 	      PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
 
-	      if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
+	      /* A remote DML target in this shape can have its scope bound more than once in one statement. A MERGE
+	       * binds its target for each clause and again for the whole statement. The columns are fetched the
+	       * first time only, as each fetch connects to the remote and prepares SELECT * there. */
+	      if (spec->info.spec.remote_server_name == NULL || dblink_table->remote_col_list == NULL)
 		{
-		  if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
+		  if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
 		    {
+		      if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
+			{
+			  return;
+			}
+		    }
+
+		  /* remote table's column list */
+		  rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
+		  if (rmt_tbl_cols == NULL)
+		    {
+		      PT_ERRORf (parser, table, "Failed to get column information for memory allocation error",
+				 ER_DBLINK);
 		      return;
 		    }
-		}
 
-	      /* remote table's column list */
-	      rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
-	      if (rmt_tbl_cols == NULL)
-		{
-		  PT_ERRORf (parser, table, "Failed to get column information for memory allocation error", ER_DBLINK);
-		  return;
-		}
+		  err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
 
-	      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
+		  if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
+		    {
+		      /* error from table-name@server */
+		      if (err < 0)
+			{
+			  goto error_exit;
+			}
 
-	      if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
-		{
-		  /* error from table-name@server */
+		      if (table->info.dblink_table.cols == NULL)
+			{
+			  if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
+			    {
+			      if (!pt_has_error (parser))
+				{
+				  PT_ERROR (parser, table, "Failed to make select-list for dblink");
+				}
+			      goto error_exit;
+			    }
+			}
+		    }
+
+		  /* error from dblink(server, 'select ... from ...' */
 		  if (err < 0)
 		    {
 		      goto error_exit;
 		    }
 
-		  if (table->info.dblink_table.cols == NULL)
+		  /* save the column lists to free at end of parsing */
+		  remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
+		  if (remote == NULL)
 		    {
-		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
-			{
-			  if (!pt_has_error (parser))
-			    {
-			      PT_ERROR (parser, table, "Failed to make select-list for dblink");
-			    }
-			  goto error_exit;
-			}
+		      PT_INTERNAL_ERROR (parser, "parser_alloc");
+		      goto error_exit;
 		    }
+
+		  /* add dblink remote table's column list to Parser */
+		  remote->cols = (void *) rmt_tbl_cols;
+		  remote->next = parser->dblink_remote;
+		  parser->dblink_remote = remote;
+
+		  /* set only after the list is saved. error_exit deletes the list, and the check above takes a set list as
+		   * fetched. */
+		  dblink_table->remote_col_list = (void *) rmt_tbl_cols;
 		}
-
-	      /* error from dblink(server, 'select ... from ...' */
-	      if (err < 0)
-		{
-		  goto error_exit;
-		}
-
-	      dblink_table->remote_col_list = (void *) rmt_tbl_cols;
-
-	      /* save the column lists to free at end of parsing */
-	      remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
-	      if (remote == NULL)
-		{
-		  PT_INTERNAL_ERROR (parser, "parser_alloc");
-		  goto error_exit;
-		}
-
-	      /* add dblink remote table's column list to Parser */
-	      remote->cols = (void *) rmt_tbl_cols;
-	      remote->next = parser->dblink_remote;
-	      parser->dblink_remote = remote;
 
 	      table->info.dblink_table.cols =
 		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
@@ -1912,6 +1923,12 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
       cls_name = node->info.merge.into->info.spec.entity_name;
       values_list = node->info.merge.insert.value_clauses;
       attrs_list = node->info.merge.insert.attr_list;
+    }
+
+  if (cls_name == NULL)
+    {
+      /* a remote target in the derived dblink table shape has no local class */
+      return;
     }
 
   au_fetch_class_force (cls_name->info.name.db_object, &smclass, AU_FETCH_READ);
@@ -3270,7 +3287,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       break;
 
     case PT_MERGE:
-      if (node->info.merge.into->info.spec.remote_server_name)
+      /* the remote resolves a remote target's names, unless the target has its columns in the derived dblink
+       * table shape. Then they are resolved here, as a local target's are. */
+      if (node->info.merge.into->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (node->info.merge.into))
 	{
 	  ;
 	}
@@ -3281,6 +3300,22 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /* resolve missing attr_list as star */
 	      if (!node->info.merge.insert.attr_list)
 		{
+		  /* a remote target gets its columns when its scope is bound, so bind it first */
+		  if (node->info.merge.into->info.spec.remote_server_name)
+		    {
+		      scopestack.specs = node->info.merge.into;
+		      bind_arg->scopes = &scopestack;
+		      spec_frame.next = bind_arg->spec_frames;
+		      spec_frame.extra_specs = NULL;
+		      bind_arg->spec_frames = &spec_frame;
+		      pt_bind_scope (parser, bind_arg);
+		      if (pt_has_error (parser))
+			{
+			  node = NULL;
+			  *continue_walk = PT_STOP_WALK;
+			  break;
+			}
+		    }
 		  node->info.merge.insert.attr_list = pt_resolve_star (parser, node->info.merge.into, NULL);
 		  if (parser->flag.is_parsing_static_sql)
 		    {
@@ -3332,7 +3367,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  break;
 	}
 
-      if (node->info.merge.into->info.spec.remote_server_name == NULL)
+      if (node->info.merge.into->info.spec.remote_server_name == NULL || PT_SPEC_IS_DERIVED (node->info.merge.into))
 	{
 	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	}
@@ -4218,6 +4253,12 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
+      if (!ok && spec->info.spec.remote_server_name != NULL && name->info.name.original != NULL)
+	{
+	  /* Report a column a remote DML target lacks as db_get_attribute_force () does for a local class.
+	   * pt_bind_name_or_path_in_scope () clears it once the name is found in any spec. */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name->info.name.original);
+	}
       if (col && !name->info.name.spec_id)
 	{
 	  name->type_enum = col->type_enum;
@@ -5143,6 +5184,39 @@ pt_dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
     }
 }
 
+/* the local type of a remote column */
+static PT_TYPE_ENUM
+pt_dblink_remote_col_type (const S_REMOTE_COL_ATTR * attr)
+{
+  if (attr->type_idx > PT_TYPE_NONE)
+    {
+      /* this is the case of loaddb */
+      return (PT_TYPE_ENUM) attr->type_idx;
+    }
+
+  /* it needs to convert ext type to CCI_U_TYPE */
+  return pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+}
+
+/* A remote column of this type cannot be read through DBLink. The scan has no conversion for its values. */
+static bool
+pt_dblink_type_is_unreadable (PT_TYPE_ENUM type)
+{
+  switch (type)
+    {
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
+    case PT_TYPE_OBJECT:
+    case PT_TYPE_ENUMERATION:
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
+      return true;
+    default:
+      return false;
+    }
+}
+
 static bool
 pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr)
 {
@@ -5150,16 +5224,13 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
   bool need_precision = true;
 
   attr_def_node->data_type = NULL;
+  attr_def_node->type_enum = pt_dblink_remote_col_type (attr);
 
-  if (attr->type_idx > PT_TYPE_NONE)
+  if (pt_dblink_type_is_unreadable (attr_def_node->type_enum))
     {
-      /* this is the case of loaddb */
-      attr_def_node->type_enum = (PT_TYPE_ENUM) attr->type_idx;
-    }
-  else
-    {
-      /* it needs to convert ext type to CCI_U_TYPE */
-      attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+      PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
+      return false;
     }
 
   switch (attr_def_node->type_enum)
@@ -5174,17 +5245,6 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
     case PT_TYPE_NUMERIC:
     case PT_TYPE_MONETARY:
       break;
-
-    case PT_TYPE_BLOB:
-    case PT_TYPE_CLOB:
-    case PT_TYPE_OBJECT:
-    case PT_TYPE_ENUMERATION:
-    case PT_TYPE_SET:
-    case PT_TYPE_MULTISET:
-    case PT_TYPE_SEQUENCE:
-      PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
-      return false;
 
     default:
       need_precision = false;
@@ -5366,6 +5426,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   PT_NODE *attr_def_node = NULL;
   PT_NODE *id_node;
   PT_NODE *tmp;
+  PT_TYPE_ENUM type;
 
   PARSER_VARCHAR *var_buf = 0;
 
@@ -5451,7 +5512,23 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	    }
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
-	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	  type = pt_dblink_remote_col_type (rmt_cols->get_attr (i));
+	  if (class_spec->remote_server_name != NULL && pt_dblink_type_is_unreadable (type))
+	    {
+	      /* A remote DML target takes its columns only to resolve and check the statement. They are never read
+	       * through this spec, so a column of a type DBLink cannot read keeps its type, as a local target's
+	       * would. A value bound to it is refused where the sink binds it. */
+	      tmp = pt_mk_attr_def_node (parser, id_node, NULL);
+	      if (tmp != NULL)
+		{
+		  tmp->type_enum = type;
+		}
+	    }
+	  else
+	    {
+	      tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols);
+	    }
+	  if (tmp == NULL)
 	    {
 	      error = ER_DBLINK;
 	      goto error_exit;
@@ -6034,7 +6111,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
-	      if (spec->info.spec.remote_server_name)
+	      if (spec->info.spec.remote_server_name && PT_SPEC_IS_ENTITY (spec))
 		{
 		  /* only column name with remote server name is resolved
 		   * PT_DOT node such as new.col obj.old does not resolve */

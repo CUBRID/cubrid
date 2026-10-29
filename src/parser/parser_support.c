@@ -12746,6 +12746,851 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
   return spec;
 }
 
+/* The two specs of a remote MERGE with a local source. Its clauses are name-resolved, so a column belongs to
+ * the spec its spec_id names. */
+typedef struct pt_dblink_merge_refs PT_DBLINK_MERGE_REFS;
+struct pt_dblink_merge_refs
+{
+  UINTPTR target_id;		/* the INTO spec, in the derived dblink table shape */
+  UINTPTR source_id;		/* the USING spec */
+};
+
+/* pt_dblink_dml_classify_value leaves for a MERGE value. A target column is sent as written. A source column
+ * is bound. */
+static PT_DBLINK_LEAF_KIND
+pt_dblink_merge_value_leaf (PT_NODE * node, void *arg)
+{
+  PT_DBLINK_MERGE_REFS *refs = (PT_DBLINK_MERGE_REFS *) arg;
+
+  if (node->node_type != PT_NAME || node->info.name.meta_class != PT_NORMAL)
+    {
+      return PT_DBLINK_LEAF_NONE;
+    }
+
+  if (node->info.name.spec_id == refs->target_id)
+    {
+      return PT_DBLINK_LEAF_REMOTE;
+    }
+  if (node->info.name.spec_id == refs->source_id)
+    {
+      return PT_DBLINK_LEAF_LOCAL;
+    }
+
+  return PT_DBLINK_LEAF_NONE;
+}
+
+/* Is term an ON key? A key is "target column = source column", in either order. Returns the source column,
+ * or NULL when term is not a key. *target_col, when asked for, gets the target side. The source side must be
+ * a bare column. The sink checks key values for duplicates before sending, and reads each value from one
+ * USING column. */
+static PT_NODE *
+pt_dblink_merge_on_key (PARSER_CONTEXT * parser, PT_NODE * term, PT_DBLINK_MERGE_REFS * refs, PT_NODE ** target_col)
+{
+  PT_NODE *col, *val;
+  int i;
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      col = (i == 0) ? term->info.expr.arg1 : term->info.expr.arg2;
+      val = (i == 0) ? term->info.expr.arg2 : term->info.expr.arg1;
+      if (col == NULL || val == NULL)
+	{
+	  continue;
+	}
+
+      if (pt_dblink_merge_value_leaf (col, refs) == PT_DBLINK_LEAF_REMOTE
+	  && pt_dblink_merge_value_leaf (val, refs) == PT_DBLINK_LEAF_LOCAL)
+	{
+	  if (target_col != NULL)
+	    {
+	      *target_col = col;
+	    }
+	  return val;
+	}
+    }
+
+  return NULL;
+}
+
+/* Called once per AND-ed term of the ON. A key comes with its two columns. Any other term comes with NULLs.
+ * Returning false stops the walk. */
+typedef bool (*PT_DBLINK_MERGE_TERM_FN) (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+					 PT_NODE * source_col, void *arg);
+
+/* The one walk over the ON's terms, in the order written. Every pass over the ON goes through it, so they all
+ * meet the keys in the same order. That order is the order the keys are bound in. */
+static bool
+pt_dblink_merge_walk_on (PARSER_CONTEXT * parser, PT_NODE * cond, PT_DBLINK_MERGE_REFS * refs,
+			 PT_DBLINK_MERGE_TERM_FN fn, void *arg)
+{
+  PT_NODE *target_col = NULL, *source_col;
+
+  for (; cond != NULL; cond = cond->next)
+    {
+      if (cond->node_type == PT_EXPR && cond->info.expr.op == PT_AND)
+	{
+	  /* arg1/arg2 head no lists of their own. So this walks only the two sides. */
+	  if (!pt_dblink_merge_walk_on (parser, cond->info.expr.arg1, refs, fn, arg)
+	      || !pt_dblink_merge_walk_on (parser, cond->info.expr.arg2, refs, fn, arg))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      source_col = pt_dblink_merge_on_key (parser, cond, refs, &target_col);
+      if (!fn (parser, cond, (source_col != NULL) ? target_col : NULL, source_col, arg))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/* the specs of merge, for the walks below */
+static void
+pt_dblink_merge_init_refs (PT_NODE * merge, PT_DBLINK_MERGE_REFS * refs)
+{
+  refs->target_id = merge->info.merge.into->info.spec.id;
+  refs->source_id = merge->info.merge.using_clause->info.spec.id;
+}
+
+/* The source columns a statement binds, in the order of its one-row USING. Each occurrence of a source
+ * column is one bound value. Everything else is sent as written. A value is sent only when it is columns,
+ * literals, + - * / and conditions over them. So only an expression's operands are looked into. */
+typedef struct pt_dblink_merge_binds PT_DBLINK_MERGE_BINDS;
+struct pt_dblink_merge_binds
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_DBLINK_MERGE_BIND_FN fn;
+  void *arg;
+  int count;
+};
+
+/* expr alone, not the list it heads */
+static void
+pt_dblink_merge_bind_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool is_key, PT_DBLINK_MERGE_BINDS * binds)
+{
+  if (expr == NULL)
+    {
+      return;
+    }
+
+  switch (pt_dblink_merge_value_leaf (expr, &binds->refs))
+    {
+    case PT_DBLINK_LEAF_LOCAL:
+      binds->fn (parser, expr, is_key, binds->arg);
+      binds->count++;
+      return;
+    case PT_DBLINK_LEAF_REMOTE:
+      return;
+    default:
+      break;
+    }
+
+  if (expr->node_type == PT_EXPR)
+    {
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg1, is_key, binds);
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg2, is_key, binds);
+    }
+}
+
+/* the same over a list. The list is a VALUES row or a search condition (an implicit AND). */
+static void
+pt_dblink_merge_bind_list (PARSER_CONTEXT * parser, PT_NODE * list, PT_DBLINK_MERGE_BINDS * binds)
+{
+  for (; list != NULL; list = list->next)
+    {
+      pt_dblink_merge_bind_expr (parser, list, false, binds);
+    }
+}
+
+/* pt_dblink_merge_walk_on callback: the source column of a key is bound as a key. Any other term reads no
+ * source column. */
+static bool
+pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+			      void *arg)
+{
+  if (source_col != NULL)
+    {
+      pt_dblink_merge_bind_expr (parser, source_col, true, (PT_DBLINK_MERGE_BINDS *) arg);
+    }
+  return true;
+}
+
+/*
+ * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source binds.
+ *   The order is that of the one-row USING's columns: ON, SET, UPDATE WHERE, DELETE WHERE, VALUES and
+ *   INSERT WHERE. The source SELECT and the remote statement text are both laid out from this walk over the
+ *   statement's remote_text_src, so the two agree column by column.
+ *   return: the number of values
+ *   parser(in): parser context
+ *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
+ *   fn(in): called with each source column and whether it is the source side of an ON key
+ *   arg(in): passed to fn
+ *
+ * Note: A source column is reported as an ON key's source side, or under arg1 and arg2 of the expressions
+ *   in the other clauses. One in an ON term that is not a key, under arg3, or in a function or a subquery is
+ *   not reported. The caller refuses those shapes before it walks.
+ */
+int
+pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn, void *arg)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PT_DBLINK_MERGE_BINDS binds;
+  PT_NODE *assign;
+
+  memset (&binds, 0, sizeof (binds));
+  pt_dblink_merge_init_refs (merge, &binds.refs);
+  binds.fn = fn;
+  binds.arg = arg;
+
+  pt_dblink_merge_walk_on (parser, info->search_cond, &binds.refs, pt_dblink_merge_bind_on_term, &binds);
+
+  for (assign = info->update.assignment; assign != NULL; assign = assign->next)
+    {
+      /* the LHS is a target column, sent as written */
+      pt_dblink_merge_bind_expr (parser, assign->info.expr.arg2, false, &binds);
+    }
+  pt_dblink_merge_bind_list (parser, info->update.search_cond, &binds);
+  pt_dblink_merge_bind_list (parser, info->update.del_search_cond, &binds);
+
+  if (info->insert.value_clauses != NULL)
+    {
+      pt_dblink_merge_bind_list (parser, info->insert.value_clauses->info.node_list.list, &binds);
+    }
+  pt_dblink_merge_bind_list (parser, info->insert.search_cond, &binds);
+
+  return binds.count;
+}
+
+/* what pt_dblink_merge_check_keys carries over the walk */
+typedef struct pt_dblink_merge_key_check PT_DBLINK_MERGE_KEY_CHECK;
+struct pt_dblink_merge_key_check
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_NODE *merge;
+};
+
+/* node without the CAST type checking wrapped it in */
+static PT_NODE *
+pt_dblink_merge_unwrap_cast (PT_NODE * node)
+{
+  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST
+      && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+    {
+      return node->info.expr.arg1;
+    }
+  return node;
+}
+
+/* pt_dblink_merge_walk_on callback: stop at the first key the sink cannot take */
+static bool
+pt_dblink_merge_check_key_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+				PT_NODE * source_col, void *arg)
+{
+  PT_DBLINK_MERGE_KEY_CHECK *check = (PT_DBLINK_MERGE_KEY_CHECK *) arg;
+  PT_NODE *arg1, *arg2;
+  PT_DBLINK_LEAF_KIND leaf1, leaf2;
+
+  if (source_col != NULL)
+    {
+      if (target_col->type_enum == PT_TYPE_NULL && source_col->type_enum != PT_TYPE_NULL)
+	{
+	  /* a remote type DBLink does not map, NCHAR for one: how the remote compares it is unknown */
+	  PT_ERRORf2 (parser, check->merge,
+		      "dblink: remote MERGE with a local source does not support the type of the ON key's target "
+		      "column; %s = %s", pt_short_print (parser, target_col), pt_short_print (parser, source_col));
+	  return false;
+	}
+      return true;
+    }
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return true;
+    }
+
+  arg1 = pt_dblink_merge_unwrap_cast (term->info.expr.arg1);
+  arg2 = pt_dblink_merge_unwrap_cast (term->info.expr.arg2);
+  if (arg1 == term->info.expr.arg1 && arg2 == term->info.expr.arg2)
+    {
+      return true;
+    }
+
+  leaf1 = (arg1 != NULL) ? pt_dblink_merge_value_leaf (arg1, &check->refs) : PT_DBLINK_LEAF_NONE;
+  leaf2 = (arg2 != NULL) ? pt_dblink_merge_value_leaf (arg2, &check->refs) : PT_DBLINK_LEAF_NONE;
+  if ((leaf1 == PT_DBLINK_LEAF_REMOTE && leaf2 == PT_DBLINK_LEAF_LOCAL)
+      || (leaf1 == PT_DBLINK_LEAF_LOCAL && leaf2 == PT_DBLINK_LEAF_REMOTE))
+    {
+      PT_ERRORf2 (parser, check->merge,
+		  "dblink: remote MERGE with a local source needs the two columns of each ON key to compare without "
+		  "a conversion; cast the source column to the target column's type in the USING; %s = %s",
+		  pt_short_print (parser, arg1), pt_short_print (parser, arg2));
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_dblink_merge_check_keys () - Reject an ON key of a remote MERGE with a local source that the sink cannot
+ *   take for a key. The sink looks for duplicate keys in the source column's type, and the remote matches them
+ *   in the target column's. The two agree when the columns compare without a conversion. Type checking wraps
+ *   one side in a CAST otherwise. '1' and '01' are two strings but one INTEGER, so they could update one target
+ *   row twice. A key whose target column has a type DBLink does not map is rejected too.
+ *   return: NO_ERROR, or ER_FAILED with the parser error set
+ *   parser(in): parser context
+ *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
+ */
+int
+pt_dblink_merge_check_keys (PARSER_CONTEXT * parser, PT_NODE * merge)
+{
+  PT_DBLINK_MERGE_KEY_CHECK check;
+
+  pt_dblink_merge_init_refs (merge, &check.refs);
+  check.merge = merge;
+
+  if (!pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &check.refs, pt_dblink_merge_check_key_term,
+				&check))
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/* ==========================================================================================================
+ * remote MERGE + local source -- shape gate.
+ * Entry: pt_dblink_merge_is_inscope (from pt_check_with_info, after the statement's semantic check).
+ *
+ * The statement is sent once per source row. Its USING becomes one row of bound values, one per source
+ * column it reads. Every expression is sent as text, and the remote computes it. A source column in that
+ * text stands for its placeholder. So a value may only be columns of either side, literals and + - * / over
+ * them (pt_dblink_dml_classify_value). Anything else is computed in the USING subquery. The clauses are
+ * name-resolved, so a column belongs to the spec its spec_id names.
+ * ========================================================================================================== */
+
+/* Why the gate turns a remote MERGE away. Each check returns the first reason it meets, and each reason has
+ * one message (pt_dblink_merge_reject_msg). */
+typedef enum
+{
+  PT_DBLINK_MERGE_ADMIT = 0,
+  PT_DBLINK_MERGE_REJECT_COLUMN,	/* a column of neither side, a subquery or DEFAULT */
+  PT_DBLINK_MERGE_REJECT_SOURCE_NAME,	/* a source column read without the source's name */
+  PT_DBLINK_MERGE_REJECT_ON,	/* an ON term that is neither a key nor a target-only condition, or no key */
+  PT_DBLINK_MERGE_REJECT_SHAPE,	/* a value or a WHERE the remote statement cannot carry */
+  PT_DBLINK_MERGE_REJECT_SET_KEY,	/* SET writes an ON key column */
+  PT_DBLINK_MERGE_REJECT_INSERT_KEY	/* INSERT writes an ON key column with other than its source column */
+} PT_DBLINK_MERGE_VERDICT;
+
+static const char *
+pt_dblink_merge_reject_msg (PT_DBLINK_MERGE_VERDICT verdict)
+{
+  switch (verdict)
+    {
+    case PT_DBLINK_MERGE_REJECT_COLUMN:
+      return "dblink: remote MERGE with a local source supports only columns of the target and the source; "
+	"a subquery or DEFAULT is not supported";
+    case PT_DBLINK_MERGE_REJECT_SOURCE_NAME:
+      return "dblink: remote MERGE with a local source needs each source column qualified with the source's "
+	"name; the target's invisible columns are not known here, so an unqualified name could be one of them";
+    case PT_DBLINK_MERGE_REJECT_ON:
+      return "dblink: remote MERGE with a local source supports only an ON that equates target columns with "
+	"source columns, joined by AND; conditions that read only the target may be added; compute a key in the "
+	"USING subquery";
+    case PT_DBLINK_MERGE_REJECT_SET_KEY:
+      return "dblink: remote MERGE with a local source supports only a SET that leaves the ON key columns "
+	"unchanged; a row whose key changes could be matched by a later source row";
+    case PT_DBLINK_MERGE_REJECT_INSERT_KEY:
+      return "dblink: remote MERGE with a local source needs its INSERT to name every ON key's target column "
+	"and write it with that key's source column as is; a row inserted under another key could be matched "
+	"by a later source row";
+    case PT_DBLINK_MERGE_REJECT_SHAPE:
+    default:
+      return "dblink: remote MERGE with a local source supports only values that are columns, literals and "
+	"+ - * / over them, and a WHERE only as comparisons, AND, OR, NOT and IS [NOT] NULL; compute anything "
+	"else in the USING subquery";
+    }
+}
+
+/* what an expression reads, for the gate */
+typedef struct pt_dblink_merge_reads PT_DBLINK_MERGE_READS;
+struct pt_dblink_merge_reads
+{
+  PT_DBLINK_MERGE_REFS refs;
+  bool target;			/* it reads a target column */
+  bool source;			/* it reads a source column */
+  bool unqualified_source;	/* it reads a source column without the source's name */
+  bool unsupported;		/* a column of neither side, a subquery or DEFAULT */
+};
+
+static PT_NODE *
+pt_dblink_merge_reads_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_MERGE_READS *reads = (PT_DBLINK_MERGE_READS *) arg;
+
+  /* The walker shares one continue_walk across an expression's arguments. It restores the saved value only
+   * after the whole subtree. So a PT_LIST_WALK set on arg1 would still hold when arg2 is visited, and arg2's
+   * subtree would go unread. */
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY (node))
+    {
+      reads->unsupported = true;
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      switch (pt_dblink_merge_value_leaf (node, &reads->refs))
+	{
+	case PT_DBLINK_LEAF_REMOTE:
+	  reads->target = true;
+	  break;
+	case PT_DBLINK_LEAF_LOCAL:
+	  reads->source = true;
+	  if (!PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DOT_NAME))
+	    {
+	      reads->unqualified_source = true;
+	    }
+	  break;
+	default:
+	  reads->unsupported = true;
+	  break;
+	}
+      break;
+
+    case PT_DATA_TYPE:
+      /* a type, read by no value. The class name of an object type is a name of neither side. */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_DEFAULTF)
+	{
+	  /* the target's default, which this side does not know */
+	  reads->unsupported = true;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/* what expr reads -- expr alone, not the list it heads */
+static void
+pt_dblink_merge_scan (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_MERGE_READS * reads)
+{
+  int walk = PT_CONTINUE_WALK;
+
+  reads->target = reads->source = reads->unqualified_source = reads->unsupported = false;
+
+  pt_dblink_merge_reads_pre (parser, expr, reads, &walk);
+  if (walk == PT_CONTINUE_WALK)
+    {
+      parser_walk_leaves (parser, expr, pt_dblink_merge_reads_pre, reads, NULL, NULL);
+    }
+}
+
+/* Can expr stand in the remote statement as a value? Unlike UPDATE, a source column may sit inside an
+ * expression (T.v + L.x). The operator stays in the text and only the column is bound. So nothing is dropped. */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_MERGE_READS * reads)
+{
+  if (expr == NULL)
+    {
+      return PT_DBLINK_MERGE_REJECT_SHAPE;
+    }
+
+  /* A column the gate cannot place has its own reason, apart from a shape */
+  pt_dblink_merge_scan (parser, expr, reads);
+  if (reads->unsupported)
+    {
+      return PT_DBLINK_MERGE_REJECT_COLUMN;
+    }
+
+  /* The target is known by the columns the remote lists, which leave out its invisible ones. An unqualified
+   * name that one of them would take resolves to the source here instead. */
+  if (reads->unqualified_source)
+    {
+      return PT_DBLINK_MERGE_REJECT_SOURCE_NAME;
+    }
+
+  if (pt_dblink_dml_classify_value (expr, pt_dblink_merge_value_leaf, &reads->refs) == PT_DBLINK_VALUE_REJECT)
+    {
+      return PT_DBLINK_MERGE_REJECT_SHAPE;
+    }
+
+  return PT_DBLINK_MERGE_ADMIT;
+}
+
+/* Can pred be sent as a condition? That is comparisons, AND, OR, NOT and IS [NOT] NULL over values
+ * pt_dblink_merge_check_value admits. A condition that reads no target column is still sent as text, not
+ * bound as one truth value. Vendors spell a bound truth value differently. */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_pred (PARSER_CONTEXT * parser, PT_NODE * pred, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_DBLINK_MERGE_VERDICT verdict;
+
+  if (pred == NULL || pred->node_type != PT_EXPR)
+    {
+      return PT_DBLINK_MERGE_REJECT_SHAPE;
+    }
+
+  switch (pred->info.expr.op)
+    {
+    case PT_AND:
+    case PT_OR:
+      verdict = pt_dblink_merge_check_pred (parser, pred->info.expr.arg1, reads);
+      if (verdict != PT_DBLINK_MERGE_ADMIT)
+	{
+	  return verdict;
+	}
+      return pt_dblink_merge_check_pred (parser, pred->info.expr.arg2, reads);
+
+    case PT_NOT:
+      return pt_dblink_merge_check_pred (parser, pred->info.expr.arg1, reads);
+
+    case PT_EQ:
+    case PT_NE:
+    case PT_LT:
+    case PT_LE:
+    case PT_GT:
+    case PT_GE:
+      verdict = pt_dblink_merge_check_value (parser, pred->info.expr.arg1, reads);
+      if (verdict != PT_DBLINK_MERGE_ADMIT)
+	{
+	  return verdict;
+	}
+      return pt_dblink_merge_check_value (parser, pred->info.expr.arg2, reads);
+
+    case PT_IS_NULL:
+    case PT_IS_NOT_NULL:
+      return pt_dblink_merge_check_value (parser, pred->info.expr.arg1, reads);
+
+    default:
+      return PT_DBLINK_MERGE_REJECT_SHAPE;
+    }
+}
+
+/* the same over a list. A search condition can still be a list here (an implicit AND). */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_pred_list (PARSER_CONTEXT * parser, PT_NODE * pred, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_DBLINK_MERGE_VERDICT verdict;
+
+  for (; pred != NULL; pred = pred->next)
+    {
+      verdict = pt_dblink_merge_check_pred (parser, pred, reads);
+      if (verdict != PT_DBLINK_MERGE_ADMIT)
+	{
+	  return verdict;
+	}
+    }
+
+  return PT_DBLINK_MERGE_ADMIT;
+}
+
+/* what the ON checks carry over pt_dblink_merge_walk_on */
+typedef struct pt_dblink_merge_on_check PT_DBLINK_MERGE_ON_CHECK;
+struct pt_dblink_merge_on_check
+{
+  PT_DBLINK_MERGE_READS *reads;
+  PT_MERGE_INFO *merge;		/* the clauses, for the keys' check */
+  int num_keys;
+  PT_DBLINK_MERGE_VERDICT verdict;
+};
+
+/* pt_dblink_merge_walk_on callback: a term is a key, or a condition that reads no source column and is sent
+ * as written */
+static bool
+pt_dblink_merge_check_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+			       void *arg)
+{
+  PT_DBLINK_MERGE_ON_CHECK *check = (PT_DBLINK_MERGE_ON_CHECK *) arg;
+  PT_DBLINK_MERGE_VERDICT verdict;
+
+  if (source_col != NULL)
+    {
+      if (!PT_NAME_INFO_IS_FLAGED (source_col, PT_NAME_INFO_DOT_NAME))
+	{
+	  check->verdict = PT_DBLINK_MERGE_REJECT_SOURCE_NAME;
+	  return false;
+	}
+      check->num_keys++;
+      return true;
+    }
+
+  pt_dblink_merge_scan (parser, term, check->reads);
+  if (check->reads->unsupported)
+    {
+      check->verdict = PT_DBLINK_MERGE_REJECT_COLUMN;
+      return false;
+    }
+  if (check->reads->source)
+    {
+      check->verdict = PT_DBLINK_MERGE_REJECT_ON;
+      return false;
+    }
+
+  /* a condition the remote cannot carry is an ON problem */
+  verdict = pt_dblink_merge_check_pred (parser, term, check->reads);
+  if (verdict != PT_DBLINK_MERGE_ADMIT)
+    {
+      check->verdict = (verdict == PT_DBLINK_MERGE_REJECT_COLUMN) ? verdict : PT_DBLINK_MERGE_REJECT_ON;
+      return false;
+    }
+
+  return true;
+}
+
+/* Every AND-ed term of the ON is a key (pt_dblink_merge_on_key) or a condition, and there is a key */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_on (PARSER_CONTEXT * parser, PT_NODE * cond, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_DBLINK_MERGE_ON_CHECK check;
+
+  memset (&check, 0, sizeof (check));
+  check.reads = reads;
+
+  if (!pt_dblink_merge_walk_on (parser, cond, &reads->refs, pt_dblink_merge_check_on_term, &check))
+    {
+      return check.verdict;
+    }
+
+  return (check.num_keys > 0) ? PT_DBLINK_MERGE_ADMIT : PT_DBLINK_MERGE_REJECT_ON;
+}
+
+/* Every SET assignment writes one target column with a value pt_dblink_merge_check_value admits. The list is
+ * walked directly. pt_get_next_assignment () reads any LHS that is not a PT_NAME as a multi-column one. */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_set (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_NODE *assign, *lhs;
+  PT_DBLINK_MERGE_VERDICT verdict;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN || assign->info.expr.arg1 == NULL)
+	{
+	  return PT_DBLINK_MERGE_REJECT_SHAPE;
+	}
+
+      /* Anything but a target column is a multi-column (c1, c2) = (...) LHS. One value per placeholder cannot
+       * carry it. */
+      lhs = assign->info.expr.arg1;
+      if (pt_dblink_merge_value_leaf (lhs, &reads->refs) != PT_DBLINK_LEAF_REMOTE)
+	{
+	  return PT_DBLINK_MERGE_REJECT_SHAPE;
+	}
+
+      verdict = pt_dblink_merge_check_value (parser, assign->info.expr.arg2, reads);
+      if (verdict != PT_DBLINK_MERGE_ADMIT)
+	{
+	  return verdict;
+	}
+    }
+
+  return PT_DBLINK_MERGE_ADMIT;
+}
+
+/* Every INSERT column is a target column. Name resolution has filled in the list an INSERT omits. */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_attrs (PARSER_CONTEXT * parser, PT_NODE * attrs, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_NODE *attr;
+
+  for (attr = attrs; attr != NULL; attr = attr->next)
+    {
+      if (pt_dblink_merge_value_leaf (attr, &reads->refs) != PT_DBLINK_LEAF_REMOTE)
+	{
+	  return PT_DBLINK_MERGE_REJECT_SHAPE;
+	}
+    }
+
+  return PT_DBLINK_MERGE_ADMIT;
+}
+
+/* The INSERT row is one VALUES list whose values pt_dblink_merge_check_value admits */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_values (PARSER_CONTEXT * parser, PT_NODE * value_clauses, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_NODE *val;
+  PT_DBLINK_MERGE_VERDICT verdict;
+
+  if (value_clauses == NULL || value_clauses->next != NULL
+      || value_clauses->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+    {
+      return PT_DBLINK_MERGE_REJECT_SHAPE;
+    }
+
+  for (val = value_clauses->info.node_list.list; val != NULL; val = val->next)
+    {
+      verdict = pt_dblink_merge_check_value (parser, val, reads);
+      if (verdict != PT_DBLINK_MERGE_ADMIT)
+	{
+	  return verdict;
+	}
+    }
+
+  return PT_DBLINK_MERGE_ADMIT;
+}
+
+/* pt_dblink_merge_walk_on callback: do the clauses keep this key as the source row has it? The sink sends one
+ * MERGE per source row, so a row whose key one statement writes can be matched by a later source row. One
+ * MERGE over the whole source decides every row's match before any write. The engine does not refuse a SET
+ * of an ON column, so the gate refuses it. An INSERT must write the key's target column with the key's source
+ * column. Source keys are distinct (the sink checks before sending), so a row that keeps its key meets no
+ * later source row. */
+static bool
+pt_dblink_merge_check_key_kept (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+				void *arg)
+{
+  PT_DBLINK_MERGE_ON_CHECK *check = (PT_DBLINK_MERGE_ON_CHECK *) arg;
+  PT_MERGE_INFO *merge = check->merge;
+  PT_NODE *assign, *attr, *val;
+  bool written;
+
+  if (source_col == NULL)
+    {
+      /* a condition, not a key */
+      return true;
+    }
+
+  /* the SET LHS and the INSERT columns are target columns (pt_dblink_merge_check_set, _check_attrs) */
+  for (assign = merge->update.assignment; assign != NULL; assign = assign->next)
+    {
+      if (pt_name_equal (parser, assign->info.expr.arg1, target_col))
+	{
+	  check->verdict = PT_DBLINK_MERGE_REJECT_SET_KEY;
+	  return false;
+	}
+    }
+
+  if (merge->insert.value_clauses == NULL)
+    {
+      return true;
+    }
+
+  /* Every value written to the key's target column. A column named twice is checked at each place. */
+  written = false;
+  for (attr = merge->insert.attr_list, val = merge->insert.value_clauses->info.node_list.list;
+       attr != NULL && val != NULL; attr = attr->next, val = val->next)
+    {
+      if (!pt_name_equal (parser, attr, target_col))
+	{
+	  continue;
+	}
+
+      if (!pt_name_equal (parser, val, source_col))
+	{
+	  written = false;
+	  break;
+	}
+      written = true;
+    }
+  if (!written)
+    {
+      check->verdict = PT_DBLINK_MERGE_REJECT_INSERT_KEY;
+      return false;
+    }
+
+  return true;
+}
+
+/* Every ON key is kept as the source row has it (pt_dblink_merge_check_key_kept) */
+static PT_DBLINK_MERGE_VERDICT
+pt_dblink_merge_check_keys_kept (PARSER_CONTEXT * parser, PT_MERGE_INFO * merge, PT_DBLINK_MERGE_READS * reads)
+{
+  PT_DBLINK_MERGE_ON_CHECK check;
+
+  memset (&check, 0, sizeof (check));
+  check.reads = reads;
+  check.merge = merge;
+
+  if (!pt_dblink_merge_walk_on (parser, merge->search_cond, &reads->refs, pt_dblink_merge_check_key_kept, &check))
+    {
+      return check.verdict;
+    }
+
+  return PT_DBLINK_MERGE_ADMIT;
+}
+
+/*
+ * pt_dblink_merge_is_inscope () - Can a remote MERGE whose source is local go to the value-push sink?
+ *   return: true when it can; otherwise a reason is raised on the statement and false returned
+ *   parser(in): parser context
+ *   merge(in): the statement's remote_text_src, name-resolved and not type-checked
+ *
+ * Note: the checks run in clause order and the first reason found is raised. The keys are checked last, as
+ *   that check needs ON keys and clauses of an admitted shape. The walks that build the source SELECT and
+ *   the remote text report only the source columns of the shapes admitted here.
+ *
+ *   The gate reads the clauses as they are sent. Type checking folds some INSERT values it can compute here.
+ *   ROW_COUNT () becomes this session's count, for one. The folded value would pass the gate, while the remote
+ *   computes the call in its own session.
+ */
+bool
+pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PT_DBLINK_MERGE_READS reads;
+  PT_DBLINK_MERGE_VERDICT verdict;
+
+  memset (&reads, 0, sizeof (reads));
+  pt_dblink_merge_init_refs (merge, &reads.refs);
+
+  verdict = pt_dblink_merge_check_on (parser, info->search_cond, &reads);
+  if (verdict == PT_DBLINK_MERGE_ADMIT)
+    {
+      verdict = pt_dblink_merge_check_set (parser, info->update.assignment, &reads);
+    }
+  if (verdict == PT_DBLINK_MERGE_ADMIT)
+    {
+      verdict = pt_dblink_merge_check_pred_list (parser, info->update.search_cond, &reads);
+    }
+  if (verdict == PT_DBLINK_MERGE_ADMIT)
+    {
+      verdict = pt_dblink_merge_check_pred_list (parser, info->update.del_search_cond, &reads);
+    }
+  if (verdict == PT_DBLINK_MERGE_ADMIT)
+    {
+      verdict = pt_dblink_merge_check_attrs (parser, info->insert.attr_list, &reads);
+    }
+  if (verdict == PT_DBLINK_MERGE_ADMIT && info->insert.value_clauses != NULL)
+    {
+      verdict = pt_dblink_merge_check_values (parser, info->insert.value_clauses, &reads);
+    }
+  if (verdict == PT_DBLINK_MERGE_ADMIT)
+    {
+      verdict = pt_dblink_merge_check_pred_list (parser, info->insert.search_cond, &reads);
+    }
+  if (verdict == PT_DBLINK_MERGE_ADMIT)
+    {
+      verdict = pt_dblink_merge_check_keys_kept (parser, info, &reads);
+    }
+
+  if (verdict != PT_DBLINK_MERGE_ADMIT)
+    {
+      PT_ERRORf (parser, merge, "%s", pt_dblink_merge_reject_msg (verdict));
+      return false;
+    }
+
+  return true;
+}
+
 static void
 pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
@@ -12769,10 +13614,16 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   if (remote_target)
     {
       parser_walk_tree (parser, source, pt_get_server_name_list, snl, NULL, NULL);
-      if (snl->local_cnt > 0)
+      if (snl->local_cnt > 0 && (snl->server_cnt > 0 || snl->has_dblink_query))
 	{
-	  /* not allowed to merge multi-server */
+	  /* a source that mixes local and remote tables */
 	  PT_ERROR (parser, source, "dblink: multi-remote DML is not allowed");
+	}
+      else if (snl->local_cnt > 0)
+	{
+	  /* The source reads only local tables. It is evaluated here, and each row is sent as one MERGE.
+	   * Its shapes are checked after the semantic check (pt_dblink_merge_is_inscope). */
+	  snl->sink_kind = DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC;
 	}
       else
 	{
@@ -13270,35 +14121,49 @@ pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
   return true;
 }
 
-/* true iff expr can be copied into a remote SQL string as-is: a literal, a bare column of the remote
- * target, or + - * / (and unary -) over those.
+/*
+ * pt_dblink_dml_classify_value () - How a remote DML sink can send expr: as text the remote computes, as one
+ *   value computed here and bound, as text with such values bound inside it, or not at all. The text is a
+ *   literal, a column of the remote target, or + - * / (and unary -) over those. leaf_fn says which nodes
+ *   are target columns and which are local values, since that differs from one DML to the next.
+ *   return: the class. MIXED is the caller's to accept or refuse.
+ *   expr(in): the value
+ *   leaf_fn(in): classifies a node before it is looked into
+ *   arg(in): passed to leaf_fn
  *
- * Callers deparse this into the remote statement. Host variables print as "?" with no bind; function
+ * Callers deparse the text into the remote statement. Host variables print as "?" with no bind; function
  * calls are unchecked text -- both are rejected.
- *
- * Bare columns rely on a single spec. Qualified names (t.col) are rejected here; WHERE can check
- * qualifiers later in settle, this path cannot.
  *
  * "||" is omitted: CUBRID/Oracle concatenate, MySQL treats it as OR unless PIPES_AS_CONCAT is set.
  *
- * First caller: UPDATE SET. Named for the question, not the clause, so other deparse paths can reuse
- * it. Predicate shapes have their own check. Shared (non-static) with xasl_generation.c, which re-checks
- * the shape before printing -- if this and the gate ever drift, the expression is rejected, not shipped. */
-bool
-pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
+ * Shared (non-static) with xasl_generation.c. For UPDATE, the gate and XASL generation both call it, and
+ * XASL generation calls it again before printing. A value whose class the two would not both accept, or whose
+ * tree changed in between, is rejected, not shipped. Predicate shapes have their own check.
+ */
+PT_DBLINK_VALUE_CLASS
+pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *arg)
 {
+  PT_DBLINK_VALUE_CLASS cls1, cls2;
+
   if (expr == NULL)
     {
-      return false;
+      return PT_DBLINK_VALUE_REJECT;
+    }
+
+  switch (leaf_fn (expr, arg))
+    {
+    case PT_DBLINK_LEAF_REMOTE:
+      return PT_DBLINK_VALUE_REMOTE_TEXT;
+    case PT_DBLINK_LEAF_LOCAL:
+      return PT_DBLINK_VALUE_LOCAL_BIND;
+    default:
+      break;
     }
 
   switch (expr->node_type)
     {
     case PT_VALUE:
-      return true;
-
-    case PT_NAME:
-      return expr->info.name.meta_class == PT_NORMAL;
+      return PT_DBLINK_VALUE_REMOTE_TEXT;
 
     case PT_EXPR:
       switch (expr->info.expr.op)
@@ -13310,33 +14175,64 @@ pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
 	case PT_UNARY_MINUS:
 	  break;
 	default:
-	  return false;
+	  return PT_DBLINK_VALUE_REJECT;
 	}
 
       if (expr->info.expr.arg3 != NULL)
 	{
-	  return false;
+	  return PT_DBLINK_VALUE_REJECT;
 	}
 
-      return pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg1)
-	&& (expr->info.expr.arg2 == NULL || pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg2));
+      cls1 = pt_dblink_dml_classify_value (expr->info.expr.arg1, leaf_fn, arg);
+      cls2 = (expr->info.expr.arg2 == NULL
+	      ? PT_DBLINK_VALUE_REMOTE_TEXT : pt_dblink_dml_classify_value (expr->info.expr.arg2, leaf_fn, arg));
+      if (cls1 == PT_DBLINK_VALUE_REJECT || cls2 == PT_DBLINK_VALUE_REJECT)
+	{
+	  return PT_DBLINK_VALUE_REJECT;
+	}
+
+      if (cls1 == PT_DBLINK_VALUE_REMOTE_TEXT && cls2 == PT_DBLINK_VALUE_REMOTE_TEXT)
+	{
+	  return PT_DBLINK_VALUE_REMOTE_TEXT;
+	}
+      return PT_DBLINK_VALUE_MIXED;
 
     default:
-      return false;
+      return PT_DBLINK_VALUE_REJECT;
     }
 }
 
+/* pt_dblink_dml_classify_value leaves for an UPDATE SET value: a bare column is the target's, a subquery is
+ * the local value.
+ *
+ * Bare columns rely on a single spec. Qualified names (t.col) are rejected; WHERE can check qualifiers
+ * later in settle, this path cannot. */
+PT_DBLINK_LEAF_KIND
+pt_dblink_update_set_leaf (PT_NODE * node, void *arg)
+{
+  if (PT_IS_QUERY (node))
+    {
+      return PT_DBLINK_LEAF_LOCAL;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_NORMAL)
+    {
+      return PT_DBLINK_LEAF_REMOTE;
+    }
+
+  return PT_DBLINK_LEAF_NONE;
+}
+
 /* true iff every UPDATE SET assignment is one the remote sink can honor, with *num_set_subq set to how many
- * of them are a scalar subquery. Two RHS forms are accepted:
+ * of them are a scalar subquery. Two RHS forms are accepted (pt_dblink_dml_classify_value):
  *   - a bare subquery (col = (SELECT ...)): evaluated once, its value bound to a placeholder in the remote
  *     SET clause
- *   - a remote-only expression (pt_dblink_dml_is_remote_only_expr): deparsed into that clause instead,
- *     its value not being computable here
+ *   - remote text: deparsed into that clause instead, its value not being computable here
  *
  * Rejected: a multi-column row assignment ((c1, c2) = (SELECT ...)), which one placeholder per column cannot
  * express, and everything outside those two forms -- a subquery inside an expression (col = (SELECT ...) + 1),
  * where binding the scalar alone would drop the operator, and a host variable or function call, which the
- * remote-only check turns away. Shape only -- purity is the caller's settle step. */
+ * classifier turns away. Shape only -- purity is the caller's settle step. */
 static bool
 pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *num_set_subq)
 {
@@ -13353,12 +14249,14 @@ pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *n
 	  return false;
 	}
 
-      if (PT_IS_QUERY (ea.rhs))
+      switch (pt_dblink_dml_classify_value (ea.rhs, pt_dblink_update_set_leaf, NULL))
 	{
+	case PT_DBLINK_VALUE_LOCAL_BIND:
 	  cnt++;
-	}
-      else if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
-	{
+	  break;
+	case PT_DBLINK_VALUE_REMOTE_TEXT:
+	  break;
+	default:
 	  return false;
 	}
     }
@@ -14101,6 +14999,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
+      return;
+    }
+
+  /* Remote MERGE + local source: no pushdown qstr either. The remote does not have the source. The USING
+   * source and the clauses stay as trees for the per-row push. The sink is set up on the target. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, into_spec, snl);
       return;
     }
 

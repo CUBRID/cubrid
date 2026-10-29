@@ -23348,6 +23348,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   char *set_text = NULL, *piece = NULL;
   unsigned int save_custom_print;
   int num_set_binds = 0;
+  PT_DBLINK_VALUE_CLASS set_value_class;
 
   assert (parser != NULL && statement != NULL);
 
@@ -23415,7 +23416,8 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       set_text = pt_append_string (parser, set_text, ea.lhs->info.name.original);
       set_text = pt_append_string (parser, set_text, " = ");
 
-      if (PT_IS_QUERY (ea.rhs))
+      set_value_class = pt_dblink_dml_classify_value (ea.rhs, pt_dblink_update_set_leaf, NULL);
+      if (set_value_class == PT_DBLINK_VALUE_LOCAL_BIND)
 	{
 	  set_text = pt_append_string (parser, set_text, "?");
 
@@ -23476,7 +23478,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* Re-check the shape rather than trusting the gate blindly: if pt_dblink_update_set_is_inscope and
 	   * this walk ever drift apart, an expression the gate would not have accepted must not be printed
 	   * into the remote statement. */
-	  if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
+	  if (set_value_class != PT_DBLINK_VALUE_REMOTE_TEXT)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
 		      "remote UPDATE sink: SET value cannot be sent to the remote server as written");
@@ -31124,6 +31126,486 @@ error_exit:
   return NULL;
 }
 
+/* Lays out the remote MERGE text as pt_dblink_merge_walk_binds () reports the bound source columns. Each
+ * report is one column of the one-row USING. */
+typedef struct pt_dblink_merge_layout PT_DBLINK_MERGE_LAYOUT;
+struct pt_dblink_merge_layout
+{
+  int count;			/* source columns reported so far */
+  int num_keys;			/* ON keys reported so far */
+  int *key_pos;			/* NULL on the counting pass */
+  const char *source_alias;	/* what a renamed column is qualified with */
+  bool failed;			/* a renamed column could not be allocated */
+};
+
+/* pt_dblink_merge_walk_binds callback: count the columns and the keys */
+static void
+pt_dblink_merge_count_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_DBLINK_MERGE_LAYOUT *layout = (PT_DBLINK_MERGE_LAYOUT *) arg;
+
+  layout->count++;
+  if (is_key)
+    {
+      layout->num_keys++;
+    }
+}
+
+/* pt_dblink_merge_walk_binds callback over a copy of the clauses. The source column becomes the USING column
+ * that carries it: s.x turns into s.c<n>. The server names the USING columns the same way
+ * (dblink_dml_build_merge_sql). The position of a key is kept too, 0-based, so key k is the USING column
+ * c<key_pos[k] + 1>. */
+static void
+pt_dblink_merge_rename_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_DBLINK_MERGE_LAYOUT *layout = (PT_DBLINK_MERGE_LAYOUT *) arg;
+  char name[32];
+
+  if (is_key)
+    {
+      layout->key_pos[layout->num_keys++] = layout->count;
+    }
+  layout->count++;
+
+  assert (value->node_type == PT_NAME);
+  snprintf (name, sizeof (name), "c%d", layout->count);
+  value->info.name.original = pt_append_string (parser, NULL, name);
+  value->info.name.resolved = layout->source_alias;
+  if (value->info.name.original == NULL)
+    {
+      /* the column would print as a bare "s." */
+      layout->failed = true;
+    }
+}
+
+/* what pt_dblink_merge_qualify_target () carries over the walk */
+typedef struct pt_dblink_merge_target_qual PT_DBLINK_MERGE_TARGET_QUAL;
+struct pt_dblink_merge_target_qual
+{
+  UINTPTR target_id;
+  const char *target_alias;
+};
+
+/* a target column in a copy of the clauses is qualified with the alias the remote statement gives the target */
+static PT_NODE *
+pt_dblink_merge_qualify_target (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_MERGE_TARGET_QUAL *qual = (PT_DBLINK_MERGE_TARGET_QUAL *) arg;
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_NORMAL
+      && node->info.name.spec_id == qual->target_id)
+    {
+      node->info.name.resolved = qual->target_alias;
+    }
+
+  return node;
+}
+
+/* print list with its column names unqualified, as SET and INSERT name a target column */
+static PARSER_VARCHAR *
+pt_dblink_merge_print_unqualified (PARSER_CONTEXT * parser, PT_NODE * list)
+{
+  unsigned int save_custom_print = parser->custom_print;
+  PARSER_VARCHAR *q;
+
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+  q = pt_print_bytes_l (parser, list);
+  parser->custom_print = save_custom_print;
+
+  return q;
+}
+
+/* q with part appended. pt_append_varchar () keeps q as it is when part is NULL, so a part that failed to
+ * print is recorded in *failed instead of leaving a shorter statement. */
+static PARSER_VARCHAR *
+pt_dblink_merge_append_part (PARSER_CONTEXT * parser, PARSER_VARCHAR * q, PARSER_VARCHAR * part, bool * failed)
+{
+  if (part == NULL)
+    {
+      *failed = true;
+      return q;
+    }
+  return pt_append_varchar (parser, q, part);
+}
+
+/*
+ * pt_dblink_merge_print_clauses () - Print what follows the USING in the remote statement: the ON and the
+ *   WHEN clauses. It follows pt_print_merge (), but puts the ON in parentheses, as Oracle requires them.
+ *   A column in a value or a condition is qualified, so a target column and a USING column of one name do not
+ *   meet on the remote. A column SET assigns or INSERT names is not, as it can only be the target's.
+ *   return: the text, or NULL with a parser error set
+ *   merge(in): a copy of the PT_MERGE whose columns are already qualified and renamed
+ */
+static char *
+pt_dblink_merge_print_clauses (PARSER_CONTEXT * parser, PT_NODE * merge)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PT_NODE_LIST_INFO *list_info;
+  PARSER_VARCHAR *q = NULL;
+  PT_NODE *assign;
+  bool failed = false;
+
+
+  q = pt_append_nulstring (parser, q, "on (");
+  q = pt_dblink_merge_append_part (parser, q, pt_print_and_list (parser, info->search_cond), &failed);
+  q = pt_append_nulstring (parser, q, ")");
+
+  if (info->update.assignment != NULL)
+    {
+      q = pt_append_nulstring (parser, q, " when matched then update set ");
+      for (assign = info->update.assignment; assign != NULL; assign = assign->next)
+	{
+	  if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN
+	      || assign->info.expr.arg1 == NULL || assign->info.expr.arg1->node_type != PT_NAME)
+	    {
+	      /* a row assignment, (c1, c2) = ..., has no column to print alone */
+	      PT_INTERNAL_ERROR (parser, "remote MERGE sink: unsupported SET assignment");
+	      return NULL;
+	    }
+	  if (assign != info->update.assignment)
+	    {
+	      q = pt_append_nulstring (parser, q, ", ");
+	    }
+	  q =
+	    pt_dblink_merge_append_part (parser, q, pt_dblink_merge_print_unqualified (parser, assign->info.expr.arg1),
+					 &failed);
+	  q = pt_append_nulstring (parser, q, "=");
+	  q = pt_dblink_merge_append_part (parser, q, pt_print_bytes (parser, assign->info.expr.arg2), &failed);
+	}
+      if (info->update.search_cond != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " where ");
+	  q = pt_dblink_merge_append_part (parser, q, pt_print_and_list (parser, info->update.search_cond), &failed);
+	}
+      if (info->update.has_delete)
+	{
+	  q = pt_append_nulstring (parser, q, " delete where ");
+	  if (info->update.del_search_cond != NULL)
+	    {
+	      q =
+		pt_dblink_merge_append_part (parser, q, pt_print_and_list (parser, info->update.del_search_cond),
+					     &failed);
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, "(true)");
+	    }
+	}
+    }
+
+  if (info->insert.value_clauses != NULL)
+    {
+      q = pt_append_nulstring (parser, q, " when not matched then insert ");
+      if (info->insert.attr_list != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, "(");
+	  q =
+	    pt_dblink_merge_append_part (parser, q, pt_dblink_merge_print_unqualified (parser, info->insert.attr_list),
+					 &failed);
+	  q = pt_append_nulstring (parser, q, ") ");
+	}
+      list_info = &info->insert.value_clauses->info.node_list;
+      if (list_info->list_type == PT_IS_DEFAULT_VALUE)
+	{
+	  q = pt_append_nulstring (parser, q, "default values");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "values (");
+	  q = pt_dblink_merge_append_part (parser, q, pt_print_bytes_l (parser, list_info->list), &failed);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      if (info->insert.search_cond != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " where ");
+	  q = pt_dblink_merge_append_part (parser, q, pt_print_and_list (parser, info->insert.search_cond), &failed);
+	}
+    }
+
+  if (q != NULL && !failed)
+    {
+      return (char *) pt_get_varchar_bytes (q);
+    }
+
+  PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+  return NULL;
+}
+
+/*
+ * pt_dblink_merge_bind_cast () - The casts a bound source column gets, from its declared domain. A CUBRID
+ *   remote casts every placeholder to the source column's type. A gateway remote casts only a CHAR one, to
+ *   its length. pr_type_name () spells the type. CHAR and BIT add a precision. The other names need none:
+ *   CAST(? AS numeric) keeps the bound value's scale, and character varying its length. A type that CAST
+ *   does not take keeps a bare "?".
+ *   return: NO_ERROR, or an error code with the parser error set
+ *   col(in): the column of the source SELECT
+ *   cast(out): the CUBRID type name, or NULL for a bare "?"
+ *   char_len(out): the CHAR length, or 0
+ */
+static int
+pt_dblink_merge_bind_cast (PARSER_CONTEXT * parser, PT_NODE * col, char **cast, int *char_len)
+{
+  TP_DOMAIN *dom;
+  DB_TYPE type;
+  const char *name;
+  char buf[64];
+  int ret;
+
+  *cast = NULL;
+  *char_len = 0;
+
+  dom = pt_node_to_db_domain (parser, col, NULL);
+  if (dom == NULL)
+    {
+      /* a NULL or an unknown type has no domain. The bare "?" is what the other sinks send then. */
+      return NO_ERROR;
+    }
+
+  type = TP_DOMAIN_TYPE (dom);
+  name = pr_type_name (type);
+  if (name == NULL || name[0] == '*' || type == DB_TYPE_ENUMERATION || type == DB_TYPE_RESULTSET
+      || type == DB_TYPE_MIDXKEY)
+    {
+      return NO_ERROR;
+    }
+
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      if (dom->precision <= 0)
+	{
+	  return NO_ERROR;
+	}
+      ret = snprintf (buf, sizeof (buf), "%s(%d)", name, dom->precision);
+      if (type == DB_TYPE_CHAR)
+	{
+	  *char_len = dom->precision;
+	}
+    }
+  else
+    {
+      ret = snprintf (buf, sizeof (buf), "%s", name);
+    }
+
+  if (ret < 0 || (size_t) ret >= sizeof (buf))
+    {
+      /* a truncated name would prepare as another type on the remote */
+      return NO_ERROR;
+    }
+
+  *cast = pt_append_string (parser, NULL, buf);
+  if (*cast == NULL)
+    {
+      PT_ERRORm (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return NO_ERROR;
+}
+
+/* the name a spec goes by in the remote statement: its correlation name, without an owner */
+static const char *
+pt_dblink_merge_alias (PT_NODE * spec)
+{
+  PT_NODE *range_var = spec->info.spec.range_var;
+
+  if (range_var == NULL || range_var->node_type != PT_NAME || range_var->info.name.original == NULL)
+    {
+      return NULL;
+    }
+
+  return pt_get_name_with_qualifier_removed (range_var->info.name.original);
+}
+
+/*
+ * pt_to_merge_xasl_remote_source () - Generate the XASL of a remote MERGE whose source reads only local
+ *   tables. The source SELECT semantic check built is the aptr the sink scans. Each of its rows is sent as one
+ *   MERGE over a one-row USING (dblink_dml_build_merge_sql).
+ *   return: the MERGE_PROC XASL, or NULL with an error set
+ *   parser(in): parser context
+ *   statement(in): the name-resolved PT_MERGE, its target in the derived dblink table shape
+ */
+static XASL_NODE *
+pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl;
+  MERGE_PROC_NODE *merge;
+  PT_NODE *into, *src_query, *copy, *server_node, *derived, *col;
+  PT_DBLINK_INFO *pdblink;
+  PT_DBLINK_MERGE_LAYOUT layout;
+  PT_DBLINK_MERGE_TARGET_QUAL qual;
+  const char *target_alias, *source_alias;
+  unsigned int save_custom_print;
+  int num_cols, i;
+
+  assert (parser != NULL && statement != NULL);
+
+  into = statement->info.merge.into;
+  src_query = statement->info.merge.remote_src_query;
+  if (src_query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no source query");
+      return NULL;
+    }
+
+  derived = into->info.spec.derived_table;
+  if (!PT_SPEC_IS_DERIVED (into) || derived == NULL || derived->node_type != PT_DBLINK_TABLE
+      || derived->info.dblink_table.remote_table_name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the target has no columns");
+      return NULL;
+    }
+
+  server_node = into->info.spec.remote_server_name;
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+  pdblink = &server_node->info.dblink_table;
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote MERGE: connection info (url/user/pwd) not resolved");
+      return NULL;
+    }
+
+  target_alias = pt_dblink_merge_alias (into);
+  source_alias = pt_dblink_merge_alias (statement->info.merge.using_clause);
+  if (target_alias == NULL || source_alias == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no name for the target or the source");
+      return NULL;
+    }
+  if (intl_identifier_casecmp (target_alias, source_alias) == 0)
+    {
+      /* The remote statement names the two without owners, so the remote could not tell them apart. Name
+       * resolution has already refused two exposed names that differ only by their owners. */
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the target and the source go by one name");
+      return NULL;
+    }
+
+  /* The text is printed from the clauses as they were before type checking, so it carries no CUBRID cast and no
+   * folded CUBRID literal. The source SELECT was laid out from the same clauses during semantic check. The walk
+   * must still report as many columns as the SELECT has, as a drift would bind values to the wrong columns. */
+  if (statement->info.merge.remote_text_src == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no clauses to print");
+      return NULL;
+    }
+  memset (&layout, 0, sizeof (layout));
+  pt_dblink_merge_walk_binds (parser, statement->info.merge.remote_text_src, pt_dblink_merge_count_bind, &layout);
+  num_cols = pt_length_of_select_list (pt_get_select_list (parser, src_query), EXCLUDE_HIDDEN_COLUMNS);
+  if (layout.count != num_cols || layout.num_keys == 0)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the source query does not match the bound columns");
+      return NULL;
+    }
+
+  xasl = pt_make_aptr_parent_node (parser, src_query, MERGE_PROC);
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (src_query->info.query.flag.subquery_cached)
+    {
+      if (pt_set_sub_xasl_id (xasl->aptr_list, src_query) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  merge = &xasl->proc.merge;
+
+  /* a target resolved with its columns keeps its name in the derived dblink table, already qualified */
+  merge->sink.is_remote = true;
+  merge->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  merge->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  merge->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+  merge->sink.table_name = derived->info.dblink_table.remote_table_name;
+
+  merge->remote_target_alias = pt_append_string (parser, NULL, target_alias);
+  merge->remote_source_alias = pt_append_string (parser, NULL, source_alias);
+
+  /* the columns are qualified and renamed in a copy, which keeps remote_text_src for the next XASL generation */
+  copy = parser_copy_tree (parser, statement->info.merge.remote_text_src);
+  if (copy == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  merge->remote_num_binds = num_cols;
+  merge->remote_num_keys = layout.num_keys;
+  merge->remote_key_pos = regu_int_array_alloc (layout.num_keys);
+  regu_array_alloc (&merge->remote_bind_cast, (size_t) num_cols);
+  merge->remote_bind_char_len = regu_int_array_alloc (num_cols);
+  if (merge->remote_key_pos == NULL || merge->remote_bind_cast == NULL || merge->remote_bind_char_len == NULL)
+    {
+      parser_free_tree (parser, copy);
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  qual.target_id = into->info.spec.id;
+  qual.target_alias = merge->remote_target_alias;
+  copy->info.merge.search_cond =
+    parser_walk_tree (parser, copy->info.merge.search_cond, pt_dblink_merge_qualify_target, &qual, NULL, NULL);
+  copy->info.merge.update.assignment =
+    parser_walk_tree (parser, copy->info.merge.update.assignment, pt_dblink_merge_qualify_target, &qual, NULL, NULL);
+  copy->info.merge.update.search_cond =
+    parser_walk_tree (parser, copy->info.merge.update.search_cond, pt_dblink_merge_qualify_target, &qual, NULL, NULL);
+  copy->info.merge.update.del_search_cond =
+    parser_walk_tree (parser, copy->info.merge.update.del_search_cond, pt_dblink_merge_qualify_target, &qual, NULL,
+		      NULL);
+  copy->info.merge.insert.value_clauses =
+    parser_walk_tree (parser, copy->info.merge.insert.value_clauses, pt_dblink_merge_qualify_target, &qual, NULL, NULL);
+  copy->info.merge.insert.search_cond =
+    parser_walk_tree (parser, copy->info.merge.insert.search_cond, pt_dblink_merge_qualify_target, &qual, NULL, NULL);
+
+  memset (&layout, 0, sizeof (layout));
+  layout.key_pos = merge->remote_key_pos;
+  layout.source_alias = merge->remote_source_alias;
+  pt_dblink_merge_walk_binds (parser, copy, pt_dblink_merge_rename_bind, &layout);
+  if (layout.failed)
+    {
+      parser_free_tree (parser, copy);
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  /* the remote UPDATE sink's flags for its SET text, which ships to the remote as it is. PT_SUPPRESS_RESOLVED
+   * is left out, as a value or a condition keeps its qualifier here. */
+  save_custom_print = parser->custom_print;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK;
+  merge->remote_clause_text = pt_dblink_merge_print_clauses (parser, copy);
+  parser->custom_print = save_custom_print;
+
+  parser_free_tree (parser, copy);
+  if (merge->remote_target_alias == NULL || merge->remote_source_alias == NULL || merge->remote_clause_text == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	}
+      return NULL;
+    }
+
+  for (col = pt_get_select_list (parser, src_query), i = 0; i < num_cols; col = col->next, i++)
+    {
+      if (pt_dblink_merge_bind_cast (parser, col, &merge->remote_bind_cast[i],
+				     &merge->remote_bind_char_len[i]) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  if (!pt_finish_remote_dml_xasl (xasl))
+    {
+      return NULL;
+    }
+
+  return xasl;
+}
+
 /*
  * pt_to_merge_xasl () - Generate XASL for MERGE statement
  *   return:
@@ -31147,6 +31629,13 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 
   if (statement->info.merge.into && statement->info.merge.into->info.spec.remote_server_name)
     {
+      /* a local source has no remote text (qstr): its rows go through the sink, like the other DML */
+      PT_NODE *remote_spec = statement->info.merge.into->info.spec.remote_server_name;
+
+      if (remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+	{
+	  return pt_to_merge_xasl_remote_source (parser, statement);
+	}
       return pt_to_xasl_for_dblink (parser, statement->info.merge.into);
     }
 
