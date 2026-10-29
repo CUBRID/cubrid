@@ -829,7 +829,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   for (type_index = 0; type_index < type_cnt; type_index++)
     {
-      if (merge_info->ls_pos_list[type_index] == QFILE_MERGE_HASH_KEY_COLUMN)
+      if (merge_info->ls_pos_list[type_index] == QFILE_RESERVED_HASH_KEY_POS)
 	{
 	  type_list->domp[type_index] = tp_domain_resolve_default (DB_TYPE_INTEGER);
 	}

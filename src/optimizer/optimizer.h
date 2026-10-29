@@ -167,12 +167,8 @@ struct projection_final_info
 {
   PT_NODE *name_list;
   int name_count;
-
-  /* The layout the consumer of this join asked it to build, in place of name_list. Borrowed: the owner is a
-   * PROJECTION_PART_INFO's expr_name_list or the statement's select list, so it is not freed with this struct. */
-  PT_NODE *required_list;
 };
-#define PROJECTION_FINAL_INFO_INITIALIZER { NULL, 0, NULL }
+#define PROJECTION_FINAL_INFO_INITIALIZER { NULL, 0 }
 
 typedef struct projection_info PROJECTION_INFO;
 struct projection_info

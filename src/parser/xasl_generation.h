@@ -186,8 +186,8 @@ extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XA
 				     PT_NODE * where_hash_part);
 extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE type,
 					  XASL_NODE * listfile, PT_NODE * namelist, PT_NODE * pred, int *poslist);
-extern XASL_NODE *ptqo_to_list_scan_proc_pass_through (PARSER_CONTEXT * parser, XASL_NODE * xasl,
-						       XASL_NODE * listfile, PT_NODE * namelist);
+extern XASL_NODE *ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl,
+						XASL_NODE * listfile, PT_NODE * namelist);
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);

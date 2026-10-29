@@ -15080,22 +15080,19 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
 }
 
 /*
- * ptqo_to_list_scan_proc_pass_through () - a list scan that hands the list file's columns straight out
+ * ptqo_to_pass_through_wrapper () - build the list scan of a pass-through wrapper over listfile
  *   return: xasl, or NULL on error
  *   parser(in): parser context
  *   xasl(in/out): the node that reads listfile; its val_list, spec_list and outptr_list are replaced
  *   listfile(in): the XASL node holding the list file to read
  *   namelist(in): this node's result columns in list file order, one entry per column
  *
- * ptqo_to_list_scan_proc () binds each scanned column to the DB_VALUE the node's outptr_list already
- * reads. This one gives every entry of namelist its own DB_VALUE, fills it from the list file column at
- * the same position, and rebuilds outptr_list to hand the value straight out, so the list file holds one
- * column per entry, repeats included. It is for a node whose producer has already built every result
- * column.
+ * ptqo_to_list_scan_proc () binds each scanned column to the DB_VALUE, looked up by name, that outptr_list reads.
+ * namelist may lead with the hash key placeholder, a PT_VALUE with no such DB_VALUE,
+ * so this gives every entry its own DB_VALUE and rebuilds outptr_list from them.
  */
 XASL_NODE *
-ptqo_to_list_scan_proc_pass_through (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * listfile,
-				     PT_NODE * namelist)
+ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * listfile, PT_NODE * namelist)
 {
   REGU_VARIABLE_LIST scan_regu_list;
 

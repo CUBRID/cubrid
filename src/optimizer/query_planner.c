@@ -3474,7 +3474,6 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_init (&(plan->plan_un.join.during_join_terms), info->env);
   bitset_init (&(plan->plan_un.join.after_join_terms), info->env);
   bitset_init (&(plan->plan_un.join.hash_terms), info->env);
-  plan->plan_un.join.required_layout = NULL;
 
   /* set join terms */
   bitset_assign (&(plan->plan_un.join.join_terms), join_terms);
