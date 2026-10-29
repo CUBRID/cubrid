@@ -1063,14 +1063,24 @@ namespace cubload
     heap_attrinfo_clear_dbvalues (&m_attrinfo);
   }
 
+  /*
+   * get_attribute_db_value - the slot this attribute's value is built in
+   *    return: the slot, created if this is the first value for it
+   *    attr_index(in): index of the attribute on the line
+   * Note:
+   *    The slots are not claimed in order. A value that fails before it reaches its
+   *    slot - a collection on a column that is not a collection, refused by
+   *    process_collection_constant () before it builds anything - leaves that slot
+   *    unclaimed, and process_line () goes on checking the rest of the line, so the
+   *    next value asks for a slot past the end. Grow to the index asked for rather
+   *    than by one.
+   */
   db_value &
   server_object_loader::get_attribute_db_value (size_t attr_index)
   {
-    assert (attr_index <= m_db_values.size ());
-
-    if (attr_index == m_db_values.size ())
+    if (attr_index >= m_db_values.size ())
       {
-	m_db_values.emplace_back ();
+	m_db_values.resize (attr_index + 1);
       }
 
     return m_db_values[attr_index];
