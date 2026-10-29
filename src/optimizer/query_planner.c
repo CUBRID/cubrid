@@ -382,7 +382,6 @@ static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
 static bool qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
 static bool qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx);
-static QO_EQCLASS *qo_seg_order_eqclass (QO_ENV * env, int seg_idx);
 static int qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max);
 static QO_EQCLASS *qo_iscan_order (QO_PLAN * plan);
 static bool qo_full_iscan_keeps_rows (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
@@ -1395,7 +1394,7 @@ qo_top_plan_new (QO_PLAN * plan)
 		  groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, group_by, tree);
 
 		  /* if index plan and can't skip group by, we search that maybe a descending scan can be used. */
-		  if (qo_is_interesting_order_scan (plan) && !groupby_skip && !qo_plan_has_sorted_merge_input (plan))
+		  if (qo_is_interesting_order_scan (plan) && !groupby_skip)
 		    {
 		      groupby_skip = qo_check_groupby_skip_descending (plan, group_sort_list);
 
@@ -2435,26 +2434,6 @@ qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx)
 }
 
 /*
- * qo_seg_order_eqclass () - the eqclass a key order on the segment stands for
- *   return: eqclass of the segment, or QO_UNORDERED
- *   env(in): pointer to the optimizer environment
- *   seg_idx(in): segment index
- */
-static QO_EQCLASS *
-qo_seg_order_eqclass (QO_ENV * env, int seg_idx)
-{
-  QO_EQCLASS *eqclass = QO_SEG_EQCLASS (QO_ENV_SEG (env, seg_idx));
-
-  /* an eqclass without segments is fabricated for a complex merge term */
-  if (eqclass == QO_UNORDERED || bitset_is_empty (&(QO_EQCLASS_SEGS (eqclass))))
-    {
-      return QO_UNORDERED;
-    }
-
-  return eqclass;
-}
-
-/*
  * qo_iscan_sort_segs () - collect the key segments an index scan returns in ascending order
  *   return: number of segments stored in seg_idxs, starting at the first non-equality key column
  *   plan(in): scan plan
@@ -2556,7 +2535,7 @@ qo_iscan_order (QO_PLAN * plan)
       return QO_UNORDERED;
     }
 
-  return qo_seg_order_eqclass (plan->info->env, lead_seg);
+  return QO_SEG_EQCLASS (QO_ENV_SEG (plan->info->env, lead_seg));
 }
 
 /*
@@ -4014,7 +3993,6 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	     BITSET * pinned_subqueries, BITSET * hash_terms)
 {
   QO_PLAN *plan = NULL;
-  QO_PLAN *outer_input = outer;
   QO_NODE *node = NULL;
   PT_NODE *spec = NULL;
   BITSET sarg_out_terms;
@@ -4126,24 +4104,10 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 			   &((plan->info)->projected_segs)) ? outer->order : QO_UNORDERED;
 
       {
-	QO_EQCLASS *mj_order = QO_UNORDERED;
+	/* qo_examine_merge_join () fetched the outer in the order of a join term */
+	QO_EQCLASS *mj_order = outer->order;
 	BITSET_ITERATOR iter;
 	int t, i;
-
-	/* qo_examine_merge_join () fetched the outer in this order */
-	for (t = bitset_iterate (join_terms, &iter); t != -1; t = bitset_next_member (&iter))
-	  {
-	    if (QO_TERM_EQCLASS (QO_ENV_TERM (info->env, t)) == outer->order && outer->order != QO_UNORDERED)
-	      {
-		mj_order = outer->order;
-		break;
-	      }
-	  }
-	for (t = bitset_iterate (join_terms, &iter); t != -1 && mj_order == QO_UNORDERED;
-	     t = bitset_next_member (&iter))
-	  {
-	    mj_order = QO_TERM_EQCLASS (QO_ENV_TERM (info->env, t));
-	  }
 
 	outer_sorted =
 	  qo_mjoin_input_sorted (outer, mj_order, join_terms, &outer_partial_sort, outer_term_order, &outer_term_cnt);
@@ -4333,7 +4297,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
        */
       if (outer_sorted && (join_type == JOIN_INNER || join_type == JOIN_LEFT))
 	{
-	  plan->need_final_sort = outer_input->need_final_sort;
+	  plan->need_final_sort = outer->need_final_sort;
 	}
       else
 	{
@@ -15312,7 +15276,7 @@ qo_is_full_iscan_candidate (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * 
       return false;
     }
 
-  if (qo_seg_order_eqclass (env, index_entryp->seg_idxs[0]) == QO_UNORDERED)
+  if (QO_SEG_EQCLASS (QO_ENV_SEG (env, index_entryp->seg_idxs[0])) == QO_UNORDERED)
     {
       return false;
     }
