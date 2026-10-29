@@ -8497,7 +8497,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (error_code != NO_ERROR)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && error_code != ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
 	    {
 	      assert_release (false);
 	    }
