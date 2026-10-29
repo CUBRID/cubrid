@@ -483,7 +483,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        DeclParamIn ret = new DeclParamIn(ctx, name, null, typeSpec, null);
+        DeclParamIn ret = new DeclParamIn(ctx, name, null, typeSpec, false, null);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -500,15 +500,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        // only the default values visited during the previsit are added to the Abstract Syntax Tree
-        Expr defaultVal = previsiting ? visitExpression(ctx.default_value_part()) : null;
+        // the default value is visited in the visit, not in the previsit, so that it can use the
+        // routines declared after this routine in the same declaration block. The previsit only
+        // records whether there is one, for the calls of this routine visited in between
+        boolean hasDefault = ctx.default_value_part() != null;
+        Expr defaultVal = previsiting ? null : visitExpression(ctx.default_value_part());
 
         String comment = null;
         if (ctx.COMMENT() != null) {
             comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
         }
 
-        DeclParamIn ret = new DeclParamIn(ctx, name, comment, typeSpec, defaultVal);
+        DeclParamIn ret = new DeclParamIn(ctx, name, comment, typeSpec, hasDefault, defaultVal);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -1771,7 +1774,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.pushSymbolTable(
                     name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
-            visitParameter_list(ctx.parameter_list()); // just to put symbols to the symbol table
+            // put the parameters to the symbol table and visit their default values
+            NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+            for (int i = 0; i < paramList.nodes.size(); i++) {
+                DeclParam dp = paramList.nodes.get(i);
+                if (dp instanceof DeclParamIn) {
+                    // the declaration made in the previsit is the one used
+                    ((DeclParamIn) ret.paramList.nodes.get(i)).defaultVal =
+                            ((DeclParamIn) dp).defaultVal;
+                }
+            }
 
             NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
 
@@ -3894,7 +3906,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, null, tySpec, alsoIn));
             } else {
                 Expr defaultVal = params[i].hasDefault ? SP_PARAM_DEFAULT_VAL_DUMMY : null;
-                paramList.nodes.add(new DeclParamIn(null, "p" + i, null, tySpec, defaultVal));
+                paramList.nodes.add(
+                        new DeclParamIn(
+                                null, "p" + i, null, tySpec, params[i].hasDefault, defaultVal));
             }
         }
 

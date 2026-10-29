@@ -111,6 +111,7 @@ public class SymbolStack {
                                             "p" + i,
                                             null, // comment
                                             TypeSpec.getBogus(null, paramType),
+                                            false,
                                             null);
                             params.addNode(p);
                             i++;
@@ -174,6 +175,7 @@ public class SymbolStack {
                                                 "size",
                                                 null,
                                                 TypeSpec.getBogus(null, Type.INT),
+                                                true,
                                                 new ExprUint(null, "20000", Type.INT))),
                         0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
@@ -261,6 +263,7 @@ public class SymbolStack {
                                                 "s",
                                                 null,
                                                 TypeSpec.getBogus(null, Type.STRING_ANY),
+                                                false,
                                                 null)),
                         0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
@@ -281,6 +284,7 @@ public class SymbolStack {
                                                 "s",
                                                 null,
                                                 TypeSpec.getBogus(null, Type.STRING_ANY),
+                                                false,
                                                 null)),
                         0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
