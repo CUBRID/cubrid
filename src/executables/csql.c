@@ -680,6 +680,77 @@ check_contents_has_noncomment (void)
 }
 
 /*
+ * csql_get_stmt_start_line_no() - get the input line number where a statement in the editor buffer starts
+ *   return: line number, or -1 if it cannot be found
+ *   stmts(in): editor buffer the statement was parsed from
+ *   statement(in): parsed statement
+ *
+ * Note: csql_Edit_start_line_no is the input line number of the first line in stmts.
+ */
+static int
+csql_get_stmt_start_line_no (const char *stmts, const PT_NODE * statement)
+{
+  const char *p;
+  int line_no;
+
+  if (stmts == NULL || statement == NULL || csql_Edit_start_line_no <= 0)
+    {
+      return -1;
+    }
+
+  p = statement->sql_user_text;
+  if (p == NULL || p < stmts || p > stmts + strlen (stmts))
+    {
+      return -1;
+    }
+
+  line_no = csql_Edit_start_line_no;
+  for (const char *q = stmts; q < p; q++)
+    {
+      if (*q == '\n')
+	{
+	  line_no++;
+	}
+    }
+
+  /* sql_user_text may start with comments */
+  while (*p)
+    {
+      if (*p == '\n')
+	{
+	  line_no++;
+	  p++;
+	}
+      else if (*p == ' ' || *p == '\t' || *p == '\r')
+	{
+	  p++;
+	}
+      else if ((p[0] == '-' && p[1] == '-') || (p[0] == '/' && p[1] == '/'))
+	{
+	  for (p += 2; *p && *p != '\n'; p++)
+	    /* blank */ ;
+	}
+      else if (p[0] == '/' && p[1] == '*')
+	{
+	  for (p += 2; *p && !(p[0] == '*' && p[1] == '/'); p++)
+	    {
+	      if (*p == '\n')
+		{
+		  line_no++;
+		}
+	    }
+	  p += (*p ? 2 : 0);
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  return line_no;
+}
+
+/*
  * start_csql()
  *   return: none
  *   sql_arg(in/out): CSQL_ARGUMENT structure
@@ -951,6 +1022,16 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
+
+	  if (!csql_Is_interactive && csql_edit_contents_get ()[0] != '\0')
+	    {
+	      /* a session command line is not put into the buffer, but the lexer has to count it */
+	      if (csql_edit_contents_append ("", true) != CSQL_SUCCESS)
+		{
+		  goto error_continue;
+		}
+	    }
+
 	  if (ret == DO_CMD_EXIT || ret == DO_CMD_CONNECT)
 	    {
 	      if (line_read_alloced != NULL)
@@ -2286,6 +2367,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       CUBRID_STMT_TYPE stmt_type;	/* statement type */
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
+      int buffer_line_no = -1;
       char stmt_msg[LINE_BUFFER_SIZE];
 
       /* Start the execution of stms */
@@ -2347,7 +2429,17 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	}
 
-      if (line_no == -1)
+      if (!csql_Is_interactive && type == EDITOR_INPUT)
+	{
+	  /* each statement in the buffer may start on a different line */
+	  buffer_line_no = csql_get_stmt_start_line_no (stmts, session->statements[stmt_id - 1]);
+	}
+
+      if (buffer_line_no > 0)
+	{
+	  stmt_start_line_no = buffer_line_no;
+	}
+      else if (line_no == -1)
 	{
 	  stmt_start_line_no = db_get_start_line (session, stmt_id);
 	}
