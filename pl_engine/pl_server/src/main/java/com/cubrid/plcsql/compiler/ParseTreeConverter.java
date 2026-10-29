@@ -263,6 +263,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     setConnectionRequired(gpc.ctx);
                 } else {
                     // PL/CSQL SP call without using default arguments
+                    rejectIfParallelEnabled(gpc.ctx);
                     referencedClasses.add(ps.targetClass);
                     referencedMethods.add(Misc.methodKey(ps.targetClass, ps.uniqueName));
                 }
@@ -335,6 +336,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     setConnectionRequired(gfc.ctx);
                 } else {
                     // PL/CSQL SP call without using default arguments
+                    rejectIfParallelEnabled(gfc.ctx);
                     referencedClasses.add(fs.targetClass);
                     referencedMethods.add(Misc.methodKey(fs.targetClass, fs.uniqueName));
                 }
@@ -2145,6 +2147,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         setConnectionRequired(ctx);
                     } else {
                         // PL/CSQL SF call: call it directly as calls with parentheses do
+                        rejectIfParallelEnabled(ctx);
                         egfc.targetClass = fs.targetClass;
                         egfc.uniqueName = fs.uniqueName;
                         referencedClasses.add(fs.targetClass);
@@ -3309,13 +3312,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private void setConnectionRequired(ParserRuleContext ctx) {
+        rejectIfParallelEnabled(ctx);
+        connectionRequired = true;
+    }
+
+    // A direct call does not require a connection, but it still calls the server at run time
+    // (execute authorization check, change of the execution rights), so it is rejected as well.
+    private void rejectIfParallelEnabled(ParserRuleContext ctx) {
         if (parallelEnabled) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx),
                     "Stored functions declared with PARALLEL_ENABLE cannot use a feature that calls DB server");
         }
-
-        connectionRequired = true;
     }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
