@@ -127,6 +127,9 @@ namespace cubload
       heap_scancache m_scancache;
 
       std::size_t m_rows;
+
+      /* whether the row being read has had an error reported for it */
+      bool m_row_reported;
   };
 
 } // namespace cubload

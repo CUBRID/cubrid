@@ -583,6 +583,7 @@ namespace cubload
     , m_scancache_started (false)
     , m_scancache ()
     , m_rows (0)
+    , m_row_reported (false)
   {
     //
   }
@@ -626,6 +627,9 @@ namespace cubload
   server_object_loader::start_line (int object_id)
   {
     (void) object_id;
+
+    /* A new row, nothing reported for it yet. report_value_error () keeps this. */
+    m_row_reported = false;
   }
 
   void
@@ -832,22 +836,39 @@ namespace cubload
    *    reference, or an element process_collection_constant () reported before returning to
    *    process_line (); reporting it again prints the message twice.
    *
-   *    When the error is one --error-control-file ignores, or this is --syntax-check, the line is
-   *    dropped in finish_line () either way, but the rest of it is still checked: an error the file
-   *    does not ignore may come later in the line, and it must fail the load whichever of the two
-   *    came first. SA does the same.
+   *    Reading on is for one case only: an error --error-control-file ignores. Nothing is
+   *    said about it and the line is dropped in finish_line () either way, but an error the
+   *    file does not ignore may still come later in the line, and that one has to fail the
+   *    load whichever of the two came first. SA does the same.
+   *
+   *    An error that was reported ends the line, as it always has. --syntax-check reports
+   *    without failing the session, so it is asked about separately; it also means the row
+   *    is counted as failed, which the summary counts per row rather than per value.
    */
   bool
   server_object_loader::report_value_error ()
   {
-    if (m_session.is_failed ())
+    if (m_session.is_failed () || m_row_reported)
       {
 	return false;
       }
 
     m_error_handler.on_syntax_failure ();
+
     if (m_session.is_failed ())
       {
+	return false;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	/*
+	 * It was reported without failing the load. Remember it: an element
+	 * process_collection_constant () reported comes back here through
+	 * process_line (), and reporting it again would say it twice and count the
+	 * row twice.
+	 */
+	m_row_reported = true;
 	return false;
       }
 
