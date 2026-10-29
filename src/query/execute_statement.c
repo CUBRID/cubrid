@@ -6866,7 +6866,8 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   old_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.old_name);
   new_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.new_name);
 
-  if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+  if (old_qualifier_name == NULL || new_qualifier_name == NULL
+      || intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
     {
       ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
       return error;
