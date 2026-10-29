@@ -7305,6 +7305,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   char *quoted_name;
   char *create_sql;
   char *call;
+  char *compile_msg;
   int i;
   int error = NO_ERROR;
 
@@ -7387,7 +7388,20 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
     }
 
   error = jsp_create_system_generated_procedure (create_sql);
-  if (error != NO_ERROR)
+  if (error == ER_SP_COMPILE_ERROR)
+    {
+      /* report it as a compile error of the action, as for an action that is a statement */
+      compile_msg = pt_append_string (parser, NULL, er_msg ());
+      if (compile_msg == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name, compile_msg);
+      return error;
+    }
+  else if (error != NO_ERROR)
     {
       return error;
     }
