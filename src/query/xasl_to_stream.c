@@ -32,6 +32,7 @@
 
 #include "xasl_to_stream.h"
 
+#include "domain_rules.h"
 #include "error_manager.h"
 #include "server_interface.h"
 #include "class_object.h"
@@ -74,6 +75,10 @@ static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 
 /* error code specific to this file */
 static int xts_Xasl_errcode = NO_ERROR;
+
+/* CBRD-27583: a filter index predicate, a function index or a partition expression stream is being packed - it
+ * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
+static bool xts_Index_stream = false;
 
 static int xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate);
 static int xts_save_function_type (const FUNCTION_TYPE * function);
@@ -164,6 +169,21 @@ static char *xts_process_like_eval_term (char *ptr, const LIKE_EVAL_TERM * like_
 static char *xts_process_rlike_eval_term (char *ptr, const RLIKE_EVAL_TERM * rlike_eval_term);
 static char *xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec);
 static char *xts_process_indx_info (char *ptr, const INDX_INFO * indx_info);
+static char *xts_pack_decided_compare (char *ptr, const DOMAIN_COMPARE * compare);
+static char *xts_pack_compare (char *ptr, const TP_DOMAIN * lhs, const TP_DOMAIN * rhs);
+static bool xts_term_compares_values (const COMP_EVAL_TERM * term);
+static int xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided,
+				       DOMAIN_COMPARE_KEY * item);
+static TP_DOMAIN *xts_join_key_domain (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos);
+static char *xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node);
+static char *xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan);
+static char *xts_pack_accumulator_plan (char *ptr, const DOMAIN_ACCUMULATOR_PLAN * plan);
+static void xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan);
+static void xts_plan_analytic (const ANALYTIC_TYPE * analytic, DOMAIN_ACCUMULATOR_PLAN * plan);
+static int xts_arith_decided (const ARITH_TYPE * arith);
+static char *xts_pack_analytic_offsets (char *ptr, const BUILDLIST_PROC_NODE * node);
+static char *xts_pack_orderbynum_bounds (char *ptr, const PRED_EXPR * pred);
+static char *xts_pack_key_compares (char *ptr, const INDX_INFO * indx_info);
 static char *xts_process_key_info (char *ptr, const KEY_INFO * key_info);
 static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec);
 static char *xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
@@ -225,6 +245,14 @@ static int xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * ptr);
 static int xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * ptr);
 static int xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * ptr);
 static int xts_sizeof_indx_info (const INDX_INFO * ptr);
+static int xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare);
+static int xts_sizeof_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs);
+static int xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node);
+static int xts_sizeof_coercion_plan (const DOMAIN_COERCION_PLAN * plan);
+static int xts_sizeof_accumulator_plan (const DOMAIN_ACCUMULATOR_PLAN * plan);
+static int xts_sizeof_analytic_offsets (const BUILDLIST_PROC_NODE * node);
+static int xts_sizeof_orderbynum_bounds (const PRED_EXPR * pred);
+static int xts_sizeof_key_compares (const INDX_INFO * indx_info);
 static int xts_sizeof_key_info (const KEY_INFO * ptr);
 static int xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * ptr);
 static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
@@ -389,6 +417,7 @@ xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **pred_
     }
 
   xts_Xasl_errcode = NO_ERROR;
+  xts_Index_stream = true;
   header_size = 0;		/* could be changed */
 
   offset = sizeof (int)		/* [size of header data] */
@@ -419,6 +448,7 @@ xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **pred_
   *pred_stream_size = xts_Free_offset_in_stream;
 
 end:
+  xts_Index_stream = false;
   /* free all memories */
   xts_free_visited_ptrs ();
 
@@ -453,6 +483,7 @@ xts_map_func_pred_to_stream (const FUNC_PRED * xasl_tree, char **xasl_stream, in
     }
 
   xts_Xasl_errcode = NO_ERROR;
+  xts_Index_stream = true;
 
   /* reserve space for new XASL format */
   header_size = 0;
@@ -486,6 +517,7 @@ xts_map_func_pred_to_stream (const FUNC_PRED * xasl_tree, char **xasl_stream, in
   *xasl_stream_size = xts_Free_offset_in_stream;
 
 end:
+  xts_Index_stream = false;
   /* free all memories */
   xts_free_visited_ptrs ();
 
@@ -2420,7 +2452,7 @@ end:
   return offset;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
+/* CBRD-27583: an object domain keeps its class (include_classoids), as the catalog's does */
 static int
 xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 {
@@ -2434,7 +2466,7 @@ xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 
   for (len = 0, i = 0; i < nelements; i++)
     {
-      len += or_packed_domain_size (domain_array_p[i], 0);
+      len += or_packed_domain_size (domain_array_p[i], 1);
     }
 
   offset = xts_reserve_location_in_stream (len);
@@ -2446,12 +2478,11 @@ xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
   ptr = &xts_Stream_buffer[offset];
   for (i = 0; i < nelements; i++)
     {
-      ptr = or_pack_domain (ptr, domain_array_p[i], 0, 0);
+      ptr = or_pack_domain (ptr, domain_array_p[i], 1, 0);
     }
 
   return offset;
 }
-#endif
 
 static int
 xts_save_int_array (int *int_array, int nelements)
@@ -2780,6 +2811,11 @@ xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
+      /* CBRD-27583: the key positions' regu domains, which compare the keys (domain_key_values_equal) */
+      for (int i = 0; i < n_elements; i++)
+	{
+	  ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, sq_cache->sq_key_struct->domains[i], 0, 0);
+	}
     }
   else
     {
@@ -2865,6 +2901,9 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* CBRD-27583: its upper bounds' subtractions */
+  ptr = xts_pack_orderbynum_bounds (ptr, xasl->ordbynum_pred);
+
   offset = xts_save_db_value (xasl->ordbynum_val);
   if (offset == ER_FAILED)
     {
@@ -2894,6 +2933,15 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+  if (xasl->limit_row_count != NULL)
+    {
+      /* CBRD-27583: qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
+      ptr = xts_pack_compare (ptr, xasl->limit_row_count->domain, &tp_Integer_domain);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
+    }
 
   offset = xts_save_val_list (xasl->single_tuple);
   if (offset == ER_FAILED)
@@ -3484,6 +3532,9 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* CBRD-27583: the offset functions' conversions */
+  ptr = xts_pack_analytic_offsets (ptr, build_list_proc);
+
   offset = xts_save_regu_variable_list (build_list_proc->a_scan_regu_list);
   if (offset == ER_FAILED)
     {
@@ -3613,7 +3664,23 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
     }
   ptr = or_pack_int (ptr, offset);
 
-  return xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
+  ptr = xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
+  if (ptr != NULL && merge_list_info->outer_xasl != NULL && merge_list_info->inner_xasl != NULL)
+    {
+      /* CBRD-27583: each merge column pair's comparison from the two lists' column domains */
+      for (int k = 0; k < merge_list_info->ls_merge.ls_column_cnt && ptr != NULL; k++)
+	{
+	  ptr = xts_pack_compare (ptr, xts_join_key_domain (merge_list_info->outer_xasl,
+							    merge_list_info->ls_merge.ls_outer_column[k],
+							    merge_list_info->inner_xasl,
+							    merge_list_info->ls_merge.ls_inner_column[k]),
+				  xts_join_key_domain (merge_list_info->inner_xasl,
+						       merge_list_info->ls_merge.ls_inner_column[k],
+						       merge_list_info->outer_xasl,
+						       merge_list_info->ls_merge.ls_outer_column[k]));
+	}
+    }
+  return ptr;
 }
 
 /*
@@ -3664,7 +3731,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
-  return ptr;
+  return xts_pack_hash_join_keys (ptr, node_p);
 }
 
 static char *
@@ -3921,6 +3988,9 @@ xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign)
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* domain: the attribute's, with an object domain's class */
+  ptr = or_pack_domain (ptr, assign->domain, 1, 0);
+
   return ptr;
 }
 
@@ -3929,7 +3999,12 @@ xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelemen
 {
   char *ptr = NULL, *buf = NULL;
   int offset = ER_FAILED, idx;
-  int size = xts_sizeof_update_assignment (assigns) * nelements;
+  int size = 0;
+
+  for (idx = 0; idx < nelements; idx++)
+    {
+      size += xts_sizeof_update_assignment (&assigns[idx]);
+    }
 
   assert (nelements > 0);
   assert (size > 0);
@@ -4405,6 +4480,20 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
       ptr = or_pack_int (ptr, offset);
     }
 
+  offset = xts_save_domain_array (insert_info->att_domains, insert_info->num_vals);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_int_array (insert_info->default_types, insert_info->num_default_expr);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
@@ -4689,6 +4778,23 @@ xts_process_comp_eval_term (char *ptr, const COMP_EVAL_TERM * comp_eval_term)
 
   ptr = or_pack_int (ptr, comp_eval_term->type);
 
+  if (!xts_Index_stream)
+    {
+      /* CBRD-27583: the comparison of the term's two values */
+      ptr = xts_term_compares_values (comp_eval_term)
+	? xts_pack_compare (ptr, comp_eval_term->lhs->domain, comp_eval_term->rhs->domain) : or_pack_int (ptr, 0);
+      /* CBRD-27583: a partitioned class's pruning conversion of the value - 0 none, or 1 + the value's side and
+       * the other side's domain */
+      if (ptr != NULL)
+	{
+	  ptr = or_pack_int (ptr, comp_eval_term->prune_domain != NULL ? 1 + comp_eval_term->prune_side : 0);
+	  if (comp_eval_term->prune_domain != NULL)
+	    {
+	      ptr = or_pack_domain (ptr, comp_eval_term->prune_domain, 0, 0);
+	    }
+	}
+    }
+
   return ptr;
 }
 
@@ -4716,6 +4822,38 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
   ptr = or_pack_int (ptr, alsm_eval_term->rel_op);
 
   ptr = or_pack_int (ptr, alsm_eval_term->item_type);
+
+  if (!xts_Index_stream)
+    {
+      /* CBRD-27583: what the item compares with - 0 none (the values), 1 one comparison, 2 a collection's
+       * elements by the item key's row of the type pair comparison table */
+      DOMAIN_COMPARE decided;
+      DOMAIN_COMPARE_KEY item;
+      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &item);
+      if (kind == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, kind);
+      if (kind == 1)
+	{
+	  ptr = xts_pack_decided_compare (ptr, &decided);
+	}
+      else if (kind == 2)
+	{
+	  ptr = or_pack_int (ptr, item.type);
+	  ptr = or_pack_int (ptr, item.codeset);
+	  ptr = or_pack_int (ptr, item.collation);
+	}
+      /* CBRD-27583: a partitioned class's pruning conversion of the elements - 0 none, or 1 and the item's
+       * domain and the elements' */
+      ptr = or_pack_int (ptr, alsm_eval_term->prune_domain != NULL ? 1 : 0);
+      if (alsm_eval_term->prune_domain != NULL)
+	{
+	  ptr = or_pack_domain (ptr, alsm_eval_term->prune_domain, 0, 0);
+	  ptr = or_pack_domain (ptr, alsm_eval_term->prune_element, 0, 0);
+	}
+    }
 
   return ptr;
 }
@@ -4923,9 +5061,26 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
-  /* the B-tree's key domain: the server derives the key plan from it at load and matches it with the root
-   * header's, which keeps an OBJECT key as OBJECT (its key values are OIDs) - so no OBJECT-to-OID packing here */
+  /* the B-tree's key domain: the server matches it with the root header's, which keeps an OBJECT key as OBJECT (its
+   * key values are OIDs) - so no OBJECT-to-OID packing here */
   ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
+
+  /* CBRD-27583: each key range's written key domains, after a mask of the ones it has */
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
+      ptr = or_pack_int (ptr, (range->key1_domain != NULL ? 1 : 0) | (range->key2_domain != NULL ? 2 : 0));
+      if (range->key1_domain != NULL)
+	{
+	  ptr = or_pack_domain (ptr, range->key1_domain, 0, 0);
+	}
+      if (range->key2_domain != NULL)
+	{
+	  ptr = or_pack_domain (ptr, range->key2_domain, 0, 0);
+	}
+    }
+
+  ptr = xts_pack_key_compares (ptr, indx_info);
 
   if (indx_info->cov_list_id == NULL)
     {
@@ -5515,6 +5670,14 @@ xts_process_val_list (char *ptr, const VAL_LIST * val_list)
   return ptr;
 }
 
+/* CBRD-27583: whether a regu's value is converted from the domain it is read in (original_domain) into domain */
+static bool
+xts_regu_converts (const REGU_VARIABLE * regu_var)
+{
+  assert (regu_var->original_domain == NULL || regu_var->domain != NULL);
+  return regu_var->original_domain != NULL && regu_var->original_domain != regu_var->domain;
+}
+
 static char *
 xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 {
@@ -5523,8 +5686,19 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
   /* we prepend the domain before we pack the regu_variable */
   ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->domain, 0, 0);
 
+  /* CBRD-27583: a value its consumer wants in another domain carries the domain it is read in and the mode */
+  ptr = or_pack_int (ptr, xts_regu_converts (regu_var));
+  if (xts_regu_converts (regu_var))
+    {
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->original_domain, 0, 0);
+      ptr = or_pack_int (ptr, regu_var->conv_mode);
+    }
+
   ptr = or_pack_int (ptr, regu_var->type);
 
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION));
   ptr = or_pack_int (ptr, regu_var->flags);
 
   offset = xts_save_db_value (regu_var->vfetch_to);
@@ -5734,6 +5908,7 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, arith->misc_operand);
+  ptr = or_pack_int (ptr, arith->fails);
 
   if (arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_PREDICATE || arith->opcode == T_IF)
     {
@@ -5743,6 +5918,29 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
+    }
+
+  if (!xts_Index_stream && (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
+			    || arith->opcode == T_GREATEST))
+    {
+      /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - FIELD its third operand (the
+       * innermost node's, REGU_VARIABLE_FIELD_COMPARE) with the left and the right, the others their two operands */
+      const bool field = arith->opcode == T_FIELD;
+      const REGU_VARIABLE *const sides[2][2] = {
+	{field ? arith->thirdptr : arith->leftptr, field ? arith->leftptr : arith->rightptr},
+	{arith->thirdptr, arith->rightptr}
+      };
+      for (int k = 0; k < (field ? 2 : 1) && ptr != NULL; k++)
+	{
+	  ptr = xts_pack_compare (ptr, sides[k][0] != NULL ? sides[k][0]->domain : NULL,
+				  sides[k][1] != NULL ? sides[k][1]->domain : NULL);
+	}
+    }
+
+  if (!xts_Index_stream && arith_decides_arith (arith))
+    {
+      /* CBRD-27583: what the operator makes of its operands */
+      ptr = or_pack_int (ptr, xts_arith_decided (arith));
     }
 
   return ptr;
@@ -5838,7 +6036,10 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
   ptr = or_pack_int (ptr, flagint);
   ptr = or_pack_int (ptr, offset);
 
-  return ptr;
+  /* CBRD-27583: the accumulator's plan */
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_aggregate (aggregate, &plan);
+  return xts_pack_accumulator_plan (ptr, &plan);
 }
 
 static char *
@@ -5953,7 +6154,10 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
       ptr = or_pack_int (ptr, offset);
     }
 
-  return ptr;
+  /* CBRD-27583: the accumulator's plan */
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_analytic (analytic, &plan);
+  return xts_pack_accumulator_plan (ptr, &plan);
 }
 
 static char *
@@ -6242,6 +6446,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
 
+  size += xts_sizeof_orderbynum_bounds (xasl->ordbynum_pred);
+
   size += PTR_SIZE;		/* precomp_owner_regu offset */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
@@ -6265,6 +6471,16 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   size += PTR_SIZE;		/* for subquery's xasl_id */
   size += OR_INT_SIZE;		/* for subquery's host variable count */
   size += (OR_INT_SIZE * xasl->sub_host_var_count);
+
+  if (xasl->limit_row_count != NULL)
+    {
+      tmp_size = xts_sizeof_compare (xasl->limit_row_count->domain, &tp_Integer_domain);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;		/* the row count's comparison */
+    }
 
   switch (xasl->type)
     {
@@ -6388,6 +6604,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* sq_cache_n_elements */
 	   + PTR_SIZE		/* sq_cache */
 	   + OR_INT_SIZE);	/* parallelism */
+  for (int i = 0; xasl->sq_cache != NULL && i < xasl->sq_cache->sq_key_struct->n_elements; i++)
+    {
+      size += or_packed_domain_size (xasl->sq_cache->sq_key_struct->domains[i], 0);	/* sq_cache key domains */
+    }
 
   return size;
 }
@@ -6509,6 +6729,8 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + PTR_SIZE		/* a_outptr_list_ex */
 	   + PTR_SIZE		/* a_outptr_list_interm */
 	   + PTR_SIZE);		/* a_val_list */
+
+  size += xts_sizeof_analytic_offsets (build_list);
   return size;
 }
 
@@ -6584,6 +6806,24 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
       size += xts_sizeof_access_spec_type (access_spec);
     }
 
+  if (merge_list_info->outer_xasl != NULL && merge_list_info->inner_xasl != NULL)
+    {
+      const QFILE_LIST_MERGE_INFO *merge = &merge_list_info->ls_merge;
+      for (int k = 0; k < merge->ls_column_cnt; k++)
+	{
+	  const TP_DOMAIN *outer = xts_join_key_domain (merge_list_info->outer_xasl, merge->ls_outer_column[k],
+							merge_list_info->inner_xasl, merge->ls_inner_column[k]);
+	  const TP_DOMAIN *inner = xts_join_key_domain (merge_list_info->inner_xasl, merge->ls_inner_column[k],
+							merge_list_info->outer_xasl, merge->ls_outer_column[k]);
+	  const int compare_size = xts_sizeof_compare (outer, inner);
+	  if (compare_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  size += compare_size;
+	}
+    }
+
   return size;
 }
 
@@ -6609,6 +6849,13 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 
   /* merge_info */
   tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
+
+  tmp_size = xts_sizeof_hash_join_keys (node_p);
   if (tmp_size == ER_FAILED)
     {
       return ER_FAILED;
@@ -6656,7 +6903,8 @@ xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign)
   size += (OR_INT_SIZE		/* cls_idx */
 	   + OR_INT_SIZE	/* att_idx */
 	   + PTR_SIZE		/* constant */
-	   + PTR_SIZE);		/* regu_var */
+	   + PTR_SIZE		/* regu_var */
+	   + or_packed_domain_size (assign->domain, 1));	/* domain */
 
   return size;
 }
@@ -6774,7 +7022,9 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* remote_num_attrs */
 	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
 	   + OR_INT_SIZE	/* remote_num_odku */
-	   + (insert_info->remote_num_odku * 2 * PTR_SIZE));	/* remote_odku_cols + remote_odku_exprs */
+	   + (insert_info->remote_num_odku * 2 * PTR_SIZE)	/* remote_odku_cols + remote_odku_exprs */
+	   + PTR_SIZE		/* att_domains */
+	   + PTR_SIZE);		/* default_types */
 
   return size;
 }
@@ -7009,6 +7259,21 @@ xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * comp_eval_term)
 	   + OR_INT_SIZE	/* rel_op */
 	   + OR_INT_SIZE);	/* type */
 
+  if (!xts_Index_stream)
+    {
+      const int compare_size = xts_term_compares_values (comp_eval_term)
+	? xts_sizeof_compare (comp_eval_term->lhs->domain, comp_eval_term->rhs->domain) : OR_INT_SIZE;
+      if (compare_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += compare_size + OR_INT_SIZE;
+      if (comp_eval_term->prune_domain != NULL)
+	{
+	  size += or_packed_domain_size (comp_eval_term->prune_domain, 0);
+	}
+    }
+
   return size;
 }
 
@@ -7027,6 +7292,24 @@ xts_sizeof_alsm_eval_term (const ALSM_EVAL_TERM * alsm_eval_term)
 	   + OR_INT_SIZE	/* eq_flag */
 	   + OR_INT_SIZE	/* rel_op */
 	   + OR_INT_SIZE);	/* item_type */
+
+  if (!xts_Index_stream)
+    {
+      DOMAIN_COMPARE decided;
+      DOMAIN_COMPARE_KEY item;
+      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &item);
+      if (kind == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += OR_INT_SIZE + (kind == 1 ? xts_sizeof_decided_compare (&decided) : kind == 2 ? 3 * OR_INT_SIZE : 0);
+      size += OR_INT_SIZE;
+      if (alsm_eval_term->prune_domain != NULL)
+	{
+	  size += or_packed_domain_size (alsm_eval_term->prune_domain, 0)
+	    + or_packed_domain_size (alsm_eval_term->prune_element, 0);
+	}
+    }
 
   return size;
 }
@@ -7208,6 +7491,614 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 
   size += or_packed_domain_size (indx_info->key_type, 0);	/* key_type */
 
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
+      size += OR_INT_SIZE;	/* the written key domains' mask */
+      size += range->key1_domain != NULL ? or_packed_domain_size (range->key1_domain, 0) : 0;
+      size += range->key2_domain != NULL ? or_packed_domain_size (range->key2_domain, 0) : 0;
+    }
+
+  size += xts_sizeof_key_compares (indx_info);
+
+  return size;
+}
+
+/*
+ * xts_pack_decided_compare () - CBRD-27583: a comparison XASL generation decided: its method and the fields
+ *   of its outcome (DOMAIN_COMPARE), and the domain a converted side is converted into; stx_unpack_decided_compare
+ *   looks its cmpval and converters up
+ */
+static char *
+xts_pack_decided_compare (char *ptr, const DOMAIN_COMPARE * compare)
+{
+  const int converts = (compare->conv[0] != NULL ? 1 : 0) | (compare->conv[1] != NULL ? 2 : 0);
+  ptr = or_pack_int (ptr, compare->method | (compare->coercion << 8) | (compare->first << 16) | (converts << 24));
+  ptr = or_pack_int (ptr, compare->source[0] | (compare->source[1] << 8) | (compare->converted_first << 16)
+		     | ((compare->rank + 2) << 24));
+  ptr = or_pack_int (ptr, (compare->collation & 0xFFFF) | ((compare->codeset_side + 1) << 16));
+  if (converts != 0)
+    {
+      /* both sides converted are converted into one domain (domain_resolve_comparison) */
+      assert (converts != 3 || compare->target[0] == compare->target[1]);
+      ptr = or_pack_domain (ptr, (TP_DOMAIN *) compare->target[(converts & 1) ? 0 : 1], 0, 0);
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare)
+{
+  int size = 3 * OR_INT_SIZE;
+  if (compare->conv[0] != NULL || compare->conv[1] != NULL)
+    {
+      size += or_packed_domain_size ((TP_DOMAIN *) compare->target[compare->conv[0] != NULL ? 0 : 1], 0);
+    }
+  return size;
+}
+
+/*
+ * xts_pack_compare () - CBRD-27583: the comparison of a value of each of two domains, decided where the compiler
+ *   serializes it, for an unpack that only looks its pointers up: an int (0: none, comparison method VALUES; 1:
+ *   decided) and the decided comparison (xts_pack_decided_compare). The inputs are the final domains the server
+ *   reads - a regu's after pt_set_operand_conversion, a list column's (domain_list_column_compared) - and packing
+ *   changes none of them.
+ */
+static char *
+xts_pack_compare (char *ptr, const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
+{
+  const TP_DOMAIN *const domain[2] = { lhs, rhs };
+  DOMAIN_COMPARE decided;
+  bool by_type;
+  if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR)
+    {
+      xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, by_type ? 1 : 0);
+  return by_type ? xts_pack_decided_compare (ptr, &decided) : ptr;
+}
+
+static int
+xts_sizeof_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
+{
+  const TP_DOMAIN *const domain[2] = { lhs, rhs };
+  DOMAIN_COMPARE decided;
+  bool by_type;
+  if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR)
+    {
+      xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+      return ER_FAILED;
+    }
+  return OR_INT_SIZE + (by_type ? xts_sizeof_decided_compare (&decided) : 0);
+}
+
+/* CBRD-27583: a term that compares two values - not a set comparison, not a list side */
+static bool
+xts_term_compares_values (const COMP_EVAL_TERM * term)
+{
+  switch (term->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_GT:
+    case R_GE:
+    case R_LT:
+    case R_LE:
+    case R_EQ_TORDER:
+    case R_NULLSAFE_EQ:
+      return term->lhs != NULL && term->rhs != NULL && term->lhs->type != TYPE_LIST_ID
+	&& term->rhs->type != TYPE_LIST_ID;
+    default:
+      return false;
+    }
+}
+
+/*
+ * xts_decide_element_compare () - CBRD-27583: what an ALL/SOME term compares its item with, from the domains: a
+ *   list's column (its subquery's column 0, eval_some_list_eval) or a right side that is no collection by one
+ *   comparison, a collection's elements - its data - by the item key's row of the type pair comparison table
+ *   return: 0 none (the values decide), 1 decided, 2 item; ER_FAILED
+ */
+static int
+xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided, DOMAIN_COMPARE_KEY * item)
+{
+  if (term->elem == NULL || term->elemset == NULL)
+    {
+      return 0;
+    }
+  const bool list = term->elemset->type == TYPE_LIST_ID;
+  const TP_DOMAIN *const domain[2] = { term->elem->domain,
+    list ? domain_list_column_compared (term->elemset->xasl, 0) : term->elemset->domain
+  };
+  bool by_type;
+  if (domain_decide_comparison (domain, decided, &by_type) != NO_ERROR)
+    {
+      xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+      return ER_FAILED;
+    }
+  if (!by_type)
+    {
+      return 0;
+    }
+  if (!list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1])))
+    {
+      /* the server reads an OBJECT regu's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+      domain_compare_key_of (domain_key_value_domain (domain[0]), item);
+      return 2;
+    }
+  return 1;
+}
+
+/*
+ * xts_join_key_domain () - CBRD-27583: a hash or merge join key column's domain (domain_list_column_joined); a
+ *   pair whose both columns are NULL-typed (NULL binds under arithmetic on both sides) is decided as that NULL domain
+ *   against itself: its values match no row
+ */
+static TP_DOMAIN *
+xts_join_key_domain (const XASL_NODE * xasl, int pos, const XASL_NODE * other_xasl, int other_pos)
+{
+  TP_DOMAIN *domain = domain_list_column_joined (xasl, pos, other_xasl, other_pos);
+  if (domain == NULL)
+    {
+      TP_DOMAIN *own = domain_list_column_of (xasl, pos);
+      const TP_DOMAIN *other = domain_list_column_of (other_xasl, other_pos);
+      if (own != NULL && other != NULL && TP_DOMAIN_TYPE (own) == DB_TYPE_NULL
+	  && TP_DOMAIN_TYPE (other) == DB_TYPE_NULL)
+	{
+	  return own;
+	}
+    }
+  return domain;
+}
+
+/*
+ * xts_pack_hash_join_keys () - CBRD-27583: a hash join's key column pairs, decided from the two inputs' column
+ *   domains (domain_decide_hash_join_key): an int (0 none - a list whose column the execution fixes, decided by each
+ *   execution; 1 decided), then per pair the two column domains, the sides' conversion kinds and whether a common
+ *   domain holds the pair, that domain, and the comparison of the two values
+ */
+static char *
+xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
+{
+  const QFILE_LIST_MERGE_INFO *info = &node->merge_info;
+  bool fixed = info->ls_column_cnt > 0;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      fixed =
+	xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+			     info->ls_inner_column[i]) != NULL
+	&& xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+				info->ls_outer_column[i]) != NULL;
+    }
+  ptr = or_pack_int (ptr, fixed ? 1 : 0);
+  bool coerce = false;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+      TP_DOMAIN *outer =
+	(TP_DOMAIN *)
+	domain_key_value_domain (xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+						      info->ls_inner_column[i]));
+      TP_DOMAIN *inner =
+	(TP_DOMAIN *)
+	domain_key_value_domain (xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+						      info->ls_outer_column[i]));
+      TP_DOMAIN *outer_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->outer.xasl, info->ls_outer_column[i]));
+      TP_DOMAIN *inner_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->inner.xasl, info->ls_inner_column[i]));
+      const TP_DOMAIN *common;
+      int conv_kind[2];
+      DOMAIN_COMPARE compare;
+      if (domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind, &compare) != NO_ERROR)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return NULL;
+	}
+      /* the lists open with the columns' own domains, a NULL-typed one included (decided as the other side's above:
+       * its values match no row, hjoin_fetch_key skips a NULL key) */
+      ptr = or_pack_domain (ptr, outer_own, 0, 0);
+      ptr = or_pack_domain (ptr, inner_own, 0, 0);
+      ptr = or_pack_int (ptr, conv_kind[0] | (conv_kind[1] << 8) | ((common != NULL ? 1 : 0) << 16));
+      if (common != NULL)
+	{
+	  ptr = or_pack_domain (ptr, (TP_DOMAIN *) common, 0, 0);
+	}
+      ptr = xts_pack_decided_compare (ptr, &compare);
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
+{
+  const QFILE_LIST_MERGE_INFO *info = &node->merge_info;
+  bool fixed = info->ls_column_cnt > 0;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      fixed =
+	xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+			     info->ls_inner_column[i]) != NULL
+	&& xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+				info->ls_outer_column[i]) != NULL;
+    }
+  int size = OR_INT_SIZE;
+  bool coerce = false;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+      TP_DOMAIN *outer =
+	(TP_DOMAIN *)
+	domain_key_value_domain (xts_join_key_domain (node->outer.xasl, info->ls_outer_column[i], node->inner.xasl,
+						      info->ls_inner_column[i]));
+      TP_DOMAIN *inner =
+	(TP_DOMAIN *)
+	domain_key_value_domain (xts_join_key_domain (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
+						      info->ls_outer_column[i]));
+      TP_DOMAIN *outer_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->outer.xasl, info->ls_outer_column[i]));
+      TP_DOMAIN *inner_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->inner.xasl, info->ls_inner_column[i]));
+      const TP_DOMAIN *common;
+      int conv_kind[2];
+      DOMAIN_COMPARE compare;
+      if (domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind, &compare) != NO_ERROR)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+      size += or_packed_domain_size (outer_own, 0) + or_packed_domain_size (inner_own, 0) + OR_INT_SIZE
+	+ (common !=
+	   NULL ? or_packed_domain_size ((TP_DOMAIN *) common, 0) : 0) + xts_sizeof_decided_compare (&compare);
+    }
+  return size;
+}
+
+/*
+ * CBRD-27583: the plans of the server's arithmetic outside a node, decided where the compiler serializes them
+ * (domain_plan_*) from the domains the server reads (an OBJECT as OID), for an unpack that only looks their converters
+ * up. A conversion is an int (0 none; else 1 | mode << 4 | source type << 8) and its target domain; a coercion plan an
+ * int (arith kind | type << 8), per side an int (1: an operand domain, 2: a conversion into it, | mode << 4 |
+ * source type << 8) and that domain, and the conversion of its value into its holder's domain; an accumulator
+ * plan an int (1: value_dom, 2: value2_dom, 4: accumulator_takes),
+ * those domains, the operand, distinct and divide coercion plans and the first and final conversions.
+ */
+static char *
+xts_pack_conversion (char *ptr, const DOMAIN_CONVERSION * conversion)
+{
+  if (conversion->target == NULL)
+    {
+      return or_pack_int (ptr, 0);
+    }
+  ptr = or_pack_int (ptr, 1 | (conversion->mode << 4) | (conversion->source << 8));
+  return or_pack_domain (ptr, (TP_DOMAIN *) conversion->target, 0, 0);
+}
+
+static int
+xts_sizeof_conversion (const DOMAIN_CONVERSION * conversion)
+{
+  return OR_INT_SIZE + (conversion->target != NULL ? or_packed_domain_size ((TP_DOMAIN *) conversion->target, 0) : 0);
+}
+
+static char *
+xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan)
+{
+  ptr = or_pack_int (ptr, plan->arith.kind | (plan->arith.type << 8));
+  for (int i = 0; i < 2; i++)
+    {
+      const DOMAIN_CONVERSION *conversion = &plan->conv[i];
+      /* a side converts into its operand domain */
+      assert (conversion->target == NULL || conversion->target == plan->operand_domain[i]);
+      ptr = or_pack_int (ptr, (plan->operand_domain[i] != NULL ? 1 : 0)
+			 | (conversion->target != NULL ? 2 | (conversion->mode << 4) | (conversion->source << 8) : 0));
+      if (plan->operand_domain[i] != NULL)
+	{
+	  ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->operand_domain[i], 0, 0);
+	}
+    }
+  return xts_pack_conversion (ptr, &plan->result);
+}
+
+static int
+xts_sizeof_coercion_plan (const DOMAIN_COERCION_PLAN * plan)
+{
+  int size = 3 * OR_INT_SIZE;
+  for (int i = 0; i < 2; i++)
+    {
+      size += plan->operand_domain[i] != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->operand_domain[i], 0) : 0;
+    }
+  return size + xts_sizeof_conversion (&plan->result);
+}
+
+static char *
+xts_pack_accumulator_plan (char *ptr, const DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  ptr = or_pack_int (ptr, (plan->value_dom != NULL ? 1 : 0) | (plan->value2_dom != NULL ? 2 : 0)
+		     | (plan->accumulator_takes ? 4 : 0));
+  if (plan->value_dom != NULL)
+    {
+      ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->value_dom, 0, 0);
+    }
+  if (plan->value2_dom != NULL)
+    {
+      ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->value2_dom, 0, 0);
+    }
+  ptr = xts_pack_coercion_plan (ptr, &plan->operand_coercion);
+  ptr = xts_pack_coercion_plan (ptr, &plan->distinct_coercion);
+  ptr = xts_pack_coercion_plan (ptr, &plan->divide_coercion);
+  ptr = xts_pack_conversion (ptr, &plan->first_conv);
+  return xts_pack_conversion (ptr, &plan->final_conv);
+}
+
+static int
+xts_sizeof_accumulator_plan (const DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  return OR_INT_SIZE + (plan->value_dom != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->value_dom, 0) : 0)
+    + (plan->value2_dom != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->value2_dom, 0) : 0)
+    + xts_sizeof_coercion_plan (&plan->operand_coercion) + xts_sizeof_coercion_plan (&plan->distinct_coercion)
+    + xts_sizeof_coercion_plan (&plan->divide_coercion) + xts_sizeof_conversion (&plan->first_conv)
+    + xts_sizeof_conversion (&plan->final_conv);
+}
+
+/* the domain of the value a function's operand gives: an arithmetic node's, else the regu's */
+static const TP_DOMAIN *
+xts_argument_domain (const REGU_VARIABLE * operand)
+{
+  return operand == NULL ? NULL : operand->type == TYPE_INARITH || operand->type == TYPE_OUTARITH
+    ? operand->value.arithptr->domain : operand->domain;
+}
+
+/* an aggregate's accumulator plan (domain_plan_aggregate_accumulator), from its domain and its argument's */
+static void
+xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  const TP_DOMAIN *argument = xts_argument_domain (aggregate->operands != NULL ? &aggregate->operands->value : NULL);
+  domain_plan_aggregate_accumulator (aggregate->function, aggregate->opr_dbtype,
+				     domain_key_value_domain (aggregate->domain), domain_key_value_domain (argument),
+				     plan);
+}
+
+/* an analytic function's accumulator plan (domain_plan_analytic_accumulator), from its domain and its argument's */
+static void
+xts_plan_analytic (const ANALYTIC_TYPE * analytic, DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  domain_plan_analytic_accumulator (analytic->function, analytic->option, domain_key_value_domain (analytic->domain),
+				    domain_key_value_domain (xts_argument_domain (&analytic->operand)), plan);
+}
+
+/*
+ * xts_arith_decided () - CBRD-27583: what an addition, subtraction, multiplication or division makes of its
+ *   operands' domains (domain_resolve_operand_coercion): an int, kind | type << 8; DOMAIN_ARITH_UNRESOLVED for an
+ *   operand of no fixed domain, which unpack refuses
+ */
+static int
+xts_arith_decided (const ARITH_TYPE * arith)
+{
+  if (arith->leftptr == NULL || arith->rightptr == NULL || arith->leftptr->domain == NULL
+      || TP_DOMAIN_TYPE (arith->leftptr->domain) == DB_TYPE_VARIABLE || arith->rightptr->domain == NULL
+      || TP_DOMAIN_TYPE (arith->rightptr->domain) == DB_TYPE_VARIABLE)
+    {
+      return DOMAIN_ARITH_UNRESOLVED;
+    }
+  /* the server reads an OBJECT regu's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+  const TP_DOMAIN *left = domain_key_value_domain (arith->leftptr->domain);
+  const TP_DOMAIN *right = domain_key_value_domain (arith->rightptr->domain);
+  const DOMAIN_OPERAND operands[2] = {
+    {left, TP_DOMAIN_TYPE (left), -1, false}, {right, TP_DOMAIN_TYPE (right), -1, false}
+  };
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (arith->opcode, operands, &coercion);
+  return coercion.arith.kind | (coercion.arith.type << 8);
+}
+
+/* a LEAD / LAG / NTH_VALUE's offset and default conversions (domain_plan_analytic_offset), from the domains of their
+ * regus in the read list */
+static void
+xts_plan_analytic_offset (const ANALYTIC_TYPE * analytic, const REGU_VARIABLE_LIST read_list,
+			  DOMAIN_COERCION_PLAN * plan)
+{
+  const int read_idx[2] = { analytic->offset_idx, analytic->default_idx };
+  const TP_DOMAIN *source[2];
+  for (int i = 0; i < 2; i++)
+    {
+      REGU_VARIABLE_LIST regu = read_list;
+      for (int k = read_idx[i]; k > 0 && regu != NULL; k--)
+	{
+	  regu = regu->next;
+	}
+      source[i] = regu != NULL ? domain_key_value_domain (regu->value.domain) : NULL;
+    }
+  domain_plan_analytic_offset (analytic->function, domain_key_value_domain (analytic->domain), source[0], source[1],
+			       plan);
+}
+
+/* whether an analytic function has an offset and a default: LEAD, LAG, NTH_VALUE */
+static bool
+xts_analytic_is_offset (const ANALYTIC_TYPE * analytic)
+{
+  return analytic->function == PT_LEAD || analytic->function == PT_LAG || analytic->function == PT_NTH_VALUE;
+}
+
+/* CBRD-27583: each LEAD / LAG / NTH_VALUE's offset and default conversions, a coercion plan, in the order of
+ * the analytic evaluations and their functions */
+static char *
+xts_pack_analytic_offsets (char *ptr, const BUILDLIST_PROC_NODE * node)
+{
+  for (const ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (const ANALYTIC_TYPE * analytic = eval->head; analytic != NULL; analytic = analytic->next)
+	{
+	  if (xts_analytic_is_offset (analytic))
+	    {
+	      DOMAIN_COERCION_PLAN plan;
+	      xts_plan_analytic_offset (analytic, node->a_regu_list, &plan);
+	      ptr = xts_pack_coercion_plan (ptr, &plan);
+	    }
+	}
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_analytic_offsets (const BUILDLIST_PROC_NODE * node)
+{
+  int size = 0;
+  for (const ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (const ANALYTIC_TYPE * analytic = eval->head; analytic != NULL; analytic = analytic->next)
+	{
+	  if (xts_analytic_is_offset (analytic))
+	    {
+	      DOMAIN_COERCION_PLAN plan;
+	      xts_plan_analytic_offset (analytic, node->a_regu_list, &plan);
+	      size += xts_sizeof_coercion_plan (&plan);
+	    }
+	}
+    }
+  return size;
+}
+
+/* CBRD-27583: the number of ORDERBY_NUM () < bound of the predicate (xasl_for_each_orderbynum_less_than) and
+ * the operand coercion of bound - 1 of each, a coercion plan */
+static void
+xts_plan_orderbynum_bound (const REGU_VARIABLE * bound, DOMAIN_COERCION_PLAN * plan)
+{
+  const DOMAIN_OPERAND operands[2] = {
+    {NULL, TP_DOMAIN_TYPE (domain_key_value_domain (bound->domain)), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
+  };
+  domain_plan_operand_coercion (T_SUB, operands, plan);
+  /* the difference into the bound's domain (qexec_get_orderbynum_upper_bound) */
+  domain_plan_coercion_result (plan, domain_key_value_domain (bound->domain));
+}
+
+static char *
+xts_pack_orderbynum_bounds (char *ptr, const PRED_EXPR * pred)
+{
+  int count = 0;
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&count] (const COMP_EVAL_TERM *, const REGU_VARIABLE *) { count++; });
+  /* *INDENT-ON* */
+  ptr = or_pack_int (ptr, count);
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&ptr] (const COMP_EVAL_TERM *, const REGU_VARIABLE * bound)
+    {
+      DOMAIN_COERCION_PLAN plan;
+      xts_plan_orderbynum_bound (bound, &plan);
+      ptr = xts_pack_coercion_plan (ptr, &plan);
+    });
+  /* *INDENT-ON* */
+  return ptr;
+}
+
+static int
+xts_sizeof_orderbynum_bounds (const PRED_EXPR * pred)
+{
+  int size = OR_INT_SIZE;	/* count */
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&size] (const COMP_EVAL_TERM *, const REGU_VARIABLE * bound)
+    {
+      DOMAIN_COERCION_PLAN plan;
+      xts_plan_orderbynum_bound (bound, &plan);
+      size += xts_sizeof_coercion_plan (&plan);
+    });
+  /* *INDENT-ON* */
+  return size;
+}
+
+/*
+ * xts_pack_key_compares () - CBRD-27583: an index scan's search key bound comparisons (pt_decide_key_compares):
+ *   the number of distinct bounds; with any, the key columns, each column's classes and the comparisons of each
+ *   ordered pair of them, each bound's flags (merges: the index-side conversion can make keys equal; a non-leaf
+ *   comparison), comparisons with the index keys
+ *   and classes, then each key range's and the index skip scan's fetch range's bounds (key1 | key2 << 16, 0xFFFF none)
+ */
+static char *
+xts_pack_key_compares (char *ptr, const INDX_INFO * indx_info)
+{
+  ptr = or_pack_int (ptr, indx_info->n_key_bounds);
+  if (indx_info->n_key_bounds == 0)
+    {
+      return ptr;
+    }
+  const DOMAIN_KEY_RANGES *ranges = indx_info->key_ranges_compares;
+  ptr = or_pack_int (ptr, ranges->n_columns);
+  for (int c = 0; c < ranges->n_columns; c++)
+    {
+      const int n = ranges->n_classes[c];
+      ptr = or_pack_int (ptr, n);
+      for (int i = 0; i < n * n; i++)
+	{
+	  ptr = xts_pack_decided_compare (ptr, &ranges->tables[c][i]);
+	}
+    }
+  for (int b = 0; b < indx_info->n_key_bounds; b++)
+    {
+      const DOMAIN_KEY_BOUND *bound = &indx_info->key_bounds[b];
+      const bool nonleaf = bound->nonleaf_compares != bound->compares;
+      ptr = or_pack_int (ptr, (bound->merges ? 1 : 0) | (nonleaf ? 2 : 0));
+      for (int c = 0; c < bound->n_columns; c++)
+	{
+	  ptr = xts_pack_decided_compare (ptr, &bound->compares[c]);
+	  ptr = or_pack_int (ptr, bound->classes[c]);
+	}
+      if (nonleaf)
+	{
+	  ptr = xts_pack_decided_compare (ptr, bound->nonleaf_compares);
+	}
+    }
+  /* *INDENT-OFF* */
+  auto bound_pair = [indx_info] (const KEY_RANGE * range)
+  {
+    const int key1 = range->key1_bound != NULL ? (int) (range->key1_bound - indx_info->key_bounds) : 0xFFFF;
+    const int key2 = range->key2_bound != NULL ? (int) (range->key2_bound - indx_info->key_bounds) : 0xFFFF;
+    return key1 | (key2 << 16);
+  };
+  /* *INDENT-ON* */
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      ptr = or_pack_int (ptr, bound_pair (&indx_info->key_info.key_ranges[i]));
+    }
+  if (indx_info->use_iss)
+    {
+      ptr = or_pack_int (ptr, bound_pair (&indx_info->iss_range));
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_key_compares (const INDX_INFO * indx_info)
+{
+  int size = OR_INT_SIZE;	/* n_key_bounds */
+  if (indx_info->n_key_bounds == 0)
+    {
+      return size;
+    }
+  const DOMAIN_KEY_RANGES *ranges = indx_info->key_ranges_compares;
+  size += OR_INT_SIZE;		/* n_columns */
+  for (int c = 0; c < ranges->n_columns; c++)
+    {
+      const int n = ranges->n_classes[c];
+      size += OR_INT_SIZE;
+      for (int i = 0; i < n * n; i++)
+	{
+	  size += xts_sizeof_decided_compare (&ranges->tables[c][i]);
+	}
+    }
+  for (int b = 0; b < indx_info->n_key_bounds; b++)
+    {
+      const DOMAIN_KEY_BOUND *bound = &indx_info->key_bounds[b];
+      size += OR_INT_SIZE;	/* flags */
+      for (int c = 0; c < bound->n_columns; c++)
+	{
+	  size += xts_sizeof_decided_compare (&bound->compares[c]) + OR_INT_SIZE;
+	}
+      if (bound->nonleaf_compares != bound->compares)
+	{
+	  size += xts_sizeof_decided_compare (bound->nonleaf_compares);
+	}
+    }
+  size += indx_info->key_info.key_cnt * OR_INT_SIZE + (indx_info->use_iss ? OR_INT_SIZE : 0);
   return size;
 }
 
@@ -7507,10 +8398,16 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
 
   /* we prepend the domain before we pack the regu_variable */
   size += (or_packed_domain_size (regu_var->domain, 0)	/* domain */
+	   + OR_INT_SIZE	/* converts */
 	   + OR_INT_SIZE	/* type */
 	   + OR_INT_SIZE	/* flags */
 	   + PTR_SIZE		/* vfetch_to */
 	   + PTR_SIZE);		/* REGU_VARIABLE_XASL */
+  if (xts_regu_converts (regu_var))
+    {
+      /* original_domain, conv_mode */
+      size += or_packed_domain_size (regu_var->original_domain, 0) + OR_INT_SIZE;
+    }
 
   tmp_size = xts_get_regu_variable_value_size (regu_var);
   if (tmp_size == ER_FAILED)
@@ -7660,9 +8557,35 @@ xts_sizeof_arith_type (const ARITH_TYPE * arith)
 	   + PTR_SIZE		/* rightptr */
 	   + PTR_SIZE		/* thirdptr */
 	   + OR_INT_SIZE	/* misc_operand */
+	   + OR_INT_SIZE	/* fails */
 	   + case_pred_size	/* case pred */
 	   + or_packed_domain_size (arith->domain, 0));
 
+  if (!xts_Index_stream && (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
+			    || arith->opcode == T_GREATEST))
+    {
+      const bool field = arith->opcode == T_FIELD;
+      const REGU_VARIABLE *const sides[2][2] = {
+	{field ? arith->thirdptr : arith->leftptr, field ? arith->leftptr : arith->rightptr},
+	{arith->thirdptr, arith->rightptr}
+      };
+      for (int k = 0; k < (field ? 2 : 1); k++)
+	{
+	  const int compare_size = xts_sizeof_compare (sides[k][0] != NULL ? sides[k][0]->domain : NULL,
+						       sides[k][1] != NULL ? sides[k][1]->domain : NULL);
+	  if (compare_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  size += compare_size;
+	}
+    }
+
+
+  if (!xts_Index_stream && arith_decides_arith (arith))
+    {
+      size += OR_INT_SIZE;	/* decided arith */
+    }
   return size;
 }
 
@@ -7717,6 +8640,10 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
     }
 
   size += OR_INT_SIZE;		/* flag */
+
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_aggregate (aggregate, &plan);
+  size += xts_sizeof_accumulator_plan (&plan);
   return size;
 }
 
@@ -7805,6 +8732,10 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
 	}
     }
 
+
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_analytic (analytic, &plan);
+  size += xts_sizeof_accumulator_plan (&plan);
   return size;
 }
 

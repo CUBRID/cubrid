@@ -26,7 +26,7 @@
 #include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
-static XASL_UNPACK_INFO *xasl_Unpack_info = NULL;
+static CUB_THREAD_LOCAL XASL_UNPACK_INFO *xasl_Unpack_info = NULL;
 #endif /* !SERVER_MODE */
 
 /*

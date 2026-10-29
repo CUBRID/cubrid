@@ -23,10 +23,6 @@
 #ident "$Id$"
 
 #include "config.h"
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_plan.h"
-#include "object_domain_convert.h"
-#endif
 #include <stdio.h>
 
 #include "json_builder.h"
@@ -1252,15 +1248,6 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
     }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (value_p->plan_item != NULL)
-    {
-      const DOMAIN_PLAN_ITEM *item = value_p->plan_item;
-      const char *classes[] = { "?", "CONST", "ROW", "CORR", "NON_CACHEABLE" };
-      fprintf (foutput, "{plan class=%s resolved=%d ref=%d flags=0x%03x}", classes[item->operand_class],
-	       item->resolved_index, item->ref, item->flags);
-    }
-#endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
@@ -1453,27 +1440,6 @@ qdump_print_oid (OID * oid_p)
   return true;
 }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* A comparison term's resolved comparison: its method, the resolve_domains index of a late-bind one, and the sides
- * resolve_domains converts once (a literal, a bind or a constant expression) */
-static void
-qdump_print_compare_plan (const DOMAIN_COMPARE_PLAN * comparison)
-{
-  if (comparison == NULL)
-    {
-      return;
-    }
-  const char *methods[] = { "LATE_BIND", "LATE_BIND_SESSION", "VALUES", "DIRECT", "CONVERT", "COLLATIONS", "OBJECT",
-    "RANK", "KEYS"
-  };
-  const int method = (int) comparison->fixed.method;
-  fprintf (foutput, "{compare method=%s index=%d constant=%d,%d}",
-	   method >= 0 && method < (int) (sizeof (methods) / sizeof (methods[0])) ? methods[method] : "?",
-	   comparison->fixed.compare_index, comparison->literal[0] != NULL || comparison->constant[0] != NULL,
-	   comparison->literal[1] != NULL || comparison->constant[1] != NULL);
-}
-#endif
-
 static bool
 qdump_print_comp_eval_term (EVAL_TERM * term_p)
 {
@@ -1488,9 +1454,6 @@ qdump_print_comp_eval_term (EVAL_TERM * term_p)
     {
       qdump_print_value (et_comp_p->rhs);
     }
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  qdump_print_compare_plan (et_comp_p->domain_compare);
-#endif
 
   return true;
 }
@@ -1518,20 +1481,6 @@ qdump_print_alsm_eval_term (EVAL_TERM * term_p)
     }
 
   qdump_print_value (et_alsm_p->elemset);
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (et_alsm_p->domain_compare != NULL)
-    {
-      const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = et_alsm_p->domain_compare;
-      const char *kinds[] = { "PAIR", "ROW", "LATE_BIND" };
-      fprintf (foutput, "{elements kind=%s row=%d resolved=%d}",
-	       comparison->kind < sizeof (kinds) / sizeof (kinds[0]) ? kinds[comparison->kind] : "?", comparison->row,
-	       comparison->resolved_elements_index);
-      if (comparison->kind == DOMAIN_ELEMENTS_PAIR)
-	{
-	  qdump_print_compare_plan (&comparison->pair);
-	}
-    }
-#endif
 
   return true;
 }
@@ -2856,14 +2805,6 @@ qdump_print_xasl (xasl_node * xasl_p)
     }
 
   fprintf (foutput, "\n<start of xasl structure %p>\n", xasl_p);
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (xasl_p->domain_plan != NULL)
-    {
-      const DOMAIN_PLAN *plan = xasl_p->domain_plan;
-      fprintf (foutput, "domain plan: items=%d resolved=%d refs=%d(+%d) late_bind_nodes=%d\n",
-	       plan->n_items, plan->n_resolved, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_late_bind_nodes);
-    }
-#endif
   qdump_print_xasl_type (xasl_p);
 
   if (xasl_p->flag)
@@ -4870,29 +4811,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
-      fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s", indent, ' ',
+      fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n", indent, ' ',
 	       TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
 	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
-
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  fprintf (fp, ")");
-	}
-      else
-	{
-	  fprintf (fp, ", collision_rate: %.0f%%)", stats->collision_rate * 100);
-	}
-#else
-      fprintf (fp, ")");
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_PROFILE_TIME
-      fprintf (fp, ", (F: %d, H: %d, I: %d)", TO_MSEC (stats->profile.build.fetch), TO_MSEC (stats->profile.build.hash),
-	       TO_MSEC (stats->profile.build.insert));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-      fprintf (fp, "\n");
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
@@ -4921,17 +4842,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       else
 	{
 	  fprintf (fp,
-		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
+		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
 		   indent, ' ', TO_MSEC (stats->probe.elapsed_time), stats->probe.fetches, stats->probe.ioreads,
 		   stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
-
-#if HASHJOIN_PROFILE_TIME
-	  fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (stats->profile.probe.fetch),
-		   TO_MSEC (stats->profile.probe.hash), TO_MSEC (stats->profile.probe.search),
-		   TO_MSEC (stats->profile.probe.match), TO_MSEC (stats->profile.probe.add));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-	  fprintf (fp, "\n");
 	}
 
       /* no parallel subquery */
@@ -4952,110 +4865,29 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
 	  indent += 2;
 
-	  fprintf (fp, "%*cBUILD (time: %d..%d, fetch: %ld, ioread: %ld, rows: %ld, method: %s",
+	  fprintf (fp, "%*cBUILD (time: %d..%d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n",
 		   indent, ' ', TO_MSEC (stats->build.range_elapsed_time.min),
 		   TO_MSEC (stats->build.range_elapsed_time.max), stats->build.fetches, stats->build.ioreads,
 		   stats->build.qualified_rows, hash_method_str);
-	}
-      else
-	{
-	  fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s",
-		   indent, ' ', TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
-		   stats->build.qualified_rows, hash_method_str);
-	}
-
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  fprintf (fp, ")\n");
-	}
-      else
-	{
-	  fprintf (fp, ", collision_rate: %.0f%%)\n", stats->collision_rate * 100);
-	}
-#else
-      fprintf (fp, ")\n");
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_DUMP_PARTITION
-      indent += 2;
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  fprintf (fp, "%*c#%d (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)", indent,
-		   ' ', part_index + 1, TO_MSEC (current_stats->build.elapsed_time), current_stats->build.fetches,
-		   current_stats->build.ioreads, current_stats->build.qualified_rows,
-		   qdump_hashjoin_type_string (current_stats->hash_method));
-
-#if HASHJOIN_PROFILE_TIME
-	  fprintf (fp, ", (F: %d, H: %d, I: %d)",
-		   TO_MSEC (current_stats->profile.build.fetch), TO_MSEC (current_stats->profile.build.hash),
-		   TO_MSEC (current_stats->profile.build.insert));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-	  fprintf (fp, "\n");
-	}
-
-      indent -= 2;
-#endif /* HASHJOIN_DUMP_PARTITION */
-
-      if (stats->num_parallel_threads > 1)
-	{
 	  fprintf (fp,
 		   "%*cPROBE (time: %d..%d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
 		   indent, ' ', TO_MSEC (stats->probe.range.elapsed_time.min),
 		   TO_MSEC (stats->probe.range.elapsed_time.max), stats->probe.fetches, stats->probe.ioreads,
 		   stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
+
+	  indent -= 2;
 	}
       else
 	{
+	  fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n",
+		   indent, ' ', TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
+		   stats->build.qualified_rows, hash_method_str);
 	  fprintf (fp,
 		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
 		   indent, ' ', TO_MSEC (stats->probe.elapsed_time),
 		   stats->probe.fetches, stats->probe.ioreads, stats->probe.read_rows, stats->probe.read_keys,
 		   stats->probe.qualified_rows);
 	}
-
-#if HASHJOIN_DUMP_PARTITION
-      indent += 2;
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  fprintf (fp,
-		   "%*c#%d (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
-		   indent, ' ', part_index + 1, TO_MSEC (current_stats->probe.elapsed_time),
-		   current_stats->probe.fetches, current_stats->probe.ioreads, current_stats->probe.read_rows,
-		   current_stats->probe.read_keys, current_stats->probe.qualified_rows);
-
-#if HASHJOIN_PROFILE_TIME
-	  fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
-		   TO_MSEC (current_stats->profile.probe.fetch), TO_MSEC (current_stats->profile.probe.hash),
-		   TO_MSEC (current_stats->profile.probe.search), TO_MSEC (current_stats->profile.probe.match),
-		   TO_MSEC (current_stats->profile.probe.add));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-	  fprintf (fp, "\n");
-	}
-
-      indent -= 2;
-#endif /* HASHJOIN_DUMP_PARTITION */
-
-      if (stats->num_parallel_threads > 1)
-	{
-	  indent -= 2;
-	}
-
-#if HASHJOIN_PROFILE_TIME
-      fprintf (fp, "%*cMERGE (time: %d, fetch: %ld, ioread: %ld, rows: %ld)\n", indent, ' ',
-	       TO_MSEC (stats->profile.merge.elapsed_time), stats->profile.merge.fetches, stats->profile.merge.ioreads,
-	       stats->profile.merge.qualified_rows);
-#endif /* HASHJOIN_PROFILE_TIME */
     }
 
   /* parallel subquery or partitioned hash join */
@@ -5191,26 +5023,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (build, "ioread", trace_json_integer (stats->build.ioreads));
       trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
       trace_json_object_set_new (build, "method", trace_json_string (qdump_hashjoin_type_string (stats->hash_method)));
-
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  /* nothing to do */
-	}
-      else
-	{
-	  trace_json_object_set_new (build, "collision_rate", trace_json_real (stats->collision_rate * 100));
-	}
-#endif /* HASHJOIN_COLLISION_RATE */
       trace_json_object_set_new (parent, "build", build);
-
-#if HASHJOIN_PROFILE_TIME
-      profile = trace_json_object ();
-      trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (stats->profile.build.fetch)));
-      trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (stats->profile.build.hash)));
-      trace_json_object_set_new (profile, "I", trace_json_integer (TO_MSEC (stats->profile.build.insert)));
-      trace_json_object_set_new (build, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
@@ -5228,16 +5041,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (probe, "readkeys", trace_json_integer (stats->probe.read_keys));
       trace_json_object_set_new (probe, "rows", trace_json_integer (stats->probe.qualified_rows));
       trace_json_object_set_new (parent, "probe", probe);
-
-#if HASHJOIN_PROFILE_TIME
-      profile = trace_json_object ();
-      trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (stats->profile.probe.fetch)));
-      trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (stats->profile.probe.hash)));
-      trace_json_object_set_new (profile, "S", trace_json_integer (TO_MSEC (stats->profile.probe.search)));
-      trace_json_object_set_new (profile, "M", trace_json_integer (TO_MSEC (stats->profile.probe.match)));
-      trace_json_object_set_new (profile, "A", trace_json_integer (TO_MSEC (stats->profile.probe.add)));
-      trace_json_object_set_new (probe, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
 
       if (stats->num_parallel_threads > 1)
 	{
@@ -5298,46 +5101,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
       trace_json_object_set_new (build, "method", trace_json_string (hash_method_str));
 
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  /* nothing to do */
-	}
-      else
-	{
-	  trace_json_object_set_new (build, "collision_rate", trace_json_real (stats->collision_rate * 100));
-	}
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_DUMP_PARTITION
-      part_array = trace_json_array ();
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  input = trace_json_object ();
-	  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (current_stats->build.elapsed_time)));
-	  trace_json_object_set_new (input, "fetch", trace_json_integer (current_stats->build.fetches));
-	  trace_json_object_set_new (input, "ioread", trace_json_integer (current_stats->build.ioreads));
-	  trace_json_object_set_new (input, "rows", trace_json_integer (current_stats->build.qualified_rows));
-	  trace_json_object_set_new (input, "method",
-				     trace_json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
-	  trace_json_array_append_new (part_array, input);
-
-#if HASHJOIN_PROFILE_TIME
-	  profile = trace_json_object ();
-	  trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (current_stats->profile.build.fetch)));
-	  trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (current_stats->profile.build.hash)));
-	  trace_json_object_set_new (profile, "I", trace_json_integer (TO_MSEC (current_stats->profile.build.insert)));
-	  trace_json_object_set_new (input, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
-	}
-
-      trace_json_object_set_new (build, "partition_list", part_array);
-#endif /* HASHJOIN_DUMP_PARTITION */
-
       probe = trace_json_object ();
       if (stats->num_parallel_threads > 1)
 	{
@@ -5355,38 +5118,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (probe, "readkeys", trace_json_integer (stats->probe.read_keys));
       trace_json_object_set_new (probe, "rows", trace_json_integer (stats->probe.qualified_rows));
 
-#if HASHJOIN_DUMP_PARTITION
-      part_array = trace_json_array ();
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  input = trace_json_object ();
-	  trace_json_object_set_new (input, "part_id", trace_json_integer (part_index + 1));
-	  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (current_stats->probe.elapsed_time)));
-	  trace_json_object_set_new (input, "fetch", trace_json_integer (current_stats->probe.fetches));
-	  trace_json_object_set_new (input, "ioread", trace_json_integer (current_stats->probe.ioreads));
-	  trace_json_object_set_new (input, "readrows", trace_json_integer (current_stats->probe.read_rows));
-	  trace_json_object_set_new (input, "readkeys", trace_json_integer (current_stats->probe.read_keys));
-	  trace_json_object_set_new (input, "rows", trace_json_integer (current_stats->probe.qualified_rows));
-	  trace_json_array_append_new (part_array, input);
-
-#if HASHJOIN_PROFILE_TIME
-	  profile = trace_json_object ();
-	  trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
-	  trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (current_stats->profile.probe.hash)));
-	  trace_json_object_set_new (profile, "S", trace_json_integer (TO_MSEC (current_stats->profile.probe.search)));
-	  trace_json_object_set_new (profile, "M", trace_json_integer (TO_MSEC (current_stats->profile.probe.match)));
-	  trace_json_object_set_new (profile, "A", trace_json_integer (TO_MSEC (current_stats->profile.probe.add)));
-	  trace_json_object_set_new (input, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
-	}
-
-      trace_json_object_set_new (probe, "partition_list", part_array);
-#endif /* HASHJOIN_DUMP_PARTITION */
-
       if (stats->num_parallel_threads > 1)
 	{
 	  parallel = trace_json_object ();
@@ -5401,15 +5132,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	  trace_json_object_set_new (parent, "build", build);
 	  trace_json_object_set_new (parent, "probe", probe);
 	}
-
-#if HASHJOIN_PROFILE_TIME
-      merge = trace_json_object ();
-      trace_json_object_set_new (merge, "time", trace_json_integer (TO_MSEC (stats->profile.merge.elapsed_time)));
-      trace_json_object_set_new (merge, "fetch", trace_json_integer (stats->profile.merge.fetches));
-      trace_json_object_set_new (merge, "ioread", trace_json_integer (stats->profile.merge.ioreads));
-      trace_json_object_set_new (merge, "rows", trace_json_integer (stats->profile.merge.qualified_rows));
-      trace_json_object_set_new (parent, "merge", merge);
-#endif /* HASHJOIN_PROFILE_TIME */
     }
 
   /* parallel subquery or partitioned hash join */

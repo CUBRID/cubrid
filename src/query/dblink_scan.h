@@ -76,6 +76,8 @@ struct dblink_scan_info
   int corr_key_count;		/* copy of spec->s.dblink_node.corr_key_count */
   struct regu_variable_list_node *corr_key_regu_list;	/* non-owning; same chain as in access spec */
   bool corr_skip_result_fetch;	/* corr key NULL — no cci_execute; scan_next returns S_END */
+  struct dblink_column_plan *col_plan;	/* CBRD-27583: each column's conversion, planned at the open
+					 * (dblink_plan_columns); NULL until then, freed with the statement */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
@@ -120,6 +122,7 @@ extern int dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_nod
 				 DBLINK_HOST_VARS * host_vars);
 extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
+extern int dblink_plan_columns (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern int dblink_corr_prepare (THREAD_ENTRY * thread_p, struct access_spec_node *spec, DBLINK_SCAN_INFO * scan_info);
 extern int dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd);
 extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);

@@ -1,5 +1,5 @@
 /*
- *
+ * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,20 +16,5 @@
  *
  */
 
-#include "schema_information_schema_definition.hpp"
-
-namespace cubschema
-{
-  information_schema_definition::information_schema_definition (const std::string &n, const attr_vec_type &attrs,
-      const cstr_vec_type &cts,
-      const authorization &au,
-      row_init_type ri)
-    : name {n}
-    , attributes {attrs}
-    , constraints {cts}
-    , auth {au}
-    , row_initializer {ri}
-  {
-    //
-  }
-}
+#define CATCH_CONFIG_MAIN
+#include "catch2/catch.hpp"

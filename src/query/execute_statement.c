@@ -3450,12 +3450,13 @@ end:
 #define ER_PT_UNKNOWN_STATEMENT ER_GENERIC_ERROR
 #define UNIQUE_SAVEPOINT_EXTERNAL_STATEMENT "eXTERNALsTATEMENT"
 
-bool do_Trigger_involved;
+/* statement execution state; per connection (thread-local for multiple connections) */
+CUB_THREAD_LOCAL bool do_Trigger_involved;
 
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
-bool cdc_Trigger_involved = false;
+CUB_THREAD_LOCAL bool cdc_Trigger_involved = false;
 
 /*
  * do_statement() -
@@ -4059,11 +4060,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      /* 
-       * This condition is identical to the one used in parser_print_tree.
-       * Both functions must maintain the same condition to ensure consistency.
-       * Be careful not to modify only one of them.
-       */
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
@@ -10065,8 +10061,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
+		  /* CBRD-27583: a failure the generation left in er only is recorded at the statement (-494); one
+		   * the generation already recorded in the parser is not recorded again */
+		  if (!pt_has_error (parser))
+		    {
+		      pt_record_error (parser, parser->statement_number, statement->line_number,
+				       statement->column_number, er_msg (), NULL);
+		    }
 		}
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
@@ -10344,7 +10345,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* check host variables are filled : values from orderby_for may not have been auto-parameterized as host
 	   * variables; if that is the case, do it now */
-	  if (statement->info.update.orderby_for != NULL && parser->auto_param_count == 0)
+	  if (statement->info.update.orderby_for != NULL && PT_AUTO_PARAM_LITERAL_COUNT (parser) == 0)
 	    {
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
@@ -11443,8 +11444,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
+		  /* CBRD-27583: a failure the generation left in er only is recorded at the statement (-494); one
+		   * the generation already recorded in the parser is not recorded again */
+		  if (!pt_has_error (parser))
+		    {
+		      pt_record_error (parser, parser->statement_number, statement->line_number,
+				       statement->column_number, er_msg (), NULL);
+		    }
 		}
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
@@ -15398,6 +15404,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* the plan about to be looked up or compiled says again whether the statement is a target */
   statement->flag.bind_watch_candidate = 0;
+  statement->info.query.limit_opt_flags = 0;
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
@@ -15451,6 +15458,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * the driver-neutral path chooses among the variants too */
 	      statement->flag.bind_watch_candidate = 1;
 	    }
+	  statement->info.query.limit_opt_flags = stream.xasl_header->xasl_flag & XASL_LIMIT_OPT_FLAGS;
 	}
     }
 
@@ -15476,6 +15484,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
 	{
 	  statement->flag.bind_watch_candidate = 1;
+	}
+      if (contextp->xasl)
+	{
+	  statement->info.query.limit_opt_flags = contextp->xasl->header.xasl_flag & XASL_LIMIT_OPT_FLAGS;
 	}
       AU_RESTORE (au_save);
 
@@ -15575,6 +15587,120 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return NO_ERROR;
 }
 
+/* CBRD-27583: whether a derived position the subquery holds (host_var_p) derives from user position user */
+static bool
+do_subquery_derives_from (const PARSER_CONTEXT * parser, PT_NODE ** host_var_p, int var_count, int user)
+{
+  for (int k = parser->host_var_count; k < var_count; k++)
+    {
+      if (host_var_p[k] != NULL && pt_is_derived_host_var (parser, k) && parser->host_var_derived_from[k] == user)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* an array of n elements of size for the subquery's positions, when the statement's array exists */
+static void *
+do_subquery_position_array (const void *statement_array, int n, size_t size, bool * failed)
+{
+  if (statement_array == NULL || n <= 0)
+    {
+      return NULL;
+    }
+  void *array = calloc (n, size);
+  *failed = *failed || array == NULL;
+  return array;
+}
+
+/*
+ * do_subquery_positions () - CBRD-27583: the subquery's positions keep their kinds and what its plan reads them in:
+ *   a user position (sub_host_var_index holds them first) the user position's domains, format class, ELT index and
+ *   bind domain, a derived position its domains and its user position's new number, an auto-parameter its own.
+ *   The caller frees the arrays.
+ */
+static int
+do_subquery_positions (const PARSER_CONTEXT * parser, PARSER_CONTEXT * context, const PT_NODE * stmt)
+{
+  const int count = stmt->sub_host_var_count;
+  int users = 0;
+  bool failed = false;
+
+  while (users < count && stmt->sub_host_var_index[users] < parser->host_var_count)
+    {
+      users++;
+    }
+  context->host_var_count = users;
+  context->auto_param_count = count - users;
+  context->host_var_derived_count = 0;
+
+  /* the domains of the user positions, and of every position once the compilation assigned derived positions
+   * (pt_grow_host_var_positions) */
+  const int typed = parser->host_var_derived_from != NULL ? count : users;
+  context->host_var_expected_domains =
+    (TP_DOMAIN **) do_subquery_position_array (parser->host_var_expected_domains, typed, sizeof (TP_DOMAIN *), &failed);
+  context->host_var_compiled_domains =
+    (TP_DOMAIN **) do_subquery_position_array (parser->host_var_compiled_domains, typed, sizeof (TP_DOMAIN *), &failed);
+  context->host_var_derived_from =
+    (int *) do_subquery_position_array (parser->host_var_derived_from, count, sizeof (int), &failed);
+  context->host_var_derived_pads =
+    (bool *) do_subquery_position_array (parser->host_var_derived_pads, count, sizeof (bool), &failed);
+  context->host_var_format_classes =
+    (int *) do_subquery_position_array (parser->host_var_format_classes, users, sizeof (int), &failed);
+  context->host_var_elt_indexes =
+    (DB_BIGINT *) do_subquery_position_array (parser->host_var_elt_indexes, users, sizeof (DB_BIGINT), &failed);
+  context->host_var_bind_domains =
+    (TP_DOMAIN **) do_subquery_position_array (parser->host_var_bind_domains, users, sizeof (TP_DOMAIN *), &failed);
+  if (failed)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (TP_DOMAIN *));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (int s = 0; s < count; s++)
+    {
+      const int i = stmt->sub_host_var_index[s];
+      if (context->host_var_expected_domains != NULL && s < typed)
+	{
+	  context->host_var_expected_domains[s] = parser->host_var_expected_domains[i];
+	}
+      if (context->host_var_compiled_domains != NULL && s < typed)
+	{
+	  context->host_var_compiled_domains[s] = parser->host_var_compiled_domains[i];
+	}
+      if (context->host_var_format_classes != NULL && s < users)
+	{
+	  context->host_var_format_classes[s] = parser->host_var_format_classes[i];
+	}
+      if (context->host_var_elt_indexes != NULL && s < users)
+	{
+	  context->host_var_elt_indexes[s] = parser->host_var_elt_indexes[i];
+	}
+      if (context->host_var_bind_domains != NULL && s < users)
+	{
+	  context->host_var_bind_domains[s] = parser->host_var_bind_domains[i];
+	}
+      if (context->host_var_derived_from != NULL)
+	{
+	  context->host_var_derived_from[s] = -1;
+	  for (int u = 0; pt_is_derived_host_var (parser, i) && u < users; u++)
+	    {
+	      if (stmt->sub_host_var_index[u] == parser->host_var_derived_from[i])
+		{
+		  context->host_var_derived_from[s] = u;
+		  context->host_var_derived_count++;
+		  if (context->host_var_derived_pads != NULL)
+		    {
+		      context->host_var_derived_pads[s] = pt_is_padded_host_var (parser, i);
+		    }
+		}
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_subquery () - prepare subquery statements for query cache
  * return : Error code
@@ -15640,6 +15766,15 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   for (i = 0; i < var_count; i++)
     {
+      if (host_var_p[i] == NULL && i < parser->host_var_count
+	  && do_subquery_derives_from (parser, host_var_p, var_count, i))
+	{
+	  /* CBRD-27583: a user position the subquery reads only by its derived positions, whose plan domain takes the
+	   * user's value (pt_decide_position_collation) */
+	  stmt->sub_host_var_index[stmt->sub_host_var_count] = i;
+	  db_value_clone (&parser->host_variables[i], &context.host_variables[stmt->sub_host_var_count]);
+	  stmt->sub_host_var_count++;
+	}
       if (host_var_p[i])
 	{
 	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
@@ -15667,12 +15802,15 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
     }
 
-  context.host_var_count = stmt->sub_host_var_count;
+  err = do_subquery_positions (parser, &context, stmt);
 
   /* save the flag for main query's prepare */
   save_flag = stmt->info.query.is_subquery;
 
-  err = do_prepare_select (&context, stmt);
+  if (err == NO_ERROR)
+    {
+      err = do_prepare_select (&context, stmt);
+    }
 
   /* move blocks context added into parser's own list to avoid leaking them. */
   parser->string_blocks = context.string_blocks;
@@ -15707,6 +15845,13 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       free (context.host_variables);
     }
+  free (context.host_var_expected_domains);
+  free (context.host_var_compiled_domains);
+  free (context.host_var_format_classes);
+  free (context.host_var_elt_indexes);
+  free (context.host_var_derived_from);
+  free (context.host_var_derived_pads);
+  free (context.host_var_bind_domains);
 
   return err;
 
@@ -16099,7 +16244,9 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (ws_need_flush ())
 	{
+#if defined(SA_MODE)
 	  if (tm_Use_OID_preflush)
+#endif
 	    {
 	      (void) locator_assign_all_permanent_oids ();
 	    }
@@ -18680,7 +18827,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert (er_errid () != NO_ERROR);
 #endif
 	      err = er_errid ();
-	      if (err != NO_ERROR)
+	      /* CBRD-27583: a failure the generation left in er only is recorded at the statement (-494); one the
+	       * generation already recorded in the parser is not recorded again */
+	      if (err != NO_ERROR && !pt_has_error (parser))
 		{
 		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
 				   er_msg (), NULL);
