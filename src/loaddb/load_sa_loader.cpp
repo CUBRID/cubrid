@@ -2154,14 +2154,17 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
   else
     {
       /*
-       * No collection is open, so the opening brace was refused and this element has
-       * nowhere to go. A %constructor line is the way in: ldr_act_meth () takes the
-       * brace, reports it and steps over the slot, and the elements still arrive here
-       * behind it - with next_attr already past the last descriptor, so there is no
-       * attrs[next_attr] to convert against either. The brace reported the error;
-       * drop the element without adding another.
+       * An element only means something inside a collection that was accepted, held
+       * by the attribute next_attr names. A %constructor line is the way to get here
+       * without either: ldr_act_meth () refuses the leading brace, reports it and
+       * steps over the slot, and the elements still arrive here behind it - with
+       * next_attr moved on, possibly past the last descriptor. The brace reported the
+       * error; drop the element without adding another.
+       *
+       * Both halves are tested. The slot bound does not follow from the open
+       * collection on its own, so do not make attrs[next_attr] depend on it.
        */
-      if (context->collection == NULL)
+      if (context->collection == NULL || context->next_attr >= context->num_attrs)
 	{
 	  goto error_exit;
 	}
@@ -4211,13 +4214,23 @@ ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len,
   SM_ATTRIBUTE *att = attdesc->att;
   int err = NO_ERROR;
 
-
-  if (context->collection == NULL)
+  /*
+   * Which brace this is comes from the token, not from whether a collection
+   * happens to be open. The two are not the same thing: on a %constructor line
+   * ldr_act_meth () refuses the leading brace, so nothing is open by the time the
+   * trailing brace reaches ldr_act_attr (), and reading the state here took that
+   * trailing brace for a leading one - building a collection nobody asked for, on
+   * whichever slot next_attr had moved to. LDR_IS_INSIDE_COLLECTION () says what
+   * the token is.
+   */
+  if (LDR_IS_INSIDE_COLLECTION (str, LDR_COLLECTION))
     {
       /*
        * We've just seen the leading brace of a collection, and we need to
        * create the "holding" collection.
        */
+      assert (context->collection == NULL);
+
       context->collection = db_col_create (TP_DOMAIN_TYPE (att->domain), 0, attdesc->collection_domain);
 
       if (context->collection == NULL)
@@ -4237,6 +4250,12 @@ ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len,
        * now time to assign the collection to the instance.
        */
       DB_VALUE tmp;
+
+      if (context->collection == NULL)
+	{
+	  /* The leading brace was refused, so there is no collection to assign. */
+	  return NO_ERROR;
+	}
 
       db_make_collection (&tmp, context->collection);
 
