@@ -1492,7 +1492,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
 
 1385 Invalid username or password.
 
@@ -2018,6 +2018,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
+344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 
 
 
