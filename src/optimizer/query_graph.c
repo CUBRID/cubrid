@@ -10026,6 +10026,13 @@ qo_term_dump (QO_TERM * term, FILE * f)
       break;
     }
 
+  /* The term was shipped into the DBLink remote SQL. It stays in the join graph for its selectivity, but is not
+   * evaluated locally. */
+  if (conj != NULL && conj->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (conj, PT_EXPR_INFO_DBLINK_PUSHED))
+    {
+      fputs (" (dblink pushed)", f);
+    }
+
   if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
     {
       fputs (" (mergeable)", f);
