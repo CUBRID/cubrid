@@ -5206,8 +5206,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_io_cost = outer_pages * QO_COST_SEQ_PAGE;
 
   /* Partitioned hash join, as hjoin_check_partition () and hjoin_split_qlist () run it: the join
-   * partitions once the hash entries of the smaller input exceed mem_limit * PARTITION_FILL_FACTOR
-   * (one decision for the join, whichever side builds). Both inputs are then read, hashed and
+   * partitions once the hash entries of the build input exceed mem_limit * PARTITION_FILL_FACTOR
+   * (one decision for the join, made before the build side of an inner join is chosen). Both inputs are then read, hashed and
    * written once into partition files and each partition is read back once, in order. The
    * partition files are temporary list pages read through the page buffer, so only the pages
    * the buffer cannot hold reach the disk: twice (write and read back) the part of both inputs
@@ -5222,7 +5222,25 @@ qo_hjoin_cost (QO_PLAN * plan_p)
      * Keep the two in sync. */
     UINT64 per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + HJ_HASH_ENTRY_POS_SIZE;
 
-    spills = (MIN (inner_cardinality, outer_cardinality) * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR;
+    double build_cardinality;
+
+    /* the side hjoin_check_partition () sizes the partitions by: the build side the join type fixes
+     * (the inner of a LEFT OUTER, SEMI or ANTI join, the outer of a RIGHT OUTER join), else the smaller */
+    if (plan_p->plan_un.join.join_type == JOIN_LEFT
+	|| (plan_p->plan_un.join.join_type == JOIN_INNER && qo_plan_semi_anti_join_type (inner_plan_p) != PT_JOIN_NONE))
+      {
+	build_cardinality = inner_cardinality;
+      }
+    else if (plan_p->plan_un.join.join_type == JOIN_RIGHT)
+      {
+	build_cardinality = outer_cardinality;
+      }
+    else
+      {
+	build_cardinality = MIN (inner_cardinality, outer_cardinality);
+      }
+
+    spills = mem_limit > 0 && (build_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR;
     if (spills)
       {
 	double split_cpu = (inner_cardinality + outer_cardinality) * QO_CPU_WEIGHT * HJ_SPLIT_CPU_OVERHEAD_FACTOR;
