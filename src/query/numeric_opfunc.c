@@ -3228,49 +3228,37 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 
   if (prec == 0)
     {
-      if (pad_character_zero)
+      if (!pad_character_zero)
 	{
-	  prec = 1;
-	  num_string[0] = '0';
-	  num_string[prec] = '\0';
-	  numeric_coerce_dec_str_to_num (num_string, num);
-	}
-      else if (!sign_found && !decimal_part)
-	{
-	  /* An empty or whitespace-only string ('', '   ') */
+	  if (sign_found || decimal_part)
+	    {
+	      /*
+	       * no valid digit was found in input.
+	       * reject strings that do not contain any numeric digit.
+	       *
+	       * examples:
+	       *   '+', '-'                  (sign only)
+	       *   '.', ' . ', '   .   '     (decimal point only)
+	       *   '+.', '-.', ' + . '       (sign + non-digit combinations)
+	       */
+	      ret = DOMAIN_INCOMPATIBLE;
+	      goto exit_on_error;
+	    }
+
+	  /* an empty or whitespace-only string ('', '   ') is NULL as before CBRD-26749 when the parameter is set */
 	  if (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL))
 	    {
-	      /* NULL, as before CBRD-26749 */
 	      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
 	      return NO_ERROR;
 	    }
+	}
 
-	  /* 0, the same as the other numeric types */
-	  prec = 1;
-	  num_string[0] = '0';
-	  num_string[prec] = '\0';
-	  numeric_coerce_dec_str_to_num (num_string, num);
-	}
-      else
-	{
-	  /*
-	   * no valid digit was found in input.
-	   * reject strings that do not contain any numeric digit.
-	   *
-	   * examples:
-	   *   '+', '-'                  (sign only)
-	   *   '.', ' . ', '   .   '     (decimal point only)
-	   *   '+.', '-.', ' + . '       (sign + non-digit combinations)
-	   */
-	  ret = DOMAIN_INCOMPATIBLE;
-	  goto exit_on_error;
-	}
+      /* zero padding ('000') and an empty or whitespace-only string are 0, the same as the other numeric types */
+      num_string[prec++] = '0';
     }
-  else
-    {
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
-    }
+
+  num_string[prec] = '\0';
+  numeric_coerce_dec_str_to_num (num_string, num);
 
   /* Make the return value */
   if (negate_value)
