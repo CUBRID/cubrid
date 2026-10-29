@@ -16,20 +16,25 @@
  *
  */
 
-#include "schema_information_schema_definition.hpp"
+
+/*
+ * schema_system_metadata_builder.hpp
+ */
+
+#ifndef _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
+#define _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
+
+#include "schema_system_metadata_definition.hpp"
 
 namespace cubschema
 {
-  information_schema_definition::information_schema_definition (const std::string &n, const attr_vec_type &attrs,
-      const cstr_vec_type &cts,
-      const authorization &au,
-      row_init_type ri)
-    : name {n}
-    , attributes {attrs}
-    , constraints {cts}
-    , auth {au}
-    , row_initializer {ri}
+
+  namespace system_metadata_builder
   {
-    //
+    int install_classes (const std::vector<system_metadata_definition> &defs);
+    int install_vclasses (const std::vector<system_metadata_definition> &defs);
+    int rebuild_vclasses (const std::vector<system_metadata_definition> &defs, const std::string &owner_prefix);
   }
 }
+
+#endif // _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_

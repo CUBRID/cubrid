@@ -132,6 +132,20 @@ typedef enum bt_load_px_outcome
 /* Header (Oth) record of the page */
 #define HEADER 0
 
+/* Check if page is a valid b-tree leaf node. Usually called after unfix and
+ * re-fix without validation.
+ */
+/* TODO: Is this expensive? Can we find a faster way to check it?
+ *	 (e.g. save last deallocation page LSA - it will be then enough to
+ *	 compare with an LSA saved before unfixing).
+ */
+#define BTREE_IS_PAGE_VALID_LEAF(thread_p, page) \
+  ((page) != NULL \
+   && pgbuf_get_page_ptype (thread_p, page) == PAGE_BTREE \
+   && spage_get_slot (page, HEADER) != NULL \
+   && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
+   && (btree_get_node_header (thread_p, page))->node_level == 1)
+
 #if !defined(NDEBUG)
 #define BTREE_INVALID_INDEX_ID(btid) \
  ((btid)->vfid.fileid == NULL_FILEID || (btid)->vfid.volid == NULL_VOLID \

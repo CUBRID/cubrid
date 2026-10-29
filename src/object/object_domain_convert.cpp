@@ -143,28 +143,42 @@ template <> struct tp_numeric_value<DB_TYPE_MONETARY>
   }
 };
 
+/* Whether a floating point value is out of the INTEGER range. A value above DB_INT32_MAX overflows even when it would
+ * round down into the range, as it does for SMALLINT and NUMERIC: the conversions narrow ROUND (value), so the bound is
+ * DB_INT32_MAX itself. It is exact in double (in float it rounds up to 2^31, which would let 2^31 through), and the
+ * range is tested from the inside so that a NaN, which fails every comparison, is an overflow too. */
+static bool
+tp_double_int_overflow (double number)
+{
+  return ! (number >= DB_INT32_MIN && number <= DB_INT32_MAX);
+}
+
 template <DB_TYPE DST, typename T>
 static bool
 tp_numeric_overflow (T number)
 {
   if constexpr (DST == DB_TYPE_SHORT)
     {
+      /* The SHORT limits are exact in float and double; the range is tested from the inside so that a NaN, which
+       * fails every comparison, is an overflow, as it is for INTEGER and BIGINT below. */
+      if constexpr (std::is_floating_point<T>::value)
+	{
+	  return ! (number >= DB_INT16_MIN && number <= DB_INT16_MAX);
+	}
       return OR_CHECK_SHORT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_INTEGER)
     {
-      /* DB_INT32_MAX is not representable in a float and DB_BIGINT_MAX is representable
-       * in neither float nor double, so comparing a floating point value against the
-       * limit itself compares it against the next power of two and lets the boundary
-       * value through. The _FROM_FP forms compare against that power of two instead. */
       if constexpr (std::is_floating_point<T>::value)
 	{
-	  return OR_CHECK_INT_OVERFLOW_FROM_FP (number);
+	  return tp_double_int_overflow (number);
 	}
       return OR_CHECK_INT_OVERFLOW (number);
     }
   else if constexpr (DST == DB_TYPE_BIGINT)
     {
+      /* DB_BIGINT_MAX is representable in neither float nor double, so comparing a floating point value against it
+       * compares against 2^63 and lets that value through. The _FROM_FP form compares against 2^63 itself. */
       if constexpr (std::is_floating_point<T>::value)
 	{
 	  return OR_CHECK_BIGINT_OVERFLOW_FROM_FP (number);
@@ -2147,7 +2161,7 @@ tp_value_convert_double_to_time (const DB_VALUE *src, DB_VALUE *target, const TP
 
   {
     double dtmp = db_get_double (src);
-    if (OR_CHECK_INT_OVERFLOW (dtmp))
+    if (tp_double_int_overflow (dtmp))
       {
 	status = DOMAIN_OVERFLOW;
       }
@@ -2175,7 +2189,7 @@ tp_value_convert_monetary_to_time (const DB_VALUE *src, DB_VALUE *target, const 
   int second;
 
   v_money = db_get_monetary (src);
-  if (OR_CHECK_INT_OVERFLOW (v_money->amount))
+  if (tp_double_int_overflow (v_money->amount))
     {
       status = DOMAIN_OVERFLOW;
     }
@@ -3198,6 +3212,29 @@ tp_value_convert_varchar_to_varchar (const DB_VALUE *src, DB_VALUE *target, cons
     }
 
   return status;
+}
+
+/*
+ * tp_value_convert_char_prefix_to_varchar () - CBRD-27583: INDEX_PREFIX's prefix of a CHAR, shorter than its
+ *   precision, into a VARCHAR of its bytes, as the column cast relabelled it in place before (tp_can_steal_string);
+ *   the CHAR to VARCHAR converter would pad it to its precision. Delete it when CBRD-27694 makes INDEX_PREFIX of a
+ *   CHAR return a VARCHAR.
+ */
+static TP_DOMAIN_STATUS
+tp_value_convert_char_prefix_to_varchar (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+    date_conversion_error *error)
+{
+  DB_VALUE prefix;
+
+  db_make_varchar (&prefix, DB_DEFAULT_PRECISION, db_get_string (src), db_get_string_size (src),
+		   db_get_string_codeset (src), db_get_string_collation (src));
+  return tp_value_convert_varchar_to_varchar (&prefix, target, desired_domain, error);
+}
+
+TP_VALUE_CONVERTER
+domain_char_prefix_converter (void)
+{
+  return tp_value_convert_char_prefix_to_varchar;
 }
 
 static TP_DOMAIN_STATUS
@@ -7331,14 +7368,12 @@ tp_value_convert_json_scalar_to_clob (const DB_VALUE *src, DB_VALUE *target, con
   return status;
 }
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_oid_to_oid (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *, date_conversion_error *)
 {
   pr_clone_value (src, target);
   return DOMAIN_COMPATIBLE;
 }
-#endif /* !defined (SERVER_MODE) */
 
 /*
  * tp_value_convert_enumeration_name_to_double () - an ENUM added to a string without plus_as_concat: its name, then
@@ -7462,8 +7497,8 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  * collection targets, which coerce the elements implicitly.
  *
  * The whole policy, one character per pair, read from this switch by calling it for every (src, dst, mode) at run
- * time (SA build; the server build differs in the six object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
- * VOBJ <- OBJECT, OID <- OID, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
+ * time (SA build; the server build differs in the five object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
+ * VOBJ <- OBJECT, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
  * indexable as well as readable. When a case changes, change its character.
  *
  *    .  the pair does not convert in any mode     =  the same type: nullptr, nothing to convert
@@ -8327,13 +8362,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
     case DB_TYPE_OID:
       switch (src)
 	{
-#if !defined (SERVER_MODE)
 	case DB_TYPE_OID:
+	  /* CBRD-27583: the server too, as tp_value_cast_internal clones an OID into an OID domain */
 	  return tp_value_convert_oid_to_oid;
-#else /* !defined (SERVER_MODE) */
-	case DB_TYPE_OID:
-	  return tp_value_convert_incompatible;
-#endif /* !defined (SERVER_MODE) */
 	default:
 	  break;
 	}
@@ -8434,4 +8465,18 @@ tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMA
     default:
       return tp_value_convert_incompatible;
     }
+}
+
+/*
+ * tp_value_numeric_fit_converter () - the converter of a NUMERIC into a NUMERIC domain (its precision and scale)
+ *   return: the converter
+ *
+ * The same for every target, as converters are keyed on the types: a caller that parsed a NUMERIC fits it without a
+ * lookup (tp_value_cast_internal's string to NUMERIC path).
+ */
+TP_VALUE_CONVERTER
+tp_value_numeric_fit_converter (void)
+{
+  static const TP_VALUE_CONVERTER fit = tp_value_find_converter<DOMAIN_CONVERT_ASSIGN> (DB_TYPE_NUMERIC, DB_TYPE_NUMERIC);
+  return fit;
 }
