@@ -704,6 +704,7 @@ static int ldr_reset_context (LDR_CONTEXT *context);
 static void ldr_flush (LDR_CONTEXT *context);
 static int check_commit (LDR_CONTEXT *context);
 static void ldr_restore_pin_and_drop_obj (LDR_CONTEXT *context, bool drop_obj);
+static void ldr_clear_ctor_values (LDR_CONTEXT *context);
 static int ldr_finish_context (LDR_CONTEXT *context);
 static int ldr_refresh_attrs (LDR_CONTEXT *context);
 static int update_default_count (CLASS_TABLE *table, OID *oid);
@@ -922,6 +923,8 @@ error_exit:
   {
     // moved from grammar file;
     skip_current_instance = false;
+
+    ldr_clear_ctor_values (ldr_Current_context);
 
     CHECK_SKIP ();
     if (ldr_Current_context->valid)
@@ -1793,6 +1796,42 @@ ldr_clear_context (LDR_CONTEXT *context)
  *   Called if we have an internal error, or when we finish processing each
  *   class.
  */
+/*
+ * ldr_clear_ctor_values - let go of what the line before left in the slots
+ *    context(in/out): current context
+ * Note:
+ *    A %constructor line converts its tokens as they arrive and construct_instance ()
+ *    reads them once the method has returned an object. A converted string does not own
+ *    its characters - to_db_string () points the value at the parser's token and leaves
+ *    need_clear false - so once the line is done the slot holds a pointer into memory
+ *    that is gone.
+ *
+ *    Nothing reads it today: finish_line () refuses a line that did not fill every slot,
+ *    so construct_instance () never sees one left from the line before. That is the only
+ *    thing standing between here and a read of freed memory, and it is a count check,
+ *    not a statement about lifetimes. Empty the slots instead.
+ *
+ *    db_value_clear () alone would not do it. pr_clear_value () returns without touching
+ *    a value whose need_clear is false, which is exactly the borrowed one, so say null
+ *    after it.
+ */
+static void
+ldr_clear_ctor_values (LDR_CONTEXT *context)
+{
+  int i;
+
+  if (context == NULL || context->attrs == NULL || context->constructor == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < (context->num_attrs + context->arg_count); i += 1)
+    {
+      db_value_clear (&context->attrs[i].ctor_val);
+      db_make_null (&context->attrs[i].ctor_val);
+    }
+}
+
 static void
 ldr_clear_and_free_context (LDR_CONTEXT *context)
 {
