@@ -13439,6 +13439,12 @@ qexec_batch_gby_flush (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH
   if (abandon)
     {
       rc = qexec_hash_gby_abandon (thread_p, ctx, st->list (st->arg));
+      if (st->on_trace && ctx->state > st->xasl->groupby_stats.groupby_hash)
+	{
+	  /* the label the row path's abandon gives the GROUP BY (qexec_hash_gby_agg_tuple ()): no row reaches the
+	   * table's call again once it rejects them */
+	  st->xasl->groupby_stats.groupby_hash = ctx->state;
+	}
       if (st->sync != NULL)
 	{
 	  st->sync (st->arg);
