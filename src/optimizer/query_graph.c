@@ -8546,12 +8546,20 @@ qo_row_snapshot_apply (QO_ENV * env)
   ROW_SNAPSHOT_FILTER *filters;
   PT_NODE *pt_expr, *lhs, *rhs, *my_name, *other_name;
   UINTPTR spec_id;
+  PT_HINT_ENUM hint;
   double sel;
   bool ok;
 
-  /* the rows only price joins: a single-table statement reads nothing */
+  /* the rows only price joins: a single-table statement reads nothing. NO_ROW_SNAPSHOT turns the
+   * reading off for the query block, ROW_SNAPSHOT turns it on even with the parameter at 0. */
+  hint = (QO_ENV_PT_TREE (env) != NULL && QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
+    ? QO_ENV_PT_TREE (env)->info.query.q.select.hint : PT_HINT_NONE;
   max_rows = row_snapshot_max_rows ();
-  if (max_rows <= 0 || env->nnodes < 2)
+  if (max_rows <= 0 && (hint & PT_HINT_ROW_SNAPSHOT))
+    {
+      max_rows = ROW_SNAPSHOT_HINT_MAX_ROWS;
+    }
+  if (max_rows <= 0 || (hint & PT_HINT_NO_ROW_SNAPSHOT) || env->nnodes < 2)
     {
       return;
     }

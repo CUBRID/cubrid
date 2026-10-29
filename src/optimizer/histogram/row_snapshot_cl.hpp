@@ -70,6 +70,8 @@ typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 
 /* row_snapshot_max_rows; 0 = the feature is off */
 extern int row_snapshot_max_rows (void);
+/* the limit of a statement hinted ROW_SNAPSHOT while row_snapshot_max_rows is 0: its default */
+#define ROW_SNAPSHOT_HINT_MAX_ROWS 100
 
 /* the columns of a user class that a read can return, with no rows: what the filters resolve
  * their columns against. NULL for a system class or a class with none. */
