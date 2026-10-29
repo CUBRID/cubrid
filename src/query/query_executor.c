@@ -7638,6 +7638,8 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
   QEXEC_GBY_PX *px = NULL;
   QFILE_LIST_SECTOR_SCAN_INFO *rows_sec = NULL, *partials_sec = NULL;
   parallel_query::worker_manager * mgr;
+  TSC_TICKS finish_start, finish_end;
+  TSCTIMEVAL finish_time;
   int w, p, n, round, rc = NO_ERROR;
 
   *workers = 0;
@@ -7803,9 +7805,26 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
       rc = ER_FAILED;
       goto end;
     }
+  if (px->on_trace)
+    {
+      tsc_getticks (&finish_start);
+    }
   for (w = 0; w < n && rc == NO_ERROR && gbstate->state == NO_ERROR; w++)
     {
       rc = qexec_gby_px_finish (thread_p, gbstate, px->out_rows[w], px->out_partials[w]);
+    }
+  if (px->on_trace)
+    {
+      /* the merge's serial tail, the leader alone after the workers' rounds: a bound on what the workers can win */
+      GROUPBY_STATS *gstats = &gbstate->xasl->groupby_stats;
+
+      tsc_getticks (&finish_end);
+      tsc_elapsed_time_usec (&finish_time, finish_end, finish_start);
+      TSC_ADD_TIMEVAL (gstats->groupby_hash_merge_finish_time, finish_time);
+      for (w = 0; w < n; w++)
+	{
+	  gstats->groupby_hash_merge_finish_groups += (px->out_rows[w] != NULL) ? px->out_rows[w]->tuple_cnt : 0;
+	}
     }
   /* what the workers left to the sort, after the leader's own (the order is free when workers merge) */
   for (w = 0; w < n && rc == NO_ERROR && gbstate->state == NO_ERROR; w++)
@@ -13000,6 +13019,14 @@ struct qexec_batch_gby
   int *pend_ent;
   int *grp_rows;		/* a flush's rows, regrouped by entry */
   int *order;			/* a flush's entries, in first-row order */
+  /* the trace's counts, added to the block's GROUPBY_STATS when the node goes (qexec_batch_gby_destroy ()) */
+  bool on_trace;
+  INT64 n_rows;			/* the rows the node took ... */
+  INT64 n_rowpath;		/* ... and handed to the row path's table call */
+  INT64 n_added;		/* groups the cache took in */
+  INT64 n_flushes;
+  INT64 n_clears;
+  struct timeval node_time;	/* its own time, without the row path's calls (those are in groupby_time) */
 };
 
 /* the key bytes' hash, eight bytes a step (only the cache's slot choice: equal bytes hash equal) */
@@ -13071,6 +13098,7 @@ qexec_gby_cache_clear (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
     {
       return;
     }
+  st->n_clears += (st->n_cached > 0) ? 1 : 0;
   for (i = 0; i < QEXEC_GBY_CACHE_SIZE; i++)
     {
       QEXEC_GBY_ENTRY *e = &st->cache[i];
@@ -13204,6 +13232,7 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
   e->placed = 0;
   value->batch_slot = (int) i;
   st->n_cached++;
+  st->n_added++;
 }
 
 /* the cache entries of the groups a row-path call evicted: the first n of the LRU head noted before it */
@@ -13298,6 +13327,7 @@ qexec_batch_gby_rows (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH 
 
   for (j = from; j < batch->n_sel; j++)
     {
+      st->n_rowpath++;
       rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[batch->sel[j]]);
       if (rc != NO_ERROR)
 	{
@@ -13326,6 +13356,7 @@ qexec_batch_gby_flush (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH
     {
       return NO_ERROR;
     }
+  st->n_flushes++;
   for (t = 0; t < n; t++)
     {
       if (qexec_hash_gby_selectivity_abandons (ctx->state, ctx->group_count, ctx->tuple_count + t + 1))
@@ -13418,16 +13449,11 @@ qexec_batch_gby_flush (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH
   return rc;
 }
 
-/*
- * qexec_batch_gby_consume () - the hash GROUP BY node of a chunk chain (see above)
- *   return: NO_ERROR, or an error
- *   node(in): its state is a QEXEC_BATCH_GBY
- *   plan(in), batch(in): the chunk, its filter and operand steps run
- */
-int
-qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+/* qexec_batch_gby_consume ()'s chunk */
+static int
+qexec_batch_gby_consume_chunk (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH_PLAN * plan,
+			       EXPR_BATCH * batch)
 {
-  QEXEC_BATCH_GBY *st = (QEXEC_BATCH_GBY *) node->state;
   AGGREGATE_HASH_CONTEXT *ctx = st->xasl->proc.buildlist.agg_hash_context;
   unsigned char key[QEXEC_GBY_KEY_MAX];
   int j, t, n_pend = 0, done, rc;
@@ -13504,6 +13530,7 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	{
 	  for (t = done; t < n_pend; t++)
 	    {
+	      st->n_rowpath++;
 	      rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[st->pend_row[t]]);
 	      if (rc != NO_ERROR)
 		{
@@ -13526,6 +13553,7 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	      n_note++;
 	    }
 	}
+      st->n_rowpath++;
       rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[r]);
       if (rc != NO_ERROR)
 	{
@@ -13570,6 +13598,7 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
     }
   for (t = done; t < n_pend; t++)
     {
+      st->n_rowpath++;
       rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[st->pend_row[t]]);
       if (rc != NO_ERROR)
 	{
@@ -13577,6 +13606,48 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	}
     }
   return NO_ERROR;
+}
+
+/*
+ * qexec_batch_gby_consume () - the hash GROUP BY node of a chunk chain (see above)
+ *   return: NO_ERROR, or an error
+ *   node(in): its state is a QEXEC_BATCH_GBY
+ *   plan(in), batch(in): the chunk, its filter and operand steps run
+ *
+ * Traced, the node's own time is the chunk's less what the row path's table calls added to the GROUP BY's time.
+ */
+int
+qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  QEXEC_BATCH_GBY *st = (QEXEC_BATCH_GBY *) node->state;
+  GROUPBY_STATS *gstats = &st->xasl->groupby_stats;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  INT64 rowpath_usec;
+  struct timeval gby_before;
+  int rc;
+
+  st->n_rows += batch->n_sel;
+  if (!st->on_trace)
+    {
+      return qexec_batch_gby_consume_chunk (thread_p, st, plan, batch);
+    }
+  gby_before = gstats->groupby_time;
+  tsc_getticks (&start_tick);
+  rc = qexec_batch_gby_consume_chunk (thread_p, st, plan, batch);
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  rowpath_usec = ((INT64) gstats->groupby_time.tv_sec - gby_before.tv_sec) * 1000000
+    + ((INT64) gstats->groupby_time.tv_usec - gby_before.tv_usec);
+  if (rowpath_usec < ((INT64) tv_diff.tv_sec * 1000000 + tv_diff.tv_usec))
+    {
+      INT64 own = (INT64) tv_diff.tv_sec * 1000000 + tv_diff.tv_usec - rowpath_usec;
+
+      tv_diff.tv_sec = own / 1000000;
+      tv_diff.tv_usec = own % 1000000;
+      TSC_ADD_TIMEVAL (st->node_time, tv_diff);
+    }
+  return rc;
 }
 
 QEXEC_BATCH_GBY *
@@ -13590,6 +13661,7 @@ qexec_batch_gby_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr * v
       return NULL;
     }
   memset (st, 0, sizeof (*st));
+  st->on_trace = thread_is_on_trace (thread_p);
   st->row = *row;
   st->xasl = xasl;
   st->vd = vd;
@@ -13605,6 +13677,18 @@ qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
   if (st == NULL)
     {
       return;
+    }
+  if (st->on_trace)
+    {
+      /* a parallel worker's node counts into its clone, which the trace does not show (as the scan's batch pages) */
+      GROUPBY_STATS *gstats = &st->xasl->groupby_stats;
+
+      gstats->batch_rows += st->n_rows;
+      gstats->batch_rows_rowpath += st->n_rowpath;
+      gstats->batch_groups_cached += st->n_added;
+      gstats->batch_flushes += st->n_flushes;
+      gstats->batch_clears += st->n_clears;
+      TSC_ADD_TIMEVAL (gstats->batch_time, st->node_time);
     }
   qexec_gby_cache_clear (thread_p, st);
   db_private_free_and_init (thread_p, st->cache);

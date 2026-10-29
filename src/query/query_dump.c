@@ -4638,7 +4638,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   gstats->groupby_hash_merge_levels, gstats->groupby_hash_merge_sorted);
 	  if (gstats->groupby_hash_merge_workers > 0)
 	    {
-	      fprintf (fp, " (workers: %d)", gstats->groupby_hash_merge_workers);
+	      fprintf (fp, " (workers: %d", gstats->groupby_hash_merge_workers);
+	      if (thread_get_thread_entry_info ()->trace_plan_detail)
+		{
+		  /* with the plan details: the leader's finish of the workers' groups, the merge's serial tail */
+		  fprintf (fp, ", leader finish: %d ms, groups: %lld", TO_MSEC (gstats->groupby_hash_merge_finish_time),
+			   (long long) gstats->groupby_hash_merge_finish_groups);
+		}
+	      fprintf (fp, ")");
 	    }
 	  else if (gstats->groupby_hash_merge_why != NULL)
 	    {
@@ -4648,6 +4655,16 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       if (gstats->groupby_hash_groups > 0)
 	{
 	  fprintf (fp, ", groups (est.): %lld", (long long) gstats->groupby_hash_groups);
+	}
+      if (gstats->batch_rows > 0 && thread_get_thread_entry_info ()->trace_plan_detail)
+	{
+	  /* the page batch's node of the serial scan, with the plan details as the scan's batch pages are: the rows
+	   * it accumulated from its cache, the ones the row path's table call took (their time is the GROUP BY's) */
+	  fprintf (fp,
+		   ", batch: rows %lld (cached %lld, row path %lld), groups %lld, flushes %lld, clears %lld, time %d",
+		   (long long) gstats->batch_rows, (long long) (gstats->batch_rows - gstats->batch_rows_rowpath),
+		   (long long) gstats->batch_rows_rowpath, (long long) gstats->batch_groups_cached,
+		   (long long) gstats->batch_flushes, (long long) gstats->batch_clears, TO_MSEC (gstats->batch_time));
 	}
       fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);
