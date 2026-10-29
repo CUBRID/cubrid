@@ -36,6 +36,7 @@
 #include <cstring>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 
 using namespace wstest;
 
@@ -468,6 +469,93 @@ TEST_CASE ("a zoned timestamp key hashes by its UTC time, not its zone", "[write
     pr_clear_value (&key_a);
     pr_clear_value (&key_b);
     pr_clear_value (&key_later);
+    delete child;
+  }
+}
+
+TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
+{
+  /* The index compares FLOAT and DOUBLE keys as numbers, so -0.0 and +0.0 are one key and must have one hash,
+   * though -0.0 packs a sign bit; another number must not. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 204, 1);
+
+  SECTION ("DOUBLE: WRITE of -0.0 and +0.0 and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    DB_VALUE plus_zero;
+    DB_VALUE minus_zero;
+    DB_VALUE one;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_double (&plus_zero, 0.0);
+    db_make_double (&minus_zero, -0.0);
+    db_make_double (&one, 1.0);
+    REQUIRE (std::signbit (db_get_double (&minus_zero)));
+
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) == write_key_hash (&class_oid, &minus_zero));
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) != write_key_hash (&class_oid, &one));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &minus_zero, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &plus_zero));
+
+    delete child;
+  }
+
+  SECTION ("FLOAT: WRITE of -0.0 and +0.0 and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_FLOAT);
+    DB_VALUE plus_zero;
+    DB_VALUE minus_zero;
+    DB_VALUE one;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_float (&plus_zero, 0.0f);
+    db_make_float (&minus_zero, -0.0f);
+    db_make_float (&one, 1.0f);
+    REQUIRE (std::signbit (db_get_float (&minus_zero)));
+
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) == write_key_hash (&class_oid, &minus_zero));
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) != write_key_hash (&class_oid, &one));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &minus_zero, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &plus_zero));
+
+    delete child;
+  }
+
+  SECTION ("composite key: a DOUBLE -0.0 element and +0.0 give one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    TP_DOMAIN *key_domain;
+    DB_VALUE value;
+    DB_VALUE key_plus;
+    DB_VALUE key_minus;
+    DB_VALUE key_one;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_double (&value, 0.0);
+    make_value_int_key (&key_plus, &key_domain, element_domain, &value, 1);
+    db_make_double (&value, -0.0);
+    make_value_int_key (&key_minus, &key_domain, element_domain, &value, 1);
+    db_make_double (&value, 1.0);
+    make_value_int_key (&key_one, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_plus) == write_key_hash (&class_oid, &key_minus));
+    REQUIRE (write_key_hash (&class_oid, &key_plus) != write_key_hash (&class_oid, &key_one));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_minus, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_plus));
+
+    pr_clear_value (&key_plus);
+    pr_clear_value (&key_minus);
+    pr_clear_value (&key_one);
     delete child;
   }
 }
