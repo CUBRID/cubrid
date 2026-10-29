@@ -43,6 +43,7 @@ option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 option (UNIT_TEST_LOG_WRITESET "Unit testing: writeset collection and global commit history")
 option (UNIT_TEST_LOG_APPLIER "Unit testing: log applier in-flight list, gate, pending list and queues")
+option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 
 message("  unit_tests/...")
 
@@ -133,6 +134,11 @@ if (UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
   message("    json_builder")
   add_subdirectory(json_builder)
 endif(UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
+
+if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
+  message("    radix_sort")
+  add_subdirectory(radix_sort)
+endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
 
 #[[
 TODO compilation fails
