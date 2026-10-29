@@ -16,6 +16,8 @@
 # 
 #
 
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/3rdparty_util.cmake)
+
 message ("[INFO] Install JDK 8")
 
 # JDK_SHA256 is the archive's SHA-256, from the <archive>.sha256.txt next to it on the release page.
@@ -36,16 +38,7 @@ if(NOT EXISTS ${JDK_DEST_DIR})
       get_filename_component(JDK_FILE "${JDK_URL}" NAME)
       set(JDK_ARCHIVE "$ENV{CUBRID_DOWNLOAD_CACHE}/jdk/${JDK_FILE}")
     endif()
-    if(EXISTS ${JDK_ARCHIVE})
-      file(SHA256 ${JDK_ARCHIVE} JDK_GOT)
-    endif()
-    if(NOT JDK_GOT STREQUAL JDK_SHA256)
-      if(NOT "$ENV{CUBRID_DOWNLOAD_CACHE}" STREQUAL "")
-        message(WARNING "${JDK_FILE} is missing or stale in CUBRID_DOWNLOAD_CACHE; fetching it. The build image needs an update.")
-      endif()
-      message(STATUS "[INFO] Downloading Temurin JDK 8...")
-      file(DOWNLOAD ${JDK_URL} ${JDK_ARCHIVE} EXPECTED_HASH SHA256=${JDK_SHA256} INACTIVITY_TIMEOUT 60)
-    endif()
+    fetch_verified(${JDK_URL} ${JDK_ARCHIVE} SHA256=${JDK_SHA256})
 
     message(STATUS "[INFO] Extracting JDK...")
     

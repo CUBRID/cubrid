@@ -54,31 +54,17 @@ set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4c
 set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
 set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
-# CUBRID_DOWNLOAD_CACHE holds tarballs fetched ahead of the build. A tarball that is missing or fails the hash,
-# like a file a failed or killed fetch left behind, is fetched again.
-# The hash is checked here, not by EXPECTED_HASH, which makes a failed fetch fatal and leaves no retry.
+include (3rdparty_util)
+
+# CUBRID_DOWNLOAD_CACHE holds tarballs fetched ahead of the build.
 function(use_download_cache url_var hash)
   if("$ENV{CUBRID_DOWNLOAD_CACHE}" STREQUAL "")
     return()
   endif()
   get_filename_component(name "${${url_var}}" NAME)
-  set(dir "$ENV{CUBRID_DOWNLOAD_CACHE}/${url_var}")
-  set(${url_var} "${dir}/${name}" PARENT_SCOPE)
-  foreach(attempt RANGE 3)
-    if(EXISTS "${dir}/${name}")
-      file(SHA256 "${dir}/${name}" got)
-    endif()
-    if(hash STREQUAL "SHA256=${got}")
-      return()
-    elseif(attempt EQUAL 3)
-      message(FATAL_ERROR "Failed to fetch ${${url_var}} (status: ${st}, expected ${hash}, got SHA256=${got})")
-    elseif(attempt EQUAL 0)
-      message(WARNING "${name} is missing or stale in CUBRID_DOWNLOAD_CACHE; fetching it. The build image needs an update.")
-    else()
-      execute_process(COMMAND ${CMAKE_COMMAND} -E sleep 5)
-    endif()
-    file(DOWNLOAD "${${url_var}}" "${dir}/${name}" INACTIVITY_TIMEOUT 60 STATUS st)
-  endforeach()
+  set(dest "$ENV{CUBRID_DOWNLOAD_CACHE}/${url_var}/${name}")
+  fetch_verified("${${url_var}}" "${dest}" ${hash})
+  set(${url_var} "${dest}" PARENT_SCOPE)
 endfunction()
 
 use_download_cache(WITH_LIBEXPAT_URL ${WITH_LIBEXPAT_URL_HASH})
@@ -607,8 +593,6 @@ set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
 set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
-include (3rdparty_util)
-
 if(UNIX)
 expose_3rdparty_variable(LIBEDIT)
 expose_3rdparty_variable(LIBNCURSES)
