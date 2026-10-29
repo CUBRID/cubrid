@@ -3504,6 +3504,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert scopeLevel == DECL_TOP_LEVEL;
 
+                // The option list accepts the specifications in any order and any number, so
+                // reject repetitions here. A local routine does not need these two checks: it
+                // rejects AUTHID and PARALLEL_ENABLE outright above.
+                if (ctx.authid_spec().size() > 1) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.authid_spec().get(1)), // s441
+                            "AUTHID is specified more than once");
+                }
+                if (ctx.parallel_enable_spec().size() > 1) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.parallel_enable_spec().get(1)), // s443
+                            "PARALLEL_ENABLE is specified more than once");
+                }
+
                 if (ctx.uniq_name().owner != null) {
                     String owner = Misc.getNormalizedText(ctx.uniq_name().owner);
                     assert owner.equals(unitOwner);
@@ -3517,20 +3531,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 if (!ctx.parallel_enable_spec().isEmpty()) {
                     parallelEnabled = true;
-                }
-
-                // The option list accepts the specifications in any order and any number, so
-                // reject repetitions here. A local routine does not need these two checks: it
-                // rejects AUTHID and PARALLEL_ENABLE outright above.
-                if (ctx.authid_spec().size() > 1) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.authid_spec().get(1)), // s441
-                            "AUTHID is specified more than once");
-                }
-                if (ctx.parallel_enable_spec().size() > 1) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.parallel_enable_spec().get(1)), // s443
-                            "PARALLEL_ENABLE is specified more than once");
                 }
             }
 

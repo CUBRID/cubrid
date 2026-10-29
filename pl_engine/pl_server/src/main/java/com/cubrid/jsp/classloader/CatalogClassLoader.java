@@ -34,10 +34,17 @@ package com.cubrid.jsp.classloader;
 import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CatalogClassLoader extends ClassLoader {
+
+    // Parallel workers of a session share this loader. Being parallel capable, it is locked per
+    // class name instead of as a whole, both by JVM and by the methods below, so that no two
+    // threads wait for each other through this loader and its parent CatalogClassLoaderRelay.
+    static {
+        registerAsParallelCapable();
+    }
 
     public CompiledCodeSet codeSet;
 
@@ -78,21 +85,29 @@ public class CatalogClassLoader extends ClassLoader {
             return ret;
         }
 
-        CompiledCode code = codeSet.codeMap.get(name);
-        if (code == null) {
-            throw new ClassNotFoundException(name);
+        synchronized (getClassLoadingLock(name)) {
+            // check again: another thread may have defined it while this one waited for the lock
+            ret = defined.get(name);
+            if (ret != null) {
+                return ret;
+            }
+
+            CompiledCode code = codeSet.codeMap.get(name);
+            if (code == null) {
+                throw new ClassNotFoundException(name);
+            }
+
+            byte[] classBytes = code.getByteCode();
+            ret = defineClass(name, classBytes, 0, classBytes.length);
+            defined.put(name, ret);
+
+            return ret;
         }
-
-        byte[] classBytes = code.getByteCode();
-        ret = defineClass(name, classBytes, 0, classBytes.length);
-        defined.put(name, ret);
-
-        return ret;
     }
 
     // ===========================
     // Private
     // ===========================
 
-    private Map<String, Class<?>> defined = new HashMap<>();
+    private Map<String, Class<?>> defined = new ConcurrentHashMap<>();
 }

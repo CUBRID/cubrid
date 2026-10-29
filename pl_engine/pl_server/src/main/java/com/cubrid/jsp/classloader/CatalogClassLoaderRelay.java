@@ -34,10 +34,16 @@ package com.cubrid.jsp.classloader;
 import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CatalogClassLoaderRelay extends ClassLoader {
+
+    // Parallel workers of a session share this loader: see the comment in CatalogClassLoader.
+    // The methods below lock the full name of the main class, as loadClass() does for findClass().
+    static {
+        registerAsParallelCapable();
+    }
 
     public CatalogClassLoaderRelay() {
         super(getSystemClassLoader());
@@ -66,19 +72,22 @@ public class CatalogClassLoaderRelay extends ClassLoader {
                 || mainClassName.startsWith("Func_")
                 || mainClassName.startsWith("Pckg_"));
 
-        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
-        if (classLoader == null || !compileId.equals(classLoader.codeSet.compileId)) {
-            classLoader = new CatalogClassLoader(mainClassName, compileId, this);
-            unitClassLoaders.put(mainClassName, classLoader);
+        String className = JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName;
+        synchronized (getClassLoadingLock(className)) {
+            CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+            if (classLoader == null || !compileId.equals(classLoader.codeSet.compileId)) {
+                classLoader = new CatalogClassLoader(mainClassName, compileId, this);
+                unitClassLoaders.put(mainClassName, classLoader);
+            }
+
+            assert classLoader != null;
+
+            // CAUTION: do not use classLoader.loadClass() :
+            //  it just calls classLoader.findClass() by the shortcut (see
+            // CatalogClassLoader::loadClass()
+            //  and calling classLoader.loadClass() is waste of CPU clocks.
+            return classLoader.findClass(className);
         }
-
-        assert classLoader != null;
-
-        // CAUTION: do not use classLoader.loadClass() :
-        //  it just calls classLoader.findClass() by the shortcut (see
-        // CatalogClassLoader::loadClass()
-        //  and calling classLoader.loadClass() is waste of CPU clocks.
-        return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
     }
 
     // this is only called for a direct call from SpLib::checkExecuteAuthorization, with the
@@ -87,21 +96,25 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     public Class<?> findClassWithCurrentCompileId(String mainClassName, String compileId)
             throws ClassNotFoundException {
 
-        // An empty compileId means it could not be read (see get_routine_compile_id () on the
-        // client), and then the loaded class, if any, is used.
-        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
-        if (classLoader == null
-                || (!compileId.isEmpty() && !compileId.equals(classLoader.codeSet.compileId))) {
-            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
-            if (codeSet == null) {
-                // was it dropped?
-                throw new ClassNotFoundException(mainClassName);
+        String className = JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName;
+        synchronized (getClassLoadingLock(className)) {
+            // An empty compileId means it could not be read (see get_routine_compile_id () on the
+            // client), and then the loaded class, if any, is used.
+            CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+            if (classLoader == null
+                    || (!compileId.isEmpty()
+                            && !compileId.equals(classLoader.codeSet.compileId))) {
+                CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
+                if (codeSet == null) {
+                    // was it dropped?
+                    throw new ClassNotFoundException(mainClassName);
+                }
+                classLoader = new CatalogClassLoader(codeSet, this);
+                unitClassLoaders.put(mainClassName, classLoader);
             }
-            classLoader = new CatalogClassLoader(codeSet, this);
-            unitClassLoaders.put(mainClassName, classLoader);
-        }
 
-        return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
+            return classLoader.findClass(className);
+        }
     }
 
     @Override
@@ -116,24 +129,27 @@ public class CatalogClassLoaderRelay extends ClassLoader {
                 || mainClassName.startsWith("Func_")
                 || mainClassName.startsWith("Pckg_"));
 
-        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
-        if (classLoader == null) {
-            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
-            if (codeSet == null) {
-                // was it dropped?
-                throw new ClassNotFoundException(className);
+        // loadClass() already holds this lock when it calls this method
+        synchronized (getClassLoadingLock(className)) {
+            CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+            if (classLoader == null) {
+                CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
+                if (codeSet == null) {
+                    // was it dropped?
+                    throw new ClassNotFoundException(className);
+                }
+                classLoader = new CatalogClassLoader(codeSet, this);
+                unitClassLoaders.put(mainClassName, classLoader);
             }
-            classLoader = new CatalogClassLoader(codeSet, this);
-            unitClassLoaders.put(mainClassName, classLoader);
+
+            assert classLoader != null;
+
+            // CAUTION: do not use classLoader.loadClass() :
+            //  it just calls classLoader.findClass() by the shortcut (see
+            // CatalogClassLoader::loadClass()
+            //  and calling classLoader.loadClass() is waste of CPU clocks.
+            return classLoader.findClass(className);
         }
-
-        assert classLoader != null;
-
-        // CAUTION: do not use classLoader.loadClass() :
-        //  it just calls classLoader.findClass() by the shortcut (see
-        // CatalogClassLoader::loadClass()
-        //  and calling classLoader.loadClass() is waste of CPU clocks.
-        return classLoader.findClass(className);
     }
 
     public void clear() {
@@ -144,7 +160,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     // Private
     // =======================
 
-    private Map<String, CatalogClassLoader> unitClassLoaders = new HashMap<>();
+    private Map<String, CatalogClassLoader> unitClassLoaders = new ConcurrentHashMap<>();
 
     private static String getMainClassName(String className) {
 
