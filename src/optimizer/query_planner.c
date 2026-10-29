@@ -368,6 +368,7 @@ static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static bool qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static bool qo_index_has_leading_notnull_sarg (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
 static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						   int *continue_walk);
@@ -2173,10 +2174,12 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	  if (bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
 	      if (qo_is_filter_index (index_entryp) || qo_is_iscan_from_orderby (plan)
-		  || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_analytic (plan))
+		  || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_analytic (plan)
+		  || (scan_method == QO_SCANMETHOD_INDEX_SCAN
+		      && qo_index_has_leading_notnull_sarg (env, node, index_entryp)))
 		{
 		  /* filter index has a pre-defined key-range. ordery/groupby/analytic scan already checked nullable
-		   * terms */
+		   * terms. an IS NOT NULL sarg on the leading key keeps every qualifying row in the index */
 		  ;		/* go ahead */
 		}
 	      else
@@ -11151,6 +11154,19 @@ qo_search_planner (QO_PLANNER * planner)
 								  QO_SCANMETHOD_INDEX_ANALYTIC_SCAN, &seg_terms, NULL));
 		    }
 
+		  /* CBRD-27686: an IS NOT NULL sarg on the leading key keeps every qualifying row in the index, so a
+		   * full index scan with it as key filter is a candidate; a sort-skip scan kept above is that same scan.
+		   * A covering index is left out unless a hint names it: reading most keys of a covering index can be
+		   * slower than a sequential scan the cost model prices higher. */
+		  if (!n && qo_index_has_leading_notnull_sarg (info->env, node, index_entry)
+		      && (!index_entry->cover_segments || qo_node_using_index_forced (node)))
+		    {
+		      n =
+			qo_check_plan_on_info (info,
+					       qo_index_scan_new (info, node, ni_entry, QO_SCANMETHOD_INDEX_SCAN,
+								  &seg_terms, NULL));
+		    }
+
 		  /* CBRD-26906: an interesting-order (group-by / order-by skip) index
 		   * scan also means the hinted index is usable, so a positive index
 		   * hint that only provides ordering (no key-range) still suppresses
@@ -14129,6 +14145,71 @@ qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 
       segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
       if (segp != NULL && qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_index_has_leading_notnull_sarg () - checks whether the node has an IS NOT NULL sarg on the leading key column of
+ *					   the index, so that a full scan of the index with that term as key filter
+ *					   returns every row a sequential scan would (CBRD-27686)
+ *  return: true if such a term exists and the index is eligible
+ *  env(in): pointer to the optimizer environment
+ *  node(in): node the index belongs to
+ *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
+ *
+ * Note: the term must be a sarg of the node, since key filter terms are taken only from the node's sargs.
+ *	 Filter, function and prefix indexes are not eligible.
+ */
+static bool
+qo_index_has_leading_notnull_sarg (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp)
+{
+  BITSET_ITERATOR iter;
+  QO_TERM *termp;
+  QO_SEGMENT *segp;
+  PT_NODE *expr;
+  int t, seg_idx;
+
+  assert (env != NULL && node != NULL && index_entryp != NULL);
+  assert (index_entryp->constraints != NULL);
+
+  /* a filter index holds only the rows of its predicate, and a function or prefix index key is not the column */
+  if (index_entryp->constraints->filter_predicate != NULL || index_entryp->constraints->func_index_info != NULL
+      || qo_is_prefix_index (index_entryp))
+    {
+      return false;
+    }
+
+  if (index_entryp->nsegs <= 0 || index_entryp->seg_idxs[0] == -1)
+    {
+      return false;
+    }
+
+  seg_idx = index_entryp->seg_idxs[0];
+  segp = QO_ENV_SEG (env, seg_idx);
+  assert (segp != NULL);
+
+  for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, t);
+      if (QO_ON_COND_TERM (termp) || !BITSET_MEMBER (QO_TERM_SEGS (termp), seg_idx))
+	{
+	  continue;
+	}
+
+      /* the same form qo_validate_index_term_notnull () accepts: no OR, the column itself as the argument */
+      expr = QO_TERM_PT_EXPR (termp);
+      if (expr == NULL || expr->or_next != NULL || expr->node_type != PT_EXPR
+	  || expr->info.expr.op != PT_IS_NOT_NULL || expr->info.expr.arg1->node_type != PT_NAME)
+	{
+	  continue;
+	}
+
+      if (!intl_identifier_casecmp (pt_get_name (expr->info.expr.arg1), QO_SEG_NAME (segp)))
 	{
 	  return true;
 	}
