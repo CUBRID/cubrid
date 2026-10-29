@@ -5696,7 +5696,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUN
 
 static SCAN_CODE
 get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
-	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher, HFID * hfid)
+	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, HFID * hfid)
 {
   int error = NO_ERROR;
   assert (*offset >= 0);
@@ -5710,10 +5710,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 	  if (VSID_IS_NULL (&new_fsector.vsid))
 	    {
 	      /* end */
-	      if (old_pgwatcher->pgptr != NULL)
-		{
-		  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
-		}
 	      return S_END;
 	    }
 	  *fsector = new_fsector;
@@ -5737,9 +5733,11 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 	    }
 	  if (bit64_is_set (fsector->page_bitmap, *offset))
 	    {
+	      /* release the current page first: the next VPID comes from the scan-start bitmap, not from this page's
+	       * chain link, and holding this page while waiting deadlocks with vacuum deallocating an empty page */
 	      if (scan_cache->page_watcher.pgptr != NULL)
 		{
-		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, old_pgwatcher);
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		}
 
 	      error = pgbuf_ordered_fix (thread_p, vpid_out, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
@@ -5752,10 +5750,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 		  if (error != NO_ERROR && error != ER_PB_BAD_PAGEID)
 		    {
 		      /* non-dealloc error (e.g. ER_INTERRUPTED): propagate */
-		      if (old_pgwatcher->pgptr != NULL)
-			{
-			  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
-			}
 		      return S_ERROR;
 		    }
 		  /* when bitmap is built, that page was valid.
@@ -5763,11 +5757,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 		   * this is not error, it can be ignored */
 		  er_clear ();
 		  continue;
-		}
-
-	      if (old_pgwatcher->pgptr != NULL)
-		{
-		  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
 		}
 
 	      if (error != NO_ERROR)
@@ -5810,8 +5799,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_dirty_satisfied;
   bool is_btree_ops_log = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
 
-  PGBUF_WATCHER old_pgwatcher;
-  HFID hfid;
   VPID vpid = vpid_Null_vpid;
 
   OID slot_resume_oid;
@@ -5826,8 +5813,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
 
   VPID_SET_NULL (&vpid);
-  hfid = sort_args->hfids[0];
-  PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
 
   OID_SET_NULL (&slot_resume_oid);
 
@@ -5835,7 +5820,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
     {
       page_iter_scan_result =
 	get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
-		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher,
+		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache,
 		       &sort_args->hfids[sort_args->cur_class]);
       if (page_iter_scan_result == S_END)
 	{
@@ -5899,7 +5884,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	  {
 	    page_iter_scan_result =
 	      get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
-			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher,
+			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache,
 			     &sort_args->hfids[sort_args->cur_class]);
 	    if (page_iter_scan_result == S_END)
 	      {
@@ -5958,8 +5943,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 				   sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
 				   sort_args->btid->sys_btid->vfid.fileid);
 		  }
-		hfid = sort_args->hfids[sort_args->cur_class];
-		PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
 	      }
 	    continue;
 	  }

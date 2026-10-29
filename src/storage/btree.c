@@ -59,6 +59,7 @@
 #include "thread_manager.hpp"
 
 #include <assert.h>
+#include <math.h>
 #include <algorithm>
 #include <cinttypes>
 #include <stdlib.h>
@@ -1276,6 +1277,9 @@ static int btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, 
 static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
 						   bool * exhausted, int *count);
+static UINT64 btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size);
+static UINT64 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value);
+static UINT64 btree_get_stats_prefix_value_hash (const DB_VALUE * value);
 static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
 static INT64 btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level);
 static int btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
@@ -1321,6 +1325,10 @@ static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN
 					     bool * key_range_satisfied, bool * key_filter_satisfied);
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
 				INDX_SCAN_ID * iscan_id);
+static int btree_read_curr_key_values (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
+				       INDX_SCAN_ID * iscan_id);
+static int btree_gby_skip_mark_key_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+static int btree_gby_skip_visit (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, OID * oid, bool * stop);
 static DISK_ISVALID btree_find_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
 					      OID * oid, DB_VALUE * key, bool * clear_key);
 static DISK_ISVALID btree_find_key_from_nleaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
@@ -6861,7 +6869,7 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
       if (slot >= 0)
 	{
 	  UINT64 hash = 0;
-	  unsigned int val_hash;
+	  UINT64 val_hash;
 
 	  prev_k_index = 0;
 	  prev_k_ptr = NULL;
@@ -6873,9 +6881,7 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 		  assert_release (false);
 		  goto exit_on_error;
 		}
-	      /* the NULL marker must not collide with any value hash, so values are bounded away
-	       * from it (mht_valhash reduces modulo its ht_size argument) */
-	      val_hash = DB_IS_NULL (&elem) ? 0xFFFFFFFFU : mht_valhash (&elem, 0xFFFFFFFEU);
+	      val_hash = DB_IS_NULL (&elem) ? ~0ULL : btree_get_stats_prefix_value_hash (&elem);
 	      hash = hash * 1099511628211ULL + val_hash;
 	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
 	      if (elem.need_clear == true)
@@ -7382,6 +7388,301 @@ exit_on_error:
   pr_clear_value (&seek_key);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * btree_get_stats_hash_bytes () - mix bytes into a prefix hash (FNV-1a)
+ */
+static UINT64
+btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size)
+{
+  const unsigned char *p = (const unsigned char *) bytes;
+  size_t i;
+
+  for (i = 0; i < size; i++)
+    {
+      hash = (hash ^ p[i]) * 1099511628211ULL;
+    }
+
+  return hash;
+}
+
+/*
+ * btree_get_stats_hash_string () - mix a CHAR or VARCHAR key element into a prefix hash so that
+ *     the strings its collation compares equal hash alike
+ *   return: 64-bit hash
+ *   hash(in): hash to mix into
+ *   value(in): CHAR or VARCHAR key element
+ *
+ * Note: (CBRD-27701) the trailing spaces count for a VARCHAR unless ignore_trailing_space, and
+ * never for a CHAR (mr_cmpval_string (), mr_cmpval_char ()). The collations compared by
+ * lang_fastcmp_byte () (binary, en_cs, en_ci) and euckr_bin (lang_fastcmp_ko ()) compare unit
+ * by unit, a space (or the EUC-KR space 0xA1A1) as zero and any other byte by its weight, so
+ * the units are mixed into the 64-bit hash. The 32-bit collation hash (mht_get_hash_number ())
+ * is left for the other collations: its PJW-style mixing makes strings of one fixed shape such
+ * as dates collide, and each collision lowers the Duj1 estimate of a nearly unique column.
+ */
+static UINT64
+btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
+{
+  const unsigned char *str = (const unsigned char *) db_get_string (value);
+  int size = (str != NULL) ? db_get_string_size (value) : 0;
+  int coll_id = db_get_string_collation (value);
+  LANG_COLLATION *lang_coll = lang_get_collation (coll_id);
+  bool trailing_counts = (DB_VALUE_TYPE (value) == DB_TYPE_VARCHAR
+			  && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE));
+  const unsigned int *weights = NULL;
+  UINT64 kept_hash;
+  int i, units, kept_units;
+
+  if (coll_id == LANG_COLL_BINARY)
+    {
+      /* lang_fastcmp_binary () compares the bytes as they are and ignores trailing zero bytes */
+      while (size > 0 && str[size - 1] == 0)
+	{
+	  size--;
+	}
+      hash = btree_get_stats_hash_bytes (hash, &size, sizeof (size));
+      return btree_get_stats_hash_bytes (hash, str, size);
+    }
+
+  if (lang_coll != NULL && lang_coll->fastcmp == lang_get_collation (LANG_COLL_ISO_BINARY)->fastcmp)
+    {
+      weights = lang_coll->coll.weights;
+    }
+  else if (coll_id != LANG_COLL_EUCKR_BINARY)
+    {
+      /* mht_get_hash_number () drops the trailing ASCII spaces and stays below 2^32, so the
+       * number dropped goes into the upper half where they count */
+      UINT64 str_hash = mht_get_hash_number (UINT_MAX, value);
+      int len = size;
+
+      if (trailing_counts)
+	{
+	  while (len > 0 && str[len - 1] == ' ')
+	    {
+	      len--;
+	    }
+	  str_hash |= (UINT64) (size - len) << 32;
+	}
+      return str_hash;
+    }
+
+  kept_hash = hash;
+  units = kept_units = 0;
+  for (i = 0; i < size; i++)
+    {
+      unsigned int unit = str[i];
+
+      if (unit == ' ')
+	{
+	  unit = 0;
+	}
+      else if (weights != NULL)
+	{
+	  unit = weights[unit];
+	}
+      else if (unit == 0xA1 && i + 1 < size && str[i + 1] == 0xA1)
+	{
+	  unit = 0;
+	  i++;
+	}
+      hash = btree_get_stats_hash_bytes (hash, &unit, sizeof (unit));
+      units++;
+      if (unit != 0 || trailing_counts)
+	{
+	  /* trailing zero units are dropped where the trailing spaces do not count */
+	  kept_hash = hash;
+	  kept_units = units;
+	}
+    }
+
+  return btree_get_stats_hash_bytes (kept_hash, &kept_units, sizeof (kept_units));
+}
+
+/*
+ * btree_get_stats_prefix_value_hash () - hash of one non-NULL key element for the prefix hash
+ *     reservoir
+ *   return: 64-bit hash
+ *   value(in): key element
+ *
+ * Note: (CBRD-27701) the Duj1 estimate counts distinct hashes, so the hash must be equal for equal
+ * values and distinct for distinct ones. mht_valhash () is made for hash table buckets and folds
+ * distinct values together: every fixed NUMERIC and most BIT strings hash to 0 because it stops at
+ * the first zero byte, FLOAT, DOUBLE and MONETARY are truncated to integers, and ENUM hashes the
+ * address of the DB_VALUE. The whole value is mixed here instead; strings follow the comparison of
+ * their collation (btree_get_stats_hash_string ()).
+ */
+static UINT64
+btree_get_stats_prefix_value_hash (const DB_VALUE * value)
+{
+  UINT64 hash = 14695981039346656037ULL;
+
+  switch (DB_VALUE_TYPE (value))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      return btree_get_stats_hash_string (hash, value);
+
+    case DB_TYPE_NUMERIC:
+      {
+	int precision = 0, scale = 0;
+	bool is_float_numeric = false;
+	bool is_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value);
+	uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+	DB_C_NUMERIC num = db_locate_numeric (value);
+
+	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	if (is_float_numeric)
+	  {
+	    /* a float NUMERIC keeps its own scale per value: the normalization of mht_valhash ()
+	     * strips the trailing zeros so that 1.0 and 1.00 share one coefficient, but drops the
+	     * scale left over, so 1.5 and 15 would share it too. The scale left over is mixed in;
+	     * it is the original scale less the number of zeros stripped, which is the decimal
+	     * exponent of the coefficient ratio (an exact power of ten, so the rounding of the
+	     * two doubles cannot change it), or for a negative scale the scale plus the zeros
+	     * appended. */
+	    int left_scale = scale;
+	    int i;
+
+	    if (scale != 0 && !(precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	      {
+		float_numeric_normalize_for_hash (num, calc_buf, precision, scale);
+		num = calc_buf;
+	      }
+	    for (i = 0; i < DB_NUMERIC_BUF_SIZE && num[i] == 0; i++)
+	      {
+		;
+	      }
+	    if (i == DB_NUMERIC_BUF_SIZE)
+	      {
+		/* zero, whatever its scale */
+		left_scale = 0;
+	      }
+	    else if (scale < 0)
+	      {
+		/* the normalization multiplied a negative scale away as far as the precision allows */
+		left_scale = scale + MIN (-scale, DB_MAX_NUMERIC_PRECISION - precision);
+	      }
+	    else if (scale > 0)
+	      {
+		DB_VALUE coefficient;
+		double d_value, d_coefficient;
+
+		db_make_numeric (&coefficient, calc_buf, DB_MAX_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false,
+				 false);
+		numeric_coerce_num_to_double (value, 0, &d_value);
+		numeric_coerce_num_to_double (&coefficient, 0, &d_coefficient);
+		left_scale = scale - (int) lround (log10 (fabs (d_value) / d_coefficient));
+	      }
+	    hash = btree_get_stats_hash_bytes (hash, &left_scale, sizeof (left_scale));
+	  }
+	hash = btree_get_stats_hash_bytes (hash, &is_negative, sizeof (is_negative));
+	return btree_get_stats_hash_bytes (hash, num, DB_NUMERIC_BUF_SIZE);
+      }
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      {
+	int size = db_get_string_size (value);
+
+	hash = btree_get_stats_hash_bytes (hash, &size, sizeof (size));
+	return btree_get_stats_hash_bytes (hash, db_get_string (value), size);
+      }
+
+    case DB_TYPE_FLOAT:
+      {
+	/* -0.0 equals 0.0 */
+	float f = db_get_float (value) + 0.0f;
+
+	return btree_get_stats_hash_bytes (hash, &f, sizeof (f));
+      }
+
+    case DB_TYPE_DOUBLE:
+      {
+	double d = db_get_double (value) + 0.0;
+
+	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
+      }
+
+    case DB_TYPE_MONETARY:
+      {
+	double d = db_get_monetary (value)->amount + 0.0;
+
+	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
+      }
+
+    case DB_TYPE_BIGINT:
+      {
+	DB_BIGINT bigint = db_get_bigint (value);
+
+	return btree_get_stats_hash_bytes (hash, &bigint, sizeof (bigint));
+      }
+
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      {
+	/* the time zone of DATETIMETZ is not compared */
+	const DB_DATETIME *datetime = (DB_VALUE_TYPE (value) == DB_TYPE_DATETIMETZ)
+	  ? &db_get_datetimetz (value)->datetime : db_get_datetime (value);
+
+	hash = btree_get_stats_hash_bytes (hash, &datetime->date, sizeof (datetime->date));
+	return btree_get_stats_hash_bytes (hash, &datetime->time, sizeof (datetime->time));
+      }
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	/* the time zone of TIMESTAMPTZ is not compared */
+	DB_TIMESTAMP timestamp = db_get_timestamptz (value)->timestamp;
+
+	return btree_get_stats_hash_bytes (hash, &timestamp, sizeof (timestamp));
+      }
+
+    case DB_TYPE_ENUMERATION:
+      {
+	/* mht_valhash () hashes the address of the DB_VALUE for this type */
+	unsigned short index = db_get_enum_short (value);
+
+	return btree_get_stats_hash_bytes (hash, &index, sizeof (index));
+      }
+
+    case DB_TYPE_OID:
+      {
+	const OID *oid = db_get_oid (value);
+
+	hash = btree_get_stats_hash_bytes (hash, &oid->pageid, sizeof (oid->pageid));
+	hash = btree_get_stats_hash_bytes (hash, &oid->slotid, sizeof (oid->slotid));
+	return btree_get_stats_hash_bytes (hash, &oid->volid, sizeof (oid->volid));
+      }
+
+    case DB_TYPE_INTEGER:
+      {
+	int i = db_get_int (value);
+
+	return btree_get_stats_hash_bytes (hash, &i, sizeof (i));
+      }
+
+    case DB_TYPE_SHORT:
+      {
+	short sh = db_get_short (value);
+
+	return btree_get_stats_hash_bytes (hash, &sh, sizeof (sh));
+      }
+
+    case DB_TYPE_DATE:
+      return btree_get_stats_hash_bytes (hash, db_get_date (value), sizeof (DB_DATE));
+
+    case DB_TYPE_TIME:
+      return btree_get_stats_hash_bytes (hash, db_get_time (value), sizeof (DB_TIME));
+
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+      return btree_get_stats_hash_bytes (hash, db_get_timestamp (value), sizeof (DB_TIMESTAMP));
+
+    default:
+      return mht_get_hash_number (UINT_MAX, value);
+    }
 }
 
 /*
@@ -20268,8 +20569,6 @@ static int
 btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
 		     INDX_SCAN_ID * iscan_id)
 {
-  HEAP_CACHE_ATTRINFO *attr_info;
-  REGU_VARIABLE_LIST regu_list;
   int error;
 
   if (bts == NULL || iscan_id == NULL || iscan_id->indx_cov.list_id == NULL || iscan_id->indx_cov.val_descr == NULL
@@ -20277,6 +20576,39 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
     {
       return ER_FAILED;
     }
+
+  error = btree_read_curr_key_values (thread_p, bts, filter, oid, iscan_id);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error =
+    qexec_insert_tuple_into_list (thread_p, iscan_id->indx_cov.list_id, iscan_id->indx_cov.output_val_list,
+				  iscan_id->indx_cov.val_descr, iscan_id->indx_cov.tplrec);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_read_curr_key_values () - Decode the current key of a covered scan into the scan's values
+ *
+ *   bts(in): pointer to B+-tree scan structure
+ *   filter(in): key filter
+ *   oid(in): the current oid
+ *   iscan_id(in): index scan id
+ */
+static int
+btree_read_curr_key_values (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
+			    INDX_SCAN_ID * iscan_id)
+{
+  HEAP_CACHE_ATTRINFO *attr_info;
+  REGU_VARIABLE_LIST regu_list;
+  int error;
 
   if (iscan_id->rest_attrs.num_attrs > 0)
     {
@@ -20307,20 +20639,95 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
       return error;
     }
 
-  error = fetch_val_list (thread_p, regu_list, iscan_id->indx_cov.val_descr, NULL, oid, NULL, PEEK);
+  return fetch_val_list (thread_p, regu_list, iscan_id->indx_cov.val_descr, NULL, oid, NULL, PEEK);
+}
+
+/*
+ * btree_gby_skip_mark_key_start () - GROUP BY skip during the scan (CBRD-27664): a key record starts. S1 decodes the
+ *				      key at its first selected object; K remembers the record's position in the batch.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * bts (in)	 : B-tree scan.
+ */
+static int
+btree_gby_skip_mark_key_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+{
+  INDX_GBY_SKIP *gby = bts->index_scan_idp->gby_skip;
+  int pos = bts->n_oids_read_last_iteration;
+
+  if (gby->visit != NULL)
+    {
+      gby->key_start = true;
+      return NO_ERROR;
+    }
+
+  /* a key without selected objects leaves the next key's position: one mark covers both */
+  if (gby->key_start_cnt > 0 && gby->key_starts[gby->key_start_cnt - 1] == pos)
+    {
+      return NO_ERROR;
+    }
+  if (gby->key_start_cnt == gby->key_start_cap)
+    {
+      int cap = gby->key_start_cap > 0 ? gby->key_start_cap * 2 : 64;
+      int *starts = (int *) db_private_realloc (thread_p, gby->key_starts, cap * sizeof (int));
+
+      if (starts == NULL)
+	{
+	  int error_code;
+
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      gby->key_starts = starts;
+      gby->key_start_cap = cap;
+    }
+  gby->key_starts[gby->key_start_cnt++] = pos;
+  return NO_ERROR;
+}
+
+/*
+ * btree_gby_skip_visit () - S1 (CBRD-27664): hand a selected object of a covered GROUP BY skip scan to the executor
+ *			     instead of the covering list. The key is decoded into the scan's values once per key
+ *			     record. Nothing is buffered, so the iteration never fills and the range is read in one call.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * bts (in)	 : B-tree scan.
+ * oid (in)	 : Selected object.
+ * stop (out)	 : Set when the executor needs no more rows.
+ */
+static int
+btree_gby_skip_visit (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, OID * oid, bool * stop)
+{
+  INDX_GBY_SKIP *gby = bts->index_scan_idp->gby_skip;
+  bool key_start = gby->key_start;
+  bool scan_stop = false;
+  int error;
+
+  if (key_start)
+    {
+      error = btree_read_curr_key_values (thread_p, bts, bts->key_filter, oid, bts->index_scan_idp);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      gby->key_start = false;
+    }
+
+  /* read, but not left in the batch: n_oids_read_last_iteration stays 0 */
+  bts->n_oids_read++;
+
+  error = gby->visit (thread_p, gby->visit_arg, key_start, &scan_stop);
   if (error != NO_ERROR)
     {
       return error;
     }
-
-  error =
-    qexec_insert_tuple_into_list (thread_p, iscan_id->indx_cov.list_id, iscan_id->indx_cov.output_val_list,
-				  iscan_id->indx_cov.val_descr, iscan_id->indx_cov.tplrec);
-  if (error != NO_ERROR)
+  if (scan_stop)
     {
-      return error;
+      bts->end_scan = true;
+      *stop = true;
     }
-
   return NO_ERROR;
 }
 
@@ -29489,6 +29896,12 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
   /* Reset read counters for iteration. */
   bts->n_oids_read_last_iteration = 0;
+  if (bts->index_scan_idp != NULL && bts->index_scan_idp->gby_skip != NULL)
+    {
+      /* the key record marks belong to the batch this iteration fills */
+      bts->index_scan_idp->gby_skip->key_start_cnt = 0;
+      bts->index_scan_idp->gby_skip->key_start_next = 0;
+    }
 
   if (bts->index_scan_idp != NULL && bts->index_scan_idp->oid_list != NULL)
     {
@@ -29865,6 +30278,15 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   if (!bts->is_key_partially_processed)
     {
+      if (bts->index_scan_idp != NULL && bts->index_scan_idp->gby_skip != NULL)
+	{
+	  error_code = btree_gby_skip_mark_key_start (thread_p, bts);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
       /* Start processing key with leaf record objects. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
@@ -30212,6 +30634,12 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
   if (BTS_IS_INDEX_COVERED (bts))
     {
+      if (bts->index_scan_idp->gby_skip != NULL && bts->index_scan_idp->gby_skip->visit != NULL)
+	{
+	  /* GROUP BY skip aggregated here (S1): no covering list */
+	  assert (!BTS_IS_INDEX_ILS (bts));
+	  return btree_gby_skip_visit (thread_p, bts, oid, stop);
+	}
       if (BTS_IS_INDEX_ILS (bts))
 	{
 	  /* Index loose scan. */
