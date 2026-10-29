@@ -19473,6 +19473,85 @@ pt_expr_keep_uniqueness (const PT_NODE * expr)
 }
 
 /*
+ *   pt_get_exact_number_digits () : gets the integer digits and the scale of an exact number operand
+ *   return: false if the node is not an exact number or its digits are unknown
+ *   node(in):
+ *   int_digits(out):
+ *   scale(out):
+ */
+static bool
+pt_get_exact_number_digits (const PT_NODE * node, int *int_digits, int *scale)
+{
+  int int_digits2, scale2, prec;
+
+  *scale = 0;
+  switch (node->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+      *int_digits = DB_SMALLINT_PRECISION;
+      return true;
+    case PT_TYPE_INTEGER:
+      *int_digits = DB_INTEGER_PRECISION;
+      return true;
+    case PT_TYPE_BIGINT:
+      *int_digits = DB_BIGINT_PRECISION;
+      return true;
+    case PT_TYPE_NUMERIC:
+      break;
+    default:
+      return false;
+    }
+
+  if (node->node_type == PT_VALUE)
+    {
+      if (!node->info.value.db_value_is_initialized)
+	{
+	  return false;
+	}
+      /* a constant carries its own precision and scale */
+      db_get_numeric_precision_and_scale (&node->info.value.db_value, &prec, scale, NULL);
+      *int_digits = prec - *scale;
+      return true;
+    }
+
+  if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_CAST:
+	  /* the declared precision of CAST (x AS NUMERIC) is the default one, not the digits of x */
+	  if (node->data_type == NULL || !pt_get_exact_number_digits (node->info.expr.arg1, int_digits, scale))
+	    {
+	      return false;
+	    }
+	  *scale = node->data_type->info.data_type.dec_precision;
+	  return true;
+	case PT_PLUS:
+	case PT_MINUS:
+	  /* the declared precision of the result is a placeholder */
+	  if (node->info.expr.arg2 == NULL || !pt_get_exact_number_digits (node->info.expr.arg1, int_digits, scale)
+	      || !pt_get_exact_number_digits (node->info.expr.arg2, &int_digits2, &scale2))
+	    {
+	      return false;
+	    }
+	  *int_digits = MAX (*int_digits, int_digits2) + 1;
+	  *scale = MAX (*scale, scale2);
+	  return true;
+	default:
+	  return false;
+	}
+    }
+
+  if (node->data_type == NULL)
+    {
+      return false;
+    }
+  *int_digits = node->data_type->info.data_type.precision - node->data_type->info.data_type.dec_precision;
+  *scale = node->data_type->info.data_type.dec_precision;
+  return true;
+}
+
+/*
  *   pt_expr_keeps_distinct_values () : checks if an expression accepted by
  *					pt_expr_keep_uniqueness () maps distinct
  *					values of its argument to distinct values
@@ -19487,7 +19566,7 @@ pt_expr_keeps_distinct_values (const PT_NODE * expr)
 {
   PT_TYPE_ENUM type = expr->type_enum;
   PT_NODE *arg;
-  int i;
+  int i, int_digits, scale;
 
   switch (expr->info.expr.op)
     {
@@ -19503,17 +19582,10 @@ pt_expr_keeps_distinct_values (const PT_NODE * expr)
     case PT_MINUS:
       if (type == PT_TYPE_NUMERIC)
 	{
-	  /* the declared scale of the result is a placeholder. the operands are aligned to the larger scale
-	   * and the sum is exact or an overflow error */
-	  for (i = 0; i < 2; i++)
-	    {
-	      arg = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
-	      if (arg == NULL || (!PT_IS_DISCRETE_NUMBER_TYPE (arg->type_enum) && arg->type_enum != PT_TYPE_NUMERIC))
-		{
-		  return false;
-		}
-	    }
-	  return true;
+	  /* the operands are aligned to the larger scale, and a sum with more digits than
+	   * DB_MAX_NUMERIC_PRECISION is rounded */
+	  return (pt_get_exact_number_digits (expr, &int_digits, &scale)
+		  && int_digits + scale <= DB_MAX_NUMERIC_PRECISION);
 	}
       if (!PT_IS_DISCRETE_NUMBER_TYPE (type) && type != PT_TYPE_DATE && type != PT_TYPE_TIME
 	  && type != PT_TYPE_DATETIME && type != PT_TYPE_TIMESTAMP && !PT_IS_CHAR_STRING_TYPE (type))
