@@ -1218,9 +1218,9 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -1260,10 +1260,10 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", "worker_idx", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"worker_idx", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", "worker_idx", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"worker_idx", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
