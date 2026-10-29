@@ -20560,7 +20560,9 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
   if (DB_VALUE_TYPE (curr_key) != DB_TYPE_MIDXKEY)
     {
-      if (attr_info->num_values != 1 || btree_num_att != 1 || attr_info->values->attrid != btree_att_ids[0])
+      if (attr_info->num_values != 1 || btree_num_att != 1
+	  || (attr_info->values->attrid != btree_att_ids[0]
+	      && !IS_FUNC_INDEX_RESULT_ATTR_ID (attr_info->values->attrid)))
 	{
 	  return ER_FAILED;
 	}
@@ -20604,23 +20606,26 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	    }
 	  else
 	    {
-	      found = false;
-	      for (j = 0; j < btree_num_att; j++)
+	      if (func_index_col_id != -1 && IS_FUNC_INDEX_RESULT_ATTR_ID (attr_value->attrid))
 		{
-		  if (attr_value->attrid == btree_att_ids[j])
+		  j = func_index_col_id;
+		  found = true;
+		}
+	      else
+		{
+		  found = false;
+		  for (j = 0; j < btree_num_att; j++)
 		    {
-		      found = true;
-		      if (func_index_col_id != -1)
+		      if (attr_value->attrid == btree_att_ids[j])
 			{
-			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
-			   * in attributes */
-			  if (j >= func_index_col_id)
+			  found = true;
+			  if (func_index_col_id != -1 && j >= func_index_col_id)
 			    {
+			      /* step over the function result slot which resides in the midxkey */
 			      j++;
 			    }
+			  break;
 			}
-
-		      break;
 		    }
 		}
 

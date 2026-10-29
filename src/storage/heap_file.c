@@ -10336,13 +10336,26 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
+      int max_attrs = (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs
+		       + attr_info->last_classrepr->n_class_attrs);
+
+      /* the function index result is requested on top of the class attributes */
+      for (i = 0; i < requested_num_attrs; i++)
+	{
+	  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrids[i]))
+	    {
+	      max_attrs++;
+	    }
+	}
+
+      if (requested_num_attrs > max_attrs)
+	{
 #ifndef NDEBUG
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
 #endif
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+	  requested_num_attrs = max_attrs;
+	}
     }
 
   if (requested_num_attrs > 0)
@@ -10470,6 +10483,19 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	{
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
+	}
+      else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
+	{
+	  /* no heap representation; the value is filled from the index key */
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  value->last_attrepr = NULL;
+	  value->read_attrepr = NULL;
+	  if (value->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      db_make_null (&value->dbvalue);
+	    }
+	  num_found_attrs++;
+	  continue;
 	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
@@ -10803,7 +10829,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 	       * of the object
 	       */
 	      attrepr = ((value->read_attrepr != NULL) ? value->read_attrepr : value->last_attrepr);
-	      if (attrepr != NULL)
+	      if (attrepr != NULL || IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
 		{
 		  if (pr_clear_value (&value->dbvalue) != NO_ERROR)
 		    {
@@ -11214,6 +11240,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
+
+  if (unlikely (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid)))
+    {
+      /* the function result exists only in the index key; the planner must not let such a scan read the heap */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
