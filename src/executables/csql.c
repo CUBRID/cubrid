@@ -203,6 +203,9 @@ enum
 static int csql_Is_histo_on = HISTO_OFF;
 static bool csql_Is_time_on = true;
 
+/* input line number of the first line in the editor buffer (non-interactive mode only) */
+static int csql_Edit_start_line_no = 0;
+
 static jmp_buf csql_Jmp_buf;
 
 static CSQL_COLUMN_WIDTH_INFO *csql_column_width_info_list = NULL;
@@ -977,6 +980,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  bool csql_execute = false;
 
+	  if (!csql_Is_interactive && csql_edit_contents_get ()[0] == '\0')
+	    {
+	      /* the lexer counts lines from the start of the buffer, including leading blank and comment lines */
+	      csql_Edit_start_line_no = line_no;
+	    }
+
 	  if (csql_edit_contents_append (line_read, read_whole_line) != CSQL_SUCCESS)
 	    {
 	      goto error_continue;
@@ -1021,7 +1030,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
-	      csql_yyset_lineno (csql_Is_interactive ? 1 : line_no + 1);
 	      csql_edit_contents_clear ();
 	      found_noncomment = false;
 	    }
@@ -2189,9 +2197,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     {
       csql_yyset_lineno (1);
     }
-  else if (stmt_start_line_no > 0)
+  else if (type == EDITOR_INPUT && csql_Edit_start_line_no > 0)
     {
-      csql_yyset_lineno (stmt_start_line_no);
+      /* includes the ;run and ;xrun session commands, which pass -1 as line_no */
+      csql_yyset_lineno (csql_Edit_start_line_no);
     }
 
   if (type == FILE_INPUT)
