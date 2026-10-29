@@ -705,13 +705,16 @@ qo_term_string (QO_TERM * term, char *buf)
   return p;
 }
 
+#define QO_HAVING_HAS_AGGREGATE 0x01
+#define QO_HAVING_HAS_GROUPBY_NUM 0x02
+
 /*
- * qo_has_aggregate_pre () - walk function to find an aggregate outside subqueries
+ * qo_has_aggregate_pre () - walk function to find an aggregate and GROUPBY_NUM () outside subqueries
  */
 static PT_NODE *
 qo_has_aggregate_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  bool *has_aggregate = (bool *) arg;
+  int *found = (int *) arg;
 
   if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
@@ -719,8 +722,11 @@ qo_has_aggregate_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
     }
   else if (pt_is_aggregate_function (parser, tree))
     {
-      *has_aggregate = true;
-      *continue_walk = PT_STOP_WALK;
+      *found |= QO_HAVING_HAS_AGGREGATE;
+      if (tree->info.function.function_type == PT_GROUPBY_NUM)
+	{
+	  *found |= QO_HAVING_HAS_GROUPBY_NUM;
+	}
     }
 
   return tree;
@@ -739,6 +745,7 @@ qo_has_aggregate_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
  *     AVG (x) op c : p
  *     MAX (x) > c, MIN (x) < c : at least one row of the group satisfies x op c
  *     MAX (x) < c, MIN (x) > c : every row of the group satisfies x op c
+ *   COUNT (*) op c is the group size op c and needs no histogram.
  *   The result is not taken below DEFAULT_EQUAL_SELECTIVITY.
  */
 static double
@@ -785,7 +792,51 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
 	}
     }
 
+  if (qo_classify (cons) == PC_CONST)
+    {
+      cons_value = &cons->info.value.db_value;
+    }
+  else if (qo_classify (cons) == PC_HOST_VAR && cons->info.host_var.var_type == PT_HOST_IN)
+    {
+      cons_value = &parser->host_variables[cons->info.host_var.index];
+    }
+  else
+    {
+      return -1.0;
+    }
+  if (DB_IS_NULL (cons_value))
+    {
+      return -1.0;
+    }
+
+  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that every
+   * row of a group satisfies a predicate of selectivity s is s (1 - r) / (1 - r s), r = 1 - 1 / group_size.
+   * Using the average size as the size of every group instead (s ^ group_size) underestimates it many times when
+   * the sizes vary, since small groups pass far more often. */
+  is_ge = (op == PT_GT || op == PT_GE);
+  r = 1.0 - 1.0 / MAX (group_size, 1.0);
+
   func = agg->info.function.function_type;
+  if (func == PT_COUNT_STAR)
+    {
+      /* the group size itself, geometric with the average: P (size >= k) = r ^ (k - 1) */
+      double c, k;
+
+      db_make_null (&threshold);
+      if (tp_value_coerce (cons_value, &threshold, &tp_Double_domain) != DOMAIN_COMPATIBLE)
+	{
+	  return -1.0;
+	}
+      c = db_get_double (&threshold);
+      k = (op == PT_GT || op == PT_LE) ? floor (c) + 1.0 : ceil (c);
+      p = (k <= 1.0) ? 1.0 : pow (r, k - 1.0);
+      if (!is_ge)
+	{
+	  p = 1.0 - p;
+	}
+      return MIN (MAX (p, DEFAULT_EQUAL_SELECTIVITY), 1.0);
+    }
+
   if (func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
     {
       return -1.0;
@@ -802,19 +853,6 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
     }
   attr = pt_get_end_path_node (attr);
 
-  if (qo_classify (cons) == PC_CONST)
-    {
-      cons_value = &cons->info.value.db_value;
-    }
-  else if (qo_classify (cons) == PC_HOST_VAR && cons->info.host_var.var_type == PT_HOST_IN)
-    {
-      cons_value = &parser->host_variables[cons->info.host_var.index];
-    }
-  else
-    {
-      return -1.0;
-    }
-
   /* the attribute name in HAVING is not annotated; the histogram is on its segment's name */
   node = lookup_node (attr, env, &dummy);
   if (node == NULL || (seg = lookup_seg (node, attr, env)) == NULL || QO_SEG_PT_NODE (seg) == NULL
@@ -823,17 +861,7 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
       return -1.0;
     }
 
-  if (DB_IS_NULL (cons_value))
-    {
-      return -1.0;
-    }
-
-  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that every
-   * row of a group satisfies a predicate of selectivity s is s (1 - r) / (1 - r s), r = 1 - 1 / group_size.
-   * Using the average size as the size of every group instead (s ^ group_size) underestimates it many times when
-   * the sizes vary, since small groups pass far more often. */
   nullfrac = MIN (MAX (QO_SEG_PT_NODE (seg)->info.name.null_frequency, 0.0), 1.0);
-  r = 1.0 - 1.0 / MAX (group_size, 1.0);
 
   /* the aggregate of a group whose x is all NULL is NULL and fails the comparison; the others aggregate their
    * non-NULL rows only, which is what the histogram selectivity is conditioned on */
@@ -856,7 +884,6 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
       cons_value = &threshold;
     }
 
-  is_ge = (op == PT_GT || op == PT_GE);
   histogram_get_comp_selectivity (QO_SEG_PT_NODE (seg), cons_value, is_ge, (op == PT_GE || op == PT_LE), &p, &success);
   if (!success)
     {
@@ -886,13 +913,14 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
  *
  * Note: A conjunct without an aggregate is estimated as a WHERE term. An aggregate compared with a constant is
  *   estimated by qo_having_aggregate_selectivity (); any other aggregate conjunct takes DEFAULT_SELECTIVITY.
+ *   A conjunct with GROUPBY_NUM () is a LIMIT on the groups and is left to the LIMIT handling.
  */
 static double
 qo_having_selectivity (QO_ENV * env, PT_NODE * having, double group_size)
 {
   PT_NODE *pred, *save_next;
   double selectivity = 1.0, sel;
-  bool has_aggregate;
+  int found;
 
   for (pred = having; pred != NULL; pred = pred->next)
     {
@@ -902,12 +930,17 @@ qo_having_selectivity (QO_ENV * env, PT_NODE * having, double group_size)
 	}
 
       /* look at this conjunct only; the walk would follow next */
-      has_aggregate = false;
+      found = 0;
       save_next = pred->next;
       pred->next = NULL;
-      (void) parser_walk_tree (QO_ENV_PARSER (env), pred, qo_has_aggregate_pre, &has_aggregate, NULL, NULL);
+      (void) parser_walk_tree (QO_ENV_PARSER (env), pred, qo_has_aggregate_pre, &found, NULL, NULL);
       pred->next = save_next;
-      if (!has_aggregate)
+      if (found & QO_HAVING_HAS_GROUPBY_NUM)
+	{
+	  /* GROUPBY_NUM () is the LIMIT of the groups, which caps the estimate on its own */
+	  continue;
+	}
+      else if (!(found & QO_HAVING_HAS_AGGREGATE))
 	{
 	  sel = qo_expr_selectivity (env, pred);
 	}
