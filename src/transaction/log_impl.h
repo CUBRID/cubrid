@@ -1253,8 +1253,7 @@ extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PA
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
 				   int kill_pid);
-extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
-					  bool interrupt_only);
+extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool interrupt_only);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index (int tran_index);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index_except_me (int tran_index);
 extern int logtb_get_current_tran_index (void);
