@@ -73,6 +73,7 @@ static void wset_string_pseudo_bytes (const LANG_COLLATION *lc, const unsigned c
 				      unsigned char pbytes[5]);
 static UINT64 wset_string_hash (const VFID *index_vfid, DB_VALUE *v);
 static DB_VALUE *wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch);
+static DB_VALUE *wset_value_without_negative_zero (DB_VALUE *v, DB_VALUE *scratch);
 static int wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out);
 static const char *wset_kind_name (LOG_WSET_KIND kind);
 static const char *wset_fallback_reason_name (WSET_FALLBACK_REASON reason);
@@ -315,6 +316,50 @@ wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch)
 }
 
 /*
+ * wset_value_without_negative_zero - the value hashed for a FLOAT or DOUBLE key value, without the sign of zero
+ *
+ *   v(in): key value
+ *   scratch(out): holds the value returned when v is a FLOAT or DOUBLE zero
+ *
+ * return: scratch holding +0.0 for a FLOAT or DOUBLE zero, or v itself for any other value
+ *
+ * Note: A FLOAT or DOUBLE -0.0 packs a sign bit that +0.0 does not, but the index compares them as numbers
+ *       (mr_cmpval_float, mr_cmpval_double), so they are one key. For example, T1 deletes k = 0.0 and T2 inserts
+ *       k = -0.0. With the sign bit the hashes differ, T2 gets no dependency, and the slave can insert first and
+ *       fail on the unique key. -0.0 is hashed as +0.0.
+ */
+static DB_VALUE *
+wset_value_without_negative_zero (DB_VALUE *v, DB_VALUE *scratch)
+{
+  if (DB_IS_NULL (v))
+    {
+      return v;
+    }
+
+  switch (DB_VALUE_DOMAIN_TYPE (v))
+    {
+    case DB_TYPE_FLOAT:
+      if (db_get_float (v) == 0.0f)
+	{
+	  db_make_float (scratch, 0.0f);
+	  return scratch;
+	}
+      return v;
+
+    case DB_TYPE_DOUBLE:
+      if (db_get_double (v) == 0.0)
+	{
+	  db_make_double (scratch, 0.0);
+	  return scratch;
+	}
+      return v;
+
+    default:
+      return v;
+    }
+}
+
+/*
  * wset_midxkey_hash - hash a composite key element by element
  *
  *   index_vfid(in): index VFID used by the writeset key
@@ -408,7 +453,10 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out)
 	  else
 	    {
 	      DB_VALUE zone_free;
+	      DB_VALUE sign_free;
 	      DB_VALUE *hashed = wset_value_without_zone (&element, &zone_free);
+
+	      hashed = wset_value_without_negative_zero (hashed, &sign_free);
 
 	      /* 0xC1 tag followed by the packed element in its aligned size, so the layout does not depend on
 	       * how much of that size the packer used. or_pack_mem_value aligns its start and its value to
@@ -594,12 +642,14 @@ wset_fallback_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
  *       (wset_string_hash), so collation-equal strings produce one hash;
  *       a composite key is reduced element by element the same way (wset_midxkey_hash);
  *       every other type is hashed over its packed bytes, a TIMESTAMPTZ or DATETIMETZ value without
- *       its zone (wset_value_without_zone).
+ *       its zone (wset_value_without_zone) and a FLOAT or DOUBLE -0.0 as +0.0
+ *       (wset_value_without_negative_zero).
  */
 int
 wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid, DB_VALUE *key)
 {
   DB_VALUE zone_free;
+  DB_VALUE sign_free;
   DB_VALUE *hashed;
   char *buf = NULL;
   UINT64 hash;
@@ -658,6 +708,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
     }
 
   hashed = wset_value_without_zone (key, &zone_free);
+  hashed = wset_value_without_negative_zero (hashed, &sign_free);
 
   buf_len = OR_VALUE_ALIGNED_SIZE (hashed);
   buf = (char *) malloc ((size_t) buf_len);
@@ -883,6 +934,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
 {
   DB_VALUE casted;
   DB_VALUE zone_free;
+  DB_VALUE sign_free;
   DB_VALUE *hashed;
   char *buf = NULL;
   UINT64 hash;
@@ -966,6 +1018,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
     }
 
   hashed = wset_value_without_zone (&casted, &zone_free);
+  hashed = wset_value_without_negative_zero (hashed, &sign_free);
 
   buf_len = OR_VALUE_ALIGNED_SIZE (hashed);
   buf = (char *) malloc ((size_t) buf_len);
