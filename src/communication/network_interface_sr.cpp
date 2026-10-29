@@ -11620,6 +11620,46 @@ smethod_invoke_fold_constants (THREAD_ENTRY *thread_p, unsigned int rid, char *r
 #endif
 
 /*
+ * CDC_FLASHBACK_CHECK_REQ_REMAINING () - reject a request with fewer than
+ *   'needed' bytes left to unpack. Used before each fixed-size field, so a
+ *   truncated or crafted request cannot be read past its own buffer.
+ *
+ * Expects the enclosing handler's 'error_code' and 'error' label, which every
+ * CDC and flashback request handler below already has.
+ */
+#define CDC_FLASHBACK_CHECK_REQ_REMAINING(ptr, request, reqlen, needed) \
+  do \
+    { \
+      if ((reqlen) - (int) ((ptr) - (request)) < (needed)) \
+	{ \
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, \
+		  (needed), ((reqlen) - (int) ((ptr) - (request)))); \
+	  error_code = ER_NET_DATASIZE_MISMATCH; \
+	  goto error; \
+	} \
+    } \
+  while (0)
+
+/*
+ * CDC_FLASHBACK_CHECK_REQ_COUNT () - reject a client-supplied element count the
+ *   rest of the request could not possibly hold. Each element needs at least
+ *   'elem_size' bytes, so the bytes left over cap the count. The comparison is
+ *   widened to INT64 so a huge count cannot overflow it.
+ */
+#define CDC_FLASHBACK_CHECK_REQ_COUNT(count, ptr, request, reqlen, elem_size) \
+  do \
+    { \
+      if ((count) < 0 || (INT64) (count) > (INT64) ((reqlen) - (int) ((ptr) - (request))) / (elem_size)) \
+	{ \
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, \
+		  (int) (((reqlen) - (int) ((ptr) - (request))) / (elem_size)), (count)); \
+	  error_code = ER_NET_DATASIZE_MISMATCH; \
+	  goto error; \
+	} \
+    } \
+  while (0)
+
+/*
  * cdc_flashback_unpack_bounded_string () - unpack a length-prefixed string,
  *   rejecting a length that would read past the request or misalign later unpacks.
  *   return: advanced pointer on success, NULL if the length is out of range.
@@ -11651,7 +11691,8 @@ cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char 
 	  /* or_pack_string() always NUL-terminates before padding to declared_len, so a
 	   * legitimate peer's string always has a NUL within its own declared span; a
 	   * crafted one without it would let every downstream strlen()/strcmp() consumer
-	   * run past this buffer into adjacent heap memory. */
+	   * (and, on the classname-not-found error path, the byte count sent back to the
+	   * client) run past this buffer into adjacent heap memory. */
 	  || memchr (after_len, '\0', declared_len) == NULL))
     {
       return NULL;
@@ -11987,13 +12028,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   /* These 4 ints are unpacked unconditionally and weren't covered by the
    * db_user check above -- a short-but-valid request would otherwise read
    * past the buffer here. */
-  if (reqlen - (int) (ptr - request) < 4 * OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      4 * OR_INT_SIZE, (reqlen - (int) (ptr - request)));
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_REMAINING (ptr, request, reqlen, 4 * OR_INT_SIZE);
 
   ptr = or_unpack_int (ptr, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -12002,13 +12037,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
   /* Bound the count against the remaining request length before the unpack
    * loop -- each user needs at least a length prefix. */
-  if (num_extraction_user < 0 || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_COUNT (num_extraction_user, ptr, request, reqlen, OR_INT_SIZE);
 
   if (num_extraction_user > 0)
     {
@@ -12047,13 +12076,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
   /* Unpacked unconditionally right after a loop that may have already
    * consumed all remaining bytes -- check before reading it. */
-  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      OR_INT_SIZE, (reqlen - (int) (ptr - request)));
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_REMAINING (ptr, request, reqlen, OR_INT_SIZE);
 
   ptr = or_unpack_int (ptr, &num_extraction_class);
 
@@ -12109,7 +12132,12 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
    *
    * The producer has to be paused before cdc_set_configuration() below, which
    * frees the extraction filter the producer reads in cdc_is_filtered_user()
-   * and cdc_is_filtered_class(). */
+   * and cdc_is_filtered_class().
+   *
+   * scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
   (void) log_extract_owner_claim (&cdc_Session_owner, thread_p, true, &prev_fd, &prev_client_id);
   session_claimed = true;
 
@@ -12483,9 +12511,11 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
   int area_size = 0;
+  UINT64 area_size64 = 0;
 
   int error_code = NO_ERROR;
   char *ptr;
+  char *aligned_ptr;
   char *start_ptr;
 
   char *num_ptr;		//pointer in which 'number of summary' is located
@@ -12511,13 +12541,32 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       goto error;
     }
 
+  /* A too-short (or NULL) request would otherwise dereference NULL / read
+   * past a zero-byte allocation at the unconditional unpack below. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (request, &context.num_class);
+
+  /* Bound the count against the remaining request length -- each class name
+   * is packed as a string. */
+  CDC_FLASHBACK_CHECK_REQ_COUNT (context.num_class, ptr, request, reqlen, OR_INT_SIZE);
 
   for (int i = 0; i < context.num_class; i++)
     {
       OID classoid = OID_INITIALIZER;
 
-      ptr = or_unpack_string_nocopy (ptr, &classname);
+      ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &classname);
+      if (ptr == NULL || classname == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+	  error_code = ER_NET_DATASIZE_MISMATCH;
+	  goto error;
+	}
 
       status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
@@ -12530,7 +12579,28 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       context.classoids.emplace_back (classoid);
     }
 
-  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &context.user);
+  if (ptr == NULL || context.user == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+  /* Unpacked unconditionally right after a variable-length string field --
+   * a request crafted to exactly exhaust reqlen there would otherwise read
+   * these two int64s past the buffer. or_unpack_int64() aligns the pointer up
+   * to MAX_ALIGNMENT before reading, so the reads can consume that padding on
+   * top of 2 * OR_INT64_SIZE; measure the remaining bytes from the aligned
+   * position to avoid reading past the request. */
+  aligned_ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+  if (reqlen - (int) (aligned_ptr - request) < 2 * OR_INT64_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      2 * OR_INT64_SIZE, (reqlen - (int) (aligned_ptr - request)));
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
@@ -12542,7 +12612,8 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   assert (!LSA_ISNULL (&context.start_lsa));
 
-  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+  flashback_set_session_range (thread_p, &context.start_lsa, &context.end_lsa);
+  flashback_set_min_log_pageid_to_keep (thread_p, &context.start_lsa);
 
   /* get summary list */
   error_code = flashback_make_summary_list (thread_p, &context);
@@ -12555,13 +12626,21 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
    * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
    * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
 
-  area_size = OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
-	      + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
+  /* Computed in UINT64: num_class is bounded only by the request length and
+   * num_summary by flashback_max_transaction (INT_MAX by default), so the
+   * product overflows an int -- and would under-allocate the area the summary
+   * entries are packed into -- long before it can overflow 64 bits. */
+  area_size64 = OR_OID_SIZE * (UINT64) context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
+		+ ((UINT64) OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + (UINT64) OR_OID_SIZE * context.num_class) * context.num_summary;
 
-  area = (char *) malloc (area_size);
+  if (area_size64 <= INT_MAX)
+    {
+      area_size = (int) area_size64;
+      area = (char *) malloc (area_size);
+    }
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) area_size64);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12598,6 +12677,11 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	free (buffer);
       }
   };
+  /* Release the request before the reply goes out: the client may send its
+   * GET_LOGINFO as soon as it has the summary, and that request must not find
+   * this one still being served. The session itself stays open for it. */
+  flashback_end_request (thread_p);
+
   error_code =
 	  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
 	      area_size, std::move (deleter));
@@ -12658,13 +12742,13 @@ error:
     {
       /* if flashback variables are reset by duplicated request error,
        * variables for existing connection (valid connection) can be reset */
-      flashback_reset ();
+      flashback_reset_if_owner (thread_p);
     }
 
   return;
 
 css_send_error:
-  flashback_reset ();
+  flashback_reset_if_owner (thread_p);
 
   return;
 }
@@ -12677,12 +12761,14 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
   int area_size = 0;
+  UINT64 area_size64 = 0;
 
   int error_code = NO_ERROR;
   char *ptr;
   char *start_ptr;
 
   int threshold_to_remove_archive = 0;
+  bool request_begun = false;
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER,
 					{}, {},
@@ -12695,9 +12781,46 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       return;
     }
 
+  /* Only the connection that opened the session with GET_SUMMARY may read log
+   * info under it, one request at a time. Without this, a GET_LOGINFO from
+   * anywhere else scans the log and, reading forward, moves
+   * flashback_Min_log_pageid away from the archives the real session still
+   * needs. A request refused here leaves the session as it is. */
+  if (!flashback_begin_request (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_DUPLICATED_REQUEST, 0);
+      error_code = ER_FLASHBACK_DUPLICATED_REQUEST;
+      goto error;
+    }
+  request_begun = true;
+
+  /* A too-short (or NULL) request would otherwise dereference NULL / read
+   * past a zero-byte allocation at the unconditional unpack below. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (request, &context.trid);
-  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &context.user);
+  if (ptr == NULL || context.user == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+  /* Unpacked unconditionally right after a variable-length string field --
+   * a request crafted to exactly exhaust reqlen there would otherwise read
+   * this past the buffer. */
+  CDC_FLASHBACK_CHECK_REQ_REMAINING (ptr, request, reqlen, OR_INT_SIZE);
+
   ptr = or_unpack_int (ptr, &context.num_class);
+
+  /* Bound the count against the remaining request length -- each class oid
+   * is packed as an OID. */
+  CDC_FLASHBACK_CHECK_REQ_COUNT (context.num_class, ptr, request, reqlen, OR_OID_SIZE);
 
   for (int i = 0; i < context.num_class; i++)
     {
@@ -12706,10 +12829,41 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       context.classoid_set.emplace (classoid);
     }
 
+  /* The class-oid loop above may exhaust the request buffer well before this
+   * point (e.g. context.num_class == 0); the four fields below are unpacked
+   * unconditionally, so check for all of them together first. */
+  if (reqlen - (int) (ptr - request) < 2 * OR_LOG_LSA_ALIGNED_SIZE + 2 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      2 * OR_LOG_LSA_ALIGNED_SIZE + 2 * OR_INT_SIZE, (reqlen - (int) (ptr - request)));
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
   ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
   ptr = or_unpack_int (ptr, &context.num_loginfo);
+  if (context.num_loginfo < 0 || context.num_loginfo > FLASHBACK_MAX_NUM_LOGINFO_PER_REQUEST)
+    {
+      /* A requested-batch-size, not a buffer count, so this is bounded by its
+       * own limit rather than by reqlen. The cap matters because the generation
+       * loop keeps scanning past the requested range while it is short of this
+       * count, so an inflated value turns into unbounded log reads. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      FLASHBACK_MAX_NUM_LOGINFO_PER_REQUEST, context.num_loginfo);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
   ptr = or_unpack_int (ptr, &context.forward);
+
+  /* the client sends back the positions it was handed; check them against what
+   * the session remembers before any log page is read for them */
+  if (!flashback_check_resume_lsa (thread_p, &context.start_lsa, &context.end_lsa))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 2, LSA_AS_ARGS (&context.start_lsa));
+      error_code = ER_CDC_INVALID_LOG_LSA;
+      goto error;
+    }
 
   error_code = flashback_make_loginfo (thread_p, &context);
   if (error_code != NO_ERROR)
@@ -12717,19 +12871,26 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       goto error;
     }
 
-  area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
-
   /* log info entries are chunks of memory that already packed together, and they need to be aligned
    * | lsa | lsa | num item | align | log info 1 | align | log info 2 | align | log info 3 | ..
-   * */
+   *
+   * Computed in UINT64: queue_size is the total length actually generated, which
+   * the requested batch size does not bound, so a huge transaction can push it
+   * past INT_MAX. */
+  area_size64 = 2 * (UINT64) OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE
+		+ (UINT64) context.queue_size + (UINT64) context.num_loginfo * MAX_ALIGNMENT;
 
-  area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
-
-  area = (char *) malloc (area_size);
+  if (area_size64 <= INT_MAX)
+    {
+      area_size = (int) area_size64;
+      area = (char *) malloc (area_size);
+    }
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) area_size64);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      /* nothing has been packed yet, so the generated entries are still only in the queue */
+      flashback_free_loginfo_queue (thread_p, &context);
       goto error;
     }
 
@@ -12751,25 +12912,33 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	free (buffer);
       }
   };
+  /* Settle the session before the reply goes out, as GET_SUMMARY does: the
+   * client may send its next GET_LOGINFO as soon as it has this reply, and
+   * that request must not find this one still being served. */
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
+    {
+      flashback_reset_if_owner (thread_p);
+    }
+  else
+    {
+      /* the next GET_LOGINFO resumes from the positions just sent */
+      flashback_set_issued_lsa (thread_p, &context.start_lsa, &context.end_lsa);
+
+      if (context.forward)
+	{
+	  /* start_lsa is increased only if direction is forward */
+	  flashback_set_min_log_pageid_to_keep (thread_p, &context.start_lsa);
+	}
+
+      flashback_end_request (thread_p);
+    }
+
   error_code =
 	  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
 	      area_size, std::move (deleter));
   if (error_code != NO_ERROR)
     {
       goto css_send_error;
-    }
-
-  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
-    {
-      flashback_reset ();
-    }
-  else
-    {
-      if (context.forward)
-	{
-	  /* start_lsa is increased only if direction is forward */
-	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
-	}
     }
 
   return;
@@ -12800,12 +12969,15 @@ error:
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
-  flashback_reset ();
+  if (request_begun)
+    {
+      flashback_reset_if_owner (thread_p);
+    }
 
   return;
 css_send_error:
 
-  flashback_reset ();
+  flashback_reset_if_owner (thread_p);
   return;
 }
 

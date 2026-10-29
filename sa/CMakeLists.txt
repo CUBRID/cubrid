@@ -308,8 +308,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/domain_plan.c
-  ${QUERY_DIR}/domain_resolve.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -361,10 +359,10 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_system_catalog.cpp
-  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
-  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
   ${OBJECT_DIR}/schema_system_catalog_install.cpp
   ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
+  ${OBJECT_DIR}/schema_system_metadata_builder.cpp
+  ${OBJECT_DIR}/schema_system_metadata_definition.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
@@ -374,8 +372,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   ${OBJECT_DIR}/schema_information_schema.cpp
-  ${OBJECT_DIR}/schema_information_schema_builder.cpp
-  ${OBJECT_DIR}/schema_information_schema_definition.cpp
   ${OBJECT_DIR}/schema_information_schema_install.cpp
   ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )

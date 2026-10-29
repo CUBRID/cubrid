@@ -144,6 +144,7 @@ struct SUBKEY_INFO
   TP_DOMAIN *col_dom;
 
   TP_DOMAIN *cmp_dom;		/* for median sorting string in different domain */
+  TP_VALUE_CONVERTER cmp_conv;	/* the converter of a col_dom value into cmp_dom, found with it */
 
   // signature should match pr_type::data_cmpdisk_function_type
   // todo - use a function type for both sort_f and pr_type::data_cmpdisk_function_type
@@ -161,10 +162,6 @@ struct SUBKEY_INFO
   int is_nulls_first;
 
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
-
-  bool cmp_dom_session_read;	/* cmp_dom rests on a session variable read: the type holds for the statement, a value
-				 * of another type converts to it or fails; the optdebug cross-check, which compares
-				 * with the type each value gives, skips it */
 };
 
 struct SORTKEY_INFO

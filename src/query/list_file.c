@@ -43,6 +43,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "perf_monitor.h"
+#include "query_evaluator.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -334,6 +335,10 @@ static int qfile_compare_tran_id (const void *t1, const void *t2);
 #endif /* SERVER_MODE */
 static unsigned int qfile_hash_db_value_array (const void *key, unsigned int htsize);
 static int qfile_compare_equal_db_value_array (const void *key1, const void *key2);
+static bool qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1,
+					   const DB_VALUE * val2);
+static bool qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
+				     QFILE_LIST_CACHE_KEY * key);
 
 /* for list cache */
 static int qfile_assign_list_cache (void);
@@ -514,8 +519,6 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
 
   list_id_p->tpl_descr.f_valp = NULL;
   list_id_p->tpl_descr.f_len = NULL;
-  list_id_p->tpl_descr.f_cast = NULL;
-  list_id_p->tpl_descr.f_cast_cnt = 0;
   list_id_p->tpl_descr.col_src = NULL;
   list_id_p->tpl_descr.col_src_cap = 0;
   return NO_ERROR;
@@ -675,15 +678,6 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
   if (list_id_p->tpl_descr.f_valp)
     {
       free_and_init (list_id_p->tpl_descr.f_valp);
-    }
-  if (list_id_p->tpl_descr.f_cast)
-    {
-      for (int i = 0; i < list_id_p->tpl_descr.f_cast_cnt; i++)
-	{
-	  pr_clear_value (&list_id_p->tpl_descr.f_cast[i]);
-	}
-      free_and_init (list_id_p->tpl_descr.f_cast);
-      list_id_p->tpl_descr.f_cast_cnt = 0;
     }
   if (list_id_p->tpl_descr.col_src)
     {
@@ -949,90 +943,39 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
 }
 
 /*
- * qfile_unify_types () -
- *   return:
- *   list_id1(in/out): Destination list identifier
+ * qfile_unify_types () - CBRD-27583: the two lists of a set operation or of a recursive CTE have one domain per
+ *   column - XASL generation gives a branch column of NULLs the unified domain (pt_type_null_list_column) - so their
+ *   tuples are copied as they are. Two JSON domains of different schemas, or two variable strings of different
+ *   precisions, are one column type whose values are written alike: type checking casts neither, so
+ *   their domains stay apart and the first list's stands
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES / ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *   list_id1(in): Destination list identifier
  *   list_id2(in): Source list identifier
- *   list1_empty(in): the rows list_id1 stands for are none (a destination opened with a branch's types: that branch's)
- *
- * Note: For every destination type which is DB_TYPE_NULL,
- *       set it to the source type.
- *       This should probably set an error for non-null mismatches.
- *
- * A list opens with the plan's domains: an empty side contributes no values, so its domain does not
- * constrain the other side's, as a column no tuple typed (DB_TYPE_VARIABLE) did not.
  */
 int
-qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
+qfile_unify_types (const QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 {
-  int i;
-  int max_count = list_id1_p->type_list.type_cnt;
-  DB_TYPE type1, type2;
-  const bool list2_empty = list_id2_p->tuple_cnt == 0;
+  /* a column count mismatch is ignored, as it always was */
+  const int max_count = MIN (list_id1_p->type_list.type_cnt, list_id2_p->type_list.type_cnt);
 
-  if (max_count != list_id2_p->type_list.type_cnt)
+  for (int i = 0; i < max_count; i++)
     {
-      /* error, but is ignored for now. */
-      if (max_count > list_id2_p->type_list.type_cnt)
+      const DB_TYPE type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
+      if (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]
+	  && !(type1 == TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i])
+	       && (type1 == DB_TYPE_JSON || (pr_is_string_type (type1) && pr_is_variable_type (type1)))))
 	{
-	  max_count = list_id2_p->type_list.type_cnt;
-	}
-    }
-
-  for (i = 0; i < max_count; i++)
-    {
-      type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
-      type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
-
-      /* An empty side skips the collation flag check below as well: its column opened with the plan's domain, and
-       * the load check keeps a plan domain NORMAL (a string whose collation the values give is resolved before the
-       * execution) */
-      if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	{
-	  /* list1 holds no value of this column: its tuples store only NULL (0 bytes) there, so list2's domain reads them */
-	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
-	  continue;
-	}
-      else if (type2 == DB_TYPE_VARIABLE
-	       || (list2_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	{
-	  /* list2 holds no value of this column (NULL only); list1's domain stands */
-	  continue;
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
+	  return ER_QPROC_INCOMPATIBLE_TYPES;
 	}
 
-      if (type1 == DB_TYPE_NULL)
-	{
-	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
-	}
-      else
-	{
-	  if (type2 != DB_TYPE_NULL && (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	    {
-	      if (type1 == type2
-		  && ((pr_is_string_type (type1) && pr_is_variable_type (type1)) || (type1 == DB_TYPE_JSON)))
-		{
-		  /* OK for variable string types with different precision or json types */
-		}
-	      else
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
-		  qfile_set_layout (&list_id1_p->type_list);
-		  return ER_QPROC_INCOMPATIBLE_TYPES;
-		}
-	    }
-	}
-
-      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL
-	  || TP_DOMAIN_COLLATION_FLAG (list_id2_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
+      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-	  qfile_set_layout (&list_id1_p->type_list);
 	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
 	}
     }
-
-  /* domp of list1 may have changed above */
-  qfile_set_layout (&list_id1_p->type_list);
 
   return NO_ERROR;
 }
@@ -1241,6 +1184,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
+  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
+    {
+      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
+    }
   else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
@@ -1257,14 +1204,6 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  free_and_init (list_id_p);
 	}
       return NULL;
-    }
-
-  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
-    {
-      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-      list_id_p->tfile_vfid->membuf = NULL;
-      list_id_p->tfile_vfid->membuf_npages = 0;
-      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
@@ -1795,19 +1734,6 @@ qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
       return ER_FAILED;
     }
   tuple_descr_p->f_len = (int *) (tuple_descr_p->f_valp + n);
-  tuple_descr_p->f_cast = (DB_VALUE *) malloc ((size_t) n * sizeof (DB_VALUE));
-  if (tuple_descr_p->f_cast == NULL)
-    {
-      free_and_init (tuple_descr_p->f_valp);
-      tuple_descr_p->f_len = NULL;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) n * sizeof (DB_VALUE));
-      return ER_FAILED;
-    }
-  for (int i = 0; i < n; i++)
-    {
-      db_make_null (&tuple_descr_p->f_cast[i]);
-    }
-  tuple_descr_p->f_cast_cnt = n;
   return NO_ERROR;
 }
 
@@ -2612,7 +2538,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       goto error;
     }
 
-  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p, lhs_file_p->tuple_cnt == 0) != NO_ERROR)
+  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p) != NO_ERROR)
     {
       goto error;
     }
@@ -3247,7 +3173,7 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p, QFILE_LIS
 	  goto error;
 	}
 
-      if (qfile_unify_types (result_list_id_p, tail, false) != NO_ERROR)
+      if (qfile_unify_types (result_list_id_p, tail) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4658,6 +4584,35 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
   return prorated_pages + sort_key_overhead;
 }
 
+#if !defined (NDEBUG)
+/*
+ * qfile_sort_key_reads_column () - CBRD-27583: a sort key reads its list column's values: the same type and
+ *   collation, and the same precision and scale where the disk length depends on them; an object column (a view
+ *   object) keeps its object key
+ */
+static bool
+qfile_sort_key_reads_column (const TP_DOMAIN * key, const TP_DOMAIN * column)
+{
+  const DB_TYPE key_type = TP_DOMAIN_TYPE (key);
+  const DB_TYPE column_type = TP_DOMAIN_TYPE (column);
+  if (key == column)
+    {
+      return true;
+    }
+  if (column_type == DB_TYPE_OBJECT || column_type == DB_TYPE_OID || column_type == DB_TYPE_VOBJ)
+    {
+      return key_type == DB_TYPE_OBJECT || key_type == DB_TYPE_OID || key_type == DB_TYPE_VOBJ;
+    }
+  if (key_type != column_type
+      || (TP_TYPE_HAS_COLLATION (key_type) && TP_DOMAIN_COLLATION (key) != TP_DOMAIN_COLLATION (column)))
+    {
+      return false;
+    }
+  return (key_type != DB_TYPE_NUMERIC && key_type != DB_TYPE_CHAR && key_type != DB_TYPE_BIT)
+    || (key->precision == column->precision && key->scale == column->scale);
+}
+#endif
+
 /* qfile_initialize_sort_key_info () -
  *   return:
  *   info(in):
@@ -4724,10 +4679,18 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
+	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_session_read = false;
 
-	  /* the key's domain is the plan's */
+	  /* XASL generation sorts each key in its list column's decided domain */
+	  assert (TP_DOMAIN_TYPE (p->pos_descr.dom) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (p->pos_descr.dom) == TP_DOMAIN_COLL_NORMAL);
+#if !defined (NDEBUG)
+	  if (p->pos_descr.pos_no < types->type_cnt && p->pos_descr.dom != types->domp[p->pos_descr.pos_no])
+	    {
+	      assert (qfile_sort_key_reads_column (p->pos_descr.dom, types->domp[p->pos_descr.pos_no]));
+	    }
+#endif
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
@@ -4753,8 +4716,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->permuted_col = i;
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
+	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_session_read = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -6044,7 +6007,7 @@ qfile_hash_db_value_array (const void *key, unsigned int htsize)
 {
   unsigned int hash = 0;
   int i;
-  const DB_VALUE_ARRAY *array = (DB_VALUE_ARRAY *) key;
+  const QFILE_LIST_CACHE_KEY *array = (const QFILE_LIST_CACHE_KEY *) key;
   const DB_VALUE *val;
 
   if (key != NULL && array->size > 0)
@@ -6071,7 +6034,8 @@ static int
 qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 {
   int i;
-  const DB_VALUE_ARRAY *array1 = (DB_VALUE_ARRAY *) key1, *array2 = (DB_VALUE_ARRAY *) key2;
+  const QFILE_LIST_CACHE_KEY *array1 = (const QFILE_LIST_CACHE_KEY *) key1;
+  const QFILE_LIST_CACHE_KEY *array2 = (const QFILE_LIST_CACHE_KEY *) key2;
   const DB_VALUE *val1, *val2;
 
   if (key1 == key2 || (array1->size == 0 && array2->size == 0))
@@ -6084,9 +6048,12 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
       return false;
     }
 
+  /* CBRD-27583: the keys of one hash table are bound to one XASL cache entry: its signature's comparisons */
+  const DOMAIN_COMPARE *compares = array1->compares != NULL ? array1->compares : array2->compares;
+
   for (i = 0, val1 = array1->vals, val2 = array2->vals; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
+      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
 	{
 	  return false;
 	}
@@ -6094,7 +6061,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
   for (i = 1, val1 = array1->vals + 1, val2 = array2->vals + 1; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
+      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
 	{
 	  return false;
 	}
@@ -6102,12 +6069,48 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
   for (i = 2, val1 = array1->vals + 2, val2 = array2->vals + 2; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
+      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
 	{
 	  return false;
 	}
     }
 
+  return true;
+}
+
+/*
+ * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
+ *   equal: by the position's comparison, NULLs equal (total order), as mht_compare_dbvalues_are_equal compares them
+ *   by their types without one
+ */
+static bool
+qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
+{
+  if (compares == NULL)
+    {
+      return mht_compare_dbvalues_are_equal (val1, val2);
+    }
+  return val1 == val2
+    || eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1, NULL) == DB_EQ;
+}
+
+/*
+ * qfile_list_cache_key_of () - CBRD-27583: the key the parameter values of an execution of the XASL cache
+ *   entry look its cached results up and store them under
+ *   return: false when the entry's cache key text did not name each value's type: its results are not cached
+ */
+static bool
+qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params, QFILE_LIST_CACHE_KEY * key)
+{
+  /* the client sends one value per position the text names (;bind_var_cnt=); -1 is a text whose tokens disagree */
+  assert (xasl->n_param_compares < 0 || xasl->n_param_compares == params->size);
+  if (xasl->n_param_compares != params->size)
+    {
+      return false;
+    }
+  key->size = params->size;
+  key->vals = params->vals;
+  key->compares = params->size > 0 ? xasl->param_compares : NULL;
   return true;
 }
 
@@ -6295,6 +6298,9 @@ qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void
 
   lent->xcache_entry = new_owner;
   lent->query_string = new_owner->sql_info.sql_hash_text;
+  /* the same text: the same signature's comparisons, in the new owner's buffer */
+  assert (new_owner->n_param_compares == lent->param_values.size);
+  lent->param_values.compares = new_owner->param_compares;
 
   return NO_ERROR;
 }
@@ -6809,6 +6815,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 			       bool * result_cached)
 {
   QFILE_LIST_CACHE_ENTRY *lent = NULL;
+  QFILE_LIST_CACHE_KEY key;
 #if defined(SERVER_MODE)
   int tran_index;
   TRAN_ISOLATION tran_isolation;
@@ -6837,6 +6844,11 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
       return NULL;
     }
 
+  if (!qfile_list_cache_key_of (xasl, params, &key))
+    {
+      return NULL;
+    }
+
   if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
       return NULL;
@@ -6856,7 +6868,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
     LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
-  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
+  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], &key);
   qfile_List_cache.lookup_counter++;	/* counter */
 
   if (lent)
@@ -6971,6 +6983,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 {
   QFILE_LIST_CACHE_ENTRY *lent;
   MHT_TABLE *ht;
+  QFILE_LIST_CACHE_KEY key;
 
 #if defined(SERVER_MODE)
   int tran_index;
@@ -6993,6 +7006,11 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       return NULL;
     }
   if (qfile_List_cache.n_hts == 0)
+    {
+      return NULL;
+    }
+
+  if (!qfile_list_cache_key_of (xasl, params, &key))
     {
       return NULL;
     }
@@ -7021,7 +7039,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   do
     {
       /* check again whether the entry is in the cache */
-      lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (ht, params);
+      lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (ht, &key);
       if (lent == NULL)
 	{
 	  break;
@@ -7101,6 +7119,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 #endif /* SERVER_MODE */
   lent->param_values.size = params->size;
   lent->param_values.vals = qfile_get_list_cache_entry_param_values (lent);
+  lent->param_values.compares = key.compares;
 
   /*
    * Copy parameter values. (DB_VALUE containers)
@@ -7599,43 +7618,6 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/*
- * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
- *   the sort is the one the first value gives it (qdata_update_interpolation_func_value_and_domain), unless that
- *   type rejects the value (a string column or expression is DOUBLE, the function's evaluation rejects the value
- *   too); a key without a type holds values that function cannot type either
- */
-static void
-qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
-{
-  DB_VALUE converted;
-  TP_DOMAIN *expected = NULL;
-  bool resolved_rejects = true;
-
-  db_make_null (&converted);
-  er_stack_push ();
-  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &expected);
-  pr_clear_value (&converted);
-  if (resolved != NULL)
-    {
-      resolved_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) resolved, false) != DOMAIN_COMPATIBLE;
-      pr_clear_value (&converted);
-    }
-  er_stack_pop ();
-
-  const bool same = resolved == NULL ? error != NO_ERROR
-    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
-  if (!same)
-    {
-      fprintf (stderr, "interpolation sort key class: value type %d planned %d expected %d error %d\n",
-	       (int) DB_VALUE_DOMAIN_TYPE (value), resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
-	       expected != NULL ? (int) TP_DOMAIN_TYPE (expected) : -1, error);
-    }
-  assert (same);
-}
-#endif
-
 /*
  * qfile_compare_with_interpolation_domain () -
  *  return: compare result
@@ -7655,44 +7637,19 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 {
   int order = 0;
   DB_VALUE val0, val1;
-  TP_DOMAIN *cast_domain = NULL;
+  const TP_DOMAIN *cast_domain = subkey->cmp_dom;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
   int error = NO_ERROR;
 
   assert (d0 != NULL && d1 != NULL && subkey != NULL && key_info != NULL);
   /* col_dom is a string type (see qexec_initialize_analytic_state): the bodies decode without a scratch copy */
   assert (!qfile_col_body_needs_copy (c, subkey->col_dom));
+  assert (cast_domain != NULL);
 
   db_make_null (&val0);
   db_make_null (&val1);
 
-  if (subkey->cmp_dom == NULL)
-    {
-      /* NOTE: col_dom is string type.  See qexec_plan_interpolation_sort_key */
-      pr_clear_value (&val0);
-
-      error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
-      if (error != NO_ERROR || DB_IS_NULL (&val0))
-	{
-	  goto end;
-	}
-
-      /* a value argument resolve_domains could not type: every value is that one, whose typing
-       * fails for the first value too; a session variable read keeps that for the statement */
-#if !defined (NDEBUG)
-      if (!subkey->cmp_dom_session_read)
-	{
-	  qfile_check_interpolation_type (&val0, NULL);
-	}
-#endif
-      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-      goto end;
-    }
-
-  /* cast to proper domain, then compare */
-  pr_clear_value (&val0);
-  pr_clear_value (&val1);
-
+  /* cast to proper domain with the converter planned with it, then compare */
   error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
   if (error != NO_ERROR)
     {
@@ -7705,23 +7662,16 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
       goto end;
     }
 
-#if !defined (NDEBUG)
-  if (!subkey->cmp_dom_session_read)
-    {
-      qfile_check_interpolation_type (&val0, subkey->cmp_dom);
-      qfile_check_interpolation_type (&val1, subkey->cmp_dom);
-    }
-#endif
-
-  cast_domain = subkey->cmp_dom;
-  status = tp_value_cast (&val0, &val0, cast_domain, false);
+  status = tp_value_cast_with_converter (&val0, &val0, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
+					 subkey->cmp_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
       goto end;
     }
 
-  status = tp_value_cast (&val1, &val1, cast_domain, false);
+  status = tp_value_cast_with_converter (&val1, &val1, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
+					 subkey->cmp_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;

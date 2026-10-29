@@ -26,7 +26,29 @@
 #include "query_rewrite.h"
 #include "dbi.h"
 
-static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
+/* hints whose argument list names the specs they apply to; with no argument they apply to every spec */
+#define QO_UNNEST_SPEC_HINTS \
+  (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH | PT_HINT_NO_USE_HASH \
+   | PT_HINT_INDEX_SS | PT_HINT_INDEX_LS)
+
+/* hints of the subquery that the unnest drops */
+#define QO_UNNEST_DROPPED_HINTS \
+  (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE | PT_HINT_ORDERED | PT_HINT_LEADING \
+   | PT_HINT_PARALLEL | PT_HINT_LK_TIMEOUT)
+
+/* plan hints that name no table and apply to the whole SELECT holding them */
+#define QO_UNNEST_QUERY_WIDE_HINTS \
+  (PT_HINT_USE_IDX_DESC | PT_HINT_NO_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_MULTI_RANGE_OPT \
+   | PT_HINT_NO_SORT_LIMIT | PT_HINT_NO_HASH_AGGREGATE | PT_HINT_NO_HASH_LIST_SCAN | PT_HINT_NO_INDEX_SS \
+   | PT_HINT_NO_INDEX_LS | PT_HINT_NO_ELIMINATE_JOIN | PT_HINT_NO_PUSH_PRED | PT_HINT_NO_PARALLEL_SCAN \
+   | PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ \
+   | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_RECORD_INFO | PT_HINT_SELECT_PAGE_INFO \
+   | PT_HINT_SELECT_KEY_INFO)
+
+static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM outer_hint,
+				       bool require_where);
+static void qo_move_spec_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subq, PT_NODE * inner_spec,
+			       PT_HINT_ENUM hint, PT_NODE ** outer_args, PT_NODE ** inner_args);
 static bool qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec_list, PT_NODE * where);
 static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name);
 static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
@@ -60,10 +82,11 @@ static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, 
  *           semi/anti-joined spec
  *   parser(in):
  *   subq(in): the subquery operand
+ *   outer_hint(in): hints of the enclosing SELECT
  *   require_where(in): true for the EXISTS forms, whose only join predicate is the subquery WHERE
  */
 static bool
-qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where)
+qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM outer_hint, bool require_where)
 {
   PT_NODE *inner_spec, *hint;
   bool has_subquery;
@@ -80,6 +103,13 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
     }
 
   if (subq->info.query.q.select.hint & (PT_HINT_NO_UNNEST | PT_HINT_QUERY_CACHE))
+    {
+      return false;
+    }
+
+  /* a query-wide plan hint (NO_COVERING_IDX, USE_DESC_IDX, ...) lifted out would apply to every outer table
+   * too; keep the subquery unless the outer SELECT holds the same hint */
+  if (subq->info.query.q.select.hint & ~outer_hint & QO_UNNEST_QUERY_WIDE_HINTS)
     {
       return false;
     }
@@ -306,7 +336,7 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       subq = info->is_in_form ? cnf_node->info.expr.arg2 : cnf_node->info.expr.arg1;
     }
 
-  if (!qo_is_unnestable_subquery (parser, subq, !info->is_in_form))
+  if (!qo_is_unnestable_subquery (parser, subq, node->info.query.q.select.hint, !info->is_in_form))
     {
       return false;
     }
@@ -458,6 +488,51 @@ exit:
   return false;
 }
 
+/*
+ * qo_move_spec_hint () - move one spec-naming hint (USE_MERGE, USE_NL, ...) of an unnested subquery to the
+ *   enclosing SELECT, keeping it on the subquery's spec
+ *   return: none
+ *   parser(in):
+ *   node(in/out): the enclosing PT_SELECT
+ *   subq(in/out): the subquery being unnested; its argument list is taken
+ *   inner_spec(in): the subquery's single spec, moving up
+ *   hint(in): the hint bit
+ *   outer_args(in/out): the argument list of 'hint' in 'node'
+ *   inner_args(in/out): the argument list of 'hint' in 'subq'
+ */
+static void
+qo_move_spec_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subq, PT_NODE * inner_spec,
+		   PT_HINT_ENUM hint, PT_NODE ** outer_args, PT_NODE ** inner_args)
+{
+  PT_NODE *args = *inner_args;
+
+  *inner_args = NULL;
+
+  /* no hint in the subquery, or the outer one already names every spec */
+  if (!(subq->info.query.q.select.hint & hint) || ((node->info.query.q.select.hint & hint) && *outer_args == NULL))
+    {
+      parser_free_tree (parser, args);
+      return;
+    }
+
+  /* without arguments the hint meant every spec of the subquery, its one spec; in the enclosing SELECT the
+   * same empty list would mean every outer spec too, so name the moving spec */
+  if (args == NULL)
+    {
+      args = pt_name (parser, inner_spec->info.spec.range_var->info.name.original);
+      if (args == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return;
+	}
+      args->info.name.spec_id = inner_spec->info.spec.id;
+      args->info.name.meta_class = PT_HINT_NAME;
+    }
+
+  *outer_args = parser_append_node (args, *outer_args);
+  node->info.query.q.select.hint |= hint;
+}
+
 
 /*
  * qo_rewrite_exists_semi_anti () - unnest [NOT] EXISTS / [NOT] IN conjuncts in a SELECT's WHERE into
@@ -510,38 +585,25 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	parser_append_node (subq->info.query.q.select.using_index, node->info.query.q.select.using_index);
       subq->info.query.q.select.using_index = NULL;
 
-      node->info.query.q.select.use_nl =
-	parser_append_node (subq->info.query.q.select.use_nl, node->info.query.q.select.use_nl);
-      subq->info.query.q.select.use_nl = NULL;
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_USE_NL, &node->info.query.q.select.use_nl,
+			 &subq->info.query.q.select.use_nl);
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_USE_IDX, &node->info.query.q.select.use_idx,
+			 &subq->info.query.q.select.use_idx);
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_INDEX_SS, &node->info.query.q.select.index_ss,
+			 &subq->info.query.q.select.index_ss);
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_INDEX_LS, &node->info.query.q.select.index_ls,
+			 &subq->info.query.q.select.index_ls);
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_USE_MERGE, &node->info.query.q.select.use_merge,
+			 &subq->info.query.q.select.use_merge);
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_USE_HASH, &node->info.query.q.select.use_hash,
+			 &subq->info.query.q.select.use_hash);
+      qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_NO_USE_HASH,
+			 &node->info.query.q.select.no_use_hash, &subq->info.query.q.select.no_use_hash);
 
-      node->info.query.q.select.use_idx =
-	parser_append_node (subq->info.query.q.select.use_idx, node->info.query.q.select.use_idx);
-      subq->info.query.q.select.use_idx = NULL;
-
-      node->info.query.q.select.index_ss =
-	parser_append_node (subq->info.query.q.select.index_ss, node->info.query.q.select.index_ss);
-      subq->info.query.q.select.index_ss = NULL;
-
-      node->info.query.q.select.index_ls =
-	parser_append_node (subq->info.query.q.select.index_ls, node->info.query.q.select.index_ls);
-      subq->info.query.q.select.index_ls = NULL;
-
-      node->info.query.q.select.use_merge =
-	parser_append_node (subq->info.query.q.select.use_merge, node->info.query.q.select.use_merge);
-      subq->info.query.q.select.use_merge = NULL;
-
-      node->info.query.q.select.use_hash =
-	parser_append_node (subq->info.query.q.select.use_hash, node->info.query.q.select.use_hash);
-      subq->info.query.q.select.use_hash = NULL;
-
-      node->info.query.q.select.no_use_hash =
-	parser_append_node (subq->info.query.q.select.no_use_hash, node->info.query.q.select.no_use_hash);
-      subq->info.query.q.select.no_use_hash = NULL;
-
+      /* the query-wide plan hints passed qo_is_unnestable_subquery () only when the outer SELECT holds them;
+       * the rest (RECOMPILE, INLINE_CTE, ...) choose no plan for a table */
       node->info.query.q.select.hint |=
-	(subq->info.query.q.select.hint
-	 & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE | PT_HINT_ORDERED
-	     | PT_HINT_LEADING | PT_HINT_PARALLEL | PT_HINT_LK_TIMEOUT));
+	(subq->info.query.q.select.hint & ~(QO_UNNEST_SPEC_HINTS | QO_UNNEST_DROPPED_HINTS));
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
 
