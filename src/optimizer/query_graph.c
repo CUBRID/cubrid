@@ -7238,20 +7238,50 @@ qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 }
 
 /*
- * qo_seg_used_only_in_covering_func_index () - check whether a column missing from the index is used in the
- *   query only as an argument of the function index expression
+ * qo_func_index_arg_used_raw () - check whether a column is referenced in a parse tree list outside of the function
+ *   index expression
+ *   return: bool
+ *   parser(in):
+ *   tree(in): parse tree list to search
+ *   func_expr_str(in): printed function index expression
+ *   col(in): the column (PT_NAME)
+ */
+bool
+qo_func_index_arg_used_raw (PARSER_CONTEXT * parser, PT_NODE * tree, const char *func_expr_str, PT_NODE * col)
+{
+  QO_SEG_FI_WALK_ARG info;
+
+  info.func_expr_str = func_expr_str;
+  info.spec_id = col->info.name.spec_id;
+  info.col_name = col->info.name.original;
+  info.in_subquery = false;
+  info.found_raw = false;
+
+  (void) parser_walk_tree (parser, tree, qo_seg_used_raw_walk, &info, NULL, NULL);
+
+  return info.found_raw;
+}
+
+/*
+ * qo_seg_used_only_in_func_index () - check whether a column is an argument of the function index expression that
+ *   the query uses only inside that expression, so that a covering scan reading the function result from the key
+ *   never needs the column itself
  *   return: bool
  *   env(in): the environment
- *   index_entry(in): the index entry
- *   seg(in): the column segment not present in the index
+ *   index_entry(in): the function index entry
+ *   seg(in): the column segment
+ *   scan_terms(in): terms the index scan evaluates from the key without the column value, or NULL
  */
-static bool
-qo_seg_used_only_in_covering_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg)
+bool
+qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg, BITSET * scan_terms)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
   PT_NODE *tree = QO_ENV_PT_TREE (env);
-  PT_NODE *pt_seg;
-  QO_SEG_FI_WALK_ARG info;
+  PT_NODE *pt_seg, *func_expr = NULL, *save_next;
+  QO_SEGMENT *fi_seg;
+  const char *expr_str;
+  bool is_arg;
+  int i;
 
   if (index_entry == NULL || index_entry->constraints == NULL || index_entry->constraints->func_index_info == NULL)
     {
@@ -7269,34 +7299,75 @@ qo_seg_used_only_in_covering_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_en
       return false;
     }
 
-  info.func_expr_str = index_entry->constraints->func_index_info->expr_str;
-  info.spec_id = pt_seg->info.name.spec_id;
-  info.col_name = pt_seg->info.name.original;
-  info.in_subquery = false;
-  info.found_raw = false;
-
-  (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_seg_used_raw_walk, &info, NULL, NULL);
-  if (!info.found_raw)
+  /* grouping and aggregation evaluate the function from the raw argument */
+  if (tree->info.query.q.select.group_by != NULL || pt_has_aggregate (parser, tree))
     {
-      (void) parser_walk_tree (parser, tree->info.query.q.select.group_by, qo_seg_used_raw_walk, &info, NULL, NULL);
-    }
-  if (!info.found_raw)
-    {
-      (void) parser_walk_tree (parser, tree->info.query.q.select.having, qo_seg_used_raw_walk, &info, NULL, NULL);
-    }
-  if (!info.found_raw)
-    {
-      (void) parser_walk_tree (parser, tree->info.query.order_by, qo_seg_used_raw_walk, &info, NULL, NULL);
-    }
-  if (!info.found_raw && tree->info.query.q.select.connect_by != NULL)
-    {
-      (void) parser_walk_tree (parser, tree->info.query.q.select.start_with, qo_seg_used_raw_walk, &info, NULL, NULL);
-      (void) parser_walk_tree (parser, tree->info.query.q.select.connect_by, qo_seg_used_raw_walk, &info, NULL, NULL);
-      (void) parser_walk_tree (parser, tree->info.query.q.select.after_cb_filter, qo_seg_used_raw_walk, &info, NULL,
-			       NULL);
+      return false;
     }
 
-  return !info.found_raw;
+  for (i = 0; i < env->nterms; i++)
+    {
+      if (BITSET_MEMBER (QO_TERM_SEGS (QO_ENV_TERM (env, i)), QO_SEG_IDX (seg))
+	  && (scan_terms == NULL || !BITSET_MEMBER (*scan_terms, i)))
+	{
+	  return false;
+	}
+    }
+
+  expr_str = index_entry->constraints->func_index_info->expr_str;
+  for (i = 0; i < env->nsegs && func_expr == NULL; i++)
+    {
+      fi_seg = QO_ENV_SEG (env, i);
+      if (fi_seg != NULL && QO_SEG_FUNC_INDEX (fi_seg) && QO_SEG_HEAD (fi_seg) == QO_SEG_HEAD (seg)
+	  && QO_SEG_NAME (fi_seg) != NULL && expr_str != NULL
+	  && !intl_identifier_casecmp (QO_SEG_NAME (fi_seg), expr_str))
+	{
+	  func_expr = QO_SEG_PT_NODE (fi_seg);
+	}
+    }
+  if (func_expr == NULL)
+    {
+      return false;
+    }
+
+  save_next = func_expr->next;
+  func_expr->next = NULL;
+  is_arg = qo_func_index_arg_used_raw (parser, func_expr, NULL, pt_seg);
+  func_expr->next = save_next;
+  if (!is_arg)
+    {
+      return false;
+    }
+
+  return (!qo_func_index_arg_used_raw (parser, tree->info.query.q.select.list, expr_str, pt_seg)
+	  && !qo_func_index_arg_used_raw (parser, tree->info.query.order_by, expr_str, pt_seg));
+}
+
+/*
+ * qo_is_func_index_routable () - check whether the function result of a function index scan can be read from the
+ *   index key instead of being computed from its arguments
+ *   return: bool
+ *   env(in): the environment
+ *   nodep(in): the scanned node
+ */
+bool
+qo_is_func_index_routable (QO_ENV * env, QO_NODE * nodep)
+{
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  PT_NODE *spec = QO_NODE_ENTITY_SPEC (nodep);
+
+  if (tree == NULL || tree->node_type != PT_SELECT || spec == NULL)
+    {
+      return false;
+    }
+
+  /* these scans read rows from the heap at run time (locks, hierarchical steps), where the result does not exist */
+  if (PT_SPEC_NEEDS_HEAP_REEVAL (spec) || tree->flag.is_click_counter || tree->info.query.q.select.connect_by != NULL)
+    {
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -7421,35 +7492,10 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	    }
 	}
 
-      if (!found)
+      /* a function argument missing from the key is allowed only inside the indexed expression */
+      if (!found && !qo_seg_used_only_in_func_index (env, index_entry, seg, NULL))
 	{
-	  /* a function argument missing from the key is allowed only inside the indexed expression */
-	  if (!qo_seg_used_only_in_covering_func_index (env, index_entry, seg))
-	    {
-	      return false;
-	    }
-
-	  {
-	    int t;
-	    for (t = 0; t < env->nterms; t++)
-	      {
-		if (BITSET_MEMBER (QO_TERM_SEGS (QO_ENV_TERM (env, t)), QO_SEG_IDX (seg)))
-		  {
-		    return false;
-		  }
-	      }
-	  }
-
-	  /* grouping and aggregation evaluate the function from the raw argument */
-	  {
-	    PT_NODE *qtree = QO_ENV_PT_TREE (env);
-
-	    if (qtree != NULL && qtree->node_type == PT_SELECT
-		&& (qtree->info.query.q.select.group_by != NULL || pt_has_aggregate (QO_ENV_PARSER (env), qtree)))
-	      {
-		return false;
-	      }
-	  }
+	  return false;
 	}
     }
 
@@ -7458,10 +7504,8 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
     {
       COLL_OPT coll_opt;
       const char *expr_str = index_entry->constraints->func_index_info->expr_str;
-      PT_NODE *spec = QO_NODE_ENTITY_SPEC (nodep);
 
-      /* lock-needed scans disable covering on the server and re-evaluate the key filter on the heap record */
-      if (spec != NULL && PT_SPEC_NEEDS_HEAP_REEVAL (spec))
+      if (!qo_is_func_index_routable (env, nodep))
 	{
 	  return false;
 	}

@@ -105,6 +105,7 @@ struct symbol_info
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
   PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
+  PT_FUNC_INDEX_COVER *func_idx_routed_list;	/* covered scans of the query whose output is routed */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;

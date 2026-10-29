@@ -3703,13 +3703,8 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		  {
 		    int midx_pos = is_func_result ? filterp->func_idx_col_id : ((j < func_idx_col_id) ? j : j + 1);
 
-		    if (!is_func_result && filterp->func_idx_col_id != -1 && midx_pos >= midxkey->ncolumns)
-		      {
-			/* a function argument has no slot in the key */
-			db_make_null (valp);
-		      }
-		    else if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey),
-							    midx_pos, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		    if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey), midx_pos,
+						       valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		      {
 			return V_ERROR;
 		      }

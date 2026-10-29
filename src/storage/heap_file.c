@@ -11237,11 +11237,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 
   if (unlikely (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid)))
     {
-      /* the function result exists only in the index key */
-      (void) pr_clear_value (&value->dbvalue);
-      db_make_null (&value->dbvalue);
-      value->state = HEAP_READ_ATTRVALUE;
-      return NO_ERROR;
+      /* the function result exists only in the index key; the planner must not let such a scan read the heap */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   /* does attribute exist in this disk representation? */
@@ -12406,23 +12405,6 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   if (value == NULL)
     {
       goto exit_on_error;
-    }
-
-  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrid))
-    {
-      /* last_attrepr is NULL for the function result attribute */
-      ret = pr_clear_value (&value->dbvalue);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      ret = pr_clone_value (attr_val, &value->dbvalue);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      value->state = HEAP_WRITTEN_ATTRVALUE;
-      return ret;
     }
 
   pr_type = pr_type_from_id (value->last_attrepr->type);
