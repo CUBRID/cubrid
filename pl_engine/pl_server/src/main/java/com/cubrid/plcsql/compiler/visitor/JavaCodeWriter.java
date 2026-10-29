@@ -61,6 +61,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private Set<String> javaTypesUsed = new HashSet<>();
 
+    private String unitClassName;
+
     private String getModifier(Decl decl) {
         if (decl.isPkgItem) {
 
@@ -205,6 +207,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // and add "java.sql.*" only when unit.connectionRequired is true.
         javaTypesUsed.add("java.sql.*");
 
+        unitClassName = unit.getClassName();
         CodeToResolve ctr = visit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
 
@@ -1515,6 +1518,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "))"
             };
 
+    private String getLocalRoutinePrefix(DeclRoutine decl, boolean prefixDeclBlock) {
+        if (decl.isPkgItem || decl.scope.level == SymbolStack.LEVEL_MAIN) {
+            // a package item or the stored procedure/function being defined: a static member of
+            // the unit class. Prefix the class name so that a routine of the same name in an inner
+            // class does not hide it, as in a call qualified by the package or owner name.
+            return unitClassName + ".";
+        } else {
+            return prefixDeclBlock ? decl.scope.block + "." : "";
+        }
+    }
+
     @Override
     public CodeToResolve visitExprLocalFuncCall(ExprLocalFuncCall node) {
 
@@ -1524,7 +1538,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
                 getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
-        String block = node.prefixDeclBlock ? node.decl.scope.block + "." : "";
+        String block = getLocalRoutinePrefix(node.decl, node.prefixDeclBlock);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -2958,7 +2972,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
                 getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
-        String block = node.prefixDeclBlock ? node.decl.scope.block + "." : "";
+        String block = getLocalRoutinePrefix(node.decl, node.prefixDeclBlock);
 
         return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
