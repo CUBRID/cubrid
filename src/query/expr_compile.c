@@ -3697,6 +3697,20 @@ expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd)
   return &vd->dbval_ptr[k->value.val_pos];
 }
 
+/* the types a NUMERIC leaf's constant may be of (expr_numeric_cmp_const_ok () also bounds a BIGINT's value) */
+static bool
+expr_numeric_cmp_type_ok (DB_TYPE type)
+{
+  return type == DB_TYPE_SHORT || type == DB_TYPE_INTEGER || type == DB_TYPE_BIGINT || type == DB_TYPE_NUMERIC;
+}
+
+/* the types a string leaf's constant may be of */
+static bool
+expr_string_const_type_ok (DB_TYPE type)
+{
+  return type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR;
+}
+
 /* the same for a term of an interpreted filter (a PRED_EXPR the compiler left alone), such as one left to
  * eval_pred_comp0 () because its sides differ in type: a NUMERIC column against an integer constant ("l_quantity <
  * 24", the literal auto-parameterized).  eval_value_rel_cmp () coerces the constant to NUMERIC and compares exactly,
@@ -3760,7 +3774,10 @@ expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RA
     {
       kv = expr_raw_pos_value (k, vd);
     }
-  if (kv == NULL || DB_IS_NULL (kv) || !expr_numeric_cmp_const_ok (kv))
+  /* a NULL host variable makes the comparison UNKNOWN for every row of the execution (k_null,
+   * eb_load_leaf_constants ()): the leaf is its domain's (CBRD-27583) */
+  if (kv == NULL || (DB_IS_NULL (kv) && (k->type != TYPE_POS_VALUE || k->domain == NULL))
+      || (DB_IS_NULL (kv) ? !expr_numeric_cmp_type_ok (TP_DOMAIN_TYPE (k->domain)) : !expr_numeric_cmp_const_ok (kv)))
     {
       return false;
     }
@@ -3823,8 +3840,11 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
 	  || (TP_DOMAIN_TYPE (a->leftptr->domain) != DB_TYPE_VARCHAR
 	      && TP_DOMAIN_TYPE (a->leftptr->domain) != DB_TYPE_CHAR) || a->thirdptr == NULL
 	  || (out->sub_start = expr_raw_const_value (a->rightptr, vd)) == NULL
-	  || (out->sub_len = expr_raw_const_value (a->thirdptr, vd)) == NULL)
+	  || (out->sub_len = expr_raw_const_value (a->thirdptr, vd)) == NULL
+	  || (!DB_IS_NULL (out->sub_start) && DB_VALUE_DOMAIN_TYPE (out->sub_start) != DB_TYPE_INTEGER)
+	  || (!DB_IS_NULL (out->sub_len) && DB_VALUE_DOMAIN_TYPE (out->sub_len) != DB_TYPE_INTEGER))
 	{
+	  /* the start and the length are the function's INTEGERs, which the batch reads (eb_load_in_list ()) */
 	  return false;
 	}
       /* SUBSTR and SUBSTRING share the opcode; db_string_substring () tells them apart by misc_operand */
@@ -3945,8 +3965,10 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
     {
       kv = expr_raw_pos_value (k, vd);
     }
-  if (kv == NULL || DB_IS_NULL (kv)
-      || (DB_VALUE_DOMAIN_TYPE (kv) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (kv) != DB_TYPE_CHAR))
+  /* the constant's type is its compiled one: a host variable's domain (CBRD-27583).  A NULL host variable makes the
+   * comparison UNKNOWN for every row of the execution (k_null, eb_load_leaf_constants ()), so it is a leaf too */
+  if (kv == NULL || (DB_IS_NULL (kv) && (k->type != TYPE_POS_VALUE || k->domain == NULL))
+      || !expr_string_const_type_ok (DB_IS_NULL (kv) ? TP_DOMAIN_TYPE (k->domain) : DB_VALUE_DOMAIN_TYPE (kv)))
     {
       return false;
     }

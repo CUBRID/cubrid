@@ -1285,8 +1285,9 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   col = &plan->cols[eb_col_of_vec (plan, vec)];
   /* the constant must read as the column does: its codeset and its collation.  A LIKE pattern is matched by the
    * engine's own qstr_like_match () under that collation (eb_raw_kid_str ()), which takes '%' and '_' as the row
-   * path does; no ESCAPE clause reaches here (expr_pred_term_string_info ()), so a backslash is a literal */
-  if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation)
+   * path does; no ESCAPE clause reaches here (expr_pred_term_string_info ()), so a backslash is a literal.  A NULL
+   * host variable compares as UNKNOWN for every row, whatever the collation (k_null) */
+  if (!DB_IS_NULL (k) && (db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation))
     {
       return NO_ERROR;
     }
@@ -1603,10 +1604,11 @@ eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
   leaf->eq_kind = (leaf->etype == EB_STR) ? eb_str_eq_kind (col) : EB_STR_EQ_COLL;
   if (leaf->sub_start_v != NULL)
     {
-      /* a start and a length the two SUBSTRING modes agree on (SUBSTR differs below 1) */
-      if (DB_IS_NULL (leaf->sub_start_v) || DB_IS_NULL (leaf->sub_len_v)
-	  || DB_VALUE_DOMAIN_TYPE (leaf->sub_start_v) != DB_TYPE_INTEGER
-	  || DB_VALUE_DOMAIN_TYPE (leaf->sub_len_v) != DB_TYPE_INTEGER || db_get_int (leaf->sub_start_v) < 1
+      /* a start and a length the two SUBSTRING modes agree on (SUBSTR differs below 1), INTEGERs as the build took
+       * them (expr_pred_term_in_info ()) */
+      assert (DB_IS_NULL (leaf->sub_start_v) || DB_VALUE_DOMAIN_TYPE (leaf->sub_start_v) == DB_TYPE_INTEGER);
+      assert (DB_IS_NULL (leaf->sub_len_v) || DB_VALUE_DOMAIN_TYPE (leaf->sub_len_v) == DB_TYPE_INTEGER);
+      if (DB_IS_NULL (leaf->sub_start_v) || DB_IS_NULL (leaf->sub_len_v) || db_get_int (leaf->sub_start_v) < 1
 	  || db_get_int (leaf->sub_len_v) < 1)
 	{
 	  return eb_fallback (plan, "a SUBSTRING position the batch does not take");
@@ -1844,6 +1846,13 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
       int len = 0, got;
       bool keep;
 
+      if (leaf->k_null)
+	{
+	  /* a NULL bound value (eb_load_leaf_constants ()): UNKNOWN, as a NULL column value is */
+	  plan->unk[r] = 1;
+	  batch->sel[n++] = r;
+	  continue;
+	}
       got = eb_cell_str (col, r, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
       if (got < 0)
 	{
@@ -2432,9 +2441,30 @@ eb_program_cell_vec (EB_BUILD * b, int cell)
 	  /* a row step the translation has not reached: the program is not in order */
 	  return -1;
 	}
-      /* computed once per program or per execution: the cell holds its address after the
-       * prologues; its type is what the consuming kernel requires (eb_bind_operand ()) */
-      b->cell_vec[cell] = eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, NULL, &prog->cells[cell], EB_SC_EXACT);
+      /* computed once per program or per execution: the cell holds its address after the prologues.  Its type is
+       * the compiled one where the step tells it (CBRD-27583) -- a host variable's domain, a cast's, an arithmetic
+       * kernel's -- so an aggregate can take the cell; another step's is what the consuming kernel requires
+       * (eb_bind_operand ()) */
+      {
+	DB_TYPE type = info.type;
+	int etype = EB_I64;
+
+	if (info.cls == EXPR_STEP_HOSTVAR)
+	  {
+	    type = (info.regu != NULL && info.regu->domain != NULL) ? TP_DOMAIN_TYPE (info.regu->domain)
+	      : DB_TYPE_UNKNOWN;
+	  }
+	else if (info.cls == EXPR_STEP_CAST)
+	  {
+	    type = (info.domain != NULL) ? TP_DOMAIN_TYPE (info.domain) : DB_TYPE_UNKNOWN;
+	  }
+	if (type == DB_TYPE_UNKNOWN || !eb_etype_of (type, &etype))
+	  {
+	    type = DB_TYPE_UNKNOWN;
+	    etype = EB_I64;
+	  }
+	b->cell_vec[cell] = eb_new_scalar_vec (b, etype, type, NULL, &prog->cells[cell], EB_SC_EXACT);
+      }
       return b->cell_vec[cell];
     }
   /* wired at compile time: a result slot of the scan's filter, a literal (TYPE_DBVAL) or a value-list slot
@@ -3014,6 +3044,24 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
 	    }
 	  vec = eb_new_scalar_vec (b, etype, DB_VALUE_DOMAIN_TYPE (&operand->value.dbval), &operand->value.dbval, NULL,
 				   (etype == EB_NUM) ? EB_SC_NUMERIC_FROM_DBV : EB_SC_EXACT);
+	  if (vec < 0)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (operand->type == TYPE_POS_VALUE)
+	{
+	  /* a host variable: one value of its compiled domain for the execution (CBRD-27583), read when the page
+	   * starts as a literal is; a NULL one leaves every row's operand NULL */
+	  const DB_VALUE *hv = expr_raw_const_value (operand, b->in->vd);
+	  const DB_TYPE type = (operand->domain != NULL) ? TP_DOMAIN_TYPE (operand->domain) : DB_TYPE_UNKNOWN;
+	  int etype;
+
+	  if (hv == NULL || !eb_etype_of (type, &etype))
+	    {
+	      return eb_decline (b, "a host variable operand the batch does not carry");
+	    }
+	  vec = eb_new_scalar_vec (b, etype, type, hv, NULL, (etype == EB_NUM) ? EB_SC_NUMERIC_FROM_DBV : EB_SC_EXACT);
 	  if (vec < 0)
 	    {
 	      return ER_FAILED;
@@ -3751,12 +3799,9 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 	    }
 	  continue;
 	}
-      if (DB_VALUE_DOMAIN_TYPE (src) != v->dbtype)
-	{
-	  /* a guard: the plan is compiled per bind-type signature, so the value has the type the step was built
-	   * for; one of another type is the row path's */
-	  return eb_fallback (plan, "a scalar bound to another type");
-	}
+      /* the value is of the type its step was compiled for: a host variable's is its domain's (CBRD-27583), as the
+       * row path's expr_k_hostvar () asserts */
+      assert (DB_VALUE_DOMAIN_TYPE (src) == v->dbtype);
       switch (v->dbtype)
 	{
 	case DB_TYPE_SHORT:
@@ -3822,14 +3867,19 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	{
 	  const EB_COL *col = &plan->cols[leaf->col];
 
-	  if (k == NULL || DB_IS_NULL (k)
-	      || (DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_CHAR)
-	      || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation)
+	  if (k == NULL)
 	    {
-	      /* a constant the leaf does not compare as built (a guard: the plan fixes a bound value's type,
-	       * codeset and collation per signature) */
-	      return eb_fallback (plan, "a string constant the batch does not take");
+	      return eb_fallback (plan, "a filter constant not set");
 	    }
+	  if (DB_IS_NULL (k))
+	    {
+	      /* a NULL bound value: the comparison is UNKNOWN for every row (eb_raw_kid_str ()) */
+	      leaf->k_null = 1;
+	      continue;
+	    }
+	  /* the execution's one value, which the build took as the column reads it (eb_add_str_leaf ()) */
+	  assert ((DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_CHAR)
+		  && db_get_string_codeset (k) == col->codeset && db_get_string_collation (k) == col->collation);
 	  leaf->k_str = db_get_string (k);
 	  leaf->k_len = db_get_string_size (k);
 	  leaf->ti = eb_str_ti (leaf, k);
@@ -3861,11 +3911,8 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	    }
 	  continue;
 	}
-      if (DB_VALUE_DOMAIN_TYPE (k) != leaf->k_type)
-	{
-	  /* a guard: the plan fixes the constant's type (a plan per bind-type signature) */
-	  return eb_fallback (plan, "a filter constant bound to another type");
-	}
+      /* the constant is of the leaf's type: a host variable's is its domain's (CBRD-27583) */
+      assert (DB_VALUE_DOMAIN_TYPE (k) == leaf->k_type);
       /* the types eb_add_raw_leaf () admits a scalar leaf for; eb_etype_of () is wider (the aggregates) */
       switch (leaf->k_type)
 	{
@@ -3882,6 +3929,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  leaf->k.d = db_get_double (k);
 	  break;
 	default:
+	  assert (false);
 	  return eb_fallback (plan, "a filter constant of a type the batch does not load");
 	}
     }
@@ -4723,8 +4771,7 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 
 /* The shared values term kid computes, for row r it just evaluated to ev: each slot's DB_VALUE into the row's
  * element.  A row the term did not accept is dropped from the selection (now or at the chain's end), so its
- * element is only marked NULL.  A value of another type than the vector's, or a NUMERIC past the word domain,
- * sends the chunk to the row path. */
+ * element is only marked NULL.  A NUMERIC past the word domain sends the chunk to the row path. */
 static int
 eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev)
 {
@@ -4746,10 +4793,8 @@ eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev)
 	  v->isnull[r] = 1;
 	  continue;
 	}
-      if (DB_VALUE_DOMAIN_TYPE (src) != v->dbtype)
-	{
-	  return eb_fallback (plan, "a shared value of another type than its node's");
-	}
+      /* the node computes a value of its compiled type (CBRD-27583) */
+      assert (DB_VALUE_DOMAIN_TYPE (src) == v->dbtype);
       switch (v->dbtype)
 	{
 	case DB_TYPE_SHORT:
