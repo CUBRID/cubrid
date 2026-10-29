@@ -1385,7 +1385,8 @@ qo_top_plan_new (QO_PLAN * plan)
 
 	  if (group_sort_list)
 	    {
-	      if (tree->info.query.q.select.connect_by || found_instnum /* && found_grpynum */ )
+	      /* a prefix index orders only the key prefix: its keys do not separate the groups (as ORDER BY below) */
+	      if (tree->info.query.q.select.connect_by || found_instnum /* && found_grpynum */  || is_index_w_prefix)
 		{
 		  ;		/* give up */
 		}
@@ -16788,11 +16789,14 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
+  const unsigned save_source = parser->flag.print_host_var_source;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+  parser->flag.print_host_var_source = 1;
 
   trace_json_object_set_new (json, "rewritten query", trace_json_string (parser_print_tree (parser, select)));
 
   parser->custom_print = save_custom;
+  parser->flag.print_host_var_source = save_source;
 
   parser->plan_trace[parser->num_plan_trace].format = QUERY_TRACE_JSON;
   parser->plan_trace[parser->num_plan_trace].trace.json_plan = json;
@@ -17134,9 +17138,12 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
+  const unsigned save_source = parser->flag.print_host_var_source;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+  parser->flag.print_host_var_source = 1;
   sql = parser_print_tree (parser, select);
   parser->custom_print = save_custom;
+  parser->flag.print_host_var_source = save_source;
 
   if (sql != NULL)
     {

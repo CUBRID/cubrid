@@ -178,6 +178,63 @@ namespace parallel_scan
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel = false);
 
+  /* the aggregates qdata_aggregate_accumulator_to_accumulator () combines */
+  static bool
+  is_combinable_function (FUNC_CODE function)
+  {
+    switch (function)
+      {
+      case PT_COUNT_STAR:
+      case PT_COUNT:
+      case PT_MIN:
+      case PT_MAX:
+      case PT_SUM:
+      case PT_AVG:
+      case PT_AGG_BIT_AND:
+      case PT_AGG_BIT_OR:
+      case PT_AGG_BIT_XOR:
+      case PT_JSON_ARRAYAGG:
+      case PT_JSON_OBJECTAGG:
+      case PT_STDDEV:
+      case PT_STDDEV_POP:
+      case PT_STDDEV_SAMP:
+      case PT_VARIANCE:
+      case PT_VAR_POP:
+      case PT_VAR_SAMP:
+	return true;
+      default:
+	return false;
+      }
+  }
+
+  /* a GROUP BY skip runs in parallel (CBRD-27664) when its workers' partial aggregates combine in the leader's key
+   * order merge: every aggregate combines, its inputs are computable in a worker, and no group count stops the scan
+   * (groupby_num, which runs serially and stops early). The scan stays ascending (groupby_desc, the spec check). */
+  static bool
+  is_groupby_skip_parallel (XASL_NODE *arg)
+  {
+    if (arg->type != BUILDLIST_PROC || arg->spec_list == nullptr || arg->spec_list->indexptr == nullptr
+	|| !arg->spec_list->indexptr->groupby_skip)
+      {
+	return false;
+      }
+    const BUILDLIST_PROC_NODE &buildlist = arg->proc.buildlist;
+    if (buildlist.groupby_list == nullptr || buildlist.g_with_rollup || buildlist.g_grbynum_pred != nullptr)
+      {
+	return false;
+      }
+    possible_flags flags = check<false> (buildlist.g_scan_regu_list);
+    for (AGGREGATE_TYPE *agg = buildlist.g_agg_list; agg != nullptr; agg = agg->next)
+      {
+	if (agg->option == Q_DISTINCT || !is_combinable_function (agg->function))
+	  {
+	    return false;
+	  }
+	flags |= check<false> (agg);
+      }
+    return !is_flag_set (flags, CANNOT_PARALLEL_SCAN) && !is_flag_set (flags, CANNOT_RUN_IN_WORKER);
+  }
+
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
   {
@@ -454,10 +511,12 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby/groupby skip (ascending or descending) needs globally ordered traversal.
-		 * orderby_desc/groupby_desc only tell the first sort column is DESC and are used only with skip
-		 * (see scan_get_index_oidset ()), so they alone do not prevent a parallel scan. */
-		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip)
+		/* orderby skip and a descending groupby skip need globally ordered traversal; an ascending
+		 * groupby skip merges its workers' partial aggregates in key order, which its XASL check decides
+		 * (is_groupby_skip_parallel ()). orderby_desc/groupby_desc only tell the first sort column is DESC
+		 * and are used only with skip (see scan_get_index_oidset ()), so they alone do not prevent a
+		 * parallel scan. */
+		if (arg->indexptr->orderby_skip || (arg->indexptr->groupby_skip && arg->indexptr->groupby_desc))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -504,6 +563,18 @@ namespace parallel_scan
     return result;
   }
 
+  /* the inner scans task::initialize () can open in a worker */
+  static bool
+  worker_opens (const ACCESS_SPEC_TYPE *spec)
+  {
+    if (spec->type == TARGET_LIST)
+      {
+	return true;
+      }
+    return spec->type == TARGET_CLASS
+	   && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_INDEX);
+  }
+
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg)
   {
@@ -527,11 +598,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
-    if (arg->type != TARGET_CLASS && arg->type != TARGET_LIST)
+    /* a worker that builds the list or the value itself opens this inner scan (task::initialize ()), and it
+     * opens a heap, a B-tree or a list only; any other inner -- JSON_TABLE, a set, a method -- stays with
+     * the leader, or the worker fails the query on it (CBRD-27674) */
+    if (!worker_opens (arg))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
+	set_flag (result, CANNOT_BUILDVALUE_OPT);
       }
-    else
+    if (arg->type == TARGET_CLASS || arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
 	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
@@ -880,6 +955,11 @@ namespace parallel_scan
     switch (arg->type)
       {
       case BUILDLIST_PROC:
+	if (arg->spec_list != nullptr && arg->spec_list->indexptr != nullptr && arg->spec_list->indexptr->groupby_skip
+	    && !is_groupby_skip_parallel (arg))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
 	break;
       case BUILDVALUE_PROC:
 	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
@@ -1167,8 +1247,9 @@ namespace parallel_scan
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
-    /* the list keeps the scan order as the result order when ORDER BY was skipped or its sort is skipped at run time */
-    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST)
+    /* a groupby skip that runs in parallel keeps the group order its ORDER BY skipped: the leader merges in key order;
+     * otherwise the list keeps the scan order when ORDER BY was skipped or its sort is skipped at run time */
+    const bool block_all_specs = (XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST) && !is_groupby_skip_parallel (arg))
 				 || (arg->type == BUILDLIST_PROC && arg->after_iscan_list != nullptr
 				     && arg->proc.buildlist.groupby_list == nullptr && arg->option != Q_DISTINCT
 				     && (arg->orderby_list == nullptr
