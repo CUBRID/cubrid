@@ -234,8 +234,14 @@ regu_init (indx_info &ii)
   ii.iss_range.range = NA_NA;
   ii.iss_range.key1 = NULL;
   ii.iss_range.key2 = NULL;
+  ii.iss_range.key1_domain = NULL;
+  ii.iss_range.key2_domain = NULL;
+  ii.iss_range.key1_bound = NULL;
+  ii.iss_range.key2_bound = NULL;
   ii.key_type = NULL;
-  ii.key_plan = NULL;
+  ii.key_bounds = NULL;
+  ii.n_key_bounds = 0;
+  ii.key_ranges_compares = NULL;
 }
 
 void
@@ -244,12 +250,15 @@ regu_init (key_range &kr)
   kr.range = NA_NA;
   kr.key1 = NULL;
   kr.key2 = NULL;
+  kr.key1_domain = NULL;
+  kr.key2_domain = NULL;
+  kr.key1_bound = NULL;
+  kr.key2_bound = NULL;
 }
 
 void
 regu_init (sort_list &sl)
 {
-  sl.pos_descr.plan_item = NULL;
   sl.next = NULL;
   sl.pos_descr.pos_no = 0;
   sl.pos_descr.dom = &tp_Integer_domain;
@@ -278,7 +287,6 @@ regu_init (cubxasl::pred_expr &pr)
 void
 regu_init (arith_list_node &arith)
 {
-  arith.plan_item = NULL;
   arith.domain = NULL;
   arith.value = NULL;
   arith.opcode = T_ADD;
@@ -287,6 +295,10 @@ regu_init (arith_list_node &arith)
   arith.thirdptr = NULL;
   arith.misc_operand = LEADING;
   arith.rand_seed = NULL;
+  memset (arith.conv, 0, sizeof (arith.conv));
+  memset (arith.conv_type, 0, sizeof (arith.conv_type));
+  arith.fails = NO_ERROR;
+  arith.decided = {};
 
   regu_alloc (arith.value);
 }
@@ -337,7 +349,6 @@ regu_init (function_node &fnode)
 void
 regu_init (cubxasl::aggregate_list_node &agg)
 {
-  agg.plan_item = NULL;
   agg.next = NULL;
   agg.accumulator.value = NULL;
   agg.accumulator.value2 = NULL;
@@ -369,7 +380,6 @@ regu_init (cubxasl::aggregate_list_node &agg)
 void
 regu_init (cubxasl::analytic_list_node &ana)
 {
-  ana.plan_item = NULL;
   ana.next = NULL;
   ana.value = NULL;
   ana.value2 = NULL;
@@ -394,12 +404,14 @@ regu_init (cubxasl::analytic_list_node &ana)
 void
 regu_init (regu_variable_node &regu)
 {
-  regu.plan_item = NULL;
   regu.type = TYPE_POS_VALUE;
   regu.flags = 0;
   regu.value.val_pos = 0;
   regu.vfetch_to = NULL;
   regu.domain = NULL;
+  regu.original_domain = NULL;
+  regu.conv = NULL;
+  regu.conv_mode = 0;
   regu.xasl = NULL;
 }
 
@@ -451,6 +463,7 @@ regu_init (update_assignment &assign)
   assign.cls_idx = -1;
   assign.constant = NULL;
   assign.regu_var = NULL;
+  assign.domain = NULL;
 }
 
 void
