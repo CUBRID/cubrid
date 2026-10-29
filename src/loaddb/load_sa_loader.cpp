@@ -2568,6 +2568,26 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
 
   ENSURE_ERR_SET (err);
 
+  if (err == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+    {
+      /*
+       * Qualify the attribute, the way the rest of the loader names it. The shared
+       * converter has the attribute but not the class it belongs to - cubload::attribute
+       * carries no class name - so it says the bare name. ldr_null_db_generic () spells
+       * out class.attribute for a NULL token and the server loader does the same in
+       * process_generic_constant (); this path was the only one left saying it another
+       * way, and it is reached by a %constructor line's NULL and by an empty string the
+       * cast turns into one under oracle_style_empty_string.
+       *
+       * Say it again rather than earlier: the converter has to report something of its
+       * own, or er_filter_errid () below reads the silence as success.
+       */
+      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
+
+      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, attdesc->att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, class_attr);
+    }
+
   if (er_filter_errid (false) == NO_ERROR)
     {
       return err;
