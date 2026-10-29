@@ -28,58 +28,59 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
-import org.antlr.v4.runtime.CharStream;
-import org.antlr.v4.runtime.Token;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.sql.*;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class PlcLexerEx extends PlcLexer {
-    private boolean collect = true;
-    private boolean putSpace = false;
-    private StringBuffer sbuf = new StringBuffer();
-
-    public PlcLexerEx(CharStream input) {
-        super(input);
-    }
+public class UnitSp extends Unit {
 
     @Override
-    public Token emit() {
-        Token ret = super.emit();
-
-        // collect token texts until IS or AS is seen
-        if (collect) {
-            switch (ret.getType()) {
-                case IS:
-                case AS:
-                    collect = false;
-                    break;
-                case SPACES:
-                    if (putSpace) {
-                        sbuf.append(' ');
-                        putSpace = false;
-                    }
-                    break;
-                case SINGLE_LINE_COMMENT:
-                case SINGLE_LINE_COMMENT2:
-                case MULTI_LINE_COMMENT:
-                    break;
-                default:
-                    sbuf.append(ret.getText().toUpperCase());
-                    putSpace = true;
-            }
-        }
-
-        return ret;
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitUnitSp(this);
     }
 
-    public String getCreateSqlTemplate() {
+    public final DeclRoutine routine;
 
-        String s = sbuf.toString().trim();
-        if (s.length() > 0) {
-            return s + " AS LANGUAGE JAVA NAME";
-        } else {
-            return null;
-        }
+    public UnitSp(
+            ParserRuleContext ctx,
+            boolean connectionRequired,
+            String owner,
+            String compileSeqNo,
+            DeclRoutine routine) {
+        super(ctx, connectionRequired, owner, compileSeqNo);
+
+        assert routine.scope.level == 1;
+
+        this.routine = routine;
     }
+
+    public String getJavaSignature() {
+        return String.format("%s.%s", getClassName(), routine.getJavaSignature());
+    }
+
+    public String getClassName() {
+
+        if (className == null) {
+            String kindStr = routine.isProcedure() ? "Proc" : "Func";
+            className =
+                    String.format(
+                            "%s_%d_%s_%s_%s_%d",
+                            kindStr,
+                            owner.length(),
+                            owner,
+                            routine.name,
+                            compileSeqNo,
+                            System.currentTimeMillis());
+        }
+
+        return className;
+    }
+
+    // ------------------------------------------
+    // Private
+    // ------------------------------------------
+
+    private String className;
 }

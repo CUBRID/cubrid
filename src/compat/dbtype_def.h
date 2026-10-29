@@ -151,6 +151,10 @@ extern "C"
     CUBRID_STMT_SHOW_HISTOGRAM,
     CUBRID_STMT_DROP_HISTOGRAM,
 
+    CUBRID_STMT_CREATE_PACKAGE,
+    CUBRID_STMT_DROP_PACKAGE,
+    CUBRID_STMT_ALTER_PACKAGE,
+
     CUBRID_MAX_STMT_TYPE
   } CUBRID_STMT_TYPE;
 
@@ -508,7 +512,8 @@ extern "C"
     DB_OBJECT_SERIAL = 2,	/* SERIAL (_db_serial) */
     DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
     DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
-    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+    DB_OBJECT_PROCEDURE = 5,	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+    DB_OBJECT_PACKAGE = 6	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */

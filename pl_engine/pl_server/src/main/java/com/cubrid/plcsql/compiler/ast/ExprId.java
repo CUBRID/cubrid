@@ -52,7 +52,7 @@ public class ExprId extends Expr implements AssignTarget {
         this.name = name;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock = decl.scope().declDone;
+        prefixDeclBlock = decl.scope.declDone;
     }
 
     @Override
@@ -62,16 +62,16 @@ public class ExprId extends Expr implements AssignTarget {
         } else if (decl instanceof DeclParamIn) {
             return name;
         } else if (decl instanceof DeclForIter) {
-            return String.format("%s_i%d[0]", name, decl.scope().level);
+            return String.format("%s_i%d[0]", name, decl.scope.level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
             if (prefixDeclBlock) {
-                return String.format("%s.%s", decl.scope().block, name);
+                return String.format("%s.%s", decl.scope.block, name);
             } else {
                 return name;
             }
         } else if (decl instanceof DeclVar) {
             if (prefixDeclBlock) {
-                return String.format("%s.%s[0]", decl.scope().block, name);
+                return String.format("%s.%s[0]", decl.scope.block, name);
             } else {
                 return String.format("%s[0]", name);
             }
@@ -87,7 +87,7 @@ public class ExprId extends Expr implements AssignTarget {
             return name;
         } else if (decl instanceof DeclVar) {
             if (prefixDeclBlock) {
-                return String.format("%s.%s", decl.scope().block, name);
+                return String.format("%s.%s", decl.scope.block, name);
             } else {
                 return name;
             }

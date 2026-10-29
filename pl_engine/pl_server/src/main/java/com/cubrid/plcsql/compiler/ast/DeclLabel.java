@@ -40,12 +40,8 @@ public class DeclLabel extends Decl {
         return visitor.visitDeclLabel(this);
     }
 
-    public final String name;
-
     public DeclLabel(ParserRuleContext ctx, String name) {
-        super(ctx);
-
-        this.name = name;
+        super(ctx, name, null);
     }
 
     @Override

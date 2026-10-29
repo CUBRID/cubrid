@@ -30,20 +30,37 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclIdTypeSpeced extends DeclId {
-
-    public DeclIdTypeSpeced(ParserRuleContext ctx) {
-        super(ctx);
-    }
-
-    public abstract TypeSpec typeSpec();
+public class DeclPackage extends Decl {
 
     @Override
-    public Type type() {
-        return typeSpec().type;
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclPackage(this);
     }
 
+    public NodeList<Decl> pkgItems;
+    public Body initializer;
+
+    public DeclPackage(
+            ParserRuleContext ctx,
+            String name,
+            String comment,
+            NodeList<Decl> pkgItems,
+            Body initializer) {
+        super(ctx, name, comment);
+
+        this.pkgItems = pkgItems;
+        this.initializer = initializer;
+    }
+
+    public String getDeclBlockName() {
+        return name.toLowerCase() + '_' + (scope.level + 1);
+    }
+
+    @Override
+    public String kind() {
+        return "package";
+    }
 }

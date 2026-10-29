@@ -76,6 +76,6 @@ public class ExprLocalFuncCall extends Expr implements LocalRoutineCall {
         this.args = args;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock = decl.scope().declDone;
+        prefixDeclBlock = decl.scope.declDone;
     }
 }

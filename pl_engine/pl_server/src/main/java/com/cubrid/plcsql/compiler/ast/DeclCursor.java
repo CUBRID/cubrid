@@ -29,9 +29,12 @@
  */
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -42,8 +45,8 @@ public class DeclCursor extends DeclId {
         return visitor.visitDeclCursor(this);
     }
 
-    public final String name;
     public final NodeList<DeclParamIn> paramList;
+    public final TypeSpec recordTypeSpec;
     public final StaticSql staticSql;
 
     public int[] paramRefCounts;
@@ -52,16 +55,47 @@ public class DeclCursor extends DeclId {
     public DeclCursor(
             ParserRuleContext ctx,
             String name,
+            String comment,
             NodeList<DeclParamIn> paramList,
+            TypeSpec recordTypeSpec,
             StaticSql staticSql) {
-        super(ctx);
+        super(ctx, name, comment);
 
         assert paramList != null;
-        this.name = name;
         this.paramList = paramList;
+        this.recordTypeSpec = recordTypeSpec;
         this.staticSql = staticSql;
 
-        setHostValuesMap(paramList, staticSql.hostExprs.keySet());
+        if (staticSql != null) {
+            setHostValuesMap(paramList, staticSql.hostExprs.keySet());
+        }
+    }
+
+    @Override
+    public boolean lackOfBody() {
+        return staticSql == null && bodyDecl == null;
+    }
+
+    @Override
+    public boolean givesBodyOf(Decl d) {
+
+        if (d == null || d.getClass() != DeclCursor.class) {
+            return false;
+        }
+
+        DeclCursor other = (DeclCursor) d;
+
+        // name and parameters must be the same
+        if (!this.name.equals(other.name) || !this.paramList.equals(other.paramList)) {
+            return false;
+        }
+
+        // this must have static sql and the other may not
+        if (this.staticSql == null || other.staticSql != null) {
+            return false;
+        }
+
+        return this.recordTypeSpec.type == other.recordTypeSpec.type;
     }
 
     @Override
@@ -70,13 +104,20 @@ public class DeclCursor extends DeclId {
     }
 
     @Override
-    public String name() {
-        return name;
+    public String kind() {
+        return "cursor";
     }
 
     @Override
-    public String kind() {
-        return "cursor";
+    public void addAsPkgItem(CompileResponse resp) {
+
+        List<String> parameters = new ArrayList<>();
+        for (DeclParamIn dpi : paramList.nodes) {
+            Type ty = dpi.typeSpec.type;
+            parameters.add(String.format("%s:%d:%d:%d", dpi.name, ty.dbType, ty.prec, ty.scale));
+        }
+
+        resp.addPkgCursor(name, recordTypeSpec.type.plcName, comment, parameters);
     }
 
     // --------------------------------------------------

@@ -32,13 +32,38 @@
 package com.cubrid.jsp.data;
 
 public class CompileRequest {
+
+    public static final int PLCSQL_COMPILE_TYPE_SP = 1;
+    public static final int PLCSQL_COMPILE_TYPE_PKG_SPEC = 2;
+    public static final int PLCSQL_COMPILE_TYPE_PKG_BODY = 3;
+
+    public int type = 0;
     public String code = null;
+    public String bodyCode = null;
     public String owner = null;
     public String mode = null;
 
     public CompileRequest(CUBRIDUnpacker unpacker) {
-        code = unpacker.unpackCString();
-        owner = unpacker.unpackCString();
-        mode = unpacker.unpackCString();
+        type = unpacker.unpackInt();
+        switch (type) {
+            case PLCSQL_COMPILE_TYPE_SP:
+                code = unpacker.unpackCString();
+                owner = unpacker.unpackCString();
+                mode = unpacker.unpackCString();
+                break;
+
+            case PLCSQL_COMPILE_TYPE_PKG_SPEC:
+                code = unpacker.unpackCString();
+                bodyCode = unpacker.unpackCString();
+                owner = unpacker.unpackCString();
+                mode = unpacker.unpackCString();
+                break;
+
+            case PLCSQL_COMPILE_TYPE_PKG_BODY:
+                bodyCode = unpacker.unpackCString();
+                owner = unpacker.unpackCString();
+                mode = unpacker.unpackCString();
+                break;
+        }
     }
 }
