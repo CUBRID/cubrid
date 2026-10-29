@@ -752,7 +752,7 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
   QO_SEGMENT *seg;
   DB_VALUE *cons_value;
   DB_VALUE threshold;
-  double p = 0.0, r;
+  double p = 0.0, r, nullfrac, has_value, value_size;
   bool is_ge, success = false;
 
   if (pred->or_next != NULL)
@@ -827,6 +827,24 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
     {
       return -1.0;
     }
+
+  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that every
+   * row of a group satisfies a predicate of selectivity s is s (1 - r) / (1 - r s), r = 1 - 1 / group_size.
+   * Using the average size as the size of every group instead (s ^ group_size) underestimates it many times when
+   * the sizes vary, since small groups pass far more often. */
+  nullfrac = MIN (MAX (QO_SEG_PT_NODE (seg)->info.name.null_frequency, 0.0), 1.0);
+  r = 1.0 - 1.0 / MAX (group_size, 1.0);
+
+  /* the aggregate of a group whose x is all NULL is NULL and fails the comparison; the others aggregate their
+   * non-NULL rows only, which is what the histogram selectivity is conditioned on */
+  has_value = 1.0 - nullfrac * (1.0 - r) / (1.0 - r * nullfrac);
+  if (has_value <= 0.0)
+    {
+      return DEFAULT_EQUAL_SELECTIVITY;
+    }
+  value_size = MAX (group_size * (1.0 - nullfrac) / has_value, 1.0);
+  r = 1.0 - 1.0 / value_size;
+
   if (func == PT_SUM)
     {
       db_make_null (&threshold);
@@ -834,7 +852,7 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
 	{
 	  return -1.0;
 	}
-      db_make_double (&threshold, db_get_double (&threshold) / MAX (group_size, 1.0));
+      db_make_double (&threshold, db_get_double (&threshold) / value_size);
       cons_value = &threshold;
     }
 
@@ -845,11 +863,6 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
       return -1.0;
     }
 
-  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that every
-   * row of a group satisfies a predicate of selectivity s is s (1 - r) / (1 - r s), r = 1 - 1 / group_size.
-   * Using the average size as the size of every group instead (s ^ group_size) underestimates it many times when
-   * the sizes vary, since small groups pass far more often. */
-  r = 1.0 - 1.0 / MAX (group_size, 1.0);
   if ((func == PT_MAX && is_ge) || (func == PT_MIN && !is_ge))
     {
       p = 1.0 - (1.0 - p) * (1.0 - r) / (1.0 - r * (1.0 - p));
@@ -858,6 +871,7 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
     {
       p = p * (1.0 - r) / (1.0 - r * p);
     }
+  p *= has_value;
 
   /* the mapping assumes the groups are alike; do not go below the guess for an equality */
   return MIN (MAX (p, DEFAULT_EQUAL_SELECTIVITY), 1.0);
@@ -876,7 +890,7 @@ qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size
 static double
 qo_having_selectivity (QO_ENV * env, PT_NODE * having, double group_size)
 {
-  PT_NODE *pred;
+  PT_NODE *pred, *save_next;
   double selectivity = 1.0, sel;
   bool has_aggregate;
 
@@ -887,8 +901,12 @@ qo_having_selectivity (QO_ENV * env, PT_NODE * having, double group_size)
 	  continue;
 	}
 
+      /* look at this conjunct only; the walk would follow next */
       has_aggregate = false;
+      save_next = pred->next;
+      pred->next = NULL;
       (void) parser_walk_tree (QO_ENV_PARSER (env), pred, qo_has_aggregate_pre, &has_aggregate, NULL, NULL);
+      pred->next = save_next;
       if (!has_aggregate)
 	{
 	  sel = qo_expr_selectivity (env, pred);
@@ -940,6 +958,7 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
   INT64 group_ndv, estimate_ndv;
   double expected_nrows = plan->info->cardinality;
   double total_nrows = plan->info->total_rows;
+  double estimate_rows;
   PT_NODE *tree = QO_ENV_PT_TREE (plan->info->env);
   PT_NODE *having = NULL;
 
@@ -952,10 +971,16 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
   group_ndv = MIN (qo_get_group_ndv (plan, sort_type), expected_nrows);
   if (group_ndv == -1)
     {
-      plan->info->group_rows = expected_nrows;
+      estimate_rows = expected_nrows;
       if (having != NULL)
 	{
-	  plan->info->group_rows = MAX (expected_nrows * qo_having_selectivity (plan->info->env, having, 1.0), 1.0);
+	  estimate_rows = MAX (expected_nrows * qo_having_selectivity (plan->info->env, having, 1.0), 1.0);
+	}
+
+      /* the info is shared: a DISTINCT over a GROUP BY must not undo the groups estimated before */
+      if (plan->info->group_rows > estimate_rows)
+	{
+	  plan->info->group_rows = estimate_rows;
 	}
       return;
     }
