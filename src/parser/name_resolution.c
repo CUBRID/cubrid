@@ -5121,6 +5121,39 @@ pt_dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
     }
 }
 
+/* the local type of a remote column */
+static PT_TYPE_ENUM
+pt_dblink_remote_col_type (const S_REMOTE_COL_ATTR * attr)
+{
+  if (attr->type_idx > PT_TYPE_NONE)
+    {
+      /* this is the case of loaddb */
+      return (PT_TYPE_ENUM) attr->type_idx;
+    }
+
+  /* it needs to convert ext type to CCI_U_TYPE */
+  return pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+}
+
+/* A remote column of this type cannot be read through DBLink. The scan has no conversion for its values. */
+static bool
+pt_dblink_type_is_unreadable (PT_TYPE_ENUM type)
+{
+  switch (type)
+    {
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
+    case PT_TYPE_OBJECT:
+    case PT_TYPE_ENUMERATION:
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
+      return true;
+    default:
+      return false;
+    }
+}
+
 static bool
 pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr)
 {
@@ -5128,16 +5161,13 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
   bool need_precision = true;
 
   attr_def_node->data_type = NULL;
+  attr_def_node->type_enum = pt_dblink_remote_col_type (attr);
 
-  if (attr->type_idx > PT_TYPE_NONE)
+  if (pt_dblink_type_is_unreadable (attr_def_node->type_enum))
     {
-      /* this is the case of loaddb */
-      attr_def_node->type_enum = (PT_TYPE_ENUM) attr->type_idx;
-    }
-  else
-    {
-      /* it needs to convert ext type to CCI_U_TYPE */
-      attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+      PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
+      return false;
     }
 
   switch (attr_def_node->type_enum)
@@ -5152,17 +5182,6 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
     case PT_TYPE_NUMERIC:
     case PT_TYPE_MONETARY:
       break;
-
-    case PT_TYPE_BLOB:
-    case PT_TYPE_CLOB:
-    case PT_TYPE_OBJECT:
-    case PT_TYPE_ENUMERATION:
-    case PT_TYPE_SET:
-    case PT_TYPE_MULTISET:
-    case PT_TYPE_SEQUENCE:
-      PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
-      return false;
 
     default:
       need_precision = false;
@@ -5344,6 +5363,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   PT_NODE *attr_def_node = NULL;
   PT_NODE *id_node;
   PT_NODE *tmp;
+  PT_TYPE_ENUM type;
 
   PARSER_VARCHAR *var_buf = 0;
 
@@ -5429,7 +5449,23 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	    }
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
-	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	  type = pt_dblink_remote_col_type (rmt_cols->get_attr (i));
+	  if (class_spec->remote_server_name != NULL && pt_dblink_type_is_unreadable (type))
+	    {
+	      /* A remote DML target takes its columns only to resolve and check the statement. They are never read
+	       * through this spec, so a column of a type DBLink cannot read keeps its type, as a local target's
+	       * would. A value bound to it is refused where the sink binds it. */
+	      tmp = pt_mk_attr_def_node (parser, id_node, NULL);
+	      if (tmp != NULL)
+		{
+		  tmp->type_enum = type;
+		}
+	    }
+	  else
+	    {
+	      tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols);
+	    }
+	  if (tmp == NULL)
 	    {
 	      error = ER_DBLINK;
 	      goto error_exit;
