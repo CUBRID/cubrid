@@ -381,7 +381,7 @@ extern void pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_
 #endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				 bool do_fetch);
-extern void *pgbuf_copy_page_to_area_lru_bottom (THREAD_ENTRY * thread_p, const VPID * vpid, void *area);
+extern void *pgbuf_copy_temp_page_to_area_and_discard (THREAD_ENTRY * thread_p, const VPID * vpid, void *area);
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch, TDE_ALGORITHM tde_algo);
 

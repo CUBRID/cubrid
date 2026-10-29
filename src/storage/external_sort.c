@@ -5848,9 +5848,10 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cu
  *   area_start(in): beginning address of the area
  *
  * Note: This function reads in successive pages of the specified file into
- *       the given memory area until this area becomes full. A run is read once, by the merge that consumes it, so
- *       each page goes to the bottom of its LRU list and is the first to be replaced, instead of pushing out pages
- *       that are still needed, such as the sort input that the put reads again.
+ *       the given memory area until this area becomes full. A run is read once, by the merge that consumes it, and a
+ *       page that is written again is fixed as a new page, so each page is discarded once copied (without being
+ *       flushed) instead of staying in the buffer and pushing out pages that are still needed, such as the sort input
+ *       that the put reads again.
  */
 static int
 sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
@@ -5877,7 +5878,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cur
 	  ASSERT_ERROR ();
 	  return ret;
 	}
-      if (pgbuf_copy_page_to_area_lru_bottom (thread_p, &vpid, page_ptr) == NULL)
+      if (pgbuf_copy_temp_page_to_area_and_discard (thread_p, &vpid, page_ptr) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;

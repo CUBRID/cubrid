@@ -4747,18 +4747,19 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 }
 
 /*
- * pgbuf_copy_page_to_area_lru_bottom () - Copy a whole page to the given area and drop the page to the bottom of its
- *                                         LRU list
+ * pgbuf_copy_temp_page_to_area_and_discard () - Copy a whole temporary page to the given area and discard the page
  *   return: area or NULL
  *   vpid(in): Complete Page identifier
  *   area(in): Area where to copy the page (DB_PAGESIZE bytes)
  *
- * Note: For a page that will not be read again, such as a page of a sort run that is being merged. The page becomes
- *       the first to be replaced instead of pushing out pages that are still needed. A page another thread has fixed
- *       stays where it is.
+ * Note: For a page of a temporary file that the caller will not read again, such as a page of a sort run that is being
+ *       merged (a page that is written again is fixed as a NEW_PAGE). A resident page is invalidated without being
+ *       flushed, so its buffer is free at once and no write is spent on contents nobody reads; temporary pages can be
+ *       invalidated at any time (see pgbuf_invalidate). A page another thread has fixed or that is being flushed only
+ *       goes to the bottom of its LRU list. A page read from disk for the copy is clean and goes to the bottom too.
  */
 void *
-pgbuf_copy_page_to_area_lru_bottom (THREAD_ENTRY * thread_p, const VPID * vpid, void *area)
+pgbuf_copy_temp_page_to_area_and_discard (THREAD_ENTRY * thread_p, const VPID * vpid, void *area)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
@@ -4800,31 +4801,42 @@ pgbuf_copy_page_to_area_lru_bottom (THREAD_ENTRY * thread_p, const VPID * vpid, 
       memcpy (area, (char *) pgptr, DB_PAGESIZE);
       pgbuf_mark_page_for_lru_bottom (thread_p, pgptr);
       pgbuf_unfix_and_init (thread_p, pgptr);
+      return area;
     }
-  else
-    {
-      /* the caller is holding only bufptr->mutex. */
-      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+  /* the caller is holding only bufptr->mutex. */
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
 #if !defined (NDEBUG)
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
 #endif /* !NDEBUG */
 
-      memcpy (area, (char *) pgptr, DB_PAGESIZE);
+  memcpy (area, (char *) pgptr, DB_PAGESIZE);
 
-      if (thread_get_sort_stats_active (thread_p))
-	{
-	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	}
+  if (thread_get_sort_stats_active (thread_p))
+    {
+      perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+    }
 
-      /* not fixed, so no unfix will move it: move it here, as the unfix of a page marked for the bottom would */
+  /* a dirty page is discarded too (pgbuf_bcb_avoid_victim () would keep it): that is the write this saves */
+  if (pgbuf_is_bcb_fixed_by_any (bufptr, true) || pgbuf_bcb_is_flushing (bufptr)
+      || pgbuf_bcb_is_async_flush_request (bufptr) || pgbuf_bcb_is_direct_victim (bufptr)
+      || pgbuf_bcb_is_invalid_direct_victim (bufptr))
+    {
+      /* not fixed by us, so no unfix will move it: move it here, as the unfix of a page marked for the bottom would */
       if (!pgbuf_is_bcb_fixed_by_any (bufptr, true) && (pgbuf_bcb_get_zone (bufptr) & PGBUF_LRU_ZONE_MASK))
 	{
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
-
-      /* release mutex */
       PGBUF_BCB_UNLOCK (bufptr);
+      return area;
+    }
+
+  /* bufptr->mutex is released in pgbuf_invalidate_bcb () */
+  if (pgbuf_invalidate_bcb (thread_p, bufptr) != NO_ERROR)
+    {
+      /* the page stays where it is; the copy is good */
+      er_clear ();
     }
 
   return area;
