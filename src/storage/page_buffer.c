@@ -4747,6 +4747,90 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 }
 
 /*
+ * pgbuf_copy_page_to_area_lru_bottom () - Copy a whole page to the given area and drop the page to the bottom of its
+ *                                         LRU list
+ *   return: area or NULL
+ *   vpid(in): Complete Page identifier
+ *   area(in): Area where to copy the page (DB_PAGESIZE bytes)
+ *
+ * Note: For a page that will not be read again, such as a page of a sort run that is being merged. The page becomes
+ *       the first to be replaced instead of pushing out pages that are still needed. A page another thread has fixed
+ *       stays where it is.
+ */
+void *
+pgbuf_copy_page_to_area_lru_bottom (THREAD_ENTRY * thread_p, const VPID * vpid, void *area)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  PAGE_PTR pgptr;
+
+  if (logtb_get_check_interrupt (thread_p) == true)
+    {
+      if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return NULL;
+	}
+    }
+
+  /* Is this a resident page ? */
+  hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
+  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
+
+  if (bufptr == NULL)
+    {
+      /* the caller is holding only hash_anchor->hash_mutex. */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
+	{
+	  return NULL;
+	}
+
+      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+	{
+	  return NULL;
+	}
+
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+#endif /* !NDEBUG */
+
+      memcpy (area, (char *) pgptr, DB_PAGESIZE);
+      pgbuf_mark_page_for_lru_bottom (thread_p, pgptr);
+      pgbuf_unfix_and_init (thread_p, pgptr);
+    }
+  else
+    {
+      /* the caller is holding only bufptr->mutex. */
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+#endif /* !NDEBUG */
+
+      memcpy (area, (char *) pgptr, DB_PAGESIZE);
+
+      if (thread_get_sort_stats_active (thread_p))
+	{
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	}
+
+      /* not fixed, so no unfix will move it: move it here, as the unfix of a page marked for the bottom would */
+      if (!pgbuf_is_bcb_fixed_by_any (bufptr, true) && (pgbuf_bcb_get_zone (bufptr) & PGBUF_LRU_ZONE_MASK))
+	{
+	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
+	}
+
+      /* release mutex */
+      PGBUF_BCB_UNLOCK (bufptr);
+    }
+
+  return area;
+}
+
+/*
  * pgbuf_copy_from_area () - Copy area to a portion of given page
  *   return: area or NULL
  *   vpid(in): Complete Page identifier

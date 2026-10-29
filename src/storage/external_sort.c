@@ -320,8 +320,6 @@ static void sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_
 				       bool keep_result_run);
 #if defined(SERVER_MODE)
 static void sort_px_hand_over_stats (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param);
-static void sort_px_borrow_private_lru (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param);
-static void sort_px_return_private_lru (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 
 /*
@@ -1637,7 +1635,6 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
   thread_ref.on_trace = sort_param->px_orig_thread_p->on_trace;
-  sort_px_borrow_private_lru (thread_p, sort_param);
   /* sort pages count as they do on the main thread, which sorts with this flag set */
   thread_set_sort_stats_active (thread_p, true);
   if (perfmon_parallel_stats_needed (&thread_ref))
@@ -1760,7 +1757,6 @@ cleanup:
 	  sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
 	}
     }
-  sort_px_return_private_lru (thread_p);
   thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
@@ -4803,7 +4799,6 @@ sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT
   thread_p->push_resource_tracks ();
 
   thread_ref.on_trace = ctx->px_orig_thread_p->on_trace;
-  sort_px_borrow_private_lru (thread_p, ctx);
   thread_set_sort_stats_active (thread_p, true);
   if (perfmon_parallel_stats_needed (&thread_ref))
     {
@@ -4851,7 +4846,6 @@ sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT
     }
   pool_idx = (int) (ctx - qctx->px_sort_param);
   sort_merge_queue_release_ctx (qctx, pool_idx);
-  sort_px_return_private_lru (thread_p);
   thread_ref.m_px_orig_thread_entry = NULL;
   qctx->in_flight--;
   sort_merge_queue_try_dispatch (qctx);
@@ -5622,45 +5616,6 @@ sort_px_hand_over_stats (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param)
       perfmon_destroy_parallel_stats (thread_p);
     }
 }
-
-/*
- * sort_px_borrow_private_lru () - let a worker of a sort whose put the main thread runs keep the pages it fixes in
- *                                 the private LRU list of the thread it works for
- *   return: void
- *   thread_p(in): the worker
- *   px_sort_param(in): the worker's parameters
- *
- * Note: The main thread puts SORT_ORDER_WITH_LIMIT, SORT_GROUP_BY and SORT_ANALYTIC alone, reading the input pages
- *       again in sorted (random) order; those pages usually sit in the shared lists (a parallel scan wrote them). A
- *       worker has no list of its own, so the run pages it writes go to the shared lists too and push the input pages
- *       out; on a small buffer every read then comes back from disk. In the main thread's private list the run pages
- *       replace each other once the list reaches its quota (at most PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA), as when the
- *       main thread sorts alone, and the input pages stay. SORT_ORDER_BY workers put their own share, and keep the
- *       shared lists.
- */
-static void
-sort_px_borrow_private_lru (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param)
-{
-  if (px_sort_param->px_type == SORT_ORDER_BY)
-    {
-      return;
-    }
-
-  thread_p->private_lru_index = px_sort_param->px_orig_thread_p->private_lru_index;
-  thread_p->m_is_private_lru_enabled = px_sort_param->px_orig_thread_p->m_is_private_lru_enabled;
-}
-
-/*
- * sort_px_return_private_lru () - undo sort_px_borrow_private_lru () before the worker goes back to the pool
- *   return: void
- *   thread_p(in): the worker
- */
-static void
-sort_px_return_private_lru (THREAD_ENTRY * thread_p)
-{
-  thread_p->private_lru_index = -1;
-  thread_p->m_is_private_lru_enabled = false;
-}
 #endif /* SERVER_MODE */
 
 /*
@@ -5893,7 +5848,9 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cu
  *   area_start(in): beginning address of the area
  *
  * Note: This function reads in successive pages of the specified file into
- *       the given memory area until this area becomes full.
+ *       the given memory area until this area becomes full. A run is read once, by the merge that consumes it, so
+ *       each page goes to the bottom of its LRU list and is the first to be replaced, instead of pushing out pages
+ *       that are still needed, such as the sort input that the put reads again.
  */
 static int
 sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
@@ -5920,7 +5877,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cur
 	  ASSERT_ERROR ();
 	  return ret;
 	}
-      if (pgbuf_copy_to_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+      if (pgbuf_copy_page_to_area_lru_bottom (thread_p, &vpid, page_ptr) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;
