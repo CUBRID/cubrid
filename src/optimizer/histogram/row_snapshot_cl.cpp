@@ -30,6 +30,7 @@
 #include "class_object.h"
 #include "db.h"
 #include "db_query.h"
+#include "db_session.h"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "histogram_cl.hpp"
@@ -579,8 +580,10 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
 
   /* The read is compiled and run in the middle of planning another statement, so it must leave
    * that statement's state alone: its error (the read's own failure only means "keep the
-   * estimate") and its plan dump -- generating the read's XASL would close the dump file the
-   * statement's XASL generation has open. The read itself runs at level 1, optimized, executed and
+   * estimate"), its plan dump -- generating the read's XASL would close the dump file the
+   * statement's XASL generation has open -- and its trace: a traced read would become the
+   * session's last trace, which SHOW TRACE then reports instead of the statement's (a driver
+   * compiles the statement again for its plan after running it). The read itself runs at level 1, optimized, executed and
    * not dumped, whatever the statement's level: a plan-only level (2, the one a driver asks for to
    * show a plan) would not execute it, and the plan it shows would not be the one run. */
   in_read = true;
@@ -598,10 +601,18 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   if (session != NULL)
     {
       stmt = db_compile_statement_local (session);
-      if (stmt <= 0 || db_push_values (session, (int) binds.size (), binds.data ()) != NO_ERROR
-	  || db_execute_statement_local (session, stmt, &result) < 0 || result == NULL)
+      if (stmt <= 0 || db_push_values (session, (int) binds.size (), binds.data ()) != NO_ERROR)
 	{
 	  usable = false;
+	}
+      else
+	{
+	  /* the parser takes the session's trace setting again on the way here: turn it off last */
+	  session->parser->query_trace = false;
+	  if (db_execute_statement_local (session, stmt, &result) < 0 || result == NULL)
+	    {
+	      usable = false;
+	    }
 	}
     }
   else
