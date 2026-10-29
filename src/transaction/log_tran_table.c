@@ -1148,6 +1148,21 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
 }
 
 /*
+ * logtb_release_conn_tran_index - if the calling connection owns tran_index,
+ *   it no longer does (CBRD-27446).
+ */
+static void
+logtb_release_conn_tran_index (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () == tran_index)
+    {
+      thread_p->conn_entry->release_tran_index ();
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
  * logtb_release_tran_index - return an assigned transaction index
  *
  * return: nothing
@@ -1164,6 +1179,8 @@ void
 logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   qmgr_clear_trans_wakeup (thread_p, tran_index, true, false);
   heap_chnguess_clear (thread_p, tran_index);
@@ -1243,6 +1260,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* SERVER_MODE */
 
   log_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index > NUM_TOTAL_TRAN_INDICES || tdes == NULL || tdes->trid == NULL_TRANID)
