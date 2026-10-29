@@ -116,6 +116,25 @@ namespace parallel_scan
     return false;
   }
 
+  /* same rule as qfile_is_sort_list_covered (), which is not built into the client */
+  static bool
+  is_sort_list_covered (const SORT_LIST *covering, const SORT_LIST *covered)
+  {
+    if (covered == nullptr)
+      {
+	return false;
+      }
+    for (; covering != nullptr && covered != nullptr; covering = covering->next, covered = covered->next)
+      {
+	if (covering->s_order != covered->s_order || covering->s_nulls != covered->s_nulls
+	    || covering->pos_descr.pos_no != covered->pos_descr.pos_no)
+	  {
+	    return false;
+	  }
+      }
+    return covered == nullptr;
+  }
+
 
   using rv_list_node = struct regu_variable_list_node;
 
@@ -1148,9 +1167,12 @@ namespace parallel_scan
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
-    /* a merge join input that keeps its index scan order must not be split across workers */
+    /* the list keeps the scan order as the result order when ORDER BY was skipped or its sort is skipped at run time */
     const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST)
-				 || (arg->type == BUILDLIST_PROC && arg->after_iscan_list != nullptr);
+				 || (arg->type == BUILDLIST_PROC && arg->after_iscan_list != nullptr
+				     && arg->proc.buildlist.groupby_list == nullptr && arg->option != Q_DISTINCT
+				     && (arg->orderby_list == nullptr
+					 || is_sort_list_covered (arg->after_iscan_list, arg->orderby_list)));
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
