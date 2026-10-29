@@ -4256,6 +4256,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	  if (sort_param->get_arg != NULL)
 	    {
 	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	      qfile_sort_carry_end (&sort_info_p->key_info);
 	      if (sort_info_p->px_state != NULL)
 		{
 		  qfile_sort_px_state_free (thread_p, (sort_px_list_state *) sort_info_p->px_state);
@@ -4292,6 +4293,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	  if (sort_param->get_arg != NULL)
 	    {
 	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	      qfile_sort_carry_end (&sort_info_p->key_info);
 	      if (sort_info_p->px_state != NULL)
 		{
 		  qfile_sort_px_state_free (thread_p, (sort_px_list_state *) sort_info_p->px_state);
@@ -5160,7 +5162,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 	{
 	  sort_info_p->output_file =
 	    qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
-			     ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+			     ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_FLAG_NO_MEMBUF, NULL);
 	}
     }
 
@@ -5291,6 +5293,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return ER_FAILED;
 	    }
 	  memcpy (worker_info_p, sort_param->get_arg, sizeof (SORT_INFO));
+	  SORTKEY_INFO_INIT_WORKER_CARRY (&worker_info_p->key_info);
 	  worker_info_p->s_id = NULL;	/* not used by qfile_sort_get_next_parallel */
 	  worker_info_p->output_file = NULL;
 	  worker_info_p->input_file = NULL;	/* set below */
@@ -5367,6 +5370,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    }
 	  memset (winfo, 0, sizeof (SORT_INFO));
 	  memcpy (&winfo->key_info, px->key_info, sizeof (SORTKEY_INFO));
+	  SORTKEY_INFO_INIT_WORKER_CARRY (&winfo->key_info);
 
 	  /* clone input_file per worker so overflow tfile_vfid redirect is thread-safe */
 	  winfo->input_file = qfile_clone_list_id (input_list, true, QFILE_SKIP_DEPENDENT);

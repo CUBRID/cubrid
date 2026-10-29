@@ -667,7 +667,11 @@ qo_optimize_helper (QO_ENV * env)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (plan && PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level) && env->plan_dump_enabled)
     {
+      PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+      const unsigned save_source = parser->flag.print_host_var_source;
+      parser->flag.print_host_var_source = 1;
       qo_env_dump (env, db_query_get_plan_dump_fp ());
+      parser->flag.print_host_var_source = save_source;
     }
   if (plan == NULL)
     {
@@ -1915,7 +1919,10 @@ qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_
   QO_TERM_RANK (term) = 0;
   QO_TERM_FLAG (term) = 0;
   QO_TERM_IDX (term) = env->nterms;
-  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+  /* The planner takes the join type of a join from this term rather than from a dummy join term, and the outer join
+   * type of the dummy join term reaches this term only when the two have the same nodes. Another table between the
+   * derived table and its antecedent breaks that, so the outer join of the derived table is set here. */
+  QO_TERM_JOIN_TYPE (term) = (QO_NODE_PT_JOIN_TYPE (derived_node) == PT_JOIN_LEFT_OUTER) ? JOIN_LEFT : JOIN_INNER;
   /*
    * This is misleading if |depend_nodes| > 1, but the planner is the
    * only party relying on this information, and it understands the
@@ -1951,7 +1958,9 @@ qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_
       bitset_add (&(QO_TERM_NODES (term)), di);
       QO_TERM_HEAD (term) = QO_ENV_NODE (env, ni);
       QO_TERM_TAIL (term) = QO_ENV_NODE (env, di);
-      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+      /* same as the DEP_LINK term above, for an antecedent on the right of LEFT OUTER JOIN */
+      QO_TERM_JOIN_TYPE (term) =
+	(QO_NODE_PT_JOIN_TYPE (QO_TERM_TAIL (term)) == PT_JOIN_LEFT_OUTER) ? JOIN_LEFT : JOIN_INNER;
       /*
        * Do NOT add these terms to env->fake_terms, because (unlike the
        * DEP_LINK terms) there is no restriction on how they can be

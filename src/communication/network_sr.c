@@ -464,6 +464,10 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
 
+  req_p = &net_Requests[NET_SERVER_QST_LOG_STATS_PROGRESS];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqst_log_stats_progress;
+
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
@@ -761,7 +765,8 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
   req_p->processing_function = scdc_auth_response;
 
-  /* flashback */
+  /* flashback : DBA-only, checked first thing in each handler with
+   * log_extract_check_authorization (), the function CDC uses too */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
   req_p->processing_function = sflashback_get_summary;
 

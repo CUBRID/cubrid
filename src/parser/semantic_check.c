@@ -542,6 +542,45 @@ out_of_mem:
 }
 
 /*
+ * pt_type_union_bind () - CBRD-27583: in the compilation of a bind type signature, a user host
+ *   variable a set operation's or a VALUES column leaves untyped (MAYBE) against a typed operand that is not a bind
+ *   takes its value's type, so the column's common type and casts are a literal's of that type (a NULL's a NULL
+ *   literal's); the position compiles as value-typed (pt_assign_host_var_positions records the value's domain).
+ *   A bind its context types (expected domain, a PL static SQL bind's declared type), a column of binds alone
+ *   (binds of different types fail with -494), and a bind against a number or a string keep their compilation: a
+ *   typed bind is fully coercible and would pass the collation check, and a number's column keeps the type it has
+ *   without a signature, whether or not another column makes the statement compile a signature.
+ */
+static void
+pt_type_union_bind (PARSER_CONTEXT * parser, PT_NODE * att, const PT_NODE * mate)
+{
+  if (att->node_type != PT_HOST_VAR || att->type_enum != PT_TYPE_MAYBE || parser->flag.set_host_var != 0
+      || att->info.host_var.var_type != PT_HOST_IN || att->info.host_var.index >= parser->host_var_count
+      || parser->host_variables == NULL || parser->host_var_compiled_domains == NULL
+      || parser->host_var_expected_domains == NULL || att->expected_domain != NULL
+      || TP_DOMAIN_TYPE (parser->host_var_expected_domains[att->info.host_var.index]) != DB_TYPE_UNKNOWN)
+    {
+      return;
+    }
+  if (mate->node_type == PT_HOST_VAR || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE
+      || mate->type_enum == PT_TYPE_NULL || PT_IS_NUMERIC_TYPE (mate->type_enum)
+      || PT_IS_STRING_TYPE (mate->type_enum) || PT_HAS_COLLATION (mate->type_enum))
+    {
+      return;
+    }
+  TP_DOMAIN *domain = pt_host_var_value_domain (parser, att->info.host_var.index);
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+    {
+      /* pt_db_to_type_enum gives no type for it */
+      att->type_enum = PT_TYPE_NULL;
+      return;
+    }
+  att->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
+  parser_free_tree (parser, att->data_type);
+  att->data_type = pt_domain_to_data_type (parser, domain);
+}
+
+/*
  * pt_keep_typed_null_column () - keep the type of a typed NULL (CAST (NULL AS T)) in a set operation or VALUES
  *				   column; folding would make it an untyped NULL after the column was typed T
  *   return: none
@@ -620,6 +659,12 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * selec
       pt_keep_typed_null_column (att1);
       pt_keep_typed_null_column (att2);
 
+      if (node->node_type != PT_CTE)
+	{
+	  /* a recursive CTE's recursive part was typed with its non-recursive part's binds untyped */
+	  pt_type_union_bind (parser, att1, att2);
+	  pt_type_union_bind (parser, att2, att1);
+	}
       compatible = pt_union_compatible (parser, att1, att2, false, &is_object_type);
       if (compatible == PT_UNION_INCOMP)
 	{
@@ -12513,17 +12558,17 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_dblink_delete_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
+ * pt_dblink_dml_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
  *   variable, or as a bare entity name when the spec has no alias).
  *   Only a plain SELECT has a single top-level FROM to check; UNION/INTERSECTION/DIFFERENCE and CTEs are
  *   conservatively treated as not shadowing (same as before this check existed), since a query's operands
  *   would each need this evaluated in their own right. Checks subq's own scope only -- a further-nested
  *   PT_SELECT (a derived table in this FROM, or any other nested subquery) may shadow the name again on
- *   its own terms, independently of this result; the caller (pt_dblink_delete_corr_ref_pre) re-evaluates
+ *   its own terms, independently of this result; the caller (pt_dblink_dml_corr_ref_pre) re-evaluates
  *   this per scope as it descends, rather than relying on a single top-level call.
  */
 static bool
-pt_dblink_delete_subq_shadows_name (PT_NODE * subq, const char *name)
+pt_dblink_dml_subq_shadows_name (PT_NODE * subq, const char *name)
 {
   PT_NODE *spec;
 
@@ -12548,47 +12593,47 @@ pt_dblink_delete_subq_shadows_name (PT_NODE * subq, const char *name)
 }
 
 /*
- * pt_dblink_delete_corr_ref_pre/_post () - walk callback pair: flag a subquery correlated to the outer
- *   remote DELETE target. A correlated reference is a qualified column (PT_DOT_) whose qualifier matches
- *   the target's range variable or entity name. Used by pt_check_with_info's DELETE branch before the
- *   subquery is bound stand-alone (which would otherwise fail with a confusing "Attribute <alias> was not
- *   found").
+ * pt_dblink_dml_corr_ref_pre/_post () - walk callback pair: flag a subquery correlated to the outer
+ *   remote DELETE or UPDATE target. A correlated reference is a qualified column (PT_DOT_) whose
+ *   qualifier matches the target's range variable or entity name. Used by pt_check_with_info's DELETE
+ *   branch and by pt_dblink_update_bind_subq () before the subquery is bound stand-alone (which would
+ *   otherwise fail with a confusing "Attribute <alias> was not found").
  *   Shadowing is re-evaluated at every PT_SELECT boundary the walk descends into (subq itself, a derived
  *   table, or any other nested subquery) via the scope stack the pre/post pair pushes/pops -- not just
  *   subq's own top-level FROM -- so a derived table that rebinds the name deeper in the tree is also
  *   recognized. A scope inherits its enclosing scope's shadow state (once shadowed, always shadowed
- *   going deeper -- see pt_dblink_delete_subq_shadows_name).
+ *   going deeper -- see pt_dblink_dml_subq_shadows_name).
  */
-typedef struct pt_dblink_del_corr_scope
+typedef struct pt_dblink_dml_corr_scope
 {
-  struct pt_dblink_del_corr_scope *up;
+  struct pt_dblink_dml_corr_scope *up;
   bool alias_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `alias` */
   bool entity_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `entity` */
-} PT_DBLINK_DEL_CORR_SCOPE;
+} PT_DBLINK_DML_CORR_SCOPE;
 
 typedef struct
 {
   const char *alias;		/* outer target range variable (e.g. "r" in remote_t AS r), may be NULL */
   const char *entity;		/* outer target table name (e.g. "remote_t"), may be NULL */
-  PT_DBLINK_DEL_CORR_SCOPE *top;	/* innermost pushed scope; NULL before subq's own PT_SELECT is entered */
+  PT_DBLINK_DML_CORR_SCOPE *top;	/* innermost pushed scope; NULL before subq's own PT_SELECT is entered */
   bool found;
-} PT_DBLINK_DEL_CORR;
+} PT_DBLINK_DML_CORR;
 
 static PT_NODE *
-pt_dblink_delete_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_dblink_dml_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+  PT_DBLINK_DML_CORR *chk = (PT_DBLINK_DML_CORR *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
   if (node->node_type == PT_SELECT)
     {
-      PT_DBLINK_DEL_CORR_SCOPE *scope = (PT_DBLINK_DEL_CORR_SCOPE *) parser_alloc (parser, sizeof (*scope));
+      PT_DBLINK_DML_CORR_SCOPE *scope = (PT_DBLINK_DML_CORR_SCOPE *) parser_alloc (parser, sizeof (*scope));
       bool up_alias_shadowed = (chk->top != NULL) && chk->top->alias_shadowed;
       bool up_entity_shadowed = (chk->top != NULL) && chk->top->entity_shadowed;
 
       scope->up = chk->top;
-      scope->alias_shadowed = up_alias_shadowed || pt_dblink_delete_subq_shadows_name (node, chk->alias);
-      scope->entity_shadowed = up_entity_shadowed || pt_dblink_delete_subq_shadows_name (node, chk->entity);
+      scope->alias_shadowed = up_alias_shadowed || pt_dblink_dml_subq_shadows_name (node, chk->alias);
+      scope->entity_shadowed = up_entity_shadowed || pt_dblink_dml_subq_shadows_name (node, chk->entity);
       chk->top = scope;
     }
   else if (node->node_type == PT_DOT_ && node->info.dot.arg1 != NULL && node->info.dot.arg1->node_type == PT_NAME)
@@ -12609,9 +12654,9 @@ pt_dblink_delete_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 }
 
 static PT_NODE *
-pt_dblink_delete_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_dblink_dml_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+  PT_DBLINK_DML_CORR *chk = (PT_DBLINK_DML_CORR *) arg;
 
   (void) parser;
 
@@ -12679,6 +12724,101 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
   sc_info_ptr->top_node = saved_top;
 
   return pt_has_error (parser) ? NULL : subq;
+}
+
+/*
+ * pt_dblink_update_bind_subq () - Reject a subquery correlated to the outer remote UPDATE target, then
+ *   bind it stand-alone. A remote UPDATE sink holds one subquery per SET assignment plus the WHERE
+ *   driving predicate, and each needs both steps, so they live here instead of being repeated per site.
+ *   The correlation walk is shared with the DELETE sink (PT_DBLINK_DML_CORR and its callback pair): the
+ *   rule is the same for both -- the sink evaluates the subquery once with no outer row, so a reference
+ *   to the target cannot be honored -- and rejecting it here keeps the stand-alone bind below from
+ *   failing with a confusing "Attribute <alias> was not found". Only a qualified reference is recognized,
+ *   so an unqualified one (WHERE l.x = remote_only_col) still reaches the bind and fails with that
+ *   message -- the statement is rejected either way, just less clearly. Same limitation on the DELETE side.
+ *   return: the bound subquery, or NULL if it was rejected or the bind failed (parser error already set)
+ *   parser(in)          : parser context
+ *   stmt(in)            : the UPDATE statement, for error reporting
+ *   subq(in)            : the subquery to check and bind
+ *   sc_info_ptr(in/out) : semantic check info, passed through to pt_bind_remote_dml_subq
+ *   alias(in)           : outer target range variable, may be NULL
+ *   entity(in)          : outer target table name, may be NULL
+ *   clause(in)          : "WHERE" or "SET", used to name the offending clause in both messages
+ */
+static PT_NODE *
+pt_dblink_update_bind_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * subq,
+			    SEMANTIC_CHK_INFO * sc_info_ptr, const char *alias, const char *entity, const char *clause)
+{
+  PT_DBLINK_DML_CORR corr;
+  char msg[128];
+
+  corr.alias = alias;
+  corr.entity = entity;
+  corr.top = NULL;
+  corr.found = false;
+  parser_walk_tree (parser, subq, pt_dblink_dml_corr_ref_pre, &corr, pt_dblink_dml_corr_ref_post, &corr);
+  if (corr.found)
+    {
+      snprintf (msg, sizeof (msg), "dblink: correlated subquery is not supported in a remote UPDATE %s clause", clause);
+      PT_ERRORc (parser, stmt, msg);
+      return NULL;
+    }
+
+  snprintf (msg, sizeof (msg), "remote UPDATE: failed to translate the %s subquery", clause);
+
+  return pt_bind_remote_dml_subq (parser, subq, sc_info_ptr, msg);
+}
+
+/*
+ * pt_dblink_update_fold_driving_values () - Make the values of a remote UPDATE's IN / = ANY driving subquery
+ *   distinct, after its row cut.
+ *   return: the subquery to use, or NULL on error (parser error set)
+ *   parser(in) : parser context
+ *   subq(in)   : the bound driving subquery
+ *
+ * One statement goes out per value the driving subquery produces, so a repeated value writes the same
+ * remote row twice. The equality shapes this sink admits match disjoint rows for distinct values, so the
+ * values are de-duplicated. A scalar comparison is left as written. DISTINCT would hide its "more than a
+ * single tuple" error. DELETE does not need this, because a second statement finds the row gone.
+ *
+ * The subquery was checked and translated on its own by pt_bind_remote_dml_subq (), so the handling a local
+ * IN subquery gets during type checking (drop the ORDER BY, set DISTINCT) never ran on it. This runs right
+ * after that call, ahead of the subquery cache prepare in do_prepare_statement (). When
+ * pt_try_set_subquery_distinct () declines, the subquery is wrapped and folded outside.
+ */
+static PT_NODE *
+pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
+{
+  PT_NODE *wrapped;
+
+  /* The check can fold a set operation whose arms are empty into a value. XASL generation refuses it. */
+  if (!PT_IS_QUERY (subq))
+    {
+      return subq;
+    }
+
+  if (pt_try_set_subquery_distinct (parser, subq))
+    {
+      return subq;
+    }
+
+  wrapped = mq_rewrite_query_as_derived (parser, subq);
+  if (wrapped == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "remote UPDATE: failed to wrap the WHERE subquery");
+	}
+      return NULL;
+    }
+  PT_NODE_MOVE_NUMBER_OUTERLINK (wrapped, subq);
+  wrapped->info.query.q.select.flavor = PT_USER_SELECT;
+  wrapped->info.query.is_subquery = PT_IS_SUBQUERY;
+  wrapped->info.query.correlation_level = 0;
+  wrapped->info.query.all_distinct = PT_DISTINCT;
+
+  parser_free_tree (parser, subq);
+  return wrapped;
 }
 
 /*
@@ -12838,7 +12978,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		   * converted the target to PT_DBLINK_TABLE_DML: the sink leaves qstr == NULL, while a full qstr
 		   * pushdown (e.g. same-server all-remote IN (SELECT ... FROM t@srv)) sets qstr and ships the whole
 		   * DELETE as text -- its subquery must NOT be translated locally. qstr == NULL is only produced when
-		   * the parser shape gate (pt_dblink_delete_where_is_inscope) accepted the form, so this also confines
+		   * the parser shape gate (pt_dblink_dml_where_is_inscope) accepted the form, so this also confines
 		   * resolution to the parser-approved single-predicate shapes. */
 		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
 		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL
@@ -12850,7 +12990,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  if (subq != NULL)
 		    {
 		      PT_NODE *tgt = node->info.delete_.spec;
-		      PT_DBLINK_DEL_CORR corr;
+		      PT_DBLINK_DML_CORR corr;
 
 		      /* reject a subquery correlated to the outer DELETE target with a clear message, before the
 		       * stand-alone bind below (which would fail with "Attribute <alias> was not found"). The
@@ -12865,8 +13005,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		       * not the outer target. Shadowing is (re-)computed per scope by the pre/post pair itself. */
 		      corr.top = NULL;
 		      corr.found = false;
-		      parser_walk_tree (parser, subq, pt_dblink_delete_corr_ref_pre, &corr,
-					pt_dblink_delete_corr_ref_post, &corr);
+		      parser_walk_tree (parser, subq, pt_dblink_dml_corr_ref_pre, &corr,
+					pt_dblink_dml_corr_ref_post, &corr);
 		      if (corr.found)
 			{
 			  PT_ERROR (parser, node,
@@ -12881,6 +13021,54 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		      if (subq != NULL)
 			{
 			  cond->info.expr.arg2 = subq;
+			}
+		    }
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  /* mirrors the remote DELETE handling above (same reason -- see that comment), with one
+		   * difference: a remote UPDATE sink can hold several local subqueries -- the WHERE driving
+		   * predicate plus one per SET assignment -- and every one of them runs stand-alone. */
+		  PT_NODE *remote = node->info.update.spec->info.spec.remote_server_name;
+
+		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
+		      && remote->info.dblink_table.qstr == NULL)
+		    {
+		      PT_NODE *tgt = node->info.update.spec;
+		      PT_NODE *cond = node->info.update.search_cond;
+		      PT_ASSIGNMENTS_HELPER ea;
+		      const char *alias =
+			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
+		      const char *entity =
+			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+
+		      if (cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR
+			  && cond->info.expr.arg2 != NULL && PT_IS_QUERY (cond->info.expr.arg2))
+			{
+			  PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, cond->info.expr.arg2,
+								      sc_info_ptr, alias, entity, "WHERE");
+			  if (subq != NULL && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
+			    {
+			      subq = pt_dblink_update_fold_driving_values (parser, subq);
+			    }
+			  if (subq != NULL)
+			    {
+			      cond->info.expr.arg2 = subq;
+			    }
+			}
+
+		      pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+		      while (!pt_has_error (parser) && pt_get_next_assignment (&ea))
+			{
+			  if (ea.rhs != NULL && PT_IS_QUERY (ea.rhs))
+			    {
+			      PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, ea.rhs, sc_info_ptr,
+									  alias, entity, "SET");
+			      if (subq != NULL)
+				{
+				  ea.assignment->info.expr.arg2 = subq;
+				}
+			    }
 			}
 		    }
 		}
@@ -18453,6 +18641,44 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
 
 /*
+ * pt_try_set_subquery_distinct - remove an unnecessary order_by and mark the query DISTINCT if that keeps its values
+ *  return: true if the query is DISTINCT afterwards, false if it could not be marked DISTINCT
+ *  parser(in): Parser context
+ *  query(in/out): Processed query
+ *
+ * Note: Only for a caller that needs the set of values, such as a range predicate.
+ *       DISTINCT is not set where rows are counted after it. An ORDER BY that stays is kept for ORDERBY_NUM ()
+ *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
+ *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
+ *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
+ *       or removes duplicates outside the query.
+ *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ */
+bool
+pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
+
+  pt_try_remove_order_by (parser, query);
+
+  if (query->info.query.all_distinct == PT_DISTINCT)
+    {
+      return true;
+    }
+
+  if (query->info.query.order_by != NULL || query->info.query.orderby_for != NULL
+      || (query->info.query.limit != NULL && query->info.query.flag.rewrite_limit)
+      || (query->node_type == PT_DIFFERENCE && query->info.query.all_distinct == PT_ALL))
+    {
+      return false;
+    }
+
+  query->info.query.all_distinct = PT_DISTINCT;
+  return true;
+}
+
+
+/*
  * pt_check_union_is_foldable - decide if union can be folded
  *
  *  return : union foldability
@@ -18576,6 +18802,14 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       else
 	{
 	  pt_move_node (active, union_node->info.query.q.union_.arg2);
+	}
+
+      /* An operand is one scope deeper than its set operation, so its correlation levels are one higher. Lower them
+       * since the operand takes the place of the set operation; otherwise a subquery correlated to the outer query
+       * would be taken as correlated to a farther scope and evaluated only once. */
+      if (PT_IS_QUERY_NODE_TYPE (active->node_type) && active->info.query.correlation_level > 0)
+	{
+	  active = mq_bump_correlation_level (parser, active, -1, active->info.query.correlation_level);
 	}
 
       /* to save union's orderby or limit clause to arg1 or arg2 */

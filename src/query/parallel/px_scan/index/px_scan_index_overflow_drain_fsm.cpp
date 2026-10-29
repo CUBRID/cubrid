@@ -278,6 +278,8 @@ namespace parallel_index_scan
     db_make_null (local_key);
     walker->m_slot_key_valid = true;
     walker->m_slot_clear_key = local_clear_key;
+    /* a helper session: this worker's rows now belong to another key's record */
+    walker->begin_key_record ();
     walker->m_current_range_idx = range_idx;
     m_chain_pool_idx = pool_idx;
     m_drain_state = drain_state::OVERFLOW_SHARED;

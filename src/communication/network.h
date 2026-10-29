@@ -298,7 +298,10 @@
   \
   /* cdc channel authentication - appended at the end so no existing request number moves */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_CHALLENGE) \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE) \
+  \
+  /* progress of UPDATE STATISTICS ON ALL CLASSES, written to the event log */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_LOG_STATS_PROGRESS)
 
 enum net_server_request
 {

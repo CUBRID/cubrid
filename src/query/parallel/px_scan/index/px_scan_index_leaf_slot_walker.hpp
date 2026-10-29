@@ -83,6 +83,19 @@ namespace parallel_index_scan
       /* Process a single OID (covering / non-covering paths). Used by FSM during drain. */
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
 
+      /* a key record starts (a new slot, or a helper session on another key's overflow chain): a group by skip scan
+       * compares its group key only here (CBRD-27664), and the covered key is decoded again */
+      void begin_key_record ()
+      {
+	INDX_GBY_SKIP *gby = m_scan_id->s.isid.gby_skip;
+
+	m_key_values_ready = false;
+	if (gby != nullptr)
+	  {
+	    gby->key_start = true;
+	  }
+      }
+
     private:
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
 
@@ -107,6 +120,7 @@ namespace parallel_index_scan
       DB_VALUE m_slot_key;                           /* retained across OID drain. */
       bool m_slot_key_valid;
       bool m_slot_clear_key;                          /* needs pr_clear_value. */
+      bool m_key_values_ready;                        /* the scan values hold this key record's covered key. */
   };
 }
 

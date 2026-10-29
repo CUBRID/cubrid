@@ -155,11 +155,10 @@ struct xasl_node;
  * before a PX scan starts its workers. */
 extern int eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, xasl_node * subquery, val_descr * vd);
 
-struct DOMAIN_COMPARE_PLAN;
-/* A comparison of two values the load resolved outside a predicate term: FIELD, NULLIF, LEAST and GREATEST,
- * LIMIT's row count, a merge join's column, a PX instnum limit's rounding. */
-extern DB_VALUE_COMPARE_RESULT eval_compare_values_resolved (THREAD_ENTRY * thread_p,
-							     const DOMAIN_COMPARE_PLAN * comparison,
+struct DOMAIN_COMPARE;
+/* A comparison of two values unpack decided outside a predicate term: FIELD, NULLIF, LEAST and GREATEST, LIMIT's row
+ * count, a merge join's column, a PX instnum limit's rounding. */
+extern DB_VALUE_COMPARE_RESULT eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
 							     const val_descr * vd, const DB_VALUE * value1,
 							     const DB_VALUE * value2, int total_order,
 							     bool * can_compare);

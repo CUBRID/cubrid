@@ -119,15 +119,15 @@ hash_lookup_type (DB_TYPE type)
 }
 
 /*
- * hash_lookup_comparable () - a comparison the hash can answer for: its two sides are the row's values, and it either
- *			     compares them as they are or converts them once each, without a failure resolved in
- *			     advance or a codeset brought to an ENUM's, and compares strings in a collation the hash takes
+ * hash_lookup_comparable () - a comparison the hash can answer for: it either compares the two values as they are or
+ *			     converts them once each, without a codeset brought to an ENUM's, and compares strings in a
+ *			     collation the hash takes
  */
 static bool
 hash_lookup_comparable (const DOMAIN_COMPARE *compare)
 {
   return (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT)
-	 && compare->value[0] < 0 && compare->value[1] < 0 && compare->failed == 0 && compare->codeset_side < 0
+	 && compare->codeset_side < 0
 	 && compare->cmp != NULL && hash_lookup_type (compare->cmp->id)
 	 && (!TP_IS_CHAR_TYPE (compare->cmp->id)
 	     || (compare->collation >= 0
@@ -142,8 +142,7 @@ static bool
 hash_lookup_same_compare (const DOMAIN_COMPARE *a, const DOMAIN_COMPARE *b)
 {
   return a->method == b->method && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
-	 && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->value[0] == b->value[0]
-	 && a->value[1] == b->value[1] && a->collation == b->collation && a->failed == b->failed
+	 && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->collation == b->collation
 	 && a->codeset_side == b->codeset_side;
 }
 

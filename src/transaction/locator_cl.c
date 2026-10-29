@@ -5318,6 +5318,7 @@ locator_all_flush (void)
   return error_code;
 }
 
+#if defined(SA_MODE)
 /*
  * locator_add_root () - Insert root
  *
@@ -5364,6 +5365,7 @@ locator_add_root (OID * root_oid, MOBJ class_root)
 
   return root_mop;
 }
+#endif // #if defined(SA_MODE)
 
 /*
  * locator_add_class () - Insert a class
@@ -5598,6 +5600,9 @@ locator_add_instance (MOBJ instance, MOP class_mop)
    * recycle the temporarily OIDs.
    */
 
+  /* TODO: 
+   * It is necessary to check whether a lock is required for operations in a multithreaded environment
+   */
   OID_ASSIGN_TEMPOID (&temp_oid);
   if (OID_ISNULL (&temp_oid))
     {

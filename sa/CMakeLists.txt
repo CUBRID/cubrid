@@ -309,8 +309,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/query_hash_lookup.cpp
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/domain_plan.c
-  ${QUERY_DIR}/domain_resolve.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
