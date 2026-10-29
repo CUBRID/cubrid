@@ -7946,6 +7946,35 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
   return false;
 }
 
+/*
+ * qexec_gby_keys_hash_as_compared () - do the keys the comparison finds equal hash alike?
+ *   return: false when two equal keys may hash apart
+ *
+ * The merge meets two groups only when their hashes are equal (qexec_gby_mtable_find (),
+ * qexec_gby_merge_part_of ()), and where the group order does not reach the result it writes them out without the
+ * sort that brings equal keys together.  A JSON key hashes its text while its comparison takes a scalar's value
+ * (true as 'true', -0.0 as 0.0: mr_cmpval_json ()), and keys without compiled comparisons compare by their values'
+ * own types: those keys keep the sort, as in develop.
+ */
+static bool
+qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
+{
+  int k;
+
+  if (proc->g_hk_compares == NULL)
+    {
+      return false;
+    }
+  for (k = 0; k < proc->g_hkey_size; k++)
+    {
+      if (TP_DOMAIN_TYPE (proc->g_hk_compares[k]) == DB_TYPE_JSON)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 /* the leader's leaves (qexec_gby_merge_job): the table's groups written out, or collapsed for the sort */
 static int
 qexec_gby_merge_leaf_write (THREAD_ENTRY * thread_p, QEXEC_GBY_MERGE_JOB * job, QEXEC_GBY_MTABLE * t)
@@ -8029,7 +8058,8 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL || list_id->tuple_cnt == 0
       || mht_count (ctx->hash_table) != 0 || xasl->proc.buildlist.g_output_first_tuple
       || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)
-      || qexec_gby_aggs_follow_row_order (xasl->proc.buildlist.g_agg_list))
+      || qexec_gby_aggs_follow_row_order (xasl->proc.buildlist.g_agg_list)
+      || !qexec_gby_keys_hash_as_compared (&xasl->proc.buildlist))
     {
       return NO_ERROR;
     }
@@ -13340,7 +13370,10 @@ qexec_batch_gby_rows (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH 
 /* Accumulate pending rows [0, n) into their groups, as the row path would have row by row up to the next
  * row-path call: the counts, each group's rows in row order, the sizes, the LRU in last-row order, and the
  * selectivity check where its tuple count falls.  *done: the pending rows taken (n, or fewer when the check
- * abandoned the table after the last of them -- the rest go to the row path). */
+ * abandoned the table after the last of them -- the rest go to the row path).  The row path's checks of the
+ * budget after each row (the LRU eviction, the abandon of a table over it) wait for the next row-path call: a
+ * cached group grows only when its accumulators take their first values, all of fixed size here, so the table
+ * runs over by a few bytes a group until then. */
 static int
 qexec_batch_gby_flush (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch,
 		       int n, int *done)
