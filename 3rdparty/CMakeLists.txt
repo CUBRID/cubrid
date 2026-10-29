@@ -58,7 +58,7 @@ set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788
 # like a file a failed or killed fetch left behind, is fetched again.
 # The hash is checked here, not by EXPECTED_HASH, which makes a failed fetch fatal and leaves no retry.
 function(use_download_cache url_var hash)
-  if(NOT DEFINED ENV{CUBRID_DOWNLOAD_CACHE})
+  if("$ENV{CUBRID_DOWNLOAD_CACHE}" STREQUAL "")
     return()
   endif()
   get_filename_component(name "${${url_var}}" NAME)
