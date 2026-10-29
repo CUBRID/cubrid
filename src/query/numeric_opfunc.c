@@ -3234,6 +3234,22 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	  num_string[prec] = '\0';
 	  numeric_coerce_dec_str_to_num (num_string, num);
 	}
+      else if (!sign_found && !decimal_part)
+	{
+	  /* An empty or whitespace-only string ('', '   ') */
+	  if (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL))
+	    {
+	      /* NULL, as before CBRD-26749 */
+	      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+	      return NO_ERROR;
+	    }
+
+	  /* 0, the same as the other numeric types */
+	  prec = 1;
+	  num_string[0] = '0';
+	  num_string[prec] = '\0';
+	  numeric_coerce_dec_str_to_num (num_string, num);
+	}
       else
 	{
 	  /*
@@ -3243,7 +3259,6 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	   * examples:
 	   *   '+', '-'                  (sign only)
 	   *   '.', ' . ', '   .   '     (decimal point only)
-	   *   ' ', '    '               (whitespace only)
 	   *   '+.', '-.', ' + . '       (sign + non-digit combinations)
 	   */
 	  ret = DOMAIN_INCOMPATIBLE;

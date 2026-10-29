@@ -708,6 +708,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
 
+#define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2389,6 +2391,10 @@ static int prm_log_postpone_cache_size_default = 512;
 static int prm_log_postpone_cache_size_upper = 4096;
 static int prm_log_postpone_cache_size_lower = 4;
 static unsigned int prm_log_postpone_cache_size_flag = 0;
+
+bool PRM_NUMERIC_EMPTY_STRING_AS_NULL = false;
+static bool prm_numeric_empty_string_as_null_default = false;
+static unsigned int prm_numeric_empty_string_as_null_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6150,6 +6156,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_LOG_POSTPONE_CACHE_SIZE,
    (void *) &prm_log_postpone_cache_size_upper,
    (void *) &prm_log_postpone_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+   PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_numeric_empty_string_as_null_flag,
+   (void *) &prm_numeric_empty_string_as_null_default,
+   (void *) &PRM_NUMERIC_EMPTY_STRING_AS_NULL,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
