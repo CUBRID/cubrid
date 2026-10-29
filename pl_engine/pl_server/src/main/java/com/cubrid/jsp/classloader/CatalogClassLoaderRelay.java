@@ -102,8 +102,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
             // client), and then the loaded class, if any, is used.
             CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
             if (classLoader == null
-                    || (!compileId.isEmpty()
-                            && !compileId.equals(classLoader.codeSet.compileId))) {
+                    || (!compileId.isEmpty() && !compileId.equals(classLoader.codeSet.compileId))) {
                 CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
                 if (codeSet == null) {
                     // was it dropped?

@@ -68,7 +68,8 @@ public class PlcsqlRuntimeError extends RuntimeException {
         } else {
             nestedMsg =
                     String.format(
-                            "%s\n  (line %d, column %d) %s", MSG_SP_EXECUTE_ERROR, line, column, msg);
+                            "%s\n  (line %d, column %d) %s",
+                            MSG_SP_EXECUTE_ERROR, line, column, msg);
         }
         line = -1;
         column = -1;

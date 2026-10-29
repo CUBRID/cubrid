@@ -505,7 +505,8 @@ public class ExecuteThread extends Thread {
 
         serverSideSqlForbidden = unpacker.unpackBool();
 
-        storedProcedure = new StoredProcedure(methodSig, compileId, lang, authUser, arguments, returnType);
+        storedProcedure =
+                new StoredProcedure(methodSig, compileId, lang, authUser, arguments, returnType);
 
         return storedProcedure;
     }
