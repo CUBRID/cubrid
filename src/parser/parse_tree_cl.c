@@ -10057,6 +10057,23 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && p->info.spec.remote_server_name != NULL
+		   && (parser->custom_print & PT_SHORT_PRINT))
+	    {
+	      /* A remote DML target takes this shape to get its columns. An error message ends with the statement
+	       * printed short, so the target is printed there as the user wrote it. */
+	      q = pt_append_nulstring (parser, q, p->info.spec.derived_table->info.dblink_table.remote_table_name);
+	      q = pt_append_nulstring (parser, q, "@");
+	      if (p->info.spec.remote_server_name->next)
+		{
+		  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+		  q = pt_append_nulstring (parser, q, ".");
+		}
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name));
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.range_var));
+	      goto print_join_cond;
+	    }
 	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      q = pt_append_varchar (parser, q, r1);
