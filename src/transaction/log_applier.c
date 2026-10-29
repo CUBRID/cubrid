@@ -1072,6 +1072,12 @@ la_coordinator_wait_until_retired (void)
  *   Entries retire only from the head, so while the oldest task is still running, the finished tasks behind
  *   it pile up in the in-flight list. Results are taken and retired here until that task finishes. Parked
  *   tasks are not dispatched here, since this can be called from la_coordinator_drain_ready.
+ *
+ *   The finished tasks at the head of the list are retired before waiting. la_coordinator_collect_results takes
+ *   every result and then releases parked tasks before la_coordinator_retire_results runs, so the list can be
+ *   full of finished tasks with no task left running; a new result then never comes. The commit-order ring
+ *   normally fills first, but the list is in dispatch order and empties at retire while the ring is in commit
+ *   order and empties as the frontier passes, so the list alone can be full.
  */
 static int
 la_coordinator_wait_for_inflight_slot (void)
@@ -1081,6 +1087,17 @@ la_coordinator_wait_for_inflight_slot (void)
 
   while (la_inflight_get_count () >= la_inflight_get_capacity ())
     {
+      error = la_coordinator_retire_results ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (la_inflight_get_count () < la_inflight_get_capacity ())
+	{
+	  break;
+	}
+
       error = la_coordinator_pop_result (&result);
       if (error != NO_ERROR)
 	{
