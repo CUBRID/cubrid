@@ -789,6 +789,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto prepare_error;
     }
+  err_code = db_check_driver_multiple_statements (session);
+  if (err_code != NO_ERROR)
+    {
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
 
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
   if (updatable_flag)
