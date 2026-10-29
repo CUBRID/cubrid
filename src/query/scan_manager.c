@@ -97,7 +97,7 @@ struct iss_range_details
   int part_key_desc;		/* last partial key domain is descending */
 };
 
-typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
+typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
 typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 
 typedef enum
@@ -159,16 +159,17 @@ static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
 static void scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list);
 static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
-static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term,
-				DOMAIN_SEARCH_KEYS search_keys);
-static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
-static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
-static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
+static ROP_TYPE compare_val_op (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, ROP_TYPE op1, DB_VALUE * val2,
+				const DOMAIN_KEY_BOUND * bound2, ROP_TYPE op2, int num_index_term,
+				const DOMAIN_KEY_RANGES * ranges);
+static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
+static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
+static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn,
-			   DOMAIN_SEARCH_KEYS search_keys);
+			   const DOMAIN_KEY_RANGES * ranges);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
-				   int key_minmax, bool is_iss, INDX_SCAN_ID * isidp, int bound_index);
+				   int key_minmax, bool is_iss, TP_DOMAIN * key_domain);
 /* scan_regu_key_to_index_key is declared in scan_manager.h (used by parallel index scan) */
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
@@ -195,7 +196,6 @@ static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_VALUE * key, OID * oid,
@@ -205,14 +205,14 @@ static int scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src, INDX_SCAN_ID
 static SCAN_CODE scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp);
 static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					     bool should_go_to_next_value);
-static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_SEARCH_KEYS search_keys);
+static int scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2,
+			     const DOMAIN_KEY_BOUND * bound2, int num_index_term, const DOMAIN_KEY_RANGES * ranges);
 
 /* for hash list scan */
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type,
-					 const VAL_DESCR * vd);
+static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -308,194 +308,8 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->need_count_only = false;
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
-  isidp->key_plan = NULL;
-  isidp->resolved_keys = NULL;
-  isidp->key_state = NULL;
   isidp->parallel_pending = NULL;
 }
-
-/*
- * An index scan's storage for its key plan: made at scan open, released at scan close, the scan thread's. search_keys
- * is what the B-tree reads to compare the search key values (BTID_INT.search_keys), and search_compare how it compares
- * them (BTID_INT.search_compare). Each bound with a mixed key domain cache writes its mixed domain there - a MIDXKEY
- * node, then its columns - refilled by structure copy when the bound's column domains change and reused otherwise: a
- * range allocates, caches and resolves no domain. A range's column values, domains and strict conversions live here
- * too.
- */
-struct scan_key_state
-{
-  DOMAIN_SEARCH_KEYS search_keys;
-  BTREE_SEARCH_COMPARE search_compare;
-  int n_columns;
-  TP_DOMAIN *chains;		/* [n_mixed_key_caches * (1 + n_columns)] */
-  unsigned char *last;		/* [n_mixed_key_caches * (n_columns + 1)] a chain's last fill: each column's domain
-				 * choice, then the written count + 1 (0: not filled) */
-  DB_VALUE *converted;		/* [n_columns] a range's strict conversions */
-  const DB_VALUE **values;	/* [n_columns] a range's column values */
-  const TP_DOMAIN **domains;	/* [n_columns] the domain a mixed key writes each column with */
-  unsigned char *choices;	/* [n_columns] SCAN_KEY_CHOICE of each domain */
-};
-
-/* Where a mixed key's column domain comes from: what a mixed key domain cache's reuse compares. */
-enum SCAN_KEY_CHOICE
-{
-  SCAN_KEY_COLUMN,		/* the index column's */
-  SCAN_KEY_RESOLVED		/* the plan's other domain for the column: the element's own, or the resolved domain */
-};
-
-/* What the B-tree's comparisons of an index scan's search key values read; NONE for a B-tree search outside a query
- * plan (an index scan identifier without a key plan). */
-DOMAIN_SEARCH_KEYS
-scan_index_search_keys (const INDX_SCAN_ID * isidp)
-{
-  if (isidp == NULL || isidp->key_plan == NULL)
-    {
-      return DOMAIN_SEARCH_KEYS_NONE;
-    }
-  /* a scan without storage has a single-column key whose values all have the column's key */
-  return isidp->key_state != NULL ? isidp->key_state->search_keys : DOMAIN_SEARCH_KEYS_OWN;
-}
-
-/* How the B-tree compares an index scan's search key values: the scan's choice at open
- * (scan_open_index_key_plan); RESOLVED without a key plan - the type and collation checks btree_compare_key_with
- * makes. */
-BTREE_SEARCH_COMPARE
-scan_index_search_compare (const INDX_SCAN_ID * isidp)
-{
-  if (isidp == NULL || isidp->key_plan == NULL)
-    {
-      return BTREE_SEARCH_COMPARE_RESOLVED;
-    }
-  /* a scan without storage has a single-column key whose values all have the column's key */
-  return isidp->key_state != NULL ? isidp->key_state->search_compare : BTREE_SEARCH_COMPARE_DIRECT;
-}
-
-/* The unresolved-domain check (execution) of an index scan's key plan: optdebug stops,
- * release raises ER_QPROC_DOMAIN_UNRESOLVED. */
-static int
-scan_key_plan_unresolved (const TP_DOMAIN * key_type)
-{
-  return domain_unresolved_error ("", -1, key_type != NULL ? TP_DOMAIN_TYPE (key_type) : DB_TYPE_NULL);
-}
-
-/* Releases an index scan's key plan storage: at scan close, or at the XASL clear of a scan torn down without
- * one. */
-void
-scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp)
-{
-  if (isidp->key_state != NULL)
-    {
-      for (int i = 0; i < isidp->key_state->n_columns; i++)
-	{
-	  pr_clear_value (&isidp->key_state->converted[i]);
-	}
-      db_private_free_and_init (thread_p, isidp->key_state);
-    }
-  isidp->key_plan = NULL;
-  isidp->resolved_keys = NULL;
-}
-
-/*
- * scan_open_index_key_plan () - an index scan takes its key plan and this execution's resolutions for it
- *   return: NO_ERROR, or ER_code
- *   key_type(in): the B-tree's key domain, its root header's
- *
- * The load derived the plan from the stream's key domain, the root header's; a scan whose B-tree has another fails the
- * unresolved-domain check (execution). The scan's storage is made once here for every range it builds, and the B-tree's
- * comparison of its search key values is chosen here. A single-column key whose values all have the column's key needs
- * no storage, whatever resolve_domains resolved for it: it takes its values as they are.
- */
-static int
-scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const INDX_INFO * indx_info,
-			  const VAL_DESCR * vd, const TP_DOMAIN * key_type)
-{
-  /* a scan identifier is zeroed at load and released at close; one reopened without a close lets its storage go */
-  scan_close_index_key_plan (thread_p, isidp);
-  const domain_plan_index *plan = indx_info->key_plan;
-  if (plan == NULL || !tp_domain_match (plan->key_type, key_type, TP_EXACT_MATCH))
-    {
-      return scan_key_plan_unresolved (key_type);
-    }
-  bool other_keys = plan->other_keys;
-  const RESOLVED_INDEX_KEYS *resolved_elements = NULL;
-  if (plan->resolved_keys_index >= 0)
-    {
-      /* a PX worker's own load numbers the comparisons as the leader's plan does */
-      const RESOLVED_DOMAIN_TABLE *resolved = vd != NULL
-	&& vd->xasl_state != NULL ? &vd->xasl_state->resolved_domain : NULL;
-      if (resolved == NULL || resolved->indexes == NULL || plan->resolved_keys_index >= resolved->n_indexes)
-	{
-	  return scan_key_plan_unresolved (key_type);
-	}
-      resolved_elements = &resolved->indexes[plan->resolved_keys_index];
-      other_keys = resolved_elements->other_keys;
-    }
-  isidp->key_plan = plan;
-  isidp->resolved_keys = resolved_elements;
-  const bool midxkey = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY;
-  if (!midxkey && !other_keys)
-    {
-      /* no storage: its values compare as they are (scan_index_search_compare), and a single-column key takes each as
-       * it is, whatever resolve_domains resolved for it - no mixed key domain cache, no strict conversion */
-#if !defined (NDEBUG)
-      assert (plan->n_mixed_key_caches == 0);
-      for (int b = 0; b < 2 * plan->n_ranges + 1; b++)
-	{
-	  for (int i = 0; i < plan->bounds[b].n_elems; i++)
-	    {
-	      const domain_plan_key_elem *elem = &plan->bounds[b].elems[i];
-	      assert (elem->rule != DOMAIN_KEY_STRICT);
-	      assert (elem->rule != DOMAIN_KEY_LATE_BIND || resolved_elements == NULL
-		      || resolved_elements->elements == NULL
-		      || resolved_elements->elements[elem->resolved_element].rule != DOMAIN_KEY_STRICT);
-	    }
-	}
-#endif
-      return NO_ERROR;
-    }
-
-  const int n_columns = midxkey ? key_type->precision : 1;
-  const size_t n_chains = (size_t) plan->n_mixed_key_caches;
-  static_assert (sizeof (scan_key_state) % alignof (TP_DOMAIN) == 0, "key chains alignment");
-  static_assert (sizeof (TP_DOMAIN) % alignof (DB_VALUE) == 0, "key values alignment");
-  const size_t chains_offset = sizeof (scan_key_state);
-  const size_t converted_offset = chains_offset + sizeof (TP_DOMAIN) * n_chains * (1 + n_columns);
-  const size_t values_offset = converted_offset + sizeof (DB_VALUE) * n_columns;
-  const size_t domains_offset = values_offset + sizeof (const DB_VALUE *) * n_columns;
-  const size_t choices_offset = domains_offset + sizeof (const TP_DOMAIN *) * n_columns;
-  const size_t last_offset = choices_offset + (size_t) n_columns;
-  const size_t bytes = last_offset + n_chains * (n_columns + 1);
-  char *block = (char *) db_private_alloc (thread_p, bytes);
-  if (block == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  scan_key_state *state = (scan_key_state *) block;
-  state->search_keys = other_keys ? DOMAIN_SEARCH_KEYS_OTHER : DOMAIN_SEARCH_KEYS_OWN;
-  /* without a column whose values take a key other than its own (domain_key_differs), every value compares with the
-   * index as it is */
-  state->search_compare = other_keys ? BTREE_SEARCH_COMPARE_RESOLVED
-    : midxkey ? BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN : BTREE_SEARCH_COMPARE_DIRECT;
-  state->n_columns = n_columns;
-  state->chains = n_chains > 0 ? (TP_DOMAIN *) (block + chains_offset) : NULL;
-  state->converted = (DB_VALUE *) (block + converted_offset);
-  state->values = (const DB_VALUE **) (block + values_offset);
-  state->domains = (const TP_DOMAIN **) (block + domains_offset);
-  state->choices = (unsigned char *) (block + choices_offset);
-  state->last = n_chains > 0 ? (unsigned char *) (block + last_offset) : NULL;
-  for (int i = 0; i < n_columns; i++)
-    {
-      db_make_null (&state->converted[i]);
-    }
-  if (state->last != NULL)
-    {
-      memset (state->last, 0, n_chains * (n_columns + 1));
-    }
-  isidp->key_state = state;
-  return NO_ERROR;
-}
-
 
 /*
  * scan_save_range_details () - save range details from the index scan id to
@@ -783,7 +597,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	    {
 	      REGU_VARIABLE *regu = &kr->key1->value.funcp->operand->value;
 
-	      /* the skip value is the first index column's: the key plan writes it under that column's domain */
+	      /* the skip value is the first index column's: the key writes it under that column's domain */
 	      regu->type = TYPE_DBVAL;
 
 	      pr_clear_value (&regu->value.dbval);
@@ -897,7 +711,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       goto exit_on_error;
     }
 
-  if (qdata_get_valptr_type_list (thread_p, output_val_list, indx_cov->type_list, vd) != NO_ERROR)
+  if (qdata_get_valptr_type_list (thread_p, output_val_list, indx_cov->type_list) != NO_ERROR)
     {
       err = ER_FAILED;
       goto exit_on_error;
@@ -1010,8 +824,9 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
       return NO_ERROR;
     }
 
-  error_code = fetch_key_limits (thread_p, key_infop->key_limit_l, key_infop->key_limit_u, vd, &isidp->key_limit_lower,
-				 &isidp->key_limit_upper, &is_null);
+  error_code = fetch_key_limits (thread_p, key_infop->key_limit_l, key_infop->key_limit_l_conv, key_infop->key_limit_u,
+				 key_infop->key_limit_u_conv, vd, &isidp->key_limit_lower, &isidp->key_limit_upper,
+				 &is_null);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -1288,10 +1103,10 @@ range_to_rop (ROP_TYPE * left, ROP_TYPE * right, RANGE range)
  *   return:
  */
 static int
-scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_SEARCH_KEYS search_keys)
+scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2, const DOMAIN_KEY_BOUND * bound2,
+		  int num_index_term, const DOMAIN_KEY_RANGES * ranges)
 {
   int rc = DB_UNK;
-  DB_TYPE key_type;
 
   if (val1 == NULL || val2 == NULL)
     {
@@ -1316,34 +1131,25 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_S
     }
   else
     {
-      /* search keys without other keys: every value has its column's type and collation, and compares as it is
-       * (scan_open_index_key_plan) */
-      const bool other_keys = search_keys == DOMAIN_SEARCH_KEYS_OTHER;
-      key_type = DB_VALUE_DOMAIN_TYPE (val1);
-      if (key_type == DB_TYPE_MIDXKEY)
+      /* two search key bounds' values: the comparisons XASL generation decided for their columns' classes */
+      assert (bound1 != NULL && bound2 != NULL && ranges != NULL);
+      const DOMAIN_KEY_RANGES_PAIR pair = { ranges, {bound1->classes, bound2->classes} };
+      if (DB_VALUE_DOMAIN_TYPE (val1) == DB_TYPE_MIDXKEY)
 	{
 	  int dummy_diff_column;
-	  /* columns of other domains compare as the scan's key plan resolved */
 	  rc =
 	    pr_midxkey_compare_resolved (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
-					 &dummy_diff_column, NULL, NULL,
-					 other_keys ? domain_search_key_compare_other : NULL);
+					 &dummy_diff_column, NULL, NULL, domain_key_ranges_element_compare, &pair);
 	}
-      else if (other_keys && domain_value_domains_differ (val1, val2))
+      else
 	{
-	  /* search key values of other types or collations compare as the scan's key plan resolved */
 	  bool can_compare = true;
-	  rc = domain_search_key_compare_other (0, val1, val2, 1, 1, &can_compare);
+	  rc = domain_key_ranges_element_compare (&pair, 0, val1, val2, 1, 1, &can_compare);
 	  if (!can_compare && rc != DB_UNK)
 	    {
 	      /* a conversion failed: tp_value_compare answers by the types' rank, without an error */
 	      er_clear ();
 	    }
-	}
-      else
-	{
-	  assert (search_keys == DOMAIN_SEARCH_KEYS_NONE || other_keys || !domain_value_domains_differ (val1, val2));
-	  rc = tp_value_compare (val1, val2, 1, 1);
 	}
     }
 
@@ -1360,8 +1166,8 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_S
  *   num_index_term(in):
  */
 static ROP_TYPE
-compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term,
-		DOMAIN_SEARCH_KEYS search_keys)
+compare_val_op (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, ROP_TYPE op1, DB_VALUE * val2,
+		const DOMAIN_KEY_BOUND * bound2, ROP_TYPE op2, int num_index_term, const DOMAIN_KEY_RANGES * ranges)
 {
   int rc;
 
@@ -1382,7 +1188,7 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
       return (op2 == op1) ? ROP_EQ : ROP_LT;
     }
 
-  rc = scan_key_compare (val1, val2, num_index_term, search_keys);
+  rc = scan_key_compare (val1, bound1, val2, bound2, num_index_term, ranges);
 
   if (rc == DB_EQ)
     {
@@ -1438,7 +1244,7 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys)
+eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
@@ -1449,7 +1255,7 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_
   while (key_cnt > 1 && n < key_cnt - 1)
     {
       /* tp_value_compare's: a multi-column key over every column (its columns of other domains as resolved) */
-      if (scan_key_compare (&curp->key1, &nextp->key1, -1, search_keys) == DB_EQ)
+      if (scan_key_compare (&curp->key1, curp->key1_bound, &nextp->key1, nextp->key1_bound, -1, ranges) == DB_EQ)
 	{
 	  pr_clear_value (&nextp->key1);
 	  pr_clear_value (&nextp->key2);
@@ -1474,7 +1280,7 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys)
+merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges)
 {
   int cur_n, next_n;
   KEY_VAL_RANGE *curp, *nextp;
@@ -1502,7 +1308,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 
 	  if (is_mergeable == true)
 	    {
-	      cmp_1 = compare_val_op (&curp->key2, cur_op2, &nextp->key1, next_op1, curp->num_index_term, search_keys);
+	      cmp_1 = compare_val_op (&curp->key2, curp->key2_bound, cur_op2, &nextp->key1, nextp->key1_bound, next_op1,
+				      curp->num_index_term, ranges);
 	      if (cmp_1 == ROP_NA || cmp_1 == ROP_LT)
 		{
 		  is_mergeable = false;	/* error or disjoint */
@@ -1511,7 +1318,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 
 	  if (is_mergeable == true)
 	    {
-	      cmp_2 = compare_val_op (&curp->key1, cur_op1, &nextp->key2, next_op2, curp->num_index_term, search_keys);
+	      cmp_2 = compare_val_op (&curp->key1, curp->key1_bound, cur_op1, &nextp->key2, nextp->key2_bound, next_op2,
+				      curp->num_index_term, ranges);
 	      if (cmp_2 == ROP_NA || cmp_2 == ROP_GT)
 		{
 		  is_mergeable = false;	/* error or disjoint */
@@ -1521,7 +1329,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 	  if (is_mergeable == true)
 	    {
 	      /* determine the lower bound of the merged key range */
-	      cmp_3 = compare_val_op (&curp->key1, cur_op1, &nextp->key1, next_op1, curp->num_index_term, search_keys);
+	      cmp_3 = compare_val_op (&curp->key1, curp->key1_bound, cur_op1, &nextp->key1, nextp->key1_bound, next_op1,
+				      curp->num_index_term, ranges);
 	      if (cmp_3 == ROP_NA)
 		{
 		  is_mergeable = false;
@@ -1531,7 +1340,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 	  if (is_mergeable == true)
 	    {
 	      /* determine the upper bound of the merged key range */
-	      cmp_4 = compare_val_op (&curp->key2, cur_op2, &nextp->key2, next_op2, curp->num_index_term, search_keys);
+	      cmp_4 = compare_val_op (&curp->key2, curp->key2_bound, cur_op2, &nextp->key2, nextp->key2_bound, next_op2,
+				      curp->num_index_term, ranges);
 	      if (cmp_4 == ROP_NA)
 		{
 		  is_mergeable = false;
@@ -1551,6 +1361,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 	    {
 	      pr_clear_value (&curp->key1);
 	      curp->key1 = nextp->key1;	/* bitwise copy */
+	      curp->key1_bound = nextp->key1_bound;
 	      db_make_null (&nextp->key1);
 	      cur_op1 = next_op1;
 	    }
@@ -1564,6 +1375,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 	    {
 	      pr_clear_value (&curp->key2);
 	      curp->key2 = nextp->key2;	/* bitwise copy */
+	      curp->key2_bound = nextp->key2_bound;
 	      db_make_null (&nextp->key2);
 	      cur_op2 = next_op2;
 	    }
@@ -1594,209 +1406,42 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
  *   chk_fn (in): check function for key_vals
  */
 static int
-check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn, DOMAIN_SEARCH_KEYS search_keys)
+check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn, const DOMAIN_KEY_RANGES * ranges)
 {
   if (key_cnt <= 1)
     {
       return key_cnt;
     }
 
-  /* the comparator carries the search keys itself, not a thread-local the sort reads at every comparison;
+  /* the comparator carries the bounds' comparisons itself, not a thread-local the sort reads at every comparison;
    * a stable sort keeps the order glibc's merge sort gave equal key values */
   /* *INDENT-OFF* */
   std::stable_sort (key_vals, key_vals + key_cnt,
-		    [search_keys] (const KEY_VAL_RANGE & a, const KEY_VAL_RANGE & b)
+		    [ranges] (const KEY_VAL_RANGE & a, const KEY_VAL_RANGE & b)
   {
     assert_release (a.num_index_term == b.num_index_term);
-    return scan_key_compare (const_cast < DB_VALUE * >(&a.key1), const_cast < DB_VALUE * >(&b.key1),
-			     a.num_index_term, search_keys) < 0;
+    return scan_key_compare (const_cast < DB_VALUE * >(&a.key1), a.key1_bound, const_cast < DB_VALUE * >(&b.key1),
+			     b.key1_bound, a.num_index_term, ranges) < 0;
   });
   /* *INDENT-ON* */
 
-  return ((*key_val_fn) (key_vals, key_cnt, search_keys));
+  return ((*key_val_fn) (key_vals, key_cnt, ranges));
 }
 
 /* shared with parallel index scan: same dedup/merge serial path runs in scan_open_index_scan. */
 int
 scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
-				DOMAIN_SEARCH_KEYS search_keys)
+				const DOMAIN_KEY_RANGES * ranges)
 {
   if (range_type == R_KEYLIST)
     {
-      return check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys, search_keys);
+      return check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys, ranges);
     }
   if (range_type == R_RANGELIST)
     {
-      return check_key_vals (key_vals, key_cnt, merge_key_ranges, search_keys);
+      return check_key_vals (key_vals, key_cnt, merge_key_ranges, ranges);
     }
   return key_cnt;
-}
-
-/* Whether a value is one of a plan domain's: its type and, for a string, its collation - what a mixed key and
- * the type pair comparison table take from the domain. The server holds an object as its OID, and an OID value's own
- * domain is OBJECT (tp_domain_resolve_value), which is the domain resolve_domains records for a constant object. */
-static bool
-scan_key_value_holds (const DB_VALUE * value, const TP_DOMAIN * domain)
-{
-  if (domain == NULL)
-    {
-      return false;
-    }
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  const DB_TYPE domain_type = TP_DOMAIN_TYPE (domain);
-  if (type != domain_type)
-    {
-      return type == DB_TYPE_OID && domain_type == DB_TYPE_OBJECT;
-    }
-  return !TP_IS_CHAR_TYPE (type) || db_get_string_collation (value) == TP_DOMAIN_COLLATION (domain);
-}
-
-#if !defined (NDEBUG)
-/* The debug cross-check of a resolved strict key conversion: tp_value_coerce_strict gives the same outcome, and a
- * kept value leaves no error behind. */
-static void
-scan_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const DB_VALUE * converted)
-{
-  DB_VALUE expected;
-  db_make_null (&expected);
-  const bool expected_converts = tp_value_coerce_strict (value, &expected, column) == NO_ERROR;
-  assert (expected_converts == (converted != NULL));
-  assert (converted == NULL || tp_value_compare (&expected, (DB_VALUE *) converted, 0, 1) == DB_EQ);
-  pr_clear_value (&expected);
-  assert (converted != NULL || er_errid () == NO_ERROR);
-}
-#endif /* !NDEBUG */
-
-/*
- * scan_key_column () - one column of a multi-column search key at a range
- *   return: NO_ERROR, or ER_code (the unresolved-domain check (execution): a value its plan domain does not describe)
- *   value(in/out): the column's value; its strict conversion once converted
- *   domain(out): the domain a mixed key writes it with
- *   choice(out): SCAN_KEY_CHOICE of that domain
- *   kept(out): the column is kept, so the key is mixed
- *
- * The rule is the plan's, or resolve_domains' for an element whose domain it resolved, or a constant resolve_domains
- * converted or kept once: the range runs the resolved strict converter and picks one of the two domains the plan holds.
- * It resolves nothing.
- */
-static int
-scan_key_column (INDX_SCAN_ID * isidp, const domain_plan_key_elem * elem, int column_index, const DB_VALUE ** value,
-		 const TP_DOMAIN ** domain, unsigned char *choice, bool * kept)
-{
-  const TP_DOMAIN *column = elem->index_elem;
-  unsigned char rule = elem->rule;
-  const TP_DOMAIN *keep = elem->keep_elem;
-  TP_VALUE_CONVERTER strict_conv = elem->strict_conv;
-  *kept = false;
-  if (rule == DOMAIN_KEY_CONSTANT || rule == DOMAIN_KEY_LATE_BIND)
-    {
-      const RESOLVED_KEY_ELEMENT *resolved_domain = &isidp->resolved_keys->elements[elem->resolved_element];
-      if (rule == DOMAIN_KEY_CONSTANT)
-	{
-	  /* resolve_domains converted or kept the value once - every constant has its value before any row - and the
-	   * caller read it */
-	  assert (resolved_domain->domain != NULL);
-	  *domain = resolved_domain->domain;
-	  *choice = resolved_domain->domain == column ? SCAN_KEY_COLUMN : SCAN_KEY_RESOLVED;
-	  *kept = resolved_domain->kept;
-	  return NO_ERROR;
-	}
-      if (resolved_domain->rule == DOMAIN_KEY_LATE_BIND)
-	{
-	  /* resolve_domains derives a rule for every element whose values its resolution fixes; a value here had no
-	   * resolution: resolve_domains resolves every string */
-	  return scan_key_plan_unresolved (column);
-	}
-      if (!scan_key_value_holds (*value, resolved_domain->keep_elem))
-	{
-	  /* a value of another type than the resolved domain: none, a session variable read included */
-	  return scan_key_plan_unresolved (resolved_domain->keep_elem);
-	}
-      rule = resolved_domain->rule;
-      keep = resolved_domain->keep_elem;
-      strict_conv = resolved_domain->strict_conv;
-    }
-  else if (!scan_key_value_holds (*value, keep))
-    {
-      return scan_key_plan_unresolved (keep);
-    }
-  switch (rule)
-    {
-    case DOMAIN_KEY_INDEX:
-      *domain = keep;
-      *choice = keep == column ? SCAN_KEY_COLUMN : SCAN_KEY_RESOLVED;
-      return NO_ERROR;
-    case DOMAIN_KEY_KEEP:
-      *domain = keep;
-      *choice = SCAN_KEY_RESOLVED;
-      *kept = true;
-      return NO_ERROR;
-    default:
-      {
-	assert (rule == DOMAIN_KEY_STRICT && strict_conv != NULL);
-	DB_VALUE *converted = &isidp->key_state->converted[column_index];
-	pr_clear_value (converted);
-	if (tp_value_convert (strict_conv, column, *value, converted) == DOMAIN_COMPATIBLE)
-	  {
-#if !defined (NDEBUG)
-	    scan_check_key_strict (*value, column, converted);
-#endif
-	    *value = converted;
-	    *domain = column;
-	    *choice = SCAN_KEY_COLUMN;
-	    return NO_ERROR;
-	  }
-	pr_clear_value (converted);
-#if !defined (NDEBUG)
-	scan_check_key_strict (*value, column, NULL);
-#endif
-	*domain = keep;
-	*choice = SCAN_KEY_RESOLVED;
-	*kept = true;
-	return NO_ERROR;
-      }
-    }
-}
-
-/*
- * scan_key_mixed_domain () - the mixed domain of a bound with a cache at this range: its written
- *   columns under their domains, the index's columns after them, in the chain the scan made at open
- *
- * A range whose column domains are the last fill's reuses it; otherwise the nodes are filled again by structure copy
- * from domains the plan and resolve_domains hold - no allocation, no domain cache, no resolution.
- */
-static TP_DOMAIN *
-scan_key_mixed_domain (scan_key_state * state, const domain_plan_key * bound, const TP_DOMAIN * key_type, int written)
-{
-  const int n_columns = state->n_columns;
-  TP_DOMAIN *chain = &state->chains[bound->mixed_key_cache * (1 + n_columns)];
-  unsigned char *last = &state->last[bound->mixed_key_cache * (n_columns + 1)];
-  bool same = written < UCHAR_MAX && last[n_columns] == written + 1;
-  for (int i = 0; same && i < written; i++)
-    {
-      same = last[i] == state->choices[i];
-    }
-  if (same)
-    {
-      return chain;
-    }
-  TP_DOMAIN *columns = chain + 1;
-  const TP_DOMAIN *index_column = key_type->setdomain;
-  for (int i = 0; i < n_columns && index_column != NULL; i++, index_column = index_column->next)
-    {
-      columns[i] = *(i < written ? state->domains[i] : index_column);
-      columns[i].is_desc = index_column->is_desc;
-      columns[i].next = i + 1 < n_columns ? &columns[i + 1] : NULL;
-      /* scan storage: like a built-in domain, tp_domain_free leaves it alone */
-      columns[i].is_cached = 1;
-      last[i] = i < written ? state->choices[i] : (unsigned char) SCAN_KEY_COLUMN;
-    }
-  *chain = *key_type;
-  chain->setdomain = columns;
-  chain->next = NULL;
-  chain->is_cached = 1;
-  last[n_columns] = written < UCHAR_MAX ? (unsigned char) (written + 1) : 0;
-  return chain;
 }
 
 /*
@@ -1811,89 +1456,79 @@ scan_key_mixed_domain (scan_key_state * state, const domain_plan_key * bound, co
  *   vd (in):
  *   key_minmax (in):
  *   is_iss (in)
- *   isidp (in): the scan, with its key plan
- *   bound_index (in): the bound in the key plan
+ *   key_domain (in): the domain the key is written with: the index's, or the one XASL generation made for a bound
+ *		      with a column that keeps its value's own domain (KEY_RANGE.key1_domain / key2_domain)
  *
- * The key: a column of another type converted strictly into the index column's domain or else kept, a NUMERIC,
- * CHAR or BIT of the column's type with other parameters kept, every column under its value's domain once one is kept.
- * The plan and resolve_domains resolved each column's rule before any row; the range runs the resolved converters,
- * picks between the two domains the plan holds, and writes the key under the index's domain or a mixed one from its
- * mixed key domain cache.
+ * XASL generation decided how each column takes its values (CBRD-27583): a converted column's regu converts them,
+ * a kept or as-is column's arrive in its own domain. The range writes them under the key domain's columns, up to a
+ * NULL that ends the key (an index skip scan's first column may be NULL) or a maximum string, after which
+ * btree_coerce_key fills the index's columns.
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexable, TP_DOMAIN * btree_domainp,
 			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss,
-			INDX_SCAN_ID * isidp, int bound_index)
+			TP_DOMAIN * key_domain)
 {
   int ret = NO_ERROR;
   DB_MIDXKEY midxkey;
   int idx_ncols = 0, written, i;
   int buf_size;
   regu_variable_list_node *operand;
+  const TP_DOMAIN *column;
+  const TP_DOMAIN *index_column;	/* the index's column at column's position */
   char *nullmap_ptr;		/* ponter to boundbits */
   OR_BUF buf;
-  bool mixed = false;
-  const domain_plan_index *plan = isidp->key_plan;
-  scan_key_state *state = isidp->key_state;
-  const domain_plan_key *bound;
-  TP_DOMAIN *key_domain;
+  /* the columns' values, peeked once: most keys have few columns */
+  const DB_VALUE *values_buf[16];
+  const DB_VALUE **values = values_buf;
 
   *indexable = false;
 
-  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY || plan == NULL || state == NULL
-      || bound_index < 0 || bound_index > 2 * plan->n_ranges)
+  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY || TP_DOMAIN_TYPE (key_domain) != DB_TYPE_MIDXKEY)
     {
       assert (false);
       return ER_FAILED;
     }
-  bound = &plan->bounds[bound_index];
 
   idx_ncols = btree_domainp->precision;
-  if (idx_ncols <= 0 || idx_ncols != state->n_columns)
+  if (idx_ncols <= 0 || idx_ncols != key_domain->precision)
     {
       assert (false);
       return ER_FAILED;
+    }
+  if (idx_ncols > (int) (sizeof (values_buf) / sizeof (values_buf[0])))
+    {
+      values = (const DB_VALUE **) db_private_alloc (thread_p, idx_ncols * sizeof (*values));
+      if (values == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
     }
 
   buf_size = 0;
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
 
-  /* each column's value and the domain a mixed key writes it with, checked in this order: a NULL ends the key (an
-   * index skip scan's first column may be NULL), then the index key type, then a maximum string */
+  /* each column's value, checked in this order: a NULL ends the key (an index skip scan's first column may be NULL),
+   * then the index key type, then a maximum string */
   written = 0;
-  for (operand = func->value.funcp->operand, i = 0; operand != NULL && i < idx_ncols && i < bound->n_elems;
-       operand = operand->next, i++)
+  for (operand = func->value.funcp->operand, column = key_domain->setdomain, index_column = btree_domainp->setdomain;
+       operand != NULL && column != NULL;
+       operand = operand->next, column = column->next, index_column = index_column != NULL ? index_column->next : NULL)
     {
-      const domain_plan_key_elem *elem = &bound->elems[i];
-      const RESOLVED_KEY_ELEMENT *resolved_domain = elem->rule == DOMAIN_KEY_CONSTANT
-	? &isidp->resolved_keys->elements[elem->resolved_element] : NULL;
       DB_VALUE *val = NULL;
-      if (resolved_domain != NULL && resolved_domain->domain != NULL)
+      ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
+      if (ret != NO_ERROR)
 	{
-	  /* a constant: the value resolve_domains converted or kept once */
-	  val = (DB_VALUE *) & resolved_domain->value;
+	  goto err_exit;
 	}
-      else
-	{
-	  /* a row's value - or a constant whose computation failed below a constant branch, which no row reaches: one
-	   * that does computes it and raises its error */
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
-	}
-      state->values[i] = val;
-      state->domains[i] = elem->index_elem;
-      state->choices[i] = SCAN_KEY_COLUMN;
-      written = i + 1;
 
       if (DB_IS_NULL (val))
 	{
-	  if (is_iss && i == 0)
+	  if (is_iss && written == 0)
 	    {
-	      /* If this is INDEX SKIP SCAN we allow the first column to be NULL and we don't need a new domain for it */
+	      /* If this is INDEX SKIP SCAN we allow the first column to be NULL; it is not written */
+	      values[written++] = val;
 	      continue;
 	    }
 	  else
@@ -1903,65 +1538,37 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (!tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (val)))
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
+      if (!tp_valid_indextype (type))
 	{
+	  /* named with the index column's type: a kept value's column has the value's own type */
+	  assert (index_column != NULL);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (TP_DOMAIN_TYPE (elem->index_elem)), pr_type_name (DB_VALUE_DOMAIN_TYPE (val)));
+		  pr_type_name (TP_DOMAIN_TYPE (index_column != NULL ? index_column : column)), pr_type_name (type));
 	  goto err_exit;
 	}
 
-      if (TP_IS_STRING_TYPE (DB_VALUE_DOMAIN_TYPE (val)) && val->data.ch.medium.is_max_string)
+      if (TP_IS_STRING_TYPE (type) && val->data.ch.medium.is_max_string)
 	{
 	  /* oops, we found max: the columns from here are the index's, NULL-filled by btree_coerce_key */
-	  midxkey.min_max_val.position = i;
+	  midxkey.min_max_val.position = written;
 	  midxkey.min_max_val.type = MAX_COLUMN;
-	  written = i;
 	  break;
 	}
 
-      bool kept = false;
-      ret = scan_key_column (isidp, elem, i, &state->values[i], &state->domains[i], &state->choices[i], &kept);
-      if (ret != NO_ERROR)
+      /* the value has the type its column is written with: a value of another one would be written as garbage */
+      if (type != TP_DOMAIN_TYPE (column) && !(TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (column)))
+	  && !(type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT))
 	{
+	  ret = domain_unresolved_error (-1, TP_DOMAIN_TYPE (column));
 	  goto err_exit;
 	}
-      mixed = mixed || kept;
-    }
+      /* CBRD-27583: XASL generation planned the column's type for the value; a string of the other kind would
+       * be written by the column's writer (a CHAR's pads to the value's precision) */
+      assert (type == TP_DOMAIN_TYPE (column) || (type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT));
 
-  /* the domain the key is written with: the index's, or the mix of its columns' own domains - resolve_domains' for a
-   * bound of constants, else the scan's mixed key domain cache */
-  key_domain = btree_domainp;
-  if (mixed && bound->constant)
-    {
-      key_domain = (TP_DOMAIN *) isidp->resolved_keys->domains[bound_index];
-      if (key_domain == NULL)
-	{
-	  ret = scan_key_plan_unresolved (btree_domainp);
-	  goto err_exit;
-	}
-    }
-  else if (mixed)
-    {
-      key_domain = scan_key_mixed_domain (state, bound, btree_domainp, written);
-    }
-
-  /* calculate midxkey's size */
-  for (i = 0; i < written; i++)
-    {
-      const DB_VALUE *val = state->values[i];
-      if (DB_IS_NULL (val))
-	{
-	  if (is_iss && i == 0)
-	    {
-	      /* We allow the first column to be NULL and we're not writing it in the MIDXKEY buffer */
-	      continue;
-	    }
-	  /* impossible case */
-	  assert_release (false);
-	  goto end;
-	}
-      const TP_DOMAIN *dom = mixed ? state->domains[i] : bound->elems[i].index_elem;
-      buf_size += dom->type->get_index_size_of_value ((DB_VALUE *) val);
+      buf_size += column->type->get_index_size_of_value (val);
+      values[written++] = val;
     }
 
   buf_size += or_multi_header_size (idx_ncols);
@@ -1981,10 +1588,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   or_advance (&buf, or_multi_header_size (idx_ncols));
 
   /* generate multi columns key (values -> midxkey.buf) */
-  for (i = 0; i < written; i++)
+  for (i = 0, column = key_domain->setdomain; i < written; i++, column = column->next)
     {
-      const DB_VALUE *val = state->values[i];
-      const TP_DOMAIN *dom = mixed ? state->domains[i] : bound->elems[i].index_elem;
+      const DB_VALUE *val = values[i];
 
       or_multi_put_element_offset (nullmap_ptr, idx_ncols, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
@@ -1997,7 +1603,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  continue;
 	}
 
-      dom->type->index_writeval (&buf, (DB_VALUE *) val);
+      column->type->index_writeval (&buf, (DB_VALUE *) val);
       or_multi_set_not_null (nullmap_ptr, i);
     }
 
@@ -2028,9 +1634,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   ret = btree_coerce_key (retval, num_term, btree_domainp, key_minmax);
 
-  for (i = 0; i < idx_ncols; i++)
+  if (values != values_buf)
     {
-      pr_clear_value (&state->converted[i]);
+      db_private_free (thread_p, values);
     }
 
   return ret;
@@ -2041,9 +1647,9 @@ end:
       db_private_free_and_init (thread_p, midxkey.buf);
     }
 
-  for (i = 0; i < idx_ncols; i++)
+  if (values != values_buf)
     {
-      pr_clear_value (&state->converted[i]);
+      db_private_free (thread_p, values);
     }
 
   return ret;
@@ -2056,59 +1662,6 @@ err_exit:
     }
 
   goto end;
-}
-
-/*
- * scan_key_single_column () - a single-column search key at a range: the value as it is; the
- *   B-tree compares it with the index by the type pair comparison table when the key the element's resolution gives is
- *   not the column's own.
- *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution)) for a value of an element
- *	     resolve_domains derived no rule for: resolve_domains resolves every string and gives every constant its
- *	     value
- *
- * It runs at every range, inline, and reads the plan only where it must: a NULL value, or a scan whose plan has
- * no element resolve_domains resolves (no resolutions), is not tested.
- */
-static inline int
-scan_key_single_column (INDX_SCAN_ID * isidp, int bound_index, const DB_VALUE * value)
-{
-#if !defined (NDEBUG)
-  {
-    /* a literal the load fixed holds the domain the load read from its value */
-    const domain_plan_key *fixed = &isidp->key_plan->bounds[bound_index];
-    const domain_plan_key_elem *elem = fixed->n_elems == 1 ? &fixed->elems[0] : NULL;
-    assert (elem == NULL || elem->regu == NULL || elem->regu->type != TYPE_DBVAL || elem->rule != DOMAIN_KEY_INDEX
-	    || DB_IS_NULL (value) || scan_key_value_holds (value, elem->keep_elem));
-  }
-#endif
-  if (DB_IS_NULL (value) || isidp->resolved_keys == NULL)
-    {
-      return NO_ERROR;
-    }
-  const domain_plan_key *bound = &isidp->key_plan->bounds[bound_index];
-  if (bound->n_elems != 1)
-    {
-      return NO_ERROR;
-    }
-  const domain_plan_key_elem *elem = &bound->elems[0];
-  if (elem->rule != DOMAIN_KEY_CONSTANT && elem->rule != DOMAIN_KEY_LATE_BIND)
-    {
-      return NO_ERROR;
-    }
-  const RESOLVED_KEY_ELEMENT *resolved_element = &isidp->resolved_keys->elements[elem->resolved_element];
-  if (elem->rule == DOMAIN_KEY_LATE_BIND && resolved_element->rule == DOMAIN_KEY_LATE_BIND)
-    {
-      return scan_key_plan_unresolved (elem->index_elem);
-    }
-  const TP_DOMAIN *resolved_domain =
-    elem->rule == DOMAIN_KEY_CONSTANT ? resolved_element->domain : resolved_element->keep_elem;
-  if (resolved_domain == NULL || !scan_key_value_holds (value, resolved_domain))
-    {
-      /* no resolution, or a value of another type than resolve_domains': none - a constant has its value, a session
-       * variable read its type for the statement */
-      return scan_key_plan_unresolved (resolved_domain);
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -2130,16 +1683,9 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   assert ((key_ranges->range >= GE_LE && key_ranges->range <= INF_LT) || (key_ranges->range == EQ_NA));
   assert (!(key_ranges->key1 == NULL && key_ranges->key2 == NULL));
 
-  /* the range's bounds in the key plan: key1 and key2 of a key range, or the index skip scan's fetch range
-   * (whose one bound moves to key2 for a descending skip) */
-  if (iscan_id->key_plan == NULL)
-    {
-      return scan_key_plan_unresolved (btree_domainp);
-    }
-  const int n_ranges = iscan_id->key_plan->n_ranges;
-  const bool fetch_range = key_ranges == &iscan_id->indx_info->iss_range;
-  assert (fetch_range || (key_range_idx >= 0 && key_range_idx < n_ranges));
-  const int bound = fetch_range ? 2 * n_ranges : 2 * key_range_idx;
+  /* CBRD-27583: how the bounds' values compare */
+  key_val_range->key1_bound = key_ranges->key1_bound;
+  key_val_range->key2_bound = key_ranges->key2_bound;
 
   if (iscan_id->bt_attrs_prefix_length && iscan_id->bt_num_attrs == 1)
     {
@@ -2196,16 +1742,20 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
-				    iscan_id, bound);
+				    key_ranges->key1_domain != NULL ? key_ranges->key1_domain : btree_domainp);
 	}
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
-	  if (ret == NO_ERROR)
-	    {
-	      ret = scan_key_single_column (iscan_id, bound, &key_val_range->key1);
-	    }
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
+	  /* at scan start, an unindexable value fails whatever the rows, named value first as the B-tree compare does
+	   * (a multi-column key's: scan_dbvals_to_midxkey) */
+	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),
+		      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)));
+	      ret = ER_TP_CANT_COERCE;
+	    }
 
 	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
@@ -2248,17 +1798,20 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
-				    iscan_id, fetch_range ? bound : bound + 1);
+				    key_ranges->key2_domain != NULL ? key_ranges->key2_domain : btree_domainp);
 	}
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key2, vd, NULL, NULL, NULL, &key_val_range->key2);
-	  if (ret == NO_ERROR)
-	    {
-	      ret = scan_key_single_column (iscan_id, fetch_range ? bound : bound + 1, &key_val_range->key2);
-	    }
 
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
+	  /* as key1's */
+	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key2) && !tp_valid_indextype (db_type))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),
+		      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)));
+	      ret = ER_TP_CANT_COERCE;
+	    }
 
 	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
@@ -2368,8 +1921,9 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	    {
 	      int c = DB_UNK;
 
-	      c = scan_key_compare (&key_val_range->key1, &key_val_range->key2, key_val_range->num_index_term,
-				    scan_index_search_keys (iscan_id));
+	      c = scan_key_compare (&key_val_range->key1, key_val_range->key1_bound, &key_val_range->key2,
+				    key_val_range->key2_bound, key_val_range->num_index_term,
+				    iscan_id->indx_info->key_ranges_compares);
 
 	      if (c == DB_UNK)
 		{
@@ -2489,6 +2043,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  db_make_null (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
+	  key_vals[i].key1_bound = key_ranges[i].key1_bound;
+	  key_vals[i].key2_bound = key_ranges[i].key2_bound;
 
 	  key_vals[i].range = key_ranges[i].range;
 	  if (key_vals[i].range == INF_INF)
@@ -2514,13 +2070,13 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	{
 	  /* eliminate duplicated keys in the search key list */
 	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys,
-							scan_index_search_keys (iscan_id));
+							indx_infop->key_ranges_compares);
 	}
       else if (indx_infop->range_type == R_RANGELIST)
 	{
 	  /* merge search key ranges */
 	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, merge_key_ranges,
-							scan_index_search_keys (iscan_id));
+							indx_infop->key_ranges_compares);
 	}
 
       /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be
@@ -2530,7 +2086,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	      || (indx_infop->groupby_desc && indx_infop->groupby_skip)))
 	{
 	  /* in both cases we should reverse the key lists if we have a reverse order by or group by which is skipped */
-	  check_key_vals (key_vals, key_cnt, reverse_key_list, scan_index_search_keys (iscan_id));
+	  check_key_vals (key_vals, key_cnt, reverse_key_list, indx_infop->key_ranges_compares);
 	}
 
       if (key_cnt < 0)
@@ -3387,9 +2943,11 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   pgbuf_unfix_and_init (thread_p, Root);
 
-  /* the key plan the load derived for this index, and this execution's resolutions for it */
-  if (scan_open_index_key_plan (thread_p, isidp, indx_info, vd, BTS->btid_int.key_type) != NO_ERROR)
+  /* XASL generation decided the search keys against the key domain it read for this index: a tree with another one
+   * fails the unresolved-domain check (execution) */
+  if (indx_info->key_type == NULL || !tp_domain_match (indx_info->key_type, BTS->btid_int.key_type, TP_EXACT_MATCH))
     {
+      (void) domain_unresolved_error (-1, TP_DOMAIN_TYPE (BTS->btid_int.key_type));
       goto exit_on_error;
     }
 
@@ -3589,8 +3147,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   return ret;
 
 exit_on_error:
-
-  scan_close_index_key_plan (thread_p, isidp);
 
   if (isidp->key_vals)
     {
@@ -3971,13 +3527,11 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* regulator variable list for build, probe */
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
-  llsidp->hlsid.need_coerce_type = false;
-  llsidp->hlsid.key_plan = NULL;
 
   llsidp->is_read_only = is_read_only;
 
   /* check if hash list scan is possible? */
-  llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn, vd);
+  llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
   if (llsidp->hlsid.hash_list_scan_type != HASH_METH_NOT_USE)
     {
       bool on_trace;
@@ -4015,7 +3569,6 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
-      llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -4336,6 +3889,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 {
   DBLINK_SCAN_ID *dblid = &scan_id->s.dblid;
   DB_TYPE single_node_type = DB_TYPE_NULL;
+  int error;
 
   /* scan type is DBLINK SCAN */
   scan_id->type = S_DBLINK_SCAN;
@@ -4347,7 +3901,12 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
 		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
 
-  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  error = dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  return dblink_plan_columns (&scan_id->s.dblid.scan_info, val_list);
 }
 
 /*
@@ -4372,9 +3931,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   regu_variable_list_node *list_node = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
-
-  /* the outer values its block reads converted are converted anew */
-  qexec_enter_temporary_scope (scan_id->vd, scan_id->val_list);
 
 #if SERVER_MODE && !WINDOWS
   /* attempt parallel-index promotion now that need_count_only is resolved; may rewrite scan_id->type to S_PARALLEL_INDEX_SCAN. */
@@ -4625,12 +4181,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
-      /* the domains its positions and predicate operands take for the execution, once per start rather than at every
-       * row it returns */
-      if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
       /* open list file scan */
       if (qfile_open_list_scan (llsidp->list_id, &llsidp->lsid) != NO_ERROR)
 	{
@@ -4712,8 +4262,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
   s_id->single_fetched = false;
   s_id->null_fetched = false;
-  /* an inner scan restarts for the next outer row, whose values it reads converted anew */
-  qexec_enter_temporary_scope (s_id->vd, s_id->val_list);
 
   switch (s_id->type)
     {
@@ -5248,8 +4796,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 #if SERVER_MODE && !WINDOWS
       scan_close_parallel_index_scan (thread_p, scan_id);
 #endif /* SERVER_MODE && !WINDOWS */
-      /* the leader's key plan storage, which its workers' shared ranges read; pisid mirrors isid */
-      scan_close_index_key_plan (thread_p, &scan_id->s.isid);
       break;
 
     case S_INDX_SCAN:
@@ -5262,8 +4808,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  scan_clear_parallel_index_pending (thread_p, scan_id);
 	}
 #endif /* SERVER_MODE && !WINDOWS */
-
-      scan_close_index_key_plan (thread_p, isidp);
 
       if (isidp->key_vals)
 	{
@@ -5375,18 +4919,11 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 #endif
       scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
-      qdata_free_hscan_key_plan (thread_p, &llsidp->hlsid);
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
 	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
 	  llsidp->hlsid.temp_key = NULL;
-	}
-      /* free temp new keys and values */
-      if (llsidp->hlsid.temp_new_key != NULL)
-	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, llsidp->hlsid.temp_new_key->val_count);
-	  llsidp->hlsid.temp_new_key = NULL;
 	}
       break;
 
@@ -8013,7 +7550,7 @@ scan_finalize (void)
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys)
+reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges)
 {
   int i, j;
   KEY_VAL_RANGE temp;
@@ -8026,71 +7563,6 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
     }
 
   return key_cnt;
-}
-
-/*
- * scan_plan_list_scan_domains () - the domains of a list scan's positions and predicate operands the compiler left
- *   open, read from the plan
- *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution))
- *
- * A list position reads its list's column and a value pointer its producer: resolve_domains resolved both once for the
- * execution, a column over a session variable read too.
- */
-static int
-scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
-{
-  regu_variable_list_node *lists[] = { llsidp->scan_pred.regu_list, llsidp->rest_regu_list };
-  for (int l = 0; l < 2; l++)
-    {
-      for (regu_variable_list_node * scan_regu = lists[l]; scan_regu != NULL; scan_regu = scan_regu->next)
-	{
-	  QFILE_TUPLE_VALUE_POSITION *pos_descr = &scan_regu->value.value.pos_descr;
-	  if (scan_regu->value.type != TYPE_POSITION)
-	    {
-	      continue;
-	    }
-	  /* the position and its value descriptor share one item: variable until an open of this execution resolved
-	   * it */
-	  if (!qexec_node_domain_is_variable (vd, scan_regu->value.plan_item)
-	      && !qexec_position_domain_is_variable (vd, scan_regu->value.plan_item))
-	    {
-	      continue;
-	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, scan_regu->value.plan_item);
-	  if (resolved == NULL)
-	    {
-	      return qexec_domain_unresolved (vd, scan_regu->value.plan_item, pos_descr->dom);
-	    }
-	  /* the position and its value descriptor share one item and one execution domain */
-	  qexec_set_node_domain (vd, scan_regu->value.plan_item, NULL, resolved);
-	}
-    }
-  if (llsidp->scan_pred.pred_expr != NULL && llsidp->scan_pred.pred_expr->type == T_EVAL_TERM
-      && llsidp->scan_pred.pred_expr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
-    {
-      COMP_EVAL_TERM *comp = &llsidp->scan_pred.pred_expr->pe.m_eval_term.et.et_comp;
-      REGU_VARIABLE *operands[] = { comp->lhs, comp->rhs };
-      for (int k = 0; k < 2; k++)
-	{
-	  REGU_VARIABLE *operand = operands[k];
-	  if (operand == NULL)
-	    {
-	      continue;
-	    }
-	  if (operand->domain != NULL && !qexec_node_domain_is_variable (vd, operand->plan_item))
-	    {
-	      /* a fixed domain is its own plan */
-	      continue;
-	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, operand->plan_item);
-	  if (resolved != NULL)
-	    {
-	      qexec_set_node_domain (vd, operand->plan_item, operand->type == TYPE_POSITION ? NULL : operand->domain,
-				     resolved);
-	    }
-	}
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -8533,25 +8005,13 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-  HASH_SCAN_KEY *key, *new_key;
+  HASH_SCAN_KEY *key;
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
   TFTID tftid;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
-  new_key = llsidp->hlsid.temp_new_key;
-
-  if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
-  /* each build key's copy or conversion, from the domains the positions above now read */
-  if (llsidp->hlsid.need_coerce_type
-      && qdata_plan_hscan_keys (thread_p, scan_id->vd, &llsidp->hlsid, llsidp->scan_pred.regu_list) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {
@@ -8566,27 +8026,14 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       scan_id->scan_stats.read_rows++;
 
-      /* build key */
+      /* build key: XASL generation put the key pair's values in the domain they hash alike in */
       if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, key) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
-      /* create new key */
-      if (llsidp->hlsid.need_coerce_type)
-	{
-	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key);
-	  if (new_key == NULL)
-	    {
-	      return S_ERROR;
-	    }
-	}
-      else
-	{
-	  new_key = key;
-	}
 
       /* make hash key */
-      hash_key = qdata_hash_scan_key (new_key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
 
       switch (llsidp->hlsid.hash_list_scan_type)
 	{
@@ -8922,27 +8369,25 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  * check_hash_list_scan () - Check if hash list scan is possible
  *   return: int  1: in-memory 2: hybrid in-memory
  *   llsidp (in): list scan id pointer
- *   vd (in): the execution's value descriptor: the keys' domains in this execution
  *   node :
  *      1. count of tuple of list file > 0
  *      2. list file size check
  *      3. regu_list_build, regu_list_probe is not null
  *      4. The number of probe regu_var and build regu match
- *      5. type of regu var is not oid && vobj
+ *      5. XASL generation found a domain each key pair hashes alike in (pt_decide_hash_list_keys)
  *      6. list file from dptr is not allowed
 */
 static HASH_METHOD
-check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn, const VAL_DESCR * vd)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
-  DB_TYPE vtype1, vtype2;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   INT64 tuple_cnt;
   UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
 
   assert (hash_list_scan_yn == 0 || hash_list_scan_yn == 1);
-  /* no_hash_list_scan sql hint check */
+  /* no_hash_list_scan sql hint check, or key pairs XASL generation found no domain for */
   if (hash_list_scan_yn == 0)
     {
       return HASH_METH_NOT_USE;
@@ -8967,23 +8412,6 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 
   for (build_cnt = 0; build && probe; build_cnt++)
     {
-      /* type of regu var is not oid && vobj */
-      /* This is the case when type coercion is impossible. so use list scan */
-      /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
-      /* the keys' domains now, read from the nodes: a node computed earlier in this execution holds the domain it
-       * took there (its execution domain), any other its compiled one */
-      vtype1 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, probe->value.domain, probe->value.plan_item));
-      vtype2 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, build->value.domain, build->value.plan_item));
-
-      if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
-	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))
-	{
-	  return HASH_METH_NOT_USE;
-	}
-      if (vtype1 != vtype2)
-	{
-	  llsidp->hlsid.need_coerce_type = true;
-	}
       build = build->next;
       probe = probe->next;
     }

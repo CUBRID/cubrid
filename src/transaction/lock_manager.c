@@ -378,7 +378,7 @@ struct lk_tran_lock
   int lk_entry_pool_count;	/* Current count of lock entries in local pool. */
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
-  int transient_total;		/* counted requests outstanding, so an empty walk can be skipped */
+  int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
   int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
@@ -538,6 +538,7 @@ static void lock_finalize_object_lock_structures (void);
 static void lock_finalize_deadlock_detection (void);
 static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
+static void lock_move_to_head_of_tran_hold_list (LK_ENTRY * entry_ptr);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static LK_ENTRY *lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class);
@@ -1644,6 +1645,32 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
   pthread_mutex_unlock (&tran_lock->hold_mutex);
 
   return error_code;
+}
+
+/*
+ * lock_move_to_head_of_tran_hold_list () - Move an instance lock entry to the head of its transaction's hold list
+ *   return: void
+ *   entry_ptr(in): an entry the transaction holds
+ */
+static void
+lock_move_to_head_of_tran_hold_list (LK_ENTRY * entry_ptr)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[entry_ptr->tran_index];
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  if (tran_lock->inst_hold_list != entry_ptr)
+    {
+      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+      if (entry_ptr->tran_next != NULL)
+	{
+	  entry_ptr->tran_next->tran_prev = entry_ptr->tran_prev;
+	}
+      entry_ptr->tran_prev = NULL;
+      entry_ptr->tran_next = tran_lock->inst_hold_list;
+      tran_lock->inst_hold_list->tran_prev = entry_ptr;
+      tran_lock->inst_hold_list = entry_ptr;
+    }
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
 }
 #endif /* SERVER_MODE */
 
@@ -6491,6 +6518,11 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
 	{
 	  /* counted, not flagged: a repeated request only raises count, and the release gives back exactly what was
 	   * taken.  Never past count -- a request an earlier statement took is not this statement's to give back. */
+	  if (inst_entry->transient_count == 0 && inst_entry->count > 1)
+	    {
+	      /* an entry held before this request: the statement-end walk starts at the head */
+	      lock_move_to_head_of_tran_hold_list (inst_entry);
+	    }
 	  inst_entry->transient_count++;
 	  lk_Gl.tran_lock_table[tran_index].transient_total++;
 	}
@@ -6683,9 +6715,9 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
  *   return: void
  *   thread_p(in): thread entry
  *
- * Note: walks the hold list instead of looking each object up, so a lock costs what commit pays for it;
- *	transient_total skips the walk when nothing was counted.  No hold_mutex: only this thread runs for the
- *	transaction here.
+ * Note: walks the hold list instead of looking each object up.  A counted entry was inserted at the head or moved
+ *	there when counted, so the walk ends once transient_total is met: it costs the entries this statement touched,
+ *	not all the transaction holds.  No hold_mutex: only this thread runs for the transaction here.
  */
 void
 lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
@@ -6695,17 +6727,13 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr, *next_ptr;
-  int tran_index, i, n;
+  int tran_index, i, n, left;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  if (tran_lock->transient_total == 0)
-    {
-      return;
-    }
-
-  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = next_ptr)
+  left = tran_lock->transient_total;
+  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = next_ptr)
     {
       /* the entry may be gone once its last request is given back, so take the link first */
       next_ptr = entry_ptr->tran_next;
@@ -6713,6 +6741,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
       n = entry_ptr->transient_count;
       if (n > 0)
 	{
+	  left -= n;
 	  /* each counted request raised count; outrunning it would free the entry under the releases still to come */
 	  assert (n <= entry_ptr->count);
 	  n = MIN (n, entry_ptr->count);
@@ -6746,18 +6775,15 @@ lock_forget_transient_object_locks (THREAD_ENTRY * thread_p)
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
-  int tran_index;
+  int tran_index, left;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  if (tran_lock->transient_total == 0)
+  left = tran_lock->transient_total;
+  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = entry_ptr->tran_next)
     {
-      return;
-    }
-
-  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
-    {
+      left -= entry_ptr->transient_count;
       entry_ptr->transient_count = 0;
     }
   tran_lock->transient_total = 0;

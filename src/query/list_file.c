@@ -43,6 +43,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "perf_monitor.h"
+#include "query_evaluator.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -53,6 +54,8 @@
 #if defined (SERVER_MODE)
 #include "bit.h"
 #endif /* SERVER_MODE */
+
+#include <algorithm>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -266,6 +269,45 @@ static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * rec
 #define QFILE_SORT_REC_A_LEN(rec, off)  OR_GET_INT ((char *) (rec) + (off) - QFILE_SORT_REC_A_HDR)
 #define QFILE_SORT_REC_A_SLOT(len)      (QFILE_SORT_REC_A_HDR + DB_ALIGN ((len), MAX_ALIGNMENT))
 
+/*
+ * A P_sort_key may carry its original tuple (SORT_REC_HAS_TUPLE) only when its columns that are no sort key take at
+ * most this many bytes. The copy saves a page fix of the input list per sorted tuple; at about 400 bytes the larger
+ * sort runs eat all of that even when the sorted tuples are scattered over the input pages (measured: 220 bytes
+ * 15-30% faster, 420 bytes no gain).
+ */
+#define QFILE_SORT_REC_CARRY_MAX_SIZE   256	/* carried columns: their mini tuple length, in bytes */
+
+/*
+ * Carrying pays only when the sorted tuples are scattered over the input pages; an input already near the sort order
+ * is read back page by page after the sort, and carrying would only grow the sort runs. The first input tuples are
+ * sorted as usual (by position) while every QFILE_SORT_CARRY_STRIDE-th of their records is copied to a sample. The
+ * sample sorted by the sort comparator gives, from the input distance of neighbours, the share of sorted tuples
+ * that move to another input page. A move costs a page fix, as much as about QFILE_SORT_CARRY_BYTES_PER_MOVE more
+ * bytes of sort records (measured on analytic sorts, whose runs cost the most per byte), so the remaining tuples are
+ * carried when that share times QFILE_SORT_CARRY_BYTES_PER_MOVE reaches the average length of the sampled tuples'
+ * carried columns (the bytes carrying adds to each record).
+ */
+#define QFILE_SORT_CARRY_STRIDE         8
+#define QFILE_SORT_CARRY_SAMPLES        1024
+#define QFILE_SORT_CARRY_MIN_SAMPLES    64
+#define QFILE_SORT_CARRY_MAX_TUPLES     (4 * QFILE_SORT_CARRY_STRIDE * QFILE_SORT_CARRY_SAMPLES)
+#define QFILE_SORT_CARRY_AREA_SIZE      (64 * 1024)
+#define QFILE_SORT_CARRY_BYTES_PER_MOVE 768
+
+struct qfile_sort_carry_sample
+{
+  int n_samples;
+  int n_tuples;			/* input tuples seen */
+  int n_pages;			/* input pages seen */
+  INT64 carry_bytes;		/* total length of the sampled tuples' carried columns */
+  VPID last_vpid;
+  int area_used;
+  SORT_REC *rec[QFILE_SORT_CARRY_SAMPLES];	/* copies of the sampled P_sort_key records, in area */
+  int pos[QFILE_SORT_CARRY_SAMPLES];	/* input position of each */
+  double area[QFILE_SORT_CARRY_AREA_SIZE / sizeof (double)];
+};
+typedef struct qfile_sort_carry_sample QFILE_SORT_CARRY_SAMPLE;
+
 /* column source staging for the sort paths: stack for the usual key counts, heap only beyond (cold) */
 #define QFILE_COL_SRC_STACK 64
 #define QFILE_COL_SRC_ACQUIRE(stack_buf, n) \
@@ -293,6 +335,10 @@ static int qfile_compare_tran_id (const void *t1, const void *t2);
 #endif /* SERVER_MODE */
 static unsigned int qfile_hash_db_value_array (const void *key, unsigned int htsize);
 static int qfile_compare_equal_db_value_array (const void *key1, const void *key2);
+static bool qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1,
+					   const DB_VALUE * val2);
+static bool qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
+				     QFILE_LIST_CACHE_KEY * key);
 
 /* for list cache */
 static int qfile_assign_list_cache (void);
@@ -319,6 +365,10 @@ static int qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD *
 				 const VPID * vpid, int tuple_offset);
 static QFILE_TUPLE_COL_SRC *qfile_sort_rec_a_sources (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p,
 						      QFILE_TUPLE_COL_SRC * src);
+static void qfile_sort_carry_add_sample (SORTKEY_INFO * key_info_p, const char *sort_rec, int length,
+					 const VPID * vpid, int carry_length, bool can_carry);
+static void qfile_sort_carry_decide (SORTKEY_INFO * key_info_p);
+static int qfile_init_sort_rest_columns (SORTKEY_INFO * key_info_p, QFILE_TUPLE_VALUE_TYPE_LIST * types);
 
 #if defined(SERVER_MODE)
 static BH_CMP_RESULT
@@ -469,8 +519,6 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
 
   list_id_p->tpl_descr.f_valp = NULL;
   list_id_p->tpl_descr.f_len = NULL;
-  list_id_p->tpl_descr.f_cast = NULL;
-  list_id_p->tpl_descr.f_cast_cnt = 0;
   list_id_p->tpl_descr.col_src = NULL;
   list_id_p->tpl_descr.col_src_cap = 0;
   return NO_ERROR;
@@ -630,15 +678,6 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
   if (list_id_p->tpl_descr.f_valp)
     {
       free_and_init (list_id_p->tpl_descr.f_valp);
-    }
-  if (list_id_p->tpl_descr.f_cast)
-    {
-      for (int i = 0; i < list_id_p->tpl_descr.f_cast_cnt; i++)
-	{
-	  pr_clear_value (&list_id_p->tpl_descr.f_cast[i]);
-	}
-      free_and_init (list_id_p->tpl_descr.f_cast);
-      list_id_p->tpl_descr.f_cast_cnt = 0;
     }
   if (list_id_p->tpl_descr.col_src)
     {
@@ -904,90 +943,39 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
 }
 
 /*
- * qfile_unify_types () -
- *   return:
- *   list_id1(in/out): Destination list identifier
+ * qfile_unify_types () - CBRD-27583: the two lists of a set operation or of a recursive CTE have one domain per
+ *   column - XASL generation gives a branch column of NULLs the unified domain (pt_type_null_list_column) - so their
+ *   tuples are copied as they are. Two JSON domains of different schemas, or two variable strings of different
+ *   precisions, are one column type whose values are written alike: type checking casts neither, so
+ *   their domains stay apart and the first list's stands
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES / ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *   list_id1(in): Destination list identifier
  *   list_id2(in): Source list identifier
- *   list1_empty(in): the rows list_id1 stands for are none (a destination opened with a branch's types: that branch's)
- *
- * Note: For every destination type which is DB_TYPE_NULL,
- *       set it to the source type.
- *       This should probably set an error for non-null mismatches.
- *
- * A list opens with the plan's domains: an empty side contributes no values, so its domain does not
- * constrain the other side's, as a column no tuple typed (DB_TYPE_VARIABLE) did not.
  */
 int
-qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
+qfile_unify_types (const QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 {
-  int i;
-  int max_count = list_id1_p->type_list.type_cnt;
-  DB_TYPE type1, type2;
-  const bool list2_empty = list_id2_p->tuple_cnt == 0;
+  /* a column count mismatch is ignored, as it always was */
+  const int max_count = MIN (list_id1_p->type_list.type_cnt, list_id2_p->type_list.type_cnt);
 
-  if (max_count != list_id2_p->type_list.type_cnt)
+  for (int i = 0; i < max_count; i++)
     {
-      /* error, but is ignored for now. */
-      if (max_count > list_id2_p->type_list.type_cnt)
+      const DB_TYPE type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
+      if (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]
+	  && !(type1 == TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i])
+	       && (type1 == DB_TYPE_JSON || (pr_is_string_type (type1) && pr_is_variable_type (type1)))))
 	{
-	  max_count = list_id2_p->type_list.type_cnt;
-	}
-    }
-
-  for (i = 0; i < max_count; i++)
-    {
-      type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
-      type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
-
-      /* An empty side skips the collation flag check below as well: its column opened with the plan's domain, and
-       * the load check keeps a plan domain NORMAL (a string whose collation the values give is resolved before the
-       * execution) */
-      if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	{
-	  /* list1 holds no value of this column: its tuples store only NULL (0 bytes) there, so list2's domain reads them */
-	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
-	  continue;
-	}
-      else if (type2 == DB_TYPE_VARIABLE
-	       || (list2_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	{
-	  /* list2 holds no value of this column (NULL only); list1's domain stands */
-	  continue;
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
+	  return ER_QPROC_INCOMPATIBLE_TYPES;
 	}
 
-      if (type1 == DB_TYPE_NULL)
-	{
-	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
-	}
-      else
-	{
-	  if (type2 != DB_TYPE_NULL && (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	    {
-	      if (type1 == type2
-		  && ((pr_is_string_type (type1) && pr_is_variable_type (type1)) || (type1 == DB_TYPE_JSON)))
-		{
-		  /* OK for variable string types with different precision or json types */
-		}
-	      else
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
-		  qfile_set_layout (&list_id1_p->type_list);
-		  return ER_QPROC_INCOMPATIBLE_TYPES;
-		}
-	    }
-	}
-
-      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL
-	  || TP_DOMAIN_COLLATION_FLAG (list_id2_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
+      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-	  qfile_set_layout (&list_id1_p->type_list);
 	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
 	}
     }
-
-  /* domp of list1 may have changed above */
-  qfile_set_layout (&list_id1_p->type_list);
 
   return NO_ERROR;
 }
@@ -1750,19 +1738,6 @@ qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
       return ER_FAILED;
     }
   tuple_descr_p->f_len = (int *) (tuple_descr_p->f_valp + n);
-  tuple_descr_p->f_cast = (DB_VALUE *) malloc ((size_t) n * sizeof (DB_VALUE));
-  if (tuple_descr_p->f_cast == NULL)
-    {
-      free_and_init (tuple_descr_p->f_valp);
-      tuple_descr_p->f_len = NULL;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) n * sizeof (DB_VALUE));
-      return ER_FAILED;
-    }
-  for (int i = 0; i < n; i++)
-    {
-      db_make_null (&tuple_descr_p->f_cast[i]);
-    }
-  tuple_descr_p->f_cast_cnt = n;
   return NO_ERROR;
 }
 
@@ -2567,7 +2542,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       goto error;
     }
 
-  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p, lhs_file_p->tuple_cnt == 0) != NO_ERROR)
+  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p) != NO_ERROR)
     {
       goto error;
     }
@@ -3202,7 +3177,7 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p, QFILE_LIS
 	  goto error;
 	}
 
-      if (qfile_unify_types (result_list_id_p, tail, false) != NO_ERROR)
+      if (qfile_unify_types (result_list_id_p, tail) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3330,6 +3305,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
   scan_status = qfile_scan_list_next (thread_p, input_scan_p, tuple_record_p, PEEK);
   if (scan_status != S_SUCCESS)
     {
+      qfile_sort_carry_end (key_info_p);
       return ((scan_status == S_END) ? SORT_NOMORE_RECS : SORT_ERROR_OCCURRED);
     }
 
@@ -3360,7 +3336,9 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
  *   return: required record length (the record is complete only when it is <= key_record_p->area_size, the
  *           SORT_REC_DOESNT_FIT protocol of the sort module), or ER_FAILED
  *   P_sort_key: header = original tuple position (vpid, tuple_offset), body = key mini tuple assembled with
- *               key_info_p->key_tl (one 8-byte aligned tuple of the key columns only)
+ *               key_info_p->key_tl (one 8-byte aligned tuple of the key columns only); when the tuple is carried,
+ *               the columns that are no key follow 8-byte aligned as one mini tuple laid out by key_info_p->rest_tl
+ *               (at most QFILE_SORT_REC_CARRY_MAX_SIZE bytes) and the header says so (SORT_REC_HAS_TUPLE)
  *   A_sort_key: header = offset[] (0 = NULL), body = QFILE_SORT_REC_A_* slots in key order
  */
 static int
@@ -3369,12 +3347,14 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
 {
   SORT_REC *sort_record_p = (SORT_REC *) key_record_p->data;
   QFILE_TUPLE_COL_SRC src_buf[QFILE_COL_SRC_STACK], *src;
+  QFILE_TUPLE_COL_SRC rest_buf[QFILE_COL_SRC_STACK], *rest;
   int nkeys = key_info_p->nkeys;
+  int nrest = key_info_p->rest_tl.type_cnt;
   int i, length, size, slot;
   char *data;
   const char *body;
-  int len;
-  bool is_null, has_null;
+  int len, rest_size, rest_start;
+  bool is_null, has_null, rest_has_null, can_carry, carry_tuple;
 
   src = QFILE_COL_SRC_ACQUIRE (src_buf, nkeys);
   if (src == NULL)
@@ -3405,16 +3385,80 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
 	}
       length += size;
 
-      if (length <= key_record_p->area_size)
+      /* the columns that are no sort key ride behind the key body when they are short, so the sorted output need not
+       * fix its input page again; the keys are not carried twice */
+      rest = NULL;
+      rest_size = 0;
+      rest_has_null = false;
+      can_carry = false;
+      if (key_info_p->carry_tuple != SORT_CARRY_NO)
 	{
-	  sort_record_p->s.original.pageid = vpid->pageid;
-	  sort_record_p->s.original.volid = vpid->volid;
-	  sort_record_p->s.original.offset = tuple_offset;
-	  if (qfile_tuple_fill (&key_info_p->key_tl, src, nkeys, data, size, has_null) != NO_ERROR)
+	  rest = QFILE_COL_SRC_ACQUIRE (rest_buf, nrest);
+	  if (rest == NULL)
 	    {
 	      QFILE_COL_SRC_RELEASE (src, src_buf);
 	      return ER_FAILED;
 	    }
+	  for (i = 0; i < nrest; i++)
+	    {
+	      body = qfile_slot_get_column_data (tuple_slot, key_info_p->rest_col[i], &len, &is_null);
+	      qfile_col_src_set_raw (&rest[i], body, len, is_null);
+	    }
+	  rest_size = qfile_tuple_size (&key_info_p->rest_tl, rest, nrest, &rest_has_null);
+	  if (rest_size < 0)
+	    {
+	      QFILE_COL_SRC_RELEASE (rest, rest_buf);
+	      QFILE_COL_SRC_RELEASE (src, src_buf);
+	      return ER_FAILED;
+	    }
+	}
+      rest_start = DB_ALIGN (length, MAX_ALIGNMENT);
+      can_carry = (rest != NULL && rest_size <= QFILE_SORT_REC_CARRY_MAX_SIZE && rest_start <= INT16_MAX);
+      carry_tuple = (can_carry && key_info_p->carry_tuple == SORT_CARRY_YES);
+      if (carry_tuple)
+	{
+	  length = rest_start + rest_size;
+	}
+
+      if (length <= key_record_p->area_size)
+	{
+	  if (carry_tuple)
+	    {
+	      sort_record_p->s.original.pageid = NULL_PAGEID;
+	      sort_record_p->s.original.volid = NULL_VOLID;
+	      sort_record_p->s.original.offset = rest_start;
+	      if (qfile_tuple_fill (&key_info_p->rest_tl, rest, nrest, key_record_p->data + rest_start, rest_size,
+				    rest_has_null) != NO_ERROR)
+		{
+		  QFILE_COL_SRC_RELEASE (rest, rest_buf);
+		  QFILE_COL_SRC_RELEASE (src, src_buf);
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      sort_record_p->s.original.pageid = vpid->pageid;
+	      sort_record_p->s.original.volid = vpid->volid;
+	      sort_record_p->s.original.offset = tuple_offset;
+	    }
+	  if (qfile_tuple_fill (&key_info_p->key_tl, src, nkeys, data, size, has_null) != NO_ERROR)
+	    {
+	      if (rest != NULL)
+		{
+		  QFILE_COL_SRC_RELEASE (rest, rest_buf);
+		}
+	      QFILE_COL_SRC_RELEASE (src, src_buf);
+	      return ER_FAILED;
+	    }
+
+	  if (key_info_p->carry_tuple == SORT_CARRY_UNDECIDED)
+	    {
+	      qfile_sort_carry_add_sample (key_info_p, key_record_p->data, length, vpid, rest_size, can_carry);
+	    }
+	}
+      if (rest != NULL)
+	{
+	  QFILE_COL_SRC_RELEASE (rest, rest_buf);
 	}
     }
   else
@@ -3543,6 +3587,212 @@ qfile_sort_rec_a_sources (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, Q
     }
 
   return src;
+}
+
+/*
+ * qfile_generate_carried_tuple () - rebuild the original tuple of a P_sort_key that carries it (SORT_REC_HAS_TUPLE)
+ *   from its key columns and its carried columns, in list column order.
+ *   return: the tuple, in output_recdes_p (grown as needed), or NULL on error
+ *   out_tl(in): layout-ready descriptor of the list the tuple belongs to (the sort input list's columns)
+ */
+QFILE_TUPLE
+qfile_generate_carried_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, RECDES * output_recdes_p,
+			      QFILE_TUPLE_VALUE_TYPE_LIST * out_tl)
+{
+  QFILE_TUPLE_RECORD key_slot = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD rest_slot = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_COL_SRC src_buf[QFILE_COL_SRC_STACK], *src;
+  int ncols = key_info_p->col_cnt;
+  int c, k, len, size;
+  const char *body;
+  bool is_null, has_null;
+  char *tuple_p;
+
+  assert (key_info_p->use_original && SORT_REC_HAS_TUPLE (sort_record_p));
+  assert (out_tl->type_cnt == ncols);
+
+  src = QFILE_COL_SRC_ACQUIRE (src_buf, ncols);
+  if (src == NULL)
+    {
+      return NULL;
+    }
+
+  qfile_slot_set_tuple_ptr_and_layout (&key_slot, PTR_ALIGN (&(sort_record_p->s.original.body[0]), MAX_ALIGNMENT), 0,
+				       &key_info_p->key_tl);
+  qfile_slot_set_tuple_ptr_and_layout (&rest_slot, SORT_REC_REST (sort_record_p), 0, &key_info_p->rest_tl);
+  for (c = 0; c < ncols; c++)
+    {
+      k = key_info_p->col_src[c];
+      if (k >= 0)
+	{
+	  body = qfile_slot_get_column_data (&key_slot, k, &len, &is_null);
+	}
+      else
+	{
+	  body = qfile_slot_get_column_data (&rest_slot, -1 - k, &len, &is_null);
+	}
+      qfile_col_src_set_raw (&src[c], body, len, is_null);
+    }
+
+  size = qfile_tuple_size (out_tl, src, ncols, &has_null);
+  if (size < 0)
+    {
+      QFILE_COL_SRC_RELEASE (src, src_buf);
+      return NULL;
+    }
+
+  if (output_recdes_p->area_size < size)
+    {
+      if (output_recdes_p->area_size == 0)
+	{
+	  tuple_p = (char *) db_private_alloc (NULL, size);
+	}
+      else
+	{
+	  tuple_p = (char *) db_private_realloc (NULL, output_recdes_p->data, size);
+	}
+
+      if (tuple_p == NULL)
+	{
+	  QFILE_COL_SRC_RELEASE (src, src_buf);
+	  return NULL;
+	}
+
+      output_recdes_p->data = tuple_p;
+      output_recdes_p->area_size = size;
+    }
+
+  tuple_p = output_recdes_p->data;
+  if (qfile_tuple_fill (out_tl, src, ncols, tuple_p, size, has_null) != NO_ERROR)
+    {
+      tuple_p = NULL;
+    }
+
+  QFILE_COL_SRC_RELEASE (src, src_buf);
+  return tuple_p;
+}
+
+/*
+ * qfile_sort_carry_add_sample () - account for an input tuple while tuple carrying is undecided, and decide when the
+ *   sample is complete. See QFILE_SORT_CARRY_STRIDE.
+ *   sort_rec(in): the P_sort_key record just built for the tuple at vpid, length bytes, not carrying the tuple
+ *   carry_length(in): the length its carried columns would add to the record
+ *   can_carry(in): whether those columns are short enough to be carried; only such tuples are sampled
+ */
+static void
+qfile_sort_carry_add_sample (SORTKEY_INFO * key_info_p, const char *sort_rec, int length, const VPID * vpid,
+			     int carry_length, bool can_carry)
+{
+  QFILE_SORT_CARRY_SAMPLE *sample = key_info_p->carry_sample;
+  int slot;
+
+  if (sample == NULL)
+    {
+      sample = (QFILE_SORT_CARRY_SAMPLE *) malloc (sizeof (QFILE_SORT_CARRY_SAMPLE));
+      if (sample == NULL)
+	{
+	  /* not worth an error: keep sorting by position */
+	  key_info_p->carry_tuple = SORT_CARRY_NO;
+	  return;
+	}
+      sample->n_samples = 0;
+      sample->n_tuples = 0;
+      sample->n_pages = 0;
+      sample->carry_bytes = 0;
+      VPID_SET_NULL (&sample->last_vpid);
+      sample->area_used = 0;
+      key_info_p->carry_sample = sample;
+    }
+
+  if (!VPID_EQ (vpid, &sample->last_vpid))
+    {
+      sample->n_pages++;
+      sample->last_vpid = *vpid;
+    }
+
+  slot = DB_ALIGN (length, MAX_ALIGNMENT);
+  if (can_carry && sample->n_tuples % QFILE_SORT_CARRY_STRIDE == 0
+      && sample->area_used + slot <= QFILE_SORT_CARRY_AREA_SIZE)
+    {
+      sample->rec[sample->n_samples] = (SORT_REC *) ((char *) sample->area + sample->area_used);
+      memcpy (sample->rec[sample->n_samples], sort_rec, length);
+      sample->pos[sample->n_samples] = sample->n_tuples;
+      sample->n_samples++;
+      sample->carry_bytes += carry_length;
+      sample->area_used += slot;
+    }
+  sample->n_tuples++;
+
+  if (sample->n_samples == QFILE_SORT_CARRY_SAMPLES || sample->n_tuples >= QFILE_SORT_CARRY_MAX_TUPLES
+      || sample->area_used + slot > QFILE_SORT_CARRY_AREA_SIZE)
+    {
+      qfile_sort_carry_decide (key_info_p);
+    }
+}
+
+/*
+ * qfile_sort_carry_decide () - decide on tuple carrying from the sample, and release it.
+ *   Neighbours in the sorted sample that are d input positions apart stand for sorted tuples about
+ *   d / QFILE_SORT_CARRY_STRIDE positions apart, which move to another page with probability (positions / tuples per
+ *   page), at most 1.
+ */
+static void
+qfile_sort_carry_decide (SORTKEY_INFO * key_info_p)
+{
+  QFILE_SORT_CARRY_SAMPLE *sample = key_info_p->carry_sample;
+  int order[QFILE_SORT_CARRY_SAMPLES];
+  double tuples_per_page, distance, page_moves;
+  int i, n;
+
+  if (sample == NULL)
+    {
+      return;
+    }
+
+  n = sample->n_samples;
+  if (n < QFILE_SORT_CARRY_MIN_SAMPLES)
+    {
+      key_info_p->carry_tuple = SORT_CARRY_NO;
+    }
+  else
+    {
+      for (i = 0; i < n; i++)
+	{
+	  order[i] = i;
+	}
+      // *INDENT-OFF*
+      std::sort (order, order + n, [sample, key_info_p] (int a, int b)
+        {
+          return qfile_compare_partial_sort_record (&sample->rec[a], &sample->rec[b], key_info_p) < 0;
+        });
+      // *INDENT-ON*
+
+      tuples_per_page = (double) sample->n_tuples / MAX (sample->n_pages, 1);
+      page_moves = 0;
+      for (i = 1; i < n; i++)
+	{
+	  distance = (double) abs (sample->pos[order[i]] - sample->pos[order[i - 1]]) / QFILE_SORT_CARRY_STRIDE;
+	  page_moves += MIN (1.0, distance / tuples_per_page);
+	}
+
+      key_info_p->carry_tuple =
+	((page_moves / (n - 1)) * QFILE_SORT_CARRY_BYTES_PER_MOVE >=
+	 (double) sample->carry_bytes / n ? SORT_CARRY_YES : SORT_CARRY_NO);
+    }
+
+  free_and_init (key_info_p->carry_sample);
+}
+
+/*
+ * qfile_sort_carry_end () - the input of the sort is exhausted: drop the sample of an undecided sort.
+ */
+void
+qfile_sort_carry_end (SORTKEY_INFO * key_info_p)
+{
+  if (key_info_p->carry_sample != NULL)
+    {
+      free_and_init (key_info_p->carry_sample);
+    }
 }
 
 #if defined (SERVER_MODE)
@@ -3780,6 +4030,7 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
       PAGE_PTR page_p = state->page_iter.get_next_page (thread_p, *state->sector_scan);
       if (page_p == NULL)
 	{
+	  qfile_sort_carry_end (key_info_p);
 	  return (er_errid () != NO_ERROR) ? SORT_ERROR_OCCURRED : SORT_NOMORE_RECS;
 	}
 
@@ -3867,6 +4118,15 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	  /* P_sort_key */
 
 	  list_id_p = &(sort_info_p->s_id->s_id->list_id);
+
+	  if (SORT_REC_HAS_TUPLE (key_p))
+	    {
+	      /* the record carries the tuple's other columns; rebuild it, no page fix */
+	      data = qfile_generate_carried_tuple (&sort_info_p->key_info, key_p, &sort_info_p->output_recdes,
+						   &sort_info_p->output_file->type_list);
+	      error = (data == NULL) ? ER_FAILED : qfile_add_tuple_to_list (thread_p, sort_info_p->output_file, data);
+	      continue;
+	    }
 
 	  vpid.pageid = key_p->s.original.pageid;
 	  vpid.volid = key_p->s.original.volid;
@@ -4298,6 +4558,19 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
        */
       sort_key_size = (int) offsetof (SORT_REC, s.original.body[0]);
       sort_key_overhead = (int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) / DB_PAGESIZE);
+
+      /* the columns that are no key may ride in the sort records (qfile_build_sort_rec): count their share of the
+       * input, taking each column as an equal part of the average tuple (an upper-bound hint, not a measure) */
+      if (key_info_p->carry_tuple != SORT_CARRY_NO && list_id_p->tuple_cnt > 0 && key_info_p->col_cnt > 0)
+	{
+	  double carry_share = (double) key_info_p->rest_tl.type_cnt / key_info_p->col_cnt;
+	  double avg_tuple = (double) list_id_p->page_cnt * DB_PAGESIZE / list_id_p->tuple_cnt;
+
+	  if (avg_tuple * carry_share <= QFILE_SORT_REC_CARRY_MAX_SIZE)
+	    {
+	      sort_key_overhead += (int) ceil (prorated_pages * carry_share);
+	    }
+	}
     }
   else
     {
@@ -4314,6 +4587,35 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
 
   return prorated_pages + sort_key_overhead;
 }
+
+#if !defined (NDEBUG)
+/*
+ * qfile_sort_key_reads_column () - CBRD-27583: a sort key reads its list column's values: the same type and
+ *   collation, and the same precision and scale where the disk length depends on them; an object column (a view
+ *   object) keeps its object key
+ */
+static bool
+qfile_sort_key_reads_column (const TP_DOMAIN * key, const TP_DOMAIN * column)
+{
+  const DB_TYPE key_type = TP_DOMAIN_TYPE (key);
+  const DB_TYPE column_type = TP_DOMAIN_TYPE (column);
+  if (key == column)
+    {
+      return true;
+    }
+  if (column_type == DB_TYPE_OBJECT || column_type == DB_TYPE_OID || column_type == DB_TYPE_VOBJ)
+    {
+      return key_type == DB_TYPE_OBJECT || key_type == DB_TYPE_OID || key_type == DB_TYPE_VOBJ;
+    }
+  if (key_type != column_type
+      || (TP_TYPE_HAS_COLLATION (key_type) && TP_DOMAIN_COLLATION (key) != TP_DOMAIN_COLLATION (column)))
+    {
+      return false;
+    }
+  return (key_type != DB_TYPE_NUMERIC && key_type != DB_TYPE_CHAR && key_type != DB_TYPE_BIT)
+    || (key->precision == column->precision && key->scale == column->scale);
+}
+#endif
 
 /* qfile_initialize_sort_key_info () -
  *   return:
@@ -4345,6 +4647,15 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
   key_info_p->nkeys = n;
   key_info_p->use_original = (n != types->type_cnt);
   key_info_p->error = NO_ERROR;
+  SORTKEY_INFO_INIT_CARRY (key_info_p);
+  memset (&key_info_p->rest_tl, 0, sizeof (key_info_p->rest_tl));
+  key_info_p->rest_col = NULL;
+  key_info_p->col_src = NULL;
+  key_info_p->col_cnt = 0;
+  if (!key_info_p->use_original)
+    {
+      key_info_p->carry_tuple = SORT_CARRY_NO;	/* an A_sort_key holds every column already */
+    }
   memset (&key_info_p->key_tl, 0, sizeof (key_info_p->key_tl));
 
   if (n <= (int) DIM (key_info_p->default_keys))
@@ -4372,10 +4683,18 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
+	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_session_read = false;
 
-	  /* the key's domain is the plan's */
+	  /* XASL generation sorts each key in its list column's decided domain */
+	  assert (TP_DOMAIN_TYPE (p->pos_descr.dom) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (p->pos_descr.dom) == TP_DOMAIN_COLL_NORMAL);
+#if !defined (NDEBUG)
+	  if (p->pos_descr.pos_no < types->type_cnt && p->pos_descr.dom != types->domp[p->pos_descr.pos_no])
+	    {
+	      assert (qfile_sort_key_reads_column (p->pos_descr.dom, types->domp[p->pos_descr.pos_no]));
+	    }
+#endif
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
@@ -4401,8 +4720,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->permuted_col = i;
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
+	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_session_read = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -4436,7 +4755,65 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
       subkey->sort_f = qfile_col_cmpdisk_function (&key_info_p->key_tl.column_layout_array[i], cmp_dom);
     }
 
+  if (key_info_p->use_original && qfile_init_sort_rest_columns (key_info_p, types) != NO_ERROR)
+    {
+      qfile_clear_sort_key_info (key_info_p);
+      return NULL;
+    }
+
   return key_info_p;
+}
+
+/*
+ * qfile_init_sort_rest_columns () - lay out the list columns that are no sort key, the ones a P_sort_key carries
+ *   (SORT_REC_HAS_TUPLE), and map every list column to the key or the carried column it is rebuilt from.
+ *   return: NO_ERROR or ER_FAILED
+ */
+static int
+qfile_init_sort_rest_columns (SORTKEY_INFO * key_info_p, QFILE_TUPLE_VALUE_TYPE_LIST * types)
+{
+  int ncols = types->type_cnt;
+  int c, i, nrest;
+
+  key_info_p->col_src = (int *) malloc (2 * MAX (ncols, 1) * sizeof (int));
+  if (key_info_p->col_src == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (2 * ncols * sizeof (int)));
+      return ER_FAILED;
+    }
+  key_info_p->rest_col = key_info_p->col_src + MAX (ncols, 1);
+  key_info_p->col_cnt = ncols;
+
+  nrest = 0;
+  for (c = 0; c < ncols; c++)
+    {
+      /* a column sorted on more than once is rebuilt from its first key */
+      for (i = 0; i < key_info_p->nkeys && key_info_p->key[i].col != c; i++)
+	{
+	  ;
+	}
+      if (i < key_info_p->nkeys)
+	{
+	  key_info_p->col_src[c] = i;
+	}
+      else
+	{
+	  key_info_p->col_src[c] = -1 - nrest;
+	  key_info_p->rest_col[nrest++] = c;
+	}
+    }
+
+  if (qfile_type_list_alloc (&key_info_p->rest_tl, nrest, QFILE_TUPLE_HDR_SIZE_FORWARD) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  for (i = 0; i < nrest; i++)
+    {
+      key_info_p->rest_tl.domp[i] = types->domp[key_info_p->rest_col[i]];
+    }
+  qfile_set_layout (&key_info_p->rest_tl);
+
+  return NO_ERROR;
 }
 
 /* qfile_init_empty_sort_key_info () - a SORTKEY_INFO with no key (the "no sort needed" analytic path, the hash
@@ -4450,6 +4827,12 @@ qfile_init_empty_sort_key_info (SORTKEY_INFO * key_info_p)
   key_info_p->use_original = 1;
   key_info_p->key = NULL;
   key_info_p->error = NO_ERROR;
+  SORTKEY_INFO_INIT_CARRY (key_info_p);
+  key_info_p->carry_tuple = SORT_CARRY_NO;	/* no column layout to carry with */
+  memset (&key_info_p->rest_tl, 0, sizeof (key_info_p->rest_tl));
+  key_info_p->rest_col = NULL;
+  key_info_p->col_src = NULL;
+  key_info_p->col_cnt = 0;
   (void) qfile_type_list_alloc (&key_info_p->key_tl, 0, QFILE_TUPLE_HDR_SIZE_FORWARD);	/* no allocation for 0 columns */
   qfile_set_layout (&key_info_p->key_tl);
 }
@@ -4466,6 +4849,8 @@ qfile_clear_sort_key_info (SORTKEY_INFO * key_info_p)
       return;
     }
 
+  qfile_sort_carry_end (key_info_p);
+
   if (key_info_p->key && key_info_p->key != key_info_p->default_keys)
     {
       db_private_free_and_init (NULL, key_info_p->key);
@@ -4481,6 +4866,20 @@ qfile_clear_sort_key_info (SORTKEY_INFO * key_info_p)
   key_info_p->key_tl.column_layout_array = NULL;
   key_info_p->key_tl.type_cnt = 0;
   key_info_p->key_tl.layout_ready = false;
+
+  if (key_info_p->rest_tl.domp != NULL)
+    {
+      free_and_init (key_info_p->rest_tl.domp);
+    }
+  key_info_p->rest_tl.column_layout_array = NULL;
+  key_info_p->rest_tl.type_cnt = 0;
+  key_info_p->rest_tl.layout_ready = false;
+  if (key_info_p->col_src != NULL)
+    {
+      free_and_init (key_info_p->col_src);	/* one block with rest_col */
+    }
+  key_info_p->rest_col = NULL;
+  key_info_p->col_cnt = 0;
 }
 
 /* qfile_initialize_sort_info () -
@@ -5612,7 +6011,7 @@ qfile_hash_db_value_array (const void *key, unsigned int htsize)
 {
   unsigned int hash = 0;
   int i;
-  const DB_VALUE_ARRAY *array = (DB_VALUE_ARRAY *) key;
+  const QFILE_LIST_CACHE_KEY *array = (const QFILE_LIST_CACHE_KEY *) key;
   const DB_VALUE *val;
 
   if (key != NULL && array->size > 0)
@@ -5639,7 +6038,8 @@ static int
 qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 {
   int i;
-  const DB_VALUE_ARRAY *array1 = (DB_VALUE_ARRAY *) key1, *array2 = (DB_VALUE_ARRAY *) key2;
+  const QFILE_LIST_CACHE_KEY *array1 = (const QFILE_LIST_CACHE_KEY *) key1;
+  const QFILE_LIST_CACHE_KEY *array2 = (const QFILE_LIST_CACHE_KEY *) key2;
   const DB_VALUE *val1, *val2;
 
   if (key1 == key2 || (array1->size == 0 && array2->size == 0))
@@ -5652,9 +6052,12 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
       return false;
     }
 
+  /* CBRD-27583: the keys of one hash table are bound to one XASL cache entry: its signature's comparisons */
+  const DOMAIN_COMPARE *compares = array1->compares != NULL ? array1->compares : array2->compares;
+
   for (i = 0, val1 = array1->vals, val2 = array2->vals; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
+      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
 	{
 	  return false;
 	}
@@ -5662,7 +6065,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
   for (i = 1, val1 = array1->vals + 1, val2 = array2->vals + 1; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
+      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
 	{
 	  return false;
 	}
@@ -5670,12 +6073,48 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
   for (i = 2, val1 = array1->vals + 2, val2 = array2->vals + 2; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
+      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
 	{
 	  return false;
 	}
     }
 
+  return true;
+}
+
+/*
+ * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
+ *   equal: by the position's comparison, NULLs equal (total order), as mht_compare_dbvalues_are_equal compares them
+ *   by their types without one
+ */
+static bool
+qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
+{
+  if (compares == NULL)
+    {
+      return mht_compare_dbvalues_are_equal (val1, val2);
+    }
+  return val1 == val2
+    || eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1, NULL) == DB_EQ;
+}
+
+/*
+ * qfile_list_cache_key_of () - CBRD-27583: the key the parameter values of an execution of the XASL cache
+ *   entry look its cached results up and store them under
+ *   return: false when the entry's cache key text did not name each value's type: its results are not cached
+ */
+static bool
+qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params, QFILE_LIST_CACHE_KEY * key)
+{
+  /* the client sends one value per position the text names (;bind_var_cnt=); -1 is a text whose tokens disagree */
+  assert (xasl->n_param_compares < 0 || xasl->n_param_compares == params->size);
+  if (xasl->n_param_compares != params->size)
+    {
+      return false;
+    }
+  key->size = params->size;
+  key->vals = params->vals;
+  key->compares = params->size > 0 ? xasl->param_compares : NULL;
   return true;
 }
 
@@ -5863,6 +6302,9 @@ qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void
 
   lent->xcache_entry = new_owner;
   lent->query_string = new_owner->sql_info.sql_hash_text;
+  /* the same text: the same signature's comparisons, in the new owner's buffer */
+  assert (new_owner->n_param_compares == lent->param_values.size);
+  lent->param_values.compares = new_owner->param_compares;
 
   return NO_ERROR;
 }
@@ -6377,6 +6819,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 			       bool * result_cached)
 {
   QFILE_LIST_CACHE_ENTRY *lent = NULL;
+  QFILE_LIST_CACHE_KEY key;
 #if defined(SERVER_MODE)
   int tran_index;
   TRAN_ISOLATION tran_isolation;
@@ -6405,6 +6848,11 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
       return NULL;
     }
 
+  if (!qfile_list_cache_key_of (xasl, params, &key))
+    {
+      return NULL;
+    }
+
   if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
       return NULL;
@@ -6424,7 +6872,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
     LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
-  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
+  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], &key);
   qfile_List_cache.lookup_counter++;	/* counter */
 
   if (lent)
@@ -6539,6 +6987,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 {
   QFILE_LIST_CACHE_ENTRY *lent;
   MHT_TABLE *ht;
+  QFILE_LIST_CACHE_KEY key;
 
 #if defined(SERVER_MODE)
   int tran_index;
@@ -6561,6 +7010,11 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       return NULL;
     }
   if (qfile_List_cache.n_hts == 0)
+    {
+      return NULL;
+    }
+
+  if (!qfile_list_cache_key_of (xasl, params, &key))
     {
       return NULL;
     }
@@ -6589,7 +7043,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   do
     {
       /* check again whether the entry is in the cache */
-      lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (ht, params);
+      lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (ht, &key);
       if (lent == NULL)
 	{
 	  break;
@@ -6669,6 +7123,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 #endif /* SERVER_MODE */
   lent->param_values.size = params->size;
   lent->param_values.vals = qfile_get_list_cache_entry_param_values (lent);
+  lent->param_values.compares = key.compares;
 
   /*
    * Copy parameter values. (DB_VALUE containers)
@@ -7167,43 +7622,6 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/*
- * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
- *   the sort is the one the first value gives it (qdata_update_interpolation_func_value_and_domain), unless that
- *   type rejects the value (a string column or expression is DOUBLE, the function's evaluation rejects the value
- *   too); a key without a type holds values that function cannot type either
- */
-static void
-qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
-{
-  DB_VALUE converted;
-  TP_DOMAIN *expected = NULL;
-  bool resolved_rejects = true;
-
-  db_make_null (&converted);
-  er_stack_push ();
-  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &expected);
-  pr_clear_value (&converted);
-  if (resolved != NULL)
-    {
-      resolved_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) resolved, false) != DOMAIN_COMPATIBLE;
-      pr_clear_value (&converted);
-    }
-  er_stack_pop ();
-
-  const bool same = resolved == NULL ? error != NO_ERROR
-    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
-  if (!same)
-    {
-      fprintf (stderr, "interpolation sort key class: value type %d planned %d expected %d error %d\n",
-	       (int) DB_VALUE_DOMAIN_TYPE (value), resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
-	       expected != NULL ? (int) TP_DOMAIN_TYPE (expected) : -1, error);
-    }
-  assert (same);
-}
-#endif
-
 /*
  * qfile_compare_with_interpolation_domain () -
  *  return: compare result
@@ -7223,44 +7641,19 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 {
   int order = 0;
   DB_VALUE val0, val1;
-  TP_DOMAIN *cast_domain = NULL;
+  const TP_DOMAIN *cast_domain = subkey->cmp_dom;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
   int error = NO_ERROR;
 
   assert (d0 != NULL && d1 != NULL && subkey != NULL && key_info != NULL);
   /* col_dom is a string type (see qexec_initialize_analytic_state): the bodies decode without a scratch copy */
   assert (!qfile_col_body_needs_copy (c, subkey->col_dom));
+  assert (cast_domain != NULL);
 
   db_make_null (&val0);
   db_make_null (&val1);
 
-  if (subkey->cmp_dom == NULL)
-    {
-      /* NOTE: col_dom is string type.  See qexec_plan_interpolation_sort_key */
-      pr_clear_value (&val0);
-
-      error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
-      if (error != NO_ERROR || DB_IS_NULL (&val0))
-	{
-	  goto end;
-	}
-
-      /* a value argument resolve_domains could not type: every value is that one, whose typing
-       * fails for the first value too; a session variable read keeps that for the statement */
-#if !defined (NDEBUG)
-      if (!subkey->cmp_dom_session_read)
-	{
-	  qfile_check_interpolation_type (&val0, NULL);
-	}
-#endif
-      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-      goto end;
-    }
-
-  /* cast to proper domain, then compare */
-  pr_clear_value (&val0);
-  pr_clear_value (&val1);
-
+  /* cast to proper domain with the converter planned with it, then compare */
   error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
   if (error != NO_ERROR)
     {
@@ -7273,23 +7666,16 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
       goto end;
     }
 
-#if !defined (NDEBUG)
-  if (!subkey->cmp_dom_session_read)
-    {
-      qfile_check_interpolation_type (&val0, subkey->cmp_dom);
-      qfile_check_interpolation_type (&val1, subkey->cmp_dom);
-    }
-#endif
-
-  cast_domain = subkey->cmp_dom;
-  status = tp_value_cast (&val0, &val0, cast_domain, false);
+  status = tp_value_cast_with_converter (&val0, &val0, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
+					 subkey->cmp_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
       goto end;
     }
 
-  status = tp_value_cast (&val1, &val1, cast_domain, false);
+  status = tp_value_cast_with_converter (&val1, &val1, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
+					 subkey->cmp_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;

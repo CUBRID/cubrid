@@ -393,6 +393,9 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
       cnt++;
     }				/* for (i = ... ) */
   assert (cnt == ncols);
+  /* CBRD-27583: the merge keys sort in the domains XASL generation decided for their list columns */
+  pt_set_sort_list_domains (left->orderby_list, left, NULL);
+  pt_set_sort_list_domains (rght->orderby_list, rght, NULL);
 
   left_elen = bitset_cardinality (left_exprs);
   left_nlen = pt_length_of_list (left_list) - left_elen;
@@ -667,6 +670,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      regu->value.value.pos_descr.pos_no += outer_info->expr_count;
 	    }
+	  pt_set_list_position_domains (proc->outer.regu_list_pred, outer_name_val_list, outer_xasl, NULL);
 	}
 
       /* proc->inner.regu_list_pred */
@@ -710,6 +714,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      regu->value.value.pos_descr.pos_no += inner_info->expr_count;
 	    }
+	  pt_set_list_position_domains (proc->inner.regu_list_pred, inner_name_val_list, inner_xasl, NULL);
 	}
 
       /* During/after-join predicates reference columns from both inputs.
@@ -1447,6 +1452,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       bool free_upper_bound = false;
 
       xasl->orderby_list = pt_to_orderby (parser, query->info.query.order_by, query);
+      pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
       XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
 
       xasl->orderby_limit = NULL;
@@ -4284,7 +4290,6 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4308,7 +4313,6 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4327,7 +4331,6 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;
