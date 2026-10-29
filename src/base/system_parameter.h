@@ -91,6 +91,16 @@ enum query_trace_format
 };
 typedef enum query_trace_format QUERY_TRACE_FORMAT;
 
+/* index_sort_method: how the b+tree index build sorts its in-memory runs (btsort_run_pick_sorter);
+ * compare by default in a release build, auto in a debug build */
+enum index_sort_method
+{
+  INDEX_SORT_METHOD_AUTO = 0,	/* the radix when the key domain has a radix key, else the merge sort */
+  INDEX_SORT_METHOD_RADIX,	/* the same choice, logging (debug) when it has to fall back */
+  INDEX_SORT_METHOD_COMPARE	/* always the merge sort */
+};
+typedef enum index_sort_method INDEX_SORT_METHOD;
+
 /* NOTE:
  * System parameter ids must respect the order in prm_Def array
  * When adding a new system paramter, insert it before PRM_LAST_ID and change PRM_LAST_ID to it
@@ -510,6 +520,7 @@ enum param_id
   PRM_ID_INDEX_BUILD_PARALLELISM,
   PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
   PRM_ID_PARALLEL_MERGE_JOIN,
+  PRM_ID_INDEX_SORT_METHOD,
 
   PRM_ID_TCP_KEEPALIVE_IDLE,
   PRM_ID_TCP_KEEPALIVE_INTERVAL,
