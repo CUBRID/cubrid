@@ -366,6 +366,7 @@ namespace parallel_scan
     result |= check<is_outptr_list> (arg->rightptr);
     result |= check<is_outptr_list> (arg->thirdptr);
     result |= check<is_outptr_list> (arg->pred);
+    /* also listed in qo_check_serial_block_expr () (query_planner.c) */
     if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
@@ -1378,6 +1379,11 @@ namespace parallel_scan
   }
 }
 
+/* The optimizer costs scans and nested-loop blocks as parallel only where this check lets them run in
+ * parallel, and it cannot call this check (it runs on the XASL, after the plan is chosen): the
+ * conditions that serialize a whole block -- the XASL types, the regu and operator kinds rejected in
+ * check () -- are repeated on the parse tree in qo_query_serial_level () (query_planner.c). Change
+ * both together. */
 extern int
 scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
