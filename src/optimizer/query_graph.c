@@ -6118,6 +6118,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
+  env->runs_serially = -1;
   bitset_init (&(env->fake_terms), env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
   db_make_null (&QO_ENV_LIMIT_VALUE (env));
