@@ -33,6 +33,7 @@
 
 #include "dbtype_def.h"
 #include "object_domain.h"
+#include "db_multi_threads_connections.h"
 #include "porting_inline.hpp"
 
 #include <cassert>
@@ -310,14 +311,16 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
 						   int *diff_column, bool * dom_is_desc, int *result_size);
-/* The comparison of two midxkey elements whose domains differ, when the caller resolved it: an index scan's
- * comparisons of its search key values. */
-typedef DB_VALUE_COMPARE_RESULT (*PR_MIDXKEY_ELEMENT_COMPARE) (int column, DB_VALUE * value1, DB_VALUE * value2,
-							       int do_coercion, int total_order, bool * can_compare);
+/* The comparison of two midxkey elements whose domains differ, when the caller decided it: an index scan's
+ * comparisons of its search key bounds (CBRD-27583), with the caller's context (its column comparisons). */
+typedef DB_VALUE_COMPARE_RESULT (*PR_MIDXKEY_ELEMENT_COMPARE) (const void *context, int column, DB_VALUE * value1,
+							       DB_VALUE * value2, int do_coercion, int total_order,
+							       bool * can_compare);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 							    int total_order, int num_index_term, int *start_colp,
 							    int *diff_column, bool * dom_is_desc, int *result_size,
-							    PR_MIDXKEY_ELEMENT_COMPARE element_compare);
+							    PR_MIDXKEY_ELEMENT_COMPARE element_compare,
+							    const void *element_context);
 STATIC_INLINE int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
@@ -333,7 +336,9 @@ extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE
 extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
 extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
-extern int pr_Inhibit_oid_promotion;
+#if !defined (SERVER_MODE)
+extern CUB_THREAD_LOCAL int pr_Inhibit_oid_promotion;
+#endif
 
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
 extern char *pr_valstring (const DB_VALUE *);
