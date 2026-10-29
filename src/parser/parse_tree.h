@@ -3032,6 +3032,7 @@ struct pt_trigger_action_info
 {
   PT_NODE *expression;		/* parse tree for expression */
   PT_NODE *string;		/* PT_PRINT string */
+  PT_NODE *plcsql_block;	/* PT_PLCSQL_BLOCK text */
   PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
 };
 

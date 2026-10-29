@@ -16066,6 +16066,7 @@ pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.trigger_action.expression, arg);
   PT_APPLY_WALK (parser, p->info.trigger_action.string, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.plcsql_block, arg);
   return p;
 }
 
@@ -16095,6 +16096,13 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_EXPRESSION:
       r1 = pt_print_bytes (parser, p->info.trigger_action.expression);
       b = pt_append_varchar (parser, b, r1);
+      break;
+    case PT_PLCSQL_BLOCK:
+      /* the block as the user wrote it, without quotes */
+      if (p->info.trigger_action.plcsql_block != NULL)
+	{
+	  b = pt_append_varchar (parser, b, p->info.trigger_action.plcsql_block->info.value.data_value.str);
+	}
       break;
     default:
       break;
