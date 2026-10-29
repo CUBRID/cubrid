@@ -72,6 +72,7 @@ static UINT64 wset_fnv1a (const OID *class_oid, const VFID *index_vfid, const ch
 static void wset_string_pseudo_bytes (const LANG_COLLATION *lc, const unsigned char *s, int size,
 				      unsigned char pbytes[5]);
 static UINT64 wset_string_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *v);
+static DB_VALUE *wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch);
 static int wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out);
 static const char *wset_kind_name (LOG_WSET_KIND kind);
 static const char *wset_fallback_reason_name (WSET_FALLBACK_REASON reason);
@@ -287,6 +288,42 @@ wset_string_pseudo_bytes (const LANG_COLLATION *lc, const unsigned char *s, int 
 }
 
 /*
+ * wset_value_without_zone - the value hashed for a key value whose zone is not part of the key
+ *
+ *   v(in): key value
+ *   scratch(out): holds the value returned when v carries a zone
+ *
+ * return: scratch holding the UTC part of a TIMESTAMPTZ or DATETIMETZ value, or v itself for any other value
+ *
+ * Note: A TIMESTAMPTZ or DATETIMETZ value packs its zone id after the UTC time, but the index compares the UTC
+ *       time alone (mr_cmpval_timestamptz, mr_cmpval_datetimetz), so the same instant written in two zones is one
+ *       key. Hashing the packed bytes would split that key in two, and a later write or reference in the other
+ *       zone would miss it. The UTC part is hashed instead, as a TIMESTAMP or DATETIME value.
+ */
+static DB_VALUE *
+wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch)
+{
+  if (DB_IS_NULL (v))
+    {
+      return v;
+    }
+
+  switch (DB_VALUE_DOMAIN_TYPE (v))
+    {
+    case DB_TYPE_TIMESTAMPTZ:
+      db_make_timestamp (scratch, db_get_timestamptz (v)->timestamp);
+      return scratch;
+
+    case DB_TYPE_DATETIMETZ:
+      db_make_datetime (scratch, &db_get_datetimetz (v)->datetime);
+      return scratch;
+
+    default:
+      return v;
+    }
+}
+
+/*
  * wset_midxkey_hash - hash a composite key element by element
  *
  *   class_oid(in): class OID used by the writeset key
@@ -380,6 +417,9 @@ wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, 
 	    }
 	  else
 	    {
+	      DB_VALUE zone_free;
+	      DB_VALUE *hashed = wset_value_without_zone (&element, &zone_free);
+
 	      /* 0xC1 tag followed by the packed element in its aligned size, so the layout does not depend on
 	       * how much of that size the packer used. or_pack_mem_value aligns its start and its value to
 	       * MAX_ALIGNMENT, and OR_VALUE_ALIGNED_SIZE leaves room for that only from an aligned start, so
@@ -395,9 +435,9 @@ wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, 
 		{
 		  int used_len;
 
-		  (void) or_pack_mem_value (buf + buf_len, &element, &used_len);
+		  (void) or_pack_mem_value (buf + buf_len, hashed, &used_len);
 		}
-	      packed_len = OR_VALUE_ALIGNED_SIZE (&element);
+	      packed_len = OR_VALUE_ALIGNED_SIZE (hashed);
 	      buf_len += packed_len;
 	    }
 
@@ -563,11 +603,14 @@ wset_fallback_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
  * Note: Character-string keys are hashed through their collation pseudo key
  *       (wset_string_hash), so collation-equal strings produce one hash;
  *       a composite key is reduced element by element the same way (wset_midxkey_hash);
- *       every other type is hashed over its packed bytes.
+ *       every other type is hashed over its packed bytes, a TIMESTAMPTZ or DATETIMETZ value without
+ *       its zone (wset_value_without_zone).
  */
 int
 wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid, DB_VALUE *key)
 {
+  DB_VALUE zone_free;
+  DB_VALUE *hashed;
   char *buf = NULL;
   UINT64 hash;
   int buf_len;
@@ -624,7 +667,9 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
       return error;
     }
 
-  buf_len = OR_VALUE_ALIGNED_SIZE (key);
+  hashed = wset_value_without_zone (key, &zone_free);
+
+  buf_len = OR_VALUE_ALIGNED_SIZE (hashed);
   buf = (char *) malloc ((size_t) buf_len);
   if (buf == NULL)
     {
@@ -635,7 +680,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
   /* the alignment padding skipped by or_pack_mem_value is hashed too, so it must not hold garbage */
   memset (buf, 0, (size_t) buf_len);
 
-  (void) or_pack_mem_value (buf, key, &packed_len);
+  (void) or_pack_mem_value (buf, hashed, &packed_len);
 
   hash = wset_fnv1a (class_oid, index_vfid, buf, packed_len);
   error = wset_push_hash (tdes, hash, LOG_WSET_KIND_WRITE);
@@ -847,6 +892,8 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
 		  const VFID *index_vfid, DB_VALUE *fk_value, struct tp_domain *parent_pk_domain)
 {
   DB_VALUE casted;
+  DB_VALUE zone_free;
+  DB_VALUE *hashed;
   char *buf = NULL;
   UINT64 hash;
   int buf_len;
@@ -928,7 +975,9 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
       return error;
     }
 
-  buf_len = OR_VALUE_ALIGNED_SIZE (&casted);
+  hashed = wset_value_without_zone (&casted, &zone_free);
+
+  buf_len = OR_VALUE_ALIGNED_SIZE (hashed);
   buf = (char *) malloc ((size_t) buf_len);
   if (buf == NULL)
     {
@@ -940,7 +989,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
   /* zero the alignment padding for a stable hash, same reason as the WRITE path */
   memset (buf, 0, (size_t) buf_len);
 
-  (void) or_pack_mem_value (buf, &casted, &packed_len);
+  (void) or_pack_mem_value (buf, hashed, &packed_len);
 
   hash = wset_fnv1a (ref_class_oid, index_vfid, buf, packed_len);
   error = wset_push_hash (tdes, hash, LOG_WSET_KIND_REF);

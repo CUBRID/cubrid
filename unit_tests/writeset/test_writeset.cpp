@@ -318,6 +318,160 @@ TEST_CASE ("composite key string elements hash by their collation", "[writeset]"
   }
 }
 
+/* Collect value as one WRITE key of a fresh transaction and return its hash. */
+static UINT64
+write_key_hash (const OID *class_oid, DB_VALUE *value)
+{
+  log_tdes *tdes = make_tdes (1);
+  UINT64 hash;
+
+  REQUIRE (wset_add_write_key (tdes, class_oid, &WS_DEFAULT_VFID, value) == NO_ERROR);
+  REQUIRE (tdes->wset_hashes.size () == 1);
+  hash = tdes->wset_hashes[0].hash;
+
+  delete tdes;
+  return hash;
+}
+
+/* Build a (first, int) composite key whose first element is value in the given domain. */
+static void
+make_value_int_key (DB_VALUE *key, TP_DOMAIN **domain_out, TP_DOMAIN *first_domain, DB_VALUE *value, int number)
+{
+  TP_DOMAIN *first;
+  TP_DOMAIN *int_domain;
+  TP_DOMAIN *domain;
+  DB_VALUE elements[2];
+  DB_MIDXKEY midxkey;
+
+  first = tp_domain_copy (first_domain, false);
+  int_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_INTEGER), false);
+  REQUIRE (first != NULL);
+  REQUIRE (int_domain != NULL);
+  first->next = int_domain;
+  domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, 2, 0, first);
+  REQUIRE (domain != NULL);
+  domain = tp_domain_cache (domain);
+  REQUIRE (domain != NULL);
+
+  elements[0] = *value;
+  db_make_int (&elements[1], number);
+
+  midxkey.buf = NULL;
+  midxkey.domain = domain;
+  midxkey.ncolumns = 0;
+  midxkey.size = 0;
+  midxkey.min_max_val.position = -1;
+  db_make_null (key);
+  db_make_midxkey (key, &midxkey);
+  key->need_clear = true;
+  REQUIRE (pr_midxkey_add_elements (key, elements, 2, domain->setdomain) == NO_ERROR);
+
+  *domain_out = domain;
+}
+
+TEST_CASE ("a zoned timestamp key hashes by its UTC time, not its zone", "[writeset]")
+{
+  /* The index compares TIMESTAMPTZ and DATETIMETZ keys by their UTC time alone, so one instant written in two
+   * zones is one key and must have one hash; another instant must not. The zone ids only need to differ. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 203, 1);
+  const TZ_ID zone_a = 1;
+  const TZ_ID zone_b = 2;
+
+  SECTION ("TIMESTAMPTZ: WRITE in two zones and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+    DB_TIMESTAMPTZ in_a = { 1793232000, zone_a };
+    DB_TIMESTAMPTZ in_b = { 1793232000, zone_b };
+    DB_TIMESTAMPTZ later = { 1793232001, zone_a };
+    DB_VALUE value_a;
+    DB_VALUE value_b;
+    DB_VALUE value_later;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_timestamptz (&value_a, &in_a);
+    db_make_timestamptz (&value_b, &in_b);
+    db_make_timestamptz (&value_later, &later);
+
+    REQUIRE (write_key_hash (&class_oid, &value_a) == write_key_hash (&class_oid, &value_b));
+    REQUIRE (write_key_hash (&class_oid, &value_a) != write_key_hash (&class_oid, &value_later));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &value_b, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &value_a));
+
+    delete child;
+  }
+
+  SECTION ("DATETIMETZ: WRITE in two zones and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
+    DB_DATETIMETZ in_a;
+    DB_DATETIMETZ in_b;
+    DB_DATETIMETZ later;
+    DB_VALUE value_a;
+    DB_VALUE value_b;
+    DB_VALUE value_later;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    in_a.datetime.date = 2461343;
+    in_a.datetime.time = 32400000;
+    in_a.tz_id = zone_a;
+    in_b = in_a;
+    in_b.tz_id = zone_b;
+    later = in_a;
+    later.datetime.time += 1;
+    db_make_datetimetz (&value_a, &in_a);
+    db_make_datetimetz (&value_b, &in_b);
+    db_make_datetimetz (&value_later, &later);
+
+    REQUIRE (write_key_hash (&class_oid, &value_a) == write_key_hash (&class_oid, &value_b));
+    REQUIRE (write_key_hash (&class_oid, &value_a) != write_key_hash (&class_oid, &value_later));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &value_b, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &value_a));
+
+    delete child;
+  }
+
+  SECTION ("composite key: a TIMESTAMPTZ element in two zones gives one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+    TP_DOMAIN *key_domain;
+    DB_TIMESTAMPTZ in_a = { 1793232000, zone_a };
+    DB_TIMESTAMPTZ in_b = { 1793232000, zone_b };
+    DB_TIMESTAMPTZ later = { 1793232001, zone_a };
+    DB_VALUE value;
+    DB_VALUE key_a;
+    DB_VALUE key_b;
+    DB_VALUE key_later;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_timestamptz (&value, &in_a);
+    make_value_int_key (&key_a, &key_domain, element_domain, &value, 1);
+    db_make_timestamptz (&value, &in_b);
+    make_value_int_key (&key_b, &key_domain, element_domain, &value, 1);
+    db_make_timestamptz (&value, &later);
+    make_value_int_key (&key_later, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_a) == write_key_hash (&class_oid, &key_b));
+    REQUIRE (write_key_hash (&class_oid, &key_a) != write_key_hash (&class_oid, &key_later));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_b, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_a));
+
+    pr_clear_value (&key_a);
+    pr_clear_value (&key_b);
+    pr_clear_value (&key_later);
+    delete child;
+  }
+}
+
 TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
 {
   ws_history_guard history;
