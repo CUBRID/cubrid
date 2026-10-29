@@ -617,10 +617,7 @@ typedef int ATTR_ID;		/* attribute identifier */
 
 #define NULL_REPRID       -1	/* Null Representation Identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
-
-/* reserved attribute id requesting the function result stored in a function index key;
- * must not collide with real ids or NULL_ATTRID */
-#define FUNC_INDEX_RESULT_ATTRID   (-2100000000)
+#define FUNC_INDEX_RESULT_ATTRID  -2	/* function result in a function index key; real ids are >= 0 */
 #define IS_FUNC_INDEX_RESULT_ATTR_ID(id)   ((id) == FUNC_INDEX_RESULT_ATTRID)
 
 /************************************************************************/
