@@ -32,6 +32,7 @@ static PT_NODE *qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node
 static PT_NODE *qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
 static PT_NODE *qo_check_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_TYPE_ENUM qo_get_host_var_bound_type (PARSER_CONTEXT * parser, const PT_NODE * host_var);
 static bool qo_eq_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * col_side, const PT_NODE * other_side);
 static PT_NODE *qo_reduce_outer_joined_tbls (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
 static void qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1988,6 +1989,34 @@ qo_check_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
+ * qo_get_host_var_bound_type () - gets the type a host variable is compared as
+ *   return: PT_TYPE_NONE if unknown
+ *   parser(in): parser environment
+ *   host_var(in):
+ */
+static PT_TYPE_ENUM
+qo_get_host_var_bound_type (PARSER_CONTEXT * parser, const PT_NODE * host_var)
+{
+  int index = host_var->info.host_var.index;
+
+  /* the value is converted to the expected domain before it is sent */
+  if (host_var->expected_domain != NULL)
+    {
+      return pt_db_to_type_enum (TP_DOMAIN_TYPE (host_var->expected_domain));
+    }
+
+  /* a value-typed position is compiled for the type of its value, and a value of another type gets another plan.
+   * without a value no plan is made */
+  if (host_var->info.host_var.var_type == PT_HOST_IN && parser->host_variables != NULL && index >= 0
+      && index < parser->host_var_count && !DB_IS_NULL (&parser->host_variables[index]))
+    {
+      return pt_db_to_type_enum (DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]));
+    }
+
+  return PT_TYPE_NONE;
+}
+
+/*
  * qo_eq_keeps_distinct () - checks if the equality keeps distinct values of the column side distinct
  *   return: bool
  *   parser(in): parser environment
@@ -2011,9 +2040,26 @@ qo_eq_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * col_side, const PT_NODE
       return false;
     }
 
-  if (other_type == PT_TYPE_MAYBE || PT_IS_NULL_NODE (other_side))
+  if (PT_IS_NULL_NODE (other_side))
     {
       return true;
+    }
+
+  if (other_side->node_type == PT_HOST_VAR && other_type == PT_TYPE_MAYBE)
+    {
+      other_type = qo_get_host_var_bound_type (parser, other_side);
+      if (PT_IS_CHAR_STRING_TYPE (col_type) && PT_IS_CHAR_STRING_TYPE (other_type))
+	{
+	  /* a string value takes the collation of the column */
+	  return true;
+	}
+      if ((PT_IS_DISCRETE_NUMBER_TYPE (col_type) || col_type == PT_TYPE_NUMERIC)
+	  && (PT_IS_DISCRETE_NUMBER_TYPE (other_type) || other_type == PT_TYPE_NUMERIC))
+	{
+	  return true;
+	}
+      return (col_type == other_type
+	      || ((col_type == PT_TYPE_SMALLINT || col_type == PT_TYPE_INTEGER) && other_type == PT_TYPE_DOUBLE));
     }
 
   /* exact numbers compare exactly whatever the precision and scale */
