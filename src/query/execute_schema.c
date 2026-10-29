@@ -1838,9 +1838,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   bool do_rollback = false;
   int au_save = 0;
   DB_OBJECT *histogram_obj = NULL;
-  DB_OBJECT *vclass;
   bool need_check_repl_constraint = false;
-  const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2001,13 +1999,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
-	  /* 
-	   * entity_name is required for performing the HA replication constraint check 
-	   * after all ALTER clauses have been processed. 
-	   * Since the check must be based on the final table name, 
-	   * entity_name is continuously updated as each RENAME clause is applied.
-	   */
-	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
@@ -2062,14 +2053,29 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (need_check_repl_constraint)
     {
-      vclass = db_find_class (entity_name);
+      DB_OBJECT *class_obj = alter->info.alter.entity_name->info.name.db_object;
+      int is_vclass;
 
-      if (!sm_is_replication_class (vclass))
+      if (class_obj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error_exit;
+	}
+
+      is_vclass = db_is_vclass (class_obj);
+      if (is_vclass < 0)
+	{
+	  error_code = is_vclass;
+	  goto error_exit;
+	}
+
+      /* Vclasses do not store data and therefore do not require a replication key. */
+      if (is_vclass > 0 || !sm_is_replication_class (class_obj))
 	{
 	  return NO_ERROR;
 	}
 
-      error_code = check_ha_repl_constraint (vclass);
+      error_code = check_ha_repl_constraint (class_obj);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
