@@ -1160,8 +1160,11 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
 	}
       if (!expr_batch_agg_covered (plan, i))
 	{
+	  /* an internal fault, not the plan's content: ER_QPROC_INVALID_XASLNODE would have the client compile the
+	   * statement again and run it (db_execute_and_keep_statement_local (), the CAS's recompile_statement ()),
+	   * hiding it, so the generic error goes out here and below */
 	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
       switch (agg_p->function)
@@ -1205,7 +1208,7 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
 		  /* the accumulator did not open in the vector's type: the plan admits only an aggregate whose node
 		   * planned the word accumulator (accumulator_takes) over the vector's type, so this cannot happen */
 		  assert (false);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  return ER_FAILED;
 		}
 	    }
@@ -1233,7 +1236,7 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
 	  break;
 	default:
 	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
     }
