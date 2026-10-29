@@ -57,6 +57,11 @@ namespace parallel_scan
 	return m_drain_fsm.set_overflow_page (thread_p, page, local_key, local_clear_key, range_idx, slot_idx);
       }
 
+      PAGE_PTR &held_leaf ()
+      {
+	return m_slot_walker.held_leaf ();
+      }
+
       void set_input_handler (input_handler_index *handler)
       {
 	m_input_handler = handler;
