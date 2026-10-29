@@ -1004,9 +1004,9 @@ struct qo_env
    */
   bool dump_enable;
 
-  /* whether the executor runs this query block serially whatever the plan (qo_query_runs_serially ()):
-   * -1 not computed yet, 0 no, 1 yes */
-  int runs_serially;
+  /* what the executor runs serially in this query block whatever the plan (qo_query_serial_level ()):
+   * -1 not computed yet, else a QO_SERIAL_* value */
+  int serial_level;
 
   /*
    * Controls whether the plan is dumped.  There are situations like

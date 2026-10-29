@@ -174,6 +174,13 @@
  * (system operation, worker shortage) -- so the realized speed-up lies anywhere between 1x and
  * the degree; 2 is the geometric middle of 1x..4x, wrong by at most 2x either way. */
 #define QO_PARALLEL_COST_DIVISOR 2.0
+/* qo_query_serial_level (): what the executor runs serially in a query block whatever the plan */
+enum
+{
+  QO_SERIAL_NONE = 0,		/* nothing: scans, nested-loop blocks and hash joins may run in parallel */
+  QO_SERIAL_SCANS = 1,		/* the scans, so the nested-loop blocks they drive; a hash join decides itself */
+  QO_SERIAL_ALL = 2		/* everything */
+};
 #define SORT_MERGE_FAN_IN 4.0	/* the executor merges at most SORT_MAX_HALF_FILES (4) runs per pass
 				   (external_sort.c); that file is server-only, so the value cannot be
 				   included here -- keep in sync manually. */
@@ -413,7 +420,7 @@ static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree,
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static bool qo_query_runs_serially (QO_ENV * env);
+static int qo_query_serial_level (QO_ENV * env);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -4486,7 +4493,7 @@ qo_plan_list_pages (QO_PLAN * plan)
  *	 parallelism (compute_parallel_degree ()) -- else parallelism; a degree up to 2 turns the
  *	 discount off (at most 2x with 2 workers, hence the cap degree / 2), so PARALLEL(0|1)
  *	 does. So does a query block the executor runs serially whatever the plan
- *	 (qo_query_runs_serially ()), and a LIMIT that the joins can stop at
+ *	 (qo_query_serial_level () QO_SERIAL_ALL), and a LIMIT that the joins can stop at
  *	 (can_apply_limit_card): such a query ends before workers pay off, and the LIMIT-aware
  *	 nested-loop costing decides those plans. A LIMIT above a GROUP BY or ORDER BY does not
  *	 stop the joins and keeps the discount.
@@ -4503,7 +4510,7 @@ qo_parallel_cost_divisor (QO_PLAN * join)
       return 1.0;
     }
 
-  if (qo_query_runs_serially (join->info->env))
+  if (qo_query_serial_level (join->info->env) == QO_SERIAL_ALL)
     {
       return 1.0;
     }
@@ -4611,56 +4618,65 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 }
 
 /*
- * qo_query_runs_serially () - does the executor run this query block serially whatever the plan
- *   return: true when no scan or join of the block may run in parallel
+ * qo_query_serial_level () - what the executor runs serially in this query block whatever the plan
+ *   return: QO_SERIAL_NONE, QO_SERIAL_SCANS (no scan, so no nested-loop block, runs in parallel;
+ *	     a hash join keeps its own decision) or QO_SERIAL_ALL (nothing runs in parallel)
  *   env(in):
  *
  * Note: computed once per environment. Mirrors, at the parse tree the optimizer has, the
- *	 conditions under which the executor's checks on the XASL (scan_check_parallel_scan_possible
- *	 () in px_scan_checker.cpp, check_parallel_subquery_possible () in px_query_checker.cpp)
- *	 keep every scan of the block serial; they run only after the plan is chosen, so the
- *	 optimizer cannot call them. Keep the two in sync:
+ *	 conditions under which the executor's checks on the XASL keep the block serial; they run
+ *	 only after the plan is chosen, so the optimizer cannot call them. Keep the two in sync.
+ *	 QO_SERIAL_ALL:
  *	 - SA mode, which has no worker pool;
  *	 - a query planned by pt_to_merge_xasl (), the USING source included: MERGE executes under
- *	   a system operation (MERGE_PROC);
- *	 - SELECT ... FOR UPDATE;
- *	 - the recursive part of a CTE (CTE_PROC recursive_part);
- *	 - a correlated subquery (dptr, regu-linked aptr) and a CONNECT BY query (CONNECTBY_PROC);
+ *	   a system operation (is_under_system_operation ());
+ *	 - the recursive part of a CTE, a correlated subquery and a CONNECT BY query, which
+ *	   scan_check_parallel_scan_possible () (px_scan_checker.cpp) serializes with what they nest
+ *	   (CTE_PROC recursive_part, dptr, CONNECTBY_PROC).
+ *	 QO_SERIAL_SCANS, where scan_check_parallel_scan_possible () blocks the block's scans:
+ *	 - the source query of UPDATE / DELETE (UPDATE_PROC, DELETE_PROC) and SELECT ... FOR UPDATE;
  *	 - a select list or WHERE clause holding one of the expressions of
- *	   qo_check_serial_block_expr ().
+ *	   qo_check_serial_block_expr () (TYPE_SP, T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE,
+ *	   T_NEXT_VALUE, T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), or a path expression.
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
  *	 select list, a derived table inside the recursive part of a CTE (planned with its own
  *	 environment before the part), an ALL superclass scan, a system catalog scan.
  */
-static bool
-qo_query_runs_serially (QO_ENV * env)
+static int
+qo_query_serial_level (QO_ENV * env)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
   PT_NODE *tree = QO_ENV_PT_TREE (env);
+  int level = QO_SERIAL_NONE;
   bool found = false;
 
-  if (env->runs_serially >= 0)
+  if (env->serial_level >= 0)
     {
-      return env->runs_serially == 1;
+      return env->serial_level;
     }
 
 #if defined (SA_MODE)
   /* no worker pool */
   (void) parser;
   (void) tree;
-  found = true;
+  (void) found;
+  level = QO_SERIAL_ALL;
 #else /* SA_MODE */
   if (parser != NULL && parser->flag.is_generating_merge_xasl)
     {
-      found = true;
+      level = QO_SERIAL_ALL;
     }
   else if (tree != NULL && PT_IS_SELECT (tree))
     {
-      if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY | PT_SELECT_INFO_FOR_UPDATE)
+      if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY)
 	  || tree->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY || tree->info.query.correlation_level > 0
 	  || tree->info.query.q.select.connect_by != NULL)
 	{
-	  found = true;
+	  level = QO_SERIAL_ALL;
+	}
+      else if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE))
+	{
+	  level = QO_SERIAL_SCANS;
 	}
       else
 	{
@@ -4674,23 +4690,25 @@ qo_query_runs_serially (QO_ENV * env)
 		  found = true;
 		}
 	    }
-	}
 
-      if (!found)
-	{
-	  (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_skip_subquery, NULL,
-				   qo_check_serial_block_expr, &found);
+	  if (!found)
+	    {
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_skip_subquery, NULL,
+				       qo_check_serial_block_expr, &found);
+	    }
 	  if (!found)
 	    {
 	      (void) parser_walk_tree (parser, tree->info.query.q.select.where, qo_skip_subquery, NULL,
 				       qo_check_serial_block_expr, &found);
 	    }
+
+	  level = found ? QO_SERIAL_SCANS : QO_SERIAL_NONE;
 	}
     }
 #endif /* SA_MODE */
 
-  env->runs_serially = found ? 1 : 0;
-  return found;
+  env->serial_level = level;
+  return level;
 }
 
 /*
@@ -4709,6 +4727,7 @@ qo_scan_runs_parallel (QO_PLAN * scan)
 {
   return (scan->plan_type == QO_PLANTYPE_SCAN && qo_is_seq_scan (scan)
 	  && !(qo_plan_select_hint (scan) & PT_HINT_NO_PARALLEL_SCAN)
+	  && (scan->info == NULL || qo_query_serial_level (scan->info->env) == QO_SERIAL_NONE)
 	  && ((double) QO_NODE_TCARD (scan->plan_un.scan.node)
 	      >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD)));
 }
@@ -4727,7 +4746,7 @@ qo_scan_runs_parallel (QO_PLAN * scan)
 static bool
 qo_plan_drives_parallel (QO_PLAN * plan)
 {
-  if (plan == NULL || plan->info == NULL)
+  if (plan == NULL || plan->info == NULL || qo_query_serial_level (plan->info->env) != QO_SERIAL_NONE)
     {
       return false;
     }
