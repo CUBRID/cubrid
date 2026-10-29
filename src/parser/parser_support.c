@@ -12106,9 +12106,8 @@ pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE *
 /*
  * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source binds.
  *   The order is that of the one-row USING's columns: ON, SET, UPDATE WHERE, DELETE WHERE, VALUES and
- *   INSERT WHERE. The source SELECT is laid out from this walk over the statement, and the remote statement
- *   text from it over the statement's copy from before type checking. XASL generation checks that the two
- *   report as many columns and keys.
+ *   INSERT WHERE. The source SELECT and the remote statement text are both laid out from this walk over the
+ *   statement's remote_text_src, so the two agree column by column.
  *   return: the number of values
  *   parser(in): parser context
  *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
@@ -12384,21 +12383,6 @@ pt_dblink_merge_scan (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_MERGE_R
     }
 }
 
-/* pt_dblink_dml_classify_value leaves for the gate: those of pt_dblink_merge_value_leaf, and a CAST type
- * checking wrapped a value in to match the other side. The remote text is printed from before type checking,
- * so the CAST is not sent. */
-static PT_DBLINK_LEAF_KIND
-pt_dblink_merge_gate_leaf (PT_NODE * node, void *arg)
-{
-  if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST
-      && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
-    {
-      return PT_DBLINK_LEAF_OPERAND;
-    }
-
-  return pt_dblink_merge_value_leaf (node, arg);
-}
-
 /* Can expr stand in the remote statement as a value? Unlike UPDATE, a source column may sit inside an
  * expression (T.v + L.x). The operator stays in the text and only the column is bound. So nothing is dropped. */
 static PT_DBLINK_MERGE_VERDICT
@@ -12423,7 +12407,7 @@ pt_dblink_merge_check_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_
       return PT_DBLINK_MERGE_REJECT_SOURCE_NAME;
     }
 
-  if (pt_dblink_dml_classify_value (expr, pt_dblink_merge_gate_leaf, &reads->refs) == PT_DBLINK_VALUE_REJECT)
+  if (pt_dblink_dml_classify_value (expr, pt_dblink_merge_value_leaf, &reads->refs) == PT_DBLINK_VALUE_REJECT)
     {
       return PT_DBLINK_MERGE_REJECT_SHAPE;
     }
@@ -12679,9 +12663,7 @@ pt_dblink_merge_check_key_kept (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE
       return true;
     }
 
-  /* Every value written to the key's target column. A column named twice is checked at each place. A CAST
-   * type checking wrapped the value in to fit the column is not in the remote text, so the column gets the
-   * value under it. */
+  /* Every value written to the key's target column. A column named twice is checked at each place. */
   written = false;
   for (attr = merge->insert.attr_list, val = merge->insert.value_clauses->info.node_list.list;
        attr != NULL && val != NULL; attr = attr->next, val = val->next)
@@ -12691,7 +12673,7 @@ pt_dblink_merge_check_key_kept (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE
 	  continue;
 	}
 
-      if (!pt_name_equal (parser, pt_dblink_merge_unwrap_cast (val), source_col))
+      if (!pt_name_equal (parser, val, source_col))
 	{
 	  written = false;
 	  break;
@@ -12729,11 +12711,15 @@ pt_dblink_merge_check_keys_kept (PARSER_CONTEXT * parser, PT_MERGE_INFO * merge,
  * pt_dblink_merge_is_inscope () - Can a remote MERGE whose source is local go to the value-push sink?
  *   return: true when it can; otherwise a reason is raised on the statement and false returned
  *   parser(in): parser context
- *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
+ *   merge(in): the statement's remote_text_src, name-resolved and not type-checked
  *
  * Note: the checks run in clause order and the first reason found is raised. The keys are checked last, as
  *   that check needs ON keys and clauses of an admitted shape. The walks that build the source SELECT and
  *   the remote text report only the source columns of the shapes admitted here.
+ *
+ *   The gate reads the clauses as they are sent. Type checking folds some INSERT values it can compute here.
+ *   ROW_COUNT () becomes this session's count, for one. The folded value would pass the gate, while the remote
+ *   computes the call in its own session.
  */
 bool
 pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge)
@@ -13318,8 +13304,7 @@ pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
  * pt_dblink_dml_classify_value () - How a remote DML sink can send expr: as text the remote computes, as one
  *   value computed here and bound, as text with such values bound inside it, or not at all. The text is a
  *   literal, a column of the remote target, or + - * / (and unary -) over those. leaf_fn says which nodes
- *   are target columns and which are local values, since that differs from one DML to the next. It may also
- *   pass a node through to its arg1, such as a CAST the remote text does not carry.
+ *   are target columns and which are local values, since that differs from one DML to the next.
  *   return: the class. MIXED is the caller's to accept or refuse.
  *   expr(in): the value
  *   leaf_fn(in): classifies a node before it is looked into
@@ -13350,10 +13335,6 @@ pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *a
       return PT_DBLINK_VALUE_REMOTE_TEXT;
     case PT_DBLINK_LEAF_LOCAL:
       return PT_DBLINK_VALUE_LOCAL_BIND;
-    case PT_DBLINK_LEAF_OPERAND:
-      /* the node stays in the text, so a value bound under it is bound inside text */
-      cls1 = pt_dblink_dml_classify_value (expr->info.expr.arg1, leaf_fn, arg);
-      return (cls1 == PT_DBLINK_VALUE_LOCAL_BIND) ? PT_DBLINK_VALUE_MIXED : cls1;
     default:
       break;
     }

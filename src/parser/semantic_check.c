@@ -12860,7 +12860,7 @@ pt_dblink_merge_add_select_col (PARSER_CONTEXT * parser, PT_NODE * value, bool i
  *   in pt_dblink_merge_walk_binds () order.
  *   return: the bound SELECT, or NULL on failure (parser error set)
  *   parser(in): parser context
- *   merge(in): the name-resolved PT_MERGE
+ *   merge(in): the statement's remote_text_src
  *   from(in): the copy of the USING spec
  *   sc_info_ptr(in/out): semantic check info, passed through to pt_bind_remote_dml_subq
  *
@@ -13264,15 +13264,15 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  if (merge_src_from != NULL && node != NULL && !pt_has_error (parser))
 	    {
-	      /* a remote MERGE with a local source: the gate, then the SELECT whose rows the sink sends. The walks
-	       * that build it report only the source columns of the shapes the gate admits. XASL generation walks the
-	       * clauses of remote_text_src for the remote text, and the two walks must meet the same columns. It
-	       * refuses the statement when they count different columns. The statement skips mq_translate as a
-	       * remote DML (db_vdb.c), so no rewrite changes the clauses in between. */
-	      if (pt_dblink_merge_check_keys (parser, node) == NO_ERROR && pt_dblink_merge_is_inscope (parser, node))
+	      /* a remote MERGE with a local source: the gate, then the SELECT whose rows the sink sends. The keys are
+	       * checked on the statement, where type checking marks a key that compares with a conversion. The rest
+	       * reads remote_text_src, the clauses as they are sent, and so does XASL generation for the remote
+	       * text. So the bound columns are the ones that text names. */
+	      if (pt_dblink_merge_check_keys (parser, node) == NO_ERROR
+		  && pt_dblink_merge_is_inscope (parser, node->info.merge.remote_text_src))
 		{
 		  node->info.merge.remote_src_query =
-		    pt_dblink_merge_src_query (parser, node, merge_src_from, sc_info_ptr);
+		    pt_dblink_merge_src_query (parser, node->info.merge.remote_text_src, merge_src_from, sc_info_ptr);
 		}
 	    }
 	}

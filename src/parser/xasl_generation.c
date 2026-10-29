@@ -28352,7 +28352,7 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
   MERGE_PROC_NODE *merge;
   PT_NODE *into, *src_query, *copy, *server_node, *derived, *col;
   PT_DBLINK_INFO *pdblink;
-  PT_DBLINK_MERGE_LAYOUT layout, print_layout;
+  PT_DBLINK_MERGE_LAYOUT layout;
   PT_DBLINK_MERGE_TARGET_QUAL qual;
   const char *target_alias, *source_alias;
   unsigned int save_custom_print;
@@ -28401,10 +28401,16 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* The walk must report as many columns as the SELECT has. The two are built at different times, so a
-   * rewrite between them could drift them apart. A drift would bind values to the wrong columns. */
+  /* The text is printed from the clauses as they were before type checking, so it carries no CUBRID cast and no
+   * folded CUBRID literal. The source SELECT was laid out from the same clauses during semantic check. The walk
+   * must still report as many columns as the SELECT has, as a drift would bind values to the wrong columns. */
+  if (statement->info.merge.remote_text_src == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no clauses to print");
+      return NULL;
+    }
   memset (&layout, 0, sizeof (layout));
-  pt_dblink_merge_walk_binds (parser, statement, pt_dblink_merge_count_bind, &layout);
+  pt_dblink_merge_walk_binds (parser, statement->info.merge.remote_text_src, pt_dblink_merge_count_bind, &layout);
   num_cols = pt_length_of_select_list (pt_get_select_list (parser, src_query), EXCLUDE_HIDDEN_COLUMNS);
   if (layout.count != num_cols || layout.num_keys == 0)
     {
@@ -28438,30 +28444,11 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
   merge->remote_target_alias = pt_append_string (parser, NULL, target_alias);
   merge->remote_source_alias = pt_append_string (parser, NULL, source_alias);
 
-  /* The text is printed from the clauses as they were before type checking, so it carries no CUBRID cast and no
-   * folded CUBRID literal. Their columns are qualified and renamed in a copy, which keeps remote_text_src for
-   * the next XASL generation. */
-  if (statement->info.merge.remote_text_src == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "remote MERGE: no clauses to print");
-      return NULL;
-    }
+  /* the columns are qualified and renamed in a copy, which keeps remote_text_src for the next XASL generation */
   copy = parser_copy_tree (parser, statement->info.merge.remote_text_src);
   if (copy == NULL)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      return NULL;
-    }
-
-  /* The copy must report the same columns and keys before the key positions are laid out over them. Type
-   * checking wraps a key's column in a CAST when the two columns compare with a conversion, and the wrapped term
-   * is no longer a key on the statement. */
-  memset (&print_layout, 0, sizeof (print_layout));
-  pt_dblink_merge_walk_binds (parser, copy, pt_dblink_merge_count_bind, &print_layout);
-  if (print_layout.count != num_cols || print_layout.num_keys != layout.num_keys)
-    {
-      parser_free_tree (parser, copy);
-      PT_INTERNAL_ERROR (parser, "remote MERGE: the clauses to print do not match the bound columns");
       return NULL;
     }
 

@@ -751,8 +751,7 @@ extern "C"
   {
     PT_DBLINK_LEAF_NONE,	/* neither: looked into, or rejected */
     PT_DBLINK_LEAF_REMOTE,	/* a column of the remote target, sent as written */
-    PT_DBLINK_LEAF_LOCAL,	/* one value computed here and bound */
-    PT_DBLINK_LEAF_OPERAND	/* sent as written around its arg1, which is classified in its place */
+    PT_DBLINK_LEAF_LOCAL	/* one value computed here and bound */
   } PT_DBLINK_LEAF_KIND;
 
   typedef PT_DBLINK_LEAF_KIND (*PT_DBLINK_LEAF_FN) (PT_NODE * node, void *arg);
