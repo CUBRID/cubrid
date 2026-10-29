@@ -51,7 +51,6 @@
 #include "memory_hash.h"
 #include "object_representation.h"
 #include "intl_support.h"
-#include "row_snapshot_cl.hpp"
 #include <cstring>
 
 static bool histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key);
@@ -306,17 +305,6 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
   error = locator_flush_instance (fin);
   db_value_clear (&hv);
   return error;
-}
-
-/*
- * histogram_store_blob () - write a blob into the class's _db_histogram row for key_attr, creating
- *   the row when it is missing. For the rows that are not a column's histogram (the row snapshot,
- *   ROW_SNAPSHOT_KEY_ATTR); null_frequency means nothing there and is stored as 0.
- */
-int
-histogram_store_blob (MOP classop, const char *key_attr, char *blob, int blob_length, bool with_fullscan)
-{
-  return store_one_histogram (classop, key_attr, blob, blob_length, 0.0, with_fullscan);
 }
 
 /*
@@ -1620,31 +1608,6 @@ histogram_get_total_rows (PT_NODE *lhs, double *total_rows)
 }
 
 /*
- * histogram_get_null_frequency () - the fraction of NULLs its histogram recorded for the column
- *   return               : true when the column has a usable histogram (null_frequency is then set)
- *   lhs (in)             : column node
- *   null_frequency (out) : NULL fraction of all rows
- *
- * For callers that price a column outside the optimizer, where the name node does not carry the
- * null frequency the optimizer annotates it with.
- */
-bool
-histogram_get_null_frequency (PT_NODE *lhs, double *null_frequency)
-{
-  hist::HistogramReader histogram_reader;
-
-  assert (null_frequency != NULL);
-
-  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
-    {
-      return false;
-    }
-
-  *null_frequency = histogram_reader.null_frequency ();
-  return true;
-}
-
-/*
  * mcv_join_parts () - match up the two sorted MCV lists for an equijoin.
  *   matchprodfreq (out): Σ freq1 * freq2 over MCV values present on BOTH sides
  *   matchfreq1/2 (out) : Σ freq of the matched MCVs on each side
@@ -2853,8 +2816,6 @@ int stats_free_histogram_and_init (HIST_STATS *histogram)
       db_ws_free (histogram->attr_ids);
     }
 
-  row_snapshot_free (histogram->row_snapshot);
-
   db_ws_free (histogram);
   return NO_ERROR;
 }
@@ -3511,327 +3472,6 @@ bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_
   return node;
 }
 
-/* Small-table row snapshot (CBRD-27478). A node whose table keeps its rows and whose filters hold
- * user host variables is planned with the keys its values select, so its joins move with the
- * values -- often by orders of magnitude -- while the filter itself scans a handful of rows and is
- * never compared (BIND_WATCH_ROW_FLOOR). Each such equi-join is one more fingerprint slot: the
- * rows of the other side the surviving keys join, as qo_row_snapshot_apply () prices them. The
- * slots follow the predicate slots, so a statement keeps them in the same places. */
-
-/* what one predicate of a SELECT refers to, relative to one of its specs */
-struct bind_snapshot_pred_ctx
-{
-  PARSER_CONTEXT *parser;
-  UINTPTR spec_id;
-  int own_names;		/* columns of the spec */
-  int other_names;		/* columns of any other spec */
-  bool user_hv;			/* a user host variable */
-  bool subquery;
-};
-
-static PT_NODE *
-bind_snapshot_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
-{
-  bind_snapshot_pred_ctx *ctx = (bind_snapshot_pred_ctx *) arg;
-
-  switch (node->node_type)
-    {
-    case PT_NAME:
-      if (node->info.name.spec_id == ctx->spec_id)
-	{
-	  ctx->own_names++;
-	}
-      else if (node->info.name.spec_id != 0)
-	{
-	  ctx->other_names++;
-	}
-      break;
-    case PT_HOST_VAR:
-      if (histogram_is_user_host_var (ctx->parser, node))
-	{
-	  ctx->user_hv = true;
-	}
-      break;
-    case PT_SELECT:
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      ctx->subquery = true;
-      *continue_walk = PT_STOP_WALK;
-      break;
-    default:
-      break;
-    }
-  return node;
-}
-
-static void
-bind_snapshot_pred_scan (PARSER_CONTEXT *parser, PT_NODE *pred, UINTPTR spec_id, bind_snapshot_pred_ctx *pc)
-{
-  PT_NODE *save_next = pred->next;
-
-  pc->parser = parser;
-  pc->spec_id = spec_id;
-  pc->own_names = 0;
-  pc->other_names = 0;
-  pc->user_hv = false;
-  pc->subquery = false;
-  /* one conjunct, not the rest of the list */
-  pred->next = NULL;
-  (void) parser_walk_tree (parser, pred, bind_snapshot_pred_walk, pc, NULL, NULL);
-  pred->next = save_next;
-}
-
-/* `spec.col = other.col` with plain columns: the column of the spec and the other one */
-static bool
-bind_snapshot_split_join (PT_NODE *pred, UINTPTR spec_id, PT_NODE **mine, PT_NODE **other)
-{
-  PT_NODE *lhs, *rhs;
-
-  if (pred->node_type != PT_EXPR || pred->info.expr.op != PT_EQ || pred->or_next != NULL)
-    {
-      return false;
-    }
-  lhs = pred->info.expr.arg1;
-  rhs = pred->info.expr.arg2;
-  if (lhs != NULL && lhs->node_type == PT_DOT_)
-    {
-      lhs = pt_get_end_path_node (lhs);
-    }
-  if (rhs != NULL && rhs->node_type == PT_DOT_)
-    {
-      rhs = pt_get_end_path_node (rhs);
-    }
-  if (lhs == NULL || rhs == NULL || lhs->node_type != PT_NAME || rhs->node_type != PT_NAME)
-    {
-      return false;
-    }
-  if (lhs->info.name.spec_id == spec_id && rhs->info.name.spec_id != spec_id && rhs->info.name.spec_id != 0)
-    {
-      *mine = lhs;
-      *other = rhs;
-      return true;
-    }
-  if (rhs->info.name.spec_id == spec_id && lhs->info.name.spec_id != spec_id && lhs->info.name.spec_id != 0)
-    {
-      *mine = rhs;
-      *other = lhs;
-      return true;
-    }
-  return false;
-}
-
-/* the class of a FROM spec when it is one real class and keeps a row snapshot */
-static const ROW_SNAPSHOT *
-bind_snapshot_of_spec (PT_NODE *spec, MOP *out_classop)
-{
-  PT_NODE *entity;
-  MOP classop;
-  SM_CLASS *class_ = NULL;
-
-  if (spec->node_type != PT_SPEC || spec->info.spec.derived_table != NULL || spec->info.spec.meta_class == PT_META_CLASS)
-    {
-      return NULL;
-    }
-  entity = spec->info.spec.entity_name;
-  if (entity == NULL || entity->node_type != PT_NAME || entity->next != NULL
-      || spec->info.spec.flat_entity_list == NULL || spec->info.spec.flat_entity_list->next != NULL)
-    {
-      return NULL;
-    }
-  classop = spec->info.spec.flat_entity_list->info.name.db_object;
-  if (classop == NULL)
-    {
-      return NULL;
-    }
-  if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR || class_ == NULL)
-    {
-      er_clear ();
-      return NULL;
-    }
-  *out_classop = classop;
-  return row_snapshot_get (classop, class_);
-}
-
-/* The snapshot slots of one FROM spec of a SELECT. ctx NULL asks only whether the spec has any
- * (structurally, values unbound): returns the number of slots, or of joins that would be ones. */
-static int
-bind_snapshot_spec_terms (PARSER_CONTEXT *parser, PT_NODE *select, PT_NODE *spec, bind_term_ctx *ctx)
-{
-  const ROW_SNAPSHOT *snapshot;
-  MOP classop = NULL;
-  UINTPTR spec_id = spec->info.spec.id;
-  PT_NODE *pred, *mine, *other;
-  bind_snapshot_pred_ctx pc;
-  /* function-local, not parser memory: a kept statement runs this on every check for as long as
-   * it lives */
-  std::vector<ROW_SNAPSHOT_FILTER> filters;
-  std::vector<int> rows;
-  int n_filters = 0, n_joins = 0, k = 0, added = 0, f;
-  bool user_hv = false;
-
-  snapshot = bind_snapshot_of_spec (spec, &classop);
-  if (snapshot == NULL)
-    {
-      return 0;
-    }
-
-  /* first pass: every predicate on the spec alone must be a filter the snapshot evaluates, the
-   * same rule qo_row_snapshot_apply () applies to the node */
-  for (pred = select->info.query.q.select.where; pred != NULL; pred = pred->next)
-    {
-      bind_snapshot_pred_scan (parser, pred, spec_id, &pc);
-      if (pc.own_names > 0 && pc.other_names == 0)
-	{
-	  if (pc.subquery || !row_snapshot_filter_prepare (parser, snapshot, classop, spec_id, pred, NULL))
-	    {
-	      return 0;
-	    }
-	  n_filters++;
-	  user_hv = user_hv || pc.user_hv;
-	}
-      else if (pc.own_names > 0 && bind_snapshot_split_join (pred, spec_id, &mine, &other))
-	{
-	  n_joins++;
-	}
-    }
-  /* without a user host variable among the filters the answer does not move with the values */
-  if (!user_hv || n_joins == 0)
-    {
-      return 0;
-    }
-  if (ctx == NULL)
-    {
-      return n_joins;
-    }
-
-  filters.assign (n_filters, ROW_SNAPSHOT_FILTER {});
-  rows.assign (snapshot->n_rows, 0);
-  f = 0;
-  for (pred = select->info.query.q.select.where; pred != NULL; pred = pred->next)
-    {
-      bind_snapshot_pred_scan (parser, pred, spec_id, &pc);
-      if (pc.own_names > 0 && pc.other_names == 0)
-	{
-	  if (f >= n_filters || !row_snapshot_filter_prepare (parser, snapshot, classop, spec_id, pred, &filters[f++]))
-	    {
-	      /* a value not bound: nothing to say about the rows */
-	      k = -1;
-	      break;
-	    }
-	}
-    }
-  if (k == 0)
-    {
-      k = row_snapshot_survivors (snapshot, filters.data (), f, rows.data ());
-    }
-  for (ROW_SNAPSHOT_FILTER &one : filters)
-    {
-      row_snapshot_filter_clear (&one);
-    }
-
-  for (pred = select->info.query.q.select.where; pred != NULL; pred = pred->next)
-    {
-      double sel, nf = 0.0, total_rows = 0.0, join_rows = BIND_TERM_UNKNOWN;
-      char label[BIND_WATCH_NAME_LEN];
-      int i;
-
-      bind_snapshot_pred_scan (parser, pred, spec_id, &pc);
-      if (pc.own_names == 0 || !bind_snapshot_split_join (pred, spec_id, &mine, &other))
-	{
-	  continue;
-	}
-      if (ctx->count >= BIND_WATCH_MAX_TERMS)
-	{
-	  break;
-	}
-
-      /* a value the snapshot does not hold leaves the optimizer at its histogram estimate, which
-       * the slot cannot express: unknown, so the comparison skips it */
-      if (k > 0 && histogram_get_total_rows (other, &total_rows))
-	{
-	  if (!histogram_get_null_frequency (other, &nf))
-	    {
-	      nf = 0.0;
-	    }
-	  if (row_snapshot_join_selectivity (snapshot, rows.data (), k,
-					     row_snapshot_column (snapshot, classop, mine->info.name.original), other, nf,
-					     &sel))
-	    {
-	      join_rows = MAX (1.0, sel * (double) k * total_rows);
-	    }
-	}
-
-      i = ctx->count++;
-      ctx->rows[i] = join_rows;
-      if (ctx->want_names)
-	{
-	  snprintf (label, sizeof (label), "%s.%s~%s",
-		    (mine->info.name.resolved != NULL) ? mine->info.name.resolved : "?",
-		    (mine->info.name.original != NULL) ? mine->info.name.original : "?",
-		    (other->info.name.original != NULL) ? other->info.name.original : "?");
-	  memcpy (ctx->name[i], label, BIND_WATCH_NAME_LEN);
-	}
-      else
-	{
-	  ctx->name[i][0] = '\0';
-	}
-      if (ctx->memo != NULL)
-	{
-	  /* never a memo hit (key 0): the slot depends on every filter of the spec at once */
-	  ctx->memo->key[i] = 0;
-	  ctx->memo->name[i] = NULL;
-	  ctx->memo->histogram[i] = NULL;
-	  ctx->memo->total_rows[i] = 0.0;
-	  ctx->memo->rows[i] = join_rows;
-	}
-      added++;
-    }
-  return added;
-}
-
-struct bind_snapshot_walk_ctx
-{
-  bind_term_ctx *terms;		/* NULL = structural question */
-  int found;
-};
-
-static PT_NODE *
-bind_snapshot_select_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
-{
-  bind_snapshot_walk_ctx *ctx = (bind_snapshot_walk_ctx *) arg;
-
-  if (node->node_type != PT_SELECT)
-    {
-      return node;
-    }
-  for (PT_NODE *spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
-    {
-      ctx->found += bind_snapshot_spec_terms (parser, node, spec, ctx->terms);
-    }
-  if (ctx->terms == NULL && ctx->found > 0)
-    {
-      *continue_walk = PT_STOP_WALK;
-    }
-  return node;
-}
-
-/* append the snapshot slots of the statement to ctx; with ctx NULL, whether it has any */
-static int
-bind_snapshot_terms (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx)
-{
-  bind_snapshot_walk_ctx wc;
-
-  if (row_snapshot_max_rows () <= 0)
-    {
-      return 0;
-    }
-  wc.terms = ctx;
-  wc.found = 0;
-  (void) parser_walk_tree (parser, statement, bind_snapshot_select_walk, &wc, NULL, NULL);
-  return wc.found;
-}
-
 /* price every predicate under the current values, in tree order. false = nothing priceable,
  * which the caller reads as "stop watching". */
 static bool
@@ -3847,7 +3487,6 @@ bind_term_vector (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx
   bind_fp_active_statement = statement;
 
   (void) parser_walk_tree (parser, statement, bind_term_walk, ctx, NULL, NULL);
-  (void) bind_snapshot_terms (parser, statement, ctx);
 
   bind_fp_active_parser = NULL;
   bind_fp_active_statement = NULL;
@@ -4283,19 +3922,6 @@ histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (ctx.specs < 2 || ctx.terms == 0)
     {
       return false;
-    }
-
-  /* a host variable filtering a table that keeps its rows selects the keys that table joins by:
-   * the joins move with the value even where the filter's own estimate does not (no MCV on a code
-   * column, or a unique one) (CBRD-27478) */
-  bind_fp_active_parser = parser;
-  bind_fp_active_statement = statement;
-  i = bind_snapshot_terms (parser, statement, NULL);
-  bind_fp_active_parser = NULL;
-  bind_fp_active_statement = NULL;
-  if (i > 0)
-    {
-      return true;
     }
 
   for (i = 0; i < ctx.terms; i++)

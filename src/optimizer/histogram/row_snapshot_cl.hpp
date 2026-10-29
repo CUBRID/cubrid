@@ -17,22 +17,22 @@
  */
 
 /*
- * row_snapshot_cl.hpp - rows of code tables kept with the statistics (CBRD-27478)
+ * row_snapshot_cl.hpp - rows of code tables read while planning (CBRD-27478)
  *
  * Histograms are kept per column, so a constant filter on one column of a code table tells the
  * optimizer how many rows survive but not WHICH keys they carry: `it.info = 'release dates'
  * AND it.id = mi.info_type_id` is priced at 1/NDV of mi.info_type_id whatever id 'release dates'
- * has. For a table declared ROW_SNAPSHOT (CREATE/ALTER TABLE), UPDATE STATISTICS also keeps its
- * rows -- all of them, and none when there are more than statistics_row_snapshot_rows --
- * as one more _db_histogram row of the class under a reserved key_attr. The declaration is a class
- * flag (SM_CLASSFLAG_ROW_SNAPSHOT), so it travels with the schema (SHOW CREATE TABLE, unloaddb,
- * HA); the rows are a statistic. The optimizer applies the constant filters of such a node to the
- * rows and prices each equi-join of the node by the surviving keys, through the other column's
- * histogram.
+ * has. For a table declared ROW_SNAPSHOT (CREATE/ALTER TABLE), the optimizer reads the rows its
+ * constant filters select from the table itself while it plans, and prices each equi-join of the
+ * node by those rows' keys, through the other column's histogram. The declaration is a class flag
+ * (SM_CLASSFLAG_ROW_SNAPSHOT), so it travels with the schema (SHOW CREATE TABLE, unloaddb, HA);
+ * nothing else is stored.
  *
- * The snapshot is a statistic like the histograms: it is refreshed by the next UPDATE STATISTICS
- * and is not invalidated by DML. A constant that matches no row of it (a code added since)
- * leaves the estimate where the histograms put it.
+ * The read goes through an index (a filter column has to lead one) and stops past
+ * row_snapshot_max_rows rows, so it costs the same whatever the size of the table, and a filter
+ * that selects more rows keeps the histogram estimate. The rows are the ones the statement's
+ * transaction sees when it is compiled; a plan already cached is not compiled again for new rows,
+ * as it is not for new statistics.
  */
 
 #ifndef _ROW_SNAPSHOT_CL_HPP_
@@ -48,22 +48,13 @@ typedef struct parser_context PARSER_CONTEXT;
 struct sm_class;
 typedef struct sm_class SM_CLASS;
 
-/* the key_attr the snapshot is stored under in _db_histogram. A column name cannot contain a
- * dot, so no column's histogram can take this row. */
-#define ROW_SNAPSHOT_KEY_ATTR ".row_snapshot"
-
-/* the largest snapshot kept, packed; a table whose rows take more keeps none */
-#define ROW_SNAPSHOT_MAX_BYTES (4 * 1024 * 1024)
-/* the most rows a snapshot can hold: the upper bound of statistics_row_snapshot_rows */
-#define ROW_SNAPSHOT_MAX_ROWS 10000
-
-/* the rows of a table, as the statistics last saw them */
+/* the rows of a table a node's constant filters select; with no rows, only the columns
+ * (row_snapshot_columns ()) */
 struct row_snapshot
 {
-  int n_attrs;			/* columns kept */
-  int n_rows;			/* rows kept: all of the table's */
-  int table_rows;		/* rows of the table when they were collected */
-  int *attr_ids;		/* column id per slot; -1 = a column that no longer matches the class */
+  int n_attrs;			/* columns read */
+  int n_rows;			/* rows read */
+  int *attr_ids;		/* column id per slot */
   DB_VALUE *values;		/* n_rows x n_attrs, row-major */
 };
 typedef struct row_snapshot ROW_SNAPSHOT;
@@ -79,47 +70,41 @@ struct row_snapshot_filter
 };
 typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 
-/* statistics_row_snapshot_rows; 0 = the feature is off */
+/* row_snapshot_max_rows; 0 = the feature is off */
 extern int row_snapshot_max_rows (void);
 
-/* UPDATE STATISTICS: when classop is declared ROW_SNAPSHOT, keep all of its rows, or none when it
- * has more than statistics_row_snapshot_rows of them or they take more than ROW_SNAPSHOT_MAX_BYTES.
- * Does nothing for other classes or while the feature is off. A failure to read the rows only
- * leaves the class without a snapshot; a failure to write the catalog is returned. */
-extern int row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullscan);
-/* remove the snapshot of classop, if any (NO_ROW_SNAPSHOT, DROP HISTOGRAM) */
-extern int row_snapshot_drop (MOP classop);
+/* the columns of a class declared ROW_SNAPSHOT that a read can return, with no rows: what the
+ * filters resolve their columns against. NULL when the class is not declared or has none. */
+extern ROW_SNAPSHOT *row_snapshot_columns (SM_CLASS *class_);
 
-/* the snapshot of a class for planning, loaded once into its statistics cache; NULL when the
- * feature is off, the class is not declared ROW_SNAPSHOT or has no rows kept yet */
-extern const ROW_SNAPSHOT *row_snapshot_get (MOP classop, SM_CLASS *class_);
+/* read the rows of classop that pass every filter, at most max_rows of them. NULL when no filter
+ * column leads an index of the class (the read would scan the table), when more rows pass, or on
+ * any failure; the error and the plan dump of the statement being planned are left as they were. */
+extern ROW_SNAPSHOT *row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns,
+					const ROW_SNAPSHOT_FILTER *filters, int n_filters, int max_rows);
+
 extern void row_snapshot_free (ROW_SNAPSHOT *snapshot);
 
-/* the slot of a column in the snapshot, -1 when it is not kept */
+/* the slot of a column in the snapshot, -1 when it is not read */
 extern int row_snapshot_column (const ROW_SNAPSHOT *snapshot, MOP classop, const char *attr_name);
 
 /* the constant a filter compares against: a literal, an auto-parameterized literal or a bound
  * host variable. NULL when the node is none of those, or its value is NULL or not bound. */
 extern DB_VALUE *row_snapshot_const_value (PARSER_CONTEXT *parser, PT_NODE *node);
 
-/* resolve pred, a predicate over the spec spec_id only, into a filter on the snapshot. Accepts
- * `col = c`, `col IN (c1, c2, ...)` and the rewritten `col RANGE (c1 =, c2 =, ...)`; false for
- * anything else, which the caller takes as "the node cannot be evaluated". With filter NULL only
- * the shape is checked, so a host variable that is not bound yet passes. */
+/* resolve pred, a predicate over the spec spec_id only, into a filter on the snapshot's columns.
+ * Accepts `col = c`, `col IN (c1, c2, ...)`, the rewritten `col RANGE (c1 =, c2 =, ...)` and an
+ * OR of one column's equalities; false for anything else, which the caller takes as "the node
+ * cannot be evaluated". */
 extern bool row_snapshot_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapshot, MOP classop,
     UINTPTR spec_id, PT_NODE *pred, ROW_SNAPSHOT_FILTER *filter);
 
 /* release what row_snapshot_filter_prepare () allocated; a zeroed filter is fine */
 extern void row_snapshot_filter_clear (ROW_SNAPSHOT_FILTER *filter);
 
-/* the rows that satisfy every filter: their indexes go to rows (sized n_rows), the count is
- * returned */
-extern int row_snapshot_survivors (const ROW_SNAPSHOT *snapshot, const ROW_SNAPSHOT_FILTER *filters,
-				   int n_filters, int *rows);
-
-/* selectivity of `snapshot.column = other` over the cross product, given the k surviving rows:
+/* selectivity of `snapshot.column = other` over the cross product, given the k = n_rows rows read:
  * (1 / k) * SUM P (other = v_i) * (1 - nf_other). false when a key cannot be priced. */
-extern bool row_snapshot_join_selectivity (const ROW_SNAPSHOT *snapshot, const int *rows, int k, int column,
-    PT_NODE *other, double nf_other, double *selectivity);
+extern bool row_snapshot_join_selectivity (const ROW_SNAPSHOT *snapshot, int column, PT_NODE *other, double nf_other,
+    double *selectivity);
 
 #endif /* _ROW_SNAPSHOT_CL_HPP_ */

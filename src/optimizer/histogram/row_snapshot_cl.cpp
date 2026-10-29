@@ -17,7 +17,7 @@
  */
 
 /*
- * row_snapshot_cl.cpp - rows of small tables kept with the statistics (CBRD-27478)
+ * row_snapshot_cl.cpp - rows of code tables read while planning (CBRD-27478)
  */
 
 #include "row_snapshot_cl.hpp"
@@ -36,28 +36,18 @@
 #include "intl_support.h"
 #include "object_domain.h"
 #include "object_primitive.h"
-#include "object_representation.h"
+#include "optimizer.h"
 #include "parser.h"
 #include "schema_manager.h"
 #include "set_object.h"
 #include "system_parameter.h"
+#include "xasl_generation.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* blob layout: magic, version, total length, n_attrs, n_rows (kept), table_rows (the table's rows
- * when collected), n_attrs column ids, then the values row by row, each packed with its domain
- * (or_put_value), so a value reads back with its type and collation */
-#define ROW_SNAPSHOT_MAGIC 0x52534e31	/* "RSN1" */
-#define ROW_SNAPSHOT_VERSION 1
-#define ROW_SNAPSHOT_HEADER_INTS 6
-/* more columns than a class can have means the blob is not ours */
-#define ROW_SNAPSHOT_MAX_ATTRS 10000
-
 static bool row_snapshot_keeps_type (DB_TYPE type);
-static int row_snapshot_fixed_size (int n_attrs);
-static ROW_SNAPSHOT *row_snapshot_load (MOP classop, SM_CLASS *class_);
-static ROW_SNAPSHOT *row_snapshot_decode (const char *blob, int length);
-static void row_snapshot_check_columns (ROW_SNAPSHOT *snapshot, SM_CLASS *class_);
+static bool row_snapshot_column_indexed (SM_CLASS *class_, int attr_id);
+static const char *row_snapshot_attr_name (SM_CLASS *class_, int attr_id);
 static bool row_snapshot_const_shape (PT_NODE *node);
 static PT_NODE *row_snapshot_split_eq (PT_NODE *expr, UINTPTR spec_id, PT_NODE **out_const);
 static bool row_snapshot_or_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapshot, MOP classop,
@@ -66,7 +56,7 @@ static bool row_snapshot_or_filter_prepare (PARSER_CONTEXT *parser, const ROW_SN
 int
 row_snapshot_max_rows (void)
 {
-  return prm_get_integer_value (PRM_ID_STATISTICS_ROW_SNAPSHOT_ROWS);
+  return prm_get_integer_value (PRM_ID_ROW_SNAPSHOT_MAX_ROWS);
 }
 
 /* the columns a snapshot keeps: the ones a histogram is built for, except object references,
@@ -75,179 +65,6 @@ static bool
 row_snapshot_keeps_type (DB_TYPE type)
 {
   return is_histogrammable_type (type) && type != DB_TYPE_OID && type != DB_TYPE_OBJECT;
-}
-
-int
-row_snapshot_drop (MOP classop)
-{
-  /* sm_drop_histogram () is a no-op for a key the class has no row for */
-  return sm_drop_histogram (classop, ROW_SNAPSHOT_KEY_ATTR);
-}
-
-/* the packed size of a header and the column ids */
-static int
-row_snapshot_fixed_size (int n_attrs)
-{
-  return OR_INT_SIZE * (ROW_SNAPSHOT_HEADER_INTS + n_attrs);
-}
-
-int
-row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullscan)
-{
-  int max_rows = row_snapshot_max_rows ();
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
-  const char *class_name;
-  std::vector<std::string> names;
-  std::vector<int> ids;
-  std::vector<DB_VALUE> values;	/* the kept rows, n_attrs values each */
-  std::string query;
-  DB_QUERY_RESULT *result = NULL;
-  DB_QUERY_ERROR query_error;
-  int n_attrs, n_rows = 0, size, pos, i, c, error = NO_ERROR;
-  bool usable = true;
-  char *blob = NULL;
-  OR_BUF buf;
-  char limit_clause[32];
-
-  if (max_rows <= 0 || sm_get_class_flag (classop, SM_CLASSFLAG_ROW_SNAPSHOT) <= 0)
-    {
-      /* off, or a table not declared ROW_SNAPSHOT: the catalog is left exactly as it is (ALTER TABLE
-       * ... NO_ROW_SNAPSHOT and DROP TABLE remove the kept rows themselves) */
-      er_clear ();
-      return NO_ERROR;
-    }
-
-  /* the declaration refuses these, but a table can be partitioned after it was declared */
-  if (sm_partitioned_class_type (classop, &partition_type, NULL, NULL) != NO_ERROR)
-    {
-      return er_errid ();
-    }
-  if (partition_type != DB_NOT_PARTITIONED_CLASS || total_rows <= 0)
-    {
-      return row_snapshot_drop (classop);
-    }
-
-  for (DB_ATTRIBUTE *att = db_get_attributes (classop); att != NULL; att = db_attribute_next (att))
-    {
-      if (row_snapshot_keeps_type (db_attribute_type (att)))
-	{
-	  names.push_back (db_attribute_name (att));
-	  ids.push_back (db_attribute_id (att));
-	}
-    }
-  class_name = db_get_class_name (classop);
-  if (names.empty () || class_name == NULL)
-    {
-      return row_snapshot_drop (classop);
-    }
-  n_attrs = (int) names.size ();
-
-  query = "SELECT ";
-  for (i = 0; i < n_attrs; i++)
-    {
-      query += (i == 0) ? "[" : ", [";
-      query += names[i];
-      query += "]";
-    }
-  query += " FROM [";
-  query += class_name;
-  query += "]";
-  /* one row past the limit tells a table that has grown over it, whatever total_rows estimated */
-  snprintf (limit_clause, sizeof (limit_clause), " LIMIT %d", max_rows + 1);
-  query += limit_clause;
-
-  /* Reading the rows is part of the statistics, not of the statement: a failure here leaves the
-   * class without a snapshot (the optimizer then prices it as before) instead of failing the
-   * UPDATE STATISTICS that already collected everything else. */
-  if (db_compile_and_execute_local (query.c_str (), &result, &query_error) < 0)
-    {
-      er_clear ();
-      return row_snapshot_drop (classop);
-    }
-  values.reserve ((size_t) MIN (total_rows, (INT64) max_rows) * n_attrs);
-  size = row_snapshot_fixed_size (n_attrs);
-  for (pos = db_query_first_tuple (result); pos == DB_CURSOR_SUCCESS && usable; pos = db_query_next_tuple (result))
-    {
-      /* All of the table or nothing: a sample would price a value it holds by its share of the
-       * sample and a value it misses by the histogram, so a plan would turn on which rows the
-       * sample happened to take. Over either limit the table keeps no snapshot. */
-      if (n_rows == max_rows || size > ROW_SNAPSHOT_MAX_BYTES)
-	{
-	  usable = false;
-	  break;
-	}
-      values.resize ((size_t) (n_rows + 1) * n_attrs);
-      for (c = 0; c < n_attrs; c++)
-	{
-	  DB_VALUE *v = &values[ (size_t) n_rows * n_attrs + c];
-
-	  db_make_null (v);
-	  if (db_query_get_tuple_value (result, c, v) != NO_ERROR)
-	    {
-	      usable = false;
-	      break;
-	    }
-	  size += or_packed_value_size (v, 0, 1, 0);
-	}
-      n_rows++;
-    }
-  if (pos < 0 || size > ROW_SNAPSHOT_MAX_BYTES)
-    {
-      usable = false;
-    }
-  db_query_end (result);
-  er_clear ();
-
-  if (usable && n_rows > 0)
-    {
-      blob = (char *) malloc (size);
-      if (blob == NULL)
-	{
-	  usable = false;
-	}
-    }
-  if (usable && n_rows > 0)
-    {
-      or_init (&buf, blob, size);
-      if (or_put_int (&buf, ROW_SNAPSHOT_MAGIC) != NO_ERROR || or_put_int (&buf, ROW_SNAPSHOT_VERSION) != NO_ERROR
-	  || or_put_int (&buf, size) != NO_ERROR || or_put_int (&buf, n_attrs) != NO_ERROR
-	  || or_put_int (&buf, n_rows) != NO_ERROR
-	  || or_put_int (&buf, (int) MIN (total_rows, (INT64) INT_MAX)) != NO_ERROR)
-	{
-	  usable = false;
-	}
-      for (i = 0; usable && i < n_attrs; i++)
-	{
-	  usable = (or_put_int (&buf, ids[i]) == NO_ERROR);
-	}
-      for (i = 0; usable && i < n_rows * n_attrs; i++)
-	{
-	  usable = (or_put_value (&buf, &values[i], 0, 1, 0) == NO_ERROR);
-	}
-      if (usable && buf.ptr - blob != size)
-	{
-	  assert (false);
-	  usable = false;
-	}
-    }
-  for (i = 0; i < (int) values.size (); i++)
-    {
-      pr_clear_value (&values[i]);
-    }
-
-  if (usable && n_rows > 0)
-    {
-      error = histogram_store_blob (classop, ROW_SNAPSHOT_KEY_ATTR, blob, size, with_fullscan);
-    }
-  else
-    {
-      error = row_snapshot_drop (classop);
-    }
-  if (blob != NULL)
-    {
-      free_and_init (blob);
-    }
-  return error;
 }
 
 void
@@ -288,213 +105,6 @@ row_snapshot_free (ROW_SNAPSHOT *snapshot)
       free_and_init (snapshot->attr_ids);
     }
   free_and_init (snapshot);
-}
-
-static ROW_SNAPSHOT *
-row_snapshot_decode (const char *blob, int length)
-{
-  ROW_SNAPSHOT *snapshot;
-  OR_BUF buf;
-  int magic = 0, version = 0, total = 0, n_attrs = 0, n_rows = 0, table_rows = 0, i, rc = NO_ERROR;
-  char *copy;
-
-  /* or_get_value () reads the values with the padding they were written with, relative to the
-   * start of the blob; work on an aligned copy so the reads do not depend on where the catalog
-   * value happens to sit */
-  copy = (char *) malloc (length);
-  if (copy == NULL)
-    {
-      return NULL;
-    }
-  memcpy (copy, blob, length);
-  or_init (&buf, copy, length);
-
-  /* or_get_int () checks the bound only by assert: every count is checked against the length
-   * before it is trusted, so a damaged catalog value is ignored instead of read past */
-  if (length < OR_INT_SIZE * ROW_SNAPSHOT_HEADER_INTS)
-    {
-      free_and_init (copy);
-      return NULL;
-    }
-  magic = or_get_int (&buf, &rc);
-  version = or_get_int (&buf, &rc);
-  total = or_get_int (&buf, &rc);
-  n_attrs = or_get_int (&buf, &rc);
-  n_rows = or_get_int (&buf, &rc);
-  table_rows = or_get_int (&buf, &rc);
-  if (magic != ROW_SNAPSHOT_MAGIC || version != ROW_SNAPSHOT_VERSION || total != length || n_attrs <= 0
-      || n_attrs > ROW_SNAPSHOT_MAX_ATTRS || n_rows <= 0 || n_rows > ROW_SNAPSHOT_MAX_ROWS
-      || length - OR_INT_SIZE * ROW_SNAPSHOT_HEADER_INTS < OR_INT_SIZE * n_attrs
-      || (INT64) n_attrs * n_rows > (INT64) length / OR_INT_SIZE)
-    {
-      /* an unknown or damaged format (every packed value takes at least its 4-byte domain, which
-       * bounds the allocation below by the blob's own length) */
-      free_and_init (copy);
-      return NULL;
-    }
-
-  snapshot = (ROW_SNAPSHOT *) calloc (1, sizeof (ROW_SNAPSHOT));
-  if (snapshot == NULL)
-    {
-      free_and_init (copy);
-      return NULL;
-    }
-  snapshot->attr_ids = (int *) calloc (n_attrs, sizeof (int));
-  snapshot->values = (DB_VALUE *) calloc ((size_t) n_attrs * n_rows, sizeof (DB_VALUE));
-  if (snapshot->attr_ids == NULL || snapshot->values == NULL)
-    {
-      row_snapshot_free (snapshot);
-      free_and_init (copy);
-      return NULL;
-    }
-  snapshot->n_attrs = n_attrs;
-  snapshot->table_rows = table_rows;
-  for (i = 0; i < n_attrs * n_rows; i++)
-    {
-      db_make_null (&snapshot->values[i]);
-    }
-
-  for (i = 0; i < n_attrs && rc == NO_ERROR; i++)
-    {
-      snapshot->attr_ids[i] = or_get_int (&buf, &rc);
-    }
-  for (i = 0; i < n_attrs * n_rows && rc == NO_ERROR; i++)
-    {
-      if (buf.ptr >= buf.endptr)
-	{
-	  rc = ER_FAILED;
-	  break;
-	}
-      rc = or_get_value (&buf, &snapshot->values[i], NULL, -1, true);
-      if (rc == NO_ERROR && buf.ptr > buf.endptr)
-	{
-	  rc = ER_FAILED;
-	}
-    }
-  /* n_rows only once every value is in: row_snapshot_free () clears the values of n_rows rows */
-  snapshot->n_rows = n_rows;
-  free_and_init (copy);
-
-  if (rc != NO_ERROR)
-    {
-      row_snapshot_free (snapshot);
-      er_clear ();
-      return NULL;
-    }
-  return snapshot;
-}
-
-/* a column dropped or retyped since the collection keeps its slot, under id -1: no filter or
- * join reaches it, and the other columns stay usable */
-static void
-row_snapshot_check_columns (ROW_SNAPSHOT *snapshot, SM_CLASS *class_)
-{
-  for (int c = 0; c < snapshot->n_attrs; c++)
-    {
-      SM_ATTRIBUTE *att;
-      DB_TYPE type = DB_TYPE_NULL;
-
-      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-	{
-	  if (att->id == snapshot->attr_ids[c])
-	    {
-	      break;
-	    }
-	}
-      if (att == NULL || att->domain == NULL)
-	{
-	  snapshot->attr_ids[c] = -1;
-	  continue;
-	}
-      for (int r = 0; r < snapshot->n_rows; r++)
-	{
-	  if (!DB_IS_NULL (&snapshot->values[r * snapshot->n_attrs + c]))
-	    {
-	      type = DB_VALUE_DOMAIN_TYPE (&snapshot->values[r * snapshot->n_attrs + c]);
-	      break;
-	    }
-	}
-      if (type != DB_TYPE_NULL && type != TP_DOMAIN_TYPE (att->domain))
-	{
-	  snapshot->attr_ids[c] = -1;
-	}
-    }
-}
-
-static ROW_SNAPSHOT *
-row_snapshot_load (MOP classop, SM_CLASS *class_)
-{
-  DB_OBJECT *row = NULL;
-  DB_VALUE blob_value;
-  ROW_SNAPSHOT *snapshot = NULL;
-  const char *blob;
-  int bit_length = 0;
-
-  /* the last committed snapshot, read without a lock like the histograms (CBRD-27369) */
-  if (db_get_histogram_committed (classop, ROW_SNAPSHOT_KEY_ATTR, &row) != NO_ERROR || row == NULL)
-    {
-      er_clear ();
-      return NULL;
-    }
-
-  db_make_null (&blob_value);
-  if (db_get (row, "histogram_values", &blob_value) != NO_ERROR || DB_IS_NULL (&blob_value))
-    {
-      db_value_clear (&blob_value);
-      er_clear ();
-      return NULL;
-    }
-  blob = db_get_bit (&blob_value, &bit_length);
-  if (blob != NULL && bit_length > 0)
-    {
-      snapshot = row_snapshot_decode (blob, bit_length / 8);
-    }
-  db_value_clear (&blob_value);
-
-  if (snapshot != NULL)
-    {
-      row_snapshot_check_columns (snapshot, class_);
-    }
-  return snapshot;
-}
-
-const ROW_SNAPSHOT *
-row_snapshot_get (MOP classop, SM_CLASS *class_)
-{
-  HIST_STATS *histogram;
-
-  if (row_snapshot_max_rows () <= 0 || classop == NULL || class_ == NULL
-      || (class_->flags & SM_CLASSFLAG_ROW_SNAPSHOT) == 0)
-    {
-      return NULL;
-    }
-
-  if (class_->histogram == NULL)
-    {
-      /* the optimizer loads the histograms with the class statistics; a caller outside it
-       * (the bind fingerprint) may come first */
-      if (stats_get_histogram (classop, &class_->histogram) != NO_ERROR)
-	{
-	  stats_free_histogram_and_init (class_->histogram);
-	  class_->histogram = NULL;
-	  er_clear ();
-	  return NULL;
-	}
-    }
-  histogram = class_->histogram;
-  if (histogram == NULL)
-    {
-      return NULL;
-    }
-
-  /* looked up once per load of the statistics: a new UPDATE STATISTICS reloads them, and with
-   * them the snapshot */
-  if (!histogram->row_snapshot_loaded)
-    {
-      histogram->row_snapshot_loaded = true;
-      histogram->row_snapshot = row_snapshot_load (classop, class_);
-    }
-  return histogram->row_snapshot;
 }
 
 int
@@ -651,10 +261,6 @@ row_snapshot_or_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snap
     {
       return false;
     }
-  if (filter == NULL)
-    {
-      return true;
-    }
 
   filter->column = row_snapshot_column (snapshot, classop, first_col->info.name.original);
   filter->elements = NULL;
@@ -755,39 +361,8 @@ row_snapshot_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapsho
       return false;
     }
 
-  if (filter == NULL)
-    {
-      /* the shape only: a host variable may not be bound yet */
-      switch (pred->info.expr.op)
-	{
-	case PT_EQ:
-	  return row_snapshot_const_shape (rhs);
-	case PT_RANGE:
-	  for (elem = rhs; elem != NULL; elem = elem->or_next)
-	    {
-	      if (!row_snapshot_const_shape (elem->info.expr.arg1))
-		{
-		  return false;
-		}
-	    }
-	  return true;
-	default:
-	  if (in_set == NULL)
-	    {
-	      for (elem = rhs->info.function.arg_list; elem != NULL; elem = elem->next)
-		{
-		  if (!row_snapshot_const_shape (elem))
-		    {
-		      return false;
-		    }
-		}
-	    }
-	  return true;
-	}
-    }
-
-  /* malloc'd, not parser memory: the bind fingerprint prepares filters on every check of a kept
-   * statement, whose parser lives as long as the statement */
+  /* malloc'd, not parser memory: the filter lives only until the read, and a statement planned
+   * many times would pile up parser memory for each */
   filter->column = row_snapshot_column (snapshot, classop, lhs->info.name.original);
   filter->elements = NULL;
   filter->values = (DB_VALUE **) calloc (n, sizeof (DB_VALUE *));
@@ -849,60 +424,279 @@ row_snapshot_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapsho
   return true;
 }
 
-int
-row_snapshot_survivors (const ROW_SNAPSHOT *snapshot, const ROW_SNAPSHOT_FILTER *filters, int n_filters, int *rows)
+/* a column of the class leads an index a filter on it can scan: not a function or filtered index,
+ * not a reverse one (its keys are not the values), and usable now */
+static bool
+row_snapshot_column_indexed (SM_CLASS *class_, int attr_id)
 {
-  int k = 0;
-
-  for (int r = 0; r < snapshot->n_rows; r++)
+  for (SM_CLASS_CONSTRAINT *cons = class_->constraints; cons != NULL; cons = cons->next)
     {
-      bool survives = true;
-
-      for (int f = 0; f < n_filters && survives; f++)
+      if ((cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_UNIQUE
+	   && cons->type != SM_CONSTRAINT_PRIMARY_KEY && cons->type != SM_CONSTRAINT_FOREIGN_KEY)
+	  || cons->index_status != SM_NORMAL_INDEX || cons->func_index_info != NULL || cons->filter_predicate != NULL
+	  || cons->attributes == NULL || cons->attributes[0] == NULL)
 	{
-	  const DB_VALUE *row_value = &snapshot->values[r * snapshot->n_attrs + filters[f].column];
-	  bool matched = false;
-
-	  if (DB_IS_NULL (row_value))
-	    {
-	      /* NULL = anything is not true */
-	      survives = false;
-	      break;
-	    }
-	  /* the comparison the executor makes: coercion allowed, so CHAR padding and numeric
-	   * promotion agree with the result of the query */
-	  for (int v = 0; v < filters[f].n_values && !matched; v++)
-	    {
-	      matched = (tp_value_compare (row_value, filters[f].values[v], 1, 1) == DB_EQ);
-	    }
-	  survives = matched;
+	  continue;
 	}
-      if (survives)
+      if (cons->attributes[0]->id == attr_id)
 	{
-	  rows[k++] = r;
+	  return true;
 	}
     }
-  return k;
+  return false;
+}
+
+static const char *
+row_snapshot_attr_name (SM_CLASS *class_, int attr_id)
+{
+  for (SM_ATTRIBUTE *att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->id == attr_id)
+	{
+	  return att->header.name;
+	}
+    }
+  return NULL;
+}
+
+ROW_SNAPSHOT *
+row_snapshot_columns (SM_CLASS *class_)
+{
+  ROW_SNAPSHOT *columns;
+  SM_ATTRIBUTE *att;
+  int n = 0;
+
+  if (class_ == NULL || (class_->flags & SM_CLASSFLAG_ROW_SNAPSHOT) == 0)
+    {
+      return NULL;
+    }
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->domain != NULL && row_snapshot_keeps_type (TP_DOMAIN_TYPE (att->domain)))
+	{
+	  n++;
+	}
+    }
+  if (n == 0)
+    {
+      return NULL;
+    }
+
+  columns = (ROW_SNAPSHOT *) calloc (1, sizeof (ROW_SNAPSHOT));
+  if (columns == NULL)
+    {
+      return NULL;
+    }
+  columns->attr_ids = (int *) calloc (n, sizeof (int));
+  if (columns->attr_ids == NULL)
+    {
+      free_and_init (columns);
+      return NULL;
+    }
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->domain != NULL && row_snapshot_keeps_type (TP_DOMAIN_TYPE (att->domain)))
+	{
+	  columns->attr_ids[columns->n_attrs++] = att->id;
+	}
+    }
+  return columns;
+}
+
+ROW_SNAPSHOT *
+row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, const ROW_SNAPSHOT_FILTER *filters,
+		   int n_filters, int max_rows)
+{
+  /* the read is a statement on a declared class with the same filters: planning it must not read
+   * again. The client runs one statement at a time, so a plain flag will do. */
+  static bool in_read = false;
+  std::string query;
+  std::vector<DB_VALUE> binds;
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *result = NULL;
+  ROW_SNAPSHOT *rows = NULL;
+  const char *class_name, *name;
+  char *saved_dump_filename;
+  FILE *saved_dump_fp;
+  bool saved_dump_fp_open, indexed = false, usable = true;
+  int saved_level, stmt, pos, c, f, n = 0;
+
+  if (in_read || classop == NULL || class_ == NULL || columns == NULL || n_filters <= 0 || max_rows <= 0)
+    {
+      return NULL;
+    }
+  class_name = sm_ch_name ((MOBJ) class_);
+  if (class_name == NULL)
+    {
+      return NULL;
+    }
+
+  /* SELECT <columns> FROM <class> WHERE <col> IN (?, ...) AND ... LIMIT max_rows + 1 */
+  query = "SELECT ";
+  for (c = 0; c < columns->n_attrs; c++)
+    {
+      name = row_snapshot_attr_name (class_, columns->attr_ids[c]);
+      if (name == NULL)
+	{
+	  return NULL;
+	}
+      query += (c == 0) ? "[" : ", [";
+      query += name;
+      query += "]";
+    }
+  query += " FROM [";
+  query += class_name;
+  query += "] WHERE ";
+  for (f = 0; f < n_filters; f++)
+    {
+      name = row_snapshot_attr_name (class_, columns->attr_ids[filters[f].column]);
+      if (name == NULL || filters[f].n_values <= 0)
+	{
+	  return NULL;
+	}
+      /* one indexed filter column is enough: the scan goes through it and the others filter */
+      indexed = indexed || row_snapshot_column_indexed (class_, columns->attr_ids[filters[f].column]);
+      query += (f == 0) ? "[" : " AND [";
+      query += name;
+      query += "] IN (";
+      for (int v = 0; v < filters[f].n_values; v++)
+	{
+	  query += (v == 0) ? "?" : ", ?";
+	  binds.push_back (*filters[f].values[v]);	/* shallow: db_push_values () copies them */
+	}
+      query += ")";
+    }
+  if (!indexed)
+    {
+      /* without an index the read scans the whole table at every compile */
+      return NULL;
+    }
+  /* bound, so every read of a class with as many filter values shares one cached plan */
+  query += " LIMIT ?";
+  binds.emplace_back ();
+  db_make_int (&binds.back (), max_rows + 1);
+
+  /* The read is compiled and run in the middle of planning another statement, so it must leave
+   * that statement's state alone: its error (the read's own failure only means "keep the
+   * estimate") and its plan dump -- generating the read's XASL would close the dump file the
+   * statement's XASL generation has open. The read itself runs at level 1, optimized, executed and
+   * not dumped, whatever the statement's level: a plan-only level (2, the one a driver asks for to
+   * show a plan) would not execute it, and the plan it shows would not be the one run. */
+  in_read = true;
+  er_stack_push ();
+  saved_dump_filename = query_Plan_dump_filename;
+  saved_dump_fp = query_Plan_dump_fp;
+  saved_dump_fp_open = query_Plan_dump_fp_open;
+  query_Plan_dump_filename = NULL;
+  query_Plan_dump_fp = NULL;
+  query_Plan_dump_fp_open = false;
+  qo_get_optimization_param (&saved_level, QO_PARAM_LEVEL);
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 1);
+
+  session = db_open_buffer_local (query.c_str ());
+  if (session != NULL)
+    {
+      stmt = db_compile_statement_local (session);
+      if (stmt <= 0 || db_push_values (session, (int) binds.size (), binds.data ()) != NO_ERROR
+	  || db_execute_statement_local (session, stmt, &result) < 0 || result == NULL)
+	{
+	  usable = false;
+	}
+    }
+  else
+    {
+      usable = false;
+    }
+
+  if (usable)
+    {
+      rows = (ROW_SNAPSHOT *) calloc (1, sizeof (ROW_SNAPSHOT));
+      if (rows != NULL)
+	{
+	  rows->n_attrs = columns->n_attrs;
+	  rows->attr_ids = (int *) calloc (columns->n_attrs, sizeof (int));
+	  rows->values = (DB_VALUE *) calloc ((size_t) (max_rows + 1) * columns->n_attrs, sizeof (DB_VALUE));
+	}
+      if (rows == NULL || rows->attr_ids == NULL || rows->values == NULL)
+	{
+	  usable = false;
+	}
+      else
+	{
+	  memcpy (rows->attr_ids, columns->attr_ids, columns->n_attrs * sizeof (int));
+	}
+    }
+  for (pos = usable ? db_query_first_tuple (result) : DB_CURSOR_END; usable && pos == DB_CURSOR_SUCCESS;
+       pos = db_query_next_tuple (result))
+    {
+      if (n == max_rows)
+	{
+	  /* more rows pass than a code lookup: the histograms keep the estimate */
+	  usable = false;
+	  break;
+	}
+      for (c = 0; c < columns->n_attrs; c++)
+	{
+	  DB_VALUE *v = &rows->values[ (size_t) n * columns->n_attrs + c];
+
+	  db_make_null (v);
+	  if (db_query_get_tuple_value (result, c, v) != NO_ERROR)
+	    {
+	      usable = false;
+	    }
+	}
+      rows->n_rows = ++n;
+    }
+  if (pos < 0)
+    {
+      usable = false;
+    }
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session_local (session);
+    }
+
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_level);
+  query_Plan_dump_filename = saved_dump_filename;
+  query_Plan_dump_fp = saved_dump_fp;
+  query_Plan_dump_fp_open = saved_dump_fp_open;
+  er_stack_pop ();
+  in_read = false;
+
+  if (!usable || n == 0)
+    {
+      /* no row passes: nothing says which keys the node joins on (a code not in the table yet is
+       * priced as the histograms price it) */
+      row_snapshot_free (rows);
+      return NULL;
+    }
+  return rows;
 }
 
 bool
-row_snapshot_join_selectivity (const ROW_SNAPSHOT *snapshot, const int *rows, int k, int column, PT_NODE *other,
-			       double nf_other, double *selectivity)
+row_snapshot_join_selectivity (const ROW_SNAPSHOT *snapshot, int column, PT_NODE *other, double nf_other,
+			       double *selectivity)
 {
   double sum = 0.0, sel;
   bool success = false;
   std::vector<DB_VALUE *> keys;
+  int k;
 
-  if (k <= 0 || column < 0)
+  if (snapshot == NULL || snapshot->n_rows <= 0 || column < 0)
     {
       return false;
     }
+  k = snapshot->n_rows;
 
   /* a NULL key joins no row of the other side: it stays in k and adds 0 (the sum skips it) */
   keys.reserve (k);
   for (int i = 0; i < k; i++)
     {
-      keys.push_back (&snapshot->values[rows[i] * snapshot->n_attrs + column]);
+      keys.push_back (&snapshot->values[i * snapshot->n_attrs + column]);
     }
   histogram_get_equal_selectivity_sum (other, keys.data (), k, &sum, &success);
   if (!success)

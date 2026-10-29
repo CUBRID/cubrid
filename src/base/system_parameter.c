@@ -829,7 +829,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
-#define PRM_NAME_STATISTICS_ROW_SNAPSHOT_ROWS "statistics_row_snapshot_rows"
+#define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
 
 // #endregion
 
@@ -5715,16 +5715,16 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* row snapshot (CBRD-27478): how many rows UPDATE STATISTICS keeps for a table declared
-   * ROW_SNAPSHOT -- all of them up to this count, none beyond it; 0 turns both the
-   * collection and the use off. In the query string because it changes plans. */
-  {PRM_ID_STATISTICS_ROW_SNAPSHOT_ROWS,
-   PRM_NAME_STATISTICS_ROW_SNAPSHOT_ROWS,
+  /* row snapshot (CBRD-27478): the most rows the optimizer reads from a table declared ROW_SNAPSHOT
+   * for one constant filter while it plans -- a filter that selects more keeps the histogram
+   * estimate; 0 turns the reading off. In the query string because it changes plans. */
+  {PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
+   PRM_NAME_ROW_SNAPSHOT_MAX_ROWS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 10000}},
-   {false, {.i = 10000}},
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
    {false, {.i = 10000}},
    {false, {.i = 0}},
    (char *) NULL,

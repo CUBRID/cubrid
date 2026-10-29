@@ -377,8 +377,8 @@ struct qo_node
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
   bool sort_limit_candidate;	/* whether this node is a candidate for a SORT_LIMIT plan */
-  int snapshot_card;		/* rows of this node's row snapshot that survived its constant sargs
-				 * (qo_row_snapshot_apply ()); -1 when the pass did not apply (CBRD-27478) */
+  int snapshot_card;		/* rows of the table this node's constant sargs selected, read while
+				 * planning (qo_row_snapshot_apply ()); -1 when the pass did not apply (CBRD-27478) */
 };
 
 #define QO_NODE_ENV(node)		(node)->env
@@ -778,7 +778,7 @@ struct qo_term
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
 #define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
 #define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
-#define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity from the small side's kept rows (CBRD-27478) */
+#define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity from the small side's rows (CBRD-27478) */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
