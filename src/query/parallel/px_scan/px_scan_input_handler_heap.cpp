@@ -31,7 +31,6 @@
 namespace parallel_scan
 {
   thread_local HEAP_SCANCACHE *input_handler_heap::m_tl_scan_cache = NULL;
-  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {};
   thread_local ftab_set *input_handler_heap::m_tl_ftab_set = NULL;
   thread_local VPID input_handler_heap::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_heap::m_tl_pgoffset = 0;
@@ -42,7 +41,6 @@ namespace parallel_scan
     m_tl_scan_cache = &scan_id->s.hsid.scan_cache;
     /* open_scan should have succeeded */
     assert (m_tl_scan_cache->debug_initpattern == 12345);
-    PGBUF_INIT_WATCHER (&m_tl_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     int idx = m_splited_ftab_set_idx.fetch_add (1);
     if (idx < 0 || (size_t) idx >= m_splited_ftab_set.size ())
       {
@@ -95,10 +93,6 @@ namespace parallel_scan
 	    m_tl_ftab = m_tl_ftab_set->get_next();
 	    if (VSID_IS_NULL (&m_tl_ftab.vsid))
 	      {
-		if (m_tl_old_page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-		  }
 		return S_END;
 	      }
 	    m_tl_pgoffset = 0;
@@ -118,9 +112,11 @@ namespace parallel_scan
 	      {
 		found = true;
 
+		/* release the current page first: the next VPID comes from the scan-start bitmap, not from this page's
+		 * chain link, and holding this page while waiting deadlocks with vacuum deallocating an empty page */
 		if (m_tl_scan_cache->page_watcher.pgptr != NULL)
 		  {
-		    pgbuf_replace_watcher (thread_p, &m_tl_scan_cache->page_watcher, &m_tl_old_page_watcher);
+		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
 		  }
 
 		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
@@ -136,18 +132,9 @@ namespace parallel_scan
 			return S_ERROR;
 		      }
 		    /* page valid at bitmap build time but deallocated since; ignorable. */
-		    if (m_tl_old_page_watcher.pgptr != NULL)
-		      {
-			pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-		      }
 		    er_clear ();
 		    found = false;
 		    continue;
-		  }
-
-		if (m_tl_old_page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
 		  }
 
 		assert (pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr) == PAGE_HEAP);
@@ -185,16 +172,11 @@ namespace parallel_scan
 
   int input_handler_heap::finalize (THREAD_ENTRY *thread_p)
   {
-    if (m_tl_old_page_watcher.pgptr != NULL)
-      {
-	pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-      }
     if (m_tl_scan_cache->page_watcher.pgptr != NULL)
       {
 	pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
       }
     m_tl_scan_cache = NULL;
-    m_tl_old_page_watcher.pgptr = NULL;
     return NO_ERROR;
   }
 }
