@@ -1670,25 +1670,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
 
-        if (val != null
-                && ty.type instanceof TypeNumeric
-                && ((TypeNumeric) ty.type).precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
-            ExprFloat exprFloat = val instanceof ExprFloat ? (ExprFloat) val : null;
-            ExprUint exprUint = val instanceof ExprUint ? (ExprUint) val : null;
-
-            if ((exprFloat != null && exprFloat.ty == Type.NUMERIC_ANY)
-                    || (exprUint != null && exprUint.ty == Type.NUMERIC_ANY)) {
-
-                String valStr = exprFloat != null ? exprFloat.val : exprUint.val;
-                NumericValue.PrecisionScale ps = NumericValue.calculatePrecisionScale(valStr);
-                if (ps != null) {
-                    TypeNumeric newType =
-                            TypeNumeric.getInstance(iStore, ps.precision, (short) ps.scale);
-                    ty.type = newType;
-                }
-            }
-        }
-
         String comment = null;
         if (ctx.COMMENT() != null) {
             comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
