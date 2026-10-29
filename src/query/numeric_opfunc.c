@@ -3713,6 +3713,132 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
   return ret;
 }
 
+/* the words of an exact comparison: 1024 bits hold a NUMERIC coefficient times 10^-DB_MIN_NUMERIC_SCALE or a
+ * DB_BIGINT magnitude times 10^DB_MAX_NUMERIC_SCALE (under 910 bits) */
+#define NUMERIC_EXACT_WORDS 16
+
+/* words *= factor, low word first; the new word count */
+static int
+numeric_words_mul_small (uint64_t * words, int n, uint64_t factor)
+{
+  uint64_t carry = 0;
+  int i;
+
+  for (i = 0; i < n; i++)
+    {
+      const uint128_t product = (uint128_t) words[i] * factor + carry;
+
+      words[i] = (uint64_t) product;
+      carry = (uint64_t) (product >> 64);
+    }
+  if (carry != 0)
+    {
+      assert (n < NUMERIC_EXACT_WORDS);
+      words[n++] = carry;
+    }
+  return n;
+}
+
+/* words *= 10^power */
+static int
+numeric_words_mul_pow10 (uint64_t * words, int n, int power)
+{
+  while (power > 0)
+    {
+      const int step = MIN (power, 19);
+
+      n = numeric_words_mul_small (words, n, _gv_mul_normalize_pow10_lookup[step - 1]);
+      power -= step;
+    }
+  return n;
+}
+
+static DB_VALUE_COMPARE_RESULT
+numeric_words_compare (const uint64_t * a, int na, const uint64_t * b, int nb)
+{
+  int i;
+
+  for (i = MAX (na, nb) - 1; i >= 0; i--)
+    {
+      const uint64_t wa = i < na ? a[i] : 0;
+      const uint64_t wb = i < nb ? b[i] : 0;
+
+      if (wa != wb)
+	{
+	  return wa < wb ? DB_LT : DB_GT;
+	}
+    }
+  return DB_EQ;
+}
+
+/*
+ * numeric_compare_u64_magnitude () - the order of an unsigned integer and a NUMERIC magnitude
+ *   return: DB_LT, DB_EQ or DB_GT of value against buf * 10^-scale
+ */
+static DB_VALUE_COMPARE_RESULT
+numeric_compare_u64_magnitude (uint64_t value, const unsigned char *buf, int scale)
+{
+  const uint64_t c_hi = buf[0];
+  const uint64_t c_mid = numeric_get_uint64_from_be (buf + 1);
+  const uint64_t c_lo = numeric_get_uint64_from_be (buf + 1 + sizeof (uint64_t));
+
+  if (scale >= 0 && scale <= 19 && c_hi == 0)
+    {
+      /* value * 10^scale < 2^64 * 10^19 < 2^128 */
+      const uint128_t lhs =
+	scale == 0 ? (uint128_t) value : (uint128_t) value * _gv_mul_normalize_pow10_lookup[scale - 1];
+      const uint128_t c = ((uint128_t) c_mid << 64) | c_lo;
+
+      return lhs < c ? DB_LT : lhs > c ? DB_GT : DB_EQ;
+    }
+
+  uint64_t lhs[NUMERIC_EXACT_WORDS] = { value };
+  uint64_t rhs[NUMERIC_EXACT_WORDS] = { c_lo, c_mid, c_hi };
+  int n_lhs = 1, n_rhs = 3;
+
+  if (scale >= 0)
+    {
+      n_lhs = numeric_words_mul_pow10 (lhs, n_lhs, scale);
+    }
+  else
+    {
+      n_rhs = numeric_words_mul_pow10 (rhs, n_rhs, -scale);
+    }
+  return numeric_words_compare (lhs, n_lhs, rhs, n_rhs);
+}
+
+/*
+ * numeric_compare_bigint_num_exact () - the order of an integer and a NUMERIC, without making the integer a NUMERIC
+ *   return: DB_LT, DB_EQ or DB_GT of value against num_value
+ *   value(in)
+ *   num_value(in): a non-NULL NUMERIC
+ */
+DB_VALUE_COMPARE_RESULT
+numeric_compare_bigint_num_exact (DB_BIGINT value, const DB_VALUE * num_value)
+{
+  const DB_C_NUMERIC buf = db_locate_numeric (num_value);
+  int precision, scale, num_sign, value_sign;
+  DB_VALUE_COMPARE_RESULT magnitude;
+
+  num_sign = numeric_is_zero (buf) ? 0 : numeric_is_negative (num_value) ? -1 : 1;
+  value_sign = value > 0 ? 1 : value < 0 ? -1 : 0;
+  if (value_sign != num_sign)
+    {
+      return value_sign < num_sign ? DB_LT : DB_GT;
+    }
+  if (value_sign == 0)
+    {
+      return DB_EQ;
+    }
+  db_get_numeric_precision_and_scale (num_value, &precision, &scale, NULL);
+  magnitude = numeric_compare_u64_magnitude (value < 0 ? -(uint64_t) value : (uint64_t) value, buf, scale);
+  if (value_sign > 0)
+    {
+      return magnitude;
+    }
+  return magnitude == DB_LT ? DB_GT : magnitude == DB_GT ? DB_LT : DB_EQ;
+}
+
 /*
  * numeric_coerce_int_to_num () -
  *   return:
