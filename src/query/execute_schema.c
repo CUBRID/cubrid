@@ -2078,19 +2078,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (need_check_repl_constraint)
     {
-      int is_vclass = db_is_vclass (class_obj);
-      if (is_vclass < 0)
-	{
-	  error_code = is_vclass;
-	  goto error_exit;
-	}
-
-      /* Vclasses do not store data and therefore do not require a replication key. */
-      if (is_vclass > 0)
-	{
-	  return NO_ERROR;
-	}
-
       error_code = check_ha_repl_constraints_in_hierarchy (class_obj);
       if (error_code != NO_ERROR)
 	{
@@ -10133,7 +10120,21 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
 int
 check_ha_repl_constraint (DB_OBJECT * class_obj)
 {
+  int is_vclass;
+
   if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  is_vclass = db_is_vclass (class_obj);
+  if (is_vclass < 0)
+    {
+      return is_vclass;
+    }
+
+  /* Vclasses do not store data and therefore do not require replication constraints. */
+  if (is_vclass > 0)
     {
       return NO_ERROR;
     }
