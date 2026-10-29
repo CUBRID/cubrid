@@ -3209,7 +3209,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private int sqlDataAccess;
 
-
     private InstanceStore iStore;
     private int typeVisitMode = TYPE_VISIT_NORMAL;
 
