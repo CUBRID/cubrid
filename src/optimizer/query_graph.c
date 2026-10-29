@@ -207,6 +207,7 @@ static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
 static void qo_row_snapshot_apply (QO_ENV * env);
+static bool qo_row_snapshot_join_term (QO_TERM * term);
 static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
 static void qo_derived_term_compensate (QO_ENV * env);
 
@@ -8527,10 +8528,10 @@ qo_assign_eq_classes (QO_ENV * env)
  *
  * The node's own selectivity becomes k over the table's rows. Nothing else changes: no derived
  * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
- * the index scan cost already reads. Every failure along the way -- a table not declared, a
- * predicate the pass cannot evaluate, no index on a filter column, no row or more than
- * row_snapshot_max_rows rows selected, a key the histogram cannot price, a join between two
- * snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
+ * the index scan cost already reads. Every failure along the way -- a table not declared or not
+ * joined by an equality, a predicate the pass cannot evaluate, no index on a filter column, no
+ * row or more than row_snapshot_max_rows rows selected, a key the histogram cannot price, a join
+ * between two snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
  */
 static void
 qo_row_snapshot_apply (QO_ENV * env)
@@ -8548,8 +8549,9 @@ qo_row_snapshot_apply (QO_ENV * env)
   double sel;
   bool ok;
 
+  /* the rows only price joins: a single-table statement reads nothing */
   max_rows = row_snapshot_max_rows ();
-  if (max_rows <= 0)
+  if (max_rows <= 0 || env->nnodes < 2)
     {
       return;
     }
@@ -8575,6 +8577,18 @@ qo_row_snapshot_apply (QO_ENV * env)
 	  || PT_SPEC_IS_CTE (QO_NODE_ENTITY_SPEC (node))
 	  || QO_NODE_ENTITY_SPEC (node)->info.spec.meta_class == PT_META_CLASS
 	  || bitset_is_empty (&(QO_NODE_SARGS (node))))
+	{
+	  continue;
+	}
+
+      /* joined to another node by an equality the pass can price, or reading buys nothing */
+      ok = false;
+      for (t = 0; t < env->nterms && !ok; t++)
+	{
+	  term = QO_ENV_TERM (env, t);
+	  ok = qo_row_snapshot_join_term (term) && BITSET_MEMBER (QO_TERM_NODES (term), n);
+	}
+      if (!ok)
 	{
 	  continue;
 	}
@@ -8648,22 +8662,13 @@ qo_row_snapshot_apply (QO_ENV * env)
   for (t = 0; t < env->nterms; t++)
     {
       term = QO_ENV_TERM (env, t);
-      if (QO_TERM_CLASS (term) != QO_TC_JOIN || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
-	  || !QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) || bitset_cardinality (&(QO_TERM_NODES (term))) != 2)
+      if (!qo_row_snapshot_join_term (term))
 	{
 	  continue;
 	}
       pt_expr = QO_TERM_PT_EXPR (term);
-      if (pt_expr == NULL || pt_expr->node_type != PT_EXPR || pt_expr->info.expr.op != PT_EQ)
-	{
-	  continue;
-	}
       lhs = pt_expr->info.expr.arg1;
       rhs = pt_expr->info.expr.arg2;
-      if (lhs == NULL || rhs == NULL || lhs->node_type != PT_NAME || rhs->node_type != PT_NAME)
-	{
-	  continue;
-	}
 
       n = bitset_iterate (&(QO_TERM_NODES (term)), &iter);
       other = bitset_next_member (&iter);
@@ -8715,6 +8720,19 @@ qo_row_snapshot_apply (QO_ENV * env)
     {
       row_snapshot_free (snapshots[n]);
     }
+}
+
+/* `a.col = b.col` between two nodes, the one join shape qo_row_snapshot_apply () prices */
+static bool
+qo_row_snapshot_join_term (QO_TERM * term)
+{
+  PT_NODE *pt_expr = QO_TERM_PT_EXPR (term);
+
+  return (QO_TERM_CLASS (term) == QO_TC_JOIN && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+	  && QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) && bitset_cardinality (&(QO_TERM_NODES (term))) == 2
+	  && pt_expr != NULL && pt_expr->node_type == PT_EXPR && pt_expr->info.expr.op == PT_EQ
+	  && pt_expr->info.expr.arg1 != NULL && pt_expr->info.expr.arg1->node_type == PT_NAME
+	  && pt_expr->info.expr.arg2 != NULL && pt_expr->info.expr.arg2->node_type == PT_NAME);
 }
 
 /*
