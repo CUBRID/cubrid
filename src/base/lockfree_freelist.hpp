@@ -163,7 +163,8 @@ namespace lockfree
     assert (m_block_size > 0);
 
     // initial_block_count blocks of block_size, as lf_freelist_init () allocates; lock_dump_resource () prints the
-    // count, so any other number changes cubrid lockdb. a block that cannot be allocated is left to claim ().
+    // count, so any other number changes cubrid lockdb. hashmap::init () reports a shortfall, as lf_freelist_init ()
+    // does.
     for (size_t i = 0; i < initial_block_count; i++)
       {
 	if (!alloc_block ())

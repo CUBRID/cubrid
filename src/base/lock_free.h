@@ -444,7 +444,8 @@ int
 lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
                                  int freelist_block_size, lf_entry_descriptor &edesc)
 {
-  /* both answer ER_OUT_OF_VIRTUAL_MEMORY and both used to be swallowed by an assert (false) here */
+  /* both raise ER_OUT_OF_VIRTUAL_MEMORY (lf_freelist_init () then answers ER_FAILED), and both used to be swallowed
+   * by an assert (false) here */
   int error_code = lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys);
   if (error_code != NO_ERROR)
     {

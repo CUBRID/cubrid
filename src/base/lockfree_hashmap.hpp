@@ -280,6 +280,15 @@ namespace lockfree
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));
 	return ER_OUT_OF_VIRTUAL_MEMORY;
       }
+    // lf_freelist_init () fails when an initial block cannot be allocated, and the boot stops there
+    if (m_freelist->get_alloc_count () < freelist_block_size * freelist_block_count)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		(size_t) (sizeof (free_node_type) * freelist_block_size));
+	delete m_freelist;
+	m_freelist = NULL;
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
     // the freelist knows nothing of entry descriptors, so hand it CBRD-24474's cap
     m_freelist->set_max_alloc_count (edesc.max_alloc_cnt > 0
 				     ? (size_t) edesc.max_alloc_cnt : std::numeric_limits<size_t>::max ());
