@@ -293,6 +293,7 @@ jobs:
           NEW: ${{ steps.pin.outputs.new_short }}
         run: |
           set -euo pipefail
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           # Dispatched runs are grouped by SHA, so a new head would not cancel the previous run.
           for id in $(gh run list --repo "$PARENT" --workflow gha-ci.yml --event workflow_dispatch --limit 100 \
                         --json databaseId,status,displayTitle \
@@ -311,6 +312,14 @@ jobs:
               sleep 15
             done
           done
+          # A member's /run all since this update already runs the same CI.
+          RAN=$(gh api "repos/$PARENT/issues/$PR/comments?since=$SINCE&per_page=100" \
+                  --jq '.[] | select((.author_association | test("^(OWNER|MEMBER|COLLABORATOR)$")) and (.body | test("^/run\\s+(.*\\s)?all(\\s|$)"))) | .id')
+          if [ -n "$RAN" ]; then
+            printf '`/run all`이 이미 달려 있어 CI를 자동으로 시작하지 않았습니다 (`%s` `%s` 기준).\n' "$SUB" "$NEW" \
+              | gh pr comment "$PR" --repo "$PARENT" --body-file -
+            exit 0
+          fi
           OUT=$(gh workflow run gha-ci.yml --repo "$PARENT" --ref "$BASE_BRANCH" -f pr="$PR" -f sha="$SHA" -f suite=all 2>&1)
           echo "$OUT"
           URL=$(grep -oE 'https://[^[:space:]]+/actions/runs/[0-9]+' <<<"$OUT" || true)
