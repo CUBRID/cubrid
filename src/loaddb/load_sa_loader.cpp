@@ -5581,13 +5581,31 @@ insert_meth_instance (LDR_CONTEXT *context)
 	   */
 	  if (context->inst_num >= 0)
 	    {
-	      CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
-	      CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
-	      CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
-
-	      if (skip_current_instance)
+	      /*
+	       * The object table and the tempoid map are the loader's own bookkeeping, and
+	       * neither has a way to take an entry back out. Do not put these through the
+	       * error filter: an --error-control-file naming the memory error they can fail
+	       * with would drop the object while its entries stayed, and the next forward
+	       * reference to this instance number would find one that is gone. A failure
+	       * here ends the load, as the otable_find () between them already does.
+	       *
+	       * The line's own errors are all behind us - the forward reference above and
+	       * whatever construct_instance () reported - and both were answered before the
+	       * object reached the table.
+	       */
+	      err = otable_insert (context->table, WS_OID (real_obj), context->inst_num);
+	      if (err != NO_ERROR)
 		{
-		  ldr_restore_pin_and_drop_obj (context, true);
+		  display_error (0);
+		  goto error_exit;
+		}
+
+	      CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
+
+	      err = ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num);
+	      if (err != NO_ERROR)
+		{
+		  display_error (0);
 		  goto error_exit;
 		}
 	    }
