@@ -1030,6 +1030,77 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 }
 
 /*
+ * jsp_create_system_generated_procedure
+ *   return: if failed return error code else NO_ERROR
+ *   create_sql(in): a CREATE PROCEDURE statement
+ *
+ * Note: The procedure is marked as system generated, so users cannot see, alter or drop it.
+ */
+
+int
+jsp_create_system_generated_procedure (const char *create_sql)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE **statements;
+  PT_NODE *statement;
+  int err = NO_ERROR;
+
+  assert (create_sql != NULL);
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  statements = parser_parse_string_with_escapes (parser, create_sql, false);
+  if (statements == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SYNTAX);
+      err = er_errid ();
+      goto end;
+    }
+
+  statement = statements[0];
+  if (statement == NULL || statement->node_type != PT_CREATE_STORED_PROCEDURE
+      || PT_NODE_SP_TYPE (statement) != PT_SP_PROCEDURE || statements[1] != NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      err = ER_GENERIC_ERROR;
+      goto end;
+    }
+
+  statement = pt_compile (parser, statement);
+  if (statement == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      err = er_errid ();
+      goto end;
+    }
+
+  err = jsp_create_stored_procedure_internal (parser, statement, true);
+
+end:
+  parser_free_parser (parser);
+
+  return err;
+}
+
+/*
+ * jsp_drop_system_generated_procedure
+ *   return: if failed return error code else NO_ERROR
+ *   name(in): name of a procedure that jsp_create_system_generated_procedure created
+ */
+
+int
+jsp_drop_system_generated_procedure (const char *name)
+{
+  return drop_stored_procedure (name, SP_TYPE_PROCEDURE, true);
+}
+
+/*
  * jsp_create_stored_procedure_internal
  *   return: if failed return error code else NO_ERROR
  *   parser(in/out): parser environment
@@ -1291,6 +1362,7 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
+      code_info.is_system_generated = sp_info.is_system_generated ? 1 : 0;
 
       err = sp_add_stored_procedure_code (code_info);
       if (err != NO_ERROR)
@@ -1330,7 +1402,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner_mop = NULL, owner_mop = NULL;
-  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
+  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val, generated_val;
 
   assert (statement != NULL);
 
@@ -1375,6 +1447,19 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (sp_mop == NULL)
     {
       assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  err = db_get (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (1 == db_get_int (&generated_val))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
       goto error;
     }
