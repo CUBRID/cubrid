@@ -182,8 +182,7 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 OID * class_oid, int is_insert, int op_type,
 						 HEAP_SCANCACHE * scan_cache, bool datayn, bool replyn, HFID * hfid,
 						 FUNC_PRED_UNPACK_INFO * func_preds,
-						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
-						 bool skip_checking_fk);
+						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock);
 static bool locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
@@ -195,6 +194,8 @@ static int locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, 
 static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p,
 										MVCC_REC_HEADER * rec_header,
 										MVCC_SNAPSHOT * snapshot);
+static int locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+					  HEAP_SCANCACHE * scan_cache);
 static int locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, BTID * fk_btid,
 				       OID * oid, RECDES * recdes, DB_VALUE * parent_key, bool * refers);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4322,8 +4323,8 @@ locator_find_child_writer (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, 
  * return: SNAPSHOT_SATISFIED for a child to act on
  *
  * Children are taken as they are now, not by the statement snapshot. An entry whose inserter is still active counts:
- * the foreign key check takes no parent row lock and may have passed, so the child's lock waits that inserter out.
- * Rows loaded without the check (loaddb) are not covered.
+ * the foreign key check takes no parent row lock and may have passed, so that inserter is waited out before the child
+ * is locked (locator_wait_out_child_writer ()). Rows loaded without the check (loaddb) are not covered.
  */
 static MVCC_SATISFIES_SNAPSHOT_RESULT
 locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
@@ -4337,6 +4338,71 @@ locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEAD
       return SNAPSHOT_SATISFIED;
     default:
       return TOO_OLD_FOR_SNAPSHOT;
+    }
+}
+
+/*
+ * locator_wait_out_child_writer () - wait, without the child's row lock, for another transaction that wrote the
+ *				       child's last version and is still active
+ *
+ * return: NO_ERROR or error code
+ *
+ * Note: the writer holds no row lock on its version, an inserter none at all and an updater none past its statement.
+ *	 Locking the child first and then waiting in the locked read would hold the lock against the writer, and a
+ *	 writer that reaches the row again where no owner check lets it pass (its own restrict check, say) would wait
+ *	 for us: a deadlock. The locked read that follows settles whatever is left.
+ */
+static int
+locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, HEAP_SCANCACHE * scan_cache)
+{
+  HEAP_GET_CONTEXT context;
+  MVCC_REC_HEADER mvcc_header;
+  MVCCID writer;
+  SCAN_CODE scan;
+  int error_code;
+
+  while (true)
+    {
+      writer = MVCCID_NULL;
+      heap_init_get_context (thread_p, &context, oid, class_oid, NULL, scan_cache, PEEK, NULL_CHN);
+      context.latch_mode = PGBUF_LATCH_READ;
+      scan = heap_prepare_get_context (thread_p, &context, false, LOG_WARNING_IF_DELETED);
+      if (scan == S_SUCCESS)
+	{
+	  scan = heap_get_mvcc_header (thread_p, &context, &mvcc_header);
+	}
+      if (scan == S_SUCCESS && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)))
+	{
+	  writer = MVCC_GET_INSID (&mvcc_header);
+	}
+      if (scan_cache != NULL && scan_cache->cache_last_fix_page && context.home_page_watcher.pgptr != NULL)
+	{
+	  /* the wait below must not hold a page fixed */
+	  pgbuf_ordered_unfix (thread_p, &context.home_page_watcher);
+	}
+      heap_clean_get_context (thread_p, &context);
+
+      if (scan == S_ERROR && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      if (writer == MVCCID_NULL)
+	{
+	  /* nothing to wait for, or nothing left to read (a slot freed, or taken by another row's address): the locked
+	   * read decides, and skips the child as it always has */
+	  if (scan != S_SUCCESS)
+	    {
+	      er_clear ();
+	    }
+	  return NO_ERROR;
+	}
+      error_code = logtb_wait_for_tran_end (thread_p, writer);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
     }
 }
 
@@ -4664,6 +4730,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  SCAN_CODE scan_code = S_SUCCESS;
 		  bool refers = false;
 		  recdes.data = NULL;
+
+		  error_code = locator_wait_out_child_writer (thread_p, oid_ptr, &fkref->self_oid, &scan_cache);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 
 		  /* kept to commit; a child row we stamped ourselves is touched again without its lock */
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
@@ -5050,6 +5122,12 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  SCAN_CODE scan_code = S_SUCCESS;
 		  bool refers = false;
 		  recdes.data = NULL;
+
+		  error_code = locator_wait_out_child_writer (thread_p, oid_ptr, &fkref->self_oid, &scan_cache);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 
 		  /* kept to commit; a child row we stamped ourselves is touched again without its lock */
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
@@ -5469,8 +5547,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       if (has_index
 	  && locator_add_or_remove_index (thread_p, recdes, oid, &real_class_oid, true, op_type, local_scan_cache, true,
-					  true, &real_hfid, local_func_preds, has_BU_lock,
-					  skip_checking_fk) != NO_ERROR)
+					  true, &real_hfid, local_func_preds, has_BU_lock) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
@@ -6291,7 +6368,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 		  error_code =
 		    locator_add_or_remove_index (thread_p, recdes, oid, class_oid, true, op_type, local_scan_cache,
-						 true, true, hfid, NULL, false, false);
+						 true, true, hfid, NULL, false);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -6784,7 +6861,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	    {
 	      error_code =
 		locator_add_or_remove_index (thread_p, &copy_recdes, oid, &class_oid, false, op_type, scan_cache, true,
-					     true, hfid, NULL, false, false);
+					     true, hfid, NULL, false);
 	    }
 	  else
 	    {
@@ -8193,11 +8270,11 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo, BTID * 
 int
 locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid, int is_insert,
 			     int op_type, HEAP_SCANCACHE * scan_cache, bool datayn, bool need_replication, HFID * hfid,
-			     FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock, bool skip_checking_fk)
+			     FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock)
 {
   return locator_add_or_remove_index_internal (thread_p, recdes, inst_oid, class_oid, is_insert, op_type, scan_cache,
 					       datayn, need_replication, hfid, func_preds, FOR_INSERT_OR_DELETE,
-					       has_BU_lock, skip_checking_fk);
+					       has_BU_lock);
 }
 
 /*
@@ -8227,8 +8304,7 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p, RECDES * recdes
 					bool has_BU_lock)
 {
   return locator_add_or_remove_index_internal (thread_p, recdes, inst_oid, class_oid, is_insert, op_type, scan_cache,
-					       datayn, need_replication, hfid, func_preds, FOR_MOVE, has_BU_lock,
-					       false);
+					       datayn, need_replication, hfid, func_preds, FOR_MOVE, has_BU_lock);
 }
 
 /*
@@ -8259,8 +8335,7 @@ static int
 locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 				      int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 				      bool need_replication, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds,
-				      LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
-				      bool skip_checking_fk)
+				      LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock)
 {
   int num_found;
   int i, num_btids;
@@ -8425,14 +8500,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-
-	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
-		{
-		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-		    {
-		      goto error;
-		    }
-		}
 
 	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		{
