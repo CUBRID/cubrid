@@ -3325,7 +3325,7 @@ error:
  *
  * return	 : True if page was deallocated, false if not.
  * thread_p (in) : Thread entry.
- * page_ptr (in) : Pointer to page being deallocated.
+ * page_ptr (in/out) : Pointer to page being deallocated; NULL when it was deallocated, still write-latched when not.
  * hfid (in)	 : Heap file identifier.
  */
 bool
@@ -3457,13 +3457,14 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       goto error;
     }
 
-  /* if we are here, the page should not be accessed by any active or vacuum workers. Active workers are prevented
-   * from accessing it through heap scan, and direct references should not exist.
-   * the function would not be called if any other vacuum workers would try to access the page. */
+  /* A chain-order heap scan is kept away by the dealloc mark checked above, but scans that reach pages through the
+   * heap file's page list (parallel heap scan, statistics sampling, parallel index build, parallel SHOW HEAP
+   * CAPACITY) wait without the mark; give the page up to them. */
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
-      assert (false);
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Unexpected page waiters");
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Candidate heap page %d|%d to remove has waiters without dealloc mark.", page_vpid.volid,
+			     page_vpid.pageid);
       goto error;
     }
   /* all good, we can deallocate the page */
@@ -3628,7 +3629,12 @@ error:
 	  *page_ptr = crt_watcher.pgptr;
 	}
       assert (crt_watcher.pgptr == *page_ptr);
-      pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
+      if (crt_watcher.pgptr != NULL)
+	{
+	  /* the page goes back to the caller still latched, so that it reports the page's free space to bestspace */
+	  *page_ptr = pgbuf_fix (thread_p, &page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_ordered_unfix (thread_p, &crt_watcher);
+	}
     }
   else
     {

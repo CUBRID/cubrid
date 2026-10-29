@@ -93,6 +93,12 @@ namespace parallel_scan
 	m_.orig_xasl = orig_xasl_tree_for_domain_resolve;
 	m_.active_results = parallelism;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
+	m_.gby_skip = (orig_xasl_tree_for_domain_resolve->type == BUILDLIST_PROC
+		       && orig_xasl_tree_for_domain_resolve->spec_list != nullptr
+		       && orig_xasl_tree_for_domain_resolve->spec_list->indexptr != nullptr
+		       && orig_xasl_tree_for_domain_resolve->spec_list->indexptr->groupby_skip);
+	/* the leader turned the hash off for a group by skip (qexec_execute_mainblock_internal ()) */
+	assert (!m_.gby_skip || !m_.g_hash_eligible);
 
 	m_.instnum_mode = parallel_scan::detect_instnum_mode (orig_xasl_tree_for_domain_resolve,
 			  m_.rownum_col_indices, m_.instnum_draw);
@@ -187,6 +193,13 @@ namespace parallel_scan
 	      }
 	  }
 	m_.hgby_results.clear();
+	/* runs the leader did not adopt (a worker failed) */
+	for (QFILE_LIST_ID *list_id : m_.gby_runs)
+	  {
+	    qfile_destroy_list (thread_p, list_id);
+	    QFILE_FREE_AND_INIT_LIST_ID (list_id);
+	  }
+	m_.gby_runs.clear();
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -256,7 +269,7 @@ namespace parallel_scan
 	      return;
 	    }
 	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id,
-				     QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | XASL_LIST_BACKWARD_FLAG (curr_xasl), NULL);
+				     QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF | XASL_LIST_BACKWARD_FLAG (curr_xasl), NULL);
 	  if (!list_id)
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
@@ -316,6 +329,17 @@ namespace parallel_scan
 	    qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
 	    /* the worker's partial list is written at its finalize: it takes its domains as the leader's does */
 	    qexec_setup_hash_aggregate_lists (&curr_xasl->proc.buildlist);
+	  }
+	if (m_.gby_skip)
+	  {
+	    /* the clone's accumulator domains were planned at its unpack, as the hash setup above */
+	    qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
+	    if (qexec_gby_skip_open_worker (thread_p, curr_xasl, vd->xasl_state) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return;
+	      }
 	  }
 	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
 	tl.is_topn = false;
@@ -407,6 +431,24 @@ namespace parallel_scan
 	    return;
 	  }
 
+	QFILE_LIST_ID **gby_runs = nullptr;
+	int gby_run_cnt = 0;
+	INT64 gby_rows = 0;
+	bool gby_append = false;
+	if (m_.gby_skip)
+	  {
+	    /* the last group goes to the worker's last run; the runs are handed over below */
+	    if (qexec_gby_skip_end_worker (thread_p, tl.xasl, &gby_runs, &gby_run_cnt, &gby_rows) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
+	    else
+	      {
+		gby_append = true;
+	      }
+	  }
+
 	AGGREGATE_HASH_CONTEXT *context = tl.xasl->proc.buildlist.agg_hash_context;
 	bool hash_aggregate_append = m_.g_hash_eligible;
 	if (hash_aggregate_append)
@@ -470,6 +512,11 @@ namespace parallel_scan
 		{
 		  m_.hgby_state = context->state;
 		}
+	    }
+	  if (gby_append)
+	    {
+	      m_.gby_runs.insert (m_.gby_runs.end (), gby_runs, gby_runs + gby_run_cnt);
+	      m_.gby_rows += gby_rows;
 	    }
 
 	  m_.active_results--;
@@ -784,6 +831,20 @@ namespace parallel_scan
 	      }
 	  }
 
+	if (m_.gby_skip)
+	  {
+	    /* the leader merges the runs when its scan ends (qexec_gby_skip_end ()) */
+	    if (qexec_gby_skip_adopt_runs (thread_p, m_.orig_xasl, m_.gby_runs.data (), (int) m_.gby_runs.size (),
+					   m_.gby_rows) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    m_.gby_runs.clear ();
+	    m_.gby_rows = 0;
+	  }
+
 	/* the leader's heap was flushed into dest above (or never got a row); falls through to qexec_orderby_distinct_by_sorting on the merged list_id at qexec_orderby_distinct (orderby_topnsort intentionally not set). */
 	qexec_clear_topn_items (thread_p, m_.orig_xasl);
 
@@ -931,6 +992,18 @@ namespace parallel_scan
 	QPROC_TPLDESCR_STATUS status;
 
 	OUTPTR_LIST *input = (OUTPTR_LIST *)src;
+
+	if (m_.gby_skip)
+	  {
+	    /* aggregated by key record now: the row's output is neither evaluated nor written */
+	    if (qexec_gby_skip_worker_row (thread_p, tl.xasl, tl.vd->xasl_state) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return false;
+	      }
+	    return true;
+	  }
 
 	if (m_.instnum_mode == parallel_scan::instnum_mode::ATOMIC_DRAW)
 	  {
@@ -1475,7 +1548,7 @@ namespace parallel_scan
 	  {
 	    if (agg_node->option == Q_DISTINCT)
 	      {
-		int ls_flag = QFILE_FLAG_DISTINCT | QFILE_NOT_USE_MEMBUF;
+		int ls_flag = QFILE_FLAG_DISTINCT | QFILE_FLAG_NO_MEMBUF;
 		QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 		type_list.type_cnt = 1;
 		type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
@@ -1500,7 +1573,7 @@ namespace parallel_scan
 	if constexpr (F == PT_MEDIAN || F == PT_PERCENTILE_CONT || F == PT_PERCENTILE_DISC)
 	  {
 	    /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: open list_id for value accumulation */
-	    int ls_flag = QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF;
+	    int ls_flag = QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF;
 	    QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 	    type_list.type_cnt = 1;
 	    type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
@@ -1527,7 +1600,7 @@ namespace parallel_scan
 	    if (agg_node->sort_list != NULL)
 	      {
 		/* GROUP_CONCAT(ORDER BY): open list_id for value accumulation */
-		int ls_flag = QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF;
+		int ls_flag = QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF;
 		QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 		type_list.type_cnt = 1;
 		type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
