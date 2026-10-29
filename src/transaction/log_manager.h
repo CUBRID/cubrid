@@ -305,6 +305,8 @@ extern LOG_EXTRACT_OWNER cdc_Session_owner;
 
 /* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
+extern int cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+			       bool * is_dba_group);
 extern bool cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
 			       bool * is_dba_group);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
