@@ -2469,11 +2469,22 @@ ldr_fetch_att (LDR_CONTEXT *context, LDR_ATTDESC *attdesc)
 {
   SM_CLASS *class_ = NULL;
   SM_COMPONENT **comp_ptr = (SM_COMPONENT **) (&attdesc->att);
+  const SM_ATTRIBUTE *att_before = attdesc->att;
   int err = sm_get_descriptor_component (context->cls, attdesc->attdesc, 1 /* for update */, &class_, comp_ptr);
 
   if (err != NO_ERROR)
     {
       return err;
+    }
+
+  if (attdesc->att == att_before && attdesc->conv_att != NULL)
+    {
+      /*
+       * The same attribute came back, so the copy still describes it. Worth asking:
+       * construct_instance () calls this for every attribute of every %constructor
+       * row, and rebuilding means a delete and a new each time.
+       */
+      return NO_ERROR;
     }
 
   return ldr_refresh_conv_att (attdesc);
