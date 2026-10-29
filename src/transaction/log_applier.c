@@ -10760,31 +10760,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  break;
 		}
 
-	      if (!LSA_ISNULL (&lrec->forw_lsa)
-		  && (LSA_GT (&la_Info.final_lsa, &lrec->forw_lsa)
-		      || lrec->forw_lsa.pageid > final_log_hdr.append_lsa.load ().pageid))
+	      if (!LSA_ISNULL (&lrec->forw_lsa) && LSA_GT (&la_Info.final_lsa, &lrec->forw_lsa))
 		{
-		  /* forw_lsa is read from the log page body and can be garbage on a
-		   * torn/partial page. Reject backward movement (original guard) and a
-		   * forward jump past the end of the log. final_log_hdr is a snapshot
-		   * taken at the top of the outer loop, so the master may have legally
-		   * appended more since then; re-read the live header and only treat a
-		   * jump past the *current* append as corruption, so a fast-advancing
-		   * master does not trip a false positive. */
-		  LOG_PAGEID live_append_pageid = la_Info.act_log.log_hdr->append_lsa.load ().pageid;
-
-		  if (LSA_GT (&la_Info.final_lsa, &lrec->forw_lsa) || lrec->forw_lsa.pageid > live_append_pageid)
-		    {
-		      er_log_debug (ARG_FILE_LINE,
-				    "ws_lsaguard reject forw_lsa overshoot: final %lld|%d forw %lld|%d live_append %lld",
-				    (long long int) la_Info.final_lsa.pageid, (int) la_Info.final_lsa.offset,
-				    (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
-				    (long long int) live_append_pageid);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
-		      error = ER_LOG_PAGE_CORRUPTED;
-		      la_shutdown ();
-		      return error;
-		    }
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
+		  error = ER_LOG_PAGE_CORRUPTED;
+		  la_shutdown ();
+		  return error;
 		}
 
 	      /* set the prev/next record */
