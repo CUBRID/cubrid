@@ -5979,7 +5979,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
    PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_QRY_STRING | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_numeric_empty_string_as_null_flag,
    (void *) &prm_numeric_empty_string_as_null_default,

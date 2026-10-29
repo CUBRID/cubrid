@@ -3245,7 +3245,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	      goto exit_on_error;
 	    }
 
-	  /* an empty or whitespace-only string ('', '   ') is NULL as before CBRD-26749 when the parameter is set */
+	  /* with numeric_empty_string_as_null, '' or a whitespace-only string is NULL as before CBRD-26749 */
 	  if (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL))
 	    {
 	      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
