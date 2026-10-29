@@ -376,8 +376,6 @@ static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -16246,7 +16244,7 @@ qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
  *   arg(in/out): bool *, set when such a node is found
  *   continue_walk(in/out):
  */
-static PT_NODE *
+PT_NODE *
 qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   bool *has_ineligible = (bool *) arg;
@@ -16387,8 +16385,8 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
    * hash_terms are excluded on purpose: the key expressions are materialized into the child buildlist outputs
    * and the workers read them by tuple position, so an SP in them never executes on a worker
    * (its evaluation is governed by the scan-path judge). A child hash join can compute them
-   * in its own probe loop instead (pass-through), but qo_check_pass_through_expr_pre () refuses that
-   * for an expression with a method call.
+   * in its own probe loop instead (pass-through), but qo_check_pass_through_hashjoin () refuses that
+   * for an SP in them that is not PARALLEL_ENABLE.
    */
   term_sets[0] = &plan->plan_un.join.during_join_terms;
   term_sets[1] = &plan->plan_un.join.after_join_terms;

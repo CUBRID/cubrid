@@ -31286,6 +31286,8 @@ qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
 {
   XASL_NODE *last_aptr;
 
+  assert (xasl != NULL);
+
   /* The shape the planner builds. */
 
   /* the node: a BUILDLIST_PROC with the one list scan ptqo_to_pass_through_wrapper () built */

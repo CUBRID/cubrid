@@ -17879,7 +17879,10 @@ ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NO
 {
   REGU_VARIABLE_LIST scan_regu_list;
 
-  assert (parser != NULL && xasl != NULL && listfile != NULL && namelist != NULL);
+  assert (parser != NULL);
+  assert (xasl != NULL);
+  assert (listfile != NULL);
+  assert (namelist != NULL);
 
   xasl->val_list = pt_make_val_list (parser, namelist);
   if (xasl->val_list == NULL)

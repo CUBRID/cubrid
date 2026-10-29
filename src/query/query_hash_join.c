@@ -33,8 +33,10 @@
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
+#include "query_executor.h"	/* qexec_insert_tuple_into_list */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
+#include "query_opfunc.h"	/* qdata_get_valptr_type_list */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
@@ -101,6 +103,8 @@ static void hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * con
 
 /* Hash Join Processing */
 static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+static int hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
+				 VAL_DESCR * val_descr);
 
 /* Build Phase */
 static int hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -705,8 +709,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (xasl->spec_list == NULL);
 
   merge_info = &proc->merge_info;
-  assert (merge_info->ls_pos_cnt > 0);
-  assert (merge_info->ls_pos_list != NULL);
   manager->merge_info = merge_info;
 
   manager->outer = &proc->outer;
@@ -734,6 +736,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->join_type = merge_info->join_type;
   manager->key_cnt = merge_info->ls_column_cnt;
 
+  manager->outptr_list = xasl->outptr_list;
   manager->during_join_pred = xasl->during_join_pred;
   manager->after_join_pred = xasl->after_join_pred;
   manager->num_parallel_threads = xasl->parallelism;
@@ -770,6 +773,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (context->build == NULL);
   assert (context->probe == NULL);
 
+  context->outptr_list = manager->outptr_list;
   context->during_join_pred = manager->during_join_pred;
   context->after_join_pred = manager->after_join_pred;
   context->val_descr = manager->val_descr;
@@ -785,30 +789,49 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (type_list->domp == NULL);
   assert (type_list->type_cnt == 0);
 
-  type_cnt = merge_info->ls_pos_cnt;
-
-  type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
-  if (type_list->domp == NULL)
+  if (manager->outptr_list != NULL)
     {
-      assert_release_error (er_errid () != NO_ERROR);
-      return er_errid ();
+      /* the planner gives an out list to an inner join only: every result row has both input tuples */
+      assert (manager->join_type == JOIN_INNER);
+      assert (merge_info->ls_pos_cnt == 0);
+
+      error = qdata_get_valptr_type_list (thread_p, manager->outptr_list, type_list);
+      if (error != NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
-
-  type_list->type_cnt = type_cnt;
-
-  for (type_index = 0; type_index < type_cnt; type_index++)
+  else
     {
-      if (merge_info->ls_pos_list[type_index] == QFILE_RESERVED_HASH_KEY_POS)
+      assert (merge_info->ls_pos_cnt > 0);
+      assert (merge_info->ls_pos_list != NULL);
+
+      type_cnt = merge_info->ls_pos_cnt;
+
+      type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
+      if (type_list->domp == NULL)
 	{
-	  type_list->domp[type_index] = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
 	}
-      else if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
+
+      type_list->type_cnt = type_cnt;
+
+      for (type_index = 0; type_index < type_cnt; type_index++)
 	{
-	  type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
-	}
-      else
-	{
-	  type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	  if (merge_info->ls_pos_list[type_index] == QFILE_RESERVED_HASH_KEY_POS)
+	    {
+	      type_list->domp[type_index] = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	    }
+	  else if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
+	    {
+	      type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	    }
+	  else
+	    {
+	      type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	    }
 	}
     }
 
@@ -1306,6 +1329,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       assert (current_context->build == NULL);
       assert (current_context->probe == NULL);
 
+      current_context->outptr_list = single_context->outptr_list;
       current_context->during_join_pred = single_context->during_join_pred;
       current_context->after_join_pred = single_context->after_join_pred;
       current_context->val_descr = single_context->val_descr;
@@ -2729,6 +2753,48 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
   return status;
 }
 
+/*
+ * hjoin_fetch_val_list() - fetch the current probe and build tuples into the buffers their regu_list_pred fills
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   probe(in/out): Probe side; is_ready keeps a fetched tuple from being fetched again.
+ *   build(in/out): Build side; is_ready keeps a fetched tuple from being fetched again.
+ *   val_descr(in): Value descriptor for query evaluation.
+ */
+static int
+hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
+		      VAL_DESCR * val_descr)
+{
+  assert (thread_p != NULL);
+  assert (probe != NULL);
+  assert (build != NULL);
+  assert (val_descr != NULL);
+
+  if (!probe->is_ready)
+    {
+      if (fetch_val_list (thread_p, probe->regu_list_pred, val_descr, NULL, NULL, &probe->tuple_record, PEEK)
+	  != NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      probe->is_ready = true;
+    }
+
+  if (!build->is_ready)
+    {
+      if (fetch_val_list (thread_p, build->regu_list_pred, val_descr, NULL, NULL, &build->tuple_record, PEEK)
+	  != NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      build->is_ready = true;
+    }
+
+  return NO_ERROR;
+}
+
 /* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion). No
  * key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
  * (xts_pack_hash_join_keys). */
@@ -3375,9 +3441,16 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	    }			/* if (context->after_join_pred != NULL) */
 
-	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
-					  manager->merge_info, &overflow_record);
+	  if (context->outptr_list != NULL)
+	    {
+	      error = hjoin_build_tuple_to_list_id (thread_p, context, list_id, &overflow_record);
+	    }
+	  else
+	    {
+	      error =
+		hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
+					      manager->merge_info, &overflow_record);
+	    }
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
@@ -3924,24 +3997,9 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
   assert (pred != NULL);
   assert (val_descr != NULL);
 
-  if (!probe->is_ready)
+  if (hjoin_fetch_val_list (thread_p, probe, build, val_descr) != NO_ERROR)
     {
-      if (fetch_val_list (thread_p, probe->regu_list_pred, val_descr, NULL, NULL, &probe->tuple_record, PEEK)
-	  != NO_ERROR)
-	{
-	  return V_ERROR;
-	}
-      probe->is_ready = true;
-    }
-
-  if (!build->is_ready)
-    {
-      if (fetch_val_list (thread_p, build->regu_list_pred, val_descr, NULL, NULL, &build->tuple_record, PEEK)
-	  != NO_ERROR)
-	{
-	  return V_ERROR;
-	}
-      build->is_ready = true;
+      return V_ERROR;
     }
 
   return eval_pred (thread_p, pred, val_descr, NULL);
@@ -3973,6 +4031,49 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 
   /* merge path: one deform per input, exact size, page or private buffer */
   error = qfile_merge_tuple_add_list (thread_p, list_id, outer_record, inner_record, merge_info, overflow_record);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
+/*
+ * hjoin_build_tuple_to_list_id() - evaluate the out list over the current tuples and add the result tuple
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   context(in): Hash join context holding the out list, both inputs and the value descriptor.
+ *   list_id(in/out): List identifier the tuple is added to.
+ *   tuple_record(in/out): Space for a tuple that does not fit the tuple descriptor path.
+ *
+ * Writes the tuple through qexec_insert_tuple_into_list (), which evaluates outptr_list with its compiled program
+ * as qexec_end_one_iteration () does for the wrapper.
+ */
+int
+hjoin_build_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+			      QFILE_TUPLE_RECORD * tuple_record)
+{
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (context != NULL);
+  assert (context->outptr_list != NULL);
+  assert (list_id != NULL);
+  assert (tuple_record != NULL);
+
+  error = hjoin_fetch_val_list (thread_p, context->probe, context->build, context->val_descr);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = qexec_insert_tuple_into_list (thread_p, list_id, context->outptr_list, context->val_descr, tuple_record);
   if (error != NO_ERROR)
     {
       goto error_exit;
