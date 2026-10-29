@@ -134,8 +134,10 @@ static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int n
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 
-static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
-static int drop_stored_procedure_code (const char *name);
+static int jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement,
+    bool is_system_generated);
+static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated);
+static int drop_stored_procedure_code (const char *name, bool allow_system_generated);
 
 static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
@@ -907,7 +909,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  return er_errid ();
 	}
 
-      err = drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type));
+      err = drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type), false);
       if (err != NO_ERROR)
 	{
 	  break;
@@ -1024,6 +1026,20 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
+  return jsp_create_stored_procedure_internal (parser, statement, false);
+}
+
+/*
+ * jsp_create_stored_procedure_internal
+ *   return: if failed return error code else NO_ERROR
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *   is_system_generated(in): mark the procedure as one the engine created
+ */
+
+static int
+jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement, bool is_system_generated)
+{
   const char *decl = NULL, *comment = NULL;
   char owner_name[DB_MAX_USER_LENGTH];
   owner_name[0] = '\0';
@@ -1048,6 +1064,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
       return ER_BLOCK_DDL_STMT;
     }
+
+  sp_info.is_system_generated = is_system_generated;
 
   // check PL/CSQL's AUTHID with CURRENT_USER
   sp_info.directive = jsp_map_pt_to_sp_authid (PT_NODE_SP_AUTHID (statement));
@@ -1223,7 +1241,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
+	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type, false);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -1574,12 +1592,13 @@ jsp_check_stored_procedure_name (const char *str)
  *   return: Error code
  *   name(in): jsp name
  *   expected_type(in):
+ *   allow_system_generated(in): drop it even if the engine created it
  *
  * Note:
  */
 
 static int
-drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
+drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated)
 {
   MOP sp_mop, arg_mop, owner, save_user;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
@@ -1625,7 +1644,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
       goto error;
     }
 
-  if (1 == db_get_int (&generated_val))
+  if (!allow_system_generated && 1 == db_get_int (&generated_val))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
@@ -1666,7 +1685,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	}
 
       target_cls = db_get_string (&target_cls_val);
-      err = drop_stored_procedure_code (target_cls);
+      err = drop_stored_procedure_code (target_cls, allow_system_generated);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1741,12 +1760,13 @@ error:
  * drop_stored_procedure_code -
  *   return: Error code
  *   name(in): jsp name
+ *   allow_system_generated(in): drop it even if the engine created it
  *
  * Note:
  */
 
 static int
-drop_stored_procedure_code (const char *name)
+drop_stored_procedure_code (const char *name, bool allow_system_generated)
 {
   MOP code_mop, owner;
   DB_VALUE owner_val, generated_val;
@@ -1785,7 +1805,7 @@ drop_stored_procedure_code (const char *name)
       goto error;
     }
 
-  if (!DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
+  if (!allow_system_generated && !DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
