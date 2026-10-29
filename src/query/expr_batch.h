@@ -156,14 +156,18 @@ typedef struct expr_batch_plan EXPR_BATCH_PLAN;
  * before the next is collected (a fixed-size chunk is filled and handed to the next node;
  * only a blocking node gathers chunks).  The chunk's
  * rows are as many as these bytes hold at the plan's bytes per row -- its row references,
- * selection, vectors and their NULL and scale bytes -- so a quarter of a 32 KB L1 data cache
- * is left to them, the rest to the page being decoded and the accumulators. */
-#define EXPR_BATCH_CHUNK_BYTES (8192)
+ * selection, vectors and their NULL and scale bytes -- so most plans take a page's rows in one
+ * chunk, and the chunk's fixed work (the constants reloaded, the layout prepared, the steps'
+ * prologues) runs once a page.  Against 8 KB chunks on a 6M-row table, 32 KB took 0.81 of the
+ * time of a scan aggregating seven columns (0.84 with parallel workers), 0.96 of a scan with four
+ * filter terms and 0.97 to 1.00 of the rest; 4 KB took 1.24 of the first. */
+#define EXPR_BATCH_CHUNK_BYTES (32768)
 
 /* The bytes a string column's scratch may take: for a VARCHAR or CHAR whose values may be stored compressed
  * (OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more), a slot of its widest value per row of the chunk, where
- * the batch decompresses the row's value.  A column whose scratch would be larger is read as before: a CHAR of that
- * width keeps the plan from being built, a compressed VARCHAR value hands its chunk to the row path. */
+ * the batch decompresses the row's value.  A column whose scratch would be larger at the rows a chunk keeps at least
+ * (EB_STR_SCRATCH_ROWS) is read as before: a CHAR of that width keeps the plan from being built, a compressed VARCHAR
+ * value hands its chunk to the row path.  A plan with a scratch holds its chunk to the rows the scratch takes. */
 #define EB_STR_SCRATCH_MAX (1024 * 1024)
 
 extern EXPR_BATCH_PLAN *expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in,

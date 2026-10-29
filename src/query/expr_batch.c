@@ -752,11 +752,14 @@ eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes)
 
 /* The rows a chunk holds: as many as EXPR_BATCH_CHUNK_BYTES holds at per_row bytes, in whole 8-row steps (an
  * int64 vector's cache line), 8 at least.  A row takes EB_ROW_BASE_BYTES (its reference, its layout, its selection
- * entry, its UNKNOWN and NULL-mask bytes) plus the plan's vectors: expr_batch_init () passes this plan's bytes,
- * the build passes the base alone for the most rows any chunk can hold. */
+ * entry, its UNKNOWN and NULL-mask bytes) plus the plan's vectors: expr_batch_init () passes this plan's bytes. */
 #define EB_ROW_BASE_BYTES (sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 2)
 /* the most rows a chunk holds (eb_cap_of ()): its arrays on the stack are this long */
 #define EB_CAP_MAX ((int) MAX (8, (EXPR_BATCH_CHUNK_BYTES / EB_ROW_BASE_BYTES) & ~7))
+/* the rows a chunk keeps at least when its plan has a string scratch (EB_STR_SCRATCH_MAX): the rows 8 KB hold at the
+ * base bytes.  A column takes a scratch when its widest value fits the scratch this many times, and the plan's chunk
+ * then holds no more rows than every scratch takes (expr_batch_init ()). */
+#define EB_STR_SCRATCH_ROWS ((int) MAX (8, (8192 / EB_ROW_BASE_BYTES) & ~7))
 
 static inline int
 eb_cap_of (size_t per_row)
@@ -857,14 +860,14 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
       /* A value of OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more is stored in the long format, compressed
        * when that gains (or_put_varchar_internal ()); the batch decompresses it into the column's scratch, a slot of
        * the widest value per row of the chunk (eb_cell_str_long ()).  The scratch is bounded by EB_STR_SCRATCH_MAX
-       * at the most rows a chunk can hold: a column it does not fit keeps the long format on the row path -- a CHAR
-       * is padded to its precision before it is written (mr_writeval_char_internal ()), so every row of such a CHAR
+       * at EB_STR_SCRATCH_ROWS rows: a column it does not fit keeps the long format on the row path -- a CHAR is
+       * padded to its precision before it is written (mr_writeval_char_internal ()), so every row of such a CHAR
        * would send its chunk there, and the plan is not built. */
       size_t widest = (size_t) loc.precision * INTL_CODESET_MULT ((INTL_CODESET) loc.codeset);
 
       if (widest >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  if ((size_t) eb_cap_of (EB_ROW_BASE_BYTES) * widest <= EB_STR_SCRATCH_MAX)
+	  if ((size_t) EB_STR_SCRATCH_ROWS * widest <= EB_STR_SCRATCH_MAX)
 	    {
 	      max_bytes = (int) widest;
 	    }
@@ -3558,7 +3561,8 @@ expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan)
 
 /* The chunk's arrays: the rows, the selection, every column and step vector (and a NUMERIC
  * step's scale bytes), the UNKNOWN marks and the masks.  As many rows as EXPR_BATCH_CHUNK_BYTES
- * holds at this plan's bytes per row, in whole 8-row steps (an int64 vector's cache line). */
+ * holds at this plan's bytes per row, in whole 8-row steps (an int64 vector's cache line), and no
+ * more than a string column's scratch takes (EB_STR_SCRATCH_MAX). */
 int
 expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
@@ -3582,6 +3586,17 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	}
     }
   cap = eb_cap_of (per_row);
+  for (i = 0; i < plan->n_cols; i++)
+    {
+      if (plan->cols[i].max_bytes > 0)
+	{
+	  /* a string column's scratch takes a slot of its widest value per row: no more rows than EB_STR_SCRATCH_MAX
+	   * holds of them (EB_STR_SCRATCH_ROWS at least, as the build kept only the columns that fit those) */
+	  int fit = (int) MIN (EB_STR_SCRATCH_MAX / (size_t) plan->cols[i].max_bytes, (size_t) EB_CAP_MAX);
+
+	  cap = MIN (cap, MAX (8, fit & ~7));
+	}
+    }
   rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
   sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
   layout = (HEAP_REC_LAYOUT *) eb_arena_alloc (plan, sizeof (HEAP_REC_LAYOUT) * cap);
@@ -3656,8 +3671,8 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
     }
   for (i = 0; i < plan->n_cols; i++)
     {
-      /* a string column's scratch: a slot of its widest value per row of the chunk (the build bounded it by
-       * EB_STR_SCRATCH_MAX at the most rows a chunk can hold, and cap is at most those) */
+      /* a string column's scratch: a slot of its widest value per row of the chunk (cap holds it to
+       * EB_STR_SCRATCH_MAX, above) */
       EB_COL *col = &plan->cols[i];
 
       if (col->max_bytes > 0)
