@@ -273,6 +273,7 @@ static double qo_node_filtered_rows (QO_NODE * node);
 static QO_SEGMENT *qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other);
 static bool qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from);
 static double qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double calls);
+static double qo_having_selectivity (QO_ENV *, PT_NODE *, double);
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
 static INT64 qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
 static double qo_estimate_ndv (double N, double p, double n);
@@ -705,6 +706,209 @@ qo_term_string (QO_TERM * term, char *buf)
 }
 
 /*
+ * qo_has_aggregate_pre () - walk function to find an aggregate outside subqueries
+ */
+static PT_NODE *
+qo_has_aggregate_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_aggregate = (bool *) arg;
+
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (pt_is_aggregate_function (parser, tree))
+    {
+      *has_aggregate = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_having_aggregate_selectivity () - selectivity of "aggregate op constant" over the groups
+ *   return: selectivity, or -1.0 if the predicate is not of this form or has no histogram
+ *   env(in): optimizer environment
+ *   pred(in): HAVING conjunct
+ *   group_size(in): average number of rows in a group
+ *
+ * Note: The aggregate is mapped to a predicate on the aggregated column and estimated with its histogram.
+ *   With p = selectivity of "x op c":
+ *     SUM (x) op c : x op c / group_size (the average row of the group)
+ *     AVG (x) op c : p
+ *     MAX (x) > c, MIN (x) < c : at least one row of the group satisfies x op c
+ *     MAX (x) < c, MIN (x) > c : every row of the group satisfies x op c
+ *   The result is not taken below DEFAULT_EQUAL_SELECTIVITY.
+ */
+static double
+qo_having_aggregate_selectivity (QO_ENV * env, PT_NODE * pred, double group_size)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PT_NODE *agg, *cons, *attr, *dummy;
+  PT_OP_TYPE op;
+  FUNC_CODE func;
+  QO_NODE *node;
+  QO_SEGMENT *seg;
+  DB_VALUE *cons_value;
+  DB_VALUE threshold;
+  double p = 0.0, r;
+  bool is_ge, success = false;
+
+  if (pred->or_next != NULL)
+    {
+      return -1.0;
+    }
+
+  op = pred->info.expr.op;
+  if (op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+    {
+      return -1.0;
+    }
+
+  agg = pred->info.expr.arg1;
+  cons = pred->info.expr.arg2;
+  if (agg == NULL || cons == NULL)
+    {
+      return -1.0;
+    }
+  if (!pt_is_aggregate_function (parser, agg))
+    {
+      /* c op AGG (x) is AGG (x) reversed op c */
+      PT_NODE *tmp = agg;
+      agg = cons;
+      cons = tmp;
+      op = (op == PT_GT) ? PT_LT : (op == PT_GE) ? PT_LE : (op == PT_LT) ? PT_GT : PT_GE;
+      if (!pt_is_aggregate_function (parser, agg))
+	{
+	  return -1.0;
+	}
+    }
+
+  func = agg->info.function.function_type;
+  if (func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
+    {
+      return -1.0;
+    }
+  if (func != PT_MIN && func != PT_MAX && agg->info.function.all_or_distinct == PT_DISTINCT)
+    {
+      return -1.0;
+    }
+
+  attr = agg->info.function.arg_list;
+  if (attr == NULL || attr->next != NULL || qo_classify (attr) != PC_ATTR || attr->node_type == PT_EXPR)
+    {
+      return -1.0;
+    }
+  attr = pt_get_end_path_node (attr);
+
+  if (qo_classify (cons) == PC_CONST)
+    {
+      cons_value = &cons->info.value.db_value;
+    }
+  else if (qo_classify (cons) == PC_HOST_VAR && cons->info.host_var.var_type == PT_HOST_IN)
+    {
+      cons_value = &parser->host_variables[cons->info.host_var.index];
+    }
+  else
+    {
+      return -1.0;
+    }
+
+  /* the attribute name in HAVING is not annotated; the histogram is on its segment's name */
+  node = lookup_node (attr, env, &dummy);
+  if (node == NULL || (seg = lookup_seg (node, attr, env)) == NULL || QO_SEG_PT_NODE (seg) == NULL
+      || QO_SEG_PT_NODE (seg)->info.name.histogram == NULL)
+    {
+      return -1.0;
+    }
+
+  if (DB_IS_NULL (cons_value))
+    {
+      return -1.0;
+    }
+  if (func == PT_SUM)
+    {
+      db_make_null (&threshold);
+      if (tp_value_coerce (cons_value, &threshold, &tp_Double_domain) != DOMAIN_COMPATIBLE)
+	{
+	  return -1.0;
+	}
+      db_make_double (&threshold, db_get_double (&threshold) / MAX (group_size, 1.0));
+      cons_value = &threshold;
+    }
+
+  is_ge = (op == PT_GT || op == PT_GE);
+  histogram_get_comp_selectivity (QO_SEG_PT_NODE (seg), cons_value, is_ge, (op == PT_GE || op == PT_LE), &p, &success);
+  if (!success)
+    {
+      return -1.0;
+    }
+
+  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that every
+   * row of a group satisfies a predicate of selectivity s is s (1 - r) / (1 - r s), r = 1 - 1 / group_size.
+   * Using the average size as the size of every group instead (s ^ group_size) underestimates it many times when
+   * the sizes vary, since small groups pass far more often. */
+  r = 1.0 - 1.0 / MAX (group_size, 1.0);
+  if ((func == PT_MAX && is_ge) || (func == PT_MIN && !is_ge))
+    {
+      p = 1.0 - (1.0 - p) * (1.0 - r) / (1.0 - r * (1.0 - p));
+    }
+  else if (func == PT_MAX || func == PT_MIN)
+    {
+      p = p * (1.0 - r) / (1.0 - r * p);
+    }
+
+  /* the mapping assumes the groups are alike; do not go below the guess for an equality */
+  return MIN (MAX (p, DEFAULT_EQUAL_SELECTIVITY), 1.0);
+}
+
+/*
+ * qo_having_selectivity () - fraction of the groups that pass HAVING
+ *   return: selectivity
+ *   env(in): optimizer environment
+ *   having(in): HAVING conjuncts
+ *   group_size(in): average number of rows in a group
+ *
+ * Note: A conjunct without an aggregate is estimated as a WHERE term. An aggregate compared with a constant is
+ *   estimated by qo_having_aggregate_selectivity (); any other aggregate conjunct takes DEFAULT_SELECTIVITY.
+ */
+static double
+qo_having_selectivity (QO_ENV * env, PT_NODE * having, double group_size)
+{
+  PT_NODE *pred;
+  double selectivity = 1.0, sel;
+  bool has_aggregate;
+
+  for (pred = having; pred != NULL; pred = pred->next)
+    {
+      if (pred->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      has_aggregate = false;
+      (void) parser_walk_tree (QO_ENV_PARSER (env), pred, qo_has_aggregate_pre, &has_aggregate, NULL, NULL);
+      if (!has_aggregate)
+	{
+	  sel = qo_expr_selectivity (env, pred);
+	}
+      else
+	{
+	  sel = qo_having_aggregate_selectivity (env, pred, group_size);
+	  if (sel < 0.0)
+	    {
+	      sel = DEFAULT_SELECTIVITY;
+	    }
+	}
+
+      selectivity = qo_and_selectivity (env, selectivity, sel);
+    }
+
+  return selectivity;
+}
+
+/*
  * qo_estimate_ngroups () -
  *   return:
  *   plan(in):
@@ -736,12 +940,23 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
   INT64 group_ndv, estimate_ndv;
   double expected_nrows = plan->info->cardinality;
   double total_nrows = plan->info->total_rows;
+  PT_NODE *tree = QO_ENV_PT_TREE (plan->info->env);
+  PT_NODE *having = NULL;
+
+  if (sort_type == SORT_GROUPBY && tree->node_type == PT_SELECT)
+    {
+      having = tree->info.query.q.select.having;
+    }
 
   /* get NDV of GROUP BY */
   group_ndv = MIN (qo_get_group_ndv (plan, sort_type), expected_nrows);
   if (group_ndv == -1)
     {
       plan->info->group_rows = expected_nrows;
+      if (having != NULL)
+	{
+	  plan->info->group_rows = MAX (expected_nrows * qo_having_selectivity (plan->info->env, having, 1.0), 1.0);
+	}
       return;
     }
 
@@ -756,6 +971,14 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
     }
 
   estimate_ndv = MIN (expected_nrows, estimate_ndv);
+
+  if (having != NULL && estimate_ndv > 0)
+    {
+      /* only the groups that pass HAVING are returned */
+      estimate_ndv =
+	MAX ((INT64) (estimate_ndv * qo_having_selectivity (plan->info->env, having, expected_nrows / estimate_ndv)),
+	     1);
+    }
 
   if (plan->info->group_rows > estimate_ndv)
     {
