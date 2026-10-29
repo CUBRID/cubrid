@@ -194,7 +194,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
     for (int i = 0; i < 1000; i++)
       {
 	db_make_int (&v, i);
-	wset_add_write_key (filler, &child_cls, &WS_DEFAULT_VFID, &v);
+	wset_add_write_key (filler, &child_cls, &WS_CHILD_VFID, &v);
       }
     commit_tx (filler, &fill_lsa);
     delete filler;
@@ -231,7 +231,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
   for (int i = 0; i < 1000; i++)
     {
       db_make_int (&v, i);
-      wset_add_write_key (fk_tx, &child_cls, &WS_DEFAULT_VFID, &v);
+      wset_add_write_key (fk_tx, &child_cls, &WS_CHILD_VFID, &v);
       wset_add_ref_key (fk_tx, &parent_cls, &WS_DEFAULT_VFID, &v, int_domain);
     }
 

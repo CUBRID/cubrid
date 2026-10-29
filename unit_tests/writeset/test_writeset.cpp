@@ -875,6 +875,41 @@ TEST_CASE ("per-transaction key limit flips the transaction to overflow", "[writ
   delete t1;
 }
 
+TEST_CASE ("an inherited key hashes alike whichever class of the hierarchy wrote it", "[writeset]")
+{
+  /* A subclass shares its superclass's B-tree for an inherited PRIMARY KEY, so a key written through either
+   * class is one key. Writes, references and dependencies must not depend on the class OID. */
+  ws_history_guard history;
+  OID sup = oid_of (1, 300, 1);
+  OID sub = oid_of (1, 301, 1);
+  VFID shared_pk = vfid_of (0, 2000);
+  VFID other_pk = vfid_of (0, 2001);
+  LOG_LSA l1 = lsa_of (10, 0);
+
+  log_tdes *by_sup = make_tdes (1);
+  log_tdes *by_sub = make_tdes (2);
+  log_tdes *ref_sup = make_tdes (3);
+  log_tdes *other_index = make_tdes (4);
+
+  add_write_int (by_sup, &sup, 1, &shared_pk);
+  add_write_int (by_sub, &sub, 1, &shared_pk);
+  add_ref_int (ref_sup, &sup, 1, &shared_pk);
+  add_write_int (other_index, &sub, 1, &other_pk);
+  REQUIRE (by_sup->wset_hashes[0].hash == by_sub->wset_hashes[0].hash);
+  REQUIRE (by_sup->wset_hashes[0].hash == ref_sup->wset_hashes[0].hash);
+  REQUIRE (by_sup->wset_hashes[0].hash != other_index->wset_hashes[0].hash);
+
+  /* T1 deletes key 1 through sup; T2 inserting key 1 through sub must wait for T1 */
+  commit_tx (by_sup, &l1);
+  LOG_LSA dep = probe (by_sub);
+  REQUIRE (LSA_EQ (&dep, &l1));
+
+  delete by_sup;
+  delete by_sub;
+  delete ref_sup;
+  delete other_index;
+}
+
 TEST_CASE ("the same key under two different index vfids stays independent (PK vs UNIQUE of one table)",
 	   "[writeset]")
 {
