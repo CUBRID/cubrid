@@ -68,12 +68,12 @@ static int wset_Trace_level = 0;
  * Initialization and finalization are expected to run on a single thread. */
 static bool wset_History_initialized = false;
 
-static UINT64 wset_fnv1a (const OID *class_oid, const VFID *index_vfid, const char *packed, int len);
+static UINT64 wset_fnv1a (const VFID *index_vfid, const char *packed, int len);
 static void wset_string_pseudo_bytes (const LANG_COLLATION *lc, const unsigned char *s, int size,
 				      unsigned char pbytes[5]);
-static UINT64 wset_string_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *v);
+static UINT64 wset_string_hash (const VFID *index_vfid, DB_VALUE *v);
 static DB_VALUE *wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch);
-static int wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out);
+static int wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out);
 static const char *wset_kind_name (LOG_WSET_KIND kind);
 static const char *wset_fallback_reason_name (WSET_FALLBACK_REASON reason);
 static void wset_trace_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
@@ -189,32 +189,24 @@ wset_trace_key_source (LOG_TDES *tdes, const char *operation, const char *image,
 }
 
 /*
- * wset_fnv1a - hash a constraint key as class OID, index VFID, and packed key
+ * wset_fnv1a - hash a constraint key as index VFID and packed key
  *
  * return: writeset key hash
  *
- * Note: The index VFID separates key spaces of different indexes in the same class.
- *       An FK REF uses the referenced parent class and index so it matches the
- *       parent's WRITE hash.
+ * Note: Two transactions whose keys hash alike get a dependency and are applied in commit order on the
+ *       slave, so the same key of the same B-tree must hash alike. The index VFID and the key are hashed,
+ *       not the row's class OID: a class hierarchy shares one B-tree for an inherited PRIMARY KEY or UNIQUE.
+ *       For example, T1 deletes k = 1 from sup and T2 inserts k = 1 into sub (sub UNDER sup). With the class
+ *       OID the hashes differ, T2 gets no dependency, and the slave can insert first and fail on the unique
+ *       key. An FK REF to sup whose parent row is in sub is split the same way. Different keys hashing
+ *       alike only add a dependency, which is safe.
  */
 static UINT64
-wset_fnv1a (const OID *class_oid, const VFID *index_vfid, const char *packed, int len)
+wset_fnv1a (const VFID *index_vfid, const char *packed, int len)
 {
   UINT64 hash = LOG_WSET_FNV_OFFSET_BASIS;
-  unsigned char oid_bytes[8];
   unsigned char vfid_bytes[6];
   int i;
-
-  /* class_oid: 8 bytes = pageid (4) + slotid (2) + volid (2) */
-  memcpy (&oid_bytes[0], &class_oid->pageid, sizeof (class_oid->pageid));
-  memcpy (&oid_bytes[4], &class_oid->slotid, sizeof (class_oid->slotid));
-  memcpy (&oid_bytes[6], &class_oid->volid, sizeof (class_oid->volid));
-
-  for (i = 0; i < 8; i++)
-    {
-      hash ^= (UINT64) oid_bytes[i];
-      hash *= LOG_WSET_FNV_PRIME;
-    }
 
   /* index VFID: 6 bytes = fileid (4) + volid (2) */
   memcpy (&vfid_bytes[0], &index_vfid->fileid, sizeof (index_vfid->fileid));
@@ -238,14 +230,13 @@ wset_fnv1a (const OID *class_oid, const VFID *index_vfid, const char *packed, in
 /*
  * wset_string_hash - hash a character key according to its index collation
  *
- *   class_oid(in): class OID used by the writeset key
  *   index_vfid(in): index VFID used by the writeset key
  *   v(in): non-NULL string value carrying the target index collation
  *
  * return: writeset key hash
  */
 static UINT64
-wset_string_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *v)
+wset_string_hash (const VFID *index_vfid, DB_VALUE *v)
 {
   LANG_COLLATION *lc;
   const unsigned char *s;
@@ -258,7 +249,7 @@ wset_string_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *v)
 
   wset_string_pseudo_bytes (lc, s, db_get_string_size (v), pbytes);
 
-  return wset_fnv1a (class_oid, index_vfid, (const char *) pbytes, 5);
+  return wset_fnv1a (index_vfid, (const char *) pbytes, 5);
 }
 
 /*
@@ -326,7 +317,6 @@ wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch)
 /*
  * wset_midxkey_hash - hash a composite key element by element
  *
- *   class_oid(in): class OID used by the writeset key
  *   index_vfid(in): index VFID used by the writeset key
  *   key(in): composite key whose domain lists the element domains
  *   hash_out(out): writeset key hash
@@ -341,7 +331,7 @@ wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch)
  *       pieces are concatenated in element order and hashed once.
  */
 static int
-wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out)
+wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out)
 {
   DB_MIDXKEY *midxkey;
   TP_DOMAIN *element_domain;
@@ -454,7 +444,7 @@ wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, 
   if (error == NO_ERROR)
     {
       assert (buf_len == buf_cap);
-      *hash_out = wset_fnv1a (class_oid, index_vfid, buf, buf_len);
+      *hash_out = wset_fnv1a (index_vfid, buf, buf_len);
     }
 
   if (buf != NULL)
@@ -631,7 +621,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
    * collected below as its packed NULL representation (conservative design policy). */
   if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (key)) && !DB_IS_NULL (key))
     {
-      hash = wset_string_hash (class_oid, index_vfid, key);
+      hash = wset_string_hash (index_vfid, key);
       error = wset_push_hash (tdes, hash, LOG_WSET_KIND_WRITE);
       if (error == NO_ERROR && !tdes->wset_overflow)
 	{
@@ -652,7 +642,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
   /* a composite key is reduced element by element so that its character elements follow their collation */
   if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
     {
-      error = wset_midxkey_hash (class_oid, index_vfid, key, &hash);
+      error = wset_midxkey_hash (index_vfid, key, &hash);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -682,7 +672,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
 
   (void) or_pack_mem_value (buf, hashed, &packed_len);
 
-  hash = wset_fnv1a (class_oid, index_vfid, buf, packed_len);
+  hash = wset_fnv1a (index_vfid, buf, packed_len);
   error = wset_push_hash (tdes, hash, LOG_WSET_KIND_WRITE);
   if (error == NO_ERROR && !tdes->wset_overflow)
     {
@@ -933,7 +923,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
 	}
 
       /* the same element-wise reduction as the parent's WRITE key, now in the parent's domain */
-      error = wset_midxkey_hash (ref_class_oid, index_vfid, &casted, &hash);
+      error = wset_midxkey_hash (index_vfid, &casted, &hash);
       if (error == NO_ERROR)
 	{
 	  error = wset_push_hash (tdes, hash, LOG_WSET_KIND_REF);
@@ -964,7 +954,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
 
   if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&casted)))
     {
-      hash = wset_string_hash (ref_class_oid, index_vfid, &casted);
+      hash = wset_string_hash (index_vfid, &casted);
       error = wset_push_hash (tdes, hash, LOG_WSET_KIND_REF);
       if (error == NO_ERROR && !tdes->wset_overflow)
 	{
@@ -991,7 +981,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
 
   (void) or_pack_mem_value (buf, hashed, &packed_len);
 
-  hash = wset_fnv1a (ref_class_oid, index_vfid, buf, packed_len);
+  hash = wset_fnv1a (index_vfid, buf, packed_len);
   error = wset_push_hash (tdes, hash, LOG_WSET_KIND_REF);
   if (error == NO_ERROR && !tdes->wset_overflow)
     {
