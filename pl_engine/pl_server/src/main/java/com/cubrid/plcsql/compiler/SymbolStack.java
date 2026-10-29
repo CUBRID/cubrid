@@ -789,6 +789,11 @@ public class SymbolStack {
         }
     }
 
+    // the declaration put to the current symbol table in the previsit, whether it is hidden or not
+    Decl getPrevisitedDecl(String name) {
+        return currSymbolTable.decls.get(name);
+    }
+
     DeclException getDeclException(String name) {
         Decl d = getDecl(name, -1);
         if (d instanceof DeclException) {
@@ -897,8 +902,9 @@ public class SymbolStack {
                 continue;
             }
 
-            if (t.decls.containsKey(name)) {
-                return t.decls.get(name);
+            Decl d = t.decls.get(name);
+            if (d != null && !d.hidden) {
+                return d;
             }
         }
 

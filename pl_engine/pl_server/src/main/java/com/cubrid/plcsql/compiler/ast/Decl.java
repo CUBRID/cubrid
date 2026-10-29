@@ -70,6 +70,9 @@ public abstract class Decl extends AstNode {
     public boolean codeGenDone;
     public boolean isPkgItem;
     public boolean isPkgPublic;
+    // a constant, variable, or cursor declaration is put to the symbol table in the previsit, and
+    // hidden until the visit of it so that it is not found by the uses of its name before it
+    public boolean hidden;
 
     public abstract String kind();
 

@@ -45,7 +45,7 @@ public class DeclVar extends DeclIdTypeDeclared {
 
     public final TypeSpec typeSpec;
     public final boolean notNull;
-    public final Expr val;
+    public Expr val; // given in the visit of the declaration (see ParseTreeConverter)
 
     public DeclVar(
             ParserRuleContext ctx,

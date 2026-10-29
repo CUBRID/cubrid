@@ -388,7 +388,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "CREATE " + kind + " must have a body of statements");
         }
 
-        previsitRoutine_decl(ctx.routine_decl(), null);
+        previsitRoutine_decl(ctx.routine_decl());
         return visitRoutine_decl(ctx.routine_decl());
     }
 
@@ -1533,14 +1533,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
 
         // previsit declarations to support recursive or mutually recursive calls of local
-        // procedures/functions
-        idUsedInCurrentDeclPart = null; // We must not count the used id during the previsit
-        Map<String, DeclRoutine> store = previsitDeclarations(ctx.declare_spec());
+        // procedures/functions.
+        // The previsit and the visit record the uses of names separately because each checks the
+        // redefinition of used names in the order of the declarations
         idUsedInCurrentDeclPart = new HashMap<>();
-        // put the declarations of the routines in the current symbol table
-        for (String routineName : store.keySet()) {
-            symbolStack.putDecl(routineName, store.get(routineName));
-        }
+        previsitDeclarations(ctx.declare_spec());
+        Map<String, UseAndDeclLevel> usedInPrevisit = idUsedInCurrentDeclPart;
+        idUsedInCurrentDeclPart = new HashMap<>();
 
         NodeList<Decl> ret = new NodeList<>();
 
@@ -1579,12 +1578,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             idUsedInCurrentDeclPart = null;
         } else {
             int currLevel = symbolStack.getCurrentScope().level;
-            for (String name : idUsedInCurrentDeclPart.keySet()) {
-                UseAndDeclLevel udl = idUsedInCurrentDeclPart.get(name);
-                if (udl.declLevel < currLevel) {
-                    saved.put(name, udl);
-                }
-            }
+            passUsesOfOuterNames(usedInPrevisit, currLevel, saved);
+            passUsesOfOuterNames(idUsedInCurrentDeclPart, currLevel, saved);
 
             idUsedInCurrentDeclPart = saved;
         }
@@ -1596,30 +1591,26 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
+    private static void passUsesOfOuterNames(
+            Map<String, UseAndDeclLevel> used, int currLevel, Map<String, UseAndDeclLevel> outer) {
+        for (String name : used.keySet()) {
+            UseAndDeclLevel udl = used.get(name);
+            if (udl.declLevel < currLevel) {
+                outer.put(name, udl);
+            }
+        }
+    }
+
     @Override
     public AstNode visitConstant_decl(Constant_declContext ctx) {
 
-        if (ctx.COMMENT() != null) {
-            if (topLevelStmt != CREATE_PKG_SPEC
-                    || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s100
-                        "only package spec items can have a comment");
-            }
-        }
-
         String name = Misc.getNormalizedText(ctx.identifier());
 
-        TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
-        Expr val = visitDefault_value_part(ctx.default_value_part());
+        DeclConst ret = (DeclConst) symbolStack.getPrevisitedDecl(name);
+        assert ret != null && ret.ctx == ctx; // by the previsit
 
-        String comment = null;
-        if (ctx.COMMENT() != null) {
-            comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
-        }
-
-        DeclConst ret = new DeclConst(ctx, name, comment, ty, ctx.NOT() != null, val);
-        symbolStack.putDecl(name, ret);
+        ret.val = visitDefault_value_part(ctx.default_value_part());
+        ret.hidden = false;
 
         checkRedefinitionOfUsedName(name, ctx);
 
@@ -1656,27 +1647,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitVariable_decl(Variable_declContext ctx) {
 
-        if (ctx.COMMENT() != null) {
-            if (topLevelStmt != CREATE_PKG_SPEC
-                    || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s101
-                        "only package spec items can have a comment");
-            }
-        }
-
         String name = Misc.getNormalizedText(ctx.identifier());
 
-        TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
-        Expr val = visitDefault_value_part(ctx.default_value_part());
+        DeclVar ret = (DeclVar) symbolStack.getPrevisitedDecl(name);
+        assert ret != null && ret.ctx == ctx; // by the previsit
 
-        String comment = null;
-        if (ctx.COMMENT() != null) {
-            comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
-        }
-
-        DeclVar ret = new DeclVar(ctx, name, comment, ty, ctx.NOT() != null, val);
-        symbolStack.putDecl(name, ret);
+        ret.val = visitDefault_value_part(ctx.default_value_part());
+        ret.hidden = false;
 
         checkRedefinitionOfUsedName(name, ctx);
 
@@ -1686,45 +1663,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_decl(Cursor_declContext ctx) {
 
-        if (ctx.COMMENT() != null) {
-            if (topLevelStmt != CREATE_PKG_SPEC
-                    || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s102
-                        "only package spec items can have a comment");
-            }
-        }
-
-        setConnectionRequired(ctx);
-
-        TypeSpec recordTypeSpec = null;
-        StaticSql staticSql = null;
-
         String name = Misc.getNormalizedText(ctx.identifier());
 
-        symbolStack.pushSymbolTable("cursor_decl", null);
-        NodeList<DeclParamIn> paramList = visitCursor_parameter_list(ctx.cursor_parameter_list());
-        if (ctx.static_sql() != null) {
-            // need to repeat checkAndConvertStaticSql() done in the previsit to record possible
-            // host variable uses
-            // for the check of redefinition of used name
-            SqlSemantics sws = sssMap.get(ctx);
-            staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
-            TypeRecord ty = TypeRecord.getInstance(iStore, name, staticSql.selectList);
-            recordTypeSpec = new TypeSpec(ctx.static_sql(), ty); // derived from the static sql
-        } else {
-            recordTypeSpec = (TypeSpec) visit(ctx.type_spec());
-        }
-        symbolStack.popSymbolTable();
+        DeclCursor ret = (DeclCursor) symbolStack.getPrevisitedDecl(name);
+        assert ret != null && ret.ctx == ctx; // by the previsit
+
+        ret.hidden = false;
+
         checkRedefinitionOfUsedName(name, ctx);
-
-        String comment = null;
-        if (ctx.COMMENT() != null) {
-            comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
-        }
-
-        DeclCursor ret = new DeclCursor(ctx, name, comment, paramList, recordTypeSpec, staticSql);
-        symbolStack.putDecl(name, ret);
 
         return ret;
     }
@@ -3263,7 +3209,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private int sqlDataAccess;
 
-    private Map<ParserRuleContext, SqlSemantics> sssMap = new HashMap<>();
 
     private InstanceStore iStore;
     private int typeVisitMode = TYPE_VISIT_NORMAL;
@@ -3323,7 +3268,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         assert idUsedInCurrentDeclPart != null;
         UseAndDeclLevel forwardRef = idUsedInCurrentDeclPart.get(name);
-        if (forwardRef != null) {
+        // a use of a declaration at the current level is not a forward reference: it is a use, in
+        // a routine body, of a package spec item which this declaration gives the body of
+        if (forwardRef != null && forwardRef.declLevel < symbolStack.getCurrentScope().level) {
             int[] pos = Misc.getLineColumnOf(forwardRef.use);
             throw new SemanticError(
                     Misc.getLineColumnOf(declCtx), // s068
@@ -3368,31 +3315,82 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private void previsitConstant_decl(Constant_declContext ctx) {
+    private Decl previsitConstant_decl(Constant_declContext ctx) {
+
+        if (ctx.COMMENT() != null) {
+            if (topLevelStmt != CREATE_PKG_SPEC
+                    || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s100
+                        "only package spec items can have a comment");
+            }
+        }
 
         previsiting = true;
 
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
-        DeclConst ret = new DeclConst(ctx, name, null, ty, ctx.NOT() != null, null);
+
+        String comment = null;
+        if (ctx.COMMENT() != null) {
+            comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
+        }
+
+        DeclConst ret = new DeclConst(ctx, name, comment, ty, ctx.NOT() != null, null);
         symbolStack.putDecl(name, ret);
 
+        checkRedefinitionOfUsedName(name, ctx);
+
         previsiting = false; // TODO do this in finally
+
+        return ret;
     }
 
-    private void previsitVariable_decl(Variable_declContext ctx) {
+    private Decl previsitVariable_decl(Variable_declContext ctx) {
+
+        if (ctx.COMMENT() != null) {
+            if (topLevelStmt != CREATE_PKG_SPEC
+                    || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s101
+                        "only package spec items can have a comment");
+            }
+        }
 
         previsiting = true;
 
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
-        DeclVar ret = new DeclVar(ctx, name, null, ty, ctx.NOT() != null, null);
+
+        String comment = null;
+        if (ctx.COMMENT() != null) {
+            comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
+        }
+
+        DeclVar ret = new DeclVar(ctx, name, comment, ty, ctx.NOT() != null, null);
         symbolStack.putDecl(name, ret);
 
+        checkRedefinitionOfUsedName(name, ctx);
+
         previsiting = false; // TODO do this in finally
+
+        return ret;
     }
 
-    private void previsitCursor_decl(Cursor_declContext ctx) {
+    // return the declaration to hide until its visit, or null if it is the body of a cursor
+    // declared in the package spec, which must stay visible as the spec one
+    private Decl previsitCursor_decl(Cursor_declContext ctx) {
+
+        if (ctx.COMMENT() != null) {
+            if (topLevelStmt != CREATE_PKG_SPEC
+                    || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s102
+                        "only package spec items can have a comment");
+            }
+        }
+
+        setConnectionRequired(ctx);
 
         previsiting = true;
 
@@ -3411,10 +3409,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         Misc.getLineColumnOf(ctx.static_sql()), // s015
                         "SQL in a cursor definition may not have an INTO clause");
             }
-            sssMap.put(ctx, sws);
             staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
             TypeRecord ty = TypeRecord.getInstance(iStore, name, staticSql.selectList);
-            recordTypeSpec = TypeSpec.getBogus(iStore, ty);
+            recordTypeSpec = new TypeSpec(ctx.static_sql(), ty); // derived from the static sql
         } else {
             assert ctx.type_spec() != null; // by syntax
 
@@ -3426,13 +3423,23 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         }
         symbolStack.popSymbolTable();
-        DeclCursor ret = new DeclCursor(ctx, name, null, paramList, recordTypeSpec, staticSql);
+        checkRedefinitionOfUsedName(name, ctx);
+
+        String comment = null;
+        if (ctx.COMMENT() != null) {
+            comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
+        }
+
+        DeclCursor ret = new DeclCursor(ctx, name, comment, paramList, recordTypeSpec, staticSql);
+        boolean givesBody = ret.givesBodyOf(symbolStack.getPrevisitedDecl(name));
         symbolStack.putDecl(name, ret);
 
         previsiting = false; // TODO do this in finally
+
+        return givesBody ? null : ret;
     }
 
-    private void previsitRoutine_decl(Routine_declContext ctx, Map<String, DeclRoutine> store) {
+    private void previsitRoutine_decl(Routine_declContext ctx) {
 
         if (topLevelStmt == CREATE_PKG_SPEC && ctx.body() != null) {
             throw new SemanticError(
@@ -3444,7 +3451,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (topLevelStmt == CREATE_SP) {
             DECL_TOP_LEVEL = SymbolStack.LEVEL_MAIN;
         } else {
-            DECL_TOP_LEVEL = SymbolStack.LEVEL_MAIN + 2; // 2: two stacks, package and previsit
+            DECL_TOP_LEVEL = SymbolStack.LEVEL_MAIN + 1;
         }
 
         int scopeLevel = symbolStack.getCurrentScope().level;
@@ -3587,9 +3594,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 directive,
                                 retTypeSpec);
                 symbolStack.putDecl(name, ret);
-                if (store != null) {
-                    store.put(name, ret);
-                }
             } else {
                 // procedure
                 if (ctx.RETURN() != null) {
@@ -3608,9 +3612,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 paramList,
                                 directive);
                 symbolStack.putDecl(name, ret);
-                if (store != null) {
-                    store.put(name, ret);
-                }
+            }
+
+            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+                checkRedefinitionOfUsedName(name, ctx);
             }
         } finally {
             previsiting = false;
@@ -4115,16 +4120,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private Map<String, DeclRoutine> previsitDeclarations(Iterable<Declare_specContext> declSpecs) {
-
-        Map<String, DeclRoutine> ret = new HashMap<>();
+    private void previsitDeclarations(Iterable<Declare_specContext> declSpecs) {
 
         // Scan the declarations for the procedures and functions (routines)
         // in order for the effect of their forward declarations.
         // Variables and constants are also scanned to support their %type appearing in the
-        // parameter and/or return types of the routines
+        // parameter and/or return types of the routines.
+        // The declarations are put to the current symbol table. Those other than routines are
+        // hidden after the previsit until their visits
 
-        symbolStack.pushSymbolTable("previsit", null);
+        List<Decl> toHide = new ArrayList<>();
         for (Declare_specContext ds : declSpecs) {
 
             ParserRuleContext d;
@@ -4132,21 +4137,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             d = ds.constant_decl();
             if (d != null) {
                 // case of constant_decl
-                previsitConstant_decl((Constant_declContext) d);
+                toHide.add(previsitConstant_decl((Constant_declContext) d));
             } else if ((d = ds.variable_decl()) != null) {
                 // case of variable_decl
-                previsitVariable_decl((Variable_declContext) d);
+                toHide.add(previsitVariable_decl((Variable_declContext) d));
             } else if ((d = ds.cursor_decl()) != null) {
                 // case of cursor_decl
-                previsitCursor_decl((Cursor_declContext) d);
+                Decl cursor = previsitCursor_decl((Cursor_declContext) d);
+                if (cursor != null) {
+                    toHide.add(cursor);
+                }
             } else if ((d = ds.routine_decl()) != null) {
                 // case of routine_decl
-                previsitRoutine_decl((Routine_declContext) d, ret);
+                previsitRoutine_decl((Routine_declContext) d);
             }
         }
-        symbolStack.popSymbolTable(); // pop the temporary symbol table
 
-        return ret;
+        for (Decl d : toHide) {
+            d.hidden = true;
+        }
     }
 
     private void addToSqlUses(SqlUse node) {
