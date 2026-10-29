@@ -4892,14 +4892,13 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
-      fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n", indent, ' ',
+      /* with the plan details, as the page batch's counts: the build read its hashes from the input's, taken as the
+       * input's tuples were written (HJOIN_PREHASH) */
+      fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s%s)\n", indent, ' ',
 	       TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
-	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
-      if (stats->build_prehashed)
-	{
-	  /* the build read its hashes from the input's, taken as the input's tuples were written (HJOIN_PREHASH) */
-	  fprintf (fp, ", hashes: precomputed");
-	}
+	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method),
+	       (stats->build_prehashed
+		&& thread_get_thread_entry_info ()->trace_plan_detail) ? ", hashes: precomputed" : "");
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
@@ -5130,7 +5129,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (build, "ioread", trace_json_integer (stats->build.ioreads));
       trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
       trace_json_object_set_new (build, "method", trace_json_string (qdump_hashjoin_type_string (stats->hash_method)));
-      if (stats->build_prehashed)
+      if (stats->build_prehashed && thread_get_thread_entry_info ()->trace_plan_detail)
 	{
 	  /* the build read its hashes from the input's, taken as the input's tuples were written (HJOIN_PREHASH) */
 	  trace_json_object_set_new (build, "hashes", trace_json_string ("precomputed"));
