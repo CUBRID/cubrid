@@ -9090,35 +9090,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
-      if (thread_get_thread_entry_info ()->trace_plan_detail && scan_id->type == S_HEAP_SCAN
-	  && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
-	      || scan_id->s.hsid.batch_why_not != NULL))
-	{
-	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections.  A parallel
-	   * scan's workers show theirs in their own dump (px_scan_trace_handler: expr_batch_dump ()); the parent's
-	   * counters stay 0 */
-	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
-	    {
-	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */
-	      const char *why = scan_id->s.hsid.batch_why_not;
-
-	      fprintf (fp, ", batch pages: %llu (row path: %llu",
-		       (unsigned long long int) scan_id->scan_stats.batch_pages,
-		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath);
-	      if (scan_id->scan_stats.batch_pages_offpage > 0)
-		{
-		  /* of those, the pages handed over at a record whose visible version is not on the page */
-		  fprintf (fp, ", at records off the page: %llu",
-			   (unsigned long long int) scan_id->scan_stats.batch_pages_offpage);
-		}
-	      fprintf (fp, "%s%s)", (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
-		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? why : "");
-	    }
-	  else
-	    {
-	      fprintf (fp, ", batch: no (%s)", scan_id->s.hsid.batch_why_not);
-	    }
-	}
       if (scan_id->scan_stats.agl)
 	{
 	  SCAN_AGL *agl;
@@ -9134,6 +9105,36 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	    }
 	}
       fprintf (fp, ")");
+      if (thread_get_thread_entry_info ()->trace_plan_detail && scan_id->type == S_HEAP_SCAN
+	  && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
+	      || scan_id->s.hsid.batch_why_not != NULL))
+	{
+	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections, in a group
+	   * of its own after the scan's -- the scan's own figures end the line as they do without it.  A parallel
+	   * scan's workers show theirs in their own dump (px_scan_trace_handler: expr_batch_dump ()); the parent's
+	   * counters stay 0 */
+	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
+	    {
+	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */
+	      const char *why = scan_id->s.hsid.batch_why_not;
+
+	      fprintf (fp, " (batch pages: %llu (row path: %llu",
+		       (unsigned long long int) scan_id->scan_stats.batch_pages,
+		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath);
+	      if (scan_id->scan_stats.batch_pages_offpage > 0)
+		{
+		  /* of those, the pages handed over at a record whose visible version is not on the page */
+		  fprintf (fp, ", at records off the page: %llu",
+			   (unsigned long long int) scan_id->scan_stats.batch_pages_offpage);
+		}
+	      fprintf (fp, "%s%s))", (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
+		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? why : "");
+	    }
+	  else
+	    {
+	      fprintf (fp, " (batch: no (%s))", scan_id->s.hsid.batch_why_not);
+	    }
+	}
       break;
 
     case S_INDX_SCAN:
