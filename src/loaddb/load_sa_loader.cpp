@@ -83,6 +83,30 @@ const std::size_t LDR_MAX_ARGS = 32;
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
   ( err = ((expr) == NO_ERROR ? NO_ERROR : er_filter_errid(false)) )
 
+/*
+ * ENSURE_ERR_SET - make a bare error code speak
+ *
+ * A converter that returns a code without er_set () leaves er_errid () empty, and the
+ * filter reads er_errid (), not the code it was handed: er_filter_errid () answers
+ * NO_ERROR for an empty one, so the failure is taken for an error the control file
+ * ignores - the row is skipped, nothing is written against it and nothing counts it,
+ * and the load ends a success. Say something instead, so a converter that forgets
+ * fails loudly rather than silently.
+ *
+ * Use this where a converter has just returned and nothing has filtered yet. It does
+ * not belong in CHECK_ERR (): er_filter_errid () clears the errid of an error it does
+ * ignore, so a code that has already passed one filter - ldr_convert_value () runs its
+ * own - arrives bare for a good reason, and asking again there would call an ignored
+ * error an unreported one.
+ */
+#define ENSURE_ERR_SET(inner_err)                                       \
+  do {                                                                  \
+    if ((inner_err) != NO_ERROR && er_errid () == NO_ERROR) {           \
+      assert (false);                                                   \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);   \
+    }                                                                   \
+  } while (0)
+
 #define CHECK_ERR(err, expr)                                            \
   do {                                                                  \
     int inner_err = (expr);                                             \
@@ -103,6 +127,7 @@ const std::size_t LDR_MAX_ARGS = 32;
 #define CHECK_PARSE_ERR(err, expr, cont, type, str)                     \
   do {                                                                  \
     int inner_err = (expr);                                             \
+    ENSURE_ERR_SET (inner_err);                                         \
     if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
       display_error(0);                                                 \
       parse_error(cont, type, str);                                     \
@@ -2540,6 +2565,8 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
     {
       return NO_ERROR;
     }
+
+  ENSURE_ERR_SET (err);
 
   if (er_filter_errid (false) == NO_ERROR)
     {

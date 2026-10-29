@@ -986,6 +986,18 @@ namespace cubload
 	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
       }
+    else if (error_code != NO_ERROR && er_errid () == NO_ERROR)
+      {
+	/*
+	 * A converter that returns a code without saying it leaves er_errid () empty,
+	 * and that is what the reporting reads: is_last_error_filtered () asks
+	 * er_errid (), and log_error_message () builds the text from er_msg (). The row
+	 * fails with nothing written against it and the load still ends a success. Say
+	 * something, so a converter that forgets fails loudly rather than silently.
+	 */
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      }
 
     return error_code;
   }
