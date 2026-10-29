@@ -113,7 +113,9 @@ enum eb_vec_kind
 enum eb_scalar_conv
 {
   EB_SC_EXACT = 0,		/* the DB_VALUE's type must be the vector's dbtype (a program kernel's operand) */
-  EB_SC_NUMERIC_FROM_DBV	/* numeric_agg_expr_from_dbv () (a fused tree's NUMERIC leaf) */
+  EB_SC_NUMERIC_FROM_DBV,	/* numeric_agg_expr_from_dbv () (a fused tree's NUMERIC leaf) */
+  EB_SC_SLOT			/* a value-list slot typed by the value the build saw: one of another type at the load
+				 * sends the chunk to the row path */
 };
 
 enum eb_op
@@ -2497,10 +2499,13 @@ eb_program_cell_vec (EB_BUILD * b, int cell)
 	b->cell_vec[cell] = eb_new_col_vec (b, attr_cache, attrid);
 	return b->cell_vec[cell];
       }
-    /* not a column of this scan: a literal the plan holds, constant for the clone's life */
+    /* not a column of this scan: a literal, or a value-list slot of another block -- an outer row's value a
+     * correlated subquery reads, which changes from one open of the kept plan to the next and is loaded every chunk
+     * (eb_load_scalars ()).  Its type is the value's the build saw, so another one at the load is the row path's
+     * (EB_SC_SLOT) */
     if (DB_IS_NULL (addr))
       {
-	b->cell_vec[cell] = eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, addr, NULL, EB_SC_EXACT);
+	b->cell_vec[cell] = eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, addr, NULL, EB_SC_SLOT);
       }
     else
       {
@@ -2510,7 +2515,7 @@ eb_program_cell_vec (EB_BUILD * b, int cell)
 	  {
 	    return -1;
 	  }
-	b->cell_vec[cell] = eb_new_scalar_vec (b, etype, DB_VALUE_DOMAIN_TYPE (addr), addr, NULL, EB_SC_EXACT);
+	b->cell_vec[cell] = eb_new_scalar_vec (b, etype, DB_VALUE_DOMAIN_TYPE (addr), addr, NULL, EB_SC_SLOT);
       }
     return b->cell_vec[cell];
   }
@@ -3799,8 +3804,13 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 	    }
 	  continue;
 	}
-      /* the value is of the type its step was compiled for: a host variable's is its domain's (CBRD-27583), as the
-       * row path's expr_k_hostvar () asserts */
+      if (vs->conv == EB_SC_SLOT && DB_VALUE_DOMAIN_TYPE (src) != v->dbtype)
+	{
+	  /* a value-list slot is typed by the value the build saw (eb_program_cell_vec ()) */
+	  return eb_fallback (plan, "a value-list slot of another type than the plan's");
+	}
+      /* any other value is of the type its step or literal was compiled for: a host variable's is its domain's
+       * (CBRD-27583), as the row path's expr_k_hostvar () asserts */
       assert (DB_VALUE_DOMAIN_TYPE (src) == v->dbtype);
       switch (v->dbtype)
 	{
