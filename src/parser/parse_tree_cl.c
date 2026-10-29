@@ -19371,6 +19371,78 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 }
 
 /*
+ *   pt_keeps_distinct_values () : checks if distinct values of FROM stay
+ *				   distinct when converted to the type of TO
+ *   return:
+ *   from(in): node whose values are converted
+ *   to(in): node giving the target type
+ *   check_precision(in): whether a shorter target string truncates
+ *
+ * Note: '7' and '07' both become 7 as a number, 'a' and 'A' are equal in a
+ *	 case insensitive collation, and a BIGINT loses digits as a DOUBLE.
+ */
+bool
+pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_precision)
+{
+  PT_TYPE_ENUM from_type = from->type_enum;
+  PT_TYPE_ENUM to_type = to->type_enum;
+  PT_COLL_INFER from_coll, to_coll;
+  int from_prec, to_prec;
+
+  switch (from_type)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+      if (to_type == PT_TYPE_DOUBLE)
+	{
+	  return true;
+	}
+      /* fall through */
+    case PT_TYPE_BIGINT:
+      return (PT_IS_DISCRETE_NUMBER_TYPE (to_type) || to_type == PT_TYPE_NUMERIC || PT_IS_CHAR_STRING_TYPE (to_type));
+
+    case PT_TYPE_NUMERIC:
+      if (to_type == PT_TYPE_NUMERIC)
+	{
+	  /* a smaller scale rounds */
+	  return (from->data_type != NULL && to->data_type != NULL
+		  && to->data_type->info.data_type.dec_precision >= from->data_type->info.data_type.dec_precision);
+	}
+      return PT_IS_CHAR_STRING_TYPE (to_type);
+
+    case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
+      if (!PT_IS_CHAR_STRING_TYPE (to_type))
+	{
+	  return false;
+	}
+      if (!pt_get_collation_info (from, &from_coll) || !pt_get_collation_info (to, &to_coll)
+	  || from_coll.coll_id != to_coll.coll_id)
+	{
+	  return false;
+	}
+      if (check_precision)
+	{
+	  if (from->data_type == NULL || to->data_type == NULL)
+	    {
+	      return false;
+	    }
+	  from_prec = from->data_type->info.data_type.precision;
+	  to_prec = to->data_type->info.data_type.precision;
+	  if (to_prec != TP_FLOATING_PRECISION_VALUE
+	      && (from_prec == TP_FLOATING_PRECISION_VALUE || from_prec > to_prec))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return from_type == to_type;
+    }
+}
+
+/*
  *   pt_expr_keep_uniqueness () : checks if the given operator
  *				  is keeping uniqueness
  *   return:
@@ -19398,6 +19470,79 @@ pt_expr_keep_uniqueness (const PT_NODE * expr)
       return false;
     }
   return false;
+}
+
+/*
+ *   pt_expr_keeps_distinct_values () : checks if an expression accepted by
+ *					pt_expr_keep_uniqueness () maps distinct
+ *					values of its argument to distinct values
+ *   return:
+ *   expr(in): expression parse tree node
+ *
+ * Note: the operator alone is not enough. '7' + 0 and '07' + 0 are both 7,
+ *	 and 1e-20 + 1 and 0 + 1 are both 1 as a DOUBLE.
+ */
+bool
+pt_expr_keeps_distinct_values (const PT_NODE * expr)
+{
+  PT_TYPE_ENUM type = expr->type_enum;
+  PT_NODE *arg;
+  int i;
+
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+      if (!PT_IS_CHAR_STRING_TYPE (type))
+	{
+	  return false;
+	}
+      break;
+    case PT_PLUS:
+    case PT_MINUS:
+      if (type == PT_TYPE_NUMERIC)
+	{
+	  /* the declared scale of the result is a placeholder. the operands are aligned to the larger scale
+	   * and the sum is exact or an overflow error */
+	  for (i = 0; i < 2; i++)
+	    {
+	      arg = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
+	      if (arg == NULL || (!PT_IS_DISCRETE_NUMBER_TYPE (arg->type_enum) && arg->type_enum != PT_TYPE_NUMERIC))
+		{
+		  return false;
+		}
+	    }
+	  return true;
+	}
+      if (!PT_IS_DISCRETE_NUMBER_TYPE (type) && type != PT_TYPE_DATE && type != PT_TYPE_TIME
+	  && type != PT_TYPE_DATETIME && type != PT_TYPE_TIMESTAMP && !PT_IS_CHAR_STRING_TYPE (type))
+	{
+	  return false;
+	}
+      break;
+    case PT_CAST:
+      break;
+    default:
+      /* PT_EQ gives only true or false */
+      return false;
+    }
+
+  /* the argument holding the column must convert to the result type without merging values */
+  for (i = 0; i < 2; i++)
+    {
+      arg = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
+      if (arg == NULL || (arg->node_type != PT_NAME && arg->node_type != PT_EXPR))
+	{
+	  continue;
+	}
+      if (!pt_keeps_distinct_values (arg, expr, expr->info.expr.op == PT_CAST))
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
