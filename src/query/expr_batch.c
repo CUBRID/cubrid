@@ -758,9 +758,10 @@ eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes)
 #define EB_ROW_BASE_BYTES (sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 2)
 /* the most rows a chunk holds (eb_cap_of ()): its arrays on the stack are this long */
 #define EB_CAP_MAX ((int) MAX (8, (EXPR_BATCH_CHUNK_BYTES / EB_ROW_BASE_BYTES) & ~7))
-/* the rows a chunk keeps at least when its plan has a string scratch (EB_STR_SCRATCH_MAX): the rows 8 KB hold at the
- * base bytes.  A column takes a scratch when its widest value fits the scratch this many times, and the plan's chunk
- * then holds no more rows than every scratch takes (expr_batch_init ()). */
+/* the rows a string scratch (EB_STR_SCRATCH_MAX) is sized for at least: the rows 8 KB hold at the base bytes.  A
+ * column takes a scratch when its widest value fits the scratch this many times, and the plan's chunk then holds no
+ * more rows than every scratch takes (expr_batch_init ()) -- a scratch never holds it below this many, the plan's
+ * bytes per row may. */
 #define EB_STR_SCRATCH_ROWS ((int) MAX (8, (8192 / EB_ROW_BASE_BYTES) & ~7))
 
 static inline int

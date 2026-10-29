@@ -286,7 +286,8 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
  *   ht_size(in): hash table size (in buckets)
  *
  * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON value,
- * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()).
+ * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()), and a
+ * string of a collation with expansions, which hashes the weights its comparison skips (lang_mht2str_utf8_exp ()).
  */
 unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
