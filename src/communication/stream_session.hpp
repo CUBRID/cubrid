@@ -116,7 +116,9 @@ class stream_session
 
 /* A download is a pull: the client asks for at most max bytes at a time. Seek
  * is not the transport's; a reader that starts at an offset carries it in its
- * config. */
+ * config. The core opens it under its transaction's snapshot, so vacuum keeps
+ * what was visible at the open until the transaction ends; a value already
+ * deleted by then can still vanish mid-read, and the source reports that. */
 class stream_source : public stream_handle_object
 {
   public:
