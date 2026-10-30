@@ -9342,6 +9342,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			{
 			  if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 			    {
+			      ASSERT_ERROR_AND_SET (error_code);
 			      goto error;
 			    }
 			}
