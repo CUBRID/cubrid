@@ -1004,6 +1004,10 @@ struct qo_env
    */
   bool dump_enable;
 
+  /* what the executor runs serially in this query block whatever the plan (qo_query_serial_level ()):
+   * -1 not computed yet, else a QO_SERIAL_* value */
+  int serial_level;
+
   /*
    * Controls whether the plan is dumped.  There are situations like
    * "SHOW COLUMNS" when the plan should not be dumped, even if QO_PARAM_LEVEL

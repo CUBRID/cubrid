@@ -1139,6 +1139,10 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   single_context(in): Hash join context for single-threaded execution.
+ *
+ * Note: the optimizer prices the partitioned path with the same decision (the build side by join
+ *	 type, the per-entry size, PARTITION_FILL_FACTOR) in qo_hjoin_cost () (query_planner.c).
+ *	 Change both together.
  */
 static HASHJOIN_STATUS
 hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
@@ -1846,6 +1850,9 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   single_context(in): Hash join context for single-threaded execution.
+ *
+ * Note: the optimizer discounts a hash join it expects to run here in parallel by the same
+ *	 conditions in qo_hjoin_side_runs_parallel () (query_planner.c). Change both together.
  */
 static HASHJOIN_STATUS
 hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
@@ -1956,6 +1963,9 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   single_context(in): Hash join context for single-threaded execution.
+ *
+ * Note: the optimizer discounts a hash join it expects to probe here in parallel by the same
+ *	 conditions in qo_hjoin_side_runs_parallel () (query_planner.c). Change both together.
  */
 static HASHJOIN_STATUS
 hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
