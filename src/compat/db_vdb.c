@@ -131,7 +131,8 @@ static int db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
 							   bool force_replan, bool * signature_miss);
-static DB_SESSION *db_prepared_tree_lookup (const char *name, const char *text);
+static DB_SESSION *db_prepared_tree_take (const char *name, const char *text);
+static void db_prepared_tree_put_back (DB_SESSION * kept);
 static bool db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * subsession);
 static void db_prepared_tree_remove (const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
@@ -771,11 +772,17 @@ int g_open_buffer_control_flags = 0;
  * session's: an entry carries the server session it was prepared in (`kept_session_id`) and
  * matches only in that session and for the statement text the server holds for the name
  * (another CAS sharing the server session may have prepared it again). A change of server
- * session (db_set_session_id) and db_shutdown release every entry; DROP PREPARE, re-PREPARE
- * of the same name and a stale kept tree release its own. The client library runs one
- * thread per connection, so the list takes no lock.
+ * session (db_set_session_id), db_shutdown, a restart and a shutdown without the server
+ * release every entry; DROP PREPARE, re-PREPARE of the same name and a stale kept tree
+ * release its own.
+ *
+ * A tree being executed is off the list (db_prepared_tree_take): SQL nested in that execution
+ * -- a stored procedure or a method running DEALLOCATE PREPARE or PREPARE on the same name --
+ * would otherwise free the tree under the execution. The list is per thread, as the server
+ * session id it is matched by (db_Session_id), so it takes no lock and a sub-client of a
+ * multi-connection client sees only its own entries.
  */
-static DB_SESSION *db_Kept_trees = NULL;
+static CUB_THREAD_LOCAL DB_SESSION *db_Kept_trees = NULL;
 
 /*
  * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from the
@@ -816,15 +823,17 @@ db_prepared_tree_close (DB_SESSION * kept)
 }
 
 /*
- * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
- * return     : the kept session or NULL
+ * db_prepared_tree_take() - check out the kept subsession of a prepared statement
+ * return     : the kept session, now off the list, or NULL
  * name (in)  : prepared statement name
  * text (in)  : the statement text the server holds for the name
  *
- * Note: CBRD-27583: a tree kept in another server session or for another text is closed: the name was prepared again
+ * Note: the caller owns the returned session until it hands it back with
+ *       db_prepared_tree_put_back () or releases it with db_prepared_tree_close ().
+ *       CBRD-27583: a tree kept in another server session or for another text is closed: the name was prepared again
  */
 static DB_SESSION *
-db_prepared_tree_lookup (const char *name, const char *text)
+db_prepared_tree_take (const char *name, const char *text)
 {
   DB_SESSION *s = db_prepared_tree_unlink (name);
 
@@ -834,12 +843,31 @@ db_prepared_tree_lookup (const char *name, const char *text)
       db_prepared_tree_close (s);
       return NULL;
     }
-  if (s != NULL)
-    {
-      s->next = db_Kept_trees;
-      db_Kept_trees = s;
-    }
   return s;
+}
+
+/*
+ * db_prepared_tree_put_back() - return a checked-out kept subsession to the list
+ * kept (in) : subsession obtained from db_prepared_tree_take ()
+ *
+ * Note: if SQL nested in the execution kept the name anew (its own EXECUTE compiled and
+ *       registered a tree), the newer tree wins: a name has at most one entry. A name the
+ *       nested SQL deallocated comes back too; the next EXECUTE of it fails on the server
+ *       before any lookup, and the next PREPARE of it removes the entry.
+ */
+static void
+db_prepared_tree_put_back (DB_SESSION * kept)
+{
+  for (DB_SESSION * s = db_Kept_trees; s != NULL; s = s->next)
+    {
+      if (strcmp (s->kept_stmt_name, kept->kept_stmt_name) == 0)
+	{
+	  db_prepared_tree_close (kept);
+	  return;
+	}
+    }
+  kept->next = db_Kept_trees;
+  db_Kept_trees = kept;
 }
 
 /*
@@ -3299,8 +3327,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
 	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
 	  const PT_NODE *text = statement->info.execute.query;
-	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original,
-						      (const char *) text->info.value.data_value.str->bytes);
+	  DB_SESSION *kept = db_prepared_tree_take (statement->info.execute.name->info.name.original,
+						    (const char *) text->info.value.data_value.str->bytes);
 
 	  if (kept != NULL)
 	    {
@@ -3320,6 +3348,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 								    &signature_miss);
 	      if (err >= 0)
 		{
+		  db_prepared_tree_put_back (kept);
 		  return err;
 		}
 	      if (err != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && err != ER_QPROC_INVALID_XASLNODE
@@ -3331,14 +3360,21 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		   * (serials, methods) must not evaluate twice, and the first error must
 		   * not be masked by a retry (same whitelist as the prepared-statement
 		   * retry below) */
+		  db_prepared_tree_put_back (kept);
 		  return err;
 		}
 	      /* the kept tree is stale (schema change / cache invalidation); discard it
 	       * and fall back to a fresh compilation of the stored statement text. CBRD-27583: a signature it has no
-	       * compilation of is compiled from the text too, and the kept tree stays for its own ones. */
-	      if (!signature_miss)
+	       * compilation of is compiled from the text too, and the kept tree stays for its own ones -- back on
+	       * the list before that compilation, which may keep a tree of its own under the name. The stale one is
+	       * closed as held: removing it by name could hit a tree nested SQL kept meanwhile. */
+	      if (signature_miss)
 		{
-		  db_prepared_tree_remove (statement->info.execute.name->info.name.original);
+		  db_prepared_tree_put_back (kept);
+		}
+	      else
+		{
+		  db_prepared_tree_close (kept);
 		}
 	      er_clear ();
 	      pt_reset_error (parser);
