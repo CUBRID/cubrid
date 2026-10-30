@@ -278,7 +278,8 @@ static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUM
 					 bool is_float, bool * is_value_negative);
 static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 				   char *int_digits, int *int_len, char *frac_digits, int *frac_len,
-				   int *frac_first_sig_digit, int *frac_last_sig_digit, bool * is_zero);
+				   int *frac_first_sig_digit, int *frac_last_sig_digit, bool * is_zero,
+				   bool * is_empty);
 static void determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
 				  int frac_first_sig_digit, int frac_last_sig_digit, char *num_string, int *out_prec,
 				  int *out_scale);
@@ -5287,13 +5288,15 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
  *   frac_len(out) : Length of fractional part
  *   frac_first_sig_digit(out) : First non-zero position in fractional part
  *   frac_last_sig_digit(out) : Last non-zero position in fractional part
+ *   is_zero(out) : Whether the value is zero
+ *   is_empty(out) : Whether the string is empty or has only whitespace (also is_zero)
  *
  * Note: Parse and analyze numeric string to extract integer/fractional components
  */
 static int
 analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_sig_digit,
-			int *frac_last_sig_digit, bool * is_zero)
+			int *frac_last_sig_digit, bool * is_zero, bool * is_empty)
 {
   const int int_buf_max = (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE);	/* 254 */
   const int frac_buf_max = DB_MAX_NUMERIC_SCALE;	/* 252, excludes leading "0." */
@@ -5305,10 +5308,12 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
   bool has_digit = false;
   bool pad_character_zero = false;
   bool sign_found = false;
+  bool decimal_point_found = false;
   bool trailing_spaces = false;
 
   *frac_first_sig_digit = *frac_last_sig_digit = -1;
   *negate_value = false;
+  *is_empty = false;
 
   /* Step 1: Handle spaces, signs, and leading zeros */
   while (parse_pos < astring_length)
@@ -5389,6 +5394,7 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
       else if (current_char == '.' && !trailing_spaces)
 	{
 	  /* '.' is only allowed immediately after a digit, not after trailing spaces (e.g. '1   .' is invalid) */
+	  decimal_point_found = true;
 	  parse_pos++;
 	  break;
 	}
@@ -5482,17 +5488,27 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
     }
   else if (!has_digit && int_count == 0 && frac_count == 0)
     {
-      /*
-       * no valid digit was found in input.
-       * reject strings that do not contain any numeric digit.
-       *
-       * examples:
-       *   '+', '-'                  (sign only)
-       *   '.', ' . ', '   .   '     (decimal point only)
-       *   '', ' ', '    '               (whitespace only)
-       *   '+.', '-.', ' + . '       (sign + non-digit combinations)
-       */
-      return DOMAIN_INCOMPATIBLE;
+      if (sign_found || decimal_point_found)
+	{
+	  /*
+	   * no valid digit was found in input.
+	   * reject strings that do not contain any numeric digit.
+	   *
+	   * examples:
+	   *   '+', '-'                  (sign only)
+	   *   '.', ' . ', '   .   '     (decimal point only)
+	   *   '+.', '-.', ' + . '       (sign + non-digit combinations)
+	   */
+	  return DOMAIN_INCOMPATIBLE;
+	}
+
+      /* '' and a whitespace-only string are 0, the same as the other numeric types */
+      int_digits[0] = '\0';
+      frac_digits[0] = '\0';
+      *int_len = 1;
+      *frac_len = 0;
+      *is_zero = true;
+      *is_empty = true;
     }
   else
     {
@@ -5817,6 +5833,7 @@ numeric_coerce_string_to_num_status (const char *astring, int astring_length, IN
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   bool negate_value = false;
   bool is_zero = false;
+  bool is_empty = false;
   int prec, scale;
   int int_len, frac_len;
   int frac_first_sig_digit, frac_last_sig_digit;
@@ -5827,10 +5844,17 @@ numeric_coerce_string_to_num_status (const char *astring, int astring_length, IN
   /* Parse and compute precision/scale */
   ret =
     analyze_numeric_string (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
-			    &frac_len, &frac_first_sig_digit, &frac_last_sig_digit, &is_zero);
+			    &frac_len, &frac_first_sig_digit, &frac_last_sig_digit, &is_zero, &is_empty);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (is_empty && prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL))
+    {
+      /* with numeric_empty_string_as_null, '' or a whitespace-only string is NULL as before CBRD-26749 */
+      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+      return NO_ERROR;
     }
 
   assert (int_len > 0 || frac_len > 0);
