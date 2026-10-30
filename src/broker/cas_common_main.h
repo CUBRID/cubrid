@@ -67,7 +67,8 @@ LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
    ||((func_code) == CAS_FC_GET_ATTR_TYPE_STR) \
    ||((func_code) == CAS_FC_CURSOR_CLOSE) \
    ||((func_code) == CAS_FC_END_SESSION)  \
-   ||((func_code) == CAS_FC_CAS_CHANGE_MODE))
+   ||((func_code) == CAS_FC_CAS_CHANGE_MODE) \
+   ||((func_code) == CAS_FC_STREAM_RELEASE))
 
 /* DB connection information structure */
 typedef struct

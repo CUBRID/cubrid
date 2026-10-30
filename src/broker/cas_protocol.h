@@ -125,6 +125,14 @@ extern "C"
  * reads as 1 from any earlier server. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
 
+/* The optional trailing flags byte of the bundled stream requests and replies. A
+ * driver that does not send it gets the unbundled behavior. */
+#define CAS_STREAM_FLAG_FINAL			0x01	/* INIT, SEND_DATA: end the stream with this chunk */
+#define CAS_STREAM_FLAG_RELEASE_AT_EOF		0x01	/* READ_OPEN, READ: release the handle at eof */
+#define CAS_STREAM_FLAG_AUTO_COMMIT		0x02	/* READ_OPEN, READ: what RELEASE's auto-commit byte says */
+#define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
+#define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
+
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
 
@@ -239,7 +247,7 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
-    /* PROTOCOL_V13; a driver checks for it before opening a stream */
+    /* PROTOCOL_V13 names the whole family, 45-51; a driver checks it once before sending any of them */
     CAS_FC_STREAM_SEND_DATA = 45,
     CAS_FC_STREAM_END = 46,
     /* Open and give up, for a consumer whose client half is the driver itself.
@@ -247,6 +255,10 @@ extern "C"
      * the failure the server can see closes it. */
     CAS_FC_STREAM_INIT = 47,
     CAS_FC_STREAM_ABORT = 48,
+    /* Server->client: a download is a handle the client reads until eof and then releases. */
+    CAS_FC_STREAM_READ_OPEN = 49,
+    CAS_FC_STREAM_READ = 50,
+    CAS_FC_STREAM_RELEASE = 51,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -274,8 +286,7 @@ extern "C"
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
-				 * QC/X1 query cancel; client->server byte-stream transport
-				 * (CAS_FC_STREAM_*) */
+				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*) */
     CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;

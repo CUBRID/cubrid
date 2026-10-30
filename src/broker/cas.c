@@ -124,7 +124,10 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_stream_send_data,		/* CAS_FC_STREAM_SEND_DATA */
   fn_stream_end,		/* CAS_FC_STREAM_END */
   fn_stream_init,		/* CAS_FC_STREAM_INIT */
-  fn_stream_abort		/* CAS_FC_STREAM_ABORT */
+  fn_stream_abort,		/* CAS_FC_STREAM_ABORT */
+  fn_stream_read_open,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_stream_read,		/* CAS_FC_STREAM_READ */
+  fn_stream_release		/* CAS_FC_STREAM_RELEASE */
 };
 
 static const char *server_func_name[] = {
@@ -175,7 +178,10 @@ static const char *server_func_name[] = {
   "fn_stream_send_data",
   "fn_stream_end",
   "fn_stream_init",
-  "fn_stream_abort"
+  "fn_stream_abort",
+  "fn_stream_read_open",
+  "fn_stream_read",
+  "fn_stream_release"
 };
 
 

@@ -750,8 +750,14 @@ namespace
   {
     copy_session_registrar ()
     {
-      /* COPY's END is the end of the statement: the transfer is the whole of it */
-      stream_session_register (STREAM_KIND_COPY, copy_session_create, true);
+      /* COPY's END is the end of the statement: the transfer is the whole of it. No client half: a statement
+       * opens it, after its own privilege check, so a driver may not. */
+      stream_kind_desc desc = { STREAM_UPLOAD, copy_session_create, NULL, true, false, STREAM_SCOPE_TRAN };
+
+      if (stream_kind_register (STREAM_KIND_COPY, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
     }
   };
 

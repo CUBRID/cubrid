@@ -140,7 +140,10 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_SEND_DATA */
   fn_not_supported,		/* CAS_FC_STREAM_END */
   fn_not_supported,		/* CAS_FC_STREAM_INIT */
-  fn_not_supported		/* CAS_FC_STREAM_ABORT */
+  fn_not_supported,		/* CAS_FC_STREAM_ABORT */
+  fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_not_supported,		/* CAS_FC_STREAM_READ */
+  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
 };
 
 static const char *server_func_name[] = {
@@ -191,7 +194,10 @@ static const char *server_func_name[] = {
   "stream_send_data",
   "stream_end",
   "stream_init",
-  "stream_abort"
+  "stream_abort",
+  "stream_read_open",
+  "stream_read",
+  "stream_release"
 };
 
 static int cgw_cas_main (void);

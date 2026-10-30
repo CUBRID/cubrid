@@ -434,6 +434,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
 
+  req_p = &net_Requests[NET_SERVER_BTREE_COMPACT_OVERFLOW];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sbtree_compact_overflow;
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
@@ -725,6 +729,19 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_STREAM_ABORT];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sstream_abort;
+
+  /* the download family reads, so a read-only server serves it */
+  req_p = &net_Requests[NET_SERVER_STREAM_READ_OPEN];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read_open;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_READ];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_RELEASE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_release;
 
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];

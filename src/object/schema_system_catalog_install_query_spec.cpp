@@ -302,8 +302,9 @@ sm_define_view_attribute_spec (void)
 	  "[a].[from_class_of].[owner].[name] AS [from_owner_name], "
 	  "[a].[from_attr_name] AS [from_attr_name], "
 	  "[t].[type_name] AS [data_type], "
-	  "[d].[prec] AS [prec], "
-	  "[d].[scale] AS [scale], "
+	  /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column precision or scale */
+	  "IF ([d].[data_type] = %d AND [d].[prec] = %d, NULL, [d].[prec]) AS [prec], "
+	  "IF ([d].[data_type] = %d AND [d].[prec] = %d, NULL, [d].[scale]) AS [scale], "
 	  "IF ("
 	      "[a].[data_type] IN (4, 25, 26, 27, 35), "
 	      /* CT_CHARSET_NAME */
@@ -374,6 +375,8 @@ sm_define_view_attribute_spec (void)
 		    "AND [au].[auth_type] = 'SELECT'"
 		")"
 	    ")",
+	DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
+	DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME,
 	DB_ATTOPT_AUTO_INCREMENT,

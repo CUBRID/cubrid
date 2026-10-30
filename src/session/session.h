@@ -38,6 +38,7 @@
 // forward definitions
 struct xasl_cache_ent;
 class stream_session;
+class stream_handle_table;
 
 extern void session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
@@ -92,10 +93,13 @@ extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_comm
 extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 
-extern int session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p);
-extern int session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr));
+extern int session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind);
+extern int session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr),
+				       int *kind);
 extern bool session_has_stream_session (THREAD_ENTRY * thread_p);
 extern void session_end_stream_session (THREAD_ENTRY * thread_p);
+extern stream_handle_table *session_get_stream_handles (THREAD_ENTRY * thread_p);
+extern void session_end_tran_stream_handles (THREAD_ENTRY * thread_p, int tran_index);
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);

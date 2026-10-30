@@ -33,6 +33,7 @@
 #include "system.h"
 #include "session.h"
 #include "stream_session.hpp"
+#include "stream_handle.hpp"
 
 #include "boot_sr.h"
 #include "json_builder.h"
@@ -143,6 +144,8 @@ struct session_state
 
   load_session *load_session_p;
   stream_session *stream_session_p;
+  int stream_session_kind;
+  stream_handle_table *stream_handles_p;
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -327,6 +330,8 @@ session_state_init (void *st)
   session_p->load_session_p = NULL;
   session_p->pl_session_p = NULL;
   session_p->stream_session_p = NULL;
+  session_p->stream_session_kind = -1;
+  session_p->stream_handles_p = new stream_handle_table ();
 
   return NO_ERROR;
 }
@@ -356,6 +361,9 @@ session_state_uninit (void *st)
 #endif /* SESSION_DEBUG */
 
   session_stop_attached_threads (thread_p, session);
+
+  delete session->stream_handles_p;
+  session->stream_handles_p = NULL;
 
   if (session->pl_session_p)
     {
@@ -3276,7 +3284,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 }
 
 int
-session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p)
+session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3295,12 +3303,13 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
     }
 
   state_p->stream_session_p = stream_session_p;
+  state_p->stream_session_kind = kind;
 
   return NO_ERROR;
 }
 
 int
-session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr))
+session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr), int *kind)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3311,6 +3320,10 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
     }
 
   stream_session_ref_ptr = state_p->stream_session_p;
+  if (kind != NULL)
+    {
+      *kind = state_p->stream_session_kind;
+    }
 
   return NO_ERROR;
 }
@@ -3320,7 +3333,7 @@ session_has_stream_session (THREAD_ENTRY * thread_p)
 {
   stream_session *stream_session_p = NULL;
 
-  (void) session_get_stream_session (thread_p, stream_session_p);
+  (void) session_get_stream_session (thread_p, stream_session_p, NULL);
 
   return stream_session_p != NULL;
 }
@@ -3355,6 +3368,38 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
 
   delete state_p->stream_session_p;
   state_p->stream_session_p = NULL;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * session_get_stream_handles () - The handles this session's client holds between stream requests
+ *   return: the session's table, or NULL with an error set
+ */
+stream_handle_table *
+session_get_stream_handles (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  return state_p != NULL ? state_p->stream_handles_p : NULL;
+}
+
+/*
+ * session_end_tran_stream_handles () - Release the STREAM_SCOPE_TRAN handles of an ending transaction
+ *   tran_index(in): the transaction that ends
+ *
+ * Every transaction end comes through here, including those on threads with no
+ * session; they hold no handles and are passed over without an error.
+ */
+void
+session_end_tran_stream_handles (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return;
+    }
+
+  thread_p->conn_entry->session_p->stream_handles_p->end_tran (thread_p, tran_index);
 #endif /* SERVER_MODE */
 }
 
@@ -3486,6 +3531,8 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
       delete session->stream_session_p;
       session->stream_session_p = NULL;
     }
+
+  session->stream_handles_p->clear (thread_p);
 #endif
 }
 

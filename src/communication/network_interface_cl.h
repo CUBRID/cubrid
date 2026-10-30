@@ -270,6 +270,8 @@ extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * c
 extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VALUE * keys,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
+extern int btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
+				   INT64 * pairs_skipped);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
 extern int qmgr_prepare_query (struct compile_context *context, xasl_stream * stream);
 
@@ -422,14 +424,19 @@ extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *b
 extern int file_delete_target_file (const char *target_vfid_str);
 #endif
 
-/* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
-extern int stream_from_init (int stream_kind, const char *config, int config_len);
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
+extern int stream_from_init (int stream_kind, const char *config, int config_len, int flags = 0,
+			     const char *data = NULL, int data_len = 0, INT64 * count = NULL,
+			     bool * ends_unit_of_work = NULL);
 extern int stream_from_send_data (const char *data, int data_len);
-extern int stream_from_end (INT64 * count);
+extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len = 0);
 extern int stream_from_abort (void);
 extern bool stream_from_is_open (void);
-extern bool stream_from_ends_unit_of_work (void);
 extern void stream_from_reset (void);
+extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+				  INT64 * handle, char *buf, int *nread, int *reply_flags);
+extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
+extern int stream_from_release (INT64 handle);
 
 /* COPY FROM STDIN binding over the stream transport */
 extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols,

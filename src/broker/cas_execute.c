@@ -82,6 +82,8 @@
 #include "cas_common_vars.h"
 #include "query_replace.h"
 #include "network_interface_cl.h"
+#include "stream_client.h"
+#include "stream_session.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -204,6 +206,7 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+static int cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -499,8 +502,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       ux_get_default_setting ();
     }
-  else if (shm_appl->cache_user_info == OFF || strcmp (database_user, db_user) != 0
-	   || strcmp (database_passwd, db_passwd) != 0)
+  else
     {
       int err_code;
       /* Already connected to a database, make sure to clear errors from previous clients */
@@ -517,13 +519,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
-    }
-  else
-    {
-      /* Already connected to a database, make sure to clear errors from previous clients */
-      er_clear ();
-      /* check session to see if it is still active and create if isn't */
-      (void) db_find_or_create_session (db_user, program_name);
     }
   return 0;
 
@@ -942,6 +937,7 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
       return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
     }
 
+  ux_stream_end_tran ();
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -5534,6 +5530,33 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
   return 0;
 }
 
+/*
+ * cas_copy_peeked_string () - NUL-terminated copy of a string value peeked from a query result
+ *   return: 0, or ER_QPROC_INVALID_DATATYPE when the value is not a string or does not fit
+ *   A peeked string value points into the list file page: its bytes are exactly the string, with the next column
+ *   right behind them. Everything that treats the bytes as a C string needs its own copy.
+ */
+static int
+cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size)
+{
+  int size;
+
+  if (DB_IS_NULL (value) || !DB_IS_STRING (value))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  size = db_get_string_size (value);
+  if (size < 0 || (size_t) size >= buf_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  memcpy (buf, db_get_string (value), size);
+  buf[size] = '\0';
+  return 0;
+}
+
 static int
 fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5547,6 +5570,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   DB_VALUE val_class, val_attr;
+  char class_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];	/* unique_name = owner.class fits an identifier (DB_MAX_CLASS_LENGTH) */
+  char attr_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
@@ -5603,7 +5628,14 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = db_get_string (&val_class);
+      /* the value is a peek into the list file page: the bytes are not NUL-terminated (the next column follows
+       * immediately), so take a NUL-terminated copy before handing them to the C-string schema APIs */
+      err_code = cas_copy_peeked_string (&val_class, class_name_buf, sizeof (class_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      class_name = class_name_buf;
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{
@@ -5616,7 +5648,12 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      attr_name = db_get_string (&val_attr);
+      err_code = cas_copy_peeked_string (&val_attr, attr_name_buf, sizeof (attr_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      attr_name = attr_name_buf;
       if (srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE)
 	{
 	  db_attr = db_get_class_attribute (class_obj, attr_name);
@@ -10573,6 +10610,71 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 }
 
 /*
+ * Download handles this connection holds, as the READ_OPEN replies named them. The CAS keeps them to know,
+ * without knowing any kind, which handles are downloads and whether one still ties the transaction.
+ */
+static INT64 *stream_Downloads = NULL;
+static int stream_Download_count = 0;
+static int stream_Download_capacity = 0;
+
+static int
+stream_download_add (INT64 handle)
+{
+  if (stream_Download_count == stream_Download_capacity)
+    {
+      int capacity = stream_Download_capacity == 0 ? 16 : 2 * stream_Download_capacity;
+      INT64 *grown = (INT64 *) REALLOC (stream_Downloads, capacity * sizeof (INT64));
+
+      if (grown == NULL)
+	{
+	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	}
+      stream_Downloads = grown;
+      stream_Download_capacity = capacity;
+    }
+
+  stream_Downloads[stream_Download_count++] = handle;
+  return 0;
+}
+
+/* true if handle was one of this connection's downloads */
+static bool
+stream_download_remove (INT64 handle)
+{
+  for (int i = 0; i < stream_Download_count; i++)
+    {
+      if (stream_Downloads[i] == handle)
+	{
+	  stream_Downloads[i] = stream_Downloads[--stream_Download_count];
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * ux_stream_holds_download () - Does a download handle still tie this connection's transaction?
+ *
+ * A download reads in its transaction the way an open result set does, so the commit owed in auto-commit mode
+ * waits until the last of both is gone.
+ */
+bool
+ux_stream_holds_download (void)
+{
+  return stream_Download_count > 0;
+}
+
+/*
+ * ux_stream_end_tran () - The transaction ended: every download handle went with it on the server
+ */
+void
+ux_stream_end_tran (void)
+{
+  stream_Download_count = 0;
+}
+
+/*
  * ux_stream_reset () - Drop the stream state this connection was carrying
  *
  * Called where the server-side session is known to be gone. Without it the
@@ -10584,6 +10686,7 @@ ux_stream_reset (void)
 {
   stream_from_reset ();
   stream_Deferred_auto_commit = false;
+  ux_stream_end_tran ();
 }
 
 /*
@@ -10601,9 +10704,9 @@ ux_stream_is_open (void)
 /*
  * ux_stream_admits_request () - May this request run on the connection now?
  *
- * An open stream is one statement still running: only its own requests and the
- * ones that end the whole transaction are admitted (a COMMIT rolls back, see
- * ux_end_tran).
+ * An open upload is one statement still running: only its own requests, the ones
+ * that end the whole transaction (a COMMIT rolls back, see ux_end_tran) and the
+ * download family, which runs no statement, are admitted.
  */
 bool
 ux_stream_admits_request (int func_code)
@@ -10618,6 +10721,9 @@ ux_stream_admits_request (int func_code)
     case CAS_FC_STREAM_SEND_DATA:
     case CAS_FC_STREAM_END:
     case CAS_FC_STREAM_ABORT:
+    case CAS_FC_STREAM_READ_OPEN:
+    case CAS_FC_STREAM_READ:
+    case CAS_FC_STREAM_RELEASE:
     case CAS_FC_END_TRAN:
     case CAS_FC_CHECK_CAS:
     case CAS_FC_END_SESSION:
@@ -10661,12 +10767,23 @@ ux_stream_give_up_after_error (void)
   if (stream_from_is_open ())
     {
       (void) stream_from_abort ();
-      ux_stream_reset ();
+      stream_Deferred_auto_commit = false;
     }
+}
+
+static int
+ux_stream_error (int err_code, T_NET_BUF * net_buf)
+{
+  errors_in_transaction++;
+  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+  return err_code;
 }
 
 /*
  * ux_stream_init () - Open a stream session the driver asked for directly
+ *   final(in): CAS_STREAM_FLAG_FINAL -- data is the whole value, and the reply is END's
+ *   data(in), data_len(in): the first chunk, or none
  *
  * The statement path does not come through here: a statement that opens a
  * stream defers its own auto-commit in do_commit_after_execute (), with the
@@ -10675,22 +10792,58 @@ ux_stream_give_up_after_error (void)
  * the open reply carries, and this connection's mode.
  */
 int
-ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
+ux_stream_init (int stream_kind, char *config, int config_len, bool final, char *data, int data_len,
+		T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
+  INT64 count = 0;
+  bool ends_unit_of_work = false;
+  bool auto_commit_owed;
 
-  err_code = stream_from_init (stream_kind, config, config_len);
+  /* the server cannot tell a driver's open from a statement's, so the client half answers who may open the kind */
+  err_code = stream_kind_client_check_driver_open (stream_kind);
+  if (err_code == NO_ERROR)
+    {
+      err_code = stream_kind_client_authorize (stream_kind, config, config_len);
+    }
+  if (err_code == NO_ERROR && stream_from_is_open ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is already active on this connection");
+      err_code = ER_STREAM_SESSION_ERROR;
+    }
   if (err_code < 0)
     {
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
+      return ux_stream_error (err_code, net_buf);
     }
 
-  stream_Deferred_auto_commit = (stream_from_ends_unit_of_work () && as_info->auto_commit_mode == TRUE);
+  err_code = stream_from_init (stream_kind, config, config_len, final ? STREAM_FLAG_FINAL : 0, data, data_len,
+			       &count, &ends_unit_of_work);
+  auto_commit_owed = (ends_unit_of_work && as_info->auto_commit_mode == TRUE);
+  if (err_code < 0)
+    {
+      /* the open, or a first chunk it carried, may already have put work into the transaction */
+      if (auto_commit_owed)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+      return ux_stream_error (err_code, net_buf);
+    }
 
   net_buf_cp_int (net_buf, 0, NULL);
+  if (final)
+    {
+      if (auto_commit_owed)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	}
+      net_buf_cp_bigint (net_buf, count, NULL);
+    }
+  else
+    {
+      stream_Deferred_auto_commit = auto_commit_owed;
+    }
+
   return 0;
 }
 
@@ -10702,10 +10855,6 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO *
   err_code = stream_from_send_data (data, data_len);
   if (err_code < 0)
     {
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-
       /* The server dropped the session on the failed chunk, so the statement
        * that opened the stream ends here. Whatever it already flushed is still
        * in the transaction, so the auto-commit it deferred is paid back as a
@@ -10716,15 +10865,18 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO *
 	  stream_Deferred_auto_commit = false;
 	}
 
-      return err_code;
+      return ux_stream_error (err_code, net_buf);
     }
 
   net_buf_cp_int (net_buf, 0, NULL);
   return 0;
 }
 
+/*
+ * ux_stream_end () - End the stream, after a last chunk if the driver sent one with CAS_STREAM_FLAG_FINAL
+ */
 int
-ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
   INT64 count = 0;
@@ -10735,19 +10887,15 @@ ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   auto_commit_owed = stream_Deferred_auto_commit;
   stream_Deferred_auto_commit = false;
 
-  err_code = stream_from_end (&count);
+  err_code = stream_from_end (&count, data, data_len);
   if (err_code < 0)
     {
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-
       if (auto_commit_owed)
 	{
 	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
 	}
 
-      return err_code;
+      return ux_stream_error (err_code, net_buf);
     }
 
   if (auto_commit_owed)
@@ -10788,12 +10936,205 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (err_code < 0)
     {
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  return 0;
+}
+
+/*
+ * ux_stream_settle_release () - Pay the auto-commit a download deferred, if its release was the last tie
+ *
+ * Not while an upload is open: its debt stays for END, or for the next commit the connection makes.
+ */
+static void
+ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
+{
+  if (!auto_commit || ux_stream_holds_download () || stream_from_is_open () || hm_has_result_tied_to_tran ())
+    {
+      return;
+    }
+
+  req_info->need_auto_commit = (err_code < 0) ? TRAN_AUTOROLLBACK : TRAN_AUTOCOMMIT;
+}
+
+/* what a read request asked of the core, and what the core's reply means to the driver */
+static int
+ux_stream_server_read_flags (char flags)
+{
+  return (flags & CAS_STREAM_FLAG_RELEASE_AT_EOF) ? STREAM_FLAG_RELEASE_AT_EOF : 0;
+}
+
+static int
+ux_stream_driver_read_flags (int reply_flags)
+{
+  return ((reply_flags & STREAM_FLAG_EOF) ? CAS_STREAM_FLAG_EOF : 0)
+    | ((reply_flags & STREAM_FLAG_RELEASED) ? CAS_STREAM_FLAG_RELEASED : 0);
+}
+
+/*
+ * ux_stream_read_open () - Open a download the driver asked for
+ *   bundled(in): the driver sent first_max and flags; the first piece and its flags go back with the handle
+ *   first_max(in), flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
+ */
+int
+ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max, char flags,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  INT64 handle = 0;
+  char *buffer = NULL;
+  int nread = 0;
+  int reply_flags = 0;
+
+  if (bundled && first_max < 0)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+  first_max = bundled ? MIN (first_max, STREAM_READ_MAX_CHUNK) : 0;
+
+  /* the client library runs the kind's authorize in stream_from_read_open () */
+  err_code = stream_kind_client_check_driver_open (stream_kind);
+  if (err_code < 0)
+    {
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  if (first_max > 0)
+    {
+      buffer = (char *) MALLOC (first_max);
+      if (buffer == NULL)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return err_code;
+	}
+    }
+
+  err_code = stream_from_read_open (stream_kind, config, config_len, first_max, ux_stream_server_read_flags (flags),
+				    &handle, buffer, &nread, &reply_flags);
+  if (err_code == NO_ERROR && handle != 0)
+    {
+      err_code = stream_download_add (handle);
+      if (err_code < 0)
+	{
+	  (void) stream_from_release (handle);
+	  FREE_MEM (buffer);
+	  NET_BUF_ERR_SET (net_buf);
+	  return err_code;
+	}
+    }
+  if (err_code < 0)
+    {
+      FREE_MEM (buffer);
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_bigint (net_buf, handle, NULL);
+  if (bundled)
+    {
+      net_buf_cp_int (net_buf, nread, NULL);
+      net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
+      if (nread > 0)
+	{
+	  net_buf_cp_str (net_buf, buffer, nread);
+	}
+    }
+  FREE_MEM (buffer);
+
+  /* a value read in one call left no handle, so nothing ties the transaction it was read in */
+  if (reply_flags & STREAM_FLAG_RELEASED)
+    {
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, 0, req_info);
+    }
+
+  return 0;
+}
+
+/*
+ * ux_stream_read () - Read the next piece of a download
+ *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT; 0 for a driver that sent none
+ */
+int
+ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  char *buffer;
+  int nread = 0;
+  int reply_flags = 0;
+  bool auto_commit = (flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0;
+
+  if (max <= 0)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+  max = MIN (max, STREAM_READ_MAX_CHUNK);
+
+  buffer = (char *) MALLOC (max);
+  if (buffer == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
 
-  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  err_code = stream_from_read (handle, buffer, max, ux_stream_server_read_flags (flags), &nread, &reply_flags);
+  if (err_code < 0)
+    {
+      FREE_MEM (buffer);
+      /* the server released the handle with the failed read */
+      if (stream_download_remove (handle))
+	{
+	  ux_stream_settle_release (auto_commit, err_code, req_info);
+	}
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_int (net_buf, nread, NULL);
+  net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
+  if (nread > 0)
+    {
+      net_buf_cp_str (net_buf, buffer, nread);
+    }
+  FREE_MEM (buffer);
+
+  if ((reply_flags & STREAM_FLAG_RELEASED) && stream_download_remove (handle))
+    {
+      ux_stream_settle_release (auto_commit, 0, req_info);
+    }
+
+  return 0;
+}
+
+/*
+ * ux_stream_release () - Release a download the driver holds
+ *
+ * Download handles only: a staged upload belongs to the statement handles that bound it, and the CAS releases
+ * it itself. A handle the CAS does not hold is released already, which is not an error.
+ */
+int
+ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code = NO_ERROR;
+
+  if (stream_download_remove (handle))
+    {
+      err_code = stream_from_release (handle);
+      ux_stream_settle_release (auto_commit, err_code, req_info);
+    }
+
+  if (err_code < 0)
+    {
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
   return 0;
 }

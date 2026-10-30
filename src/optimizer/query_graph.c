@@ -2761,6 +2761,31 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	}
     }
 
+  /* a node an ON-clause predicate reads must be joined before the node that owns the ON clause, or the predicate
+   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too */
+  if (QO_ON_COND_TERM (term))
+    {
+      int location = QO_TERM_LOCATION (term);
+      QO_NODE *on_node;
+
+      QO_ASSERT (env, location < env->nnodes);
+
+      on_node = QO_ENV_NODE (env, location);
+      QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
+
+      if (QO_NODE_IS_OUTER_JOIN (on_node))
+	{
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t != location)
+		{
+		  QO_ASSERT (env, t < location);
+		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		}
+	    }
+	}
+    }
+
 wrapup:
 
   /* A negative selectivity means that the cardinality of the result depends only on the cardinality of the head, not
