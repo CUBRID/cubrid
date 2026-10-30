@@ -441,7 +441,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 
 /*
  * stream_download_read () - Read the next piece of an open download
- *   return: error code; the handle is released on a failed read
+ *   return: error code; a failed read of a resolved handle releases it and says so in reply_flags
  *   table(in): the session's handle table
  *   handle(in): what READ_OPEN returned
  *   tran_index(in): the transaction asking
@@ -475,12 +475,9 @@ stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::i
   error_code = stream_source_read_checked (thread_p, source, buf, stream_read_bound (max), nread, &eof);
   if (error_code != NO_ERROR || (eof && (flags & STREAM_FLAG_RELEASE_AT_EOF)))
     {
-      /* deferred to the put below, which closes the source */
+      /* deferred to the put below, which closes the source; the client is told on a failure too */
       table.release (thread_p, handle);
-      if (error_code == NO_ERROR)
-	{
-	  *reply_flags |= STREAM_FLAG_RELEASED;
-	}
+      *reply_flags |= STREAM_FLAG_RELEASED;
     }
   table.put (thread_p, handle);
 

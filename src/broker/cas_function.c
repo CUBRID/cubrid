@@ -1179,10 +1179,9 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   srv_handle = hm_find_srv_handle (srv_h_id);
-  /* a download still reads in this transaction; its last release pays the commit (ux_stream_release) */
-  if (auto_commit_mode == TRUE && !ux_stream_holds_download ())
+  if (auto_commit_mode == TRUE)
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "close_req_handle srv_h_id %d", srv_h_id);

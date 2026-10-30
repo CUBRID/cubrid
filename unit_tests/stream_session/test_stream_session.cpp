@@ -419,6 +419,7 @@ TEST_CASE_METHOD (registry_fixture, "a record that does not hold together is ref
 					STREAM_SCOPE_TRAN
 				      };
   stream_kind_desc sourceless_download = { STREAM_DOWNLOAD, NULL, NULL, false, false, STREAM_SCOPE_TRAN };
+  stream_kind_desc lasting_download = { STREAM_DOWNLOAD, NULL, make_source, false, false, STREAM_SCOPE_OWNER };
   stream_kind_desc sourced_upload = { STREAM_UPLOAD, make_fake<'X'>, make_source, true, false, STREAM_SCOPE_TRAN };
   stream_kind_desc sinkless_upload = { STREAM_UPLOAD, NULL, NULL, true, false, STREAM_SCOPE_TRAN };
 
@@ -427,6 +428,8 @@ TEST_CASE_METHOD (registry_fixture, "a record that does not hold together is ref
   CHECK (stream_kind_register (KIND_UNREGISTERED, staging_download) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sinking_download) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sourceless_download) == ER_STREAM_SESSION_ERROR);
+  /* the client forgets its downloads at every transaction end, so one that outlived it could never be released */
+  CHECK (stream_kind_register (KIND_UNREGISTERED, lasting_download) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sourced_upload) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sinkless_upload) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (STREAM_KIND_MAX, upload_desc (make_fake<'X'>, true)) == ER_STREAM_SESSION_ERROR);

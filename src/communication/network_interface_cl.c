@@ -12022,6 +12022,57 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
  * that opened one needs to know that bytes are still to come, without knowing
  * which consumer opened it. */
 static bool stream_Is_open = false;
+
+/* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
+ * open result set does, and the server releases them all when the transaction ends (stream_from_reset). */
+static INT64 *stream_Downloads = NULL;
+static int stream_Download_count = 0;
+static int stream_Download_capacity = 0;
+
+static int
+stream_download_add (INT64 handle)
+{
+  if (stream_Download_count == stream_Download_capacity)
+    {
+      int capacity = stream_Download_capacity == 0 ? 16 : 2 * stream_Download_capacity;
+      INT64 *grown = (INT64 *) realloc (stream_Downloads, capacity * sizeof (INT64));
+
+      if (grown == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (INT64));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      stream_Downloads = grown;
+      stream_Download_capacity = capacity;
+    }
+
+  stream_Downloads[stream_Download_count++] = handle;
+  return NO_ERROR;
+}
+
+static int
+stream_download_find (INT64 handle)
+{
+  for (int i = 0; i < stream_Download_count; i++)
+    {
+      if (stream_Downloads[i] == handle)
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+static void
+stream_download_remove (INT64 handle)
+{
+  int i = stream_download_find (handle);
+
+  if (i >= 0)
+    {
+      stream_Downloads[i] = stream_Downloads[--stream_Download_count];
+    }
+}
 #endif /* CS_MODE */
 
 /*
@@ -12041,19 +12092,46 @@ stream_from_is_open (void)
 /*
  * stream_from_reset () - Forget the stream session this connection was holding
  *
- * Called where the server-side session is known to be gone: ending the client
- * session, shutting the database connection down, or rolling back the transaction
- * the stream was opened in. A client that goes away mid-stream never sends END, and
- * this flag would otherwise survive into the next client the CAS process serves
- * -- where do_commit_after_execute () would read it and defer every auto-commit
- * forever.
+ * Called where the server-side session or transaction is known to be gone: ending the
+ * client session, shutting the database connection down, committing or rolling back.
+ * A client that goes away mid-stream never sends END, and this flag would otherwise
+ * survive into the next client the CAS process serves -- where do_commit_after_execute ()
+ * would read it and defer every auto-commit forever. The server releases every download
+ * handle with the transaction, so they go too.
  */
 void
 stream_from_reset (void)
 {
 #if defined(CS_MODE)
   stream_Is_open = false;
+  stream_Download_count = 0;
 #endif /* CS_MODE */
+}
+
+/*
+ * stream_from_holds_download () - Does a download handle still tie this client's transaction?
+ */
+bool
+stream_from_holds_download (void)
+{
+#if defined(CS_MODE)
+  return stream_Download_count > 0;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_holds_handle () - Is handle one of the downloads this client holds?
+ */
+bool
+stream_from_holds_handle (INT64 handle)
+{
+#if defined(CS_MODE)
+  return stream_download_find (handle) >= 0;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
 }
 
 #if defined(CS_MODE)
@@ -12467,6 +12545,15 @@ stream_from_read_open (int stream_kind, const char *config, int config_len, int 
       ptr = or_unpack_int64 (ptr, handle);
     }
   rc = stream_request_error (req_error, rc);
+  if (rc == NO_ERROR && *handle != 0)
+    {
+      rc = stream_download_add (*handle);
+      if (rc != NO_ERROR)
+	{
+	  (void) stream_from_release (*handle);
+	  *handle = 0;
+	}
+    }
   rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, first_max, nread);
 
   if (data_reply != NULL)
@@ -12484,11 +12571,12 @@ stream_from_read_open (int stream_kind, const char *config, int config_len, int 
 
 /*
  * stream_from_read () - Read the next piece of an open download
- *   return: error code; the server releases the handle on a failed read
+ *   return: error code
  *   handle(in): what stream_from_read_open () returned
  *   buf(out), max(in): where the bytes go and how many it takes
  *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
- *   nread(out), reply_flags(out): STREAM_FLAG_EOF / STREAM_FLAG_RELEASED
+ *   nread(out), reply_flags(out): STREAM_FLAG_EOF / STREAM_FLAG_RELEASED -- on a failed read too, which
+ *                                 releases the handle unless it never resolved
  */
 int
 stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags)
@@ -12521,6 +12609,10 @@ stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *
       ptr = or_unpack_int (ptr, reply_flags);
     }
   rc = stream_request_error (req_error, rc);
+  if (*reply_flags & STREAM_FLAG_RELEASED)
+    {
+      stream_download_remove (handle);
+    }
   rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, max, nread);
 
   if (data_reply != NULL)
@@ -12551,6 +12643,7 @@ stream_from_release (INT64 handle)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  stream_download_remove (handle);
   (void) or_pack_int64 (request, handle);
 
   int req_error = net_client_request (NET_SERVER_STREAM_RELEASE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
