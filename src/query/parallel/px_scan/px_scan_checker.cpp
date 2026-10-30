@@ -272,7 +272,8 @@ namespace parallel_scan
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
 	if (!px_sp_is_parallel_eligible (arg->value.sp_ptr->sig))
 	  {
-	    /* SP not executable in child threads. */
+	    /* SP not executable in child threads. It serializes the scan only outside the
+	     * output list; qo_check_serial_select_list_expr () (query_planner.c) mirrors that. */
 	    set_flag (result, CANNOT_RUN_IN_WORKER);
 	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
 	  }

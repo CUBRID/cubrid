@@ -4560,8 +4560,10 @@ qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *conti
  * Note: the PT counterparts of what scan_check_parallel_scan_possible () rejects in the XASL
  *	 (px_scan_checker.cpp): a method or a stored procedure without PARALLEL_ENABLE (TYPE_SP,
  *	 qo_check_method_call_parallel_eligibility ()), a serial NEXT_VALUE / CURRENT_VALUE and a
- *	 session variable (TYPE_DBVAL), a path expression and an object column (TYPE_ATTR_ID of
- *	 DB_TYPE_OBJECT / DB_TYPE_OID).
+ *	 session variable (the ARITH_TYPE opcodes T_NEXT_VALUE, T_CURRENT_VALUE,
+ *	 T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE), a path expression and an object column
+ *	 (TYPE_ATTR_ID of DB_TYPE_OBJECT / DB_TYPE_OID). In the select list the executor blocks
+ *	 the scan for all of these but the method call (qo_check_serial_select_list_expr ()).
  */
 static PT_NODE *
 qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -4618,6 +4620,31 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 }
 
 /*
+ * qo_check_serial_select_list_expr () - qo_check_serial_block_expr () for the select list
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: a method or a stored procedure without PARALLEL_ENABLE in the output list does not
+ *	 block the parallel scan: the executor only gathers the rows to the main thread to
+ *	 evaluate it (TYPE_SP of an outptr_list sets CANNOT_LIST_MERGE, not CANNOT_PARALLEL_SCAN).
+ *	 Its arguments are still checked.
+ */
+static PT_NODE *
+qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+      return tree;
+    }
+
+  return qo_check_serial_block_expr (parser, tree, arg, continue_walk);
+}
+
+/*
  * qo_query_serial_level () - what the executor runs serially in this query block whatever the plan
  *   return: QO_SERIAL_NONE, QO_SERIAL_SCANS (no scan, so no nested-loop block, runs in parallel;
  *	     a hash join keeps its own decision) or QO_SERIAL_ALL (nothing runs in parallel)
@@ -4636,8 +4663,9 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
  *	 QO_SERIAL_SCANS, where scan_check_parallel_scan_possible () blocks the block's scans:
  *	 - the source query of UPDATE / DELETE (UPDATE_PROC, DELETE_PROC) and SELECT ... FOR UPDATE;
  *	 - a select list or WHERE clause holding one of the expressions of
- *	   qo_check_serial_block_expr () (TYPE_SP, T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE,
- *	   T_NEXT_VALUE, T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), or a path expression.
+ *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
+ *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
+ *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression.
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
  *	 select list, a derived table inside the recursive part of a CTE (planned with its own
  *	 environment before the part), an ALL superclass scan, a system catalog scan.
@@ -4694,7 +4722,7 @@ qo_query_serial_level (QO_ENV * env)
 	  if (!found)
 	    {
 	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_skip_subquery, NULL,
-				       qo_check_serial_block_expr, &found);
+				       qo_check_serial_select_list_expr, &found);
 	    }
 	  if (!found)
 	    {
