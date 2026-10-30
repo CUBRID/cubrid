@@ -30445,6 +30445,50 @@ btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTR
       OID_SET_NULL (&find_fk_obj->locked_object);
     }
 }
+
+/*
+ * btree_fk_child_is_ours () - Whether a child's last version carries this transaction's own, still active insert id
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * oid (in)	   : Child OID.
+ * class_oid (in)  : Child class OID.
+ * ours (out)	   : true when it does.
+ *
+ * Note: the caller holds no page latch.
+ */
+static int
+btree_fk_child_is_ours (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, bool * ours)
+{
+  HEAP_GET_CONTEXT context;
+  MVCC_REC_HEADER mvcc_header;
+  SCAN_CODE scan;
+  int error_code = NO_ERROR;
+
+  *ours = false;
+  heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
+  scan = heap_prepare_get_context (thread_p, &context, false, LOG_WARNING_IF_DELETED);
+  if (scan == S_SUCCESS)
+    {
+      scan = heap_get_mvcc_header (thread_p, &context, &mvcc_header);
+    }
+  if (scan == S_SUCCESS)
+    {
+      *ours = (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+	       && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)));
+    }
+  else if (scan == S_ERROR && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+    }
+  else
+    {
+      /* gone since the key was read: the locked re-read decides */
+      er_clear ();
+    }
+  heap_clean_get_context (thread_p, &context);
+  return error_code;
+}
 #endif /* SERVER_MODE */
 
 /*
@@ -30608,6 +30652,25 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
   btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+
+  {
+    bool ours;
+    int error_code = btree_fk_child_is_ours (thread_p, oid, class_oid, &ours);
+
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+    if (ours && lock_is_held_only_by_writers (thread_p, oid, class_oid))
+      {
+	/* the child we last wrote still refers to the key, and its holders wait on our stamp: found, without the
+	 * lock we would queue behind them for (see locator_last_version_is_ours ()) */
+	COPY_OID (&find_fk_obj->found_oid, oid);
+	bts->end_scan = true;
+	*stop = true;
+	return NO_ERROR;
+      }
+  }
 
   lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
