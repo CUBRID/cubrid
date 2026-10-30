@@ -81,6 +81,7 @@
 #include "connection_context.hpp"
 #include "connection_worker.hpp"
 #include "connection_sr.h"
+#include "intl_support.h"
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -275,6 +276,8 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->in_transaction = false;
   conn->cdc_auth_done = false;
   conn->cdc_auth_busy = 0;
+  conn->auth_user[0] = '\0';
+  conn->auth_verified = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -2844,6 +2847,25 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
  *   host(in):
  *   program_name(in):
  */
+/*
+ * css_consume_auth_proof () - has this connection just proven user_name's
+ *   password? The proof is spent either way.
+ */
+bool
+css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
+{
+  bool proven;
+
+  proven = (conn != NULL && conn->auth_verified && user_name != NULL
+	    && intl_identifier_casecmp (conn->auth_user, user_name) == 0);
+  if (conn != NULL)
+    {
+      conn->auth_verified = false;
+    }
+
+  return proven;
+}
+
 void
 css_set_user_access_status (const char *db_user, const char *host, const char *program_name)
 {

@@ -3268,6 +3268,19 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       client_credential->db_user = db_user_upper;
     }
 
+#if defined (SERVER_MODE)
+  /* the declared user is trusted only once this connection proved its
+   * password, so check it before a transaction index is given out */
+  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type)
+      && !css_consume_auth_proof (thread_p->conn_entry, client_credential->get_db_user ()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      client_credential->db_user = db_user_save;
+      return NULL_TRAN_INDEX;
+    }
+#endif /* SERVER_MODE */
+
   /* Assign a transaction index to the client */
   tran_index =
     logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state, client_lock_wait,

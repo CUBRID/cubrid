@@ -1177,6 +1177,20 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 		client_credential->get_login_name (), client_credential->get_host_name (),
 		client_credential->process_id);
 
+#if defined (CS_MODE)
+  /* the server registers the user only after its password is proven */
+  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+    {
+      error_code = au_prove_password (client_credential->get_db_user (), Au_user_password_des_oldstyle,
+				      Au_user_password_sha1, Au_user_password_sha2_512);
+      if (error_code != NO_ERROR)
+	{
+	  (void) net_client_final (false);	/* not registered yet: nothing else closes it */
+	  goto error;
+	}
+    }
+#endif /* CS_MODE */
+
   tran_index =
     boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
 
