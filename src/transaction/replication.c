@@ -30,6 +30,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "schema_system_catalog_constants.h"
+#include "writeset.hpp"
 
 #include <assert.h>
 #include <stdio.h>
@@ -604,6 +605,10 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
       return NO_ERROR;
     }
 
+  /* Statement replication has no row image for building writeset keys.
+   * Fall back to commit order to preserve ordering across the statement. */
+  wset_fallback_to_commit_order (tdes, WSET_FALLBACK_STATEMENT_REPLICATION);
+
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
       && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false)) != NO_ERROR))
@@ -735,26 +740,40 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 }
 
 /*
- * repl_log_abort_after_lsa -
+ * repl_log_abort_after_lsa - drop the replication records of a system operation that is being aborted
  *
- * return:
+ * return: NO_ERROR
  *
- *   tdes (in) :
- *   start_lsa (in) :
+ *   tdes (in) : transaction descriptor
+ *   start_lsa (in) : LSA at which the aborted system operation started
  *
+ * Note: A record whose LSA lies after start_lsa was made inside the aborted operation. An update record is
+ *       created before the heap update and gets its LSA only after it, so one still without an LSA at this point
+ *       belongs to a statement that failed before the row was changed (for example in the foreign key check).
+ *       Such a record has nothing to replicate; left alone it would be written at commit with a null LSA and the
+ *       applier would receive an update that never happened.
  */
 int
 repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 {
-  LOG_REPL_RECORD *repl_rec_arr;
+  LOG_REPL_RECORD *repl_rec;
   int i;
 
-  repl_rec_arr = tdes->repl_records;
   for (i = 0; i < tdes->cur_repl_record; i++)
     {
-      if (LSA_GT (&repl_rec_arr[i].lsa, start_lsa))
+      repl_rec = &tdes->repl_records[i];
+
+      if (LSA_GT (&repl_rec->lsa, start_lsa))
 	{
-	  repl_rec_arr[i].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	  repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	  continue;
+	}
+
+      if (LSA_ISNULL (&repl_rec->lsa)
+	  && (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
+	      || repl_rec->rcvindex == RVREPL_DATA_UPDATE_END))
+	{
+	  repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
 	}
     }
 

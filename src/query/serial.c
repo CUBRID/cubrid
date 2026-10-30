@@ -41,6 +41,7 @@
 #include "dbtype.h"
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
+#include "writeset.hpp"
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
@@ -1289,6 +1290,40 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       if (lock_mode != X_LOCK)
 	{
 	  repl_end_flush_mark (thread_p, false);
+
+/* serial_Cached_btid used below is declared only for SERVER_MODE, so this guard is required even though
+ * HA replication was already checked at runtime: without it the standalone (SA) build would fail to
+ * compile because serial_Cached_btid does not exist there. */
+#if defined (SERVER_MODE)
+	  /* A serial update changes db_serial through the heap directly, so it never passes the index-loop
+	   * writeset collection. Collect the db_serial key here as this system operation's WRITE. If the
+	   * cached index is unavailable, fall back to commit-order replication; if key collection fails,
+	   * return the error to the caller like the regular DML path instead of silently degrading. */
+	  {
+	    LOG_TDES *serial_tdes = LOG_FIND_TDES (tran_index);
+
+	    if (serial_tdes != NULL && !serial_tdes->wset_overflow)
+	      {
+		if (BTID_IS_NULL (&serial_Cached_btid))
+		  {
+		    wset_fallback_to_commit_order (serial_tdes, WSET_FALLBACK_STATEMENT_REPLICATION);
+		  }
+		else if (wset_add_write_key (serial_tdes, serial_class_oidp, &serial_Cached_btid.vfid, key_val)
+			 != NO_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
+		else if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+		  {
+		    _er_log_debug (ARG_FILE_LINE,
+				   "[WSET] SERIAL master collect trid=%d class_oid=%d|%d|%d index_vfid=%d|%d "
+				   "overflow=%d\n", serial_tdes->trid, serial_class_oidp->volid,
+				   serial_class_oidp->pageid, serial_class_oidp->slotid, serial_Cached_btid.vfid.volid,
+				   serial_Cached_btid.vfid.fileid, (int) serial_tdes->wset_overflow);
+		  }
+	      }
+	  }
+#endif /* SERVER_MODE */
 	}
     }
 

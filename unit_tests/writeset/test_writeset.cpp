@@ -1,0 +1,1446 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * test_writeset.cpp - behavior tests for the writeset collection and global
+ *                         commit history.
+ *
+ * Behavior cases pin down the dependency rules the parallel slave relies on:
+ * who waits behind whom, what is published into the history, and how overflow
+ * degrades to commit order. The per-key micro-benchmarks live in
+ * test_writeset_bench.cpp; the contention sweeps in
+ * test_writeset_stress.cpp.
+ */
+
+#include "test_writeset_common.hpp"
+
+#include "intl_support.h"
+#include "language_support.h"
+
+#include <atomic>
+#include <cstring>
+#include <cerrno>
+#include <chrono>
+#include <cmath>
+
+using namespace wstest;
+
+static void
+require_write_ref_same_hash (TP_DOMAIN *parent_domain, TP_DOMAIN *child_domain, DB_VALUE *source)
+{
+  OID parent_class = oid_of (1, 200, 1);
+  DB_VALUE parent_value;
+  DB_VALUE child_value;
+  log_tdes *parent = make_tdes (1);
+  log_tdes *child = make_tdes (2);
+
+  REQUIRE (parent_domain != NULL);
+  REQUIRE (child_domain != NULL);
+
+  db_make_null (&parent_value);
+  db_make_null (&child_value);
+
+  REQUIRE (tp_value_cast (source, &parent_value, parent_domain, false) == DOMAIN_COMPATIBLE);
+  REQUIRE (tp_value_cast (source, &child_value, child_domain, false) == DOMAIN_COMPATIBLE);
+
+  REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_value) == NO_ERROR);
+  REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_value,
+			     parent_domain) == NO_ERROR);
+
+  REQUIRE (parent->wset_hashes.size () == 1);
+  REQUIRE (child->wset_hashes.size () == 1);
+  REQUIRE (parent->wset_hashes[0].kind == LOG_WSET_KIND_WRITE);
+  REQUIRE (child->wset_hashes[0].kind == LOG_WSET_KIND_REF);
+  REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
+
+  pr_clear_value (&parent_value);
+  pr_clear_value (&child_value);
+  delete parent;
+  delete child;
+}
+
+TEST_CASE ("parent WRITE and child REF produce the same collision hash", "[writeset]")
+{
+  ws_history_guard history;
+  TP_DOMAIN *char_default = tp_domain_resolve_default (DB_TYPE_CHAR);
+  TP_DOMAIN *char10;
+  TP_DOMAIN *char20;
+  TP_DOMAIN *numeric_10_2;
+  TP_DOMAIN *numeric_15_4;
+  DB_VALUE source;
+  int collation_id;
+
+  REQUIRE (char_default != NULL);
+  collation_id = char_default->collation_id;
+  char10 = tp_domain_resolve (DB_TYPE_CHAR, NULL, 10, 0, NULL, collation_id);
+  char20 = tp_domain_resolve (DB_TYPE_CHAR, NULL, 20, 0, NULL, collation_id);
+  numeric_10_2 = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, 10, 2, NULL, 0);
+  numeric_15_4 = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, 15, 4, NULL, 0);
+
+  db_make_int (&source, 42);
+  require_write_ref_same_hash (tp_domain_resolve_default (DB_TYPE_INTEGER),
+			       tp_domain_resolve_default (DB_TYPE_INTEGER), &source);
+  pr_clear_value (&source);
+
+  db_make_bigint (&source, (DB_BIGINT) 1234567890123LL);
+  require_write_ref_same_hash (tp_domain_resolve_default (DB_TYPE_BIGINT),
+			       tp_domain_resolve_default (DB_TYPE_BIGINT), &source);
+  pr_clear_value (&source);
+
+  db_make_date (&source, 12, 25, 2024);
+  require_write_ref_same_hash (tp_domain_resolve_default (DB_TYPE_DATE),
+			       tp_domain_resolve_default (DB_TYPE_DATE), &source);
+  pr_clear_value (&source);
+
+  db_make_string (&source, "abc");
+  require_write_ref_same_hash (char10, char10, &source);
+  require_write_ref_same_hash (char10, char20, &source);
+  pr_clear_value (&source);
+
+  db_make_string (&source, "123.45");
+  require_write_ref_same_hash (numeric_10_2, numeric_15_4, &source);
+  pr_clear_value (&source);
+}
+
+TEST_CASE ("composite parent WRITE and child REF produce the same collision hash", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_class = oid_of (1, 201, 1);
+  log_tdes *parent = make_tdes (1);
+  log_tdes *child = make_tdes (2);
+  TP_DOMAIN *first_domain;
+  TP_DOMAIN *second_domain;
+  TP_DOMAIN *child_first_domain;
+  TP_DOMAIN *child_second_domain;
+  TP_DOMAIN *parent_domain;
+  TP_DOMAIN *child_domain;
+  DB_VALUE parent_elements[2];
+  DB_VALUE child_elements[2];
+  DB_MIDXKEY parent_midxkey;
+  DB_MIDXKEY child_midxkey;
+  DB_VALUE parent_key;
+  DB_VALUE child_key;
+  LOG_LSA parent_commit = lsa_of (10, 0);
+  LOG_LSA child_commit = lsa_of (20, 0);
+
+  first_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_INTEGER), false);
+  second_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_BIGINT), false);
+  REQUIRE (first_domain != NULL);
+  REQUIRE (second_domain != NULL);
+  first_domain->next = second_domain;
+  parent_domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, 2, 0, first_domain);
+  REQUIRE (parent_domain != NULL);
+  parent_domain = tp_domain_cache (parent_domain);
+  REQUIRE (parent_domain != NULL);
+
+  child_first_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_SHORT), false);
+  child_second_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_INTEGER), false);
+  REQUIRE (child_first_domain != NULL);
+  REQUIRE (child_second_domain != NULL);
+  child_first_domain->next = child_second_domain;
+  child_domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, 2, 0, child_first_domain);
+  REQUIRE (child_domain != NULL);
+  child_domain = tp_domain_cache (child_domain);
+  REQUIRE (child_domain != NULL);
+
+  db_make_int (&parent_elements[0], 7);
+  db_make_bigint (&parent_elements[1], 11);
+  db_make_short (&child_elements[0], 7);
+  db_make_int (&child_elements[1], 11);
+  db_make_null (&parent_key);
+  db_make_null (&child_key);
+
+  parent_midxkey.buf = NULL;
+  parent_midxkey.domain = parent_domain;
+  parent_midxkey.ncolumns = 0;
+  parent_midxkey.size = 0;
+  parent_midxkey.min_max_val.position = -1;
+  db_make_midxkey (&parent_key, &parent_midxkey);
+  parent_key.need_clear = true;
+  REQUIRE (pr_midxkey_add_elements (&parent_key, parent_elements, 2, parent_domain->setdomain) == NO_ERROR);
+
+  child_midxkey.buf = NULL;
+  child_midxkey.domain = child_domain;
+  child_midxkey.ncolumns = 0;
+  child_midxkey.size = 0;
+  child_midxkey.min_max_val.position = -1;
+  db_make_midxkey (&child_key, &child_midxkey);
+  child_key.need_clear = true;
+  REQUIRE (pr_midxkey_add_elements (&child_key, child_elements, 2, child_domain->setdomain) == NO_ERROR);
+
+  REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
+  REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
+  REQUIRE (parent->wset_hashes.size () == 1);
+  REQUIRE (child->wset_hashes.size () == 1);
+  REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
+
+  /* The equal hashes must also drive both dependency directions through the global history. */
+  commit_tx (parent, &parent_commit);
+  LOG_LSA child_dependency = probe (child);
+  REQUIRE (LSA_EQ (&child_dependency, &parent_commit));
+
+  commit_tx (child, &child_commit);
+  log_tdes *later_parent = make_tdes (3);
+  REQUIRE (wset_add_write_key (later_parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
+  LOG_LSA later_parent_dependency = probe (later_parent);
+  REQUIRE (LSA_EQ (&later_parent_dependency, &child_commit));
+
+  pr_clear_value (&parent_key);
+  pr_clear_value (&child_key);
+  delete parent;
+  delete child;
+  delete later_parent;
+}
+
+/* Build a (string, int) composite key in a MIDXKEY domain whose string element has the given collation. */
+static void
+make_string_int_key (DB_VALUE *key, TP_DOMAIN **domain_out, int collation_id, int string_precision,
+		     const char *text, int number)
+{
+  TP_DOMAIN *string_domain;
+  TP_DOMAIN *int_domain;
+  TP_DOMAIN *domain;
+  DB_VALUE elements[2];
+  DB_MIDXKEY midxkey;
+
+  string_domain = tp_domain_copy (tp_domain_resolve (DB_TYPE_VARCHAR, NULL, string_precision, 0, NULL,
+				  collation_id), false);
+  int_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_INTEGER), false);
+  REQUIRE (string_domain != NULL);
+  REQUIRE (int_domain != NULL);
+  string_domain->next = int_domain;
+  domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, 2, 0, string_domain);
+  REQUIRE (domain != NULL);
+  domain = tp_domain_cache (domain);
+  REQUIRE (domain != NULL);
+
+  REQUIRE (db_make_varchar (&elements[0], string_precision, text, (int) strlen (text), INTL_CODESET_UTF8,
+			    collation_id) == NO_ERROR);
+  db_make_int (&elements[1], number);
+
+  midxkey.buf = NULL;
+  midxkey.domain = domain;
+  midxkey.ncolumns = 0;
+  midxkey.size = 0;
+  midxkey.min_max_val.position = -1;
+  db_make_null (key);
+  db_make_midxkey (key, &midxkey);
+  key->need_clear = true;
+  REQUIRE (pr_midxkey_add_elements (key, elements, 2, domain->setdomain) == NO_ERROR);
+
+  *domain_out = domain;
+}
+
+TEST_CASE ("composite key string elements hash by their collation", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_class = oid_of (1, 202, 1);
+  TP_DOMAIN *parent_domain;
+  TP_DOMAIN *child_domain;
+  DB_VALUE parent_key;
+  DB_VALUE child_key;
+
+  SECTION ("case-insensitive collation: differently spelled parent WRITE and child REF share one hash")
+  {
+    log_tdes *parent = make_tdes (1);
+    log_tdes *child = make_tdes (2);
+    log_tdes *other_writer = make_tdes (3);
+
+    make_string_int_key (&parent_key, &parent_domain, LANG_COLL_UTF8_EN_CI, 10, "ABC", 1);
+    make_string_int_key (&child_key, &child_domain, LANG_COLL_UTF8_EN_CI, 20, "abc", 1);
+
+    REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
+    REQUIRE (wset_add_write_key (other_writer, &parent_class, &WS_DEFAULT_VFID, &child_key) == NO_ERROR);
+    REQUIRE (parent->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (other_writer->wset_hashes.size () == 1);
+    REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
+    REQUIRE (parent->wset_hashes[0].hash == other_writer->wset_hashes[0].hash);
+
+    pr_clear_value (&parent_key);
+    pr_clear_value (&child_key);
+    delete parent;
+    delete child;
+    delete other_writer;
+  }
+
+  SECTION ("binary collation: the same spellings stay distinct keys")
+  {
+    log_tdes *parent = make_tdes (1);
+    log_tdes *child = make_tdes (2);
+
+    make_string_int_key (&parent_key, &parent_domain, LANG_COLL_UTF8_BINARY, 10, "ABC", 1);
+    make_string_int_key (&child_key, &child_domain, LANG_COLL_UTF8_BINARY, 20, "abc", 1);
+
+    REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
+    REQUIRE (parent->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (parent->wset_hashes[0].hash != child->wset_hashes[0].hash);
+
+    pr_clear_value (&parent_key);
+    pr_clear_value (&child_key);
+    delete parent;
+    delete child;
+  }
+
+  SECTION ("the integer element still separates keys under a case-insensitive collation")
+  {
+    log_tdes *parent = make_tdes (1);
+    log_tdes *child = make_tdes (2);
+
+    make_string_int_key (&parent_key, &parent_domain, LANG_COLL_UTF8_EN_CI, 10, "ABC", 1);
+    make_string_int_key (&child_key, &child_domain, LANG_COLL_UTF8_EN_CI, 20, "abc", 2);
+
+    REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
+    REQUIRE (parent->wset_hashes[0].hash != child->wset_hashes[0].hash);
+
+    pr_clear_value (&parent_key);
+    pr_clear_value (&child_key);
+    delete parent;
+    delete child;
+  }
+}
+
+/* Collect value as one WRITE key of a fresh transaction and return its hash. */
+static UINT64
+write_key_hash (const OID *class_oid, DB_VALUE *value)
+{
+  log_tdes *tdes = make_tdes (1);
+  UINT64 hash;
+
+  REQUIRE (wset_add_write_key (tdes, class_oid, &WS_DEFAULT_VFID, value) == NO_ERROR);
+  REQUIRE (tdes->wset_hashes.size () == 1);
+  hash = tdes->wset_hashes[0].hash;
+
+  delete tdes;
+  return hash;
+}
+
+/* Build a (first, int) composite key whose first element is value in the given domain. */
+static void
+make_value_int_key (DB_VALUE *key, TP_DOMAIN **domain_out, TP_DOMAIN *first_domain, DB_VALUE *value, int number)
+{
+  TP_DOMAIN *first;
+  TP_DOMAIN *int_domain;
+  TP_DOMAIN *domain;
+  DB_VALUE elements[2];
+  DB_MIDXKEY midxkey;
+
+  first = tp_domain_copy (first_domain, false);
+  int_domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_INTEGER), false);
+  REQUIRE (first != NULL);
+  REQUIRE (int_domain != NULL);
+  first->next = int_domain;
+  domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, 2, 0, first);
+  REQUIRE (domain != NULL);
+  domain = tp_domain_cache (domain);
+  REQUIRE (domain != NULL);
+
+  elements[0] = *value;
+  db_make_int (&elements[1], number);
+
+  midxkey.buf = NULL;
+  midxkey.domain = domain;
+  midxkey.ncolumns = 0;
+  midxkey.size = 0;
+  midxkey.min_max_val.position = -1;
+  db_make_null (key);
+  db_make_midxkey (key, &midxkey);
+  key->need_clear = true;
+  REQUIRE (pr_midxkey_add_elements (key, elements, 2, domain->setdomain) == NO_ERROR);
+
+  *domain_out = domain;
+}
+
+TEST_CASE ("a zoned timestamp key hashes by its UTC time, not its zone", "[writeset]")
+{
+  /* The index compares TIMESTAMPTZ and DATETIMETZ keys by their UTC time alone, so one instant written in two
+   * zones is one key and must have one hash; another instant must not. The zone ids only need to differ. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 203, 1);
+  const TZ_ID zone_a = 1;
+  const TZ_ID zone_b = 2;
+
+  SECTION ("TIMESTAMPTZ: WRITE in two zones and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+    DB_TIMESTAMPTZ in_a = { 1793232000, zone_a };
+    DB_TIMESTAMPTZ in_b = { 1793232000, zone_b };
+    DB_TIMESTAMPTZ later = { 1793232001, zone_a };
+    DB_VALUE value_a;
+    DB_VALUE value_b;
+    DB_VALUE value_later;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_timestamptz (&value_a, &in_a);
+    db_make_timestamptz (&value_b, &in_b);
+    db_make_timestamptz (&value_later, &later);
+
+    REQUIRE (write_key_hash (&class_oid, &value_a) == write_key_hash (&class_oid, &value_b));
+    REQUIRE (write_key_hash (&class_oid, &value_a) != write_key_hash (&class_oid, &value_later));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &value_b, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &value_a));
+
+    delete child;
+  }
+
+  SECTION ("DATETIMETZ: WRITE in two zones and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
+    DB_DATETIMETZ in_a;
+    DB_DATETIMETZ in_b;
+    DB_DATETIMETZ later;
+    DB_VALUE value_a;
+    DB_VALUE value_b;
+    DB_VALUE value_later;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    in_a.datetime.date = 2461343;
+    in_a.datetime.time = 32400000;
+    in_a.tz_id = zone_a;
+    in_b = in_a;
+    in_b.tz_id = zone_b;
+    later = in_a;
+    later.datetime.time += 1;
+    db_make_datetimetz (&value_a, &in_a);
+    db_make_datetimetz (&value_b, &in_b);
+    db_make_datetimetz (&value_later, &later);
+
+    REQUIRE (write_key_hash (&class_oid, &value_a) == write_key_hash (&class_oid, &value_b));
+    REQUIRE (write_key_hash (&class_oid, &value_a) != write_key_hash (&class_oid, &value_later));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &value_b, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &value_a));
+
+    delete child;
+  }
+
+  SECTION ("composite key: a TIMESTAMPTZ element in two zones gives one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+    TP_DOMAIN *key_domain;
+    DB_TIMESTAMPTZ in_a = { 1793232000, zone_a };
+    DB_TIMESTAMPTZ in_b = { 1793232000, zone_b };
+    DB_TIMESTAMPTZ later = { 1793232001, zone_a };
+    DB_VALUE value;
+    DB_VALUE key_a;
+    DB_VALUE key_b;
+    DB_VALUE key_later;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_timestamptz (&value, &in_a);
+    make_value_int_key (&key_a, &key_domain, element_domain, &value, 1);
+    db_make_timestamptz (&value, &in_b);
+    make_value_int_key (&key_b, &key_domain, element_domain, &value, 1);
+    db_make_timestamptz (&value, &later);
+    make_value_int_key (&key_later, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_a) == write_key_hash (&class_oid, &key_b));
+    REQUIRE (write_key_hash (&class_oid, &key_a) != write_key_hash (&class_oid, &key_later));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_b, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_a));
+
+    pr_clear_value (&key_a);
+    pr_clear_value (&key_b);
+    pr_clear_value (&key_later);
+    delete child;
+  }
+}
+
+TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
+{
+  /* The index compares FLOAT and DOUBLE keys as numbers, so -0.0 and +0.0 are one key and must have one hash,
+   * though -0.0 packs a sign bit; another number must not. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 204, 1);
+
+  SECTION ("DOUBLE: WRITE of -0.0 and +0.0 and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    DB_VALUE plus_zero;
+    DB_VALUE minus_zero;
+    DB_VALUE one;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_double (&plus_zero, 0.0);
+    db_make_double (&minus_zero, -0.0);
+    db_make_double (&one, 1.0);
+    REQUIRE (std::signbit (db_get_double (&minus_zero)));
+
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) == write_key_hash (&class_oid, &minus_zero));
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) != write_key_hash (&class_oid, &one));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &minus_zero, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &plus_zero));
+
+    delete child;
+  }
+
+  SECTION ("FLOAT: WRITE of -0.0 and +0.0 and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_FLOAT);
+    DB_VALUE plus_zero;
+    DB_VALUE minus_zero;
+    DB_VALUE one;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_float (&plus_zero, 0.0f);
+    db_make_float (&minus_zero, -0.0f);
+    db_make_float (&one, 1.0f);
+    REQUIRE (std::signbit (db_get_float (&minus_zero)));
+
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) == write_key_hash (&class_oid, &minus_zero));
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) != write_key_hash (&class_oid, &one));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &minus_zero, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &plus_zero));
+
+    delete child;
+  }
+
+  SECTION ("composite key: a DOUBLE -0.0 element and +0.0 give one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    TP_DOMAIN *key_domain;
+    DB_VALUE value;
+    DB_VALUE key_plus;
+    DB_VALUE key_minus;
+    DB_VALUE key_one;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_double (&value, 0.0);
+    make_value_int_key (&key_plus, &key_domain, element_domain, &value, 1);
+    db_make_double (&value, -0.0);
+    make_value_int_key (&key_minus, &key_domain, element_domain, &value, 1);
+    db_make_double (&value, 1.0);
+    make_value_int_key (&key_one, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_plus) == write_key_hash (&class_oid, &key_minus));
+    REQUIRE (write_key_hash (&class_oid, &key_plus) != write_key_hash (&class_oid, &key_one));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_minus, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_plus));
+
+    pr_clear_value (&key_plus);
+    pr_clear_value (&key_minus);
+    pr_clear_value (&key_one);
+    delete child;
+  }
+}
+
+/* Set ignore_trailing_space for one test and restore the previous value when the test ends. */
+struct ws_trailing_space_guard
+{
+  bool saved;
+
+  explicit ws_trailing_space_guard (bool value)
+  {
+    saved = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+    prm_set_bool_value (PRM_ID_IGNORE_TRAILING_SPACE, value);
+  }
+
+  ~ws_trailing_space_guard ()
+  {
+    prm_set_bool_value (PRM_ID_IGNORE_TRAILING_SPACE, saved);
+  }
+};
+
+/* Hash of a single-column string WRITE key of the given type, size bytes of text (so it may hold a NUL). */
+static UINT64
+string_key_hash (const OID *class_oid, DB_TYPE type, const char *text, int size = -1)
+{
+  DB_VALUE value;
+  UINT64 hash;
+
+  if (size < 0)
+    {
+      size = (int) strlen (text);
+    }
+
+  if (type == DB_TYPE_CHAR)
+    {
+      REQUIRE (db_make_char (&value, 10, text, size, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY) == NO_ERROR);
+    }
+  else
+    {
+      REQUIRE (db_make_varchar (&value, 10, text, size, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY) == NO_ERROR);
+    }
+  hash = write_key_hash (class_oid, &value);
+  pr_clear_value (&value);
+
+  return hash;
+}
+
+/* Hash of a (VARCHAR, int) composite WRITE key. */
+static UINT64
+string_int_key_hash (const OID *class_oid, const char *text)
+{
+  TP_DOMAIN *domain;
+  DB_VALUE key;
+  UINT64 hash;
+
+  make_string_int_key (&key, &domain, LANG_COLL_UTF8_BINARY, 10, text, 1);
+  hash = write_key_hash (class_oid, &key);
+  pr_clear_value (&key);
+
+  return hash;
+}
+
+TEST_CASE ("trailing spaces split a string key only where the index compares them", "[writeset]")
+{
+  /* The index ignores trailing spaces when it compares CHAR values, and VARCHAR values too when
+   * ignore_trailing_space is set; leading spaces always count. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 205, 1);
+
+  SECTION ("VARCHAR with ignore_trailing_space off: 'a' and 'a ' are two keys")
+  {
+    ws_trailing_space_guard trailing_space (false);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a") != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a "));
+    REQUIRE (string_int_key_hash (&class_oid, "a") != string_int_key_hash (&class_oid, "a "));
+  }
+
+  SECTION ("VARCHAR with ignore_trailing_space on: 'a' and 'a  ' are one key, ' a' is another")
+  {
+    ws_trailing_space_guard trailing_space (true);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a  "));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a") != string_key_hash (&class_oid, DB_TYPE_VARCHAR, " a"));
+    REQUIRE (string_int_key_hash (&class_oid, "a") == string_int_key_hash (&class_oid, "a  "));
+    REQUIRE (string_int_key_hash (&class_oid, "a") != string_int_key_hash (&class_oid, " a"));
+  }
+
+  SECTION ("CHAR with ignore_trailing_space off: 'a' and 'a ' are one key, ' a' is another")
+  {
+    ws_trailing_space_guard trailing_space (false);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a") == string_key_hash (&class_oid, DB_TYPE_CHAR, "a "));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a") != string_key_hash (&class_oid, DB_TYPE_CHAR, " a"));
+    /* a CHAR read back from storage is padded to its precision, a cast literal is not */
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a")
+	     == string_key_hash (&class_oid, DB_TYPE_CHAR, "a         "));
+  }
+
+  SECTION ("a trailing NUL is ignored as the compares ignore it")
+  {
+    ws_trailing_space_guard trailing_space (false);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a", 2));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+	     != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "b", 2));
+  }
+}
+
+TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  log_tdes *t1 = make_tdes (1);
+
+  add_write_int (t1, &cls, 1);
+
+  LOG_LSA dep = probe (t1);
+  REQUIRE (LSA_ISNULL (&dep));
+
+  delete t1;
+}
+
+TEST_CASE ("same key waits behind its previous writer", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+
+  log_tdes *t1 = make_tdes (1);
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+
+  log_tdes *t2 = make_tdes (2);
+  add_write_int (t2, &cls, 1);
+
+  LOG_LSA dep = probe (t2);
+  REQUIRE (LSA_EQ (&dep, &l1));
+
+  delete t1;
+  delete t2;
+}
+
+TEST_CASE ("a different key is not serialized behind an unrelated commit", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+
+  log_tdes *t1 = make_tdes (1);
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+
+  log_tdes *t2 = make_tdes (2);
+  add_write_int (t2, &cls, 2);
+
+  LOG_LSA dep = probe (t2);
+  REQUIRE (LSA_ISNULL (&dep));
+
+  delete t1;
+  delete t2;
+}
+
+TEST_CASE ("dependency is the newest commit among all touched keys", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  LOG_LSA l2 = lsa_of (20, 0);
+
+  log_tdes *t1 = make_tdes (1);
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+
+  log_tdes *t2 = make_tdes (2);
+  add_write_int (t2, &cls, 2);
+  commit_tx (t2, &l2);
+
+  log_tdes *t3 = make_tdes (3);
+  add_write_int (t3, &cls, 1);
+  add_write_int (t3, &cls, 2);
+
+  LOG_LSA dep = probe (t3);
+  REQUIRE (LSA_EQ (&dep, &l2));
+
+  delete t1;
+  delete t2;
+  delete t3;
+}
+
+TEST_CASE ("foreign-key reference waits behind the parent's writer", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_cls = oid_of (1, 200, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+
+  /* parent INSERT publishes its primary key */
+  log_tdes *parent = make_tdes (1);
+  add_write_int (parent, &parent_cls, 7);
+  commit_tx (parent, &l1);
+
+  /* child references the same value through its foreign key: the REF hash must
+   * collide with the parent's WRITE hash (byte-identical packing invariant) */
+  log_tdes *child = make_tdes (2);
+  add_ref_int (child, &parent_cls, 7);
+
+  LOG_LSA dep = probe (child);
+  REQUIRE (LSA_EQ (&dep, &l1));
+
+  delete parent;
+  delete child;
+}
+
+TEST_CASE ("references stamp the read slot: siblings stay parallel, a later parent write waits", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_cls = oid_of (1, 200, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  LOG_LSA l2 = lsa_of (20, 0);
+
+  log_tdes *parent = make_tdes (1);
+  add_write_int (parent, &parent_cls, 7);
+  commit_tx (parent, &l1);
+
+  /* first child references the parent and commits: its own dependency is the
+   * parent's writer (write slot), and it stamps the read slot at flush */
+  log_tdes *child1 = make_tdes (2);
+  add_ref_int (child1, &parent_cls, 7);
+  LOG_LSA dep1 = probe (child1);
+  REQUIRE (LSA_EQ (&dep1, &l1));
+  commit_tx (child1, &l2);
+
+  /* a sibling referencing the same parent still depends on the parent only:
+   * references consult the write slot, never the read slot, so child1's stamp
+   * does not chain the siblings */
+  log_tdes *child2 = make_tdes (3);
+  add_ref_int (child2, &parent_cls, 7);
+  LOG_LSA dep2 = probe (child2);
+  REQUIRE (LSA_EQ (&dep2, &l1));
+
+  /* a later write to the parent row now sees the newest referencer (l2), not
+   * just the previous writer (l1): the reverse-order blind spot of doc 5 is
+   * closed. */
+  log_tdes *parent_delete = make_tdes (4);
+  add_write_int (parent_delete, &parent_cls, 7);
+  LOG_LSA dep3 = probe (parent_delete);
+  REQUIRE (LSA_EQ (&dep3, &l2));
+
+  delete parent;
+  delete child1;
+  delete child2;
+  delete parent_delete;
+}
+
+TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp, flagged writer", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_cls = oid_of (1, 200, 1);
+  LOG_LSA l5 = lsa_of (50, 0);
+  LOG_LSA l3 = lsa_of (30, 0);
+
+  /* the referenced key has no write history (e.g. the parent row predates the
+   * current history window): the reference creates the entry with only the
+   * read slot filled */
+  log_tdes *child1 = make_tdes (1);
+  add_ref_int (child1, &parent_cls, 9);
+  LOG_LSA dep1 = probe (child1);
+  REQUIRE (LSA_ISNULL (&dep1));
+  commit_tx (child1, &l5);
+
+  /* a sibling still sees an empty write slot: independent */
+  log_tdes *child2 = make_tdes (2);
+  add_ref_int (child2, &parent_cls, 9);
+  LOG_LSA dep2 = probe (child2);
+  REQUIRE (LSA_ISNULL (&dep2));
+
+  /* an out-of-order (older) reference flush must not move the read slot backwards */
+  log_tdes *child3 = make_tdes (3);
+  add_ref_int (child3, &parent_cls, 9);
+  commit_tx (child3, &l3);
+
+  /* the parent's writer waits for the newest referencer (l5, not l3) */
+  log_tdes *parent_delete = make_tdes (4);
+  add_write_int (parent_delete, &parent_cls, 9);
+  LOG_LSA dep3 = probe (parent_delete);
+  REQUIRE (LSA_EQ (&dep3, &l5));
+
+  delete child1;
+  delete child2;
+  delete child3;
+  delete parent_delete;
+}
+
+TEST_CASE ("write slot keeps the newest commit when publishes arrive out of order", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA newer_lsa = lsa_of (50, 0);
+  LOG_LSA older_lsa = lsa_of (30, 0);
+
+  log_tdes *newer = make_tdes (1);
+  add_write_int (newer, &cls, 7);
+  log_tdes *delayed_older = make_tdes (2);
+  add_write_int (delayed_older, &cls, 7);
+
+  /* logged in LSA order, published in the opposite order */
+  wset_note_commit_with_log_lock (delayed_older, &older_lsa);
+  wset_note_commit_with_log_lock (newer, &newer_lsa);
+  wset_publish_commit_to_history (newer, &newer_lsa);
+  wset_publish_commit_to_history (delayed_older, &older_lsa);
+
+  log_tdes *successor = make_tdes (3);
+  add_write_int (successor, &cls, 7);
+  LOG_LSA dependency = probe (successor);
+  REQUIRE (LSA_EQ (&dependency, &newer_lsa));
+
+  delete newer;
+  delete delayed_older;
+  delete successor;
+}
+
+TEST_CASE ("overflow demotes to commit order and raises the history floor", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  LOG_LSA l3 = lsa_of (30, 0);
+
+  log_tdes *t1 = make_tdes (1);
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+
+  /* an overflowed transaction waits for everything before it (= prev commit) */
+  log_tdes *ovf = make_tdes (2);
+  ovf->wset_overflow = true;
+  LOG_LSA dep = probe (ovf);
+  REQUIRE (LSA_EQ (&dep, &l1));
+
+  /* and its flush clears the history and raises the floor, so everything
+   * after waits for the overflow commit */
+  commit_tx (ovf, &l3);
+
+  log_tdes *t3 = make_tdes (3);
+  add_write_int (t3, &cls, 99);
+  LOG_LSA dep3 = probe (t3);
+  REQUIRE (LSA_EQ (&dep3, &l3));
+
+  delete t1;
+  delete ovf;
+  delete t3;
+}
+
+TEST_CASE ("delayed overflow clear preserves a newer published commit as the history floor", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA older_lsa = lsa_of (100, 0);
+  LOG_LSA newer_lsa = lsa_of (110, 0);
+
+  log_tdes *newer = make_tdes (2);
+  add_write_int (newer, &cls, 7);
+  log_tdes *delayed_overflow = make_tdes (1);
+  delayed_overflow->wset_overflow = true;
+
+  /* logged in LSA order, published in the opposite order */
+  wset_note_commit_with_log_lock (delayed_overflow, &older_lsa);
+  wset_note_commit_with_log_lock (newer, &newer_lsa);
+  wset_publish_commit_to_history (newer, &newer_lsa);
+  wset_publish_commit_to_history (delayed_overflow, &older_lsa);
+
+  REQUIRE (LSA_EQ (&wset_History.history_start, &newer_lsa));
+  REQUIRE (wset_History.map.size () == 0);
+
+  log_tdes *successor = make_tdes (3);
+  add_write_int (successor, &cls, 7);
+  LOG_LSA dependency = probe (successor);
+  REQUIRE (LSA_EQ (&dependency, &newer_lsa));
+
+  delete newer;
+  delete delayed_overflow;
+  delete successor;
+}
+
+TEST_CASE ("probe keeps the sequence lock until the history snapshot is acquired", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  log_tdes *tx = make_tdes (1);
+  LOG_LSA dependency;
+  std::atomic<bool> probe_entered {false};
+
+  add_write_int (tx, &cls, 7);
+
+  /* Hold the history lock so the probe has to stop between acquiring seq_lock and taking its
+   * history snapshot. The fixed protocol retains seq_lock at that point; the former mixed-snapshot
+   * protocol released it before waiting for history_lock. */
+  pthread_rwlock_wrlock (&wset_History.history_lock);
+  std::thread worker ([&] ()
+  {
+    probe_entered.store (true, std::memory_order_release);
+    wset_find_dependency_from_history (tx, &dependency);
+  });
+
+  while (!probe_entered.load (std::memory_order_acquire))
+    {
+      std::this_thread::yield ();
+    }
+
+  bool observed_seq_lock = false;
+  bool retained_seq_lock = false;
+  int unexpected_lock_result = 0;
+  auto observe_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
+  while (std::chrono::steady_clock::now () < observe_deadline)
+    {
+      int lock_result = pthread_mutex_trylock (&wset_History.seq_lock);
+      if (lock_result == EBUSY)
+	{
+	  observed_seq_lock = true;
+	  break;
+	}
+      if (lock_result != 0)
+	{
+	  unexpected_lock_result = lock_result;
+	  break;
+	}
+      pthread_mutex_unlock (&wset_History.seq_lock);
+      std::this_thread::yield ();
+    }
+
+  if (observed_seq_lock)
+    {
+      retained_seq_lock = true;
+      auto retain_deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (10);
+      while (std::chrono::steady_clock::now () < retain_deadline)
+	{
+	  int lock_result = pthread_mutex_trylock (&wset_History.seq_lock);
+	  if (lock_result == 0)
+	    {
+	      pthread_mutex_unlock (&wset_History.seq_lock);
+	      retained_seq_lock = false;
+	      break;
+	    }
+	  if (lock_result != EBUSY)
+	    {
+	      unexpected_lock_result = lock_result;
+	      retained_seq_lock = false;
+	      break;
+	    }
+	  std::this_thread::yield ();
+	}
+    }
+
+  pthread_rwlock_unlock (&wset_History.history_lock);
+  worker.join ();
+
+  REQUIRE (unexpected_lock_result == 0);
+  REQUIRE (observed_seq_lock);
+  REQUIRE (retained_seq_lock);
+  REQUIRE (LSA_ISNULL (&dependency));
+
+  delete tx;
+}
+
+TEST_CASE ("probe never lowers a dependency below the observed history floor", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA old_baseline = lsa_of (100, 0);
+  LOG_LSA new_floor = lsa_of (200, 0);
+  log_tdes *tx = make_tdes (1);
+
+  /* Inject the mixed values that exposed R02 to pin the final defensive floor independently of the
+   * locking protocol. A normal execution cannot create this pair once snapshot locking is correct. */
+  pthread_mutex_lock (&wset_History.seq_lock);
+  pthread_rwlock_wrlock (&wset_History.history_lock);
+  LSA_COPY (&wset_History.prev_commit_lsa, &old_baseline);
+  LSA_COPY (&wset_History.history_start, &new_floor);
+  pthread_rwlock_unlock (&wset_History.history_lock);
+  pthread_mutex_unlock (&wset_History.seq_lock);
+
+  add_write_int (tx, &cls, 7);
+  LOG_LSA dependency = probe (tx);
+
+  REQUIRE (LSA_EQ (&dependency, &new_floor));
+
+  delete tx;
+}
+
+TEST_CASE ("per-transaction key limit flips the transaction to overflow", "[writeset]")
+{
+  /* The per-transaction key limit is the runtime ha_writeset_history_size (its
+   * production default is ten million). Inject a small cap so the overflow path
+   * is reached deterministically after a handful of keys instead of collecting
+   * millions. Adding keys until the flip lands on the key whose arrival makes
+   * the collected count reach the cap. */
+  const int cap = 8;
+  ws_history_guard history (cap);
+  OID cls = oid_of (1, 100, 1);
+  log_tdes *t1 = make_tdes (1);
+
+  int added = 0;
+  while (!t1->wset_overflow)
+    {
+      add_write_int (t1, &cls, added++);
+    }
+  REQUIRE (added == cap + 1);	/* the (cap+1)-th key is the one rejected into overflow */
+  REQUIRE (t1->wset_overflow);
+  REQUIRE (t1->wset_hashes.empty ());	/* the collected writeset is dropped */
+
+  delete t1;
+}
+
+TEST_CASE ("an inherited key hashes alike whichever class of the hierarchy wrote it", "[writeset]")
+{
+  /* A subclass shares its superclass's B-tree for an inherited PRIMARY KEY, so a key written through either
+   * class is one key. Writes, references and dependencies must not depend on the class OID. */
+  ws_history_guard history;
+  OID sup = oid_of (1, 300, 1);
+  OID sub = oid_of (1, 301, 1);
+  VFID shared_pk = vfid_of (0, 2000);
+  VFID other_pk = vfid_of (0, 2001);
+  LOG_LSA l1 = lsa_of (10, 0);
+
+  log_tdes *by_sup = make_tdes (1);
+  log_tdes *by_sub = make_tdes (2);
+  log_tdes *ref_sup = make_tdes (3);
+  log_tdes *other_index = make_tdes (4);
+
+  add_write_int (by_sup, &sup, 1, &shared_pk);
+  add_write_int (by_sub, &sub, 1, &shared_pk);
+  add_ref_int (ref_sup, &sup, 1, &shared_pk);
+  add_write_int (other_index, &sub, 1, &other_pk);
+  REQUIRE (by_sup->wset_hashes[0].hash == by_sub->wset_hashes[0].hash);
+  REQUIRE (by_sup->wset_hashes[0].hash == ref_sup->wset_hashes[0].hash);
+  REQUIRE (by_sup->wset_hashes[0].hash != other_index->wset_hashes[0].hash);
+
+  /* T1 deletes key 1 through sup; T2 inserting key 1 through sub must wait for T1 */
+  commit_tx (by_sup, &l1);
+  LOG_LSA dep = probe (by_sub);
+  REQUIRE (LSA_EQ (&dep, &l1));
+
+  delete by_sup;
+  delete by_sub;
+  delete ref_sup;
+  delete other_index;
+}
+
+TEST_CASE ("the same key under two different index vfids stays independent (PK vs UNIQUE of one table)",
+	   "[writeset]")
+{
+  /* A primary key and a unique key on the same table can hold the same value and pack to the same
+   * bytes; the index VFID folded into the hash keeps them in separate history slots. This pins that
+   * a write under one index does not create a dependency for a write of the same value under the
+   * other index, and that each index keeps its own writer. */
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  VFID pk_vfid = vfid_of (0, 1000);	/* the table's primary-key index */
+  VFID uk_vfid = vfid_of (0, 1001);	/* a unique index on the same table */
+  LOG_LSA lpk = lsa_of (10, 0);
+  LOG_LSA luk = lsa_of (20, 0);
+
+  /* publish a WRITE of value 5 under the primary-key index only */
+  log_tdes *t1 = make_tdes (1);
+  add_write_int (t1, &cls, 5, &pk_vfid);
+  commit_tx (t1, &lpk);
+
+  /* a WRITE of the same value 5 under the unique index must not inherit the primary-key write's
+   * dependency: a different index vfid means a different history slot */
+  log_tdes *t2 = make_tdes (2);
+  add_write_int (t2, &cls, 5, &uk_vfid);
+  LOG_LSA dep2 = probe (t2);
+  REQUIRE (LSA_ISNULL (&dep2));
+  commit_tx (t2, &luk);
+
+  /* and the reverse: a later write of value 5 under the primary-key index waits behind lpk (the
+   * primary-key slot), not luk (the unique slot) - the two indexes are tracked separately */
+  log_tdes *t3 = make_tdes (3);
+  add_write_int (t3, &cls, 5, &pk_vfid);
+  LOG_LSA dep3 = probe (t3);
+  REQUIRE (LSA_EQ (&dep3, &lpk));
+
+  delete t1;
+  delete t2;
+  delete t3;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Concurrency correctness: concurrent commits must produce the same slots as
+ * if they ran one at a time. The global history map is a concurrent hash map
+ * with a shared/exclusive history lock, so these cases confirm that per-key
+ * publishing and probing race safely (no lost update on a disjoint key, and the
+ * read slot keeps the newest referencer under concurrent stamps). Workers call
+ * only probe/flush; the writeset is collected up front on the main thread, so
+ * no worker touches the cast path (db_private_alloc / TLS THREAD_ENTRY). See
+ * test_wset_concurrency.cpp for the throughput/latency comparison.
+ * ------------------------------------------------------------------------- */
+
+TEST_CASE ("concurrent flushes on disjoint keys all publish (no lost update)", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  const int nthreads = 8;
+  const int per_thread = 500;
+
+  /* each thread flushes its own disjoint key range with a distinct commit LSA */
+  std::vector<log_tdes *> tx (nthreads);
+  for (int t = 0; t < nthreads; t++)
+    {
+      tx[t] = make_tdes (t + 1);
+      for (int i = 0; i < per_thread; i++)
+	{
+	  add_write_int (tx[t], &cls, t * per_thread + i);
+	}
+    }
+
+  std::vector<std::thread> workers;
+  for (int t = 0; t < nthreads; t++)
+    {
+      LOG_LSA commit = lsa_of (10 + t, 0);
+      workers.emplace_back ([tx, t, commit] ()
+      {
+	commit_tx (tx[t], &commit);
+      });
+    }
+  for (auto &w : workers)
+    {
+      w.join ();
+    }
+
+  /* every disjoint key from every thread must be present: nthreads * per_thread
+   * entries, none lost to a race on the map */
+  REQUIRE (wset_History.map.size () == (size_t) (nthreads * per_thread));
+
+  for (int t = 0; t < nthreads; t++)
+    {
+      delete tx[t];
+    }
+}
+
+TEST_CASE ("concurrent siblings referencing one parent stay parallel", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_cls = oid_of (1, 200, 1);
+  LOG_LSA lp = lsa_of (10, 0);
+  const int nsiblings = 16;
+
+  /* parent published, then many children reference the same parent key */
+  log_tdes *parent = make_tdes (1);
+  add_write_int (parent, &parent_cls, 7);
+  commit_tx (parent, &lp);
+
+  std::vector<log_tdes *> child (nsiblings);
+  for (int i = 0; i < nsiblings; i++)
+    {
+      child[i] = make_tdes (100 + i);
+      add_ref_int (child[i], &parent_cls, 7);
+    }
+
+  /* all siblings probe concurrently; each must depend only on the parent's
+   * writer (references consult the write slot only), never on one another */
+  std::vector<LOG_LSA> dep (nsiblings);
+  std::vector<std::thread> workers;
+  for (int i = 0; i < nsiblings; i++)
+    {
+      workers.emplace_back ([&child, &dep, i] ()
+      {
+	LOG_LSA d;
+	wset_find_dependency_from_history (child[i], &d);
+	dep[i] = d;
+      });
+    }
+  for (auto &w : workers)
+    {
+      w.join ();
+    }
+
+  for (int i = 0; i < nsiblings; i++)
+    {
+      REQUIRE (LSA_EQ (&dep[i], &lp));
+      delete child[i];
+    }
+  delete parent;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Keys collected inside a system operation. A serial update collects its
+ * db_serial key inside its own sysop; the server labels that SYSOP_END for
+ * commit order and drops those keys unpublished, so the outer commit never
+ * probes or publishes them. This case drives wset_discard_sysop_keys directly.
+ * ------------------------------------------------------------------------- */
+
+TEST_CASE ("dropping a system operation's keys leaves the outer writeset intact", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA commit_lsa = lsa_of (30, 0);
+
+  log_tdes *tx = make_tdes (1);
+  add_write_int (tx, &cls, 2);	/* outer key kept across the discard */
+  size_t sysop_begin = tx->wset_hashes.size ();
+  LOG_WSET_HASH outer_hash = tx->wset_hashes[0].hash;
+  add_write_int (tx, &cls, 10);	/* two keys collected inside the system operation */
+  add_write_int (tx, &cls, 11);
+
+  wset_discard_sysop_keys (tx, sysop_begin);
+
+  /* only the operation's tail is gone; the outer key is untouched */
+  REQUIRE (tx->wset_hashes.size () == sysop_begin);
+  REQUIRE (tx->wset_hashes.size () == 1);
+  REQUIRE (tx->wset_hashes[0].hash == outer_hash);
+
+  /* the surviving outer writeset still publishes normally */
+  commit_tx (tx, &commit_lsa);
+
+  log_tdes *reader = make_tdes (2);
+  add_write_int (reader, &cls, 2);
+  LOG_LSA dep = probe (reader);
+  REQUIRE (LSA_EQ (&dep, &commit_lsa));
+
+  /* and a dropped key was never published, so a later writer of it has no dependency */
+  log_tdes *sysop_reader = make_tdes (3);
+  add_write_int (sysop_reader, &cls, 10);
+  LOG_LSA sysop_dep = probe (sysop_reader);
+  REQUIRE (LSA_ISNULL (&sysop_dep));
+
+  delete tx;
+  delete reader;
+  delete sysop_reader;
+}
+
+TEST_CASE ("concurrent references then a parent write waits behind the newest referencer", "[writeset]")
+{
+  ws_history_guard history;
+  OID parent_cls = oid_of (1, 200, 1);
+  const int nsiblings = 16;
+  LOG_LSA lp = lsa_of (10, 0);
+
+  log_tdes *parent = make_tdes (1);
+  add_write_int (parent, &parent_cls, 7);
+  commit_tx (parent, &lp);
+
+  /* children flush references to the same parent concurrently, each with a
+   * distinct commit LSA; the newest among them is lseq(nsiblings) */
+  std::vector<log_tdes *> child (nsiblings);
+  LOG_LSA newest = lsa_of (0, 0);
+  for (int i = 0; i < nsiblings; i++)
+    {
+      child[i] = make_tdes (100 + i);
+      add_ref_int (child[i], &parent_cls, 7);
+      LOG_LSA c = lsa_of (20 + i, 0);
+      if (LSA_GT (&c, &newest))
+	{
+	  newest = c;
+	}
+    }
+
+  std::vector<std::thread> workers;
+  for (int i = 0; i < nsiblings; i++)
+    {
+      LOG_LSA commit = lsa_of (20 + i, 0);
+      workers.emplace_back ([&child, i, commit] ()
+      {
+	commit_tx (child[i], &commit);
+      });
+    }
+  for (auto &w : workers)
+    {
+      w.join ();
+    }
+
+  /* a later write to the parent row must wait for the newest referencer (read
+   * slot holds the max under concurrent stamps: no lost update, monotonic) */
+  log_tdes *parent_delete = make_tdes (900);
+  add_write_int (parent_delete, &parent_cls, 7);
+  LOG_LSA dep = probe (parent_delete);
+  REQUIRE (LSA_EQ (&dep, &newest));
+
+  for (int i = 0; i < nsiblings; i++)
+    {
+      delete child[i];
+    }
+  delete parent;
+  delete parent_delete;
+}
+
+TEST_CASE ("sysop fallback label is the latest published coordinate", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  log_tdes *t1 = make_tdes (1);
+  log_tdes *t2 = make_tdes (2);
+  LOG_LSA dep;
+
+  /* nothing published yet: no coordinate to wait for */
+  wset_find_sysop_fallback_dependency (t2, &dep);
+  REQUIRE (LSA_ISNULL (&dep));
+
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+
+  /* after a commit the label is that commit, whatever keys t2 touched */
+  wset_find_sysop_fallback_dependency (t2, &dep);
+  REQUIRE (LSA_EQ (&dep, &l1));
+
+  delete t1;
+  delete t2;
+}
+
+TEST_CASE ("raising history_start makes later transactions wait for the sysop", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  LOG_LSA sysop = lsa_of (12, 0);
+  log_tdes *t1 = make_tdes (1);
+  log_tdes *t2 = make_tdes (2);
+  log_tdes *t3 = make_tdes (3);
+  LOG_LSA dep;
+
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+
+  /* a system operation at 12|0 is labeled for commit order and raises the floor */
+  wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
+
+  /* an unrelated key still waits for the sysop: the floor, not the history, decides */
+  add_write_int (t2, &cls, 7);
+  dep = probe (t2);
+  REQUIRE (LSA_EQ (&dep, &sysop));
+
+  /* a key written before the sysop waits for the sysop too, not for its older writer */
+  add_write_int (t3, &cls, 1);
+  dep = probe (t3);
+  REQUIRE (LSA_EQ (&dep, &sysop));
+
+  /* the next fallback label is the sysop coordinate itself */
+  wset_find_sysop_fallback_dependency (t3, &dep);
+  REQUIRE (LSA_EQ (&dep, &sysop));
+
+  delete t1;
+  delete t2;
+  delete t3;
+}
+
+TEST_CASE ("an overflowed transaction after a restart waits for the restart floor", "[writeset]")
+{
+  /* After a restart prev_commit_lsa is NULL and the floor is the end of the recovered log. A statement replicated
+   * then, a DDL for instance, takes the commit-order fallback; without the floor its label is NULL, and the slave
+   * runs it beside the transactions written before the restart. */
+  ws_history_guard history;
+  LOG_LSA restart = lsa_of (105, 0);
+  log_tdes *ovf = make_tdes (1);
+  LOG_LSA dep;
+
+  wset_raise_history_start (&restart, "RESTART");
+
+  ovf->wset_overflow = true;
+  dep = probe (ovf);
+  REQUIRE (LSA_EQ (&dep, &restart));
+
+  delete ovf;
+}
+
+TEST_CASE ("an overflowed transaction after a sysop waits for the sysop", "[writeset]")
+{
+  /* a system operation applied in commit order raises the floor above the last commit; the commit-order fallback
+   * has to wait for it like every other transaction after it */
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  LOG_LSA sysop = lsa_of (12, 0);
+  log_tdes *t1 = make_tdes (1);
+  log_tdes *ovf = make_tdes (2);
+  LOG_LSA dep;
+
+  add_write_int (t1, &cls, 1);
+  commit_tx (t1, &l1);
+  wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
+
+  ovf->wset_overflow = true;
+  dep = probe (ovf);
+  REQUIRE (LSA_EQ (&dep, &sysop));
+
+  delete t1;
+  delete ovf;
+}

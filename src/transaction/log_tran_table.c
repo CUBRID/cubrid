@@ -47,6 +47,9 @@
 
 #include "dbtran_def.h"
 #include "log_impl.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "writeset.hpp"
+#endif /* SERVER_MODE || SA_MODE */
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_system_tran.hpp"
@@ -183,6 +186,9 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
   if (newptr != NULL)
     {
       tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
+      /* recovery analysis fills slots directly without log_sysop_start, so the new slots must not hold garbage
+       * that log_sysop_commit_internal could read (repl_flushed, wset_mark) */
+      memset (&tdes->topops.stack[tdes->topops.max], 0, (size_t) num_elms * sizeof (*tdes->topops.stack));
       if (tdes->topops.max == 0)
 	{
 	  tdes->topops.last = -1;
@@ -506,6 +512,11 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 	  goto error;
 	}
     }
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  wset_history_initialize ();
+#endif /* SERVER_MODE || SA_MODE */
+
   return error_code;
 
 error:
@@ -593,6 +604,12 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
     {
       log_Gl.mvcc_table.finalize ();
       lock_finalize ();
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      /* Same lifetime as the lock manager: both are created by logtb_define_trantable_log_latch and
+       * only transactions on this table probe or publish the history. The reuse cycles during recovery
+       * skip this block, so the history survives them as its initialize guard expects. */
+      wset_history_finalize ();
+#endif /* SERVER_MODE || SA_MODE */
       pgbuf_finalize ();
       file_manager_final ();
     }
@@ -1604,6 +1621,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  tdes->wset_overflow = false;
+  tdes->wset_fallback_reason = 0;
+  tdes->wset_hashes.clear ();
+  LSA_SET_NULL (&tdes->wset_dependency_seq);
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
   if (tdes->ddl_sql_user_text != NULL)
@@ -1685,6 +1706,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
+  tdes->wset_overflow = false;
+  tdes->wset_fallback_reason = 0;
+  tdes->wset_hashes.clear ();
+  LSA_SET_NULL (&tdes->wset_dependency_seq);
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
   tdes->last_query_deadline = 0;
@@ -6611,6 +6636,12 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, repl_records);
   REPLACE_COPY_2_DEST (dest, repl_insert_lsa);
   REPLACE_COPY_2_DEST (dest, repl_update_lsa);
+  /* the writeset keys travel with the replication records they describe, so the commit written later from the
+   * new descriptor still finds its dependency and publishes its keys */
+  REPLACE_COPY_2_DEST (dest, wset_hashes);
+  REPLACE_COPY_2_DEST (dest, wset_overflow);
+  REPLACE_COPY_2_DEST (dest, wset_fallback_reason);
+  REPLACE_COPY_2_DEST (dest, wset_dependency_seq);
   REPLACE_COPY_2_DEST (dest, first_save_entry);
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);

@@ -287,7 +287,9 @@ catcls_get_class_definitions (void)
     system_catalog_initializer::get_synonym (),
     system_catalog_initializer::get_server (),
     system_catalog_initializer::get_histogram (),
-    system_catalog_initializer::get_global_tran ()
+    system_catalog_initializer::get_global_tran (),
+    system_catalog_initializer::get_ha_apply_stat (),
+    system_catalog_initializer::get_ha_apply_worker_stat ()
   };
 }
 
@@ -1187,6 +1189,84 @@ namespace cubschema
     {},
 // authorization
     make_authorization (Au_dba_user),
+// initializer
+    nullptr
+	   );
+  }
+
+  /* parallel apply statistics of each applylogdb on this node, one row per applier; see log_applier.c */
+  system_metadata_definition
+  system_catalog_initializer::get_ha_apply_stat ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CT_HA_APPLY_STAT_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"copied_log_path", format_varchar (4096)},
+      {"start_time", "datetime"},
+      {"last_update_time", "datetime"},
+      {"worker_count", "integer"},
+      {"apply_state", format_varchar (32)},
+      {"done_hold_since", "datetime"},
+      {"commit_read_count", "bigint"},
+      {"dispatch_direct_count", "bigint"},
+      {"dispatch_parked_count", "bigint"},
+      {"inflight_count", "integer"},
+      {"pending_count", "integer"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+    },
+// authorization
+    make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
+// initializer
+    nullptr
+	   );
+  }
+
+  /* per-worker statistics of each applylogdb on this node, one row per running worker; see log_applier.c */
+  system_metadata_definition
+  system_catalog_initializer::get_ha_apply_worker_stat ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CT_HA_APPLY_WORKER_STAT_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"copied_log_path", format_varchar (4096)},
+      {"worker_idx", "integer"},
+      {"start_time", "datetime"},
+      {"last_update_time", "datetime"},
+      {"state", format_varchar (16)},
+      {"applied_task_count", "bigint"},
+      {"applied_row_count", "bigint"},
+      {"busy_usec", "bigint"},
+      {"applying_commit_lsa_pageid", "bigint"},
+      {"applying_commit_lsa_offset", "integer"},
+      {"applying_master_commit_time", "datetime"},
+      {"applying_since", "datetime"},
+      {"last_applied_commit_lsa_pageid", "bigint"},
+      {"last_applied_commit_lsa_offset", "integer"},
+      {"last_applied_master_commit_time", "datetime"},
+      {"last_applied_time", "datetime"},
+      {"last_error_code", "integer"},
+      {"last_error_time", "datetime"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", "worker_idx", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"worker_idx", nullptr}},
+    },
+// authorization
+    make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
 // initializer
     nullptr
 	   );

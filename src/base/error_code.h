@@ -1792,7 +1792,9 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_LAST_ERROR                               -1390
+#define ER_HA_WRITESET_KEY_BUILD_FAILED             -1390
+
+#define ER_LAST_ERROR                               -1391
 
 
 /*

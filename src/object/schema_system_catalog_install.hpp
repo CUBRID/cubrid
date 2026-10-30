@@ -61,6 +61,8 @@ namespace cubschema
     system_metadata_definition get_synonym ();
     system_metadata_definition get_histogram ();
     system_metadata_definition get_global_tran ();
+    system_metadata_definition get_ha_apply_stat ();
+    system_metadata_definition get_ha_apply_worker_stat ();
 
     // views
     system_metadata_definition get_view_class ();

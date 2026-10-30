@@ -356,6 +356,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
 
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_HA_SERVER_STATE:
+    case LOG_DUMMY_WSET_LABEL:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
@@ -1265,6 +1266,11 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_DUMMY_HA_SERVER_STATE:
       assert (length == 0 && data == NULL);
       node->data_header_length = sizeof (LOG_REC_HA_SERVER_STATE);
+      break;
+
+    case LOG_DUMMY_WSET_LABEL:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (LOG_REC_WSET_LABEL);
       break;
 
     case LOG_SAVEPOINT:

@@ -55,6 +55,8 @@
 #define CT_SYNONYM_NAME            "_db_synonym"
 #define CT_HISTOGRAM_NAME       "_db_histogram"
 #define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
+#define CT_HA_APPLY_STAT_NAME      "_db_ha_apply_stat"
+#define CT_HA_APPLY_WORKER_STAT_NAME "_db_ha_apply_worker_stat"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"

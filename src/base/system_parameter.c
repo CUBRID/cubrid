@@ -822,6 +822,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
+#define PRM_NAME_HA_WRITESET_HISTORY_SIZE "ha_writeset_history_size"
+#define PRM_NAME_HA_WRITESET_TRACE_LEVEL "ha_writeset_trace_level"
+#define PRM_NAME_HA_APPLY_WORKER_COUNT "ha_apply_worker_count"
 
 #define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
 #define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
@@ -5712,6 +5715,39 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_WRITESET_HISTORY_SIZE,
+   PRM_NAME_HA_WRITESET_HISTORY_SIZE,
+   (PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 1000000}},
+   {false, {.i = 1000000}},
+   {false, {.i = 10000000}}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_WRITESET_TRACE_LEVEL,
+   PRM_NAME_HA_WRITESET_TRACE_LEVEL,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = 3}}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_APPLY_WORKER_COUNT,
+   PRM_NAME_HA_APPLY_WORKER_COUNT,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = HB_DEFAULT_APPLY_WORKER_COUNT}},
+   {false, {.i = HB_DEFAULT_APPLY_WORKER_COUNT}},
+   {false, {.i = HB_MAX_APPLY_WORKER_COUNT}}, {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

@@ -1737,6 +1737,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> WEEK
 %token <cptr> WITHIN
 %token <cptr> WORKSPACE
+%token <cptr> WRITESET
 
 
 %token <cptr> IdName
@@ -7558,6 +7559,10 @@ show_type
 	| THREADS
 		{{
 			$$ = SHOWSTMT_THREADS;
+		}}
+	| WRITESET STATUS
+		{{
+			$$ = SHOWSTMT_WRITESET_STATUS;
 		}}
 	;
 
@@ -20929,6 +20934,7 @@ identifier
 	| WEEK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| WITHIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| WORKSPACE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+	| WRITESET               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 /*}}}*/
 	;
 
