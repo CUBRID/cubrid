@@ -29,6 +29,7 @@
 #include <cassert>
 #include <functional>
 #include <vector>
+#include "string_opfunc.h"
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
 #define NUM_DB_TYPES (DB_TYPE_LAST + 1)
@@ -251,6 +252,46 @@ namespace cubload
 
     string_type *amount;
     int currency_type;
+  };
+
+  /*
+   * text_token - one value's text, taken out of the parse tree
+   *
+   * Note:
+   *    LDR_COLLECTION, LDR_OID and LDR_CLASS_OID do not carry text - they are
+   *    the caller's own business - and a token built from one of those is
+   *    empty, as is one built from LDR_NULL.
+   *
+   *    The text points into the parse tree, except for LDR_MONETARY which has
+   *    to be assembled, so a token must not outlive the constant it came from.
+   */
+  class text_token
+  {
+    public:
+      explicit text_token (const constant_type *cons);
+      ~text_token ();
+
+      text_token (const text_token &) = delete;
+      text_token &operator= (const text_token &) = delete;
+
+      const char *text () const
+      {
+	return m_text;
+      }
+
+      size_t size () const
+      {
+	return m_size;
+      }
+
+    private:
+      const char *m_text;
+      size_t m_size;
+
+      // for monetary, if the assembled text did not fit in m_buf, then m_heap is allocated and used instead
+      char *m_heap;			/* set only when the assembled text did not fit m_buf */
+      // numeric size(amount's digits) + grammar currency symbol(the longest ISO currency escape) + string terminator
+      char m_buf[NUM_BUF_SIZE + 3 + 1];
   };
 
   struct stats : public cubpacking::packable_object
