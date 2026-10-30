@@ -13540,7 +13540,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
     {
       const DB_VALUE *val = &parser->host_variables[index];
       typed = true;
-      type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      type = DB_VALUE_DOMAIN_TYPE (val);
       if (TP_IS_CHAR_TYPE (type))
 	{
 	  codeset = db_get_string_codeset (val);
