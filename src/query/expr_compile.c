@@ -1638,6 +1638,7 @@ static EXPR_PROG *expr_node_compile (const EXPR_COMPILE_ENV * env, REGU_VARIABLE
 static int expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
 static void expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root);
 static bool expr_literal_same (const DB_VALUE * a, const DB_VALUE * b);
+static const TP_DOMAIN *expr_stream_domain (const EXPR_COMPILE_ENV * env, const TP_DOMAIN * domain);
 
 /******************************************************************************
  * sharing a scan's filter values with the scan's other consumers
@@ -1753,7 +1754,8 @@ expr_share_same (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * mine, const 
 	    return false;
 	  }
 	if (mine->domain == NULL || theirs->domain == NULL || TP_DOMAIN_TYPE (mine->domain) == DB_TYPE_VARIABLE
-	    || !tp_domain_match (mine->domain, theirs->domain, TP_EXACT_MATCH))
+	    || !tp_domain_match (expr_stream_domain (&bctx->env, mine->domain),
+				 expr_stream_domain (&bctx->env, theirs->domain), TP_EXACT_MATCH))
 	  {
 	    /* the whole domain, not type/precision/scale alone: CAST (s AS ENUM ('b', 'a')) is not CAST (s AS
 	     * ENUM ('a', 'b')), and a VARCHAR COLLATE utf8_bin value is not a utf8_en_ci one -- a reader comparing
@@ -2586,6 +2588,46 @@ expr_term_compare (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et, DOMA
       return NULL;
     }
   return out;
+}
+
+/* The domain the server's tree holds for a domain of the tree a compile runs over.  At generation the client's domain
+ * objects are not yet what the stream makes of them -- the unpack normalizes a VARCHAR's floating precision and an
+ * ENUMERATION's codeset and collation, and equal domains may be different objects -- so where a compile keys on a
+ * domain's identity (a cast's or NULLIF's CSE entry, the match of a filter's shared node) it takes the domain the
+ * stream gives: packed as XASL_TO_STREAM packs a regu's (OR_PACK_DOMAIN_OBJECT_TO_OID), unpacked into this
+ * process's domain cache.  Only as a key: a step keeps the tree's own domain, which an image packs the way the
+ * stream does (packing a domain the stream already unpacked need not give it back).  On the server the tree's
+ * domains are the stream's already. */
+static const TP_DOMAIN *
+expr_stream_domain (const EXPR_COMPILE_ENV * env, const TP_DOMAIN * domain)
+{
+  int stack_buf[64];
+  char *buf = (char *) stack_buf;
+  TP_DOMAIN *packed, *out = NULL;
+  int size, is_null = 0;
+
+  if (!env->at_generation || domain == NULL)
+    {
+      return domain;
+    }
+  packed = CONST_CAST (TP_DOMAIN *, domain_key_value_domain (domain));
+  size = or_packed_domain_size (packed, 0);
+  if (size > (int) sizeof (stack_buf))
+    {
+      buf = (char *) malloc (size);
+      if (buf == NULL)
+	{
+	  /* no key: two equal domains then miss each other, never meet wrongly */
+	  return domain;
+	}
+    }
+  (void) or_pack_domain (buf, packed, 0, 0);
+  (void) or_unpack_domain (buf, &out, &is_null);
+  if (buf != (char *) stack_buf)
+    {
+      free_and_init (buf);
+    }
+  return (out != NULL) ? out : domain;
 }
 
 /* The domain an arithmetic node computes in, as fetch_peek_arith () reads it: its compiled domain.  NULL: the node
@@ -5796,7 +5838,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return -1;
 	      }
-	    cell = expr_cse_find (bctx, exec_domain, T_NULLIF, c1, c2, -1);
+	    cell = expr_cse_find (bctx, expr_stream_domain (&bctx->env, exec_domain), T_NULLIF, c1, c2, -1);
 	    if (cell >= 0)
 	      {
 		return cell;
@@ -5827,7 +5869,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		check->alias_of = node_idx + 1;
 		check->jump_to = node_idx + 2;
 	      }
-	    expr_cse_add (bctx, exec_domain, T_NULLIF, c1, c2, -1, cell, bctx->cur_guard);
+	    expr_cse_add (bctx, expr_stream_domain (&bctx->env, exec_domain), T_NULLIF, c1, c2, -1, cell,
+			  bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -5850,7 +5893,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return -1;
 	      }
-	    cell = expr_cse_find (bctx, exec_domain, cse_op, c1, -1, -1);
+	    cell = expr_cse_find (bctx, expr_stream_domain (&bctx->env, exec_domain), cse_op, c1, -1, -1);
 	    if (cell >= 0)
 	      {
 		return cell;
@@ -5866,7 +5909,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    step->out = (DB_VALUE *) 1;	/* needs an owned slot; materialized later */
 	    bctx->n_slots++;
 	    expr_step_hoist (bctx, step, cell, c1, -1, true);	/* cast (? as int), cast ('1' as int) */
-	    expr_cse_add (bctx, exec_domain, cse_op, c1, -1, -1, cell, bctx->cur_guard);
+	    expr_cse_add (bctx, expr_stream_domain (&bctx->env, exec_domain), cse_op, c1, -1, -1, cell,
+			  bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
