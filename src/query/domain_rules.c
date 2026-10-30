@@ -1120,39 +1120,53 @@ domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2)
     || (type2 == DB_TYPE_NUMERIC && domain_type_is_integer (type1));
 }
 
-static DB_BIGINT
-domain_integer_value (const DB_VALUE * value)
-{
-  switch (DB_VALUE_DOMAIN_TYPE (value))
-    {
-    case DB_TYPE_BIGINT:
-      return db_get_bigint (value);
-    case DB_TYPE_INTEGER:
-      return db_get_int (value);
-    default:
-      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SHORT);
-      return db_get_short (value);
-    }
-}
-
 static DB_VALUE_COMPARE_RESULT
 domain_compare_reverse (DB_VALUE_COMPARE_RESULT c)
 {
   return c == DB_LT ? DB_GT : c == DB_GT ? DB_LT : c;
 }
 
+/* one cmpval per integer type and side, so the integer's type is the compiled one, not read from each value */
 static DB_VALUE_COMPARE_RESULT
-domain_cmpval_integer_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-			       int *start_colp, int collation)
+domain_cmpval_short_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			     int *start_colp, int collation)
 {
-  return numeric_compare_bigint_num_exact (domain_integer_value (value1), value2);
+  return numeric_compare_bigint_num_exact (db_get_short (value1), value2);
 }
 
 static DB_VALUE_COMPARE_RESULT
-domain_cmpval_numeric_integer (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-			       int *start_colp, int collation)
+domain_cmpval_int_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			   int *start_colp, int collation)
 {
-  return domain_compare_reverse (numeric_compare_bigint_num_exact (domain_integer_value (value2), value1));
+  return numeric_compare_bigint_num_exact (db_get_int (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_bigint_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			      int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_bigint (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			     int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_short (value2), value1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			   int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_int (value2), value1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			      int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_bigint (value2), value1));
 }
 
 /* the compared type's PR_TYPE with an exact comparison's cmpval, made at the first use (after tp_Numeric's
@@ -1173,13 +1187,17 @@ domain_compare_cmp (DB_TYPE source0, DB_TYPE source1, DB_TYPE compared)
     {
       return pr_type_from_id (compared);
     }
-  if (source1 == DB_TYPE_NUMERIC)
-    {
-      static const PR_TYPE integer_numeric = domain_exact_number_type (&tp_Numeric, domain_cmpval_integer_numeric);
-      return &integer_numeric;
-    }
-  static const PR_TYPE numeric_integer = domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_integer);
-  return &numeric_integer;
+  static const PR_TYPE exact[2][3] = {
+    {domain_exact_number_type (&tp_Numeric, domain_cmpval_short_numeric),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_int_numeric),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_bigint_numeric)},
+    {domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_short),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_int),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_bigint)}
+  };
+  const DB_TYPE integer = source1 == DB_TYPE_NUMERIC ? source0 : source1;
+
+  return &exact[source1 != DB_TYPE_NUMERIC][integer == DB_TYPE_SHORT ? 0 : integer == DB_TYPE_INTEGER ? 1 : 2];
 }
 
 static int
