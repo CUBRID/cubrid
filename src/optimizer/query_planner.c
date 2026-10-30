@@ -50,6 +50,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_generation.h"
 #include "schema_manager.h"
+#include "set_object.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "object_domain.h"	/* tp_value_compare (), to tell an empty range from an out-of-range one */
@@ -118,6 +119,11 @@
  * saturation, without overturning genuinely cheap unique-key probes. Revisit together with
  * ISCAN_OID_ACCESS_OVERHEAD if either is recalibrated. */
 #define BTREE_DESCENT_PAGE_OVERHEAD 50
+/* Closing the scan of one partition and opening the next (qexec_init_next_partition ()), in tuple units,
+ * paid per partition when a nested-loop inner walks the partitions within each outer row. Measured on
+ * the release build (NOT EXISTS against a 64-partition table, 50,000 rows): one partition visit took
+ * about as long as one probe of the whole index, and about half of it was the switch (CBRD-27566). */
+#define PARTITION_SCAN_SWITCH_OVERHEAD 100
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
@@ -4842,6 +4848,82 @@ qo_join_input_factor (QO_PLAN * input, double divisor)
 }
 
 /*
+ * qo_node_scan_blocks () - the number of partitions a nested-loop inner scan of the node walks
+ *   return: the partition count of a partitioned table, 1 for any other table
+ *   node(in):
+ *
+ * Note: the executor prunes once, when it opens the scan, so a join term on the partition key does
+ *	 not narrow the partitions (partition.c gets no value from the outer row: TYPE_CONSTANT).
+ *	 A constant term on the partition key may prune them; which ones is not known here, so the
+ *	 scan is then taken to read one partition as before (CBRD-27566).
+ */
+static int
+qo_node_scan_blocks (QO_NODE * node)
+{
+  SM_PARTITION *partition;
+  DB_VALUE attr_name, part_count;
+  const char *key_name;
+  QO_TERM *term;
+  QO_SEGMENT *seg;
+  BITSET_ITERATOR bi, si;
+  int t, s;
+
+  if (!QO_NODE_IS_CLASS_PARTITIONED (node))
+    {
+      return 1;
+    }
+
+  partition = QO_NODE_INFO_SMCLASS (node)->partition;
+  if (partition->values == NULL || set_get_element_nocopy (partition->values, 0, &attr_name) != NO_ERROR
+      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (&attr_name)
+      || DB_IS_NULL (&part_count) || (key_name = db_get_string (&attr_name)) == NULL)
+    {
+      return 1;
+    }
+
+  for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &bi); t != -1; t = bitset_next_member (&bi))
+    {
+      term = QO_ENV_TERM (QO_NODE_ENV (node), t);
+      for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &si); s != -1; s = bitset_next_member (&si))
+	{
+	  seg = QO_ENV_SEG (QO_NODE_ENV (node), s);
+	  if (QO_SEG_HEAD (seg) == node && QO_SEG_NAME (seg) != NULL
+	      && !intl_identifier_casecmp (QO_SEG_NAME (seg), key_name))
+	    {
+	      return 1;
+	    }
+	}
+    }
+
+  return MAX (1, db_get_int (&part_count));
+}
+
+/*
+ * qo_plan_nl_chain_has_semi_anti () - whether a nested-loop chain has a SEMI / ANTI inner
+ *   return:
+ *   plan(in): the outer of a nested-loop join
+ *
+ * Note: the scan block iterator stops above the first SEMI / ANTI inner of a scan chain, so the
+ *	 scans after it walk their partitions per outer row (mark_following_joins ()).
+ */
+static bool
+qo_plan_nl_chain_has_semi_anti (QO_PLAN * plan)
+{
+  while (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN
+	 && (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+	     || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN))
+    {
+      if (qo_plan_semi_anti_join_type (plan->plan_un.join.inner) != PT_JOIN_NONE)
+	{
+	  return true;
+	}
+      plan = plan->plan_un.join.outer;
+    }
+
+  return false;
+}
+
+/*
  * qo_nljoin_cost () -
  *   return:
  *   planp(in):
@@ -4853,6 +4935,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
   double guessed_result_cardinality, limit_val, outer_card, required_card, inner_scan_card, inner_fetch_rows;
   double divisor;
+  int scan_blocks;
 
   inner = planp->plan_un.join.inner;
 
@@ -5012,6 +5095,39 @@ qo_nljoin_cost (QO_PLAN * planp)
   outer_cpu_cost = outer->variable_cpu_cost;
   /* outer side IO cost of nested-loop block join */
   outer_io_cost = outer->variable_io_cost;
+
+  /* a partitioned inner is scanned one partition at a time, and every partition is probed for every
+   * outer row (CBRD-27566). A SEMI / ANTI inner, or one after it in the chain, walks the partitions
+   * within each outer row: each further partition costs a scan switch and a descent. Otherwise the
+   * executor runs the outer again for each further partition (qexec_next_scan_block_iterations ()):
+   * a scan or a nested-loop chain all over, a materialized outer as a list scan. */
+  scan_blocks = (inner->plan_type == QO_PLANTYPE_SCAN) ? qo_node_scan_blocks (inner->plan_un.scan.node) : 1;
+  if (scan_blocks > 1)
+    {
+      double extra_blocks = (double) (scan_blocks - 1);
+
+      if (qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE || qo_plan_nl_chain_has_semi_anti (outer))
+	{
+	  inner_cpu_cost += guessed_result_cardinality * extra_blocks
+	    * (inner->iscan_descent_cpu + (double) PARTITION_SCAN_SWITCH_OVERHEAD * QO_CPU_WEIGHT);
+	}
+      else
+	{
+	  inner_cpu_cost += guessed_result_cardinality * extra_blocks * inner->iscan_descent_cpu;
+	  if (outer->plan_type == QO_PLANTYPE_SCAN || outer->plan_type == QO_PLANTYPE_FOLLOW
+	      || (outer->plan_type == QO_PLANTYPE_JOIN
+		  && (outer->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+		      || outer->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)))
+	    {
+	      outer_cpu_cost += extra_blocks * outer->variable_cpu_cost;
+	      outer_io_cost += extra_blocks * outer->variable_io_cost;
+	    }
+	  else
+	    {
+	      outer_cpu_cost += extra_blocks * (outer->info)->cardinality * QO_CPU_WEIGHT;
+	    }
+	}
+    }
 
   /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does;
    * then the per-row inner work is divided, and so is the driving scan when the outer is that
