@@ -40,7 +40,8 @@ struct tp_domain;
 typedef enum
 {
   WSET_FALLBACK_TRANSACTION_LIMIT = 0,
-  WSET_FALLBACK_STATEMENT_REPLICATION = 1
+  WSET_FALLBACK_STATEMENT_REPLICATION = 1,
+  WSET_FALLBACK_NAN_KEY = 2
 } WSET_FALLBACK_REASON;
 
 extern void wset_history_initialize (void);

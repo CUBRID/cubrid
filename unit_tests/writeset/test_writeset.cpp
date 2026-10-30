@@ -207,10 +207,11 @@ TEST_CASE ("composite parent WRITE and child REF produce the same collision hash
   delete later_parent;
 }
 
-/* Build a (string, int) composite key in a MIDXKEY domain whose string element has the given collation. */
+/* Build a (string, int) composite key in a MIDXKEY domain whose string element has the given collation; text_size
+ * bytes of text (so it may hold a NUL), or its whole length when text_size is negative. */
 static void
 make_string_int_key (DB_VALUE *key, TP_DOMAIN **domain_out, int collation_id, int string_precision,
-		     const char *text, int number)
+		     const char *text, int number, int text_size = -1)
 {
   TP_DOMAIN *string_domain;
   TP_DOMAIN *int_domain;
@@ -229,7 +230,11 @@ make_string_int_key (DB_VALUE *key, TP_DOMAIN **domain_out, int collation_id, in
   domain = tp_domain_cache (domain);
   REQUIRE (domain != NULL);
 
-  REQUIRE (db_make_varchar (&elements[0], string_precision, text, (int) strlen (text), INTL_CODESET_UTF8,
+  if (text_size < 0)
+    {
+      text_size = (int) strlen (text);
+    }
+  REQUIRE (db_make_varchar (&elements[0], string_precision, text, text_size, INTL_CODESET_UTF8,
 			    collation_id) == NO_ERROR);
   db_make_int (&elements[1], number);
 
@@ -560,6 +565,226 @@ TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
   }
 }
 
+TEST_CASE ("a MONETARY key hashes its amount without the currency", "[writeset]")
+{
+  /* The index compares MONETARY keys by amount only, so $100 and KRW 100 are one key and must have one hash,
+   * though each packs its own currency; a -0.0 amount is the same key as 0.0; another amount must not match. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 205, 1);
+
+  SECTION ("WRITE of one amount in two currencies and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_MONETARY);
+    DB_VALUE dollar;
+    DB_VALUE won;
+    DB_VALUE other;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_monetary (&dollar, DB_CURRENCY_DOLLAR, 100.0);
+    db_make_monetary (&won, DB_CURRENCY_WON, 100.0);
+    db_make_monetary (&other, DB_CURRENCY_DOLLAR, 101.0);
+
+    REQUIRE (write_key_hash (&class_oid, &dollar) == write_key_hash (&class_oid, &won));
+    REQUIRE (write_key_hash (&class_oid, &dollar) != write_key_hash (&class_oid, &other));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &won, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &dollar));
+
+    delete child;
+  }
+
+  SECTION ("a -0.0 amount and 0.0 give one hash")
+  {
+    DB_VALUE plus_zero;
+    DB_VALUE minus_zero;
+
+    db_make_monetary (&plus_zero, DB_CURRENCY_DOLLAR, 0.0);
+    db_make_monetary (&minus_zero, DB_CURRENCY_YEN, -0.0);
+    REQUIRE (std::signbit (db_get_monetary (&minus_zero)->amount));
+
+    REQUIRE (write_key_hash (&class_oid, &plus_zero) == write_key_hash (&class_oid, &minus_zero));
+  }
+
+  SECTION ("composite key: MONETARY elements in two currencies give one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_MONETARY);
+    TP_DOMAIN *key_domain;
+    DB_VALUE value;
+    DB_VALUE key_dollar;
+    DB_VALUE key_won;
+    DB_VALUE key_other;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_monetary (&value, DB_CURRENCY_DOLLAR, 100.0);
+    make_value_int_key (&key_dollar, &key_domain, element_domain, &value, 1);
+    db_make_monetary (&value, DB_CURRENCY_WON, 100.0);
+    make_value_int_key (&key_won, &key_domain, element_domain, &value, 1);
+    db_make_monetary (&value, DB_CURRENCY_DOLLAR, 101.0);
+    make_value_int_key (&key_other, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_dollar) == write_key_hash (&class_oid, &key_won));
+    REQUIRE (write_key_hash (&class_oid, &key_dollar) != write_key_hash (&class_oid, &key_other));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_won, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_dollar));
+
+    pr_clear_value (&key_dollar);
+    pr_clear_value (&key_won);
+    pr_clear_value (&key_other);
+    delete child;
+  }
+}
+
+TEST_CASE ("a VARBIT key hashes its bytes without the bit length", "[writeset]")
+{
+  /* The index compares VARBIT keys by their bytes and byte count only, so B'1' and B'10' (both the byte 0x80) are
+   * one key and must have one hash, though each packs its own bit length; another byte or byte count must not
+   * match. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 206, 1);
+  static const char byte_80[] = { (char) 0x80 };
+  static const char byte_c0[] = { (char) 0xC0 };
+  static const char bytes_80_00[] = { (char) 0x80, 0x00 };
+
+  SECTION ("WRITE of one byte in two bit lengths and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_VARBIT);
+    DB_VALUE one_bit;
+    DB_VALUE two_bits;
+    DB_VALUE other_byte;
+    DB_VALUE two_bytes;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_varbit (&one_bit, DB_MAX_VARBIT_PRECISION, byte_80, 1);
+    db_make_varbit (&two_bits, DB_MAX_VARBIT_PRECISION, byte_80, 2);
+    db_make_varbit (&other_byte, DB_MAX_VARBIT_PRECISION, byte_c0, 2);
+    db_make_varbit (&two_bytes, DB_MAX_VARBIT_PRECISION, bytes_80_00, 9);
+
+    REQUIRE (write_key_hash (&class_oid, &one_bit) == write_key_hash (&class_oid, &two_bits));
+    REQUIRE (write_key_hash (&class_oid, &one_bit) != write_key_hash (&class_oid, &other_byte));
+    REQUIRE (write_key_hash (&class_oid, &one_bit) != write_key_hash (&class_oid, &two_bytes));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &two_bits, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &one_bit));
+
+    delete child;
+  }
+
+  SECTION ("composite key: VARBIT elements in two bit lengths give one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_VARBIT);
+    TP_DOMAIN *key_domain;
+    DB_VALUE value;
+    DB_VALUE key_one_bit;
+    DB_VALUE key_two_bits;
+    DB_VALUE key_other;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, byte_80, 1);
+    make_value_int_key (&key_one_bit, &key_domain, element_domain, &value, 1);
+    db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, byte_80, 2);
+    make_value_int_key (&key_two_bits, &key_domain, element_domain, &value, 1);
+    db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, byte_c0, 2);
+    make_value_int_key (&key_other, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_one_bit) == write_key_hash (&class_oid, &key_two_bits));
+    REQUIRE (write_key_hash (&class_oid, &key_one_bit) != write_key_hash (&class_oid, &key_other));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_two_bits, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_one_bit));
+
+    pr_clear_value (&key_one_bit);
+    pr_clear_value (&key_two_bits);
+    pr_clear_value (&key_other);
+    delete child;
+  }
+}
+
+TEST_CASE ("a NaN key sends its transaction to commit order", "[writeset]")
+{
+  /* The index finds a NaN key equal to every key of its index, which no hash can stand for, so a NaN in a WRITE,
+   * a composite element or a REF falls back to commit order instead of being hashed; other values still hash. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 206, 1);
+
+  SECTION ("WRITE of a DOUBLE or FLOAT NaN")
+  {
+    DB_VALUE nan_double;
+    DB_VALUE nan_float;
+    DB_VALUE one;
+    log_tdes *tdes_double = make_tdes (1);
+    log_tdes *tdes_float = make_tdes (2);
+    log_tdes *tdes_one = make_tdes (3);
+
+    db_make_double (&nan_double, std::nan (""));
+    db_make_float (&nan_float, std::nanf (""));
+    db_make_double (&one, 1.0);
+
+    REQUIRE (wset_add_write_key (tdes_double, &class_oid, &WS_DEFAULT_VFID, &nan_double) == NO_ERROR);
+    REQUIRE (tdes_double->wset_overflow);
+    REQUIRE (tdes_double->wset_hashes.empty ());
+
+    REQUIRE (wset_add_write_key (tdes_float, &class_oid, &WS_DEFAULT_VFID, &nan_float) == NO_ERROR);
+    REQUIRE (tdes_float->wset_overflow);
+
+    REQUIRE (wset_add_write_key (tdes_one, &class_oid, &WS_DEFAULT_VFID, &one) == NO_ERROR);
+    REQUIRE_FALSE (tdes_one->wset_overflow);
+    REQUIRE (tdes_one->wset_hashes.size () == 1);
+
+    delete tdes_double;
+    delete tdes_float;
+    delete tdes_one;
+  }
+
+  SECTION ("composite key with a NaN element, and a REF to it")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    TP_DOMAIN *key_domain;
+    DB_VALUE value;
+    DB_VALUE key_nan;
+    log_tdes *writer = make_tdes (1);
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (element_domain != NULL);
+    db_make_double (&value, std::nan (""));
+    make_value_int_key (&key_nan, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (wset_add_write_key (writer, &class_oid, &WS_DEFAULT_VFID, &key_nan) == NO_ERROR);
+    REQUIRE (writer->wset_overflow);
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_nan, key_domain) == NO_ERROR);
+    REQUIRE (child->wset_overflow);
+
+    pr_clear_value (&key_nan);
+    delete writer;
+    delete child;
+  }
+
+  SECTION ("REF of a single DOUBLE NaN")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    DB_VALUE nan_double;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    db_make_double (&nan_double, std::nan (""));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &nan_double, domain) == NO_ERROR);
+    REQUIRE (child->wset_overflow);
+    REQUIRE (child->wset_hashes.empty ());
+
+    delete child;
+  }
+}
+
 /* Set ignore_trailing_space for one test and restore the previous value when the test ends. */
 struct ws_trailing_space_guard
 {
@@ -603,15 +828,15 @@ string_key_hash (const OID *class_oid, DB_TYPE type, const char *text, int size 
   return hash;
 }
 
-/* Hash of a (VARCHAR, int) composite WRITE key. */
+/* Hash of a (VARCHAR, int) composite WRITE key, text_size bytes of text as in make_string_int_key. */
 static UINT64
-string_int_key_hash (const OID *class_oid, const char *text)
+string_int_key_hash (const OID *class_oid, const char *text, int text_size = -1)
 {
   TP_DOMAIN *domain;
   DB_VALUE key;
   UINT64 hash;
 
-  make_string_int_key (&key, &domain, LANG_COLL_UTF8_BINARY, 10, text, 1);
+  make_string_int_key (&key, &domain, LANG_COLL_UTF8_BINARY, 10, text, 1, text_size);
   hash = write_key_hash (class_oid, &key);
   pr_clear_value (&key);
 
@@ -655,14 +880,42 @@ TEST_CASE ("trailing spaces split a string key only where the index compares the
 	     == string_key_hash (&class_oid, DB_TYPE_CHAR, "a         "));
   }
 
-  SECTION ("a trailing NUL is ignored as the compares ignore it")
+  SECTION ("a NUL is hashed as a space at any position, as the compares treat it")
   {
     ws_trailing_space_guard trailing_space (false);
 
-    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+    /* VARCHAR: 'a ' and 'a' NUL are one key, 'a' and 'a' NUL are two */
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a ")
 	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a", 2));
     REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
-	     != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "b", 2));
+	     != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a", 2));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a  ")
+	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a\0 ", 3));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a b")
+	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a\0b", 3));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a b")
+	     != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a\0c", 3));
+    REQUIRE (string_int_key_hash (&class_oid, "a b") == string_int_key_hash (&class_oid, "a\0b", 3));
+
+    /* CHAR ignores both at the end */
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a") == string_key_hash (&class_oid, DB_TYPE_CHAR, "a", 2));
+  }
+
+  SECTION ("EUC-KR: trailing NUL, space and 0xA1A1 are ignored together")
+  {
+    ws_trailing_space_guard trailing_space (false);
+    static const char nul_euc_space[] = { 'a', '\0', (char) 0xA1, (char) 0xA1 };
+    DB_VALUE plain;
+    DB_VALUE padded;
+    DB_VALUE other;
+
+    REQUIRE (db_make_varchar (&plain, 10, "a", 1, INTL_CODESET_KSC5601_EUC, LANG_COLL_EUCKR_BINARY) == NO_ERROR);
+    REQUIRE (db_make_varchar (&padded, 10, nul_euc_space, 4, INTL_CODESET_KSC5601_EUC, LANG_COLL_EUCKR_BINARY)
+	     == NO_ERROR);
+    REQUIRE (db_make_varchar (&other, 10, "b", 1, INTL_CODESET_KSC5601_EUC, LANG_COLL_EUCKR_BINARY) == NO_ERROR);
+
+    REQUIRE (write_key_hash (&class_oid, &plain) == write_key_hash (&class_oid, &padded));
+    REQUIRE (write_key_hash (&class_oid, &plain) != write_key_hash (&class_oid, &other));
   }
 }
 
