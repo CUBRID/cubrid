@@ -4564,7 +4564,8 @@ qo_is_groupby_limit_term (PT_NODE * term)
 /*
  * qo_groupby_skip_driving_scan () - the scan whose order a plan skips the GROUP BY in
  *   return: the plan itself when it is a scan; for a GROUP BY that stops at its LIMIT, the outermost scan of a chain
- *	     of nested-loop joins, which emit the rows in that scan's order; NULL otherwise
+ *	     of nested-loop joins, which emit the rows in that scan's order unless an inner reads a class hierarchy or
+ *	     a partitioned class; NULL otherwise
  *   plan(in):
  *
  * Note: a join is limited to a GROUP BY with a LIMIT (CBRD-27685). Without one, the join skips nothing that its
@@ -4574,10 +4575,25 @@ qo_is_groupby_limit_term (PT_NODE * term)
 static QO_PLAN *
 qo_groupby_skip_driving_scan (QO_PLAN * plan)
 {
+  QO_PLAN *inner;
+  BITSET_ITERATOR iter;
+  int i;
+
   if (plan->plan_type == QO_PLANTYPE_JOIN && plan->info->planner->groupby_limit_groups > 0.0)
     {
       while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
 	{
+	  /* an inner that reads a class hierarchy or the partitions of a class reads them as scan blocks one after
+	   * another, each over the whole outer scan (qexec_next_scan_block_iterations ()): the rows of a group do not
+	   * come together */
+	  inner = plan->plan_un.join.inner;
+	  for (i = bitset_iterate (&(inner->info->nodes), &iter); i != -1; i = bitset_next_member (&iter))
+	    {
+	      if (QO_NODE_IS_CLASS_HIERARCHY (QO_ENV_NODE (plan->info->env, i)))
+		{
+		  return NULL;
+		}
+	    }
 	  plan = plan->plan_un.join.outer;
 	}
     }
