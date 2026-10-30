@@ -3650,6 +3650,7 @@ la_load_applied_tx_markers (void)
   int au_save;
   int res;
   int count = 0;
+  int pos = DB_CURSOR_END;
   int error = NO_ERROR;
 
   la_free_applied_tx_markers ();
@@ -3688,30 +3689,42 @@ la_load_applied_tx_markers (void)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
+      pos = db_query_first_tuple (result);
+      while (pos == DB_CURSOR_SUCCESS)
 	{
-	  do
+	  db_make_null (&out_value[0]);
+	  db_make_null (&out_value[1]);
+	  error = db_query_get_tuple_valuelist (result, 2, out_value);
+	  if (error != NO_ERROR)
 	    {
-	      db_make_null (&out_value[0]);
-	      db_make_null (&out_value[1]);
-	      error = db_query_get_tuple_valuelist (result, 2, out_value);
-	      if (error != NO_ERROR)
-		{
-		  db_value_clear (&out_value[0]);
-		  db_value_clear (&out_value[1]);
-		  break;
-		}
-
-	      if (count < res)
-		{
-		  la_Applied_tx_markers[count].pageid = db_get_bigint (&out_value[0]);
-		  la_Applied_tx_markers[count].offset = db_get_int (&out_value[1]);
-		  count++;
-		}
 	      db_value_clear (&out_value[0]);
 	      db_value_clear (&out_value[1]);
+	      break;
 	    }
-	  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS);
+
+	  if (count < res)
+	    {
+	      la_Applied_tx_markers[count].pageid = db_get_bigint (&out_value[0]);
+	      la_Applied_tx_markers[count].offset = db_get_int (&out_value[1]);
+	      count++;
+	    }
+	  db_value_clear (&out_value[0]);
+	  db_value_clear (&out_value[1]);
+
+	  pos = db_query_next_tuple (result);
+	}
+
+      /* db_query_next_tuple returns DB_CURSOR_END after the last marker and a negative value when it cannot fetch
+       * the next row; then only the markers before that row are loaded. A worker skips an already applied commit
+       * only when its marker is loaded, so the applier must not start with part of the markers: the load returns
+       * the error. */
+      if (error == NO_ERROR && pos != DB_CURSOR_END)
+	{
+	  error = (pos < 0 && pos != DB_CURSOR_ERROR) ? pos : er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
 	}
     }
 
