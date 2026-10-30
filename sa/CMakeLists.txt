@@ -201,6 +201,8 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
   ${COMMUNICATION_DIR}/stream_session.cpp
+  ${COMMUNICATION_DIR}/stream_handle.cpp
+  ${COMMUNICATION_DIR}/stream_client.c
   )
 
 set(DEBUGGING_HEADERS

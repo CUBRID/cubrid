@@ -1179,7 +1179,8 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   srv_handle = hm_find_srv_handle (srv_h_id);
-  if (auto_commit_mode == TRUE)
+  /* a download still reads in this transaction; its last release pays the commit (ux_stream_release) */
+  if (auto_commit_mode == TRUE && !ux_stream_holds_download ())
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -2458,13 +2459,15 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
     }
 }
 
+/* SEND_DATA: data [, flags]. With CAS_STREAM_FLAG_FINAL the chunk ends the stream and the reply is END's. */
 FN_RETURN
 fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char *data = NULL;
   int data_len = 0;
+  char flags = 0;
 
-  if (argc != 1)
+  if (argc < 1 || argc > 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
@@ -2472,8 +2475,19 @@ fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   net_arg_get_str (&data, &data_len, argv[0]);
+  if (argc > 1)
+    {
+      net_arg_get_char (flags, argv[1]);
+    }
 
-  ux_stream_send_data (data, data_len, net_buf, req_info);
+  if (flags & CAS_STREAM_FLAG_FINAL)
+    {
+      ux_stream_end (data, data_len, net_buf, req_info);
+    }
+  else
+    {
+      ux_stream_send_data (data, data_len, net_buf, req_info);
+    }
 
   return FN_KEEP_CONN;
 }
@@ -2481,19 +2495,24 @@ fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 FN_RETURN
 fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  ux_stream_end (net_buf, req_info);
+  ux_stream_end (NULL, 0, net_buf, req_info);
 
   return FN_KEEP_CONN;
 }
 
+/* INIT: kind, config [, flags, data]. The data is the first chunk; with CAS_STREAM_FLAG_FINAL it is the whole
+ * value, and the reply is END's. */
 FN_RETURN
 fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int stream_kind = 0;
   char *config = NULL;
   int config_len = 0;
+  char flags = 0;
+  char *data = NULL;
+  int data_len = 0;
 
-  if (argc != 2)
+  if (argc != 2 && argc != 4)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
@@ -2502,8 +2521,14 @@ fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 
   net_arg_get_int (&stream_kind, argv[0]);
   net_arg_get_str (&config, &config_len, argv[1]);
+  if (argc == 4)
+    {
+      net_arg_get_char (flags, argv[2]);
+      net_arg_get_str (&data, &data_len, argv[3]);
+    }
 
-  ux_stream_init (stream_kind, config, config_len, net_buf);
+  ux_stream_init (stream_kind, config, config_len, (flags & CAS_STREAM_FLAG_FINAL) != 0, data, data_len, net_buf,
+		  req_info);
 
   return FN_KEEP_CONN;
 }
@@ -2512,6 +2537,85 @@ FN_RETURN
 fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   ux_stream_abort (net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ_OPEN: kind, config [, first_max, flags]. With the optional pair the first piece comes back with the handle. */
+FN_RETURN
+fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  int first_max = 0;
+  char flags = 0;
+
+  if (argc != 2 && argc != 4)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  if (argc == 4)
+    {
+      net_arg_get_int (&first_max, argv[2]);
+      net_arg_get_char (flags, argv[3]);
+    }
+
+  ux_stream_read_open (stream_kind, config, config_len, argc == 4, first_max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ: handle, max [, flags] */
+FN_RETURN
+fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  int max = 0;
+  char flags = 0;
+
+  if (argc < 2 || argc > 3)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_int (&max, argv[1]);
+  if (argc > 2)
+    {
+      net_arg_get_char (flags, argv[2]);
+    }
+
+  ux_stream_read ((INT64) handle, max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* RELEASE: handle, auto_commit */
+FN_RETURN
+fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  char auto_commit_mode = FALSE;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+  ux_stream_release ((INT64) handle, auto_commit_mode == TRUE, net_buf, req_info);
 
   return FN_KEEP_CONN;
 }

@@ -581,3 +581,31 @@ hm_set_cgw_free_stmt_func (cgw_free_stmt_func_t func)
 {
   cgw_free_stmt_func = func;
 }
+
+/* true if a commit would end a result set still open, or drop the locks a holdable updatable one updates under */
+bool
+hm_has_result_tied_to_tran (void)
+{
+  T_SRV_HANDLE *srv_handle;
+  int i, j;
+
+  for (i = 0; i < max_handle_id; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle == NULL || srv_handle->q_result == NULL
+	  || (srv_handle->is_holdable && srv_handle->is_updatable != TRUE))
+	{
+	  continue;
+	}
+
+      for (j = 0; j < srv_handle->num_q_result; j++)
+	{
+	  if (srv_handle->q_result[j].result != NULL)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}

@@ -19,17 +19,15 @@
 /*
  * stream_session.cpp - Consumer registry for the shared byte-stream transport.
  *
- * The open path carries a STREAM_KIND tag; the session it names is built by
- * the consumer that registered for that kind. Keeping the table here is what
- * lets the transport open a session it cannot name.
+ * The open paths carry a STREAM_KIND tag; the session or source it names is
+ * built by the consumer that registered for that kind. Keeping the table here
+ * is what lets the transport open what it cannot name.
  */
 
 #include "stream_session.hpp"
 
 #include "error_code.h"
 #include "error_manager.h"
-
-#include <cassert>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -38,8 +36,8 @@ namespace
 {
   struct kind_entry
   {
-    stream_session_factory factory;
-    bool ends_unit_of_work;
+    bool registered;
+    stream_kind_desc desc;
   };
 
   /* Held in a function-local static so a consumer registering from its own
@@ -51,42 +49,76 @@ namespace
 
     return table;
   }
+
+  bool
+  kind_desc_is_consistent (const stream_kind_desc &desc)
+  {
+    if (desc.direction == STREAM_UPLOAD)
+      {
+	return desc.sink != NULL && desc.source == NULL;
+      }
+
+    /* nothing a download ends or stages: its handle is the read itself */
+    return desc.direction == STREAM_DOWNLOAD && desc.source != NULL && desc.sink == NULL && !desc.ends_unit_of_work
+	   && !desc.result_is_handle;
+  }
+
+  /* the registered record of kind in direction, or NULL with the transport-common error set */
+  const stream_kind_desc *
+  kind_open_desc (int kind, stream_direction direction, int *error_code)
+  {
+    const stream_kind_desc *desc = stream_kind_find (kind);
+
+    if (desc == NULL || desc->direction != direction)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		desc == NULL ? "unknown stream kind" : "stream kind opened in the wrong direction");
+	*error_code = ER_STREAM_SESSION_ERROR;
+	return NULL;
+      }
+
+    return desc;
+  }
 }
 
 /*
- * stream_session_register () - Register the factory that builds sessions of one kind
+ * stream_kind_register () - Register the server half of one kind
+ *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together
  *   kind(in): the STREAM_KIND_* value the consumer owns
- *   factory(in): builder for that kind
- *   ends_unit_of_work(in): does END of this kind finish the statement?
+ *   desc(in): its direction, factory and answers
  */
-void
-stream_session_register (int kind, stream_session_factory factory, bool ends_unit_of_work)
+int
+stream_kind_register (int kind, const stream_kind_desc &desc)
 {
-  assert (kind >= STREAM_KIND_MIN && kind < STREAM_KIND_MAX);
-  assert (factory != NULL);
-
-  kind_table ()[kind].factory = factory;
-  kind_table ()[kind].ends_unit_of_work = ends_unit_of_work;
-}
-
-/*
- * stream_session_kind_ends_unit_of_work () - What the consumer declared at registration
- *   return: true if END of this kind finishes the statement, false otherwise
- *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
- */
-bool
-stream_session_kind_ends_unit_of_work (int kind)
-{
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX)
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || !kind_desc_is_consistent (desc))
     {
-      return false;
+      return ER_STREAM_SESSION_ERROR;
     }
 
-  return kind_table ()[kind].ends_unit_of_work;
+  kind_table ()[kind].desc = desc;
+  kind_table ()[kind].registered = true;
+
+  return NO_ERROR;
 }
 
 /*
- * stream_session_create () - Build the session named by a stream kind
+ * stream_kind_find () - The registered record of a kind
+ *   return: the record, or NULL for an unknown or unregistered kind
+ *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
+ */
+const stream_kind_desc *
+stream_kind_find (int kind)
+{
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || !kind_table ()[kind].registered)
+    {
+      return NULL;
+    }
+
+  return &kind_table ()[kind].desc;
+}
+
+/*
+ * stream_session_create () - Build the upload session named by a stream kind
  *   return: opened session on success, NULL on error
  *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
  *   config(in): the kind's config blob
@@ -96,16 +128,33 @@ stream_session_kind_ends_unit_of_work (int kind)
 stream_session *
 stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len, int *error_code)
 {
-  stream_session_factory factory;
+  const stream_kind_desc *desc = kind_open_desc (kind, STREAM_UPLOAD, error_code);
 
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || kind_table ()[kind].factory == NULL)
+  if (desc == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream kind");
-      *error_code = ER_STREAM_SESSION_ERROR;
       return NULL;
     }
 
-  factory = kind_table ()[kind].factory;
+  return desc->sink (thread_p, config, config_len, error_code);
+}
 
-  return factory (thread_p, config, config_len, error_code);
+/*
+ * stream_source_create () - Build the download source named by a stream kind
+ *   return: opened source on success, NULL on error
+ *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
+ *   config(in): the kind's config blob
+ *   config_len(in): length of the config blob
+ *   error_code(out): NO_ERROR or the failure code
+ */
+stream_source *
+stream_source_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len, int *error_code)
+{
+  const stream_kind_desc *desc = kind_open_desc (kind, STREAM_DOWNLOAD, error_code);
+
+  if (desc == NULL)
+    {
+      return NULL;
+    }
+
+  return desc->source (thread_p, config, config_len, error_code);
 }

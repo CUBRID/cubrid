@@ -248,11 +248,14 @@ extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *sessi
 extern void ssession_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void ssession_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session);
 
-/* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
 extern void sstream_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read_open (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_release (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

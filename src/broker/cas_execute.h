@@ -97,10 +97,17 @@ extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BU
 extern void ux_stream_reset (void);
 extern bool ux_stream_is_open (void);
 extern bool ux_stream_admits_request (int func_code);
-extern int ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf);
+extern int ux_stream_init (int stream_kind, char *config, int config_len, bool final, char *data, int data_len,
+			   T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-extern int ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max,
+				char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern bool ux_stream_holds_download (void);
+extern void ux_stream_end_tran (void);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 
