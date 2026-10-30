@@ -375,7 +375,7 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
 
   error =
     locator_delete_force (thread_p, hfid_p, &oid, true, SINGLE_ROW_DELETE, &scan, &force_count, NULL,
-			  LOCATOR_LOCK_AT_SELECT);
+			  LOCATOR_LOCK_AT_FORCE);
 
 cleanup:
   if (attr_inited)

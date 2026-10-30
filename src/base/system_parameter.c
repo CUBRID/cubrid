@@ -828,6 +828,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_MVCC_REEVALUATE_AT_FORCE "mvcc_reevaluate_at_force"
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
 // #endregion
@@ -5698,6 +5699,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 100000}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MVCC_REEVALUATE_AT_FORCE,
+   PRM_NAME_MVCC_REEVALUATE_AT_FORCE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

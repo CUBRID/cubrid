@@ -878,6 +878,7 @@ static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_
 static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
 static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p);
+static bool qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec);
 static LOCATOR_LOCK_POLICY qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info);
 static LOCATOR_LOCK_POLICY qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy,
 							     bool statement_ends_locks,
@@ -8090,7 +8091,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       else
 	{
-	  mvcc_select_lock_needed = ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE);
+	  mvcc_select_lock_needed = qexec_spec_is_for_update (thread_p, curr_spec);
 	}
     }
 
@@ -9533,8 +9534,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  if (xasl->bptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
-	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+	      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate bptr list */
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -9595,8 +9595,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  if (xasl->fptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->fptr_list);
-	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+	      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate fptr list */
 	  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -9854,7 +9853,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       return error;
     }
 
-  if (!COMPOSITE_LOCK (scan_op_type) && !(ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)))
+  if (!COMPOSITE_LOCK (scan_op_type) && !qexec_spec_is_for_update (thread_p, spec))
     {
       lock = IS_LOCK;
     }
@@ -10493,8 +10492,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (xasl->bptr_list)
 	    {
-	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+	      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 	    }
 
 	  /* evaluate bptr list */
@@ -10551,8 +10549,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		  /* evaluate fptr list */
 		  if (xasl->fptr_list)
 		    {
-		      scan_operation_type =
-			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+		      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 		    }
 
 		  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -11241,8 +11238,11 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       return ER_FAILED;
     }
 
-  /* Make sure reev data is initialized, or else it will crash later */
-  memset (reev_data, 0, sizeof (MVCC_UPDDEL_REEV_DATA));
+  /* start from the struct's empty state, so a field this function does not fill cannot carry over */
+  *reev_data = MVCC_UPDDEL_REEV_DATA ();
+
+  /* the value descriptor is bound on every path, including the one that carries no reevaluation class */
+  reev_data->vd = &xasl_state->vd;
 
   if (num_reev_classes == 0)
     {
@@ -11267,6 +11267,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       cond_reev_class = &cond_reev_classes[idx];
       cond_reev_class->class_index = mvcc_reev_indexes[idx];
       OID_SET_NULL (&cond_reev_class->cls_oid);
+      HFID_SET_NULL (&cond_reev_class->cls_hfid);
       cond_reev_class->inst_oid = NULL;
       cond_reev_class->rest_attrs = NULL;
       cond_reev_class->rest_regu_list = NULL;
@@ -11307,7 +11308,6 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
   reev_data->curr_attrinfo = NULL;
   reev_data->copyarea = NULL;
   reev_data->cons_pred = cons_pred;
-  reev_data->vd = &xasl_state->vd;
 
   if (qexec_create_mvcc_reev_assignments (thread_p, aptr, has_delete, internal_classes, num_classes, num_assigns,
 					  assigns, mvcc_reev_assigns) != NO_ERROR)
@@ -11588,7 +11588,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      upd_cls = &update->classes[class_oid_idx];
 	      internal_class = &internal_classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -11893,9 +11894,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      internal_class = &internal_classes[class_oid_idx];
 	      upd_cls = &update->classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      /* The classes are walked right to left here, so the reevaluation cursor walks down with them.  It
+	       * starts above them -- a class that appears only on the right-hand side of an assignment carries a
+	       * class_index past the last updated class -- so step it down to this class first.  Walking it up,
+	       * as this loop used to, matched the first class and then read past the array. */
+	      while (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index > class_oid_idx)
 		{
-		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		  mvcc_reev_class_idx--;
+		}
+	      if (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx--];
 		}
 	      else
 		{
@@ -12423,6 +12432,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	      oid = db_get_oid (valp);
 
+	      if (mvcc_reev_class != NULL)
+		{
+		  /* this class's own row, the way the UPDATE path binds it.  Binding it later, from the
+		   * loop over the classes being deleted, would hand every entry the target's OID. */
+		  mvcc_reev_class->inst_oid = oid;
+		}
+
 	      /* class OID */
 	      valp = val_list->next->val;
 	      if (valp == NULL)
@@ -12510,7 +12526,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		qexec_make_lock_policy_transient (thread_p, base_lock_policy, statement_ends_locks, internal_class,
 						  class_oid);
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -12519,6 +12536,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  mvcc_reev_class = NULL;
 		}
 	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
+	      /* inst_oid was bound per class while scanning; do not overwrite it with the target's */
 
 	      if (oid == NULL)
 		{
@@ -27447,7 +27465,7 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list
     {
       for (specp = scan->spec_list; specp; specp = specp->next)
 	{
-	  if (specp->type == TARGET_CLASS && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
+	  if (specp->type == TARGET_CLASS && qexec_spec_is_for_update (thread_p, specp))
 	    {
 	      /* lock the class */
 	      if (lock_object (thread_p, &ACCESS_SPEC_CLS_OID (specp), oid_Root_class_oid, class_lock, LK_UNCOND_LOCK)
@@ -29234,11 +29252,23 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   if (curr_spec == NULL)
     {
-      return ER_FAILED;
+      /* The plan does not scan this class with a spec of its own, so there are no filters to re-evaluate
+       * with.  A statement shaped that way is meant to keep its select-phase locks and carry no
+       * reevaluation class at all -- pt_upd_del_reevaluates_at_force () turns away a derived table, a
+       * spec below a subquery, a class hierarchy and a partitioned class -- so getting
+       * here means a shape slipped past them.  Fail the statement and say so: the other answers are to
+       * modify a version the predicate never saw, or to skip it without a word. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
     }
 
   mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
+  if (heap_get_class_hfid (thread_p, class_oid, &mvcc_reev_class->cls_hfid, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
 
   return NO_ERROR;
 }
@@ -29285,6 +29315,28 @@ qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
   bool outermost = lock_transient_scope_start (thread_p);
 
   return outermost && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED;
+}
+
+/*
+ * qexec_spec_is_for_update () - Does the scan of this spec lock its rows at select, as FOR UPDATE does?
+ *   return: true for a FOR UPDATE spec, and for a DML target left to the force-phase reevaluation when that does not
+ *	     run: above READ COMMITTED, where the force phase reports a serialization conflict for a row changed after
+ *	     the snapshot, and with mvcc_reevaluate_at_force off.  The row is then locked at select as before, and the
+ *	     other writer waits.  Both are read here, not when the plan is made, since one cached plan serves every
+ *	     session.
+ *   thread_p(in):
+ *   spec(in):
+ */
+static bool
+qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec)
+{
+  if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE))
+    {
+      return true;
+    }
+  return (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED)
+	  && (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	      || !prm_get_bool_value (PRM_ID_MVCC_REEVALUATE_AT_FORCE)));
 }
 
 /*
