@@ -816,6 +816,8 @@ static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY * threa
 static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state);
 static int qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CLASS_INFO * query_classes,
 				  int query_classes_count, UPDDEL_CLASS_INFO_INTERNAL * internal_classes);
+static void qexec_set_referenced_key_updates (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
+					      UPDDEL_CLASS_INFO * query_classes, int query_classes_count);
 static int qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list);
 static int qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * classes_info, int count,
 					  UPDDEL_CLASS_INFO_INTERNAL ** classes);
@@ -8048,6 +8050,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   upddel_target_scan = (mvcc_select_lock_needed && upddel_stmt
 			&& lock_transient_scope_is_outermost (thread_p)
 			&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+  /* see qexec_set_referenced_key_updates () */
+  s_id->changes_referenced_key = curr_spec->changes_referenced_key;
 
   /* Finalize cached-scan activation once per open, before dispatching on access method. The
    * driving-scan gate is assigned next to fixed_scan in qexec_execute_mainblock_internal ();
@@ -11366,6 +11370,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       GOTO_EXIT_ON_ERROR;
     }
+  qexec_set_referenced_key_updates (thread_p, aptr, update->classes, update->num_classes);
 
   error =
     prepare_mvcc_reev_data (thread_p, aptr, xasl_state, mvcc_reev_class_cnt, update->mvcc_reev_classes,
@@ -26744,6 +26749,54 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CL
     }
 
   return error;
+}
+
+/*
+ * qexec_set_referenced_key_updates () - mark the UPDATE targets that assign a column of a referenced primary key
+ *
+ * thread_p (in)  :
+ * aptr_list (in) : the UPDATE's select
+ * query_classes (in) : classes the UPDATE changes
+ * query_classes_count (in) :
+ *
+ * Note: the select phase gives such a row back to a child's writer before it holds it, as for a DELETE; see
+ *	 locator_lock_and_get_object_with_evaluation (). Set on every execution, the mark being runtime only.
+ */
+static void
+qexec_set_referenced_key_updates (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CLASS_INFO * query_classes,
+				  int query_classes_count)
+{
+  XASL_NODE *aptr;
+  ACCESS_SPEC_TYPE *specp;
+  UPDDEL_CLASS_INFO *query_class;
+  int i, j;
+
+  for (aptr = aptr_list; aptr != NULL; aptr = aptr->scan_ptr)
+    {
+      for (specp = aptr->spec_list; specp != NULL; specp = specp->next)
+	{
+	  specp->changes_referenced_key = false;
+	  if (specp->type != TARGET_CLASS)
+	    {
+	      continue;
+	    }
+	  for (i = 0; i < query_classes_count && !specp->changes_referenced_key; i++)
+	    {
+	      query_class = &query_classes[i];
+	      for (j = 0; j < query_class->num_subclasses; j++)
+		{
+		  if (OID_EQ (&query_class->class_oid[j], &specp->s.cls_node.cls_oid))
+		    {
+		      specp->changes_referenced_key =
+			locator_assigns_referenced_pk (thread_p, &query_class->class_oid[j],
+						       &query_class->att_id[j * query_class->num_attrs],
+						       query_class->num_attrs);
+		      break;
+		    }
+		}
+	    }
+	}
+    }
 }
 
 /*

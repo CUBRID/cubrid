@@ -6136,11 +6136,15 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      if (!LOCATOR_LOCKED_AT_SELECT (lock_policy))
 		{
+		  /* the key change waits for a child's writer as a DELETE does */
+		  bool removes_key = (locator_scan_class_has_referenced_pk (thread_p, local_scan_cache, class_oid)
+				      && locator_assigns_referenced_pk (thread_p, class_oid, att_id, n_att_id));
+
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
 								      LOG_ERROR_IF_DELETED,
 								      LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true,
-								      false);
+								      removes_key);
 		}
 	      else
 		{
@@ -6656,7 +6660,37 @@ locator_class_has_referenced_pk (THREAD_ENTRY * thread_p, const OID * class_oid)
   return found;
 }
 
-#if defined (SERVER_MODE)
+/*
+ * locator_assigns_referenced_pk () - does an UPDATE that assigns these attributes change a referenced primary key?
+ *   return: true when a foreign key references the class's primary key and one of the attributes is its column
+ *   thread_p(in): thread entry
+ *   class_oid(in): the class
+ *   att_id(in): the attributes the UPDATE assigns; NULL for all of them
+ *   n_att_id(in): their number
+ */
+bool
+locator_assigns_referenced_pk (THREAD_ENTRY * thread_p, const OID * class_oid, ATTR_ID * att_id, int n_att_id)
+{
+  OR_CLASSREP *classrep;
+  int idx_in_cache = -1;
+  bool found = false;
+  int i;
+
+  classrep = heap_classrepr_get (thread_p, (OID *) class_oid, NULL, NULL_REPRID, &idx_in_cache);
+  if (classrep == NULL)
+    {
+      return false;
+    }
+  for (i = 0; i < classrep->n_indexes && !found; i++)
+    {
+      found = (classrep->indexes[i].type == BTREE_PRIMARY_KEY && classrep->indexes[i].fk != NULL
+	       && locator_index_has_attr (&classrep->indexes[i], att_id, n_att_id));
+    }
+  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+
+  return found;
+}
+
 /*
  * locator_scan_class_has_referenced_pk () - locator_class_has_referenced_pk (), decided once for each class a scan
  *					      cache goes over
@@ -6675,7 +6709,6 @@ locator_scan_class_has_referenced_pk (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
     }
   return scan_cache->has_referenced_pk;
 }
-#endif /* SERVER_MODE */
 
 /*
  * locator_delete_force () - Delete the given object
@@ -13928,7 +13961,8 @@ error:
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
  * owner_bypass_ok (in) : see locator_lock_and_get_object_internal ().
- * deletes_row (in)    : the statement deletes this row, and no earlier call of it locked the row.
+ * removes_key (in)    : the statement deletes this row or changes its primary key, which a foreign key may
+ *			 reference, and no earlier call of it locked the row.
  *
  * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
  *	 A row to delete whose key a child transaction is still writing under is given back and waited for: the
@@ -13941,7 +13975,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
 					     MVCC_REEV_DATA * mvcc_reev_data,
 					     NON_EXISTENT_HANDLING non_ex_handling_type, bool transient,
-					     bool owner_bypass_ok, bool deletes_row)
+					     bool owner_bypass_ok, bool removes_key)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan = S_SUCCESS;
@@ -14070,7 +14104,7 @@ retry:
 exit:
   heap_clean_get_context (thread_p, &context);
 #if defined (SERVER_MODE)
-  if (deletes_row && lock_acquired && scan == S_SUCCESS && !evaluated_false && recdes != NULL
+  if (removes_key && lock_acquired && scan == S_SUCCESS && !evaluated_false && recdes != NULL
       && !OID_IS_ROOTOID (class_oid) && locator_scan_class_has_referenced_pk (thread_p, scan_cache, class_oid))
     {
       bool page_unfixed = false;

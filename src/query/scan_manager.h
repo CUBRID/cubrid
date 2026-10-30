@@ -487,7 +487,10 @@ struct scan_id_struct
   bool upddel_target_scan;	/* the row locks are the statement's: the outermost READ COMMITTED DELETE/UPDATE
 				 * target, not SELECT ... FOR UPDATE.  Kept across a partition switch. */
   bool lock_ends_with_statement;	/* the same, narrowed by the class this scan is on now */
-  bool deletes_referenced_rows;	/* a DELETE on a class whose primary key is referenced, decided per class */
+  bool changes_referenced_key;	/* an UPDATE that assigns a column of a referenced primary key; set before the
+				 * scan is opened, and kept across a partition switch */
+  bool removes_referenced_keys;	/* a DELETE, or such an UPDATE, on a class whose primary key is referenced,
+				 * decided per class */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
