@@ -15,7 +15,7 @@ on:
   issue_comment:
     types: [created, edited]
   push:
-    branches: [develop, 'feature/**']
+    branches: [develop]
   # After the day's last develop merge (13Z), off the hour where cron queues longest.
   schedule:
     - cron: '20 15 * * *'
