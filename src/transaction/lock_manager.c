@@ -1312,9 +1312,13 @@ lock_initialize_object_lock_structures (void)
   const int obj_hash_size = (int) MAX (lk_Gl.config.initial_object_locks, MIN (scaled_buckets, LK_OBJ_HASH_SIZE_MAX));
 
   lk_Obj_lock_res_desc.max_alloc_cnt = lock_escalation;
-  lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
-			       lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
-			       lk_Obj_lock_res_desc);
+  if (lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
+				   lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
+				   lk_Obj_lock_res_desc) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
 
   obj_lock_entry_desc.max_alloc_cnt = lock_escalation;
   if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
@@ -6907,6 +6911,57 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
        * > 1; a decrement would leave it held and keep unique/FK S_LOCK waiters blocked until end-of-transaction. */
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, true);
     }
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_is_transaction_mvccid_held - Does another transaction still hold the self-lock keyed by mvccid?
+ *
+ * return: true while another transaction holds the X self-lock keyed by mvccid
+ *
+ *   mvccid(in): the MVCCID that stamped a row
+ *
+ * Note: requests no lock and allocates nothing; it reads the holders under the resource mutex. The current
+ *	 transaction's own self-lock does not count: after COMMIT WORK RETAIN LOCK it can still hold the self-lock of
+ *	 an MVCCID it committed.
+ */
+bool
+lock_is_transaction_mvccid_held (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+#if !defined (SERVER_MODE)
+  return false;
+#else /* !SERVER_MODE */
+  int tran_index;
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr;
+
+  if (!MVCCID_IS_NORMAL (mvccid))
+    {
+      return false;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  search_key = lock_create_mvccid_search_key (mvccid);
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return false;
+    }
+  /* find() leaves the resource mutex locked. */
+  assert (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && res_ptr->key.mvccid == mvccid);
+
+  for (entry_ptr = res_ptr->holder; entry_ptr != NULL; entry_ptr = entry_ptr->next)
+    {
+      if (entry_ptr->tran_index != tran_index && entry_ptr->granted_mode == X_LOCK)
+	{
+	  break;
+	}
+    }
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  return entry_ptr != NULL;
 #endif /* !SERVER_MODE */
 }
 

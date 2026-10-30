@@ -309,6 +309,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
   isidp->parallel_pending = NULL;
+  isidp->gby_skip = NULL;
 }
 
 /*
@@ -1980,6 +1981,16 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
  *
  * Note: If you feel the need
  */
+/* move the keys the B-tree read and filtered since its last range start into the scan's trace */
+static inline void
+scan_add_index_key_stats (SCAN_ID * s_id, INDX_SCAN_ID * iscan_id)
+{
+  s_id->scan_stats.read_keys += iscan_id->bt_scan.read_keys;
+  iscan_id->bt_scan.read_keys = 0;
+  s_id->scan_stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
+  iscan_id->bt_scan.qualified_keys = 0;
+}
+
 static int
 scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 		       DB_BIGINT * key_limit_lower)
@@ -2326,6 +2337,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	    }
 	  iscan_id->oids_count = bts->n_oids_read_last_iteration;
 	  assert (iscan_id->oids_count >= 0);
+	  if (iscan_id->gby_skip != NULL && iscan_id->gby_skip->visit != NULL && thread_is_on_trace (thread_p))
+	    {
+	      /* S1 leaves no OIDs, so every range runs in this call: count its keys before the next range resets them */
+	      scan_add_index_key_stats (s_id, iscan_id);
+	    }
 
 	  /* We only want to advance the key ptr if we've exhausted the current crop of oids on the current key. */
 	  if (BTREE_END_OF_SCAN (bts))
@@ -2446,6 +2462,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	    }
 	  iscan_id->oids_count = bts->n_oids_read_last_iteration;
 	  assert (iscan_id->oids_count >= 0);
+	  if (iscan_id->gby_skip != NULL && iscan_id->gby_skip->visit != NULL && thread_is_on_trace (thread_p))
+	    {
+	      /* S1 leaves no OIDs, so every range runs in this call: count its keys before the next range resets them */
+	      scan_add_index_key_stats (s_id, iscan_id);
+	    }
 
 	  /* We only want to advance the key ptr if we've exhausted the current crop of oids on the current key. */
 	  if (BTREE_END_OF_SCAN (bts))
@@ -2513,10 +2534,7 @@ end:
 
   if (thread_is_on_trace (thread_p))
     {
-      s_id->scan_stats.read_keys += iscan_id->bt_scan.read_keys;
-      iscan_id->bt_scan.read_keys = 0;
-      s_id->scan_stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
-      iscan_id->bt_scan.qualified_keys = 0;
+      scan_add_index_key_stats (s_id, iscan_id);
     }
 
   return ret;
@@ -2926,6 +2944,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->indx_cov.list_id = indx_info->cov_list_id;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
+  isidp->gby_skip = NULL;
 
   /* index scan info */
   BTS = &isidp->bt_scan;
@@ -5779,6 +5798,21 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_gby_skip_note_key_start () - K (CBRD-27664): the candidate row at oidno starts a key record when it reached the
+ *				     next mark. Marks of keys whose objects were all filtered out are passed with it, and
+ *				     the flag stays set until a row is delivered and the executor takes it.
+ */
+static inline void
+scan_gby_skip_note_key_start (INDX_GBY_SKIP * gby, int oidno)
+{
+  while (gby->key_start_next < gby->key_start_cnt && gby->key_starts[gby->key_start_next] <= oidno)
+    {
+      gby->key_start = true;
+      gby->key_start_next++;
+    }
+}
+
+/*
  * scan_next_index_scan () - The scan is moved to the next index scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -6068,6 +6102,11 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       assert (scan_id->position == S_ON);
+
+      if (isidp->gby_skip != NULL)
+	{
+	  scan_gby_skip_note_key_start (isidp->gby_skip, isidp->curr_oidno);
+	}
 
       scan_id->scan_stats.key_qualified_rows++;
 

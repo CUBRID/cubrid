@@ -2534,7 +2534,9 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_CLOB:
 	  {
 	    DB_ELO *elo = db_get_elo (val);
-	    if (elo == NULL && elo->type != ELO_FBO)
+
+	    /* db_get_elo () returns NULL for ELO_NULL, so a non-NULL elo is always ELO_FBO. */
+	    if (elo == NULL)
 	      {
 		hashcode = 0;
 		break;

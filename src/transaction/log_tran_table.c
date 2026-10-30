@@ -4298,16 +4298,21 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 /*
  * logtb_is_active_other_mvccid () - Is mvccid an in-progress write by another transaction?
  *
- * return: true if some other transaction is still active under mvccid
+ * return: true if some other transaction under mvccid is active, or has completed its MVCC but still holds its
+ *	   self-lock: while it commits or aborts, or after COMMIT WORK RETAIN LOCK
  *
  *   thread_p(in): thread entry
  *   mvccid(in): MVCC id
+ *
+ * Note: a committer clears its active mark before it appends its commit record, and releases its self-lock only
+ *	 after it. A writer that went ahead in between could commit first; restart recovery or the HA applier then
+ *	 reverses the two.
  */
 bool
 logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
-    && log_Gl.mvcc_table.is_active (mvccid);
+    && (log_Gl.mvcc_table.is_active (mvccid) || lock_is_transaction_mvccid_held (thread_p, mvccid));
 }
 
 /*

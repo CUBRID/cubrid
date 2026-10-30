@@ -383,7 +383,10 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
  *   page_ptr(in): the page where the record reside
  *
  * Note: The function return a complex result since delete/update commands
- *	    needs to know not only if the row is visible or not
+ *	    needs to know not only if the row is visible or not.
+ *
+ *	 An inserter or deleter that has completed its MVCC stays in progress until it releases its self-lock, see
+ *	 logtb_is_active_other_mvccid ().
  */
 MVCC_SATISFIES_DELETE_RESULT
 mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
@@ -414,7 +417,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	    }
 	  return DELETE_RECORD_CAN_DELETE;
 	}
-      else if (MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
+      else if (logtb_is_active_other_mvccid (thread_p, rec_header->mvcc_ins_id))
 	{
 	  /* Record is inserted by an active transaction and is not visible to current transaction. */
 	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT))
@@ -456,7 +459,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	    }
 	  return DELETE_RECORD_SELF_DELETED;
 	}
-      else if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
+      else if (logtb_is_active_other_mvccid (thread_p, rec_header->mvcc_del_id))
 	{
 	  /* Record was deleted by an active transaction. Current transaction must wait until the deleter completes. */
 	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT))
