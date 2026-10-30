@@ -1736,6 +1736,7 @@ expr_share_find (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 }
 
 static void expr_build_free_preds (EXPR_BUILD_CTX * bctx);
+static void expr_pred_bind (EXPR_PRED * pred);
 static EXPR_PROG *expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd,
 				    EXPR_PRED * extra_pred);
 static int expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx);
@@ -2879,19 +2880,14 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	pred->fetch_lhs = et->lhs;
 	pred->fetch_rhs = et->rhs;
 	pred->fetch_src = pr;
-	pred->arg1p = &pred->fetched1;
-	pred->arg2p = &pred->fetched2;
 	if (pin_rhs)
 	  {
-	    /* the right holder points at the coerced literal for good; the row never fetches it */
+	    /* the right holder points at the coerced literal for good (expr_pred_bind ()); the row never fetches it */
 	    pred->rhs_pinned = true;
 	    pred->pinned_rhs = pinned;
-	    pred->fetched2 = &pred->pinned_rhs;
 	  }
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
-	pred->compare = et->compare;
-	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
 	/* the operands compile under this leaf's own eval_pred () frame: the predicate depth so
 	 * far plus one, the way the interpreter's counter stands when it fetches them */
 	bctx->depth = depth + 1;
@@ -3009,6 +3005,7 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
 	}
       expr_scan_pred_share_build (bctx, pred);
     }
+  expr_pred_bind (pred);
   free_and_init (bctx);
   return pred;
 }
@@ -4478,10 +4475,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	pred->arg2p = EXPR_ARG_ENCODE (c2);
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
-	pred->compare = et->compare;
-	/* bind the (type, operator) leaf now so the row loop makes one indirect call
-	 * instead of testing the type and then the operator */
-	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
+	pred->fetch_src = pr;	/* the term: its decided comparison is bound with the program (expr_pred_bind ()) */
 	return pred;
       }
 
@@ -5952,6 +5946,50 @@ expr_build_free_preds (EXPR_BUILD_CTX * bctx)
 /* decode the 1-based argument-cell indexes recorded during predicate compilation; remap
  * translates build-order step indexes into their final position for the operand regions of
  * scan-filter leaves */
+/* The tree's pointers into this process, which the compiler does not keep -- it records the leaf's type and
+ * operator and the term it compiled: a comparison leaf's (type, operator) kernel, bound so the row makes one indirect
+ * call instead of testing the type and then the operator, and the term's decided comparison; a fetched side's
+ * holder; a pinned right side.  Runs on every compiled tree, with or without an operand program. */
+static void
+expr_pred_bind (EXPR_PRED * pred)
+{
+  int i;
+
+  if (pred == NULL)
+    {
+      return;
+    }
+  expr_pred_bind (pred->lhs);
+  expr_pred_bind (pred->rhs);
+  for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
+    {
+      expr_pred_bind (pred->kids[i]);
+    }
+  if (pred->kind == EXPR_PRED_COMP || pred->kind == EXPR_PRED_COMP_TORDER || pred->kind == EXPR_PRED_COMP_FETCH)
+    {
+      const PRED_EXPR *term = (const PRED_EXPR *) pred->fetch_src;
+
+      pred->eval = expr_pred_cmp_leaf (pred->fast_type, pred->rel_op);
+      pred->compare = (term != NULL) ? term->pe.m_eval_term.et.et_comp.compare : NULL;
+    }
+  if (pred->kind == EXPR_PRED_COMP_FETCH)
+    {
+      /* a side not compiled is fetched per row into its holder (expr_scan_side_fetch) */
+      if (!pred->lhs_compiled)
+	{
+	  pred->arg1p = &pred->fetched1;
+	}
+      if (!pred->rhs_compiled)
+	{
+	  pred->arg2p = &pred->fetched2;
+	}
+      if (pred->rhs_pinned)
+	{
+	  pred->fetched2 = &pred->pinned_rhs;
+	}
+    }
+}
+
 static void
 expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog, const int *remap)
 {
@@ -6272,6 +6310,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
       if (step->pred != NULL)
 	{
 	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog, remap);
+	  expr_pred_bind ((EXPR_PRED *) step->pred);
 	}
     }
   /* a step that writes another step's slot (a lazy NULL check, a CASE's ELSE publisher)
