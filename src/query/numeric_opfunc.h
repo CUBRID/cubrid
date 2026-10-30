@@ -330,8 +330,9 @@ numeric_repr_disk_size_by_value (const unsigned char *buf)
   return size_by_bytes[1];	/* zero */
 }
 
-/* the buffer from the digits of a disk value of disk_size bytes; 0 when no disk value has that size. A constant length
- * per case keeps the copies inline moves on the row read path (a variable length becomes rep stos/movs). */
+/* the buffer from the digits of a disk value of disk_size bytes, or from a whole buffer (DB_NUMERIC_BUF_SIZE); 0 for
+ * any other size. A constant length per case keeps the copies inline moves on the row read path (a variable length
+ * becomes rep stos/movs), and one switch for both keeps the row path to a single jump. */
 static inline int
 numeric_repr_read_disk (unsigned char *buf, const unsigned char *digits, int disk_size)
 {
@@ -353,6 +354,7 @@ numeric_repr_read_disk (unsigned char *buf, const unsigned char *digits, int dis
       memset (buf, 0, 4);
       memcpy (buf + 4, digits, 13);
       return 1;
+    case DB_NUMERIC_BUF_SIZE:
     case 20:
       memcpy (buf, digits, DB_NUMERIC_BUF_SIZE);
       return 1;
