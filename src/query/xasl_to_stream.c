@@ -3483,7 +3483,7 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
 
   ptr = or_pack_int (ptr, build_list_proc->g_hash_eligible);
 
-  ptr = or_pack_int (ptr, build_list_proc->g_output_first_tuple);
+  ptr = or_pack_int (ptr, build_list_proc->g_first_tuple);
   ptr = or_pack_int (ptr, build_list_proc->g_hkey_size);
 
   offset = xts_save_regu_variable_list (build_list_proc->g_hk_scan_regu_list);
@@ -6642,7 +6642,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_grbynum_flag */
 	   + OR_INT_SIZE	/* g_with_rollup */
 	   + OR_INT_SIZE	/* g_hash_eligible */
-	   + OR_INT_SIZE	/* g_output_first_tuple */
+	   + OR_INT_SIZE	/* g_first_tuple */
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
