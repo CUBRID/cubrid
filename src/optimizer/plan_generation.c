@@ -121,7 +121,6 @@ static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_E
 					BITSET * multi_col_segs, BITSET * multi_col_range_segs, BITSET * index_segs);
 
 static QO_PLAN *qo_find_driving_scan_plan (QO_PLAN * plan);
-static double qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select);
 static void qo_apply_parallel_index_scan_threshold (QO_PLAN * plan);
 
 static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJECTION_INFO * info);
@@ -3335,7 +3334,7 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
  *   plan(in): the group by skip scan
  *   select(in): its query
  */
-static double
+double
 qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select)
 {
   QO_ENV *env = plan->info->env;
@@ -3636,6 +3635,11 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 bool
 qo_plan_skip_groupby (QO_PLAN * plan)
 {
+  /* a join skips the GROUP BY in the order of its driving scan (CBRD-27685), which nested loops keep */
+  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      plan = plan->plan_un.join.outer;
+    }
   return (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
 }

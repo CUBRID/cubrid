@@ -245,6 +245,8 @@ struct qo_plan
 				   or a hash join whose build/probe runs in parallel (qo_hjoin_cost ()) */
   bool use_iscan_descending;
   bool need_final_sort;
+  bool groupby_skip_join;	/* a join that skips the GROUP BY in its driving scan's order (CBRD-27685); the scan's
+				   index is marked only when this plan is chosen (qo_planner_search ()) */
 
   /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
    * first. Used as the next join level's driving row count and for the plan dump. */
@@ -470,6 +472,9 @@ struct qo_planner
 
   /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
   bool can_apply_limit_card;
+
+  /* Cached result of qo_groupby_limit_groups(env): the groups a GROUP BY stops at, or 0 */
+  double groupby_limit_groups;
 };
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
