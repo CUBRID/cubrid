@@ -313,9 +313,9 @@ static void sort_spage_dump (PAGE_PTR pgptr, int rec_p);
 #endif /* CUBRID_DEBUG */
 
 static void sort_append (const void *pk0, const void *pk1);
-static int sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
-					  SORT_PARAM * sort_param, int parallel_num);
-static int sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
+static int sort_merge_worker_runs_for_put (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+					   SORT_PARAM * sort_param, int parallel_num);
+static int sort_put_worker_runs (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static void sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num,
 				       bool keep_result_run);
 #if defined(SERVER_MODE)
@@ -4539,6 +4539,7 @@ struct sort_merge_queue_ctx
   SORT_PARAM *sort_param;
   SORT_PARAM *px_sort_param;
   int pool_size;
+  int target_runs;		/* stop merging once this many runs are left */
   bool ctx_in_use[SORT_MAX_PARALLEL / 2 + 1];
   RESULT_RUN ctx_results[SORT_MAX_PARALLEL / 2 + 1];
 };
@@ -4628,6 +4629,7 @@ sort_merge_queue_ctx_init (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM * sort_param,
   qctx->sort_param = sort_param;
   qctx->px_sort_param = px_sort_param;
   qctx->pool_size = parallel_num / SORT_PX_MERGE_FILES + 1;
+  qctx->target_runs = 1;
 }
 
 static void
@@ -4658,8 +4660,8 @@ sort_merge_queue_enqueue_initial_runs (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM *
 
 /*
  * sort_merge_queue_run () - drive the dispatcher + wait loop until all merges
- *   complete. On return the queue holds 0 or 1 run depending on input;
- *   the caller stages the final run.
+ *   complete. On return the queue holds at most target_runs runs;
+ *   the caller stages them.
  *
  *   On error, the queue is fully drained and every remaining run's temp file
  *   is retired. Workers do not retire temp[k] for PX_THREAD_IN_PARALLEL, so the
@@ -4670,14 +4672,14 @@ static int
 sort_merge_queue_run (THREAD_ENTRY * thread_p, SORT_MERGE_QUEUE_CTX * qctx)
 {
   pthread_mutex_lock (&qctx->mtx);
-  while (qctx->queue_size >= 2)
+  while (qctx->queue_size >= 2 && qctx->queue_size + qctx->in_flight > qctx->target_runs)
     {
       sort_merge_queue_try_dispatch (qctx);
     }
-  /* On error path workers may still enqueue successful results, so queue_size > 1
+  /* On error path workers may still enqueue successful results, so queue_size > target_runs
    * can persist after in_flight reaches 0. Drain in-flight only and ignore the
    * queue when has_error is set to avoid deadlock. */
-  while (qctx->in_flight > 0 || (!qctx->has_error && qctx->queue_size > 1))
+  while (qctx->in_flight > 0 || (!qctx->has_error && qctx->queue_size > qctx->target_runs))
     {
       pthread_cond_wait (&qctx->done_cond, &qctx->mtx);
     }
@@ -4751,12 +4753,14 @@ sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx)
       return;
     }
 
-  if (qctx->queue_size >= 2)
+  if (qctx->queue_size >= 2 && qctx->queue_size + qctx->in_flight > qctx->target_runs)
     {
       /* Greedy k-way: consume up to SORT_PX_MERGE_FILES runs per merge to
        * minimize merge-tree depth (= fan-in I/O). k=2 is the smallest valid
-       * merge and is used whenever the queue currently holds fewer than K. */
+       * merge and is used whenever the queue currently holds fewer than K.
+       * Never merge below target_runs: each merge leaves k - 1 fewer runs. */
       k = MIN (qctx->queue_size, SORT_PX_MERGE_FILES);
+      k = MIN (k, qctx->queue_size + qctx->in_flight - qctx->target_runs + 1);
       for (j = 0; j < k; j++)
 	{
 	  runs[j] = sort_merge_queue_dequeue (qctx);
@@ -5413,27 +5417,29 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 }
 
 /*
- * sort_merge_worker_runs_to_one () - fan-in Phase 2 for SORT_GROUP_BY.
- *   Merges worker output runs via the async 2-way queue (shared helpers in
- *   sort_merge_queue_*) and stops before sort_split_last_run /
- *   sort_put_result_for_parallel.
+ * sort_merge_worker_runs_for_put () - fan-in Phase 2 for the sorts whose put the main thread runs serially
+ *   (SORT_ORDER_WITH_LIMIT, SORT_GROUP_BY, SORT_ANALYTIC).
+ *   Merges worker output runs via the async merge queue (shared helpers in sort_merge_queue_*) only until
+ *   SORT_MAX_HALF_FILES runs are left and hands those to sort_param as its input files. sort_put_worker_runs ()
+ *   merges them and puts each record as it is merged, the way a serial sort's last merge pass does, so the
+ *   merged result is never written to a temp file and read back.
  *
  *   Exit state on success (>= 1 non-empty worker run):
- *     sort_param->tot_runs      = 1
- *     sort_param->half_files    = 1
- *     sort_param->tot_tempfiles = 2   (temp[1] allocated by caller for output)
- *     sort_param->temp[0]       = single consolidated sorted-run VFID
- *     sort_param->file_contents[0].{first_run=0, last_run=0, num_pages[0]=merged_page_count}
+ *     sort_param->tot_runs      = number of runs left (1 .. SORT_MAX_HALF_FILES)
+ *     sort_param->half_files    = tot_runs
+ *     sort_param->tot_tempfiles = 2 * tot_runs   (temp[half_files..] are the output slots)
+ *     sort_param->temp[i]       = run i, file_contents[i].{first_run=0, last_run=0, num_pages[0]=its page count}
  *   Exit state when all workers produced empty output:
  *     sort_param->tot_runs      = 0
  */
 static int
-sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
-			       int parallel_num)
+sort_merge_worker_runs_for_put (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+				int parallel_num)
 {
   int error = NO_ERROR;
   SORT_MERGE_QUEUE_CTX qctx;
   int enqueued;
+  int i;
 
   if (parallel_num > SORT_MAX_PARALLEL)
     {
@@ -5441,6 +5447,7 @@ sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
     }
 
   sort_merge_queue_ctx_init (&qctx, sort_param, px_sort_param, parallel_num);
+  qctx.target_runs = SORT_MAX_HALF_FILES;
   enqueued = sort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
 
   if (enqueued == 0)
@@ -5450,7 +5457,7 @@ sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
       goto cleanup;
     }
 
-  if (qctx.queue_size >= 2)
+  if (qctx.queue_size > qctx.target_runs)
     {
       error = sort_merge_queue_run (thread_p, &qctx);
       if (error != NO_ERROR)
@@ -5459,11 +5466,20 @@ sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
 	}
     }
 
-  /* Point sort_param at the single consolidated run for Phase 3. */
-  sort_merge_queue_stage_final_run (&qctx, sort_param);
-  sort_param->tot_runs = 1;
-  sort_param->half_files = 1;
-  sort_param->tot_tempfiles = 2;	/* temp[1] is the output slot, allocated by caller */
+  /* Point sort_param at the runs left for Phase 3. */
+  sort_param->tot_runs = qctx.queue_size;
+  for (i = 0; i < sort_param->tot_runs; i++)
+    {
+      RESULT_RUN run = sort_merge_queue_dequeue (&qctx);
+
+      sort_param->temp[i] = run.temp_file;
+      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
+      sort_param->file_contents[i].num_pages[0] = run.num_pages;
+      sort_param->file_contents[i].first_run = 0;
+      sort_param->file_contents[i].last_run = 0;
+    }
+  sort_param->half_files = sort_param->tot_runs;
+  sort_param->tot_tempfiles = sort_param->tot_runs * 2;
   sort_param->in_half = 0;
 
 cleanup:
@@ -5474,16 +5490,53 @@ cleanup:
 }
 
 /*
- * sort_run_final_single () - Phase 3 drain for the tot_runs==1 case after fan-in.
- *   sort_exphase_merge would skip its loop when tot_runs==1; this wrapper calls
- *   sort_put_result_from_tmpfile directly so put_fn fires for every tuple.
+ * sort_put_worker_runs () - Phase 3 after sort_merge_worker_runs_for_put: merge the runs it left on the main
+ *   thread and call put_fn for every record in globally sorted order.
  */
 static int
-sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+sort_put_worker_runs (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
+  int error = NO_ERROR;
+  int file_pg_cnt_est;
+  int px_parallel_num;
+  int i;
+
   assert (sort_param->put_fn != NULL);
-  sort_param->px_result_file_idx = 0;
-  return sort_put_result_from_tmpfile (thread_p, sort_param, 0);
+
+  if (sort_param->tot_runs == 1)
+    {
+      /* nothing to merge, and sort_exphase_merge would skip its loop */
+      sort_param->px_result_file_idx = 0;
+      return sort_put_result_from_tmpfile (thread_p, sort_param, 0);
+    }
+
+  /* the merge expects its output files although the last pass puts instead of writing */
+  file_pg_cnt_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
+  for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
+    {
+      error =
+	sort_add_new_file (thread_p, &sort_param->temp[i], &sort_param->temp_cursor[i], file_pg_cnt_est, true,
+			   sort_param->tde_encrypted);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* the last merge pass puts only on a sort that is not parallel; the workers are done, so this one no longer is */
+  px_parallel_num = sort_param->px_parallel_num;
+  sort_param->px_parallel_num = 1;
+  if (sort_param->option == SORT_ELIM_DUP)
+    {
+      error = sort_exphase_merge_elim_dup (thread_p, sort_param);
+    }
+  else
+    {
+      error = sort_exphase_merge (thread_p, sort_param);
+    }
+  sort_param->px_parallel_num = px_parallel_num;
+
+  return error;
 }
 
 /*
@@ -5600,10 +5653,10 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	}
       else
 	{
-	  /* ORDER_WITH_LIMIT: fan-in only, then serial put via put_fn (qexec_ordby_put_next).
+	  /* ORDER_WITH_LIMIT: fan-in, then serial put via put_fn (qexec_ordby_put_next) in the last merge.
 	   * put_fn must not run in parallel because ordbynum_val state is shared and
 	   * SORT_PUT_STOP must fire exactly once at the global LIMIT boundary. */
-	  error = sort_merge_worker_runs_to_one (thread_p, px_sort_param, sort_param, parallel_num);
+	  error = sort_merge_worker_runs_for_put (thread_p, px_sort_param, sort_param, parallel_num);
 	  if (error != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -5611,15 +5664,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 
 	  if (sort_param->tot_runs > 0)
 	    {
-	      /* allocate output temp slot (temp[1]) for sort_run_final_single */
-	      int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
-	      if (sort_add_new_file (thread_p, &sort_param->temp[1], &sort_param->temp_cursor[1], pg_est, true,
-				     sort_param->tde_encrypted) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	      assert (sort_param->tot_runs == 1);
-	      error = sort_run_final_single (thread_p, sort_param);
+	      error = sort_put_worker_runs (thread_p, sort_param);
 	      if (error != NO_ERROR)
 		{
 		  return ER_FAILED;
@@ -5699,8 +5744,8 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	    }
 	}
 
-      /* Phase 2: fan-in — merge all worker runs into one consolidated run */
-      error = sort_merge_worker_runs_to_one (thread_p, px_sort_param, sort_param, parallel_num);
+      /* Phase 2: fan-in — merge worker runs down to SORT_MAX_HALF_FILES */
+      error = sort_merge_worker_runs_for_put (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -5712,20 +5757,9 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return NO_ERROR;
 	}
 
-      /* allocate output temp slot (temp[1]) for sort_run_final_single */
-      int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
-      if (sort_add_new_file
-	  (thread_p, &sort_param->temp[1], &sort_param->temp_cursor[1], pg_est, true,
-	   sort_param->tde_encrypted) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      /* sort_merge_worker_runs_to_one guarantees tot_runs == 1 here;
-       * call put_fn (qexec_gby_put_next / qexec_analytic_put_next) once per tuple
+      /* Phase 3: the last merge calls put_fn (qexec_gby_put_next / qexec_analytic_put_next) once per tuple
        * in globally sorted order */
-      assert (sort_param->tot_runs == 1);
-      error = sort_run_final_single (thread_p, sort_param);
+      error = sort_put_worker_runs (thread_p, sort_param);
       if (error != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -5814,7 +5848,10 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cu
  *   area_start(in): beginning address of the area
  *
  * Note: This function reads in successive pages of the specified file into
- *       the given memory area until this area becomes full.
+ *       the given memory area until this area becomes full. A run is read once, by the merge that consumes it, and a
+ *       page that is written again is fixed as a new page, so each page is discarded once copied (without being
+ *       flushed) instead of staying in the buffer and pushing out pages that are still needed, such as the sort input
+ *       that the put reads again.
  */
 static int
 sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
@@ -5841,7 +5878,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cur
 	  ASSERT_ERROR ();
 	  return ret;
 	}
-      if (pgbuf_copy_to_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+      if (pgbuf_copy_temp_page_to_area_and_discard (thread_p, &vpid, page_ptr) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;

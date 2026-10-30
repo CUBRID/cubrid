@@ -25095,7 +25095,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 	}
 
       if (qexec_add_intint_tuple (thread_p, func_p->group_list_id, func_p->curr_group_tuple_count,
-				  func_p->curr_group_tuple_count) != NO_ERROR)
+				  func_p->curr_group_tuple_count_nn) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -27168,7 +27168,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  if (!is_same_group)
 	    {
 	      if (qexec_add_intint_tuple (thread_p, a_func_list->group_list_id, a_func_list->curr_group_tuple_count,
-					  a_func_list->curr_group_tuple_count) != NO_ERROR)
+					  a_func_list->curr_group_tuple_count_nn) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
