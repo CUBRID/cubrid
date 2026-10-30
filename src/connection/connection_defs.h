@@ -516,6 +516,7 @@ struct css_conn_entry
 
   // CBRD-27446: the index the server assigned, as opposed to one a packet claims
   void assign_tran_index (int tran_index);
+  bool claim_tran_index (int tran_index);
   void release_tran_index (void);
 
   // request count manipulation

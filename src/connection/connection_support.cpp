@@ -2931,6 +2931,25 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
  }
 
  /*
+  * css_conn_entry::claim_tran_index () - assign the index only if the connection
+  *   has none yet, in one atomic step.
+  *   return: false if another registration on this connection got there first
+  */
+ bool
+ css_conn_entry::claim_tran_index (int tran_index)
+ {
+   int none = NULL_TRAN_INDEX;
+
+   if (!owned_tran_index.compare_exchange_strong (none, tran_index))
+     {
+       return false;
+     }
+   reported_foreign_tran_index = false;
+   transaction_id = tran_index;
+   return true;
+ }
+
+ /*
   * css_conn_entry::release_tran_index () - forget the assigned index once it is released.
   */
  void
