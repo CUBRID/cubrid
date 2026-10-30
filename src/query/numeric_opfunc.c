@@ -856,15 +856,13 @@ static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
 static unsigned char float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word,
 					uint64_t * result_word, int calc_words);
-static int float_numeric_add_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
-				   int calc_words, bool dbv1_sign, bool dbv2_sign, bool * result_sign,
-				   uint8_t * result_buf);
 static void numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
+static inline bool numeric_word_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out);
+static inline bool numeric_word_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right,
+				     bool flip_right_sign, NUMERIC_AGG_EXPR_VAL * out);
+static inline void numeric_word_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer);
 static unsigned char float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word,
 					uint64_t * result_word, int calc_words);
-static int float_numeric_sub_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
-				   int calc_words, bool dbv1_sign, bool dbv2_sign, bool * result_sign,
-				   uint8_t * result_buf);
 static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, bool * is_value_negative);
 static void float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
 			       int calc_words, int calc_nbytes);
@@ -1583,54 +1581,6 @@ float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
 }
 
 /*
- * float_numeric_add_fast () -
- *   return: estimated decimal digit count of result
- *   dbv1_word(in)    : operand 1 (word array)
- *   dbv2_word(in)    : operand 2 (word array)
- *   result_word(out) : result buffer (word array)
- *   calc_words(in)   : number of words (expected 3 for fast path)
- *   dbv1_sign(in)    : sign of operand 1
- *   dbv2_sign(in)    : sign of operand 2
- *   result_sign(out) : sign of result
- *   result_buf(out)  : result in 17-byte NUMERIC format
- *
- * Note: Optimized path for 3-word numeric values.
- *       - If signs are equal, performs addition.
- *       - If signs differ, performs subtraction based on magnitude.
- *       - Uses platform-specific fast instructions when available.
- *       The result is converted to byte format and its decimal digit
- *       count is returned.
- */
-static int
-float_numeric_add_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words,
-			bool dbv1_sign, bool dbv2_sign, bool * result_sign, uint8_t * result_buf)
-{
-  if (dbv1_sign == dbv2_sign)
-    {
-      *result_sign = dbv1_sign;
-      uint64_t sum = _addcarry_u64 (0, dbv1_word[2], dbv2_word[2], (unsigned long long *) &result_word[2]);
-      result_word[1] = sum;
-    }
-  else
-    {
-      if (dbv1_word[2] >= dbv2_word[2])
-	{
-	  *result_sign = dbv1_sign;
-	  (void) _subborrow_u64 (0, dbv1_word[2], dbv2_word[2], (unsigned long long *) &result_word[2]);
-	}
-      else
-	{
-	  *result_sign = dbv2_sign;
-	  (void) _subborrow_u64 (0, dbv2_word[2], dbv1_word[2], (unsigned long long *) &result_word[2]);
-	}
-    }
-
-  numeric_words_to_bytes (result_word, calc_words, result_buf);
-
-  return float_numeric_get_decimal_digit (result_word, calc_words);
-}
-
-/*
  * numeric_sub () -
  *   return:
  *   arg1(in)   : DB_C_NUMERIC
@@ -1684,30 +1634,6 @@ float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word, uint6
     }
 
   return borrow;
-}
-
-/*
- * float_numeric_sub_fast () -
- *   return: estimated decimal digit count of result
- *   dbv1_word(in)    : operand 1 (word array)
- *   dbv2_word(in)    : operand 2 (word array)
- *   result_word(out) : result buffer (word array)
- *   calc_words(in)   : number of words (expected 3 for fast path)
- *   dbv1_sign(in)    : sign of operand 1
- *   dbv2_sign(in)    : sign of operand 2
- *   result_sign(out) : sign of result
- *   result_buf(out)  : result in 17-byte NUMERIC format
- *
- * Note: Implements subtraction by reusing the fast addition path:
- *       A - B is transformed into A + (-B) by flipping the sign of
- *       the second operand.
- */
-static int
-float_numeric_sub_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words,
-			bool dbv1_sign, bool dbv2_sign, bool * result_sign, uint8_t * result_buf)
-{
-  return float_numeric_add_fast (dbv1_word, dbv2_word, result_word, calc_words,
-				 dbv1_sign, !dbv2_sign, result_sign, result_buf);
 }
 
 /*
@@ -3180,6 +3106,7 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int needed_bytes, calc_words, calc_nbytes;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
   bool result_sign = false;
+  NUMERIC_AGG_EXPR_VAL word1, word2, word_result;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -3201,6 +3128,14 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
       db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return NO_ERROR;
+    }
+
+  /* coefficients below 2^128 with an exact 128-bit result: the word-domain operation gives the same value */
+  if (numeric_word_from_dbv (dbv1, &word1) && numeric_word_from_dbv (dbv2, &word2)
+      && numeric_word_add (&word1, &word2, false, &word_result))
+    {
+      numeric_word_to_dbv (&word_result, answer);
       return NO_ERROR;
     }
 
@@ -3240,21 +3175,6 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   if (scale_adjust2)
     {
       (void) float_numeric_mul_normalize (dbv2_word, calc_words, calc_nbytes, scale_adjust2);
-    }
-
-  /* fast path */
-  if (calc_words == NUMERIC_AS_WORDS && (dbv1_word[0] | dbv1_word[1] | dbv2_word[0] | dbv2_word[1]) == 0)
-    {
-      result_prec =
-	float_numeric_add_fast (dbv1_word, dbv2_word, result_word, calc_words, numeric_is_negative (dbv1),
-				numeric_is_negative (dbv2), &result_sign, result_buf);
-      if (result_sign && result_prec == 1 && result_word[calc_words - 1] == 0)
-	{
-	  /* Prevent -0; zero is always treated as positive. */
-	  result_sign = false;
-	}
-      db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
-      return ret;
     }
 
   /* 5) addition */
@@ -3456,6 +3376,7 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int needed_bytes, calc_words, calc_nbytes;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
   bool result_sign = false;
+  NUMERIC_AGG_EXPR_VAL word1, word2, word_result;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -3477,6 +3398,14 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
       db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return NO_ERROR;
+    }
+
+  /* coefficients below 2^128 with an exact 128-bit result: the word-domain operation gives the same value */
+  if (numeric_word_from_dbv (dbv1, &word1) && numeric_word_from_dbv (dbv2, &word2)
+      && numeric_word_add (&word1, &word2, true, &word_result))
+    {
+      numeric_word_to_dbv (&word_result, answer);
       return NO_ERROR;
     }
 
@@ -3516,21 +3445,6 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   if (scale_adjust2)
     {
       (void) float_numeric_mul_normalize (dbv2_word, calc_words, calc_nbytes, scale_adjust2);
-    }
-
-  /* fast path */
-  if (calc_words == NUMERIC_AS_WORDS && (dbv1_word[0] | dbv1_word[1] | dbv2_word[0] | dbv2_word[1]) == 0)
-    {
-      result_prec =
-	float_numeric_sub_fast (dbv1_word, dbv2_word, result_word, calc_words, numeric_is_negative (dbv1),
-				numeric_is_negative (dbv2), &result_sign, result_buf);
-      if (result_sign && result_prec == 1 && result_word[calc_words - 1] == 0)
-	{
-	  /* Prevent -0; zero is always treated as positive. */
-	  result_sign = false;
-	}
-      db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
-      return ret;
     }
 
   /* 5) subtraction */
@@ -5250,15 +5164,15 @@ numeric_agg_expr_make (NUMERIC_AGG_EXPR_VAL * out, uint128_t coefficient, int sc
 }
 
 /*
- * numeric_agg_expr_from_dbv () - unpack a NUMERIC DB_VALUE into an agg-expr value
+ * numeric_word_from_dbv () - unpack a NUMERIC DB_VALUE into an agg-expr value
  *   return: true on success, false if the coefficient does not fit uint128
  *           or the value is NULL or not NUMERIC
  *
  * The 17-byte coefficient unpacks into three words. A zero high word means the
  * coefficient fits in uint128, so no digit count is needed.
  */
-bool
-numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
+static inline bool
+numeric_word_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
 {
   uint64_t words[NUMERIC_AS_WORDS];
   int dbv_scale;
@@ -5277,6 +5191,12 @@ numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
   dbv_scale = db_get_numeric_scale (dbv, NULL);
   numeric_agg_expr_make (out, ((uint128_t) words[1] << 64) | words[2], dbv_scale, numeric_is_negative (dbv));
   return true;
+}
+
+bool
+numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
+{
+  return numeric_word_from_dbv (dbv, out);
 }
 
 /*
@@ -5362,7 +5282,7 @@ numeric_agg_expr_mul (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_
 }
 
 /*
- * numeric_agg_expr_add () - fuse an addition in the word domain
+ * numeric_word_add () - fuse an addition in the word domain
  *   return: true when the result is representable, false to fall back
  *   flip_right_sign(in): true for subtraction, which negates the right operand
  *
@@ -5370,9 +5290,9 @@ numeric_agg_expr_mul (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_
  * wider one, then magnitudes are added or subtracted based on their signs.
  * Only same-sign addition can overflow; magnitude subtraction cannot.
  */
-bool
-numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right, bool flip_right_sign,
-		      NUMERIC_AGG_EXPR_VAL * out)
+static inline bool
+numeric_word_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right, bool flip_right_sign,
+		  NUMERIC_AGG_EXPR_VAL * out)
 {
   NUMERIC_AGG_EXPR_VAL l = *left;
   NUMERIC_AGG_EXPR_VAL r = *right;
@@ -5425,15 +5345,22 @@ numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_
   return true;
 }
 
+bool
+numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right, bool flip_right_sign,
+		      NUMERIC_AGG_EXPR_VAL * out)
+{
+  return numeric_word_add (left, right, flip_right_sign, out);
+}
+
 /*
- * numeric_agg_expr_to_dbv () - pack an agg-expr value into a floating NUMERIC DB_VALUE
+ * numeric_word_to_dbv () - pack an agg-expr value into a floating NUMERIC DB_VALUE
  *
  * A floating NUMERIC uses the actual digit count as its precision, matching the
  * legacy path. The agg-expr coefficient has at most 39 digits, so no overflow
  * adjustment or rounding is needed.
  */
-void
-numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer)
+static inline void
+numeric_word_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer)
 {
   uint64_t w[NUMERIC_AS_WORDS];
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
@@ -5445,6 +5372,12 @@ numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer)
 
   db_make_numeric (answer, result_buf, numeric_digits_u128 (cv->coefficient), cv->scale, DB_NUMERIC_BUF_SIZE,
 		   cv->is_negative, true);
+}
+
+void
+numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer)
+{
+  numeric_word_to_dbv (cv, answer);
 }
 
 /*
