@@ -4775,13 +4775,15 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
 /* 
  * or_is_replication_candidate_key() -
  *   return : true if the index is a replication-key candidate
- *            (PRIMARY KEY, or UNIQUE with all key attributes NOT NULL)
+ *            (PRIMARY KEY, or UNIQUE with at least one key attribute NOT NULL)
  *   index(in): OR_INDEX pointer (may be NULL)
  */
 /* TODO: We need to review a method to replace the index-dependent approach with one that receives the replication key name from the master node(EPIC CBRD-26096). */
 bool
 or_is_replication_candidate_key (const OR_INDEX * index)
 {
+  bool has_notnull_attribute = false;
+
   if (index == NULL)
     {
       assert (false);
@@ -4801,11 +4803,16 @@ or_is_replication_candidate_key (const OR_INDEX * index)
   for (int i = 0; i < index->n_atts; i++)
     {
       OR_ATTRIBUTE *attr = index->atts[i];
-      if (attr == NULL || !attr->is_notnull)
+      if (attr == NULL)
 	{
 	  return false;
 	}
+
+      if (attr->is_notnull)
+	{
+	  has_notnull_attribute = true;
+	}
     }
 
-  return true;
+  return has_notnull_attribute;
 }
