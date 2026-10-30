@@ -68,6 +68,7 @@ struct val_descr;
 namespace cubxasl
 {
   struct pred_expr;
+  struct aggregate_list_node;
 }
 
 typedef struct expr_prog EXPR_PROG;
@@ -250,6 +251,24 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
 					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
 					   bool only_compute_roots, int *root_idx_out, const void *share_spec);
 
+/* CBRD-27361: a value pointer list's projection program on its first evaluation: bound from the image XASL generation
+ * wrote (valptr_list_node.eval_prog_image), or compiled here when the stream carries none; NULL when the list keeps
+ * its interpreted fetch.  idx (valptr_cnt entries) receives each column's program root or -1. */
+extern EXPR_PROG *expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, val_descr * vd,
+					   int *idx);
+/* CBRD-27361: at XASL generation, the image of that program (1), or 0 when the list keeps its interpreted fetch, -1
+ * when no image can be written; share_spec is the list's node's single heap scan (qexec_set_expr_share_spec ()) */
+extern int expr_valptr_prog_image_at_generation (valptr_list_node * list, const void *share_spec, char **image_out,
+						 int *size_out);
+/* CBRD-27361: an aggregate list's operand program on its first evaluation, likewise (the list head's
+ * operand_prog_image); *idx_out (malloc'd) receives each root's program root, bases[k] the k-th aggregate's first
+ * root or -1 */
+extern EXPR_PROG *expr_agg_prog_settle (cubthread::entry * thread_p, cubxasl::aggregate_list_node * agg_list,
+					val_descr * vd, int **idx_out, int *bases);
+/* CBRD-27361: at XASL generation, the image of that program; buildvalue: the list is a BUILDVALUE's */
+extern int expr_agg_prog_image_at_generation (const cubxasl::aggregate_list_node * agg_list, bool buildvalue,
+					      const void *share_spec, char **image_out, int *size_out);
+
 /* does the arithmetic subtree under regu contain an operator with a side effect (a serial, RAND, a session
  * variable, INCR)?  For a list that compiles only some of its expressions (the aggregate operand program) */
 extern bool expr_regu_has_side_effect (const REGU_VARIABLE * regu);
@@ -301,6 +320,11 @@ extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain
  * short-circuit and lazy-decode behavior stay identical either way.  NULL when anything
  * in the tree is not covered -- the caller keeps the interpreted pr_eval_fnc. */
 extern void *expr_scan_pred_compile (cubthread::entry * thread_p, const cubxasl::pred_expr * pr, val_descr * vd);
+/* CBRD-27361: the data filter's compiled form on its first evaluation: bound from the image XASL generation wrote
+ * (pred_expr.scan_prog_image), or compiled here when the stream carries none (expr_compile.c) */
+extern void *expr_scan_pred_settle (cubthread::entry * thread_p, const cubxasl::pred_expr * pr, val_descr * vd);
+/* CBRD-27361: at XASL generation, the data filter compiled over the client's tree, for its image */
+extern void *expr_scan_pred_compile_at_generation (const cubxasl::pred_expr * pr);
 extern DB_LOGICAL expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid);
 extern void expr_scan_pred_free (void *compiled);
 

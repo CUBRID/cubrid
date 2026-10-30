@@ -148,6 +148,11 @@ struct valptr_list_node
    * so the program may read values the scan's compiled data filter computes; NULL otherwise.
    * Set by qexec_set_expr_share_spec () before the first row; runtime only. */
   void *eval_prog_share_spec;
+  /* CBRD-27361: the program XASL generation compiled for the list (expr_valptr_prog_image_at_generation ()), set by
+   * the unpack; the first evaluation binds it instead of compiling.  NULL: none was written; size 0: the list keeps
+   * its interpreted fetch. */
+  const char *eval_prog_image;
+  int eval_prog_image_size;
 
   valptr_list_node () = default;
 };

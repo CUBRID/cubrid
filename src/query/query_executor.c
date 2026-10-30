@@ -7073,6 +7073,8 @@ qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXE
       a->operand_prog_base = -1;
       a->operand_prog_share_spec = NULL;
       a->operand_prog_link_stamp = 0;
+      a->operand_prog_image = NULL;
+      a->operand_prog_image_size = 0;
       a->accumulator.value = &wr->vals[n_regu + n_hk + 2 * i];
       a->accumulator.value2 = &wr->vals[n_regu + n_hk + 2 * i + 1];
       if (agg->function != PT_COUNT_STAR)

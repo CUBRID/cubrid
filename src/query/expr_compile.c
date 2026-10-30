@@ -54,6 +54,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -171,14 +172,18 @@ struct expr_pred
 /* What a compile reads besides the tree (CBRD-27361): the server compiles on a clone's first evaluation with the
  * execution's value descriptor; a client compiles at XASL generation, where only the plan's host variable count is
  * known, and where what the server's unpack derives from the stream (a regu's converter, a term's comparison, an
- * arithmetic node's decision) is not set on the tree yet. */
+ * arithmetic node's decision) is not set on the tree yet.  A generation compile takes every host variable position
+ * the plan names: the client sends a value for each (the interpreter reads vd->dbval_ptr[val_pos] unchecked), and
+ * the count XASL generation keeps (XASL_NODE.dbval_cnt) is the generator's, which a MERGE's leaves at 0. */
 typedef struct expr_compile_env EXPR_COMPILE_ENV;
 struct expr_compile_env
 {
   cubthread::entry * thread_p;
   val_descr *vd;		/* the server's value descriptor; NULL at XASL generation */
-  int n_hostvars;		/* the host variables the plan binds (vd->dbval_cnt, XASL_NODE.dbval_cnt) */
+  int n_hostvars;		/* the server: the host variable values of the execution (vd->dbval_cnt) */
   bool at_generation;		/* compiled by a client at XASL generation */
+  const void *share_pred;	/* at generation: share_spec's data filter compiled there (EXPR_PRED *); the server
+				 * takes the one its scan compiled (expr_share_attach ()) */
 };
 
 /* the environment of a compile on the server, on a clone's first evaluation */
@@ -195,6 +200,7 @@ expr_server_env (cubthread::entry * thread_p, val_descr * vd)
   env.n_hostvars = 0;
 #endif
   env.at_generation = false;
+  env.share_pred = NULL;
   return env;
 }
 
@@ -1656,19 +1662,28 @@ static void
 expr_share_attach (EXPR_BUILD_CTX * bctx, const void *share_spec)
 {
   const ACCESS_SPEC_TYPE *spec = (const ACCESS_SPEC_TYPE *) share_spec;
+  const EXPR_PRED *pred;
 
-  if (spec == NULL || spec->type != TARGET_CLASS || spec->where_pred == NULL
-      || spec->where_pred->scan_prog_state != 1 || spec->where_pred->scan_prog == NULL)
+  if (spec == NULL || spec->type != TARGET_CLASS || spec->where_pred == NULL)
     {
       return;
     }
-  if (((const EXPR_PRED *) spec->where_pred->scan_prog)->n_share == 0)
+  if (bctx->env.at_generation)
+    {
+      /* the filter compiled at XASL generation; the server binds the program to the one its scan holds then */
+      pred = (const EXPR_PRED *) bctx->env.share_pred;
+    }
+  else
+    {
+      pred = (spec->where_pred->scan_prog_state == 1) ? (const EXPR_PRED *) spec->where_pred->scan_prog : NULL;
+    }
+  if (pred == NULL || pred->n_share == 0)
     {
       return;
     }
   bctx->share_spec = spec;
-  bctx->share_pred = (const EXPR_PRED *) spec->where_pred->scan_prog;
-  bctx->share_gen = spec->where_pred->scan_prog_gen;
+  bctx->share_pred = pred;
+  bctx->share_gen = bctx->env.at_generation ? 0 : spec->where_pred->scan_prog_gen;
 }
 
 /* the attribute the scan fetches into a value-list slot, or -1 */
@@ -2494,21 +2509,98 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
  ******************************************************************************/
 
 /* The value a TYPE_POS_VALUE publishes: the bound value itself.  The index is into vd->dbval_ptr; -1 when the
- * plan binds no such value. */
+ * execution binds no such value (at generation, every position the plan names is bound: see EXPR_COMPILE_ENV) */
 static int
 expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
-  const int n = bctx != NULL ? bctx->env.n_hostvars : 0;
+  if (bctx == NULL || regu->value.val_pos < 0)
+    {
+      return -1;
+    }
+  if (bctx->env.at_generation)
+    {
+      return regu->value.val_pos;
+    }
+  return (regu->value.val_pos < bctx->env.n_hostvars) ? regu->value.val_pos : -1;
+}
 
-  return (regu->value.val_pos >= 0 && regu->value.val_pos < n) ? regu->value.val_pos : -1;
+/* What the server's unpack derives from the stream, read on the tree the compile runs over (CBRD-27361).  On the
+ * server the unpack has set it; at XASL generation the client decides it here the way XASL_TO_STREAM decides what it
+ * packs, so both compile the same program. */
+
+/* does the regu convert its value into the domain its consumer wants (CBRD-27583, REGU_VARIABLE.conv)?  The stream
+ * carries a conversion when the regu's original domain is another than its domain (xts_regu_converts ()) */
+static bool
+expr_regu_converts (const EXPR_COMPILE_ENV * env, const REGU_VARIABLE * regu)
+{
+  if (env->at_generation)
+    {
+      return regu->original_domain != NULL && regu->original_domain != regu->domain;
+    }
+  return regu->conv != NULL;
+}
+
+/* regu_produced_domain () on either side */
+static TP_DOMAIN *
+expr_regu_produced_domain (const EXPR_COMPILE_ENV * env, const REGU_VARIABLE * regu)
+{
+  return expr_regu_converts (env, regu) ? regu->original_domain : regu->domain;
+}
+
+/* an addition's, subtraction's, multiplication's or division's decision (ARITH_TYPE.decided.arith), into *out: the
+ * unpack's, or at generation the one xts_arith_decided () packs; false for an operand of no fixed domain */
+static bool
+expr_arith_decided (const EXPR_COMPILE_ENV * env, const ARITH_TYPE * arith, DOMAIN_ARITH * out)
+{
+  assert (arith_decides_arith (arith));
+  if (!env->at_generation)
+    {
+      *out = *arith_decided_arith (arith);
+      return true;
+    }
+  if (arith->leftptr == NULL || arith->rightptr == NULL || arith->leftptr->domain == NULL
+      || TP_DOMAIN_TYPE (arith->leftptr->domain) == DB_TYPE_VARIABLE || arith->rightptr->domain == NULL
+      || TP_DOMAIN_TYPE (arith->rightptr->domain) == DB_TYPE_VARIABLE)
+    {
+      return false;
+    }
+  const TP_DOMAIN *left = domain_key_value_domain (arith->leftptr->domain);
+  const TP_DOMAIN *right = domain_key_value_domain (arith->rightptr->domain);
+  const DOMAIN_OPERAND operands[2] = {
+    {left, TP_DOMAIN_TYPE (left), -1, false}, {right, TP_DOMAIN_TYPE (right), -1, false}
+  };
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (arith->opcode, operands, &coercion);
+  *out = coercion.arith;
+  return true;
+}
+
+/* a comparison term's decided comparison (COMP_EVAL_TERM.compare), into *out: the unpack's, or at generation the one
+ * xts_pack_compare () packs; NULL when the term leaves its comparison to its values */
+static const DOMAIN_COMPARE *
+expr_term_compare (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et, DOMAIN_COMPARE * out)
+{
+  if (!env->at_generation)
+    {
+      return et->compare;
+    }
+  const TP_DOMAIN *const domain[2] = { et->lhs != NULL ? et->lhs->domain : NULL,
+    et->rhs != NULL ? et->rhs->domain : NULL
+  };
+  bool by_type;
+  if (domain_decide_comparison (domain, out, &by_type) != NO_ERROR || !by_type)
+    {
+      return NULL;
+    }
+  return out;
 }
 
 /* The domain an arithmetic node computes in, as fetch_peek_arith () reads it: its compiled domain.  NULL: the node
  * leaves its type to its values -- the node is declined. */
 static TP_DOMAIN *
-expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
+expr_arith_exec_domain (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
-  TP_DOMAIN *domain = regu_produced_domain (regu);
+  TP_DOMAIN *domain = expr_regu_produced_domain (&bctx->env, regu);
 
   if (domain == NULL || regu->value.arithptr == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
@@ -2518,18 +2610,15 @@ expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 }
 
 /* What a binary arithmetic node the kernels can take makes of its operands (ARITH_TYPE.decided.arith, found at
- * unpack, which converts no operand: generation converts it at its regu): one that names a number --
+ * unpack, which converts no operand: generation converts it at its regu), into *plan: one that names a number --
  * the kernels are that typed number operator, computing in its type (arith.type, what
- * qdata_number_operator reads both operands as).  NULL for any other node, which stays interpreted:
+ * qdata_number_operator reads both operands as).  False for any other node, which stays interpreted:
  * a date, string or collection one (another operator's). */
-static const DOMAIN_ARITH *
-expr_arith_number_plan (const ARITH_TYPE * arith)
+static bool
+expr_arith_number_plan (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE * arith, DOMAIN_ARITH * plan)
 {
-  if (!arith_decides_arith (arith) || arith_decided_arith (arith)->kind != DOMAIN_ARITH_NUMBER)
-    {
-      return NULL;
-    }
-  return arith_decided_arith (arith);
+  return arith_decides_arith (arith) && expr_arith_decided (&bctx->env, arith, plan)
+    && plan->kind == DOMAIN_ARITH_NUMBER;
 }
 
 /* the DB_TYPE a leaf will produce, as known at compile time: its compiled domain's */
@@ -2555,7 +2644,7 @@ expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
-      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->env.vd, regu);
+      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx, regu);
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   return expr_leaf_type (bctx, regu);
@@ -2619,7 +2708,7 @@ expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
-      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->env.vd, regu);
+      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx, regu);
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->domain == NULL)
@@ -2883,7 +2972,8 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	     * compiler's decision) - a number into the more general number ("n * m > 1"), a string into the
 	     * date/time it is compared with ("dt >= '2024-01-01'") - is converted once, by that comparison's converter,
 	     * into the leaf's own value; the leaf then compares same-typed sides. */
-	    const DOMAIN_COMPARE *compare = et->compare;
+	    DOMAIN_COMPARE decided;
+	    const DOMAIN_COMPARE *compare = expr_term_compare (&bctx->env, et, &decided);
 	    const bool pins = compare != NULL && compare->conv[0] == NULL && compare->conv[1] != NULL
 	      && TP_DOMAIN_TYPE (compare->target[1]) == t1
 	      && ((TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2))
@@ -2997,8 +3087,8 @@ expr_scan_pred_has_compiled_side (const EXPR_PRED * pred)
   return expr_scan_pred_has_compiled_side (pred->lhs) || expr_scan_pred_has_compiled_side (pred->rhs);
 }
 
-void *
-expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_descr * vd)
+static void *
+expr_scan_pred_compile_env (const EXPR_COMPILE_ENV * env, const PRED_EXPR * pr)
 {
   EXPR_BUILD_CTX *bctx;
   EXPR_PRED *pred;
@@ -3011,7 +3101,7 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
       return NULL;
     }
   memset (bctx, 0, sizeof (*bctx));
-  bctx->env = expr_server_env (thread_p, vd);
+  bctx->env = *env;
 
   /* a filter tree deeper than the limit stays interpreted (its own guard; the operand programs check theirs on the row) */
   pred = expr_scan_pred_build (bctx, pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH), true);
@@ -3048,9 +3138,37 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
   expr_pred_bind (pred);
   free_and_init (bctx);
 #if !defined (NDEBUG)
-  expr_image_check_scan_pred (pred, pr);
+  if (!env->at_generation)
+    {
+      /* at generation the tree's domains are not yet what the stream makes of them (a VARCHAR's floating precision
+       * is unpacked as the maximum): the server binds the image against its own compile (expr_scan_pred_settle ()) */
+      expr_image_check_scan_pred (pred, pr);
+    }
 #endif
   return pred;
+}
+
+void *
+expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_descr * vd)
+{
+  const EXPR_COMPILE_ENV env = expr_server_env (thread_p, vd);
+
+  return expr_scan_pred_compile_env (&env, pr);
+}
+
+/* CBRD-27361: the data filter compiled at XASL generation, over the client's tree, for its image
+ * (expr_scan_pred_image_pack ()) */
+void *
+expr_scan_pred_compile_at_generation (const PRED_EXPR * pr)
+{
+  EXPR_COMPILE_ENV env;
+
+  env.thread_p = NULL;
+  env.vd = NULL;
+  env.n_hostvars = 0;
+  env.at_generation = true;
+  env.share_pred = NULL;
+  return expr_scan_pred_compile_env (&env, pr);
 }
 
 /* The registry of values the filter computes that the scan's other consumers may read:
@@ -5231,7 +5349,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
-  if (regu->conv != NULL)
+  if (expr_regu_converts (&bctx->env, regu))
     {
       /* CBRD-27583: the fetch path converts a regu's value into the domain its consumer wants, in the regu's holder */
       return expr_emit_fetch (bctx, regu, compiled_something);
@@ -5355,7 +5473,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	int c1, c2;
 
 	/* the node's compiled domain; NULL where it leaves its type to the values */
-	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->env.vd, regu);
+	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx, regu);
 
 	if (arith == NULL)
 	  {
@@ -5774,12 +5892,13 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * the ARITH rule converts neither of two numbers of a NUMERIC mix (domain_arith_rule), and the
 	 * number operator coerces the integer side itself (qdata_number_numeric) -- which is what
 	 * expr_k_coerce_numeric mirrors below. */
-	const DOMAIN_ARITH *const plan = expr_arith_number_plan (arith);
+	DOMAIN_ARITH number_plan;
 
-	if (plan == NULL)
+	if (!expr_arith_number_plan (bctx, arith, &number_plan))
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
+	const DOMAIN_ARITH *const plan = &number_plan;
 
 	/* The kernel is the typed operator of the plan's number type: the type qdata_number_operator
 	 * reads both operands as and computes in.  The interpreted path computes in that type and
@@ -6606,6 +6725,510 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   expr_image_check_prog (prog, roots, in_roots, root_idx_out, share_spec);
 #endif
   return prog;
+}
+
+/* The roots of a value pointer list's projection program, one per column (CBRD-27361: the server and XASL generation
+ * take the same ones).  NULL for a column that keeps its per-column interpreted fetch: a hidden column (the consumers
+ * never evaluate it), and the columns whose fetch semantics depend on runtime regu flags -- the strict casts of an
+ * INSERT/UPDATE value list, an analytic window.  -1 when the list has more columns than a program takes. */
+static int
+expr_valptr_roots (const valptr_list_node * list, REGU_VARIABLE ** roots)
+{
+  const int runtime_flags = REGU_VARIABLE_HIDDEN_COLUMN | REGU_VARIABLE_UPD_INS_LIST | REGU_VARIABLE_ANALYTIC_WINDOW;
+  REGU_VARIABLE_LIST r;
+  int n = 0;
+
+  if (list->valptr_cnt <= 0 || list->valptr_cnt > EXPR_MAX_STEPS)
+    {
+      return -1;
+    }
+  for (r = list->valptrp; r != NULL; r = r->next)
+    {
+      const bool excluded = (r->value.flags & runtime_flags) != 0;
+
+      if (n >= list->valptr_cnt)
+	{
+	  return -1;
+	}
+      roots[n++] = excluded ? NULL : &r->value;
+    }
+  return (n == list->valptr_cnt) ? n : -1;
+}
+
+/* A projection program is kept when it computes something -- a program that only repeats leaf fetches gives the
+ * per-column interpreted path its own work back through an indirection (a column served from the data filter's slot
+ * is a computed value, though no step of this program computes it) -- and covers a column; else it is freed */
+static EXPR_PROG *
+expr_valptr_prog_keep (EXPR_PROG * prog, const int *idx, int n)
+{
+  int k;
+
+  if (prog == NULL)
+    {
+      return NULL;
+    }
+  if (prog->n_compute == 0 && prog->n_shared == 0)
+    {
+      expr_prog_free (prog);
+      return NULL;
+    }
+  for (k = 0; k < n && idx[k] < 0; k++)
+    {
+      ;
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      return NULL;
+    }
+  return prog;
+}
+
+/* CBRD-27361: at XASL generation, the image of a value pointer list's projection program: compiled over the client's
+ * tree as the server compiles it on the list's first evaluation (expr_valptr_prog_settle ()).  share_spec is the
+ * list's node's single heap scan whose data filter may serve values (qexec_set_expr_share_spec ()), its filter
+ * compiled here as the scan's will be.  1: *image_out is the image; 0: the list keeps its interpreted fetch; -1: no
+ * image can be written (the server compiles the list itself). */
+int
+expr_valptr_prog_image_at_generation (valptr_list_node * list, const void *share_spec, char **image_out, int *size_out)
+{
+  REGU_VARIABLE *roots[EXPR_MAX_STEPS];
+  int idx[EXPR_MAX_STEPS];
+  const ACCESS_SPEC_TYPE *spec = (const ACCESS_SPEC_TYPE *) share_spec;
+  EXPR_COMPILE_ENV env;
+  EXPR_PROG *prog;
+  void *share_pred = NULL;
+  const int n = expr_valptr_roots (list, roots);
+
+  *image_out = NULL;
+  *size_out = 0;
+  if (n < 0)
+    {
+      return 0;
+    }
+  if (spec != NULL && spec->where_pred != NULL)
+    {
+      share_pred = expr_scan_pred_compile_at_generation (spec->where_pred);
+    }
+  env.thread_p = NULL;
+  env.vd = NULL;
+  env.n_hostvars = 0;
+  env.at_generation = true;
+  env.share_pred = share_pred;
+  prog = expr_valptr_prog_keep (expr_prog_compile_roots_ex (&env, roots, n, false, false, true, idx, share_spec, 0),
+				idx, n);
+  if (prog != NULL)
+    {
+      *image_out = expr_prog_image_pack (prog, roots, n, idx, size_out);
+      expr_prog_free (prog);
+    }
+  expr_scan_pred_free (share_pred);
+  if (prog == NULL)
+    {
+      return 0;
+    }
+  return (*image_out != NULL) ? 1 : -1;
+}
+
+/* The arithmetic tree the aggregate accumulate loop fuses (CBRD-27178): a mirror of fetch_is_agg_expr_shape ()
+ * (fetch.c) that reads a regu's conversion on either side of the stream (CBRD-27361), so XASL generation takes the
+ * same aggregate operands the server's unpack marks REGU_VARIABLE_AGG_OPERAND (stx_mark_aggregate_operands ()).
+ * A debug server asserts the two agree (expr_agg_roots ()). */
+enum expr_agg_group
+{ EXPR_AGG_NONE, EXPR_AGG_NUMERIC, EXPR_AGG_INT, EXPR_AGG_DOUBLE };
+
+static int
+expr_agg_group (const EXPR_COMPILE_ENV * env, const REGU_VARIABLE * regu)
+{
+  const TP_DOMAIN *domain = expr_regu_produced_domain (env, regu);
+
+  if (domain == NULL)
+    {
+      return EXPR_AGG_NONE;
+    }
+  switch (TP_DOMAIN_TYPE (domain))
+    {
+    case DB_TYPE_NUMERIC:
+      return EXPR_AGG_NUMERIC;
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      return EXPR_AGG_INT;
+    case DB_TYPE_DOUBLE:
+      return EXPR_AGG_DOUBLE;
+    default:
+      return EXPR_AGG_NONE;
+    }
+}
+
+/* FETCH_IS_AGG_EXPR_OP: {+, -, *, /}, and no NUMERIC division */
+static bool
+expr_agg_op (OPERATOR_TYPE op, int group)
+{
+  return op == T_ADD || op == T_SUB || op == T_MUL || (op == T_DIV && group != EXPR_AGG_NUMERIC);
+}
+
+static bool
+expr_agg_int_source (const REGU_VARIABLE * regu)
+{
+  if (regu->domain == NULL)
+    {
+      return false;
+    }
+  switch (TP_DOMAIN_TYPE (regu->domain))
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static bool
+expr_agg_wrap_leaf (const EXPR_COMPILE_ENV * env, const REGU_VARIABLE * regu, int group)
+{
+  const ARITH_TYPE *arithptr = regu->value.arithptr;
+
+  if (arithptr->rightptr == NULL)
+    {
+      return false;
+    }
+  if (group == EXPR_AGG_NUMERIC)
+    {
+      const TP_DOMAIN *domain = expr_regu_produced_domain (env, regu);
+
+      return (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC
+	      && domain->precision == DB_DEFAULT_NUMERIC_PRECISION && domain->scale == DB_DEFAULT_NUMERIC_SCALE
+	      && expr_agg_int_source (arithptr->rightptr));
+    }
+  if (expr_agg_group (env, regu) != group)
+    {
+      return false;
+    }
+  if (expr_agg_int_source (arithptr->rightptr))
+    {
+      return true;
+    }
+  return (group == EXPR_AGG_DOUBLE && arithptr->rightptr->domain != NULL
+	  && (TP_DOMAIN_TYPE (arithptr->rightptr->domain) == DB_TYPE_FLOAT
+	      || TP_DOMAIN_TYPE (arithptr->rightptr->domain) == DB_TYPE_NUMERIC));
+}
+
+static bool
+expr_agg_node (const EXPR_COMPILE_ENV * env, const REGU_VARIABLE * regu, int group, int budget)
+{
+  const ARITH_TYPE *arithptr;
+
+  if (budget <= 0)
+    {
+      return false;
+    }
+  switch (regu->type)
+    {
+    case TYPE_CONSTANT:
+    case TYPE_DBVAL:
+    case TYPE_POSITION:
+    case TYPE_ATTR_ID:
+      return true;
+
+    case TYPE_INARITH:
+      if (expr_regu_converts (env, regu))
+	{
+	  return false;
+	}
+      break;
+
+    default:
+      return false;
+    }
+  arithptr = regu->value.arithptr;
+  if (arithptr == NULL)
+    {
+      return false;
+    }
+  if (arithptr->opcode == T_CAST_WRAP)
+    {
+      return expr_agg_wrap_leaf (env, regu, group);
+    }
+  if (group != EXPR_AGG_NUMERIC && expr_agg_group (env, regu) != group)
+    {
+      return false;
+    }
+  if (arithptr->leftptr == NULL || arithptr->rightptr == NULL || !expr_agg_op (arithptr->opcode, group))
+    {
+      return false;
+    }
+  return (expr_agg_node (env, arithptr->leftptr, group, budget - 1)
+	  && expr_agg_node (env, arithptr->rightptr, group, budget - 1));
+}
+
+static bool
+expr_agg_expr_shape (const EXPR_COMPILE_ENV * env, const REGU_VARIABLE * regu, int budget)
+{
+  int group;
+
+  if (regu->type != TYPE_INARITH || regu->value.arithptr == NULL)
+    {
+      return false;
+    }
+  group = expr_agg_group (env, regu);
+  if (group == EXPR_AGG_NONE || !expr_agg_op (regu->value.arithptr->opcode, group))
+    {
+      return false;
+    }
+  return expr_agg_node (env, regu, group, budget);
+}
+
+/* does the arithmetic tree under regu contain a division?  (the one fused-path shape whose result can
+ * differ from the program's: the DOUBLE zero test, see expr_agg_roots ()) */
+static bool
+expr_agg_has_div (const REGU_VARIABLE * regu)
+{
+  if (regu == NULL || regu->type != TYPE_INARITH || regu->value.arithptr == NULL)
+    {
+      return false;
+    }
+  if (regu->value.arithptr->opcode == T_DIV)
+    {
+      return true;
+    }
+  return expr_agg_has_div (regu->value.arithptr->leftptr) || expr_agg_has_div (regu->value.arithptr->rightptr);
+}
+
+/*
+ * The roots of an aggregate list's operand program (qdata_agg_operand_prog_compile (); CBRD-27361: the server and
+ * XASL generation take the same ones).
+ *
+ * Only plain accumulating functions participate; the operands of any aggregate the
+ * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones, and
+ * the index-boundary MIN/MAX whose operand the loop stops fetching once it is_ended) are
+ * left out so the unconditional per-row program evaluation cannot change behavior.
+ *
+ * bases[k] receives the k-th aggregate's first root, or -1 for one that does not participate.  buildvalue: the list
+ * is a BUILDVALUE's, whose plain SUM / AVG operand trees the server's unpack marks REGU_VARIABLE_AGG_OPERAND -- read
+ * from the flag on the server, decided here at generation.  Returns the root count, -1 when the whole list stays
+ * interpreted.
+ */
+static int
+expr_agg_roots (const EXPR_COMPILE_ENV * env, const cubxasl::aggregate_list_node * agg_list, bool buildvalue,
+		REGU_VARIABLE ** roots, int *bases)
+{
+  const int depth_budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  bool side_effect_covered = false, side_effect_uncovered = false;
+  const cubxasl::aggregate_list_node * agg_p;
+  int n = 0, k = 0;
+
+  for (agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next, k++)
+    {
+      bool participates;
+
+      switch (agg_p->function)
+	{
+	case PT_SUM:
+	case PT_AVG:
+	case PT_MIN:
+	case PT_MAX:
+	case PT_COUNT:
+	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
+	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
+	   * the interpreted path so the program never evaluates an operand the interpreter
+	   * would not.  Nothing is lost: such a list is MIN/MAX-only
+	   * (pt_set_access_spec_for_aggregation ()) over a scan the executor stops after one
+	   * or two rows, where compiling would only cost. */
+	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
+	  break;
+	default:
+	  participates = false;
+	  break;
+	}
+
+      bases[k] = -1;
+      if (!participates)
+	{
+	  /* an operand the program will not evaluate (GROUP_CONCAT's, say) keeps its place in the
+	   * interpreter's order: see the side-effect rule below the loop */
+	  for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	    {
+	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  continue;
+	}
+
+      bases[k] = n;
+      for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	{
+	  const bool sum_avg = (agg_p->function == PT_SUM || agg_p->function == PT_AVG) && agg_p->option != Q_DISTINCT;
+	  /* REGU_VARIABLE_AGG_OPERAND: a BUILDVALUE's plain SUM / AVG operand tree (stx_mark_aggregate_operands ()) */
+	  const bool agg_operand = env->at_generation
+	    ? (buildvalue && sum_avg && operand == agg_p->operands && operand->value.type == TYPE_INARITH
+	       && expr_agg_expr_shape (env, &operand->value, depth_budget))
+	    : REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND);
+	  bool word_operand;
+
+	  if (n >= EXPR_MAX_STEPS)
+	    {
+	      return -1;
+	    }
+	  /* A plain SUM/AVG over a NUMERIC {+,-,*} tree of plain leaves is the shape the accumulate
+	   * loop below already evaluates in CBRD-27178's word domain and adds to SUM_ACC without a
+	   * DB_VALUE (qdata_agg_expr_eval_numeric () -> numeric_sum_acc_add_expr_val ()); develop
+	   * applies the same test when it marks REGU_VARIABLE_AGG_OPERAND.  Compiling it instead
+	   * would pack a DB_VALUE per arithmetic step, coerce it to the result domain per row and
+	   * unpack it again at the accumulator, which made exactly this aggregate slower than
+	   * develop (review 2026-09-23); a word root inside the program was measured slower than
+	   * the loop's own branch as well (the program's dispatch on top of the same walk).  So the
+	   * operand stays out of the program (root -1) and the loop's word branch takes it.  The
+	   * other operands of the list keep the program, its leaf sharing and the filter values. */
+	  word_operand = (sum_avg && operand->next == NULL && operand->value.type == TYPE_INARITH
+			  && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_NUMERIC
+			  && expr_agg_expr_shape (env, &operand->value, depth_budget));
+	  /* The same for an operand that is only the cast the parser wraps a SUM/AVG argument in
+	   * (SUM (int_col) is a BIGINT, so the argument comes as CAST_WRAP (int_col AS BIGINT)):
+	   * develop marks it REGU_VARIABLE_AGG_OPERAND and its fused register path reads the
+	   * integer straight through the wrap (fetch.c).  The compiler used to decline such a
+	   * root, leaving it there; now that the wrap compiles, keep it there on purpose -- a cast
+	   * kernel would cost a DB_VALUE slot and a forced cast per row where the loop reads a
+	   * word, and that shape has not been measured against the loop. */
+	  if (!word_operand && operand->value.type == TYPE_INARITH
+	      && operand->value.value.arithptr->opcode == T_CAST_WRAP && agg_operand)
+	    {
+	      word_operand = true;
+	    }
+	  /* And for a DOUBLE tree with a division that develop's fused register path takes
+	   * (fetch_peek_arith (), REGU_VARIABLE_AGG_OPERAND): that path divides doubles with its
+	   * own zero test (right == 0.0, fetch_agg_expr_eval_dbl ()) while the program has no
+	   * DOUBLE division kernel and its generic step goes through qdata_arith_dbval ()'s
+	   * DBL_EPSILON test, so SUM (d / x) over x = 1e-20 raised "divide by zero" where develop
+	   * returns a value (review 2026-10-15).  Only this shape differs: the INT trees and the
+	   * DOUBLE {+,-,*} trees compute the same in the fused registers, the kernels and the
+	   * interpreter, and keep the program (its leaf sharing and shared accumulators). */
+	  if (!word_operand && operand->value.type == TYPE_INARITH && agg_operand
+	      && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_DOUBLE
+	      && expr_agg_expr_shape (env, &operand->value, depth_budget) && expr_agg_has_div (&operand->value))
+	    {
+	      word_operand = true;
+	    }
+	  if (word_operand)
+	    {
+	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  else
+	    {
+	      side_effect_covered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  roots[n++] = word_operand ? NULL : &operand->value;
+	}
+    }
+
+  if (side_effect_covered && side_effect_uncovered)
+    {
+      /* The program evaluates its operands before the loop, so a serial or a session variable in
+       * a compiled operand would be consumed before one in an operand the loop still fetches in
+       * list order: MAX (s.NEXT_VALUE * 1), GROUP_CONCAT (s.NEXT_VALUE) gave 5 / '2,4,6' where
+       * the interpreter gives 6 / '1,3,5' (review 2026-10-15).  The same rule as the projection
+       * list's (expr_prog_compile_roots_impl ()): when side effects would end up on both sides
+       * of the program, the whole list stays interpreted. */
+      return -1;
+    }
+  return n;
+}
+
+/* an aggregate operand program is kept when it covers an operand (an aggregate whose every operand was excluded keeps
+ * its base but reads -1 entries) */
+static EXPR_PROG *
+expr_agg_prog_keep (EXPR_PROG * prog, const int *idx, int n)
+{
+  int k;
+
+  if (prog == NULL)
+    {
+      return NULL;
+    }
+  for (k = 0; k < n && idx[k] < 0; k++)
+    {
+      ;
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      return NULL;
+    }
+  return prog;
+}
+
+/* the aggregates of a list */
+static int
+expr_agg_count (const cubxasl::aggregate_list_node * agg_list)
+{
+  int n = 0;
+
+  for (; agg_list != NULL; agg_list = agg_list->next)
+    {
+      n++;
+    }
+  return n;
+}
+
+/* CBRD-27361: at XASL generation, the image of an aggregate list's operand program: compiled over the client's tree
+ * as the server compiles it on the list's first evaluation (expr_agg_prog_settle ()).  buildvalue: the list is a
+ * BUILDVALUE's; share_spec is its node's single heap scan whose data filter may serve values
+ * (qexec_set_expr_share_spec ()).  1: *image_out is the image; 0: the list's operands keep their interpreted fetch;
+ * -1: no image can be written (the server compiles the list itself). */
+int
+expr_agg_prog_image_at_generation (const cubxasl::aggregate_list_node * agg_list, bool buildvalue,
+				   const void *share_spec, char **image_out, int *size_out)
+{
+  REGU_VARIABLE *roots[EXPR_MAX_STEPS];
+  int idx[EXPR_MAX_STEPS];
+  const ACCESS_SPEC_TYPE *spec = (const ACCESS_SPEC_TYPE *) share_spec;
+  EXPR_COMPILE_ENV env;
+  EXPR_PROG *prog = NULL;
+  void *share_pred = NULL;
+  int *bases, n;
+
+  *image_out = NULL;
+  *size_out = 0;
+  if (agg_list == NULL)
+    {
+      return 0;
+    }
+  bases = (int *) malloc (sizeof (int) * expr_agg_count (agg_list));
+  if (bases == NULL)
+    {
+      return -1;
+    }
+  env.thread_p = NULL;
+  env.vd = NULL;
+  env.n_hostvars = 0;
+  env.at_generation = true;
+  env.share_pred = NULL;
+  n = expr_agg_roots (&env, agg_list, buildvalue, roots, bases);
+  free_and_init (bases);
+  if (n <= 0)
+    {
+      return 0;
+    }
+  if (spec != NULL && spec->where_pred != NULL)
+    {
+      share_pred = expr_scan_pred_compile_at_generation (spec->where_pred);
+      env.share_pred = share_pred;
+    }
+  /* wired-only programs are wanted (see expr_agg_prog_settle ()) */
+  prog = expr_agg_prog_keep (expr_prog_compile_roots_ex (&env, roots, n, false, true, false, idx, share_spec, 0),
+			     idx, n);
+  if (prog != NULL)
+    {
+      *image_out = expr_prog_image_pack (prog, roots, n, idx, size_out);
+      expr_prog_free (prog);
+    }
+  expr_scan_pred_free (share_pred);
+  if (prog == NULL)
+    {
+      return 0;
+    }
+  return (*image_out != NULL) ? 1 : -1;
 }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -7530,12 +8153,14 @@ expr_image_put_domain (EXPR_IMAGE_WRITER * w, TP_DOMAIN * domain)
     {
       return;
     }
+  /* an OBJECT's values are OIDs on the server, as the stream packs the domain (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+  domain = CONST_CAST (TP_DOMAIN *, domain_key_value_domain (domain));
   if (w->buf != NULL)
     {
-      w->ptr = or_pack_domain (w->ptr, domain, 1, 0);
+      w->ptr = or_pack_domain (w->ptr, domain, 0, 0);
       w->ptr = PTR_ALIGN (w->ptr, INT_ALIGNMENT);
     }
-  w->size = DB_ALIGN (w->size + or_packed_domain_size (domain, 1), INT_ALIGNMENT);
+  w->size = DB_ALIGN (w->size + or_packed_domain_size (domain, 0), INT_ALIGNMENT);
 }
 
 static void
@@ -8151,6 +8776,11 @@ expr_prog_image_unpack (const char *image, int size, REGU_VARIABLE ** roots, int
       else
 	{
 	  expr_prog_materialize (prog, share_pred);
+	  if (prog->n_shared > 0)
+	    {
+	      /* the filter's slots it was bound to: their generation, as a program compiled here records it */
+	      prog->share_gen = ((const ACCESS_SPEC_TYPE *) share_spec)->where_pred->scan_prog_gen;
+	    }
 	}
     }
   expr_node_table_free (&nodes);
@@ -8324,8 +8954,10 @@ expr_image_same_prog (const EXPR_PROG * a, const EXPR_PROG * b)
     }
   if (a->n_steps != b->n_steps || a->n_cells != b->n_cells || a->n_slots != b->n_slots || a->n_roots != b->n_roots
       || a->n_prologue != b->n_prologue || a->n_exec_prologue != b->n_exec_prologue || a->n_compute != b->n_compute
-      || a->max_level != b->max_level || a->n_shared != b->n_shared || a->share_gen != b->share_gen)
+      || a->max_level != b->max_level || a->n_shared != b->n_shared
+      || (a->n_shared > 0 && a->share_gen != b->share_gen))
     {
+      /* the filter generation matters only to a program that reads the filter's slots (expr_prog_share_current ()) */
       return false;
     }
   for (i = 0; i < a->n_cells; i++)
@@ -8410,13 +9042,39 @@ expr_image_check_prog (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roo
   free_and_init (image);
 }
 
+/* two compiled scan filters over one tree are one: the tree, its operand program and its share registry */
+static bool
+expr_image_same_scan_pred (const EXPR_PRED * a, const EXPR_PRED * b)
+{
+  int i;
+
+  if (a == NULL || b == NULL)
+    {
+      return a == b;
+    }
+  if (!expr_image_same_prog (a->prog, b->prog) || !expr_image_same_pred (a, a->prog, b, b->prog)
+      || a->n_share != b->n_share)
+    {
+      return false;
+    }
+  for (i = 0; i < a->n_share; i++)
+    {
+      if (a->share[i].regu != b->share[i].regu || a->share[i].cell != b->share[i].cell
+	  || !expr_image_same_valp (a->prog, a->share[i].slot, b->prog, b->share[i].slot))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 /* debug: likewise a compiled scan filter (expr_scan_pred_compile ()) */
 static void
 expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr)
 {
   EXPR_PRED *copy;
   char *image;
-  int size, i;
+  int size;
 
   image = expr_scan_pred_image_pack (root, pr, &size);
   assert (image != NULL || size != -1);
@@ -8426,18 +9084,196 @@ expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr)
     }
   copy = (EXPR_PRED *) expr_scan_pred_image_unpack (image, size, pr);
   assert (copy != NULL);
-  if (copy != NULL)
-    {
-      assert (expr_image_same_prog (root->prog, copy->prog));
-      assert (expr_image_same_pred (root, root->prog, copy, copy->prog));
-      assert (root->n_share == copy->n_share);
-      for (i = 0; i < root->n_share && i < copy->n_share; i++)
-	{
-	  assert (root->share[i].regu == copy->share[i].regu && root->share[i].cell == copy->share[i].cell
-		  && expr_image_same_valp (root->prog, root->share[i].slot, copy->prog, copy->share[i].slot));
-	}
-      expr_scan_pred_free (copy);
-    }
+  assert (expr_image_same_scan_pred (root, copy));
+  expr_scan_pred_free (copy);
   free_and_init (image);
 }
 #endif /* !NDEBUG */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* CBRD-27361: a data filter's compiled form on its first evaluation: bound from the image XASL generation wrote
+ * (PRED_EXPR.scan_prog_image), or compiled here when the stream carries none.  NULL: the filter stays interpreted --
+ * the client declined it (an image of size 0), or no image was written and the compiler here declines it.  A debug
+ * build compiles here as well and asserts the client compiled the same program. */
+void *
+expr_scan_pred_settle (cubthread::entry * thread_p, const PRED_EXPR * pr, val_descr * vd)
+{
+  void *compiled;
+
+  if (pr->scan_prog_image == NULL)
+    {
+      return expr_scan_pred_compile (thread_p, pr, vd);
+    }
+  compiled = NULL;
+  if (pr->scan_prog_image_size > 0)
+    {
+      compiled = expr_scan_pred_image_unpack (pr->scan_prog_image, pr->scan_prog_image_size, pr);
+    }
+#if !defined (NDEBUG)
+  {
+    EXPR_PRED *here = (EXPR_PRED *) expr_scan_pred_compile (thread_p, pr, vd);
+
+    /* an image binds over the tree it was written for, and both sides decide alike */
+    assert (pr->scan_prog_image_size == 0 || compiled != NULL);
+    assert (expr_image_same_scan_pred ((const EXPR_PRED *) compiled, here));
+    expr_scan_pred_free (here);
+  }
+#endif
+  if (compiled == NULL && pr->scan_prog_image_size > 0)
+    {
+      /* an image this tree does not take: compile it here */
+      compiled = expr_scan_pred_compile (thread_p, pr, vd);
+    }
+  return compiled;
+}
+#endif /* SERVER_MODE || SA_MODE */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* CBRD-27361: a value pointer list's projection program on its first evaluation (qdata_valptr_prog_compile ()):
+ * bound from the image XASL generation wrote (valptr_list_node.eval_prog_image), or compiled here when the stream
+ * carries none.  NULL: the list keeps its interpreted fetch.  idx (valptr_cnt entries) receives each column's program
+ * root, or -1 for a column the program does not cover.  A debug build compiles here as well and asserts the client
+ * compiled the same program. */
+EXPR_PROG *
+expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, val_descr * vd, int *idx)
+{
+  REGU_VARIABLE *roots[EXPR_MAX_STEPS];
+  EXPR_PROG *prog = NULL;
+  const int n = expr_valptr_roots (list, roots);
+
+  if (n < 0)
+    {
+      return NULL;
+    }
+  if (list->eval_prog_image == NULL)
+    {
+      return expr_valptr_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, false, true, idx,
+							     list->eval_prog_share_spec), idx, n);
+    }
+  if (list->eval_prog_image_size > 0)
+    {
+      prog = expr_prog_image_unpack (list->eval_prog_image, list->eval_prog_image_size, roots, n, idx,
+				     list->eval_prog_share_spec);
+    }
+#if !defined (NDEBUG)
+  {
+    int idx_here[EXPR_MAX_STEPS];
+    EXPR_PROG *here = expr_prog_compile_roots (thread_p, roots, n, vd, false, false, true, idx_here,
+					       list->eval_prog_share_spec);
+    int k;
+
+    here = expr_valptr_prog_keep (here, idx_here, n);
+
+    /* an image binds over the tree it was written for, and both sides decide alike */
+    assert (list->eval_prog_image_size == 0 || prog != NULL);
+    assert (expr_image_same_prog (prog, here));
+    for (k = 0; prog != NULL && here != NULL && k < n; k++)
+      {
+	assert (idx[k] == idx_here[k]);
+      }
+    expr_prog_free (here);
+  }
+#endif
+  if (prog == NULL && list->eval_prog_image_size > 0)
+    {
+      /* an image this tree does not take: compile the list here */
+      prog = expr_valptr_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, false, true, idx,
+							     list->eval_prog_share_spec), idx, n);
+    }
+  return prog;
+}
+#endif /* SERVER_MODE || SA_MODE */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* CBRD-27361: an aggregate list's operand program on its first evaluation (qdata_agg_operand_prog_compile ()): bound
+ * from the image XASL generation wrote (the list head's operand_prog_image), or compiled here when the stream carries
+ * none -- wired-only programs are wanted: even when every operand is a plain TYPE_CONSTANT cell (buildlist
+ * aggregates -- the expressions were moved into the scan), the accumulate kernels still skip the per-row operand
+ * vector, its deep copy and the accumulate dispatch.  NULL: the operands keep their interpreted fetch.  *idx_out
+ * (malloc'd) receives each root's program root, bases[k] the k-th aggregate's first root or -1.  A debug build
+ * compiles here as well and asserts the client compiled the same program. */
+EXPR_PROG *
+expr_agg_prog_settle (cubthread::entry * thread_p, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+		      int **idx_out, int *bases)
+{
+  REGU_VARIABLE *roots[EXPR_MAX_STEPS];
+  const EXPR_COMPILE_ENV env = expr_server_env (thread_p, vd);
+  EXPR_PROG *prog = NULL;
+  int *idx;
+  int n;
+
+  *idx_out = NULL;
+  n = expr_agg_roots (&env, agg_list, false, roots, bases);
+#if !defined (NDEBUG)
+  {
+    /* the mirror decides the unpack's REGU_VARIABLE_AGG_OPERAND: a generation compile takes the same roots */
+    const int budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+    const cubxasl::aggregate_list_node * agg_p;
+    REGU_VARIABLE_LIST operand;
+
+    for (agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
+      {
+	for (operand = agg_p->operands; operand != NULL; operand = operand->next)
+	  {
+	    assert (expr_agg_expr_shape (&env, &operand->value, budget)
+		    == fetch_is_agg_expr_shape (&operand->value, budget));
+	  }
+      }
+  }
+#endif
+  if (n <= 0)
+    {
+      return NULL;
+    }
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return NULL;
+    }
+  if (agg_list->operand_prog_image == NULL)
+    {
+      prog = expr_agg_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx,
+							  agg_list->operand_prog_share_spec), idx, n);
+    }
+  else
+    {
+      if (agg_list->operand_prog_image_size > 0)
+	{
+	  prog = expr_prog_image_unpack (agg_list->operand_prog_image, agg_list->operand_prog_image_size, roots, n, idx,
+					 agg_list->operand_prog_share_spec);
+	}
+#if !defined (NDEBUG)
+      {
+	int idx_here[EXPR_MAX_STEPS];
+	EXPR_PROG *here = expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx_here,
+						   agg_list->operand_prog_share_spec);
+	int k;
+
+	here = expr_agg_prog_keep (here, idx_here, n);
+
+	/* an image binds over the tree it was written for, and both sides decide alike */
+	assert (agg_list->operand_prog_image_size == 0 || prog != NULL);
+	assert (expr_image_same_prog (prog, here));
+	for (k = 0; prog != NULL && here != NULL && k < n; k++)
+	  {
+	    assert (idx[k] == idx_here[k]);
+	  }
+	expr_prog_free (here);
+      }
+#endif
+      if (prog == NULL && agg_list->operand_prog_image_size > 0)
+	{
+	  /* an image this tree does not take: compile the list here */
+	  prog = expr_agg_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx,
+							      agg_list->operand_prog_share_spec), idx, n);
+	}
+    }
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return NULL;
+    }
+  *idx_out = idx;
+  return prog;
+}
+#endif /* SERVER_MODE || SA_MODE */

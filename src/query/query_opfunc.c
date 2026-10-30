@@ -340,76 +340,36 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
 }
 
 /*
- * qdata_valptr_prog_compile () - lazily compile a value pointer list's expressions into
+ * qdata_valptr_prog_compile () - lazily settle a value pointer list's expressions into
  *				  one program (expr_compile.h)
  *
- * Hidden columns are excluded: the consumers below never evaluate them.  Columns whose
- * fetch semantics depend on runtime regu flags (strict casts of INSERT/UPDATE value
- * lists, analytic windows) are excluded the same way and keep their per-column
- * interpreted fetch, as does every column the expression compiler cannot cover purely.
- * A program that would only repeat leaf fetches (no computing step) is dropped.
+ * The program XASL generation compiled for the list, or compiled here when the stream carries
+ * none (expr_valptr_prog_settle ()): its columns but the hidden ones and those whose fetch
+ * semantics depend on runtime regu flags, which keep their per-column interpreted fetch as does
+ * every column the expression compiler cannot cover purely.  A program that would only repeat
+ * leaf fetches (no computing step) is dropped.
  */
 static void
 qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)
 {
-  REGU_VARIABLE *roots[128];
-  REGU_VARIABLE_LIST reg_var_p;
   int *idx = NULL;
-  int n = 0, k;
   EXPR_PROG *prog;
 
-  if (valptr_list_p->valptr_cnt <= 0 || valptr_list_p->valptr_cnt > (int) DIM (roots))
+  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
+  if (valptr_list_p->valptr_cnt <= 0)
     {
-      valptr_list_p->eval_prog_state = 2;
       return;
     }
 
-  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
-
-  for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
-    {
-      bool excluded = (reg_var_p->value.flags
-		       & (REGU_VARIABLE_HIDDEN_COLUMN | REGU_VARIABLE_UPD_INS_LIST
-			  | REGU_VARIABLE_ANALYTIC_WINDOW)) != 0;
-
-      roots[n++] = excluded ? NULL : &reg_var_p->value;
-    }
-
-  idx = (int *) malloc (sizeof (int) * n);
+  idx = (int *) malloc (sizeof (int) * valptr_list_p->valptr_cnt);
   if (idx == NULL)
     {
       return;
     }
 
-  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, false, true, idx,
-				  valptr_list_p->eval_prog_share_spec);
+  prog = expr_valptr_prog_settle (thread_p, valptr_list_p, val_desc_p, idx);
   if (prog == NULL)
     {
-      free_and_init (idx);
-      return;
-    }
-  if (prog->n_compute == 0 && prog->n_shared == 0)
-    {
-      /* only leaf fetches: the per-column interpreted path does the same work without
-       * the program indirection (a column served from the data filter's slot is a
-       * computed value, even though no step of this program computes it) */
-      expr_prog_free (prog);
-      free_and_init (idx);
-      return;
-    }
-
-  /* keep only fully-covered columns on the program path; a column whose root fell out
-   * keeps the interpreted per-column fetch */
-  for (k = 0; k < n; k++)
-    {
-      if (idx[k] >= 0)
-	{
-	  break;
-	}
-    }
-  if (k == n)
-    {
-      expr_prog_free (prog);
       free_and_init (idx);
       return;
     }

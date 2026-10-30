@@ -1255,34 +1255,16 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
  *        Alternate accumulators can not be used for DISTINCT processing or
  *        the GROUP_CONCAT and MEDIAN function.
  */
-/* does the arithmetic tree under regu contain a division?  (the one fused-path shape whose result can
- * differ from the program's: the DOUBLE zero test, see qdata_agg_operand_prog_compile ()) */
-static bool
-qdata_agg_operand_has_div (const REGU_VARIABLE *regu)
-{
-  if (regu == NULL || regu->type != TYPE_INARITH || regu->value.arithptr == NULL)
-    {
-      return false;
-    }
-  if (regu->value.arithptr->opcode == T_DIV)
-    {
-      return true;
-    }
-  return qdata_agg_operand_has_div (regu->value.arithptr->leftptr)
-	 || qdata_agg_operand_has_div (regu->value.arithptr->rightptr);
-}
-
 /*
- * qdata_agg_operand_prog_compile () - lazily compile the operand expressions of a whole
+ * qdata_agg_operand_prog_compile () - lazily settle the operand expressions of a whole
  *				       aggregate list into one program (expr_compile.h)
  *
- * Only plain accumulating functions participate; the operands of any aggregate the
- * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones, and
- * the index-boundary MIN/MAX whose operand the loop stops fetching once it is_ended) are
- * left out so the unconditional per-row program evaluation cannot change behavior.
- * Roots the expression compiler cannot cover purely are excluded the same way (the
- * compiler is called without fallback roots), so every compiled step is side-effect
- * free.
+ * The program XASL generation compiled for the list, or one compiled here when the stream
+ * carries none (expr_agg_prog_settle ()).  Only plain accumulating functions participate
+ * (expr_agg_roots ()): the operands of any aggregate the per-row loop may skip are left out
+ * so the unconditional per-row program evaluation cannot change behavior.  Roots the
+ * expression compiler cannot cover purely are excluded the same way (the compiler is
+ * called without fallback roots), so every compiled step is side-effect free.
  *
  * The program evaluates the operands of EVERY participating aggregate before the
  * per-row loop accumulates the first one, whereas the interpreted loop fetches and
@@ -1303,161 +1285,35 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 				val_descr *val_desc_p)
 {
   cubxasl::aggregate_list_node *agg_p;
-  REGU_VARIABLE *roots[128];
-  int *idx = NULL;
-  int n = 0, k;
-  int depth_budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  int *idx = NULL, *bases;
+  int n_aggs = 0, k;
   EXPR_PROG *prog;
-  bool side_effect_covered = false, side_effect_uncovered = false;
 
   agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
 
-  /* collect candidate operands in evaluation order */
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
-      bool participates;
-
-      switch (agg_p->function)
-	{
-	case PT_SUM:
-	case PT_AVG:
-	case PT_MIN:
-	case PT_MAX:
-	case PT_COUNT:
-	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
-	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
-	   * the interpreted path so the program never evaluates an operand the interpreter
-	   * would not.  Nothing is lost: such a list is MIN/MAX-only
-	   * (pt_set_access_spec_for_aggregation ()) over a scan the executor stops after one
-	   * or two rows, where compiling would only cost. */
-	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
-	  break;
-	default:
-	  participates = false;
-	  break;
-	}
-
-      agg_p->operand_prog_base = -1;
-      if (!participates)
-	{
-	  /* an operand the program will not evaluate (GROUP_CONCAT's, say) keeps its place in the
-	   * interpreter's order: see the side-effect rule below the loop */
-	  for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
-	    {
-	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
-	    }
-	  continue;
-	}
-
-      agg_p->operand_prog_base = n;
-      for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
-	{
-	  bool word_operand;
-
-	  if (n >= (int) DIM (roots))
-	    {
-	      return;
-	    }
-	  /* A plain SUM/AVG over a NUMERIC {+,-,*} tree of plain leaves is the shape the accumulate
-	   * loop below already evaluates in CBRD-27178's word domain and adds to SUM_ACC without a
-	   * DB_VALUE (qdata_agg_expr_eval_numeric () -> numeric_sum_acc_add_expr_val ()); develop
-	   * applies the same test when it marks REGU_VARIABLE_AGG_OPERAND.  Compiling it instead
-	   * would pack a DB_VALUE per arithmetic step, coerce it to the result domain per row and
-	   * unpack it again at the accumulator, which made exactly this aggregate slower than
-	   * develop (review 2026-09-23); a word root inside the program was measured slower than
-	   * the loop's own branch as well (the program's dispatch on top of the same walk).  So the
-	   * operand stays out of the program (root -1) and the loop's word branch takes it.  The
-	   * other operands of the list keep the program, its leaf sharing and the filter values. */
-	  word_operand = ((agg_p->function == PT_SUM || agg_p->function == PT_AVG) && agg_p->option != Q_DISTINCT
-			  && operand->next == NULL && operand->value.type == TYPE_INARITH
-			  && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_NUMERIC
-			  && fetch_is_agg_expr_shape (&operand->value, depth_budget));
-	  /* The same for an operand that is only the cast the parser wraps a SUM/AVG argument in
-	   * (SUM (int_col) is a BIGINT, so the argument comes as CAST_WRAP (int_col AS BIGINT)):
-	   * develop marks it REGU_VARIABLE_AGG_OPERAND and its fused register path reads the
-	   * integer straight through the wrap (fetch.c).  The compiler used to decline such a
-	   * root, leaving it there; now that the wrap compiles, keep it there on purpose -- a cast
-	   * kernel would cost a DB_VALUE slot and a forced cast per row where the loop reads a
-	   * word, and that shape has not been measured against the loop. */
-	  if (!word_operand && operand->value.type == TYPE_INARITH
-	      && operand->value.value.arithptr->opcode == T_CAST_WRAP
-	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND))
-	    {
-	      word_operand = true;
-	    }
-	  /* And for a DOUBLE tree with a division that develop's fused register path takes
-	   * (fetch_peek_arith (), REGU_VARIABLE_AGG_OPERAND): that path divides doubles with its
-	   * own zero test (right == 0.0, fetch_agg_expr_eval_dbl ()) while the program has no
-	   * DOUBLE division kernel and its generic step goes through qdata_arith_dbval ()'s
-	   * DBL_EPSILON test, so SUM (d / x) over x = 1e-20 raised "divide by zero" where develop
-	   * returns a value (review 2026-10-15).  Only this shape differs: the INT trees and the
-	   * DOUBLE {+,-,*} trees compute the same in the fused registers, the kernels and the
-	   * interpreter, and keep the program (its leaf sharing and shared accumulators). */
-	  if (!word_operand && operand->value.type == TYPE_INARITH
-	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND)
-	      && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_DOUBLE
-	      && fetch_is_agg_expr_shape (&operand->value, depth_budget)
-	      && qdata_agg_operand_has_div (&operand->value))
-	    {
-	      word_operand = true;
-	    }
-	  if (word_operand)
-	    {
-	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
-	    }
-	  else
-	    {
-	      side_effect_covered |= expr_regu_has_side_effect (&operand->value);
-	    }
-	  roots[n++] = word_operand ? NULL : &operand->value;
-	}
+      n_aggs++;
     }
-
-  if (n == 0)
+  bases = (int *) malloc (sizeof (int) * n_aggs);
+  if (bases == NULL)
     {
       return;
     }
-  if (side_effect_covered && side_effect_uncovered)
+  for (k = 0; k < n_aggs; k++)
     {
-      /* The program evaluates its operands before the loop, so a serial or a session variable in
-       * a compiled operand would be consumed before one in an operand the loop still fetches in
-       * list order: MAX (s.NEXT_VALUE * 1), GROUP_CONCAT (s.NEXT_VALUE) gave 5 / '2,4,6' where
-       * the interpreter gives 6 / '1,3,5' (review 2026-10-15).  The same rule as the projection
-       * list's (expr_prog_compile_roots_impl ()): when side effects would end up on both sides
-       * of the program, the whole list stays interpreted. */
-      return;
+      bases[k] = -1;
     }
 
-  idx = (int *) malloc (sizeof (int) * n);
-  if (idx == NULL)
+  /* the roots, and the program XASL generation compiled for them or one compiled here */
+  prog = expr_agg_prog_settle (thread_p, agg_list_p, val_desc_p, &idx, bases);
+  for (agg_p = agg_list_p, k = 0; agg_p != NULL; agg_p = agg_p->next, k++)
     {
-      return;
+      agg_p->operand_prog_base = bases[k];
     }
-
-  /* wired-only programs are wanted here: even when every operand is a plain
-   * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
-   * scan), the accumulate kernels below still skip the per-row operand vector, its
-   * deep copy and the accumulate dispatch */
-  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx,
-				  agg_list_p->operand_prog_share_spec);
+  free_and_init (bases);
   if (prog == NULL)
     {
-      free_and_init (idx);
-      return;
-    }
-
-  /* an aggregate whose every operand was excluded keeps its base but reads -1 entries */
-  for (k = 0; k < n; k++)
-    {
-      if (idx[k] >= 0)
-	{
-	  break;
-	}
-    }
-  if (k == n)
-    {
-      expr_prog_free (prog);
-      free_and_init (idx);
       return;
     }
 
