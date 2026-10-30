@@ -163,6 +163,8 @@ struct heap_scancache
     int insert_hint_l1_pos;	/* position of insert_hint_vpid in the bestspace L1 arrays, -1 if unknown;
 				 * lets bestspace::update_freespace skip the sweep over all shards */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
+    OID referenced_pk_class;	/* the class has_referenced_pk was last decided for, or NULL */
+    bool has_referenced_pk;	/* whether a foreign key references referenced_pk_class's primary key */
 
     void start_area ();
     void end_area ();

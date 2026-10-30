@@ -184,6 +184,8 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 FUNC_PRED_UNPACK_INFO * func_preds,
 						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock);
 static bool locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id);
+static bool locator_scan_class_has_referenced_pk (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
+						  const OID * class_oid);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
 				      ATTR_ID * att_id, int n_att_id);
@@ -6653,6 +6655,27 @@ locator_class_has_referenced_pk (THREAD_ENTRY * thread_p, const OID * class_oid)
 
   return found;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * locator_scan_class_has_referenced_pk () - locator_class_has_referenced_pk (), decided once for each class a scan
+ *					      cache goes over
+ *   return: true when a foreign key references the class's primary key
+ *   thread_p(in): thread entry
+ *   scan_cache(in/out): the scan cache of the class's rows
+ *   class_oid(in): the class
+ */
+static bool
+locator_scan_class_has_referenced_pk (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const OID * class_oid)
+{
+  if (!OID_EQ (&scan_cache->referenced_pk_class, class_oid))
+    {
+      scan_cache->has_referenced_pk = locator_class_has_referenced_pk (thread_p, class_oid);
+      COPY_OID (&scan_cache->referenced_pk_class, class_oid);
+    }
+  return scan_cache->has_referenced_pk;
+}
+#endif /* SERVER_MODE */
 
 /*
  * locator_delete_force () - Delete the given object
@@ -14048,7 +14071,7 @@ exit:
   heap_clean_get_context (thread_p, &context);
 #if defined (SERVER_MODE)
   if (deletes_row && lock_acquired && scan == S_SUCCESS && !evaluated_false && recdes != NULL
-      && !OID_IS_ROOTOID (class_oid))
+      && !OID_IS_ROOTOID (class_oid) && locator_scan_class_has_referenced_pk (thread_p, scan_cache, class_oid))
     {
       bool page_unfixed = false;
 
