@@ -10714,6 +10714,14 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					{
 					  return S_SUCCESS;
 					}
+
+				      /* group by skip of a join: groupby_num () took its groups, the rest of the join is
+				       * not read (CBRD-27685) */
+				      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.gby_skip_state != NULL
+					  && xasl->proc.buildlist.gby_skip_state->stopped)
+					{
+					  return S_SUCCESS;
+					}
 				      scan_ptr_qualified = true;
 				    }
 				}

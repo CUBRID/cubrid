@@ -435,6 +435,14 @@ static int qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
+static double qo_groupby_limit_groups (QO_ENV * env);
+static bool qo_is_groupby_limit_term (PT_NODE * term);
+static QO_PLAN *qo_groupby_skip_driving_scan (QO_PLAN * plan);
+static bool qo_plan_is_groupby_skip_candidate (QO_PLAN * plan);
+static bool qo_plan_is_groupby_limit_join (QO_PLAN * plan, double *rows_per_group);
+static int qo_check_groupby_iscan (QO_PLAN * plan, void *arg);
+static bool qo_plan_drives_groupby_skip_only (QO_PLAN * plan);
+static QO_PLAN *qo_find_groupby_skip_outer_on_info (QO_INFO * info);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
@@ -658,6 +666,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->parallel_driven = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
+  plan->groupby_skip_join = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
@@ -1176,6 +1185,22 @@ qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg)
 }
 
 /*
+ * qo_check_groupby_iscan () - qo_walk_plan_tree () function that fails on a full index scan generated for the GROUP BY
+ *			       order (QO_SCANMETHOD_INDEX_GROUPBY_SCAN) other than the one that drives the GROUP BY skip
+ *   return: NO_ERROR or ER_FAILED
+ *   plan(in): a scan of the plan tree
+ *   arg(in): the scan that drives the GROUP BY skip of a join, or NULL
+ *
+ * Note: such a scan is kept below a join only to drive its GROUP BY skip (qo_check_plan_on_info ()); anywhere else it
+ *	 reads the whole index for an order nothing uses (CBRD-27685)
+ */
+static int
+qo_check_groupby_iscan (QO_PLAN * plan, void *arg)
+{
+  return (qo_is_iscan_from_groupby (plan) && plan != (QO_PLAN *) arg) ? ER_FAILED : NO_ERROR;
+}
+
+/*
  * qo_set_use_desc () - sets certain plans' use_descending index flag
  *
  * return: NO_ERROR
@@ -1436,22 +1461,51 @@ qo_top_plan_new (QO_PLAN * plan)
 	      parser_free_node (parser, group_sort_list);
 	    }
 
+	  if (groupby_skip && plan->plan_type == QO_PLANTYPE_JOIN && plan->info->planner->groupby_limit_groups > 0.0
+	      && qo_groupby_skip_driving_scan (plan) == NULL)
+	    {
+	      /* for a GROUP BY with a LIMIT the order of a join other than nested loops is not kept: it sorts, and
+	       * pays the sort (CBRD-27685) */
+	      groupby_skip = false;
+	    }
+
 	  if (groupby_skip)
 	    {
-	      /* if the plan is index_groupby, we validate the plan */
-	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
+	      QO_PLAN *driving = qo_groupby_skip_driving_scan (plan);
+
+	      if (driving == NULL)
 		{
-		  if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_GROUPBY))
+		  /* a join that cannot skip the GROUP BY keeps its plan as before, except that a full index scan
+		   * generated for the GROUP BY order (qo_check_plan_on_info ()) has nothing to give it */
+		  if (qo_walk_plan_tree (plan, qo_check_groupby_iscan, NULL) != NO_ERROR)
 		    {
-		      /* drop the plan if it wasn't validated */
 		      qo_worst_cost (plan);
 		      return plan;
 		    }
 		}
+	      /* if the plan is index_groupby, we validate the plan */
+	      else if ((qo_is_iscan_from_groupby (driving) || qo_is_iscan_from_orderby (driving))
+		       && !qo_validate_index_for_sort (plan->info->env, driving->plan_un.scan.index, SORT_GROUPBY))
+		{
+		  /* drop the plan if it wasn't validated */
+		  qo_worst_cost (plan);
+		  return plan;
+		}
 	      /* if all goes well, we have an indexed plan with group by skip! */
-	      if (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index)
+	      else if (driving == plan && plan->plan_un.scan.index)
 		{
 		  plan->plan_un.scan.index->head->groupby_skip = true;
+		}
+	      else if (driving != plan && driving->plan_un.scan.index)
+		{
+		  if (qo_walk_plan_tree (plan, qo_check_groupby_iscan, driving) != NO_ERROR)
+		    {
+		      qo_worst_cost (plan);
+		      return plan;
+		    }
+		  /* the index entry is shared with the plans this join competes with: it is marked when the join is
+		   * chosen (qo_planner_search ()) */
+		  plan->groupby_skip_join = true;
 		}
 	    }
 	  else
@@ -1463,7 +1517,9 @@ qo_top_plan_new (QO_PLAN * plan)
 		}
 
 	      /* if the order by is not skipped we drop the plan because it didn't helped us */
-	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
+	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan)
+		  || (plan->plan_type == QO_PLANTYPE_JOIN
+		      && qo_walk_plan_tree (plan, qo_check_groupby_iscan, NULL) != NO_ERROR))
 		{
 		  qo_worst_cost (plan);
 		  return plan;
@@ -4406,6 +4462,223 @@ qo_can_apply_limit_card (QO_ENV * env)
 }
 
 /*
+ * qo_groupby_limit_groups () - groups a GROUP BY query reads before its LIMIT stops the scan
+ *   return: LIMIT plus offset, GUESSED_BIND_LIMIT_CARD for a host variable, or 0 when the query reads every group
+ *   env(in):
+ *
+ * Note: the LIMIT of a GROUP BY becomes a groupby_num () term of HAVING (pt_limit_to_numbering_expr ()), or an
+ *	 orderby_num () term when the ORDER BY it came with was covered by the GROUP BY and removed; both stop the
+ *	 scan once the groups are taken. Another HAVING term leaves unknown how many groups qualify, so such a query
+ *	 does not count (CBRD-27685).
+ */
+static double
+qo_groupby_limit_groups (QO_ENV * env)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *tree, *group_by, *term;
+  DB_VALUE limit_val;
+  double groups;
+
+  if (env == NULL || (tree = QO_ENV_PT_TREE (env)) == NULL || (parser = QO_ENV_PARSER (env)) == NULL
+      || !PT_IS_SELECT (tree))
+    {
+      return 0.0;
+    }
+
+  group_by = tree->info.query.q.select.group_by;
+  if (group_by == NULL || group_by->flag.with_rollup || tree->info.query.limit == NULL
+      || tree->info.query.order_by != NULL || tree->info.query.all_distinct == PT_DISTINCT
+      || tree->info.query.q.select.connect_by != NULL || pt_has_analytic (parser, tree))
+    {
+      return 0.0;
+    }
+
+  for (term = tree->info.query.q.select.having; term != NULL; term = term->next)
+    {
+      if (!qo_is_groupby_limit_term (term))
+	{
+	  return 0.0;
+	}
+    }
+
+  if (pt_get_query_limit_value (parser, tree, &limit_val, true) != NO_ERROR)
+    {
+      return 0.0;
+    }
+  if (DB_IS_NULL (&limit_val))
+    {
+      return GUESSED_BIND_LIMIT_CARD;
+    }
+
+  groups = (double) db_get_bigint (&limit_val);
+  pr_clear_value (&limit_val);
+  return MAX (groups, 0.0);
+}
+
+/*
+ * qo_is_groupby_limit_term () - is a HAVING term a bound of groupby_num () that a LIMIT was rewritten to
+ *   return: true or false
+ *   term(in):
+ *
+ * Note: besides the term of the GROUP BY's own LIMIT (PT_EXPR_INFO_GROUPBYNUM_LIMIT), an ORDER BY the GROUP BY covers
+ *	 hands its orderby_num () bound to HAVING as a groupby_num () bound (qo_reduce_order_by_for ())
+ */
+static bool
+qo_is_groupby_limit_term (PT_NODE * term)
+{
+  PT_NODE *arg1, *arg2;
+
+  if (term == NULL || term->node_type != PT_EXPR || term->or_next != NULL)
+    {
+      return false;
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_GROUPBYNUM_LIMIT))
+    {
+      return true;
+    }
+
+  arg1 = term->info.expr.arg1;
+  arg2 = term->info.expr.arg2;
+  switch (term->info.expr.op)
+    {
+    case PT_AND:
+      /* LIMIT offset, count: groupby_num () > offset AND groupby_num () <= offset + count */
+      return qo_is_groupby_limit_term (arg1) && qo_is_groupby_limit_term (arg2);
+
+    case PT_LE:
+    case PT_LT:
+    case PT_GT:
+    case PT_GE:
+      return (arg1 != NULL && arg1->node_type == PT_FUNCTION
+	      && arg1->info.function.function_type == PT_GROUPBY_NUM
+	      && (PT_IS_CONST (arg2)
+		  || (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_PLUS
+		      && PT_IS_CONST (arg2->info.expr.arg1) && PT_IS_CONST (arg2->info.expr.arg2))));
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_groupby_skip_driving_scan () - the scan whose order a plan skips the GROUP BY in
+ *   return: the plan itself when it is a scan; for a GROUP BY that stops at its LIMIT, the outermost scan of a chain
+ *	     of nested-loop joins, which emit the rows in that scan's order unless an inner reads a class hierarchy or
+ *	     a partitioned class; NULL otherwise
+ *   plan(in):
+ *
+ * Note: a join is limited to a GROUP BY with a LIMIT (CBRD-27685). Without one, the join skips nothing that its
+ *	 parallel scan and sort would not do faster, and the cost of the sort it saves is not priced to tell
+ *	 (CBRD-27728).
+ */
+static QO_PLAN *
+qo_groupby_skip_driving_scan (QO_PLAN * plan)
+{
+  QO_PLAN *inner;
+  BITSET_ITERATOR iter;
+  int i;
+
+  if (plan->plan_type == QO_PLANTYPE_JOIN && plan->info->planner->groupby_limit_groups > 0.0)
+    {
+      while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+	{
+	  /* an inner that reads a class hierarchy or the partitions of a class reads them as scan blocks one after
+	   * another, each over the whole outer scan (qexec_next_scan_block_iterations ()): the rows of a group do not
+	   * come together */
+	  inner = plan->plan_un.join.inner;
+	  for (i = bitset_iterate (&(inner->info->nodes), &iter); i != -1; i = bitset_next_member (&iter))
+	    {
+	      if (QO_NODE_IS_CLASS_HIERARCHY (QO_ENV_NODE (plan->info->env, i)))
+		{
+		  return NULL;
+		}
+	    }
+	  plan = plan->plan_un.join.outer;
+	}
+    }
+
+  return (plan->plan_type == QO_PLANTYPE_SCAN) ? plan : NULL;
+}
+
+/*
+ * qo_plan_is_groupby_skip_candidate () - can a scan below a join drive a GROUP BY skip that stops at the LIMIT
+ *   return: true or false
+ *   plan(in): a scan of one node of the join
+ *
+ * Note: the checks of qo_top_plan_new () that a scan plan answers by itself; the top plan decides.
+ */
+static bool
+qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
+{
+  QO_ENV *env;
+  PARSER_CONTEXT *parser;
+  PT_NODE *tree, *group_sort_list;
+  bool is_index_w_prefix = false, groupby_skip = false;
+  int t;
+
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->info == NULL
+      || plan->info->planner->groupby_limit_groups <= 0.0 || !qo_is_interesting_order_scan (plan))
+    {
+      return false;
+    }
+
+  env = plan->info->env;
+  parser = QO_ENV_PARSER (env);
+  tree = QO_ENV_PT_TREE (env);
+
+  for (t = 0; t < (signed) plan->info->planner->T; t++)
+    {
+      if (QO_TERM_CLASS (&plan->info->planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  return false;		/* an inst_num () is evaluated before the GROUP BY */
+	}
+    }
+
+  group_sort_list = qo_plan_compute_iscan_sort_list (plan, tree->info.query.q.select.group_by, &is_index_w_prefix,
+						     false);
+  if (group_sort_list == NULL)
+    {
+      return false;
+    }
+
+  /* ascending only: qo_top_plan_new () tries a descending scan for a plan that is a scan itself, not for a join */
+  if (!is_index_w_prefix)
+    {
+      groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, tree->info.query.q.select.group_by, tree);
+    }
+
+  parser_free_node (parser, group_sort_list);
+  return groupby_skip;
+}
+
+/*
+ * qo_plan_is_groupby_limit_join () - does a nested-loop join stop where its GROUP BY skip takes the LIMIT groups
+ *   return: true or false
+ *   plan(in): the join
+ *   rows_per_group(out): rows of the driving scan per group, from its index statistics
+ */
+static bool
+qo_plan_is_groupby_limit_join (QO_PLAN * plan, double *rows_per_group)
+{
+  QO_PLAN *driving;
+
+  if (plan->plan_type != QO_PLANTYPE_JOIN || !QO_IS_NL_JOIN (plan) || !QO_PLAN_HAS_LIMIT (plan))
+    {
+      return false;
+    }
+
+  driving = qo_groupby_skip_driving_scan (plan);
+  if (driving == NULL || driving->plan_un.scan.index == NULL || !qo_plan_is_groupby_skip_candidate (driving))
+    {
+      return false;
+    }
+
+  *rows_per_group = qo_groupby_skip_rows_per_group (driving, QO_ENV_PT_TREE (plan->info->env));
+  return *rows_per_group < DBL_MAX;
+}
+
+/*
  * qo_mackert_lohman_pages () - distinct pages that N random probes touch in a T-page object
  *   return: estimated page count
  *   T(in): object size in pages
@@ -4503,7 +4776,7 @@ qo_parallel_cost_divisor (QO_PLAN * join)
 {
   PT_NODE *tree;
   double degree = (double) prm_get_integer_value (PRM_ID_PARALLELISM);
-  double divisor;
+  double divisor, rows_per_group;
 
   if (join->info == NULL || join->info->planner == NULL || join->info->env == NULL)
     {
@@ -4526,6 +4799,12 @@ qo_parallel_cost_divisor (QO_PLAN * join)
 
   divisor = MIN (QO_PARALLEL_COST_DIVISOR, degree / 2.0);
   if (divisor <= 1.0 || (QO_PLAN_HAS_LIMIT (join) && join->info->planner->can_apply_limit_card))
+    {
+      return 1.0;
+    }
+
+  /* a GROUP BY skip that stops at the LIMIT groups scans serially (scan_check_parallel_scan_possible ()) */
+  if (join->plan_type == QO_PLANTYPE_JOIN && qo_plan_is_groupby_limit_join (join, &rows_per_group))
     {
       return 1.0;
     }
@@ -4852,7 +5131,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
   double guessed_result_cardinality, limit_val, outer_card, required_card, inner_scan_card, inner_fetch_rows;
-  double divisor;
+  double divisor, rows_per_group;
 
   inner = planp->plan_un.join.inner;
 
@@ -4883,6 +5162,25 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
+    }
+  else if (qo_plan_is_groupby_limit_join (planp, &rows_per_group))
+    {
+      /* a GROUP BY skip stops after the LIMIT groups (CBRD-27685): the outer rows of those groups, of which an
+       * inner join keeps the share that finds a match */
+      if (outer->plan_type == QO_PLANTYPE_SCAN)
+	{
+	  required_card = MAX (planp->info->planner->groupby_limit_groups * rows_per_group / (outer->info)->hit_prob,
+			       1.0);
+	  guessed_result_cardinality = MIN (required_card, (outer->info)->cardinality);
+	}
+      else
+	{
+	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
+	}
+      outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
+      planp->limit_nljoin_guessed_card =
+	MAX (1.0, guessed_result_cardinality * ((planp->info)->cardinality / outer_card));
+      guessed_result_cardinality = MAX (1.0, guessed_result_cardinality);
     }
   else if (QO_PLAN_HAS_LIMIT (planp)
 	   && (planp->info->planner->can_apply_limit_card || qo_plan_is_orderby_skip_candidate (planp)))
@@ -7383,6 +7681,13 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
   for (i = 0; i < planvec->nplans; i++)
     {
       cmp = qo_plan_cmp_parallel_drive (planvec->plan[i], plan, qo_plan_cmp (planvec->plan[i], plan));
+      if (cmp != PLAN_COMP_EQ
+	  && qo_plan_drives_groupby_skip_only (planvec->plan[i]) != qo_plan_drives_groupby_skip_only (plan))
+	{
+	  /* a plan that only a GROUP BY skip of the joins above can use and a plan that any join can use do not
+	   * replace each other (qo_plan_drives_groupby_skip_only ()) */
+	  cmp = PLAN_COMP_UNK;
+	}
 
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_GT)
@@ -7660,6 +7965,65 @@ qo_find_best_parallel_driving_plan_on_info (QO_INFO * info)
 }
 
 /*
+ * qo_plan_drives_groupby_skip_only () - is a plan of a part of the join kept only to drive a GROUP BY skip
+ *   return: true when the outermost scan of its nested loops reads a whole index for the GROUP BY order
+ *	     (QO_SCANMETHOD_INDEX_GROUPBY_SCAN kept by qo_check_plan_on_info ())
+ *   plan(in):
+ *
+ * Note: such a plan is worth something only as the outer of the nested loops above it, which stop at the LIMIT
+ *	 groups (CBRD-27685). Like a plan that drives a parallel block (qo_plan_cmp_parallel_drive ()), it is kept beside
+ *	 the others instead of replacing them, is not the best plan of its info, and the nested-loop joins also try it
+ *	 as their outer (qo_find_groupby_skip_outer_on_info ()). The top plan is compared as any other.
+ */
+static bool
+qo_plan_drives_groupby_skip_only (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->top_rooted || plan->info == NULL || plan->info->planner->groupby_limit_groups <= 0.0)
+    {
+      return false;
+    }
+
+  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      plan = plan->plan_un.join.outer;
+    }
+
+  return qo_is_iscan_from_groupby (plan);
+}
+
+/*
+ * qo_find_groupby_skip_outer_on_info () - the cheapest unordered plan kept only to drive a GROUP BY skip
+ *   return: the plan, or NULL when none is kept
+ *   info(in):
+ */
+static QO_PLAN *
+qo_find_groupby_skip_outer_on_info (QO_INFO * info)
+{
+  QO_PLANVEC *pv = &info->best_no_order;
+  QO_PLAN *best_plan = NULL;
+  double best_cost = 0.0, cost;
+  int i;
+
+  for (i = 0; i < pv->nplans; i++)
+    {
+      if (!qo_plan_drives_groupby_skip_only (pv->plan[i]))
+	{
+	  continue;
+	}
+
+      cost = pv->plan[i]->fixed_cpu_cost + pv->plan[i]->fixed_io_cost + pv->plan[i]->variable_cpu_cost
+	+ pv->plan[i]->variable_io_cost;
+      if (best_plan == NULL || cost < best_cost)
+	{
+	  best_plan = pv->plan[i];
+	  best_cost = cost;
+	}
+    }
+
+  return best_plan;
+}
+
+/*
  * qo_find_best_plan_on_planvec () -
  *   return:
  *   planvec(in):
@@ -7689,11 +8053,21 @@ qo_find_best_plan_on_planvec (QO_PLANVEC * planvec, double n)
       variable = plan->variable_cpu_cost + plan->variable_io_cost;
       cost = fixed + (n * variable);
 
-      if (cost < best_cost)
+      /* a plan that only a GROUP BY skip can use is not the best while another is kept (CBRD-27685) */
+      if (qo_plan_drives_groupby_skip_only (best_plan) != qo_plan_drives_groupby_skip_only (plan))
 	{
-	  best_plan = plan;
-	  best_cost = cost;
+	  if (qo_plan_drives_groupby_skip_only (plan))
+	    {
+	      continue;
+	    }
 	}
+      else if (cost >= best_cost)
+	{
+	  continue;
+	}
+
+      best_plan = plan;
+      best_cost = cost;
     }
 
   return best_plan;
@@ -7975,8 +8349,10 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
       return 0;
     }
 
-  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
-  if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
+  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan.
+   * Below a join it is kept when it can drive the join's GROUP BY skip up to the LIMIT (CBRD-27685). */
+  if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip
+      && (plan->top_rooted || !qo_plan_is_groupby_skip_candidate (plan)))
     {
       qo_plan_release (plan);
       return 0;
@@ -8665,15 +9041,31 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   {
     QO_PLAN *par_outer_plan = qo_find_best_parallel_driving_plan_on_info (outer_plan->info);
 
+    QO_PLAN *gby_outer_plan = qo_find_groupby_skip_outer_on_info (outer_plan->info);
+    QO_INFO *inner_info = inner_plan->info;
+
     if (par_outer_plan != NULL && par_outer_plan != outer_plan)
       {
-	inner_plan =
-	  qo_find_best_nljoin_inner_plan_on_info (par_outer_plan, inner_plan->info, join_type, idx_join_plan_n);
+	inner_plan = qo_find_best_nljoin_inner_plan_on_info (par_outer_plan, inner_info, join_type, idx_join_plan_n);
 	if (inner_plan != NULL)
 	  {
 	    n +=
 	      qo_check_plan_on_info (info,
 				     qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, par_outer_plan, inner_plan,
+						  nl_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+						  hash_terms));
+	  }
+      }
+
+    /* and from the outer kept to drive a GROUP BY skip (qo_plan_drives_groupby_skip_only ()) */
+    if (gby_outer_plan != NULL && gby_outer_plan != outer_plan)
+      {
+	inner_plan = qo_find_best_nljoin_inner_plan_on_info (gby_outer_plan, inner_info, join_type, idx_join_plan_n);
+	if (inner_plan != NULL)
+	  {
+	    n +=
+	      qo_check_plan_on_info (info,
+				     qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, gby_outer_plan, inner_plan,
 						  nl_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
 						  hash_terms));
 	  }
@@ -9085,7 +9477,7 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   QO_NODE_INDEX *node_indexp;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
-  QO_PLAN *outer_plan, *par_outer_plan;
+  QO_PLAN *outer_plan, *par_outer_plan, *gby_outer_plan;
   int i, n = 0;
   BITSET_ITERATOR iter;
   int t;
@@ -9106,6 +9498,13 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   if (par_outer_plan == outer_plan)
     {
       par_outer_plan = NULL;
+    }
+
+  /* and from the outer kept to drive a GROUP BY skip (qo_plan_drives_groupby_skip_only ()) */
+  gby_outer_plan = qo_find_groupby_skip_outer_on_info (outer);
+  if (gby_outer_plan == outer_plan)
+    {
+      gby_outer_plan = NULL;
     }
 
 #if 0				/* JOIN_FOLLOW_RESTRICTION */
@@ -9192,6 +9591,12 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 		qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
 					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
 	    }
+	  if (gby_outer_plan != NULL)
+	    {
+	      n +=
+		qo_generate_join_index_scan (info, join_type, gby_outer_plan, inner, nodep, ni_entryp,
+					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+	    }
 	}
     }
 
@@ -9229,6 +9634,12 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 		    {
 		      n +=
 			qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
+						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+		    }
+		  if (gby_outer_plan != NULL)
+		    {
+		      n +=
+			qo_generate_join_index_scan (info, join_type, gby_outer_plan, inner, nodep, ni_entryp,
 						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
 		    }
 		}
@@ -9465,6 +9876,7 @@ qo_alloc_planner (QO_ENV * env)
 
   planner->cleanup_needed = true;
   planner->can_apply_limit_card = qo_can_apply_limit_card (env);
+  planner->groupby_limit_groups = qo_groupby_limit_groups (env);
 
   return planner;
 }
@@ -12083,6 +12495,15 @@ qo_search_planner (QO_PLANNER * planner)
     }
 
   qo_walk_plan_tree (plan, qo_unset_hint_use_desc_idx, NULL);
+
+  if (plan->groupby_skip_join)
+    {
+      /* the chosen join skips the GROUP BY in its driving scan's order (CBRD-27685) */
+      QO_PLAN *driving = qo_groupby_skip_driving_scan (plan);
+
+      assert (driving != NULL && driving->plan_un.scan.index != NULL);
+      driving->plan_un.scan.index->head->groupby_skip = true;
+    }
 
 end:
 
