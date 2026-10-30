@@ -12135,19 +12135,33 @@ stream_from_holds_handle (INT64 handle)
 }
 
 #if defined(CS_MODE)
-/* the error of a request that reached the server: the code its reply carried, or the one its error reply staged */
+/*
+ * stream_request_error () - The error of a stream request that reached the server
+ *   return: the code its reply carried, or the one its error reply staged
+ *
+ * A request that became a deadlock victim was rolled back by the server inside it, with every stream and
+ * download of the transaction; the client side ends the transaction too, as after any other request.
+ */
 static int
 stream_request_error (int req_error, int reply_code)
 {
-  int error_code;
+  int error_code = reply_code;
 
-  if (!req_error)
+  if (req_error)
     {
-      return reply_code;
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	}
     }
 
-  error_code = er_errid ();
-  return error_code != NO_ERROR ? error_code : ER_FAILED;
+  if (error_code == ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_only_client (false);
+    }
+
+  return error_code;
 }
 #endif /* CS_MODE */
 
@@ -12545,16 +12559,20 @@ stream_from_read_open (int stream_kind, const char *config, int config_len, int 
       ptr = or_unpack_int64 (ptr, handle);
     }
   rc = stream_request_error (req_error, rc);
-  if (rc == NO_ERROR && *handle != 0)
+  rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, first_max, nread);
+  if (*handle != 0)
     {
-      rc = stream_download_add (*handle);
+      if (rc == NO_ERROR)
+	{
+	  rc = stream_download_add (*handle);
+	}
+      /* a handle the caller is not told about would tie the transaction with nothing to release it */
       if (rc != NO_ERROR)
 	{
 	  (void) stream_from_release (*handle);
 	  *handle = 0;
 	}
     }
-  rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, first_max, nread);
 
   if (data_reply != NULL)
     {
