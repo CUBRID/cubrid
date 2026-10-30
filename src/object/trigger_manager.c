@@ -224,6 +224,7 @@ static int check_semantics (TR_TRIGGER * trigger);
 static PT_NODE *tr_check_correlation (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *walk_on);
 
 static int tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoint);
+static int drop_block_procedure (TR_TRIGGER * trigger);
 
 static bool value_as_boolean (DB_VALUE * value);
 static int signal_evaluation_error (TR_TRIGGER * trigger, int error);
@@ -4059,6 +4060,45 @@ tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag)
 /* TRIGGER REMOVAL */
 
 /*
+ * drop_block_procedure() - Drops the internal procedure of a PL/CSQL block action with its trigger.
+ *    return: error code
+ *    trigger(in/out): trigger structure
+ *
+ * Note:
+ *    The trigger is read again before the procedure is dropped.
+ *    Another transaction may have changed the owner after the trigger was cached, which renames the procedure.
+ *    The procedure belongs to the trigger owner, who may not be the user dropping the class of the trigger.
+ */
+static int
+drop_block_procedure (TR_TRIGGER * trigger)
+{
+  MOP save_user;
+  int error = NO_ERROR;
+
+  error = validate_trigger (trigger);
+  if (error != NO_ERROR || trigger->block_sp_name == NULL)
+    {
+      return error;
+    }
+
+  save_user = Au_user;
+  error = AU_SET_USER (trigger->owner);
+  if (error == NO_ERROR)
+    {
+      error = jsp_drop_system_generated_procedure (trigger->block_sp_name);
+    }
+  AU_SET_USER (save_user);
+
+  if (error == ER_SP_NOT_EXIST)
+    {
+      er_clear ();
+      error = NO_ERROR;
+    }
+
+  return error;
+}
+
+/*
  * tr_drop_trigger_internal() - This is a work function for tr_drop_trigger and is also called by tr_check_rollback_event
  *                              to get rid of triggers created during the current transaction
  *    return: error code
@@ -4120,24 +4160,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	{
 	  if (!rollback && trigger->block_sp_name != NULL)
 	    {
-	      /*
-	       * The internal procedure of a PL/CSQL block action goes with the trigger.
-	       * It belongs to the trigger owner, who may not be the user dropping the class of the trigger.
-	       */
-	      MOP save_user = Au_user;
-
-	      error = AU_SET_USER (trigger->owner);
-	      if (error == NO_ERROR)
-		{
-		  error = jsp_drop_system_generated_procedure (trigger->block_sp_name);
-		}
-	      AU_SET_USER (save_user);
-
-	      if (error == ER_SP_NOT_EXIST)
-		{
-		  er_clear ();
-		  error = NO_ERROR;
-		}
+	      error = drop_block_procedure (trigger);
 	    }
 
 	  if (!rollback && error == NO_ERROR)
