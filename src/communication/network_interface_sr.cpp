@@ -12646,7 +12646,12 @@ stream_drop_session (THREAD_ENTRY *thread_p, stream_session *session, bool abort
 {
   if (aborted)
     {
+      /* the abort undoes what the session wrote, and the undo sets and clears
+       * errors of its own; the error that ended the stream is the one the
+       * reply has to carry */
+      er_stack_push ();
       session->abort (thread_p);
+      er_stack_pop ();
     }
   delete session;
   (void) session_set_stream_session (thread_p, NULL, -1);
