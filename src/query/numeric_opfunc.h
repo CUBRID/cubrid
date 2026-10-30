@@ -265,6 +265,9 @@ extern bool numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMER
 				  bool flip_right_sign, NUMERIC_AGG_EXPR_VAL * out);
 extern void numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer);
 
+extern bool numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool half_up, DB_VALUE * result);
+extern bool numeric_db_value_floor_ceil (const DB_VALUE * value, bool is_floor, DB_VALUE * result);
+
 extern int numeric_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
 extern void numeric_sum_acc_load_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
 extern int numeric_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other);

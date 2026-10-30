@@ -5324,6 +5324,133 @@ numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer)
 }
 
 /*
+ * numeric_make_from_u128 () - pack a 128-bit coefficient with the given precision and scale
+ */
+static void
+numeric_make_from_u128 (DB_VALUE * result, uint128_t coefficient, int precision, int scale, bool is_negative)
+{
+  uint64_t w[NUMERIC_AS_WORDS];
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
+
+  w[0] = 0;
+  w[1] = (uint64_t) (coefficient >> 64);
+  w[2] = (uint64_t) coefficient;
+  numeric_words_to_bytes (w, NUMERIC_AS_WORDS, result_buf);
+
+  db_make_numeric (result, result_buf, precision, scale, DB_NUMERIC_BUF_SIZE, is_negative && coefficient != 0, true);
+}
+
+/*
+ * numeric_db_value_round_to_place () - ROUND or TRUNC of a NUMERIC to a decimal place, in binary
+ *   return: true when result was produced, false to use the decimal-string code
+ *   value(in)  : NUMERIC value, not NULL
+ *   place(in)  : digits kept after the decimal point (negative: before it)
+ *   half_up(in): true for ROUND (half up), false for TRUNC
+ *   result(out): result
+ *
+ * Note: Gives what db_round_dbval () and db_trunc_dbval () build on the decimal string: the
+ *       scale - place lowest coefficient digits become zero, ROUND adds one unit at that place
+ *       when the first dropped digit is 5 or more, the precision and scale of the value are
+ *       kept, and a negative place count past the scale returns the value itself. Taken only
+ *       for coefficients below 2^128 and a scale of 0 or more, where the result cannot reach
+ *       the 41 digits the string code rescales.
+ */
+bool
+numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool half_up, DB_VALUE * result)
+{
+  NUMERIC_AGG_EXPR_VAL v;
+  int precision, scale;
+  uint128_t coefficient;
+
+  if (!numeric_word_from_dbv (value, &v) || v.scale < 0)
+    {
+      return false;
+    }
+  db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
+
+  /* zero the cleared lowest digits; the comparisons avoid overflow for any place */
+  if (place > scale)
+    {
+      *result = *value;
+      return true;
+    }
+  if (place < (DB_BIGINT) scale - NUMERIC_AGG_EXPR_POW10_MAX_EXP)
+    {
+      /* 39 or more digits cleared from a coefficient below 10^39: every digit goes, and the
+       * first dropped digit (10^38 place or higher) is below 5 */
+      coefficient = 0;
+    }
+  else
+    {
+      int cleared = (int) (scale - place);
+      uint128_t unit = _gv_numeric_agg_expr_pow10_u128[cleared];
+
+      coefficient = v.coefficient / unit * unit;
+      if (half_up && cleared > 0 && (v.coefficient - coefficient) / _gv_numeric_agg_expr_pow10_u128[cleared - 1] >= 5
+	  && __builtin_add_overflow (coefficient, unit, &coefficient))
+	{
+	  return false;
+	}
+    }
+
+  numeric_make_from_u128 (result, coefficient, precision, scale, v.is_negative);
+  return true;
+}
+
+/*
+ * numeric_db_value_floor_ceil () - FLOOR or CEIL of a NUMERIC with a fraction, in binary
+ *   return: true when result was produced, false to use the decimal-string code
+ *   value(in)  : NUMERIC value, not NULL
+ *   is_floor(in): true for FLOOR, false for CEIL
+ *   result(out): result
+ *
+ * Note: Gives what db_floor_dbval () and db_ceil_dbval () build on the decimal string: the
+ *       fraction digits become zero and the scale is kept; moving away from zero adds one at
+ *       the units digit, and when that carry runs past the 10^(precision - 1) digit the
+ *       precision becomes the carried digit's position + 1 (at most 40). Taken only for
+ *       coefficients below 2^128 and a scale from 1 to 38.
+ */
+bool
+numeric_db_value_floor_ceil (const DB_VALUE * value, bool is_floor, DB_VALUE * result)
+{
+  NUMERIC_AGG_EXPR_VAL v;
+  int precision, scale;
+  uint128_t unit, integral, coefficient;
+
+  if (!numeric_word_from_dbv (value, &v) || v.scale <= 0 || v.scale > NUMERIC_AGG_EXPR_POW10_MAX_EXP)
+    {
+      return false;
+    }
+  db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
+
+  unit = _gv_numeric_agg_expr_pow10_u128[scale];
+  integral = v.coefficient / unit;
+  coefficient = integral * unit;
+
+  if (coefficient != v.coefficient && v.is_negative == is_floor)
+    {
+      /* the carry stops at the first integral digit below 9 */
+      int carried = scale;
+
+      for (; integral % 10 == 9; integral /= 10)
+	{
+	  carried++;
+	}
+      if (__builtin_add_overflow (coefficient, unit, &coefficient))
+	{
+	  return false;
+	}
+      if (carried >= precision)
+	{
+	  precision = MIN (carried + 1, DB_MAX_NUMERIC_PRECISION);
+	}
+    }
+
+  numeric_make_from_u128 (result, coefficient, precision, scale, v.is_negative);
+  return true;
+}
+
+/*
  * numeric_sum_acc_snapshot () - round and pack the value of an active NUMERIC
  *                               accumulator into a DB_VALUE
  *   return: NO_ERROR or ER_IT_DATA_OVERFLOW

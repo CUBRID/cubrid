@@ -155,6 +155,11 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	    bool decrement = false;
 	    bool is_value_negative = false;
 
+	    if (numeric_db_value_floor_ceil (value, true, result))
+	      {
+		break;
+	      }
+
 	    num_str_p = num_str + 1;
 	    numeric_coerce_num_to_dec_str (value, num_str_p);
 	    num_str_len = strlen (num_str_p);
@@ -322,6 +327,11 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	    int num_str_len = 0;
 	    bool increment = false;
 	    bool is_value_negative = false;
+
+	    if (numeric_db_value_floor_ceil (value, false, result))
+	      {
+		break;
+	      }
 
 	    num_str_p = num_str + 1;
 	    numeric_coerce_num_to_dec_str (value, num_str_p);
@@ -2516,12 +2526,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       db_make_double (result, (double) dtmp);
       break;
     case DB_TYPE_NUMERIC:
-      memset (num_string, 0, sizeof (num_string));
-      numeric_coerce_num_to_dec_str (value1, num_string);
-
-      db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
-      end = num_string + strlen (num_string);
-
       if (type2 == DB_TYPE_BIGINT)
 	{
 	  bi2 = db_get_bigint (value2);
@@ -2538,6 +2542,17 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  bi2 = (DB_BIGINT) db_get_double (value2);
 	}
+
+      if (numeric_db_value_round_to_place (value1, bi2, true, result))
+	{
+	  break;
+	}
+
+      memset (num_string, 0, sizeof (num_string));
+      numeric_coerce_num_to_dec_str (value1, num_string);
+
+      db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
+      end = num_string + strlen (num_string);
       ptr = end - s + bi2;
 
       if (end < ptr)
@@ -3554,6 +3569,11 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	char *ptr, *end;
 	int p, s;
 	bool is_value_negative = false;
+
+	if (numeric_db_value_round_to_place (value1, bi2, false, result))
+	  {
+	    break;
+	  }
 
 	memset (num_string, 0, sizeof (num_string));
 	numeric_coerce_num_to_dec_str (value1, num_string);
