@@ -13053,6 +13053,10 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
   else
     {
+      /* Before the factory runs: a transaction's first snapshot holds vacuum back until the transaction ends, so
+       * what the source can see now stays for as long as its handle can live. */
+      (void) logtb_get_mvcc_snapshot (thread_p);
+
       buf = stream_read_buffer (first_max, &error_code);
       if (error_code == NO_ERROR)
 	{
