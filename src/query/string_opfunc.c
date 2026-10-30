@@ -56,6 +56,9 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+#include "domain_rules.h"
+#endif
 
 #include <algorithm>
 #include <string>
@@ -254,6 +257,10 @@ typedef enum
   COMPOSITE_MILLISECOND,
   COMPOSITE_MAX
 } EN_COMPOSITE_POS;
+
+/* milliseconds of 10000 years: a larger amount of any interval unit leaves the date range, so clamping to it
+ * keeps the result an error and the date arithmetic free of overflow */
+#define INTERVAL_AMOUNT_MAX ((DB_BIGINT) 10000 * 366 * 24 * 60 * 60 * 1000)
 
 static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 static char db_string_escape_char (char c);
@@ -2611,7 +2618,7 @@ db_string_sha_two (DB_VALUE const *src, DB_VALUE const *hash_len, DB_VALUE * res
   if (QSTR_IS_ANY_CHAR (src_type))
     {
       error_status =
-	crypt_sha_two (NULL, db_get_string (src), db_get_string_length (src), len, &result_strp, &result_len);
+	crypt_sha_two (NULL, db_get_string (src), db_get_string_length (src), len, &result_strp, &result_len, true);
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -7317,6 +7324,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
   int collation_id;
   TZ_ID tz_id = 0;
   DB_DATETIMETZ ldatetimetz;
+  bool zone_to_string = false;
 
   if (DB_IS_NULL (left) || DB_IS_NULL (right))
     {
@@ -7529,7 +7537,12 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   /* depending on the first argument, the result is either result_date or result_time */
 
-  if (domain != NULL)
+  /* the compiler types a string column or expression VARCHAR (the manual's "date/time string" row), and
+   * the zone such a string carries goes into the result string. A string literal, bind or session variable keeps the
+   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and XASL generation
+   * types a bind or a session variable's read by its value. */
+  zone_to_string = domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && result_type == DB_TYPE_DATETIMETZ;
+  if (domain != NULL && !zone_to_string)
     {
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
@@ -7587,6 +7600,20 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	if (error != NO_ERROR)
 	  {
 	    goto error_return;
+	  }
+	if (zone_to_string)
+	  {
+	    res_s = (char *) db_private_alloc (NULL, DATETIMETZ_BUF_SIZE);
+	    if (res_s == NULL)
+	      {
+		error = ER_DATE_CONVERSION;
+		goto error_return;
+	      }
+	    db_datetimetz_to_string (res_s, DATETIMETZ_BUF_SIZE, &dt_tz.datetime, &dt_tz.tz_id);
+	    db_make_varchar (result, strlen (res_s), res_s, strlen (res_s), TP_DOMAIN_CODESET (domain),
+			     TP_DOMAIN_COLLATION (domain));
+	    result->need_clear = true;
+	    break;
 	  }
 	db_make_datetimetz (result, &dt_tz);
 	break;
@@ -10732,6 +10759,8 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 	DB_DATE date;
 
 	dt_tz_p = &dt;
+	/* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+	 * (as STR_TO_DATE does); its result type is fixed */
 	if (type != DB_TYPE_DATETIME && type != DB_TYPE_DATE)
 	  {
 	    tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
@@ -11914,6 +11943,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 
       db_make_null (&new_time_value);
+      /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+       * (as STR_TO_DATE does); its result type is fixed */
       TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -12566,6 +12597,18 @@ int
 db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
 	    DB_VALUE * result_str, const TP_DOMAIN * domain)
 {
+  return db_to_char_with_converter (src_value, format_or_length, lang_str, result_str, domain, DB_TYPE_NULL, NULL);
+}
+
+/*
+ * db_to_char_with_converter () - db_to_char with CBRD-27583: the converter unpack planned for a string
+ *   src_value's type into domain (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
+ */
+int
+db_to_char_with_converter (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
+			   DB_VALUE * result_str, const TP_DOMAIN * domain, DB_TYPE src_conv_type,
+			   TP_VALUE_CONVERTER src_conv)
+{
   int error_status = NO_ERROR;
   DB_TYPE type;
 
@@ -12591,7 +12634,13 @@ db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const
 	}
       else
 	{
-	  error_status = db_value_coerce (src_value, result_str, domain);
+	  /* db_value_coerce's cast */
+	  const TP_DOMAIN_STATUS status =
+	    tp_value_cast_with_converter (src_value, result_str, domain, true, src_conv_type, src_conv);
+	  if (status != DOMAIN_COMPATIBLE)
+	    {
+	      error_status = tp_domain_status_er_set (status, ARG_FILE_LINE, src_value, domain);
+	    }
 	}
 
       return error_status;
@@ -16724,6 +16773,14 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
+      /* a host variable is bound here without a cast (late binding), so the format can be any type */
+      if (!is_char_string (format_str))
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto exit;
+	}
+
       /* compute allocation size : trade-off exact size (and small mem usage) vs speed */
       result_len = (db_get_string_length (format_str) * QSTR_TO_CHAR_LEN_MULTIPLIER_RATIO);
 
@@ -20294,7 +20351,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
   /* simple case, where just a number of days is added to date */
   days = db_get_int (db_days);
-  composite_values[COMPOSITE_DAY] = abs (days);
+  /* widen before abs: abs (INT_MIN) overflows int */
+  composite_values[COMPOSITE_DAY] = llabs ((DB_BIGINT) days);
 
   switch (res_type)
     {
@@ -20837,7 +20895,7 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 	    }
 
 	  ms_ptr = expr_s;
-	  values[base + cnt] = strtoll (expr_s, &endptr, 10);
+	  values[base + cnt] = std::min ((DB_BIGINT) strtoll (expr_s, &endptr, 10), INTERVAL_AMOUNT_MAX);
 	  cnt++;
 	  expr_s = endptr;
 	}
@@ -20968,6 +21026,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       assert (unit == PT_MILLISECOND || unit == PT_SECOND || unit == PT_MINUTE || unit == PT_HOUR ||
 	      unit == PT_DAY || unit == PT_WEEK || unit == PT_MONTH || unit == PT_QUARTER || unit == PT_YEAR);
 
+      /* the negation and the WEEK and QUARTER products below overflow at the BIGINT ends */
+      unit_int_val = std::clamp (unit_int_val, -INTERVAL_AMOUNT_MAX, INTERVAL_AMOUNT_MAX);
       if (unit_int_val >= 0)
 	{
 	  is_positive_value = 1;
@@ -21767,6 +21827,8 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
       {
 	bool check_has_date = false;
 
+	/* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+	 * (as STR_TO_DATE does); its result type is fixed */
 	if (dateformat == false)
 	  {
 	    if (db_check_datetime_format (value_ptr))
@@ -26205,6 +26267,8 @@ convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, con
  *  returns: error code or NO_ERROR
  *   param(in): parameter to turn to hex
  *   result(out): varchar db_value with hex representation
+ *   param_conv_type(in), param_conv(in): CBRD-27583: the converter unpack planned for param's type into the
+ *     type its branch casts it to (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note:
  *  If param is a generic string, the hex representation will be the
@@ -26214,7 +26278,7 @@ convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, con
  *  capacity, the return value is 'FFFFFFFFFFFFFFFF'.
  */
 int
-db_hex (const DB_VALUE * param, DB_VALUE * result)
+db_hex (const DB_VALUE * param, DB_VALUE * result, DB_TYPE param_conv_type, TP_VALUE_CONVERTER param_conv)
 {
   /* String length limits for numeric values of param. When param is numeric, it will be cast to BIGINT db type and
    * then internally to UINT64. hex_lenght_limits[i] is the upper limit of the closed set of integers that can be
@@ -26313,7 +26377,7 @@ coerce_pos:
       param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* don't mind error code here, we need to know if param is out of range */
-      (void) tp_value_auto_cast (param, &param_db_bigint, domain);
+      (void) tp_value_auto_cast_with_converter (param, &param_db_bigint, domain, param_conv_type, param_conv);
       if (DB_IS_NULL (&param_db_bigint))
 	{
 	  /* param is out of range, set it to max */
@@ -26355,7 +26419,8 @@ coerce_pos:
     {
       db_make_null (&tval);
       ptval = &tval;
-      if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast_with_converter (param, &tval, &tp_Char_domain, false, param_conv_type, param_conv)
+	  != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
 	  goto error;
@@ -26634,13 +26699,15 @@ uuidv4_generate_bytes (unsigned char *out_bytes)
  *  returns: error code or NO_ERROR
  *   param(in): string
  *   result(out): smallint db_value of ASCII code
+ *   param_conv_type(in), param_conv(in): CBRD-27583: the converter unpack planned for a number's or a date's
+ *     type into CHAR (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note:
  *  If param is a zero-length string, result should be zero.
  *  If param is DB null, result should be DB null
  */
 int
-db_ascii (const DB_VALUE * param, DB_VALUE * result)
+db_ascii (const DB_VALUE * param, DB_VALUE * result, DB_TYPE param_conv_type, TP_VALUE_CONVERTER param_conv)
 {
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
@@ -26712,7 +26779,8 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       DB_VALUE new_value;
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
       db_make_null (&new_value);
-      TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
+      TP_DOMAIN_STATUS status =
+	tp_value_auto_cast_with_converter (param, &new_value, new_domain, param_conv_type, param_conv);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
@@ -26790,6 +26858,8 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
    * digits) + sign (1 digit) + NULL terminator (1 byte) */
   char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
+  /* num_str, or a heap copy of an input too long for it; cutting the input would drop its last digits */
+  char *num_buf = num_str;
   char *num_p_str = num_str, *res_p_str = NULL;
   char *num_end_ptr = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -26893,22 +26963,20 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       int str_size = db_get_string_size (num);
       INTL_CODESET codeset = db_get_string_codeset (num);
       int prev_char_length = 0;
-      char *str_start = NULL, *str_end = NULL;
-      char *prev_char = NULL;
+      const char *str_start = db_get_string (num), *str_end = NULL;
+      const char *prev_char = NULL;
 
-      if (str_size >= 0)
+      /* Trim before choosing a buffer, so CHAR padding does not require a heap copy. */
+      if (str_size > 0)
 	{
-	  str_size = MIN (str_size, sizeof (num_str) - 1);
-	  strncpy (num_str, db_get_string (num), str_size);
-	  str_start = num_str;
-	  str_end = num_str + str_size;
+	  str_end = str_start + str_size;
 
 	  /* trim the tailing white spaces */
 	  do
 	    {
 	      prev_char =
-		(char *) intl_prev_char ((unsigned char *) str_end, (unsigned char *) str_start, codeset,
-					 &prev_char_length);
+		(const char *) intl_prev_char ((const unsigned char *) str_end, (const unsigned char *) str_start,
+					       codeset, &prev_char_length);
 	      assert (prev_char >= str_start);
 
 	      if (intl_is_space (prev_char, str_end, codeset, NULL))
@@ -26930,10 +26998,23 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	  str_size = 0;
 	}
 
-      num_str[str_size] = '\0';
-      num_p_str = num_str;
+      if (str_size >= (int) sizeof (num_str))
+	{
+	  num_buf = (char *) db_private_alloc (NULL, str_size + 1);
+	  if (num_buf == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+      if (str_size > 0)
+	{
+	  strncpy (num_buf, str_start, str_size);
+	}
+      num_buf[str_size] = '\0';
+      num_p_str = num_buf;
 
-      if (!is_str_valid_number (num_p_str, str_end, from_base_int, codeset))
+      if (!is_str_valid_number (num_p_str, num_buf + str_size, from_base_int, codeset))
 	{
 	  error_code = ER_OBJ_INVALID_ARGUMENTS;
 	  goto error;
@@ -26945,14 +27026,30 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       const char *num_bit_str = db_get_bit (num, &num_size);
       num_size = QSTR_NUM_BYTES (num_size);
 
-      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also,
-       * we convert at most 64 digits even if we need only 16 in order to let strtoll handle overflow (weird stuff
-       * happens there ...) */
-      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_bit_str, num_size);
-      num_str[num_size * 2] = '\0';
+      /* an empty bit string has no digit, as an empty string has none */
+      if (num_size == 0)
+	{
+	  error_code = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      if (num_size * 2 >= (int) sizeof (num_str))
+	{
+	  num_buf = (char *) db_private_alloc (NULL, num_size * 2 + 1);
+	  if (num_buf == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+
+      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; all
+       * the bytes are converted, and strtoull reports a value beyond UINT64 as an overflow */
+      num_size = qstr_bin_to_hex (num_buf, num_size * 2, num_bit_str, num_size);
+      num_buf[num_size * 2] = '\0';
 
       /* set up variables for hex -> base10 conversion */
-      num_p_str = num_str;
+      num_p_str = num_buf;
       from_base_int = 16;
       num_is_signed = false;
     }
@@ -27039,7 +27136,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
   result->need_clear = true;
 
   /* all ok */
-  return NO_ERROR;
+  goto exit;
 
 error:
   if (result)
@@ -27052,12 +27149,19 @@ error:
 	{
 	  er_clear ();
 	}
-      return NO_ERROR;
+      error_code = NO_ERROR;
+      goto exit;
     }
 
   if (er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+exit:
+  if (num_buf != num_str)
+    {
+      db_private_free_and_init (NULL, num_buf);
     }
   return error_code;
 }
@@ -27237,12 +27341,15 @@ init_builtin_calendar_names (LANG_LOCALE_DATA * lld)
  * src (in)	    : source value
  * result (in/out)  : enumeration value
  * enum_domain (in) : enumeration domain
+ * src_conv_type (in), src_conv (in): CBRD-27583: the converter unpack planned for src's type into enum_domain
+ *				       (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note: The result value will hold the index of the enum if src has a
  * corespondent in the enumeration values or 0 otherwise.
  */
 int
-db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain)
+db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain,
+			       DB_TYPE src_conv_type, TP_VALUE_CONVERTER src_conv)
 {
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
@@ -27255,7 +27362,8 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP
 
   db_make_null (result);
 
-  status = tp_value_cast (src, result, enum_domain, false);
+  /* a value out of the enumeration is its overflow value, no error */
+  status = tp_value_cast_with_converter (src, result, enum_domain, false, src_conv_type, src_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       if (status == DOMAIN_ERROR)

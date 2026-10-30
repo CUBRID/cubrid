@@ -1281,9 +1281,13 @@ lock_initialize_object_lock_structures (void)
   const int obj_hash_size = (int) MAX (lk_Gl.config.initial_object_locks, MIN (scaled_buckets, LK_OBJ_HASH_SIZE_MAX));
 
   lk_Obj_lock_res_desc.max_alloc_cnt = lock_escalation;
-  lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
-			       lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
-			       lk_Obj_lock_res_desc);
+  if (lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
+				   lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
+				   lk_Obj_lock_res_desc) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
 
   obj_lock_entry_desc.max_alloc_cnt = lock_escalation;
   if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
@@ -6337,7 +6341,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* check if the given oid is root class oid */
@@ -6496,7 +6500,7 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* A TRANSACTION-typed key (keyed by the inserter's MVCCID) never aliases a real class/instance. */
@@ -6718,7 +6722,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* get the intentional lock mode to be acquired on class oid */
@@ -6858,7 +6862,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
   else
     {
       assert (cond_flag == LK_UNCOND_LOCK);
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* acquire the lock on the class */
@@ -6952,7 +6956,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  wait_msecs = logtb_find_wait_msecs (tran_index);
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
 
   /* We do not want to rollback the transaction in the event of a deadlock. For now, let's just wait a long time. If
    * deadlock, the transaction is going to be notified of lock timeout instead of aborted. */
@@ -10299,7 +10303,7 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   if (lock_internal_perform_lock_object

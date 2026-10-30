@@ -16,20 +16,18 @@
  *
  */
 
-#include "schema_information_schema_definition.hpp"
+/*
+ * test_inflight_ring.hpp - interface for in-flight ring functional testing
+ */
 
-namespace cubschema
+#ifndef _TEST_INFLIGHT_RING_HPP_
+#define _TEST_INFLIGHT_RING_HPP_
+
+namespace test_lockfree
 {
-  information_schema_definition::information_schema_definition (const std::string &n, const attr_vec_type &attrs,
-      const cstr_vec_type &cts,
-      const authorization &au,
-      row_init_type ri)
-    : name {n}
-    , attributes {attrs}
-    , constraints {cts}
-    , auth {au}
-    , row_initializer {ri}
-  {
-    //
-  }
-}
+
+  int test_inflight_ring_functional (void);
+
+} // namespace test_lockfree
+
+#endif // _TEST_INFLIGHT_RING_HPP_

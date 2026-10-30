@@ -184,7 +184,7 @@ namespace cubload
   LC_FIND_CLASSNAME
   server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
   {
-#define CATCLS_USER_ATTR_IDX_NAME 11
+#define CATCLS_USER_ATTR_IDX_NAME 10
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     HEAP_CACHE_ATTRINFO attr_info;
@@ -209,10 +209,9 @@ namespace cubload
 	return LC_CLASSNAME_ERROR;
       }
 
-    error = heap_get_class_info (&thread_ref, oid_User_class_oid, &hfid, NULL, NULL);
+    error = heap_get_class_hfid (&thread_ref, oid_User_class_oid, &hfid, NULL);
     if (error != NO_ERROR)
       {
-	ASSERT_ERROR ();
 	heap_attrinfo_end (&thread_ref, &attr_info);
 	return LC_CLASSNAME_ERROR;
       }
@@ -1085,7 +1084,7 @@ namespace cubload
   {
     hfid hfid;
 
-    int error_code = heap_get_class_info (m_thread_ref, &class_oid, &hfid, NULL, NULL);
+    int error_code = heap_get_class_hfid (m_thread_ref, &class_oid, &hfid, NULL);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);

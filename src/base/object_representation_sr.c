@@ -29,7 +29,6 @@
 #include "btree_load.h"
 #include "config.h"
 #include "dbtype.h"
-#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -110,6 +109,7 @@ static void or_install_btids (OR_CLASSREP * rep, DB_SEQ * props);
 static OR_CLASSREP *or_get_current_representation (RECDES * record, int do_indexes);
 static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int do_indexes);
 static const char *or_find_diskattr (RECDES * record, int attr_id);
+static int or_get_diskattr_string (char *diskatt, int attr_index, char **string, int *alloced_string);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
 static char or_mvcc_get_flag (RECDES * record);
@@ -223,9 +223,8 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep->n_fixed = 0;
   rep->n_variable = 0;
   rep->fixed_length = or_rep->fixed_length;
-#if 0				/* reserved for future use */
-  rep->repr_reserved_1 = 0;
-#endif
+  /* a representation built here is only ever written, and the writer emits the current layout; set it anyway so a
+   * reader handed this struct never sees an uninitialized layout (CBRD-27140) */
   rep->fixed = NULL;
   rep->variable = NULL;
 
@@ -291,7 +290,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
       att->type = or_att->type;
       att->id = or_att->id;
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->location = or_att->location;
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
@@ -335,7 +333,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
-	      bt_statsp->dedup_idx = -1;
 
 #if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
@@ -386,7 +383,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
-		  bt_statsp->dedup_idx = btid_int.deduplicate_key_idx;
 		}
 	      else
 		{
@@ -399,12 +395,12 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  bt_statsp->pkeys_size = BTREE_STATS_PKEYS_NUM;
 		}
 
-	      bt_statsp->pkeys = (int *) malloc (bt_statsp->pkeys_size * sizeof (int));
+	      bt_statsp->pkeys = (INT64 *) malloc (bt_statsp->pkeys_size * sizeof (INT64));
 	      if (bt_statsp->pkeys == NULL)
 		{
 		  bt_statsp->pkeys_size = 0;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  bt_statsp->pkeys_size * sizeof (int));
+			  bt_statsp->pkeys_size * sizeof (INT64));
 		  goto error;
 		}
 
@@ -1952,21 +1948,13 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	  for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 	    {
-	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_id);
-	      (index->n_atts)++;
-	    }
-	  else
-	    {
-	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
+	      if (att->id == att_id)
 		{
-		  if (att->id == att_id)
-		    {
-		      index->atts[index->n_atts] = att;
-		      (index->n_atts)++;
-		      break;
-		    }
+		  index->atts[index->n_atts] = att;
+		  (index->n_atts)++;
+		  break;
 		}
 	    }
 	}
@@ -2155,11 +2143,9 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       if (att->id == att_id)
 	{
 	  ptr = att;
@@ -2270,27 +2256,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
-
-      if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
-	{
-          // *INDENT-OFF*
-	  /* To reach this point, the inside of the set must have at least the following structure.
-	   *     0         1                2      [  3        4  ] *x         5 + x               6 + x
-	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, ...}
-           * For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
-	   * That is, the size of this constraint_seq set must be 10 or more, and the 3rd position will be attrID.
-	   * The position 1 is deduplicate_key_attrID, which is virtual information,
-	   * the position 3 value must be read to obtain actual column information.
-	   */
-          // *INDENT-ON*
-	  assert (seq_size >= 10);
-	  i = 3;		// index of attrID (for first real column)
-	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
-	    {
-	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
-	      att_id = db_get_int (&att_val);	/* The first attrID after HIDDEN_INDEX_COL */
-	    }
-	}
 
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
@@ -2524,7 +2489,6 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2713,7 +2677,6 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2794,7 +2757,6 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3029,7 +2991,6 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3226,7 +3187,6 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
-	  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
 	  att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
 	  att->position = j;
 	  att->default_value.val_length = 0;
@@ -3889,6 +3849,101 @@ or_find_diskattr (RECDES * record, int attr_id)
 }
 
 /*
+ * or_get_diskattr_string () - Get the string of the given disk attribute (diskatt,index)
+ *   return: NO_ERROR or error code.
+ *   diskatt(in): pointer to the disk attribute inside the class record
+ *   attr_index(in): index to a string among the attribute
+ *   string(out) : The pointer towards the desire attribute.
+ *   alloced_string(out) : States whether the returned string was alloc'ed due do decompression,
+ *			   or is just a pointer from the record.
+ */
+static int
+or_get_diskattr_string (char *diskatt, int attr_index, char **string, int *alloced_string)
+{
+  char *attr = NULL;
+  int offset = 0, offset_next = 0;
+  unsigned char len = 0;
+  OR_BUF buffer;
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
+
+  assert (diskatt != NULL);
+  assert (attr_index < ORC_ATT_LAST_INDEX);
+  assert (*alloced_string == 0);
+
+  /*
+   * diskatt now points to the attribute that we are interested in.
+   * Get the attribute name.
+   */
+  offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
+  attr = diskatt + offset;
+
+  /*
+   * Get boundary of the attribute, that is, the offset of next attribute.
+   * Regardless the next attribute exists or not,
+   * the "offset_next" is always retrievable.
+   * There is a last offset to denote the end of object. See attribute_to_disk.
+   */
+  offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
+
+  /*
+   * kludge kludge kludge
+   * This is now an encoded "varchar" string, we need to skip over the
+   * length before returning it.  Note that this also depends on the
+   * stored string being NULL terminated.
+   */
+  assert (attr != NULL);
+  if (attr != NULL)
+    {
+      len = *((unsigned char *) attr);
+    }
+
+  if (offset == offset_next)
+    {
+      attr = NULL;
+      *string = NULL;
+    }
+  else if (len < 0xFFU)
+    {
+      assert (len != 0 || *(attr + 1) == '\0');
+      attr += 1;
+      *string = attr;
+    }
+  else
+    {
+      or_init (&buffer, attr, -1);
+
+      rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  *string = NULL;
+	  return rc;
+	}
+
+      assert (*string == NULL);
+      *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
+      if (*string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      *alloced_string = 1;
+
+      rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_private_free (NULL, *string);
+	  *alloced_string = 0;
+	  *string = NULL;
+	  return rc;
+	}
+    }
+
+  return rc;
+}
+
+/*
  * or_get_attr_string () - Get the string of the given attribute (id,index)
  *   return: NO_ERROR or error code.
  *   record(in): disk record
@@ -3904,100 +3959,21 @@ or_find_diskattr (RECDES * record, int attr_id)
 int
 or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string)
 {
-  char *diskatt, *attr = NULL;
-  int offset = 0, offset_next = 0;
-  unsigned char len = 0;
-  OR_BUF buffer;
-  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
-
-  assert (*alloced_string == 0);
+  char *diskatt;
 
   assert (attr_index < ORC_ATT_LAST_INDEX);
+  assert (*alloced_string == 0);
 
   diskatt = (char *) or_find_diskattr (record, attr_id);
   if (diskatt != NULL)
     {
-      /*
-       * diskatt now points to the attribute that we are interested in.
-       * Get the attribute name.
-       */
-      offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
-      attr = diskatt + offset;
-
-      /*
-       * Get boundary of the attribute, that is, the offset of next attribute.
-       * Regardless the next attribute exists or not,
-       * the "offset_next" is always retrievable.
-       * There is a last offset to denote the end of object. See attribute_to_disk.
-       */
-      offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
-
-      /*
-       * kludge kludge kludge
-       * This is now an encoded "varchar" string, we need to skip over the
-       * length before returning it.  Note that this also depends on the
-       * stored string being NULL terminated.
-       */
-      assert (attr != NULL);
-      if (attr != NULL)
-	{
-	  len = *((unsigned char *) attr);
-	}
-
-      if (offset == offset_next)
-	{
-	  attr = NULL;
-	  *string = NULL;
-	}
-      else if (len < 0xFFU)
-	{
-	  assert (len != 0 || *(attr + 1) == '\0');
-	  attr += 1;
-	  *string = attr;
-	}
-      else
-	{
-	  or_init (&buffer, attr, -1);
-
-	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      *string = NULL;
-	      return rc;
-	    }
-
-	  assert (*string == NULL);
-	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
-	  if (*string == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  *alloced_string = 1;
-
-	  rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      db_private_free (NULL, *string);
-	      *alloced_string = 0;
-	      *string = NULL;
-	      return rc;
-	    }
-	}
-    }
-  else
-    {
-      *alloced_string = 0;
-      *string = NULL;
-      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
-	{
-	  *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
-	}
+      return or_get_diskattr_string (diskatt, attr_index, string, alloced_string);
     }
 
-  return rc;
+  *alloced_string = 0;
+  *string = NULL;
+
+  return NO_ERROR;
 }
 
 /*
@@ -4035,6 +4011,86 @@ int
 or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string)
 {
   return or_get_attr_string (record, attrid, ORC_ATT_COMMENT_INDEX, string, alloced_string);
+}
+
+/*
+ * or_get_attrid () - Find the id of the attribute with the given name
+ *   return: NO_ERROR or error code
+ *   record(in): disk record
+ *   name(in): name of the desired attribute
+ *   attrid(out): id of the matching attribute, NULL_ATTRID if there is no such attribute
+ */
+int
+or_get_attrid (RECDES * record, const char *name, int *attrid)
+{
+  char *ptr, *attset, *diskatt;
+  char *attr_name;
+  int n_fixed, n_variable, n_shared, n_class, n_attrs;
+  int type_attr, i, id;
+  int alloced_string;
+  int error = NO_ERROR;
+
+  *attrid = NULL_ATTRID;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
+  n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
+  n_shared = OR_GET_INT (ptr + ORC_SHARED_COUNT_OFFSET);
+  n_class = OR_GET_INT (ptr + ORC_CLASS_ATTR_COUNT_OFFSET);
+
+  for (type_attr = 0; type_attr < 3; type_attr++)
+    {
+      if (type_attr == 0)
+	{
+	  attset = record->data + OR_VAR_OFFSET (record->data, ORC_ATTRIBUTES_INDEX);
+	  n_attrs = n_fixed + n_variable;
+	}
+      else if (type_attr == 1)
+	{
+	  attset = record->data + OR_VAR_OFFSET (record->data, ORC_SHARED_ATTRS_INDEX);
+	  n_attrs = n_shared;
+	}
+      else
+	{
+	  attset = record->data + OR_VAR_OFFSET (record->data, ORC_CLASS_ATTRS_INDEX);
+	  n_attrs = n_class;
+	}
+
+      for (i = 0; i < n_attrs; i++)
+	{
+	  diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
+	  ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
+	  id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+
+	  alloced_string = 0;
+	  attr_name = NULL;
+	  error = or_get_diskattr_string (diskatt, ORC_ATT_NAME_INDEX, &attr_name, &alloced_string);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+
+	  if (attr_name != NULL && strcmp (attr_name, name) == 0)
+	    {
+	      *attrid = id;
+	    }
+
+	  if (alloced_string == 1)
+	    {
+	      db_private_free_and_init (NULL, attr_name);
+	    }
+
+	  if (*attrid != NULL_ATTRID)
+	    {
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*

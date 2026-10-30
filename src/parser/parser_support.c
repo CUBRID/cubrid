@@ -157,7 +157,6 @@ static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * lim
 					  bool add_offset);
 static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
-static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
 						bool add_as_attr);
 static PT_NODE *pt_process_spec_for_delete (PARSER_CONTEXT * parser, PT_NODE * spec);
@@ -1966,7 +1965,7 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 PT_NODE *
 pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (node->node_type == PT_SELECT)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -1987,7 +1986,9 @@ pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   bool *has_subquery = (bool *) arg;
 
-  if (node->node_type == PT_SELECT)
+  /* a UNION / DIFFERENCE / INTERSECTION subquery is one query node too; PT_SELECT alone would let
+   * 'x IN (SELECT ... UNION SELECT ...)' pass undetected */
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       if (node->info.query.is_subquery == PT_IS_SUBQUERY)
 	{
@@ -2444,6 +2445,68 @@ pt_get_end_path_node (PT_NODE * node)
       node = node->info.dot.arg2;
     }
   return node;
+}
+
+/*
+ * pt_where_rejects_column_null () - true if some conjunct of the CNF WHERE list already rejects NULL
+ *     values of the given column, mirroring the criteria qo_fold_is_and_not_null () uses to fold a
+ *     user-written "col IS NOT NULL" away: a single-predicate term (no or_next) of the WHERE location
+ *     whose first argument or right-hand side is that column, with a comparison operator that cannot be true
+ *     on a NULL operand (qo_check_nullable_op ()).
+ *   return: bool
+ *   parser(in): context
+ *   where(in): CNF WHERE list
+ *   column(in): PT_NAME node of the column to prove non-NULL
+ *   skip_subquery_terms(in): true to ignore conjuncts holding a subquery, for a caller that rewrites
+ *     those away: "x NOT IN (...) rejects a NULL x" holds only while it is still a NOT IN.
+ */
+bool
+pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column, bool skip_subquery_terms)
+{
+  PT_NODE *term, *term_prior;
+  bool has_subquery;
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0)
+	{
+	  /* not a single-predicate conjunct of the WHERE proper: an OR-ed predicate
+	   * can still accept a NULL of the column through its other disjuncts */
+	  continue;
+	}
+
+      if (!pt_is_comp_op (term->info.expr.op) || qo_check_nullable_op (term))
+	{
+	  /* not a comparison, or one that can be true on a NULL operand */
+	  continue;
+	}
+
+      if (skip_subquery_terms)
+	{
+	  PT_NODE *save_next = term->next;
+
+	  /* this conjunct alone: the walk would otherwise run on through its siblings */
+	  term->next = NULL;
+	  has_subquery = false;
+	  (void) parser_walk_tree (parser, term, pt_check_subquery_pre, NULL, pt_check_subquery_post, &has_subquery);
+	  term->next = save_next;
+
+	  if (has_subquery)
+	    {
+	      continue;
+	    }
+	}
+
+      term_prior = pt_get_first_arg_ignore_prior (term);
+      if ((term_prior != NULL && pt_check_path_eq (parser, column, term_prior) == 0)
+	  || (term->info.expr.arg2 != NULL && pt_check_path_eq (parser, column, term->info.expr.arg2) == 0))
+	{
+	  /* a NULL column value makes this conjunct UNKNOWN, so the row cannot qualify */
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -4831,6 +4894,65 @@ pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value, int host_va
  *   parser(in):
  *   value(in): the value to be replaced by a host variable parameter
  */
+/*
+ * pt_grow_host_var_positions () - CBRD-27583: once a compilation assigned the positions of its bind type signature
+ *   (host_var_derived_from), the per-position arrays cover every position, host_var_count + auto_param_count, the
+ *   auto-parameters and derived positions after the user's included. A position from old_count on has no expected
+ *   domain, no compiled domain and no user position.
+ */
+static int
+pt_grow_host_var_positions (PARSER_CONTEXT * parser, int old_count, int count)
+{
+  const int first_derived = parser->host_var_derived_from == NULL ? 0 : old_count;
+  const int first_pad = parser->host_var_derived_pads == NULL ? 0 : first_derived;
+  int *derived_from = (int *) realloc (parser->host_var_derived_from, count * sizeof (int));
+  if (derived_from == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  parser->host_var_derived_from = derived_from;
+  bool *pads = (bool *) realloc (parser->host_var_derived_pads, count * sizeof (bool));
+  if (pads == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  parser->host_var_derived_pads = pads;
+  TP_DOMAIN **expected = (TP_DOMAIN **) realloc (parser->host_var_expected_domains, count * sizeof (TP_DOMAIN *));
+  if (expected == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  parser->host_var_expected_domains = expected;
+  /* the compiled domains exist only in the compilation of a bind type signature */
+  TP_DOMAIN **compiled = NULL;
+  if (parser->host_var_compiled_domains != NULL)
+    {
+      compiled = (TP_DOMAIN **) realloc (parser->host_var_compiled_domains, count * sizeof (TP_DOMAIN *));
+      if (compiled == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      parser->host_var_compiled_domains = compiled;
+    }
+  for (int k = first_derived; k < count; k++)
+    {
+      derived_from[k] = -1;
+    }
+  for (int k = first_pad; k < count; k++)
+    {
+      pads[k] = false;
+    }
+  for (int k = MAX (old_count, parser->host_var_count); k < count; k++)
+    {
+      expected[k] = NULL;
+      if (compiled != NULL)
+	{
+	  compiled[k] = NULL;
+	}
+    }
+  return NO_ERROR;
+}
+
 PT_NODE *
 pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
 {
@@ -4876,6 +4998,13 @@ pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
       parser->host_variables = larger_host_variables;
       ++parser->auto_param_count;
       larger_host_variables = NULL;
+      if (parser->host_var_derived_from != NULL
+	  && pt_grow_host_var_positions (parser, parser->host_var_count + parser->auto_param_count - 1,
+					 parser->host_var_count + parser->auto_param_count) != NO_ERROR)
+	{
+	  PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto error_exit;
+	}
 
       /* Copy the DB_VALUE to parser->host_variables */
       host_var_val = parser->host_variables + host_var->info.host_var.index;
@@ -4901,6 +5030,763 @@ error_exit:
       host_var = NULL;
     }
   return NULL;
+}
+
+/*
+ * pt_host_var_value_domain () - CBRD-27583: the domain of the value bound at user position index for the compilation
+ *   of a bind type signature (the value's, or the type header of the NULL a SELECT compilation binds); the NULL
+ *   domain for a NULL value, the floating point numeric for a NUMERIC and the floating BIT for a BIT at a user position
+ */
+TP_DOMAIN *
+pt_host_var_value_domain (PARSER_CONTEXT * parser, int index)
+{
+  DB_VALUE *val = &parser->host_variables[index];
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
+  if ((type == DB_TYPE_NUMERIC || type == DB_TYPE_BIT) && index < parser->host_var_count)
+    {
+      /* the signature carries no precision and scale: the plan serves NUMERIC values of any, and fixed BIT values of
+       * any length (a plan of the first value's BIT(n) cut a longer setBytes to n bits) */
+      return tp_domain_resolve_default (type);
+    }
+  return type == DB_TYPE_NULL ? &tp_Null_domain : tp_domain_cache (tp_domain_resolve_value (val, NULL));
+}
+
+/*
+ * pt_host_var_sent_domain () - CBRD-27583: the domain of what the client sends at a CHAR position, the value
+ *   bound at position index: a VARCHAR as it is (pt_set_host_variables keeps it), any other cast into the CHAR. A
+ *   compilation's typed NULL stands for a value of its type (db_bind_value_types), a NULL is a plain one.
+ */
+TP_DOMAIN *
+pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected)
+{
+  return DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]) == DB_TYPE_VARCHAR
+    ? pt_host_var_value_domain (parser, index) : expected;
+}
+
+/* CBRD-27583: whether a position after the user's is a derived position (pt_assign_host_var_positions) */
+bool
+pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index)
+{
+  return parser->host_var_derived_from != NULL && index >= parser->host_var_count
+    && index < parser->host_var_count + parser->auto_param_count && parser->host_var_derived_from[index] >= 0;
+}
+
+/*
+ * pt_padded_host_var_position_exists () - CBRD-27583: whether a translation already gave user position user a
+ *   bind copy's derived position of domain: a later translation's copy reads it, it makes none
+ */
+bool
+pt_padded_host_var_position_exists (const PARSER_CONTEXT * parser, int user, TP_DOMAIN * domain)
+{
+  for (int k = parser->host_var_count; k < parser->host_var_count + parser->auto_param_count; k++)
+    {
+      if (pt_is_padded_host_var (parser, k) && parser->host_var_derived_from[k] == user
+	  && tp_domain_match (parser->host_var_expected_domains[k], domain, TP_EXACT_MATCH))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_is_padded_host_var () - CBRD-27583: whether position index is the derived position of a bind copy, whose
+ *   CHAR(n) the client fills a VARCHAR value padded into (host_var_derived_pads)
+ */
+bool
+pt_is_padded_host_var (const PARSER_CONTEXT * parser, int index)
+{
+  return pt_is_derived_host_var (parser, index) && parser->host_var_derived_pads != NULL
+    && parser->host_var_derived_pads[index];
+}
+
+/*
+ * pt_host_var_position_domain () - CBRD-27583: the domain the plan reads a user or derived position in: a
+ *   context-typed user position's expected domain (a CHAR one's VARCHAR the client sends as it is), a derived
+ *   position's (a CHAR one's as the derived bind gives it), a value-typed user position's compiled domain; NULL for
+ *   none (an untyped position, an auto-parameter)
+ */
+TP_DOMAIN *
+pt_host_var_position_domain (PARSER_CONTEXT * parser, int index)
+{
+  if (index < parser->host_var_count)
+    {
+      TP_DOMAIN *expected = parser->host_var_expected_domains != NULL ? parser->host_var_expected_domains[index] : NULL;
+      TP_DOMAIN *compiled = parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[index] : NULL;
+      if (!pt_host_var_is_context_typed (expected))
+	{
+	  return compiled;
+	}
+      return pt_host_var_is_char_typed (expected) && compiled != NULL && TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR
+	? compiled : expected;
+    }
+  if (pt_is_derived_host_var (parser, index))
+    {
+      /* shortcut: a context-typed user position of another type than CHAR casts its value before the compilation
+       * sees it, not before the derived bind does - plan from the bound type if such a derived CHAR position appears */
+      TP_DOMAIN *expected = parser->host_var_expected_domains[index];
+      return pt_host_var_is_char_typed (expected) ? pt_host_var_sent_domain (parser, index, expected) : expected;
+    }
+  return NULL;
+}
+
+/*
+ * pt_host_var_stand_in () - CBRD-27583: in the compilation of a bind type signature, the NULL bound at a
+ *   comparison operand or at an NVL family operand compiles as a value of the domain it would take there (the
+ *   comparison's mate, the node's domain without it): a NULL of that type, of a string the type a client sends a string
+ *   in. Returns false for a type no client binds a value of (an object, a collection, an ENUM, a LOB) and for a fixed
+ *   string, whose node a client's string makes varying (the NULL would not take the plan): the NULL keeps a signature
+ *   of its own.
+ */
+bool
+pt_host_var_stand_in (PARSER_CONTEXT * parser, int index, const TP_DOMAIN * domain)
+{
+  DB_VALUE *hv = &parser->host_variables[index];
+  const DB_TYPE type = domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL;
+  if (type == DB_TYPE_VARCHAR)
+    {
+      /* a client's string is a CHAR of its charset and collation (CAS netval_to_dbval), a literal's alike */
+      pr_clear_value (hv);
+      db_value_domain_init (hv, DB_TYPE_CHAR, DB_DEFAULT_PRECISION, 0);
+      db_string_put_cs_and_collation (hv, lang_get_client_charset (), lang_get_client_collation ());
+      return true;
+    }
+  if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
+    {
+      return false;
+    }
+  pr_clear_value (hv);
+  db_value_domain_init (hv, type, domain->precision, domain->scale);
+  return true;
+}
+
+/* the walk of pt_assign_host_var_positions: the open nodes from the statement down to the visited one */
+typedef struct pt_host_var_position_walk PT_HOST_VAR_POSITION_WALK;
+struct pt_host_var_position_walk
+{
+  PT_NODE **open;
+  int depth;
+  int capacity;
+  bool *seen;			/* [host_var_count] the walk met the position's first node */
+#if !defined (NDEBUG)
+  TP_DOMAIN **checked;		/* [host_var_count] the domain type checking gave the position */
+#endif
+  bool assign;			/* the first pass of the compilation: the first node of a position decides its domain */
+  int *kinds;			/* the classification before type checking (pt_classify_host_var_positions): [host_var_count]
+				 * a bit per PT_HOST_VAR_CLASS of the position's occurrences; NULL in the other passes */
+  int error;
+};
+
+/* CBRD-27583: a host variable's user position, or -1 for an auto-parameter */
+static int
+pt_host_var_user_position (const PARSER_CONTEXT * parser, const PT_NODE * hv)
+{
+  const int index = hv->info.host_var.index;
+  return index < parser->host_var_count ? index
+    : pt_is_derived_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+}
+
+/* CBRD-27583: whether a tree holds a host variable of another user position than *arg (a position compared with
+ * itself, as qo_reduce_equality_terms leaves `? = ?` of one column's constant, holds none); *arg becomes -2 when so */
+static PT_NODE *
+pt_find_other_host_var (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *user = (int *) arg;
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN)
+    {
+      const int position = pt_host_var_user_position (parser, node);
+      if (position >= 0 && position != *user)
+	{
+	  *user = -2;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  return node;
+}
+
+/* CBRD-27583: AGNOSTIC or NVL_ARG when operand is in such a slot of parent (pt_host_var_occurrence_class), else 0 */
+static int
+pt_null_operand_slot_class (const PT_NODE * operand, const PT_NODE * parent)
+{
+  if (parent != NULL && parent->node_type == PT_EXPR)
+    {
+      const PT_OP_TYPE op = parent->info.expr.op;
+      const bool first = parent->info.expr.arg1 == operand;
+      if ((op == PT_IS_NULL || op == PT_IS_NOT_NULL || op == PT_ISNULL) && first)
+	{
+	  return PT_HOST_VAR_CLASS_AGNOSTIC;
+	}
+      /* NVL2's first among them: its type takes part in the node's (nvl2 ('abc', i, s) is a VARCHAR) */
+      if (((op == PT_NVL || op == PT_IFNULL || op == PT_COALESCE || op == PT_NVL2)
+	   && (first || parent->info.expr.arg2 == operand)) || (op == PT_NVL2 && parent->info.expr.arg3 == operand))
+	{
+	  return PT_HOST_VAR_CLASS_NVL_ARG;
+	}
+    }
+  return 0;
+}
+
+/*
+ * pt_host_var_occurrence_class () - CBRD-27583: the kind of one occurrence of a host variable where a NULL
+ *   cannot change the answer: the operand of IS [NOT] NULL or ISNULL (AGNOSTIC: only whether it is NULL is read), a
+ *   comparison operand whose mate holds no bind of another position (COMPARE: a NULL compares UNKNOWN, or by <=> as
+ *   NULL, with a value of any type), an NVL / IFNULL / COALESCE / NVL2 operand (NVL_ARG: the node's domain is the
+ *   others' when it is NULL); 0 for any other. Every pass that walks a statement's positions classifies them with this
+ *   one function.
+ */
+int
+pt_host_var_occurrence_class (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent)
+{
+  const int slot = pt_null_operand_slot_class (hv, parent);
+  if (slot != 0)
+    {
+      return slot;
+    }
+  if (parent != NULL && parent->node_type == PT_NAME && parent->info.name.constant_value == hv)
+    {
+      /* the operand of the equality qo_reduce_equality_terms read the column's value from */
+      return PT_HOST_VAR_CLASS_COMPARE;
+    }
+  bool hv_is_lhs;
+  PT_NODE *mate = pt_bind_comparison_mate (hv, parent, grandparent, &hv_is_lhs);
+  if (mate == NULL)
+    {
+      return 0;
+    }
+  int user = pt_host_var_user_position (parser, hv);
+  PT_NODE *next = mate->next;
+  mate->next = NULL;
+  (void) parser_walk_tree (parser, mate, pt_find_other_host_var, &user, NULL, NULL);
+  mate->next = next;
+  return user == -2 ? 0 : PT_HOST_VAR_CLASS_COMPARE;
+}
+
+/*
+ * pt_check_host_var_occurrence () - CBRD-27583: an occurrence of an AGNOSTIC or NVL_ARG position after the
+ *   classification (a rewrite, a later translation's copy) is in a slot of its kind: an AGNOSTIC position's value is
+ *   only NULL or 1, and an NVL_ARG position's NULL takes the plan of PT_HOST_VAR_NULL_MATCHES, which a value consumer
+ *   of another kind would read wrongly
+ */
+static void
+pt_check_host_var_occurrence (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent)
+{
+#if !defined (NDEBUG)
+  const int user = pt_host_var_user_position (parser, hv);
+  const int stored = user >= 0 && parser->host_var_format_classes != NULL
+    ? PT_HOST_VAR_CLASS (parser->host_var_format_classes[user]) : 0;
+  /* a COMPARE position's can be any: its bind-time conversion is type checking's, and the rewrites after it read a NULL
+   * as a NULL (a CAST_WRAP casts it to NULL; qo_reduce_equality_terms copies it into the column's other uses, read
+   * only where `col = ?` held); an AGNOSTIC or NVL_ARG one's is in a slot of its kind, a CAST_WRAP in its place.
+   * shortcut: a copy a row evaluates before the equality (a string column plus the copy) can raise the conversion
+   * error otherwise raised only for a value, with a NULL; give the copies a class of their own if such a case is met */
+  const bool wrapped = parent != NULL && parent->node_type == PT_EXPR && parent->info.expr.op == PT_CAST
+    && PT_EXPR_INFO_IS_FLAGED (parent, PT_EXPR_INFO_CAST_WRAP) && parent->info.expr.arg1 == hv;
+  assert (stored == 0 || stored == PT_HOST_VAR_CLASS_COMPARE
+	  || pt_null_operand_slot_class (wrapped ? parent : hv, wrapped ? grandparent : parent) == stored);
+  assert (stored != PT_HOST_VAR_CLASS_AGNOSTIC
+	  || TP_DOMAIN_TYPE (parser->host_var_expected_domains[user]) == DB_TYPE_INTEGER);
+#endif
+}
+
+/*
+ * pt_check_null_takes_plan () - CBRD-27583: a NULL bound at an NVL family operand takes this compilation's
+ *   plan when the node's domain is the one it has with a NULL there, the whole domain (a NUMERIC's precision and
+ *   scale, an ENUM's elements as well as the type, codeset and collation): every translation clears
+ *   PT_HOST_VAR_NULL_MATCHES of the position at any node where it is not; a later translation's copy agrees with the
+ *   first one
+ */
+static void
+pt_check_null_takes_plan (PARSER_CONTEXT * parser, PT_NODE * node, bool assign)
+{
+  PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  for (int j = 0; j < 3; j++)
+    {
+      if (arg[j] == NULL || arg[j]->node_type != PT_HOST_VAR || arg[j]->info.host_var.var_type != PT_HOST_IN
+	  || pt_host_var_occurrence_class (parser, arg[j], node, NULL) != PT_HOST_VAR_CLASS_NVL_ARG)
+	{
+	  continue;
+	}
+      const int index = arg[j]->info.host_var.index;
+      const int user = pt_host_var_user_position (parser, arg[j]);
+      if (user < 0 || !(parser->host_var_format_classes[user] & PT_HOST_VAR_NULL_MATCHES))
+	{
+	  continue;
+	}
+      /* a NULL the client converts into the position's bind domain is a NULL of it */
+      const TP_DOMAIN *bind = parser->host_var_bind_domains != NULL ? parser->host_var_bind_domains[user] : NULL;
+      const TP_DOMAIN *null = bind != NULL && TP_DOMAIN_TYPE (bind) != DB_TYPE_UNKNOWN
+	&& TP_DOMAIN_TYPE (bind) != DB_TYPE_ENUMERATION ? bind : &tp_Null_domain;
+      const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_position_domain (parser, index));
+      const TP_DOMAIN *without = pt_nvl_node_domain (parser, node, j, null);
+      const bool holds = with != NULL && without != NULL && tp_domain_match (with, without, TP_EXACT_MATCH);
+      if (!holds)
+	{
+	  parser->host_var_format_classes[user] &= ~PT_HOST_VAR_NULL_MATCHES;
+	}
+      assert (assign || holds);
+    }
+}
+
+/*
+ * pt_derive_host_var_position () - CBRD-27583: the host variable node needs its user position's value in another
+ *   domain: it moves to a derived position of that domain (one per user position and domain), numbered after the
+ *   auto-parameters; the client converts the user's value into it at every bind (pt_set_derived_host_variable).
+ *   Without a node the position is made for a later translation's node (pt_derive_column_host_var_position).
+ */
+static int
+pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain, bool pads,
+			     bool create)
+{
+  const int count = parser->host_var_count + parser->auto_param_count;
+  int k;
+
+  for (k = parser->host_var_count; k < count; k++)
+    {
+      if (parser->host_var_derived_from[k] == user_index && pt_is_padded_host_var (parser, k) == pads
+	  && tp_domain_match (parser->host_var_expected_domains[k], domain, TP_EXACT_MATCH))
+	{
+	  break;
+	}
+    }
+  if (k == count && !create)
+    {
+      /* a later translation (a SELECT built from the translated statement) copies terms the first one already gave
+       * their positions: a new derived position here would be unknown to the sessions that hit the cache (but in a
+       * translation every execution makes, host_var_derive_later) */
+      assert (false);
+      return NO_ERROR;
+    }
+  if (k == count)
+    {
+      DB_VALUE *host_variables = (DB_VALUE *) realloc (parser->host_variables, (count + 1) * sizeof (DB_VALUE));
+      if (host_variables == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      parser->host_variables = host_variables;
+      db_make_null (&parser->host_variables[k]);
+      if (pt_grow_host_var_positions (parser, count, count + 1) != NO_ERROR)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      parser->host_var_expected_domains[k] = domain;
+      parser->host_var_derived_from[k] = user_index;
+      if (parser->host_var_derived_pads != NULL)
+	{
+	  parser->host_var_derived_pads[k] = pads;
+	}
+      ++parser->auto_param_count;
+      ++parser->host_var_derived_count;
+      /* the compilation sees what the binds give it: the value (DML), the type (SELECT: a typed NULL) or nothing */
+      if (pt_set_derived_host_variable (parser, k, &parser->host_variables[user_index]) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  if (hv != NULL)
+    {
+      hv->info.host_var.index = k;
+      hv->info.host_var.rule_cast = false;
+      hv->info.host_var.pads_to = NULL;
+      hv->expected_domain = domain;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_assign_host_var_position () - CBRD-27583: the domain one host variable node needs, against the domain of its
+ *   position. The first node of a user position decides the position's domain in the first pass: its context's
+ *   expected domain, else the value's domain. A node needs its own context's domain, the target of its rule cast
+ *   (type checking: a comparison's type rule, pt_bind_comparison_target, or a collation, pt_collation_rule_cast), in a
+ *   relational comparison the target the type rule gives the position's domain against its mate, or the position's
+ *   domain; a node that needs another domain moves to a derived position. A rule cast is a derived position: the user
+ *   position holds the value as bound. A later translation's node reads its position whatever its own context.
+ */
+static int
+pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent,
+			     PT_HOST_VAR_POSITION_WALK * walk)
+{
+  const int i = hv->info.host_var.index;
+  TP_DOMAIN *own = !hv->info.host_var.rule_cast && pt_host_var_is_context_typed (hv->expected_domain)
+    ? hv->expected_domain : NULL;
+
+  if (hv->info.host_var.pads_to != NULL)
+    {
+      /* a bind copy reads the column's CHAR(n), padded, whatever the user position's domain; it does not decide
+       * that domain (the reduced term, which does, comes after its copies) */
+      return pt_derive_host_var_position (parser, hv, i, hv->info.host_var.pads_to, true,
+					  walk->assign || parser->flag.host_var_derive_later);
+    }
+
+  if (walk->assign && !walk->seen[i])
+    {
+      walk->seen[i] = true;
+#if !defined (NDEBUG)
+      walk->checked[i] = parser->host_var_expected_domains[i];
+#endif
+      /* a position that took its bind domain is of it, its value converted into it */
+      TP_DOMAIN *domain = parser->host_var_format_classes != NULL
+	&& (parser->host_var_format_classes[i] & PT_HOST_VAR_BIND_DOMAIN) ? parser->host_var_bind_domains[i] : own;
+      parser->host_var_expected_domains[i] = domain != NULL ? domain : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
+      if (parser->host_var_compiled_domains != NULL)
+	{
+	  parser->host_var_compiled_domains[i] = NULL;
+	  if (!pt_host_var_is_context_typed (domain) || pt_host_var_is_leave_typed (domain))
+	    {
+	      parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
+	    }
+	  else if (pt_host_var_is_char_typed (domain))
+	    {
+	      parser->host_var_compiled_domains[i] = pt_host_var_sent_domain (parser, i, domain);
+	    }
+	}
+    }
+
+  /* a value-typed position compiled without values has no domain yet: no plan is made (db_compile_statement) */
+  TP_DOMAIN *position = pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+    ? parser->host_var_expected_domains[i]
+    : (parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[i] : NULL);
+  if (position == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* a later translation's own context reads the position as the client sends it (its consumer converts) */
+  TP_DOMAIN *need = walk->assign ? own : NULL;
+  if (need == NULL)
+    {
+      /* a rule cast's target (a comparison's or a collation's), or the comparison rule of a copied term */
+      need = hv->info.host_var.rule_cast ? hv->expected_domain
+	: pt_bind_operand_target (parser, position, hv, parent, grandparent);
+    }
+  if (need == NULL || tp_domain_match (need, position, TP_EXACT_MATCH))
+    {
+      return NO_ERROR;
+    }
+  return pt_derive_host_var_position (parser, hv, i, need, false, walk->assign || parser->flag.host_var_derive_later);
+}
+
+/*
+ * pt_derive_column_host_var_position () - CBRD-27583: in a DML statement, a comparison operand naming a derived
+ *   table's column whose select list item is a value-typed user host variable. A later translation (the SELECT the
+ *   statement's XASL generation builds, as pt_to_merge_update_xasl) merges the derived table and compares the host
+ *   variable itself; a later translation makes no derived position, so the first one makes it here, by the rule the
+ *   host variable node would take in that comparison.
+ */
+static int
+pt_derive_column_host_var_position (PARSER_CONTEXT * parser, PT_NODE * name, PT_HOST_VAR_POSITION_WALK * walk)
+{
+  PT_NODE *spec = NULL;
+  for (int d = walk->depth - 1; d >= 0 && spec == NULL; d--)
+    {
+      const PT_NODE *open = walk->open[d];
+      spec = open->node_type == PT_SELECT ? pt_find_spec (parser, open->info.query.q.select.from, name)
+	: pt_find_spec_in_statement (parser, open, name);
+    }
+  if (spec == NULL || spec->info.spec.derived_table_type != PT_IS_SUBQUERY || spec->info.spec.derived_table == NULL
+      || spec->info.spec.derived_table->node_type != PT_SELECT)
+    {
+      return NO_ERROR;
+    }
+  PT_NODE *item = pt_get_select_list (parser, spec->info.spec.derived_table);
+  PT_NODE *column = spec->info.spec.as_attr_list;
+  for (; column != NULL && item != NULL; column = column->next, item = item->next)
+    {
+      if (column->node_type == PT_NAME && column->info.name.original != NULL && name->info.name.original != NULL
+	  && intl_identifier_casecmp (column->info.name.original, name->info.name.original) == 0)
+	{
+	  break;
+	}
+    }
+  if (column == NULL || item == NULL || item->node_type != PT_HOST_VAR || item->info.host_var.var_type != PT_HOST_IN
+      || item->info.host_var.index < 0 || item->info.host_var.index >= parser->host_var_count
+      || DB_VALUE_DOMAIN_TYPE (&parser->host_variables[item->info.host_var.index]) == DB_TYPE_NULL
+      || (!item->info.host_var.rule_cast && pt_host_var_is_context_typed (item->expected_domain)))
+    {
+      return NO_ERROR;
+    }
+  const int i = item->info.host_var.index;
+  TP_DOMAIN *value = pt_host_var_value_domain (parser, i);
+  TP_DOMAIN *target = pt_bind_operand_target (parser, value, name, walk->open[walk->depth - 1],
+					      walk->depth > 1 ? walk->open[walk->depth - 2] : NULL);
+  if (target == NULL || tp_domain_match (target, value, TP_EXACT_MATCH))
+    {
+      return NO_ERROR;
+    }
+  if (parser->host_var_derived_from == NULL
+      && pt_grow_host_var_positions (parser, parser->host_var_count,
+				     parser->host_var_count + parser->auto_param_count) != NO_ERROR)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return pt_derive_host_var_position (parser, NULL, i, target, false, true);
+}
+
+/* CBRD-27583: whether the walk is in a MERGE's DELETE condition, where XASL generation puts the UPDATE's assigned
+ * values in place of the columns they assign (pt_substitute_assigned_name_node): a comparison's mate there can become a
+ * bind */
+static bool
+pt_in_merge_delete_condition (const PT_HOST_VAR_POSITION_WALK * walk)
+{
+  if (walk->depth == 0 || walk->open[0]->node_type != PT_MERGE)
+    {
+      return false;
+    }
+  for (const PT_NODE * term = walk->open[0]->info.merge.update.del_search_cond; term != NULL; term = term->next)
+    {
+      for (int d = 1; d < walk->depth; d++)
+	{
+	  if (walk->open[d] == term)
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
+/* pre walker of pt_assign_host_var_positions */
+static PT_NODE *
+pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+
+  if (walk->error != NO_ERROR)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  if (walk->depth > 0 && (walk->open[walk->depth - 1]->next == node || walk->open[walk->depth - 1]->or_next == node))
+    {
+      /* the walk visits a node's list successor before it leaves the node: the node is done, not the parent */
+      walk->depth--;
+    }
+  PT_NODE *parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
+  PT_NODE *grandparent = walk->depth > 1 ? walk->open[walk->depth - 2] : NULL;
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
+      && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count && walk->kinds != NULL)
+    {
+      walk->kinds[node->info.host_var.index] |= 1 << (pt_in_merge_delete_condition (walk) ? 0
+						      : pt_host_var_occurrence_class (parser, node, parent,
+										      grandparent) >> 10);
+    }
+  else if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
+	   && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count)
+    {
+      pt_check_host_var_occurrence (parser, node, parent, grandparent);
+      /* the arrays grow at the first host variable met: a statement without one (an EXECUTE, whose parser holds the
+       * prepared statement's positions) leaves them as they are */
+      if (walk->assign && parser->host_var_derived_from == NULL
+	  && pt_grow_host_var_positions (parser, parser->host_var_count,
+					 parser->host_var_count + parser->auto_param_count) != NO_ERROR)
+	{
+	  walk->error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+      walk->error = pt_assign_host_var_position (parser, node, parent, grandparent, walk);
+    }
+  else if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
+	   && pt_is_derived_host_var (parser, node->info.host_var.index))
+    {
+      pt_check_host_var_occurrence (parser, node, parent, grandparent);
+    }
+  else if (node->node_type == PT_NAME && walk->assign && walk->depth > 0 && parser->host_var_compiled_domains != NULL
+	   && (walk->open[0]->node_type == PT_MERGE || walk->open[0]->node_type == PT_UPDATE
+	       || walk->open[0]->node_type == PT_DELETE))
+    {
+      walk->error = pt_derive_column_host_var_position (parser, node, walk);
+    }
+  if (walk->depth == walk->capacity)
+    {
+      PT_NODE **open = (PT_NODE **) realloc (walk->open, (walk->capacity * 2 + 16) * sizeof (PT_NODE *));
+      if (open == NULL)
+	{
+	  walk->error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+      walk->open = open;
+      walk->capacity = walk->capacity * 2 + 16;
+    }
+  walk->open[walk->depth++] = node;
+  return node;
+}
+
+/* post walker of pt_assign_host_var_positions */
+static PT_NODE *
+pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+
+  if (walk->depth > 0 && walk->open[walk->depth - 1] == node)
+    {
+      walk->depth--;
+    }
+  if (walk->kinds == NULL && parser->host_var_format_classes != NULL && node->node_type == PT_EXPR
+      && (node->info.expr.op == PT_NVL || node->info.expr.op == PT_IFNULL || node->info.expr.op == PT_COALESCE
+	  || node->info.expr.op == PT_NVL2))
+    {
+      pt_check_null_takes_plan (parser, node, walk->assign);
+    }
+  return node;
+}
+
+/*
+ * pt_assign_host_var_positions () - CBRD-27583: at the end of every translation (mq_translate), in the compilation of
+ *   a bind type signature, give each host variable node the position whose domain it needs. One user host variable
+ *   can need two domains: a comparison whose type rule converts the value-typed bind (a rule cast), or a copy the
+ *   rewrites put into another context (an optimizer transitive term cast(t2.vc as double) = ?:0, a term pushed into a
+ *   derived table, an explicit ?:0 reused): that node gets a derived position the client fills with the user's value
+ *   converted into its domain, so the server never converts a bind. Every session translating the text computes the
+ *   same positions, cache hits included: the hash text is printed after the translation. Without typed values (a
+ *   PREPARE) only context-typed nodes derive; a value-typed position stays untyped and no plan is made. A later
+ *   translation in the same compilation (a SELECT built from the translated statement) reuses the positions and makes
+ *   none, but for one every execution translates (host_var_derive_later).
+ */
+void
+pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_HOST_VAR_POSITION_WALK walk;
+
+  /* the semantic compilation of PL static SQL only prints the text again: its execution binds and derives */
+  if (statement == NULL || parser->host_var_count <= 0 || parser->host_variables == NULL
+      || parser->host_var_expected_domains == NULL || pt_has_error (parser) || parser->flag.is_parsing_static_sql)
+    {
+      return;
+    }
+
+  walk.open = NULL;
+  walk.depth = walk.capacity = 0;
+  walk.error = NO_ERROR;
+  walk.assign = parser->host_var_derived_from == NULL;
+  walk.kinds = NULL;
+  walk.seen = (bool *) calloc (parser->host_var_count, sizeof (bool));
+  if (walk.seen == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return;
+    }
+#if !defined (NDEBUG)
+  walk.checked = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+  assert (walk.checked != NULL);
+#endif
+
+  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
+			   pt_assign_host_var_positions_post, &walk);
+
+#if !defined (NDEBUG)
+  /* a typed position all of whose nodes need one domain has the domain type checking gave it (a value-typed first node
+   * and a context of its value's domain: the plan's) */
+  for (int i = 0; walk.assign && walk.error == NO_ERROR && i < parser->host_var_count; i++)
+    {
+      if (!walk.seen[i])
+	{
+	  continue;
+	}
+      bool derived = false;
+      for (int k = parser->host_var_count; k < parser->host_var_count + parser->auto_param_count; k++)
+	{
+	  derived = derived || parser->host_var_derived_from[k] == i;
+	}
+      const bool typed = pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+	|| (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL);
+      assert (derived || !typed
+	      || (pt_host_var_is_context_typed (walk.checked[i])
+		  ? tp_domain_match (walk.checked[i], parser->host_var_expected_domains[i], TP_EXACT_MATCH)
+		  || tp_domain_match (walk.checked[i], pt_host_var_position_domain (parser, i), TP_EXACT_MATCH)
+		  : !pt_host_var_is_context_typed (parser->host_var_expected_domains[i])));
+    }
+  free (walk.checked);
+#endif
+
+  free (walk.seen);
+  free (walk.open);
+  if (walk.error == ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+    }
+}
+
+/*
+ * pt_classify_host_var_positions () - CBRD-27583: before type checking types the binds of a compilation, the
+ *   kind of every user position from all its occurrences (pt_host_var_occurrence_class; none in a MERGE's DELETE
+ *   condition, pt_in_merge_delete_condition): a position all of whose occurrences are of one kind takes it in
+ *   host_var_format_classes, any other none. An AGNOSTIC position is the
+ *   INTEGER of whether its value is NULL (type checking gives it that type; its bound value becomes NULL or 1 here
+ *   and at every bind); an NVL_ARG one starts with PT_HOST_VAR_NULL_MATCHES, which its nodes clear
+ *   (pt_check_null_takes_plan). A later translation reuses the classes.
+ */
+void
+pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_HOST_VAR_POSITION_WALK walk;
+
+  if (statement == NULL || parser->host_var_count <= 0 || parser->host_var_derived_from != NULL
+      || parser->flag.is_parsing_static_sql)
+    {
+      return;
+    }
+  int *classes = pt_host_var_format_classes (parser);
+  walk.open = NULL;
+  walk.depth = walk.capacity = 0;
+  walk.error = NO_ERROR;
+  walk.assign = false;
+  walk.seen = NULL;
+  walk.kinds = (int *) calloc (parser->host_var_count, sizeof (int));
+  if (classes == NULL || walk.kinds == NULL)
+    {
+      /* no class: every NULL keeps a signature of its own */
+      free (walk.kinds);
+      return;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
+			   pt_assign_host_var_positions_post, &walk);
+
+  for (int i = 0; walk.error == NO_ERROR && i < parser->host_var_count; i++)
+    {
+      /* the kinds seen are one bit each: exactly one, and not the kind 0 */
+      const int kinds = walk.kinds[i];
+      const int kind = kinds == 1 << 1 ? PT_HOST_VAR_CLASS_AGNOSTIC : kinds == 1 << 2 ? PT_HOST_VAR_CLASS_COMPARE
+	: kinds == 1 << 3 ? PT_HOST_VAR_CLASS_NVL_ARG : 0;
+      classes[i] = (classes[i] & ~(PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES)) | kind
+	| (kind == PT_HOST_VAR_CLASS_NVL_ARG ? PT_HOST_VAR_NULL_MATCHES : 0);
+      if (kind == PT_HOST_VAR_CLASS_AGNOSTIC && parser->host_variables != NULL)
+	{
+	  pt_set_agnostic_host_variable (&parser->host_variables[i], &parser->host_variables[i]);
+	}
+    }
+  free (walk.kinds);
+  free (walk.open);
+}
+
+/* walker of pt_has_session_variable: sets *(bool *) arg at a session variable read or assignment */
+static PT_NODE *
+pt_find_session_variable (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR
+      && (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE))
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/* CBRD-27583: whether a statement reads or assigns a session variable */
+bool
+pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool found = false;
+
+  if (!parser->flag.has_session_variable)
+    {
+      /* no session variable node was made in this parser (only the grammar makes one) */
+      return false;
+    }
+  (void) parser_walk_tree (parser, statement, pt_find_session_variable, &found, NULL, NULL);
+  return found;
 }
 
 /*
@@ -7832,7 +8718,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
  *   continue_walk(in):
  *
  */
-static PT_NODE *
+PT_NODE *
 pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   UINTPTR spec_id = *(UINTPTR *) void_arg;
@@ -10298,9 +11184,7 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
 {
   DB_VALUE limit_val;
   DB_BIGINT val = 0;
-  int limit_opt_flag = (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED);
-
-  if (!(xasl_flag & limit_opt_flag))
+  if (!(xasl_flag & XASL_LIMIT_OPT_FLAGS))
     {
       return false;
     }
@@ -10926,12 +11810,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_CREATE_ENTITY:
       {
-	bool is_dba_group_member = au_is_dba_group_member (Au_user);
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node)))
+	    && !sm_is_catcls_disabled ())
 	  {
-	    int error = NO_ERROR;
-	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
-	    PT_ERRORc (parser, node, er_msg ());
+	    PT_ERROR (parser, node, "It is not allowed to create a table/view with a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -10940,9 +11822,9 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_RENAME:
       {
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))) && !sm_is_catcls_disabled ())
 	  {
-	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    PT_ERROR (parser, node, "It is not allowed to rename a table/view to a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -11106,6 +11988,53 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return pt_append_string (parser, NULL, qualifier_name);
+}
+
+/*
+ * pt_set_owner_to_table_column_type () - qualify the table name of <table>.<column>%TYPE with the owner
+ *   return: none
+ *   data_type(in/out): data type node
+ *   owner(in): owner name
+ */
+static void
+pt_set_owner_to_table_column_type (PT_NODE * data_type, const char *owner)
+{
+  if (data_type == NULL || data_type->type_enum != PT_TYPE_TABLE_COLUMN)
+    {
+      return;
+    }
+
+  PT_NODE *table_name = data_type->info.data_type.table_column->info.dot.arg1;
+  if (table_name->info.name.resolved == NULL && !sm_check_system_class_by_name (table_name->info.name.original))
+    {
+      table_name->info.name.resolved = owner;
+    }
+}
+
+/*
+ * pt_set_sp_owner_to_table_column_types () - qualify the table names of <table>.<column>%TYPE
+ *   in the parameter and return types with the owner of the stored procedure
+ *   return: none
+ *   sp_node(in/out): create procedure/function statement
+ *
+ * Without this, the unqualified table names are qualified with the current user later
+ * in pt_set_user_specified_name (), which is wrong when the SP owner is not the current user.
+ */
+void
+pt_set_sp_owner_to_table_column_types (PT_NODE * sp_node)
+{
+  const char *sp_owner = sp_node->info.sp.name->info.name.resolved;
+  if (sp_owner == NULL)
+    {
+      /* the SP owner is the current user, which is the same as the default qualification */
+      return;
+    }
+
+  for (PT_NODE * param = sp_node->info.sp.param_list; param; param = param->next)
+    {
+      pt_set_owner_to_table_column_type (param->data_type, sp_owner);
+    }
+  pt_set_owner_to_table_column_type (sp_node->info.sp.ret_data_type, sp_owner);
 }
 
 /*
@@ -11855,6 +12784,66 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
+/* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
+ *
+ * Each value is printed into the statement as written, so only a literal the remote reads the same way is
+ * accepted.  Keeping a local table out of the clause is not this test's job: pt_convert_dblink_dml_query ()
+ * refuses one whatever this test answers, so widening it cannot let a local table through.
+ */
+static bool
+pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
+{
+  PT_NODE *assign, *lhs, *rhs;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
+	{
+	  return false;
+	}
+
+      lhs = assign->info.expr.arg1;
+      if (lhs == NULL || lhs->node_type != PT_NAME || lhs->info.name.original == NULL
+	  || lhs->info.name.original[0] == '\0')
+	{
+	  return false;
+	}
+
+      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
+      rhs = assign->info.expr.arg2;
+      if (rhs != NULL && rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_UNARY_MINUS)
+	{
+	  rhs = rhs->info.expr.arg1;
+	  if (rhs == NULL || !PT_IS_NUMERIC_TYPE (rhs->type_enum))
+	    {
+	      return false;
+	    }
+	}
+
+      if (rhs == NULL || rhs->node_type != PT_VALUE)
+	{
+	  return false;
+	}
+
+      /* a braced container and a parenthesized list are value nodes too, and their elements are
+       * ordinary expressions, so name the types that may go rather than the ones that may not */
+      if (!(PT_IS_NUMERIC_TYPE (rhs->type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (rhs->type_enum)
+	    || PT_IS_DATE_TIME_TYPE (rhs->type_enum) || rhs->type_enum == PT_TYPE_NULL))
+	{
+	  return false;
+	}
+
+      /* an introducer or a COLLATE modifier goes out as written, and the remote need not read it alike */
+      if (rhs->info.value.has_cs_introducer || rhs->info.value.print_charset || rhs->info.value.print_collation
+	  || rhs->info.value.coll_modifier != 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 static void
 pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
@@ -11874,16 +12863,17 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       remote_ins = 1;
     }
 
-  /* remote INSERT SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
+  /* remote INSERT / REPLACE SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
    *
-   * Only plain INSERT ... SELECT is carved out to the remote sink path. REPLACE INTO ... SELECT and
-   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE are intentionally excluded: the remote path emits a
-   * plain INSERT (dblink_dml_open) and cannot honor REPLACE/ODKU semantics. By not setting the flag
-   * here they fall through to pt_convert_dblink_dml_query's "local mixed remote DML is not allowed"
-   * rejection -- the same behavior develop gives for these statements. Supporting REPLACE/ODKU over a
-   * remote target is deferred. */
+   * REPLACE INTO ... SELECT takes the same sink. The sink sends one statement per source row and
+   * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
+   * dblink_dml_open prepares; the values travel the same way.
+   *
+   * ON DUPLICATE KEY UPDATE rides along when every assignment can be written out. One that cannot
+   * keeps the whole statement out of the sink, and it falls through to the mixed local/remote
+   * rejection. */
   if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
-      && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
+      && pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
@@ -11894,17 +12884,33 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 }
 
 /* ==========================================================================================================
- * remote DELETE + local subquery carve-out -- shape gate, same-server conversion, diagnostics.
- * Entry: pt_dblink_delete_where_is_inscope (from pt_convert_dblink_delete_query),
- *        pt_dblink_delete_settle_sink (from pt_convert_dblink_dml_query).
+ * remote DELETE / UPDATE + local subquery carve-out -- shape gates, same-server conversion, diagnostics.
+ * Entry: pt_dblink_dml_where_is_inscope (from pt_convert_dblink_delete_query),
+ *        pt_dblink_update_where_is_inscope and _set_is_inscope (from pt_convert_dblink_update_query),
+ *        pt_dblink_dml_settle_sink (from pt_convert_dblink_dml_query).
  * ========================================================================================================== */
 
-/* true iff cond is a pushable subquery predicate: col IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp (subquery).
- * Each admitted shape is satisfied by pushing the local values one at a time and letting the remote compare
- * each; ALL is not (it needs a reduction ordered by the remote column, not visible here).
- * Shape only; execution is in XASL gen. */
+/* true iff the left-hand side of cond is a single column, bare or dotted -- the one key the remote WHERE
+ * compares each local value against. A row value (id, c) or an expression has no such key. Whether a dotted
+ * qualifier names the target is pt_dblink_dml_check_qualifier's question, not this one. */
 static bool
-pt_dblink_delete_is_pushable_pred (PT_NODE * cond)
+pt_dblink_dml_pred_lhs_is_column (PT_NODE * cond)
+{
+  PT_NODE *arg1 = cond->info.expr.arg1;
+
+  if (arg1 == NULL)
+    {
+      return false;
+    }
+
+  return arg1->node_type == PT_NAME || (arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
+					&& arg1->info.dot.arg2->node_type == PT_NAME);
+}
+
+/* true iff cond compares something with a subquery through an operator the sink can push:
+ * IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp. What stands on the left is not looked at. */
+static bool
+pt_dblink_dml_is_subquery_pred (PT_NODE * cond)
 {
   PT_NODE *arg2;
 
@@ -11942,6 +12948,106 @@ pt_dblink_delete_is_pushable_pred (PT_NODE * cond)
   return true;
 }
 
+/* true iff cond is a pushable subquery predicate: col IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp (subquery).
+ * Each admitted shape is satisfied by pushing the local values one at a time and letting the remote compare
+ * each; ALL is not (it needs a reduction ordered by the remote column, not visible here).
+ * Shape only; execution is in XASL gen. */
+static bool
+pt_dblink_dml_is_pushable_pred (PT_NODE * cond)
+{
+  return pt_dblink_dml_is_subquery_pred (cond) && pt_dblink_dml_pred_lhs_is_column (cond);
+}
+
+/* true iff the per-value remote predicates this shape produces can match overlapping row sets, so one
+ * remote row can be reached by more than one of them.
+ *
+ * The sink sends one statement per local value and the statements are independent, so overlap means the
+ * same row is written more than once. DELETE does not care -- a row cannot be deleted twice, and the
+ * second statement reports 0 -- but UPDATE writes again: the reported count grows past the number of rows
+ * that changed, a SET expression reading the row's own value is applied twice, and a remote trigger fires
+ * twice. Only the UPDATE side asks this.
+ *
+ * Equality never overlaps: distinct values match disjoint row sets, and de-duplicating the values removes
+ * the remaining repetition. Every other quantified comparison overlaps -- "col < 2" and "col < 3" share
+ * every row below 2, and "col <> 2" and "col <> 3" share every row that is neither. */
+static bool
+pt_dblink_dml_pred_targets_can_overlap (PT_NODE * cond)
+{
+  switch (cond->info.expr.op)
+    {
+    case PT_NE_SOME:
+    case PT_LT_SOME:
+    case PT_GT_SOME:
+    case PT_LE_SOME:
+    case PT_GE_SOME:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/* the column a bare or dotted name refers to, or NULL when col is neither */
+static const char *
+pt_dblink_dml_column_name (PT_NODE * col)
+{
+  if (col == NULL)
+    {
+      return NULL;
+    }
+
+  if (col->node_type == PT_NAME)
+    {
+      return col->info.name.original;
+    }
+
+  if (col->node_type == PT_DOT_ && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+    {
+      return col->info.dot.arg2->info.name.original;
+    }
+
+  return NULL;
+}
+
+/* true iff an UPDATE that sends one statement per value also assigns the WHERE column in SET.
+ *
+ * A row one statement writes can then match the key of a later one, and that statement updates it again.
+ * With rows 1 and 2, SET id = id + 1 WHERE id IN (1, 2) moves row 1 to 2, and the statement for 2 moves
+ * both rows to 3. De-duplicating the values does not help, as it only removes repeats among the values
+ * before the update. A scalar comparison sends one statement, so it is not asked. MERGE refuses to update
+ * a column of its ON condition for the same reason. */
+static bool
+pt_dblink_update_set_writes_where_key (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *cond = node->info.update.search_cond;
+  PT_ASSIGNMENTS_HELPER ea;
+  const char *key_col, *set_col;
+
+  if (cond == NULL || cond->node_type != PT_EXPR
+      || (cond->info.expr.op != PT_IS_IN && cond->info.expr.op != PT_EQ_SOME))
+    {
+      return false;
+    }
+
+  key_col = pt_dblink_dml_column_name (cond->info.expr.arg1);
+  if (key_col == NULL)
+    {
+      return false;
+    }
+
+  pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+  while (pt_get_next_assignment (&ea))
+    {
+      set_col = pt_dblink_dml_column_name (ea.lhs);
+      if (set_col != NULL && intl_identifier_casecmp (set_col, key_col) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 /*
  * pt_dblink_find_remote_spec () - walk pre: set *arg when a remote (tbl@srv) spec remains.
  *   Same-server rewrite turns those into dblink derived tables. Name resolution leaves flat_entity_list /
@@ -11964,11 +13070,11 @@ pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 }
 
 /*
- * pt_dblink_delete_target_range_name () - name the DELETE target can be qualified with: its alias when one is
+ * pt_dblink_dml_target_range_name () - name the DML target can be qualified with: its alias when one is
  *   declared, otherwise the table name (declaring an alias replaces the table name as the correlation name).
  */
 static const char *
-pt_dblink_delete_target_range_name (PT_NODE * spec)
+pt_dblink_dml_target_range_name (PT_NODE * spec)
 {
   if (spec == NULL)
     {
@@ -11989,26 +13095,24 @@ pt_dblink_delete_target_range_name (PT_NODE * spec)
 }
 
 /*
- * pt_dblink_delete_check_qualifier () - true when the LHS is unqualified or names the DELETE target.
+ * pt_dblink_dml_check_qualifier () - true when the LHS is unqualified or names the DML target.
  *   *bad_qualifier is the bad qualifier, or NULL for a nested a.b.c shape.
  *
  *   Name resolution cannot do this for a remote spec -- pt_find_name_in_spec() reports every name as found,
  *   the local server holding no schema for the remote table -- while XASL keeps only the trailing attribute
- *   of a dotted name. An unverified qualifier deletes against whatever that attribute happens to name.
+ *   of a dotted name. An unverified qualifier acts on whatever that attribute happens to name.
  */
 static bool
-pt_dblink_delete_check_qualifier (PT_NODE * node, const char **bad_qualifier)
+pt_dblink_dml_check_qualifier (PT_NODE * cond, PT_NODE * spec, const char **bad_qualifier)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
   PT_NODE *arg1, *qual;
   const char *range_name;
 
   *bad_qualifier = NULL;
 
   /* The gate established a single pushable predicate, always a PT_EXPR. A mismatch means the gate and this
-   * check have drifted -- DBLINK_REMOTE_SINK_* leaves room for an UPDATE extension that would set the flag
-   * from a second site. Reject rather than skip: an unverified qualifier deletes remote rows the
-   * statement never named. */
+   * check have drifted -- two sites set the sink flag now (DELETE and UPDATE). Reject rather than skip: an
+   * unverified qualifier acts on remote rows the statement never named. */
   assert (cond != NULL && cond->node_type == PT_EXPR);
   if (cond == NULL || cond->node_type != PT_EXPR)
     {
@@ -12029,7 +13133,7 @@ pt_dblink_delete_check_qualifier (PT_NODE * node, const char **bad_qualifier)
 
   *bad_qualifier = qual->info.name.original;
 
-  range_name = pt_dblink_delete_target_range_name (node->info.delete_.spec);
+  range_name = pt_dblink_dml_target_range_name (spec);
   if (range_name != NULL && intl_identifier_casecmp (*bad_qualifier, range_name) == 0)
     {
       *bad_qualifier = NULL;
@@ -12039,61 +13143,240 @@ pt_dblink_delete_check_qualifier (PT_NODE * node, const char **bad_qualifier)
   return false;
 }
 
-/* true iff DELETE WHERE is a single pushable predicate (see pt_dblink_delete_is_pushable_pred).
- * Correlation / row subquery are not decided here (correlation_level is 0 on a DELETE WHERE subquery), but
- * downstream: pt_dblink_delete_corr_ref() (semantic_check.c) rejects correlated ones,
- * pt_to_delete_xasl_remote_subquery() (xasl_generation.c) rejects row/multi-column ones. */
+/* true iff the DML WHERE is a single pushable predicate (see pt_dblink_dml_is_pushable_pred). This is
+ * DELETE's shape gate; an UPDATE reaches it from the decline step and the mixed-reference rejection, while
+ * its own gate is pt_dblink_update_where_is_inscope.
+ * A row value or an expression on the left is refused here, by pt_dblink_dml_pred_lhs_is_column;
+ * pt_dblink_dml_xasl_where () (xasl_generation.c) keeps the same check as a backstop.
+ * Correlation is not decided here (correlation_level is 0 on a DELETE WHERE subquery), but downstream on
+ * both paths: the pt_dblink_dml_corr_ref_pre/_post walk (semantic_check.c) rejects correlated ones. */
 static bool
-pt_dblink_delete_where_is_inscope (PT_NODE * node)
+pt_dblink_dml_where_is_inscope (PT_NODE * cond)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
-
   if (cond == NULL || cond->next != NULL)
     {
       return false;		/* defensive: carve-out runs pre-CNF, so a cond->next list is unexpected here */
     }
 
-  return pt_dblink_delete_is_pushable_pred (cond);
+  return pt_dblink_dml_is_pushable_pred (cond);
 }
 
-/* true when WHERE still holds an unrewritten remote (tbl@srv) spec. Re-checked (conversion changes it). */
-static bool
-pt_dblink_delete_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
+static PT_NODE *
+pt_dblink_dml_search_cond (PT_NODE * node)
 {
+  if (node->node_type == PT_UPDATE)
+    {
+      return node->info.update.search_cond;
+    }
+
+  return (node->node_type == PT_DELETE) ? node->info.delete_.search_cond : NULL;
+}
+
+/* the sink-relevant subtrees of a remote DML statement. DELETE carries one local subquery in WHERE; UPDATE
+ * carries that plus one per SET assignment, so every walk below has to cover both. */
+static void
+pt_dblink_dml_sink_trees (PT_NODE * node, PT_NODE ** cond, PT_NODE ** assigns)
+{
+  *cond = NULL;
+  *assigns = NULL;
+
+  if (node->node_type == PT_DELETE)
+    {
+      *cond = node->info.delete_.search_cond;
+    }
+  else if (node->node_type == PT_UPDATE)
+    {
+      *cond = node->info.update.search_cond;
+      *assigns = node->info.update.assignment;
+    }
+}
+
+/* true when a sink subtree still holds an unrewritten remote (tbl@srv) spec. Re-checked (conversion changes it). */
+static bool
+pt_dblink_dml_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *cond, *assigns;
   bool found = false;
 
-  parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &found, NULL, NULL);
+  pt_dblink_dml_sink_trees (node, &cond, &assigns);
+  parser_walk_tree (parser, cond, pt_dblink_find_remote_spec, &found, NULL, NULL);
+  if (!found && assigns != NULL)
+    {
+      parser_walk_tree (parser, assigns, pt_dblink_find_remote_spec, &found, NULL, NULL);
+    }
 
   return found;
 }
 
-/* WHERE-subquery remote-server count delta (same sub_sel_server_cnt as INSERT SELECT).
+/* sink-subtree remote-server count delta (same sub_sel_server_cnt as INSERT SELECT).
  * May overlap the caller's full walk. Harmless: server_cnt is only tested for having changed, local_cnt for
  * being nonzero, and distinct_cnt (tested == 1) cannot be inflated -- pt_get_server_name_list skips the
  * increment when the name is already stored. */
 static int
-pt_dblink_delete_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int server_cnt_before)
+pt_dblink_dml_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int server_cnt_before)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
+  PT_NODE *cond, *assigns;
 
-  if (cond == NULL || cond->node_type != PT_EXPR)
+  pt_dblink_dml_sink_trees (node, &cond, &assigns);
+
+  if (cond != NULL && cond->node_type == PT_EXPR)
     {
-      return 0;
+      parser_walk_tree (parser, cond->info.expr.arg2, pt_get_server_name_list, snl, NULL, NULL);
     }
-
-  parser_walk_tree (parser, cond->info.expr.arg2, pt_get_server_name_list, snl, NULL, NULL);
+  if (assigns != NULL)
+    {
+      parser_walk_tree (parser, assigns, pt_get_server_name_list, snl, NULL, NULL);
+    }
 
   return snl->server_cnt - server_cnt_before;
 }
 
-/* Same-server mixed WHERE subquery: rewrite embedded remote specs to dblink derived tables. No runtime
- * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
- * Same idea as INSERT SELECT; walk is WHERE subquery only. Clears sink_kind when not local-mixed. */
-static void
-pt_dblink_delete_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
+/* true iff the UPDATE WHERE is one this sink can carry, with *has_driving_pred telling which track it is.
+ * Two shapes are admitted:
+ *   1. no WHERE at all, the SET track -- the only subquery sits in the assignments and every remote row is
+ *      updated                                                      -> *has_driving_pred = false
+ *   2. a single pushable predicate over a subquery (the DELETE sink's shapes, see
+ *      pt_dblink_dml_is_pushable_pred), minus the ones whose per-value predicates overlap
+ *      (pt_dblink_dml_pred_targets_can_overlap)                     -> *has_driving_pred = true
+ *
+ * A WHERE that only reads remote columns (col op literal) is left to the existing rejection: the remote
+ * statement would have to carry it verbatim, which needs a deparse this sink does not have. */
+static bool
+pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
+  PT_NODE *cond = node->info.update.search_cond;
+
+  *has_driving_pred = false;
+
+  if (cond == NULL)
+    {
+      return true;		/* shape 1 */
+    }
+
+  if (cond->next != NULL || !pt_dblink_dml_is_pushable_pred (cond))
+    {
+      return false;
+    }
+
+  /* Shapes whose per-value predicates overlap are left out of this sink: writing the same row twice is a
+   * different statement than the one the user wrote. DELETE keeps them -- see
+   * pt_dblink_dml_pred_targets_can_overlap. */
+  if (pt_dblink_dml_pred_targets_can_overlap (cond))
+    {
+      return false;
+    }
+
+  *has_driving_pred = true;	/* shape 2 */
+  return true;
+}
+
+/* true iff expr can be copied into a remote SQL string as-is: a literal, a bare column of the remote
+ * target, or + - * / (and unary -) over those.
+ *
+ * Callers deparse this into the remote statement. Host variables print as "?" with no bind; function
+ * calls are unchecked text -- both are rejected.
+ *
+ * Bare columns rely on a single spec. Qualified names (t.col) are rejected here; WHERE can check
+ * qualifiers later in settle, this path cannot.
+ *
+ * "||" is omitted: CUBRID/Oracle concatenate, MySQL treats it as OR unless PIPES_AS_CONCAT is set.
+ *
+ * First caller: UPDATE SET. Named for the question, not the clause, so other deparse paths can reuse
+ * it. Predicate shapes have their own check. Shared (non-static) with xasl_generation.c, which re-checks
+ * the shape before printing -- if this and the gate ever drift, the expression is rejected, not shipped. */
+bool
+pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
+{
+  if (expr == NULL)
+    {
+      return false;
+    }
+
+  switch (expr->node_type)
+    {
+    case PT_VALUE:
+      return true;
+
+    case PT_NAME:
+      return expr->info.name.meta_class == PT_NORMAL;
+
+    case PT_EXPR:
+      switch (expr->info.expr.op)
+	{
+	case PT_PLUS:
+	case PT_MINUS:
+	case PT_TIMES:
+	case PT_DIVIDE:
+	case PT_UNARY_MINUS:
+	  break;
+	default:
+	  return false;
+	}
+
+      if (expr->info.expr.arg3 != NULL)
+	{
+	  return false;
+	}
+
+      return pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg1)
+	&& (expr->info.expr.arg2 == NULL || pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg2));
+
+    default:
+      return false;
+    }
+}
+
+/* true iff every UPDATE SET assignment is one the remote sink can honor, with *num_set_subq set to how many
+ * of them are a scalar subquery. Two RHS forms are accepted:
+ *   - a bare subquery (col = (SELECT ...)): evaluated once, its value bound to a placeholder in the remote
+ *     SET clause
+ *   - a remote-only expression (pt_dblink_dml_is_remote_only_expr): deparsed into that clause instead,
+ *     its value not being computable here
+ *
+ * Rejected: a multi-column row assignment ((c1, c2) = (SELECT ...)), which one placeholder per column cannot
+ * express, and everything outside those two forms -- a subquery inside an expression (col = (SELECT ...) + 1),
+ * where binding the scalar alone would drop the operator, and a host variable or function call, which the
+ * remote-only check turns away. Shape only -- purity is the caller's settle step. */
+static bool
+pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *num_set_subq)
+{
+  PT_ASSIGNMENTS_HELPER ea;
+  int cnt = 0;
+
+  *num_set_subq = 0;
+
+  pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+  while (pt_get_next_assignment (&ea))
+    {
+      if (ea.is_n_column || ea.rhs == NULL)
+	{
+	  return false;
+	}
+
+      if (PT_IS_QUERY (ea.rhs))
+	{
+	  cnt++;
+	}
+      else if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
+	{
+	  return false;
+	}
+    }
+
+  *num_set_subq = cnt;
+  return true;
+}
+
+/* Same-server mixed sink subquery: rewrite embedded remote specs to dblink derived tables. No runtime
+ * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
+ * Same idea as INSERT SELECT; walk covers the sink subtrees only. Clears sink_kind when not local-mixed. */
+static void
+pt_dblink_dml_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *cond, *assigns;
   bool had_dblink_before;
+
+  pt_dblink_dml_sink_trees (node, &cond, &assigns);
 
   if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1))
     {
@@ -12107,6 +13390,10 @@ pt_dblink_delete_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
     {
       parser_walk_tree (parser, cond->info.expr.arg2, pt_check_sub_query_spec, snl, NULL, NULL);
     }
+  if (assigns != NULL)
+    {
+      parser_walk_tree (parser, assigns, pt_check_sub_query_spec, snl, NULL, NULL);
+    }
 
   /* Rewrite flips has_dblink_query (derived dblink looks like dblink()). Restore unless one was already present;
    * DELETE is not exempt from the caller's has_dblink_query rejection (INSERT SELECT is). */
@@ -12116,37 +13403,77 @@ pt_dblink_delete_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
     }
 }
 
-/* Post-confirmation rejects (LIMIT, bad qualifier). Not at shape gate (same-server all-remote shares that path).
+/* true when this statement is routed to one of the local-subquery sinks (DELETE or UPDATE). */
+static bool
+pt_dblink_dml_is_local_subq_sink (const SERVER_NAME_LIST * snl)
+{
+  return (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ
+	  || snl->sink_kind == DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ);
+}
+
+/* the statement word this carve-out's messages use. Both spellings appear ("remote DELETE", "delete target"),
+ * so they come from one place. */
+static const char *
+pt_dblink_dml_stmt_name (const PT_NODE * node, bool lower)
+{
+  if (node->node_type == PT_UPDATE)
+    {
+      return lower ? "update" : "UPDATE";
+    }
+
+  return lower ? "delete" : "DELETE";
+}
+
+/* Post-confirmation rejects (LIMIT, ORDER BY, bad qualifier). Not at shape gate (same-server all-remote
+ * shares that path).
  * return: true if an error was raised */
 static bool
-pt_dblink_delete_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
+pt_dblink_dml_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
 {
+  PT_NODE *cond = pt_dblink_dml_search_cond (node);
+  bool is_update = (node->node_type == PT_UPDATE);
+  PT_NODE *limit = is_update ? node->info.update.limit : node->info.delete_.limit;
+  /* DELETE has no ORDER BY to reject -- the grammar does not accept one. */
+  PT_NODE *order_by = is_update ? node->info.update.order_by : NULL;
   const char *bad_qualifier;
+  const char *stmt = pt_dblink_dml_stmt_name (node, false);
   char errmsg[256];
 
-  if (node->info.delete_.limit != NULL)
+  /* One statement goes out per local value, so a clause that speaks for the whole statement has no
+   * single statement to act on. The plan carries only the SET text and one WHERE key, so a clause left
+   * in place would just vanish. Refuse it here instead. */
+  if (limit != NULL)
     {
-      /* Per-value remote DELETEs: no single statement to LIMIT; also invisible until semantic check. */
-      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery does not support LIMIT");
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery does not support LIMIT", stmt);
+      PT_ERRORc (parser, upd_spec, errmsg);
       return true;
     }
 
-  if (!pt_dblink_delete_check_qualifier (node, &bad_qualifier))
+  if (order_by != NULL)
+    {
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery does not support ORDER BY", stmt);
+      PT_ERRORc (parser, upd_spec, errmsg);
+      return true;
+    }
+
+  /* No WHERE at all is a shape the UPDATE sink admits (its subquery then sits in SET), and there is no
+   * qualifier to compare. Skipping keeps the check from reporting a multi-part qualifier that is not there. */
+  if (cond != NULL && !pt_dblink_dml_check_qualifier (cond, upd_spec, &bad_qualifier))
     {
       if (bad_qualifier != NULL)
 	{
 	  snprintf (errmsg, sizeof (errmsg),
-		    "dblink: remote DELETE with a local subquery requires the WHERE qualifier to name the "
-		    "delete target, but \"%s\" does not", bad_qualifier);
+		    "dblink: remote %s with a local subquery requires the WHERE qualifier to name the "
+		    "%s target, but \"%s\" does not", stmt, pt_dblink_dml_stmt_name (node, true), bad_qualifier);
 	}
       else
 	{
 	  snprintf (errmsg, sizeof (errmsg),
-		    "dblink: remote DELETE with a local subquery does not support a multi-part qualifier "
-		    "on the WHERE predicate");
+		    "dblink: remote %s with a local subquery does not support a multi-part qualifier "
+		    "on the WHERE predicate", stmt);
 	}
-      /* PT_ERRORc, unlike the literal-message PT_ERROR above: errmsg carries bad_qualifier, and PT_ERROR
-       * would take it as the format string. A bracketed identifier may hold % directives. */
+      /* PT_ERRORc: errmsg carries bad_qualifier, and PT_ERROR would take the buffer as its format string.
+       * A bracketed identifier may hold % directives. */
       PT_ERRORc (parser, upd_spec, errmsg);
       return true;
     }
@@ -12157,48 +13484,159 @@ pt_dblink_delete_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
 /* Carve-out decline reasons, ahead of the generic catch-all (caller requires local_cnt > 0).
  * return: true if an error was raised */
 static bool
-pt_dblink_delete_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
+pt_dblink_dml_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
 {
-  if (node->info.delete_.spec->next != NULL)
+  PT_NODE *spec = (node->node_type == PT_UPDATE) ? node->info.update.spec : node->info.delete_.spec;
+  const char *stmt = pt_dblink_dml_stmt_name (node, false);
+  char errmsg[256];
+
+  if (spec->next != NULL)
     {
-      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery supports only a single " "FROM table");
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery supports only a single "
+		"FROM table", stmt);
+      PT_ERRORc (parser, upd_spec, errmsg);
       return true;
     }
 
-  if (pt_dblink_delete_has_remote_spec (parser, node))
+  if (pt_dblink_dml_has_remote_spec (parser, node))
     {
-      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery only supports a WHERE "
-		"subquery that mixes local tables with a remote table on the delete target's own server");
+      /* "WHERE subquery" for DELETE, plain "subquery" for UPDATE (whose subquery may sit in SET). The DELETE
+       * spelling is kept byte-identical: it is shipped behavior, and this change has no reason to reword it. */
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery only supports a %ssubquery "
+		"that mixes local tables with a remote table on the %s target's own server", stmt,
+		(node->node_type == PT_UPDATE) ? "" : "WHERE ", pt_dblink_dml_stmt_name (node, true));
+      PT_ERRORc (parser, upd_spec, errmsg);
       return true;
     }
 
   return false;
 }
 
+/* The mixed local/remote rejection, in the voice of the declines above. A WHERE subquery predicate without a
+ * single column on its left is named first, for DELETE and UPDATE alike. Otherwise each kind asks its own
+ * gate again so that it names what actually turned the statement away; when no gate did, the sink was
+ * cleared earlier -- ahead of the caller -- and the bare sentence is all we can say. */
+static void
+pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int odku_local_cnt,
+				PT_NODE * loc)
+{
+  const char *accepted = NULL;
+  char errmsg[256];
+  PT_NODE *cond;
+  bool driving_pred;
+  int num_set_subq;
+
+  /* Ahead of the per-kind questions, which would answer "a single uncorrelated WHERE subquery" -- and the
+   * statement has one. What it lacks is a single column for the remote to compare each value against. */
+  cond = pt_dblink_dml_search_cond (node);
+  if (cond != NULL && cond->next == NULL && pt_dblink_dml_is_subquery_pred (cond)
+      && !pt_dblink_dml_pred_lhs_is_column (cond))
+    {
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery supports only a single column "
+		"on the left of the WHERE subquery predicate", pt_dblink_dml_stmt_name (node, false));
+      PT_ERRORc (parser, loc, errmsg);
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      /* A local table only in the ON DUPLICATE KEY UPDATE clause keeps the common message. The source is not
+       * local, so neither sentence below would name the cause. */
+      if (snl->local_cnt <= odku_local_cnt)
+	{
+	  break;
+	}
+      /* Spelled out rather than composed below: INSERT's local side is a SELECT source, not a subquery,
+       * and the name that sentence composes covers UPDATE and DELETE only. */
+      if (pt_get_subquery_of_insert_select (node) == NULL)
+	{
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only INSERT ... SELECT");
+	  return;
+	}
+      /* Blamed only when the clause is what kept the statement out of the sink. A sendable clause on a
+       * statement refused for its SELECT source would otherwise be named as the cause. A source that also
+       * reads another server is refused whatever the clause holds. */
+      if (node->info.insert.odku_assignments != NULL && snl->distinct_cnt == 1
+	  && !pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
+	{
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only literal values in "
+		    "ON DUPLICATE KEY UPDATE");
+	  return;
+	}
+      break;
+
+    case PT_DELETE:
+      if (!pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node)))
+	{
+	  accepted = "a single uncorrelated WHERE subquery";
+	}
+      break;
+
+    case PT_UPDATE:
+      /* Overlap first, asked the way the gate asks it -- can_overlap reads the expression union, so the
+       * pushable check has to come before it. Naming the clause here would read as already satisfied: the
+       * statement does have a single local subquery predicate. */
+      if (pt_dblink_dml_is_pushable_pred (cond) && pt_dblink_dml_pred_targets_can_overlap (cond))
+	{
+	  accepted = "IN, = ANY or a scalar comparison; the other quantified forms would update a row twice";
+	}
+      else if (!pt_dblink_update_where_is_inscope (node, &driving_pred))
+	{
+	  accepted = "a single uncorrelated WHERE subquery, or no WHERE";
+	}
+      else if (!pt_dblink_update_set_is_inscope (parser, node, &num_set_subq))
+	{
+	  accepted = "SET values that are a bare subquery or an expression the remote computes";
+	}
+      else if (pt_dblink_update_set_writes_where_key (parser, node))
+	{
+	  accepted = "a SET that leaves the IN or = ANY column unchanged; assigning it would update a row twice";
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (accepted == NULL)
+    {
+      PT_ERROR (parser, loc, "dblink: this combination of local and remote references is not supported");
+      return;
+    }
+
+  snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery supports only %s",
+	    pt_dblink_dml_stmt_name (node, false), accepted);
+  PT_ERRORc (parser, loc, errmsg);
+}
+
 /* Settle carve-out: convert same-server mix, keep sink only if no remote left, then diagnose.
  * After counter walks, before generic local-mixed-remote rejection.
  * return: true if an error was raised */
 static bool
-pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
-			      int sub_sel_server_cnt, int local_upd, int remote_upd)
+pt_dblink_dml_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
+			   int sub_sel_server_cnt, int local_upd, int remote_upd)
 {
-  /* Same-server mixed WHERE subquery: convert the embedded remote specs first. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
+  bool shape_driving_pred;	/* unused -- the gate below is asked for its verdict, not its track */
+
+  /* Same-server mixed sink subquery: convert the embedded remote specs first. */
+  if (pt_dblink_dml_is_local_subq_sink (snl) && sub_sel_server_cnt > 0)
     {
-      pt_dblink_delete_convert_specs (parser, node, snl);
+      pt_dblink_dml_convert_specs (parser, node, snl);
     }
 
   /* Keep carve-out only if no remote spec remains (same-server convert only). Else clear for
-   * all-remote (full pushdown) or multi-remote/dblink(). Counters alone are not enough -- walk WHERE. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+   * all-remote (full pushdown) or multi-remote/dblink(). Counters alone are not enough -- walk the sink
+   * subtrees. */
+  if (pt_dblink_dml_is_local_subq_sink (snl))
     {
-      /* Single FROM required (only set in pt_convert_dblink_delete_query); assert for a future second set site. */
-      assert (node->info.delete_.spec->next == NULL);
+      /* Single FROM required; both set sites (DELETE and UPDATE entry) establish it. */
+      assert (((node->node_type == PT_UPDATE) ? node->info.update.spec : node->info.delete_.spec)->next == NULL);
 
-      if (!pt_dblink_delete_has_remote_spec (parser, node) && snl->local_cnt > 0 && snl->distinct_cnt == 1
+      if (!pt_dblink_dml_has_remote_spec (parser, node) && snl->local_cnt > 0 && snl->distinct_cnt == 1
 	  && !snl->has_dblink_query)
 	{
-	  if (pt_dblink_delete_reject_confirmed (parser, node, upd_spec))
+	  if (pt_dblink_dml_reject_confirmed (parser, node, upd_spec))
 	    {
 	      return true;
 	    }
@@ -12209,9 +13647,18 @@ pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NA
 	}
     }
 
-  /* Decline diagnostics ahead of the generic catch-all. */
-  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
-      && pt_dblink_delete_where_is_inscope (node) && pt_dblink_delete_reject_declined (parser, node, upd_spec))
+  /* Decline diagnostics ahead of the generic catch-all, each kind asking its own shape gate -- a statement
+   * its gate already refused must not be handed a decline reason that does not apply to it. Only DELETE and
+   * UPDATE reach the body: for any other kind the accessor hands back NULL and the shared check turns it
+   * away. The UPDATE gate takes a NULL WHERE, so it is the shared side that draws that line. An UPDATE whose
+   * SET assigns the WHERE key passes the WHERE gate but not the sink gate. It stays out of here, so the
+   * mixed-reference rejection names that reason instead of asking for a same-server mix it may already have. */
+  if (remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
+      && ((node->node_type == PT_UPDATE)
+	  ? (pt_dblink_update_where_is_inscope (node, &shape_driving_pred)
+	     && !pt_dblink_update_set_writes_where_key (parser, node))
+	  : pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node)))
+      && pt_dblink_dml_reject_declined (parser, node, upd_spec))
     {
       return true;
     }
@@ -12303,7 +13750,7 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * cannot yet tell the local-subquery form from a same-server all-remote one, and both keep working through
    * full pushdown, so diagnosing them here would break them. */
   if (remote_del == 1 && local_del == 0 && node->info.delete_.spec->next == NULL
-      && pt_dblink_delete_where_is_inscope (node))
+      && pt_dblink_dml_where_is_inscope (node->info.delete_.search_cond))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ;
     }
@@ -12330,6 +13777,28 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (error != NO_ERROR)
     {
       return;
+    }
+
+  /* Optimistic sink: single remote UPDATE target, and both clauses in scope. The local subquery may sit in
+   * WHERE (the value-push driving predicate), in the SET assignments (a scalar bound to a placeholder in the
+   * remote SET clause), or in both -- the two axes are judged independently and both have to pass, so one unsupported
+   * clause blocks the statement. At least one local subquery must exist, otherwise this is a plain remote
+   * UPDATE that keeps the ordinary pushdown path.
+   *
+   * Refined in pt_convert_dblink_dml_query (pt_dblink_dml_settle_sink), same as DELETE. The single-spec
+   * requirement is what keeps a real join out: with a second spec a bare column could resolve to a local
+   * table, and neither axis inspects spec resolution. */
+  if (remote_upd == 1 && local_upd == 0 && node->info.update.spec != NULL && node->info.update.spec->next == NULL)
+    {
+      bool where_driving_pred = false;
+      int num_set_subq = 0;
+
+      if (pt_dblink_update_where_is_inscope (node, &where_driving_pred)
+	  && pt_dblink_update_set_is_inscope (parser, node, &num_set_subq) && (where_driving_pred || num_set_subq > 0)
+	  && !pt_dblink_update_set_writes_where_key (parser, node))
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ;
+	}
     }
 
   pt_convert_dblink_dml_query (parser, node, local_upd, remote_upd, snl);
@@ -12459,7 +13928,8 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
-  int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
+  int sub_sel_server_cnt = 0;	/* remote server count in the sink subquery, set per statement kind below */
+  int odku_local_cnt = 0;	/* local table count found in the ON DUPLICATE KEY UPDATE clause */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12487,13 +13957,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
 
       /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
-       * A local spec must reach local_cnt or the rejection below never fires and the statement ships
-       * whole, resolving that name against the remote instead.  Walked after sub_sel_server_cnt so that
-       * count keeps meaning "remote servers in the SELECT source", and for remote targets only: the
-       * local-target callback rewrites specs rather than counting them, which would newly convert them. */
+       * Its local specs still go into local_cnt and are also counted on their own in odku_local_cnt: a sink
+       * statement reads a local source by design and so always has local_cnt above zero, so local_cnt alone
+       * cannot tell whether the ON DUPLICATE KEY UPDATE clause holds a local table too.  Walked after
+       * sub_sel_server_cnt so that count keeps meaning "remote servers in the SELECT source", and for remote
+       * targets only: the local-target callback rewrites specs rather than counting them, which would newly
+       * convert them. */
       if (remote_upd > 0 && node->info.insert.odku_assignments)
 	{
+	  int local_cnt_before = snl->local_cnt;
+
 	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
+	  odku_local_cnt = snl->local_cnt - local_cnt_before;
 	}
 
       sub_sel = NULL;
@@ -12502,11 +13977,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       upd_spec = node->info.delete_.spec;
       if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
 	{
-	  sub_sel_server_cnt = pt_dblink_delete_subq_servers (parser, node, snl, tmp_server_cnt);
+	  sub_sel_server_cnt = pt_dblink_dml_subq_servers (parser, node, snl, tmp_server_cnt);
 	}
       break;
     case PT_UPDATE:
       upd_spec = node->info.update.spec;
+      if (snl->sink_kind == DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ)
+	{
+	  sub_sel_server_cnt = pt_dblink_dml_subq_servers (parser, node, snl, tmp_server_cnt);
+	}
       break;
     case PT_MERGE:
       into_spec = node->info.merge.into;
@@ -12570,17 +14049,20 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   /* Settle the remote DELETE carve-out -- convert, keep or clear, and diagnose -- in one place, before the
    * generic rejections below. */
-  if (pt_dblink_delete_settle_sink (parser, node, snl, upd_spec, sub_sel_server_cnt, local_upd, remote_upd))
+  if (pt_dblink_dml_settle_sink (parser, node, snl, upd_spec, sub_sel_server_cnt, local_upd, remote_upd))
     {
       return;
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
+  /* Two rejections share this message:
+   *   - odku_local_cnt > 0: a local table in the ON DUPLICATE KEY UPDATE clause, refused for every remote
+   *     target, sink or not -- the clause goes out as text and the remote would resolve that name against
+   *     its own tables.
+   *   - local_cnt > 0 without a sink: any other local reference -- a sink statement reads a local source by
+   *     design, so this one cannot apply to it. */
+  if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
-      PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
-		"dblink: this combination of local and remote references is not supported (some forms are, such "
-		"as INSERT ... SELECT into a remote table from local data, or a remote DELETE with a local "
-		"WHERE subquery)");
+      pt_dblink_dml_reject_mixed_ref (parser, node, snl, odku_local_cnt, upd_spec ? upd_spec : into_spec);
       return;
     }
 
@@ -12606,6 +14088,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    * DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for XASL
    * generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
   if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
+      return;
+    }
+
+  /* remote UPDATE + local subquery: do not serialize a pushdown qstr -- that would ship the local subquery to
+   * the remote server. Set up the DML sink (qstr left NULL) and keep the WHERE / SET trees for the later
+   * value-push path, same as the DELETE sink above. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ)
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
@@ -13168,4 +14660,892 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   return node;
+}
+
+/*
+ * Text edits of PL/CSQL static SQL
+ *
+ * The SQL text of a PL/CSQL static SQL statement is embedded in the compiled class and re-parsed at runtime. Instead of
+ * printing the compiled tree, which can be transformed into a shape that can not be re-parsed, the original text is
+ * kept and only the following edits are applied to it:
+ *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?:N', where N is
+ *     its index, so that the values are bound in the order of the indexes as they are for the printed tree
+ *   - the INTO clause is removed
+ *   - a column list implied by "*" or by INSERT without a column list is written, so that the columns are fixed at
+ *     compile time as they are in the compiled statement
+ * The edits are collected right after name resolution, where the nodes still have their source positions.
+ */
+
+typedef struct pt_static_sql_token PT_STATIC_SQL_TOKEN;
+struct pt_static_sql_token
+{
+  int start;
+  int end;
+  int kind;			/* PT_SS_TOKEN_IDENT, PT_SS_TOKEN_QUOTED or PT_SS_TOKEN_PUNCT */
+};
+
+typedef struct pt_static_sql_edit_list PT_STATIC_SQL_EDIT_LIST;
+struct pt_static_sql_edit_list
+{
+  const char *text;		/* original text */
+  int text_len;
+  PT_STATIC_SQL_TOKEN *tokens;	/* tokens of the text, scanned once */
+  int token_count;
+  PT_STATIC_SQL_EDIT *edits;
+  int count;
+  int alloc;
+  bool backslash_escapes;	/* a backslash escapes the next character in a string literal */
+  bool ansi_quotes;		/* "..." is a delimited identifier, otherwise a string literal */
+  bool failed;
+};
+
+enum pt_static_sql_token_kind
+{
+  PT_SS_TOKEN_END = 0,
+  PT_SS_TOKEN_IDENT,
+  PT_SS_TOKEN_QUOTED,		/* quoted identifier or string literal */
+  PT_SS_TOKEN_PUNCT
+};
+
+/* the white spaces and the identifier characters of the lexer (csql_lexer.l) */
+#define PT_SS_IS_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
+#define PT_SS_IS_IDENT_CHAR(c) \
+  (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || ((c) >= '0' && (c) <= '9') || (c) == '_' \
+   || (c) == '#' || ((c) >= 0x80 && (c) <= 0xfe))
+
+/*
+ * pt_static_sql_next_token () - scan the next token of the SQL text skipping white spaces and comments
+ *   return: kind of the token
+ *   list(in): text and the lexical options of it
+ *   pos(in): position to scan from
+ *   start(out): start of the token
+ *   end(out): end of the token
+ */
+static int
+pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *start, int *end)
+{
+  const char *s = list->text;
+  int len = list->text_len;
+
+  while (pos < len)
+    {
+      unsigned char c = (unsigned char) s[pos];
+
+      if (PT_SS_IS_SPACE (c))
+	{
+	  pos++;
+	}
+      else if ((c == '-' && pos + 1 < len && s[pos + 1] == '-') || (c == '/' && pos + 1 < len && s[pos + 1] == '/'))
+	{
+	  while (pos < len && s[pos] != '\n')
+	    {
+	      pos++;
+	    }
+	}
+      else if (c == '/' && pos + 1 < len && s[pos + 1] == '*')
+	{
+	  const char *e = strstr (s + pos + 2, "*/");
+
+	  pos = (e == NULL || e - s > len) ? len : (int) (e - s) + 2;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  *start = *end = pos;
+  if (pos >= len)
+    {
+      return PT_SS_TOKEN_END;
+    }
+
+  unsigned char c = (unsigned char) s[pos];
+
+  if (c == '\'' || c == '"' || c == '`' || c == '[')
+    {
+      char close = (c == '[') ? ']' : (char) c;
+      /* the same as the lexer: a backslash escape is only in a string literal */
+      bool escapes = list->backslash_escapes && (c == '\'' || (c == '"' && !list->ansi_quotes));
+
+      pos++;
+      while (pos < len)
+	{
+	  if (escapes && s[pos] == '\\')
+	    {
+	      pos += 2;
+	      continue;
+	    }
+	  if (s[pos] == close)
+	    {
+	      if (close != ']' && pos + 1 < len && s[pos + 1] == close)
+		{
+		  pos += 2;	/* doubled quote */
+		  continue;
+		}
+	      pos++;
+	      break;
+	    }
+	  pos++;
+	}
+      if (pos > len)
+	{
+	  pos = len;
+	}
+      *end = pos;
+      return PT_SS_TOKEN_QUOTED;
+    }
+
+  if (PT_SS_IS_IDENT_CHAR (c))
+    {
+      while (pos < len)
+	{
+	  c = (unsigned char) s[pos];
+	  if (!PT_SS_IS_IDENT_CHAR (c))
+	    {
+	      break;
+	    }
+	  pos++;
+	}
+      *end = pos;
+      return PT_SS_TOKEN_IDENT;
+    }
+
+  *end = pos + 1;
+  return PT_SS_TOKEN_PUNCT;
+}
+
+/*
+ * pt_static_sql_token_equals_n () - check if the token is the identifier of the given length ignoring case and
+ *				      delimiters
+ */
+static bool
+pt_static_sql_token_equals_n (const char *s, int start, int end, const char *ident, int len)
+{
+  if (end - start >= 2 && (s[start] == '[' || s[start] == '"' || s[start] == '`'))
+    {
+      start++;
+      end--;
+    }
+
+  if (end - start != len)
+    {
+      return false;
+    }
+
+  /* ASCII letters are compared ignoring case; the other bytes as they are */
+  for (int i = 0; i < len; i++)
+    {
+      unsigned char a = (unsigned char) s[start + i];
+      unsigned char b = (unsigned char) ident[i];
+
+      if (a != b && (a >= 0x80 || b >= 0x80 || tolower (a) != tolower (b)))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_static_sql_token_equals () - check if the token is the identifier ignoring case and delimiters
+ */
+static bool
+pt_static_sql_token_equals (const char *s, int start, int end, const char *ident)
+{
+  return pt_static_sql_token_equals_n (s, start, end, ident, (int) strlen (ident));
+}
+
+/*
+ * pt_static_sql_token_is () - check if the i-th token is the punctuation
+ */
+static bool
+pt_static_sql_token_is (const PT_STATIC_SQL_EDIT_LIST * list, int i, char punct)
+{
+  return (i >= 0 && i < list->token_count && list->tokens[i].kind == PT_SS_TOKEN_PUNCT
+	  && list->text[list->tokens[i].start] == punct);
+}
+
+/*
+ * pt_static_sql_token_ending_at () - index of the token that ends at the position, or -1
+ */
+static int
+pt_static_sql_token_ending_at (const PT_STATIC_SQL_EDIT_LIST * list, int position)
+{
+  int low = 0, high = list->token_count;
+
+  while (low < high)
+    {
+      int mid = (low + high) / 2;
+
+      if (list->tokens[mid].end < position)
+	{
+	  low = mid + 1;
+	}
+      else
+	{
+	  high = mid;
+	}
+    }
+
+  return (low < list->token_count && list->tokens[low].end == position) ? low : -1;
+}
+
+/*
+ * pt_static_sql_path_start () - start of the name or the path expression (e.g. rec.field) in the text
+ *   return: start of the first token, or -1 if the tokens ending at the given position are not the label
+ *   list(in): text and the tokens of it
+ *   end(in): end of the last name
+ *   label(in): name or path expression of the PL/CSQL variable
+ *
+ * Note: each name of the label is compared with an identifier token, so white spaces and comments around the dots
+ *	 are skipped as the lexer does.
+ */
+static int
+pt_static_sql_path_start (const PT_STATIC_SQL_EDIT_LIST * list, int end, const char *label)
+{
+  int i = pt_static_sql_token_ending_at (list, end);
+  int part_end = (int) strlen (label);
+
+  while (i >= 0)
+    {
+      const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
+      int part_start = part_end;
+
+      while (part_start > 0 && label[part_start - 1] != '.')
+	{
+	  part_start--;
+	}
+
+      if ((token->kind != PT_SS_TOKEN_IDENT && token->kind != PT_SS_TOKEN_QUOTED)
+	  || !pt_static_sql_token_equals_n (list->text, token->start, token->end, label + part_start,
+					    part_end - part_start))
+	{
+	  return -1;
+	}
+
+      if (part_start == 0)
+	{
+	  return token->start;
+	}
+
+      /* the previous name follows a dot */
+      if (!pt_static_sql_token_is (list, i - 1, '.'))
+	{
+	  return -1;
+	}
+      i -= 2;
+      part_end = part_start - 1;
+    }
+
+  return -1;
+}
+
+static void
+pt_static_sql_add_edit (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int start, int end, const char *text,
+			int host_var_index)
+{
+  if (list->count == list->alloc)
+    {
+      int new_alloc = (list->alloc == 0) ? 16 : list->alloc * 2;
+      PT_STATIC_SQL_EDIT *new_edits =
+	(PT_STATIC_SQL_EDIT *) parser_alloc (parser, new_alloc * sizeof (PT_STATIC_SQL_EDIT));
+
+      if (new_edits == NULL)
+	{
+	  list->failed = true;
+	  return;
+	}
+      if (list->count > 0)
+	{
+	  memcpy (new_edits, list->edits, list->count * sizeof (PT_STATIC_SQL_EDIT));
+	}
+      list->edits = new_edits;
+      list->alloc = new_alloc;
+    }
+
+  list->edits[list->count].start = start;
+  list->edits[list->count].end = end;
+  list->edits[list->count].text = text;
+  list->edits[list->count].host_var_index = host_var_index;
+  list->count++;
+}
+
+/*
+ * pt_static_sql_tokenize () - scan the tokens of the text once
+ *   return: false if out of memory
+ */
+static bool
+pt_static_sql_tokenize (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  int kind, pos, start, end, n = 0;
+
+  for (pos = 0; pt_static_sql_next_token (list, pos, &start, &end) != PT_SS_TOKEN_END; pos = end)
+    {
+      n++;
+    }
+
+  list->tokens = (PT_STATIC_SQL_TOKEN *) parser_alloc (parser, (n + 1) * sizeof (PT_STATIC_SQL_TOKEN));
+  if (list->tokens == NULL)
+    {
+      return false;
+    }
+
+  for (pos = 0, n = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END; pos = end)
+    {
+      list->tokens[n].start = start;
+      list->tokens[n].end = end;
+      list->tokens[n].kind = kind;
+      n++;
+    }
+  list->token_count = n;
+
+  return true;
+}
+
+/*
+ * pt_static_sql_depends_on_parameters () - check if the text is lexed differently by the parameters of the session or
+ *					     the client that runs the rewritten query
+ *   return: true if so
+ *   list(in): text and its tokens
+ *
+ * Note: the rewritten query is lexed again at runtime with the parameters of the caller, while the compiled tree was
+ *	 lexed with those of the creator:
+ *	 - a backslash in a string literal is an escape or not by no_backslash_escapes (a session parameter)
+ *	 - "..." is a delimited identifier or a string literal by ansi_quotes (a client parameter)
+ */
+static bool
+pt_static_sql_depends_on_parameters (const PT_STATIC_SQL_EDIT_LIST * list)
+{
+  int i;
+
+  for (i = 0; i < list->token_count; i++)
+    {
+      const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
+
+      if (token->kind != PT_SS_TOKEN_QUOTED)
+	{
+	  continue;
+	}
+      if (list->text[token->start] == '"')
+	{
+	  return true;
+	}
+      if (list->text[token->start] == '\''
+	  && memchr (list->text + token->start, '\\', token->end - token->start) != NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static PT_NODE *
+pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_STATIC_SQL_EDIT_LIST *list = (PT_STATIC_SQL_EDIT_LIST *) arg;
+
+  if (list->failed)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      if (node->info.expr.op == PT_WEEKF && node->info.expr.arg2 != NULL
+	  && node->info.expr.arg2->node_type == PT_VALUE && node->info.expr.arg2->buffer_pos < 0)
+	{
+	  /* the mode of WEEK () not written is taken from default_week_format (a session parameter) by the parser */
+	  list->failed = true;
+	}
+      break;
+
+    case PT_HOST_VAR:
+      if (node->info.host_var.label != NULL && node->info.host_var.index >= 0
+	  && node->info.host_var.index < parser->host_var_count)
+	{
+	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * tokens ending there */
+	  int end = (parser->static_sql_host_var_end != NULL)
+	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
+	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
+	  char *hv = NULL;
+
+	  if (start < 0 || (hv = (char *) parser_alloc (parser, 16)) == NULL)
+	    {
+	      list->failed = true;
+	      break;
+	    }
+	  sprintf (hv, "?:%d", node->info.host_var.index);
+	  pt_static_sql_add_edit (parser, list, start, end, hv, node->info.host_var.index);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_static_sql_remove_into () - remove the INTO (or TO) clause of the top query, found in the text at the top level
+ */
+static void
+pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int into_count)
+{
+  int i, depth = 0, into = -1, targets = 0;
+  const PT_STATIC_SQL_TOKEN *tokens = list->tokens;
+
+  for (i = 0; i < list->token_count; i++)
+    {
+      if (pt_static_sql_token_is (list, i, '('))
+	{
+	  depth++;
+	}
+      else if (pt_static_sql_token_is (list, i, ')'))
+	{
+	  depth--;
+	}
+      else if (tokens[i].kind == PT_SS_TOKEN_IDENT && depth == 0
+	       && ((tokens[i].end - tokens[i].start == 4 && strncasecmp (list->text + tokens[i].start, "into", 4) == 0)
+		   || (tokens[i].end - tokens[i].start == 2
+		       && strncasecmp (list->text + tokens[i].start, "to", 2) == 0)))
+	{
+	  into = i;
+	  break;
+	}
+    }
+
+  if (into < 0)
+    {
+      list->failed = true;
+      return;
+    }
+
+  /* targets: name [. name ...] [, name [. name ...] ...] */
+  for (i = into + 1; i < list->token_count; i++)
+    {
+      if (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED)
+	{
+	  list->failed = true;
+	  return;
+	}
+      targets++;
+
+      while (pt_static_sql_token_is (list, i + 1, '.'))
+	{
+	  i += 2;
+	  if (i >= list->token_count || (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED))
+	    {
+	      list->failed = true;
+	      return;
+	    }
+	}
+
+      if (!pt_static_sql_token_is (list, i + 1, ','))
+	{
+	  break;
+	}
+      i++;
+    }
+
+  if (i >= list->token_count || targets != into_count)
+    {
+      list->failed = true;
+      return;
+    }
+
+  /* from INTO to the end of the last target */
+  pt_static_sql_add_edit (parser, list, tokens[into].start, tokens[i].end, " ", -1);
+}
+
+/*
+ * pt_record_static_sql_star () - record a column list implied in the text, expanded by name resolution
+ *   return: none
+ *   parser(in):
+ *   kind(in): kind of the implied list
+ *   pos(in): position in the text (see PT_STATIC_SQL_STAR_KIND)
+ *   columns(in): expanded names
+ *   qualify(in): qualify the columns with their range variables
+ *
+ * Note: the list is written in the text by pt_collect_static_sql_edits (), so that the columns of the rewritten query
+ *	 are fixed at compile time as they are in the compiled statement.
+ */
+void
+pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind, int pos, PT_NODE * columns,
+			   bool qualify)
+{
+  PT_STATIC_SQL_STAR *star;
+
+  if (parser->static_sql_edit_status != 0)
+    {
+      return;
+    }
+
+  star = (PT_STATIC_SQL_STAR *) parser_alloc (parser, sizeof (PT_STATIC_SQL_STAR));
+  if (star == NULL)
+    {
+      parser->static_sql_edit_status = -1;
+      return;
+    }
+
+  star->kind = kind;
+  star->pos = pos;
+  star->columns = parser_copy_tree_list (parser, columns);
+  star->qualify = qualify;
+  star->next = parser->static_sql_stars;
+  parser->static_sql_stars = star;
+
+  if (columns != NULL && star->columns == NULL)
+    {
+      parser->static_sql_edit_status = -1;
+    }
+}
+
+/*
+ * pt_static_sql_merge_insert () - index of the INSERT token of "WHEN NOT MATCHED THEN INSERT" in the text, or -1
+ */
+static int
+pt_static_sql_merge_insert (const PT_STATIC_SQL_EDIT_LIST * list)
+{
+  static const char *keywords[] = { "not", "matched", "then", "insert" };
+  int i, k, found = -1;
+
+  for (i = 3; i < list->token_count; i++)
+    {
+      for (k = 0; k < 4; k++)
+	{
+	  const PT_STATIC_SQL_TOKEN *token = &list->tokens[i - 3 + k];
+
+	  if (token->kind != PT_SS_TOKEN_IDENT
+	      || !pt_static_sql_token_equals (list->text, token->start, token->end, keywords[k]))
+	    {
+	      break;
+	    }
+	}
+      if (k == 4)
+	{
+	  if (found >= 0)
+	    {
+	      return -1;
+	    }
+	  found = i;
+	}
+    }
+
+  return found;
+}
+
+/*
+ * pt_static_sql_column_list () - text of a column list: "[c1], qualifier.[c2], ...", where the first column has no
+ *				    qualifier because it replaces "*" of "qualifier.*"
+ *   return: the text, or NULL if a name can not be written
+ *   parser(in):
+ *   columns(in): names
+ *   qualifier(in): qualifier text of the columns after the first one, or NULL
+ *   qualifier_len(in):
+ *   use_range_var(in): qualify each column with its range variable, "[range_var].[c]"
+ */
+static const char *
+pt_static_sql_column_list (PARSER_CONTEXT * parser, PT_NODE * columns, const char *qualifier, int qualifier_len,
+			   bool use_range_var)
+{
+  PT_NODE *col;
+  char *text, *p;
+  int len = 0;
+
+  for (col = columns; col != NULL; col = col->next)
+    {
+      if (col->node_type != PT_NAME || col->info.name.original == NULL || strchr (col->info.name.original, ']') != NULL)
+	{
+	  return NULL;
+	}
+      if (use_range_var
+	  && (col->info.name.resolved == NULL || col->info.name.resolved[0] == '\0'
+	      || strchr (col->info.name.resolved, ']') != NULL))
+	{
+	  return NULL;
+	}
+      len += (int) strlen (col->info.name.original) + 4 + qualifier_len + 1;
+      if (use_range_var)
+	{
+	  len += (int) strlen (col->info.name.resolved) + 3;
+	}
+    }
+  if (len == 0)
+    {
+      return NULL;
+    }
+
+  text = (char *) parser_alloc (parser, len + 1);
+  if (text == NULL)
+    {
+      return NULL;
+    }
+
+  for (col = columns, p = text; col != NULL; col = col->next)
+    {
+      if (col != columns)
+	{
+	  p += sprintf (p, ", ");
+	  if (qualifier != NULL)
+	    {
+	      p += sprintf (p, "%.*s.", qualifier_len, qualifier);
+	    }
+	}
+      if (use_range_var)
+	{
+	  p += sprintf (p, "[%s].", col->info.name.resolved);
+	}
+      p += sprintf (p, "[%s]", col->info.name.original);
+    }
+
+  return text;
+}
+
+/*
+ * pt_static_sql_expand_stars () - add the edits to write the column lists implied in the text (see
+ *				    pt_record_static_sql_star ())
+ */
+static void
+pt_static_sql_expand_stars (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  PT_STATIC_SQL_STAR *star;
+
+  for (star = parser->static_sql_stars; star != NULL && !list->failed; star = star->next)
+    {
+      int i = (star->kind == PT_SS_MERGE_INSERT_COLUMNS) ? pt_static_sql_merge_insert (list)
+	: pt_static_sql_token_ending_at (list, star->pos);
+      const char *text = NULL;
+
+      if (i < 0)
+	{
+	  list->failed = true;
+	  return;
+	}
+
+      switch (star->kind)
+	{
+	case PT_SS_STAR_ALL:
+	  /* select * */
+	  if (!pt_static_sql_token_is (list, i, '*'))
+	    {
+	      list->failed = true;
+	      return;
+	    }
+	  text = pt_static_sql_column_list (parser, star->columns, NULL, 0, star->qualify);
+	  if (text != NULL)
+	    {
+	      pt_static_sql_add_edit (parser, list, list->tokens[i].start, list->tokens[i].end, text, -1);
+	    }
+	  break;
+
+	case PT_SS_STAR_QUALIFIED:
+	  /* select qualifier.*: the qualifier can be a path of names (e.g. owner.class) */
+	  {
+	    int first = i;
+
+	    if (list->tokens[i].kind == PT_SS_TOKEN_PUNCT || !pt_static_sql_token_is (list, i + 1, '.')
+		|| !pt_static_sql_token_is (list, i + 2, '*'))
+	      {
+		list->failed = true;
+		return;
+	      }
+	    while (pt_static_sql_token_is (list, first - 1, '.') && first - 2 >= 0
+		   && list->tokens[first - 2].kind != PT_SS_TOKEN_PUNCT)
+	      {
+		first -= 2;
+	      }
+	    text = pt_static_sql_column_list (parser, star->columns, list->text + list->tokens[first].start,
+					      list->tokens[i].end - list->tokens[first].start, false);
+	    if (text != NULL)
+	      {
+		pt_static_sql_add_edit (parser, list, list->tokens[i + 2].start, list->tokens[i + 2].end, text, -1);
+	      }
+	  }
+	  break;
+
+	case PT_SS_INSERT_COLUMNS:
+	case PT_SS_MERGE_INSERT_COLUMNS:
+	  /* insert into class values ...: the column list is added after the class name,
+	   * or after INSERT of "when not matched then insert values ..." */
+	  {
+	    const char *columns = pt_static_sql_column_list (parser, star->columns, NULL, 0, false);
+
+	    /* insert into class partition (name) values ...: the name of the partition replaced the class name
+	     * (see pt_resolve_partition_spec ()), and the column list is added after the partition clause */
+	    if (star->kind == PT_SS_INSERT_COLUMNS && pt_static_sql_token_is (list, i - 1, '(')
+		&& pt_static_sql_token_is (list, i + 1, ')') && i - 2 >= 0
+		&& list->tokens[i - 2].kind == PT_SS_TOKEN_IDENT
+		&& pt_static_sql_token_equals (list->text, list->tokens[i - 2].start, list->tokens[i - 2].end,
+					       "partition"))
+	      {
+		i++;
+	      }
+
+	    if (columns != NULL && (list->tokens[i].kind != PT_SS_TOKEN_PUNCT || pt_static_sql_token_is (list, i, ')')))
+	      {
+		char *buf = (char *) parser_alloc (parser, (int) strlen (columns) + 4);
+
+		if (buf != NULL)
+		  {
+		    sprintf (buf, " (%s)", columns);
+		    text = buf;
+		    pt_static_sql_add_edit (parser, list, list->tokens[i].end, list->tokens[i].end, text, -1);
+		  }
+	      }
+	  }
+	  break;
+	}
+
+      if (text == NULL)
+	{
+	  list->failed = true;
+	}
+    }
+}
+
+static int
+pt_static_sql_compare_edits (const void *a, const void *b)
+{
+  const PT_STATIC_SQL_EDIT *x = (const PT_STATIC_SQL_EDIT *) a;
+  const PT_STATIC_SQL_EDIT *y = (const PT_STATIC_SQL_EDIT *) b;
+
+  if (x->start != y->start)
+    {
+      return x->start - y->start;
+    }
+  /* an insertion comes before a replacement at the same position */
+  return (x->end - x->start) - (y->end - y->start);
+}
+
+/*
+ * pt_collect_static_sql_edits () - collect the edits of the original text of a PL/CSQL static SQL statement
+ *   return: none
+ *   parser(in):
+ *   statement(in): the statement right after name resolution
+ *
+ * Note: sets parser->static_sql_edit_status to 1 with the edits sorted by position,
+ *	 or to -1 if the statement can not be expressed with text edits.
+ */
+void
+pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_STATIC_SQL_EDIT_LIST list;
+  int i, j;
+  int *seen_host_vars = NULL;
+  PT_NODE *query = NULL;
+
+  if (parser->static_sql_edit_status != 0 || statement == NULL)
+    {
+      return;
+    }
+  parser->static_sql_edit_status = -1;
+
+  if (parser->original_buffer == NULL || pt_has_error (parser))
+    {
+      return;
+    }
+
+  memset (&list, 0, sizeof (list));
+  list.text = parser->original_buffer;
+  list.text_len = (int) strlen (parser->original_buffer);
+  list.backslash_escapes = !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && !parser->flag.strings_have_no_escapes;
+  list.ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+  if (!pt_static_sql_tokenize (parser, &list))
+    {
+      return;
+    }
+  if (pt_static_sql_depends_on_parameters (&list))
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_collect_static_sql_edits_pre, &list, NULL, NULL);
+
+  if (!list.failed && PT_IS_QUERY (statement))
+    {
+      for (query = statement; query != NULL && query->node_type != PT_SELECT; query = query->info.query.q.union_.arg1)
+	{
+	  if (query->info.query.into_list != NULL)
+	    {
+	      break;
+	    }
+	}
+      if (query != NULL && query->info.query.into_list != NULL)
+	{
+	  pt_static_sql_remove_into (parser, &list, pt_length_of_list (query->info.query.into_list));
+	}
+    }
+
+  if (!list.failed && parser->static_sql_stars != NULL)
+    {
+      pt_static_sql_expand_stars (parser, &list);
+    }
+
+  if (list.failed)
+    {
+      return;
+    }
+
+  if (list.count > 1)
+    {
+      qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
+
+      /* the same insertion can be collected more than once */
+      for (i = 1, j = 0; i < list.count; i++)
+	{
+	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
+	      && list.edits[i].host_var_index < 0 && list.edits[j].host_var_index < 0
+	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	    {
+	      continue;
+	    }
+	  list.edits[++j] = list.edits[i];
+	}
+      list.count = j + 1;
+    }
+
+  /* edits must not overlap, and every host variable must be replaced exactly once */
+  if (parser->host_var_count > 0)
+    {
+      seen_host_vars = (int *) parser_alloc (parser, parser->host_var_count * sizeof (int));
+      if (seen_host_vars == NULL)
+	{
+	  return;
+	}
+      memset (seen_host_vars, 0, parser->host_var_count * sizeof (int));
+    }
+
+  for (i = 0; i < list.count; i++)
+    {
+      if (i > 0 && list.edits[i].start < list.edits[i - 1].end)
+	{
+	  return;
+	}
+      if (list.edits[i].host_var_index >= 0)
+	{
+	  if (seen_host_vars[list.edits[i].host_var_index]++ != 0)
+	    {
+	      return;
+	    }
+	}
+    }
+  for (i = 0; i < parser->host_var_count; i++)
+    {
+      if (seen_host_vars[i] != 1)
+	{
+	  return;
+	}
+    }
+
+  parser->static_sql_edits = list.edits;
+  parser->static_sql_edit_count = list.count;
+  parser->static_sql_edit_status = 1;
 }

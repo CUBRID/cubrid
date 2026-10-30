@@ -47,10 +47,18 @@
 #include "string_regex.hpp"
 #include "language_support.h"
 #include "error_manager.h"
+#include "system_parameter.h"
+#include "memory_hash.h"
+#include "object_representation.h"
+#include "intl_support.h"
+#include <cstring>
 
-static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
-static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
+static bool histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key);
+static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+				bool with_fullscan);
 static bool string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset,
+    int collation);
+static bool string_values_equal_under_collation_unshielded (std::string_view v1, std::string_view v2, int codeset,
     int collation);
 static void histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_collation,
     int *codeset, int *collation);
@@ -154,7 +162,8 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
   /* Store the exact null frequency AND the histogram blob together in a single object template
    * (one dbt_edit + one flush) so a failure never leaves a mixed catalog row -- a new
    * null_frequency alongside the previous histogram blob. Mirrors the multi-column path. */
-  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency);
+  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency,
+			       with_fullscan != 0);
 
   if (histogram_blob != NULL)
     {
@@ -165,11 +174,62 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
 
 
 /*
- * store_one_histogram () - write one column's blob + exact null frequency into its
- *   _db_histogram catalog entry (the entry must already exist).
+ * get_histogram_for_write () - locate a column's _db_histogram entry for updating, taking the X
+ *   lock on the row right at the index lookup instead of the S-then-X of db_get_histogram ().
+ *
+ * Note (CBRD-27369): store_one_histogram () read the row with db_get_histogram () (an S lock held
+ *   to commit) and then wrote it (X) -- concurrent collectors on the same table deadlocked on
+ *   that S -> X upgrade.  A plain DB_FETCH_WRITE would not do: btree_find_unique () is fixed to
+ *   S_SELECT_WITH_LOCK, so it still S-locks first and upgrades in the fetch (seen as S holders on
+ *   _db_histogram rows with concurrent UPDATE STATISTICS ON ALL CLASSES).  The for-update lookup
+ *   asks the index for X (S_UPDATE), so two collectors contend X vs X on the row, which just
+ *   serializes (no upgrade cycle).
  */
 static int
-store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq)
+get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  *histogram_obj = NULL;
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MISSING_OR_INVALID_CATALOG, 0);
+      return ER_BO_MISSING_OR_INVALID_CATALOG;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog write; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = db_find_multi_unique_for_update (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (value_ptrs[0]);
+  db_value_clear (value_ptrs[1]);
+
+  if (*histogram_obj == NULL && er_errid () != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * store_one_histogram () - write one column's blob + exact null frequency into its
+ *   _db_histogram catalog entry, creating the entry again if it went missing
+ *   with_fullscan(in): the collection mode to record if the entry has to be recreated
+ */
+static int
+store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+		     bool with_fullscan)
 {
   int error = NO_ERROR;
   DB_OBJECT *histogram_obj = NULL, *fin = NULL;
@@ -178,10 +238,37 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 
   db_make_null (&hv);
 
-  error = db_get_histogram (classop, attr_name, &histogram_obj);
-  if (error != NO_ERROR || histogram_obj == NULL)
+  error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+  if (error != NO_ERROR)
     {
       return error;
+    }
+
+  if (histogram_obj == NULL)
+    {
+      /* The entry existed when the statement checked it (sm_add_histogram ()), and the scan has
+       * already produced this column's histogram -- a concurrent DROP HISTOGRAM committed in
+       * between and removed the row.  The existence check reads committed and takes no lock
+       * (CBRD-27369), so it could not see that DROP while it was uncommitted.  Returning success
+       * here would leave the statement reporting a collection it never stored, so put the entry
+       * back and write into it.  The bucket count is not part of the row (smt_add_histogram ()
+       * stores class_of, key_attr, with_fullscan, null_frequency and the blob), hence -1. */
+      error = sm_add_histogram (classop, attr_name, -1, with_fullscan);
+      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
+	{
+	  return error;
+	}
+
+      error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (histogram_obj == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+	  return ER_OBJ_OBJECT_NOT_FOUND;
+	}
     }
 
   obj_tmpl = dbt_edit_object (histogram_obj);
@@ -357,7 +444,9 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
     {
       for (int i = 0; i < n; i++)
 	{
-	  int e = store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i]);
+	  int e =
+		  store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i],
+				       with_fullscan != 0);
 	  if (e != NO_ERROR && error == NO_ERROR)
 	    {
 	      error = e;
@@ -405,7 +494,7 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
  *   not left inconsistent on a stats failure. Returns the first error, if any.
  */
 int
-store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
+store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc, bool with_fullscan)
 {
   int error = NO_ERROR;
 
@@ -419,7 +508,8 @@ store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
 	{
 	  continue;
 	}
-      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i]);
+      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i],
+				   with_fullscan);
       if (e != NO_ERROR && error == NO_ERROR)
 	{
 	  error = e;
@@ -487,8 +577,8 @@ histogram_collect_clear (HISTOGRAM_COLLECT *hc)
 /* fingerprint-walk ambient context: lets the histogram probes reach the statement for
  * spec resolution without changing their public signatures (QO calls them too, where the
  * name-node annotation makes the statement unnecessary). Client-side single-threaded. */
-static PARSER_CONTEXT *bind_fp_active_parser = NULL;
-static PT_NODE *bind_fp_active_statement = NULL;
+static CUB_THREAD_LOCAL_PSR PARSER_CONTEXT *bind_fp_active_parser = NULL;
+static CUB_THREAD_LOCAL_PSR PT_NODE *bind_fp_active_statement = NULL;
 
 struct spec_class_name_ctx
 {
@@ -526,6 +616,50 @@ histogram_spec_class_name (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *
       (void) parser_walk_tree (parser, statement, spec_class_name_walk, &ctx, NULL, NULL);
     }
   return ctx.class_name;
+}
+
+/* parser-arena copy of a cached histogram blob (same as qo_copy_histogram_value ()) */
+static DB_VALUE *
+bind_copy_histogram_value (PARSER_CONTEXT *parser, DB_VALUE *src)
+{
+  DB_VALUE *copy;
+  const char *src_buf;
+  char *buf;
+  int bit_len = 0, size;
+  DB_TYPE src_type;
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return NULL;
+    }
+  src_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (src_type != DB_TYPE_BIT && src_type != DB_TYPE_VARBIT)
+    {
+      return NULL;
+    }
+  src_buf = db_get_bit (src, &bit_len);
+  if (src_buf == NULL || bit_len <= 0)
+    {
+      return NULL;
+    }
+  size = (bit_len + 7) / 8;
+
+  copy = (DB_VALUE *) parser_alloc (parser, (int) sizeof (DB_VALUE));
+  buf = (char *) parser_alloc (parser, size);
+  if (copy == NULL || buf == NULL)
+    {
+      return NULL;
+    }
+  memcpy (buf, src_buf, size);
+  if (src_type == DB_TYPE_BIT)
+    {
+      db_make_bit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  else
+    {
+      db_make_varbit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  return copy;
 }
 
 static DB_VALUE *
@@ -604,6 +738,19 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
   if (histogram_value == NULL && bind_fp_active_statement != NULL)
     {
       histogram_value = histogram_blob_from_class_cache (bind_fp_active_parser, bind_fp_active_statement, lhs);
+      if (histogram_value != NULL && bind_fp_active_parser != NULL)
+	{
+	  /* annotate the name the way the optimizer does, with a parser-arena copy (the class
+	   * cache may free its blob): the next fingerprint of this statement finds it here
+	   * instead of searching the tree and the class cache again for every predicate */
+	  DB_VALUE *copy = bind_copy_histogram_value (bind_fp_active_parser, histogram_value);
+
+	  if (copy != NULL)
+	    {
+	      lhs->info.name.histogram = copy;
+	      histogram_value = copy;
+	    }
+	}
     }
   if (histogram_value == NULL)
     {
@@ -629,8 +776,14 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
   return true;
 }
 
+/*
+ * histogram_extract_key () - probe key for a constant, in the histogram's slot encoding
+ *   db_val(in)      : the constant (literal or host variable)
+ *   column_type(in) : DB_TYPE of the histogram's column; decides string normalization
+ *   key(out)        : extracted key
+ */
 static bool
-histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
+histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key)
 {
   const DB_TYPE type = static_cast<DB_TYPE> (db_val->domain.general_info.type);
 
@@ -699,16 +852,12 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
 	{
 	  return false;
 	}
-      if (type == DB_TYPE_CHAR)
-	{
-	  /* SQL CHAR comparison ignores trailing spaces and the sampler strips them from the
-	   * stored values (extract<std::string> ()); strip them from the probe key too so MCV
-	   * equality and range interpolation compare like with like */
-	  while (len > 0 && str[len - 1] == ' ')
-	    {
-	      len--;
-	    }
-	}
+      /* Normalize by the COLUMN's type, not the constant's. The type checker leaves a CHAR
+       * literal compared to a VARCHAR column as CHAR (comparable char types are not coerced),
+       * so the constant's type says nothing about how the sampler stored the column: it strips
+       * CHAR columns and keeps VARCHAR bytes. Keying on the constant's type stripped 'abcd '
+       * against a VARCHAR column and matched the 'abcd' MCV instead (CBRD-27251). */
+      len = hist::string_key_size_for_column (column_type, str, len);
       key.kind = hist::histogram_key_kind::str;
       /* length-based (not strlen): embedded NULs must not truncate the key */
       key.str.assign (str, static_cast<std::size_t> (len));
@@ -1047,7 +1196,7 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
     }
 
   hist::histogram_key key;
-  if (!histogram_extract_key (rhs_db_value, key))
+  if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
       *success = false;
       return;
@@ -1120,8 +1269,8 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
        * the byte-sorted MCV list stores them as distinct entries. Sweep the list with the
        * runtime comparator and sum every matching MCV's mass; under a binary collation this
        * reproduces the plain byte lookup. The probe bytes are key.str, NOT the raw constant:
-       * the sampler strips trailing spaces from stored CHAR values and histogram_extract_key
-       * strips the probe to match -- the raw constant would compare padded against stripped.
+       * histogram_extract_key normalized them by the column's rule (CHAR stripped, VARCHAR kept
+       * -- hist::string_key_size_for_column), the same rule the sampler stored them under.
        * Both sides are built under the resolved common collation, which db_string_compare ()
        * requires as a precondition. */
       int column_codeset, column_collation;
@@ -1136,14 +1285,26 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
 	  return;
 	}
 
+      if ((LANG_IS_COERCIBLE_COLL (common_coll_id) || common_coll_id == LANG_COLL_BINARY)
+	  && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
+	{
+	  /* a binary collation that keeps trailing spaces significant equates exactly the equal
+	   * byte strings: at most one MCV can match, and the byte-sorted list finds it by binary
+	   * search -- the sweep below would reach the same answer comparing every MCV */
+	  mcv_index = histogram_reader.find_mcv<std::string_view> (std::string_view (key.str));
+	  break;
+	}
+
+      er_stack_push ();
       for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
 	{
-	  if (string_values_equal_under_collation (histogram_reader.mcv_hi<std::string_view> (i),
+	  if (string_values_equal_under_collation_unshielded (histogram_reader.mcv_hi<std::string_view> (i),
 	      std::string_view (key.str), column_codeset, common_coll_id))
 	    {
 	      mcv_matched_freq += histogram_reader.mcv_freq (i);
 	    }
 	}
+      er_stack_pop ();
       break;
     }
     case hist::histogram_key_kind::u64:
@@ -1232,7 +1393,7 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       return;
     }
   hist::histogram_key key;
-  if (!histogram_extract_key (rhs_db_value, key))
+  if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
       *success = false;
       return;
@@ -1738,21 +1899,102 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
   return sel;
 }
 
+/*
+ * histogram_repad_char_value () - undo the sampler's CHAR normalization for pattern matchers
+ *   value(in)            : stored MCV/bucket value (view into the histogram blob)
+ *   column_type(in)      : DB_TYPE of the histogram's column
+ *   repad(in) : column type, declared CHAR length in characters (<= 0 disables re-padding) and charset
+ *   column_codeset(in)   : column charset (decides bytes per character)
+ *   buf(in/out)          : storage for the padded copy; reused across calls by the caller
+ *   return               : value itself when nothing is padded, else a view into buf
+ *
+ * Stored CHAR values are stripped of trailing spaces (hist::string_key_size_for_column) but the
+ * executor runs LIKE/REGEXP on the heap value, which is padded to the column precision:
+ * 'abcd    ' LIKE 'abcd %' is TRUE at runtime and FALSE against the stripped 'abcd'. Re-pad to
+ * the declared width so the estimate matches what execution sees. Width is in characters, so
+ * count them under the column codeset (the pad character ' ' is one byte in every supported
+ * codeset). A column node without data_type gives no precision -> no re-padding: the estimate
+ * then degrades to the stripped comparison instead of guessing a width.
+ */
+/* What CHAR re-padding needs to know about the histogram's column: its type and declared width
+ * from the blob header (what the sampler saw), and the charset of the collation the predicate
+ * was resolved under (what the executor compares in). Built once per predicate by
+ * histogram_repad_ctx () and threaded through the match helpers unchanged. */
+struct hist_repad_ctx
+{
+  DB_TYPE type;
+  int precision;
+  INTL_CODESET codeset;
+};
+
+static hist_repad_ctx
+histogram_repad_ctx (const hist::HistogramReader &reader, int collation_id)
+{
+  const LANG_COLLATION *collation = lang_get_collation (collation_id);
+
+  /* a collation id the runtime does not know falls back to the system charset, as the string
+   * layer itself does; the type/width come from the blob, never from the query text */
+  return hist_repad_ctx { reader.value_type (), reader.value_precision (),
+			  (collation != NULL) ? collation->codeset : LANG_SYS_CODESET };
+}
+
+static std::string_view
+histogram_repad_char_value (std::string_view value, const hist_repad_ctx &repad, std::string &buf)
+{
+  int char_count = 0;
+  const int column_precision = repad.precision;
+
+  if (repad.type != DB_TYPE_CHAR || column_precision <= 0 || column_precision > DB_MAX_CHAR_PRECISION)
+    {
+      return value;
+    }
+
+  switch (repad.codeset)
+    {
+    case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_KSC5601_EUC:
+    case INTL_CODESET_UTF8:
+      /* the codesets intl_char_count () handles; anything else would assert there */
+      break;
+    default:
+      return value;
+    }
+
+  intl_char_count (reinterpret_cast<const unsigned char *> (value.data ()), static_cast<int> (value.size ()),
+		   repad.codeset, &char_count);
+  if (char_count >= column_precision)
+    {
+      return value;
+    }
+
+  buf.assign (value.data (), value.size ());
+  buf.append (static_cast<std::size_t> (column_precision - char_count), ' ');
+  return std::string_view (buf);
+}
+
 static bool
-like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value)
+like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value,
+		  const hist_repad_ctx &repad, std::string &pad_buf)
 {
   DB_VALUE src, pattern;
   int res = V_FALSE;
   int err;
   int common_coll_id = -1;
 
+  /* the executor matches the padded heap value, not the stripped stored one */
+  value = histogram_repad_char_value (value, repad, pad_buf);
+
   /* Match through the runtime evaluator (db_string_like) so the estimate cannot diverge from
    * execution: it matches '_' per character (not per byte) and folds case under the common
    * collation of the column and the pattern, neither of which a byte-wise matcher can do.
    * The string comparison layer requires pre-aligned collations, so both transient operands
    * are built under the resolved common collation of the column and the pattern -- the same
-   * alignment the executor guarantees. value is a string_view into the histogram blob (NOT
-   * NUL-terminated, not owned). */
+   * alignment the executor guarantees. value is a string_view into the histogram blob or, once
+   * re-padded, into pad_buf: NOT NUL-terminated and not owned. db_make_varchar () borrows the
+   * pointer instead of copying, so src stays valid only as long as pad_buf holds those bytes --
+   * db_string_like () consumes it synchronously below, before the caller's next iteration can
+   * re-pad into the same buffer. */
   LANG_RT_COMMON_COLL (src_collation_id, db_get_string_collation (pattern_db_value), common_coll_id);
   if (common_coll_id == -1)
     {
@@ -1779,9 +2021,14 @@ like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::s
  * aligned (it asserts equality after the coercibility check), so both transient DB_VALUEs are
  * built under the caller-resolved COMMON collation -- the same alignment the executor
  * guarantees before comparing. Collation-equal values (e.g. case variants under a _ci
- * collation) then compare equal even though their bytes differ. */
+ * collation) then compare equal even though their bytes differ.
+ *
+ * db_string_compare () er_set()s on codeset failures: the caller shields the planning probe
+ * with er_stack_push () / er_stack_pop () -- once around a whole sweep, since a push and a pop
+ * per comparison cost more than the comparison itself. */
 static bool
-string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset, int collation)
+string_values_equal_under_collation_unshielded (std::string_view v1, std::string_view v2, int codeset,
+    int collation)
 {
   DB_VALUE dbval1, dbval2, cmp_result;
   int err;
@@ -1792,12 +2039,21 @@ string_values_equal_under_collation (std::string_view v1, std::string_view v2, i
 		   codeset, collation);
   db_make_null (&cmp_result);
 
-  /* db_string_compare () er_set()s on codeset failures; shield the planning probe */
-  er_stack_push ();
   err = db_string_compare (&dbval1, &dbval2, &cmp_result);
-  er_stack_pop ();
 
   return (err == NO_ERROR && DB_VALUE_TYPE (&cmp_result) == DB_TYPE_INTEGER && db_get_int (&cmp_result) == 0);
+}
+
+/* the same, shielded on its own: for a single comparison */
+static bool
+string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset, int collation)
+{
+  bool equal;
+
+  er_stack_push ();
+  equal = string_values_equal_under_collation_unshielded (v1, v2, codeset, collation);
+  er_stack_pop ();
+  return equal;
 }
 
 /* column collation/codeset for a histogram-carrying operand; falls back to the given values
@@ -1818,6 +2074,36 @@ histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_co
       *codeset = fallback_codeset;
       *collation = fallback_collation;
     }
+}
+
+/*
+ * histogram_get_column_ndv () - distinct value count of the column a node resolves to
+ *   attr(in)     : PT_NAME (or a path chain ending in one)
+ *   ndv(out)     : MCV entries + non-MCV distinct values
+ *   success(out) : false when the node is not a column or carries no histogram
+ */
+void
+histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success)
+{
+  assert (ndv != NULL);
+
+  *success = false;
+
+  hist::HistogramReader reader;
+  if (!histogram_init_reader_from_lhs (attr, reader))
+    {
+      return;
+    }
+
+  /* ndistinct == nmcv + Σ bucket approx_ndv */
+  const double distinct = static_cast<double> (reader.mcv_count ()) + static_cast<double> (reader.nonmcv_distinct ());
+  if (distinct <= 0.0)
+    {
+      return;
+    }
+
+  *ndv = distinct;
+  *success = true;
 }
 
 void
@@ -1889,6 +2175,12 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   int src_coll_id = (lhs_name != NULL && lhs_name->data_type != NULL)
 		    ? lhs_name->data_type->info.data_type.collation_id : db_get_string_collation (rhs_db_value);
 
+  /* CHAR re-padding context: width from the blob, charset from the collation resolved just
+   * above. A blob collected before CBRD-27251 carries width 0, which disables re-padding until
+   * the statistics are collected again. */
+  const hist_repad_ctx repad = histogram_repad_ctx (histogram_reader, src_coll_id);
+  std::string pad_buf;
+
   /* MCVs: exact LIKE test against each MCV value, weighted by its population frequency. */
   double matched_mcv_freq = 0.0;
   const double mcvsum = histogram_reader.mcv_total_frequency ();
@@ -1897,7 +2189,7 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
       const std::string_view mcv_val = histogram_reader.mcv_hi<std::string_view> (i);
-      if (like_match_value (rhs_db_value, src_coll_id, mcv_val))
+      if (like_match_value (rhs_db_value, src_coll_id, mcv_val, repad, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -1912,7 +2204,8 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i)))
+      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i), repad,
+			    pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -1977,15 +2270,19 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 }
 
 static bool
-rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value)
+rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value, const hist_repad_ctx &repad,
+		    std::string &pad_buf)
 {
   int res = V_FALSE;
   int err;
 
+  /* the executor matches the padded heap value, not the stripped stored one (same as LIKE) */
+  value = histogram_repad_char_value (value, repad, pad_buf);
+
   /* cubregex::search () er_set()s on an execution failure (bad codeset, regex_error); like the
    * compile above, a planning probe must not leave that in the global error state -- shield it
-   * and treat the value as unmatched. value is a string_view into the histogram blob: NOT
-   * NUL-terminated, so copy by length. */
+   * and treat the value as unmatched. value is a string_view into the histogram blob or, once
+   * re-padded, into pad_buf: NOT NUL-terminated, so copy by length (std::string below). */
   er_stack_push ();
   err = cubregex::search (res, reg, std::string (value));
   er_stack_pop ();
@@ -2069,6 +2366,11 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
       return;
     }
 
+  /* CHAR re-padding context: width from the blob, charset from the collation the regex is
+   * compiled under (common_coll_id, resolved above). */
+  const hist_repad_ctx repad = histogram_repad_ctx (histogram_reader, common_coll_id);
+  std::string pad_buf;
+
   /* An invalid pattern must keep raising its error at execution time, not at planning time:
    * shield the global error state and fall back to the caller's guess on compile failure. */
   cubregex::compiled_regex *compiled = NULL;
@@ -2088,7 +2390,7 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
 
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
-      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i)))
+      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i), repad, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -2102,7 +2404,7 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i)))
+      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i), repad, pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -2201,6 +2503,66 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
   return NO_ERROR;
 }
 
+/*
+ * db_get_histogram_committed () - locate a column's _db_histogram entry and read its latest committed version
+ *   return: NO_ERROR, or an error code
+ *   classop(in): class
+ *   attr_name(in): column name
+ *   histogram_obj(out): the entry, NULL when the column has none
+ *
+ * Note (CBRD-27369): db_get_histogram () goes through the object layer's locking lookup -- it S-locks the row it finds
+ *   and fetches its dirty version -- so while an UPDATE STATISTICS holds the class's _db_histogram rows X-locked (until
+ *   its transaction commits) every query compile on that class blocks behind it in stats_get_histogram (). The
+ *   optimizer only needs the last committed histogram: this reads that version without taking a lock and without
+ *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers take the row X right at
+ *   the lookup instead (db_find_multi_unique_for_update ()), and the existence check reads committed, unlocked
+ *   (db_find_multi_unique_committed ()); db_get_histogram () is left to ;info histogram and the DDL paths.
+ */
+int
+db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int error = NO_ERROR;
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  const DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog read; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = obj_find_multi_attr_committed (histogram_class, 2, search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (&value[0]);
+  db_value_clear (&value[1]);
+
+  if (*histogram_obj == NULL)
+    {
+      /* a missing entry is reported as a benign ER_OBJ_OBJECT_NOT_FOUND warning; only real errors propagate */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  return er_errid ();
+	}
+    }
+
+  return NO_ERROR;
+}
+
 int
 stats_get_histogram (MOP classop, HIST_STATS **histogram)
 {
@@ -2280,7 +2642,8 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       const char *attname = (char *) att->header.name;
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
-      error = db_get_histogram (classop, attname, &histogram_obj);
+      /* last committed entry, unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
+      error = db_get_histogram_committed (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)
 	{
@@ -2446,7 +2809,7 @@ is_histogrammable_type (DB_TYPE type)
 }
 
 /*===========================================================================*/
-/* bind-value plan fingerprint */
+/* bind-value plan watch: shared predicate recognizers */
 
 /* splitmix64-style mixing step: order-sensitive, well distributed */
 static std::uint64_t
@@ -2456,20 +2819,50 @@ bind_fp_mix (std::uint64_t h, std::uint64_t v)
   return h;
 }
 
-static std::uint64_t
-bind_fp_hash_name (const PT_NODE *name)
+/* mix every byte of a value's packed image into h; false when the value cannot be packed.
+ * mht_valhash is not used: it is made for hash-table buckets and folds distinct values together
+ * (every NUMERIC hashes to 0 because its buffer starts with zero bytes, FLOAT/DOUBLE/MONETARY are
+ * truncated to integers), and two distinct values taken for the same would reuse the first
+ * value's estimate or plan for good. */
+static bool
+bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
 {
-  const char *s = (name->info.name.original != NULL) ? name->info.name.original : "";
-  std::uint64_t h = 1469598103934665603ULL;	/* FNV-1a */
+  alignas (8) char local_buf[256];
+  char *buf, *end, *p;
+  int size;
 
-  for (; *s != '\0'; s++)
+  if (DB_IS_NULL (v))
     {
-      h ^= (unsigned char) (*s);
-      h *= 1099511628211ULL;
+      *h = bind_fp_mix (*h, 0x4e554c4cULL);
+      return true;
     }
-  return bind_fp_mix (h, (std::uint64_t) name->info.name.spec_id);
+  /* the same options or_pack_value () packs with (no null collapsing, the domain and its class
+   * OIDs): a size taken with fewer would fall short for a set of objects and overrun the buffer */
+  size = or_packed_value_size (v, 0, 1, 1);
+  if (size <= 0)
+    {
+      return false;
+    }
+  buf = (size <= (int) sizeof (local_buf)) ? local_buf : (char *) malloc (size);
+  if (buf == NULL)
+    {
+      return false;
+    }
+  /* alignment padding is not written by the packer: clear it so equal values hash alike */
+  memset (buf, 0, size);
+  end = or_pack_value (buf, v);
+  *h = bind_fp_mix (*h, (std::uint64_t) size);
+  for (p = buf; end != NULL && p < end; p++)
+    {
+      /* FNV-1a over the image */
+      *h = (*h ^ (unsigned char) *p) * 1099511628211ULL;
+    }
+  if (buf != local_buf)
+    {
+      free_and_init (buf);
+    }
+  return end != NULL;
 }
-
 
 /*
  * histogram_split_hv_predicate () - recognize a histogram-priceable host-variable predicate
@@ -2486,11 +2879,14 @@ bind_fp_hash_name (const PT_NODE *name)
  * unpeeked-plan flag and the bind fingerprint are about. Auto-parameterized literals
  * (index >= host_var_count; see pt_rewrite_to_auto_param) are constants the compiler
  * already saw -- treating them as bind variables made every catalog-vclass query (whose
- * view spec is full of literals) replan on its first EXECUTE. */
+ * view spec is full of literals) replan on its first EXECUTE. CBRD-27583: a derived position
+ * (pt_assign_host_var_positions: a rule cast, int_col = ? bound with a string) holds the user's
+ * value the client converted, so it moves with the binds as its user position does. */
 static bool
 histogram_is_user_host_var (const PARSER_CONTEXT *parser, const PT_NODE *hv)
 {
-  return hv != NULL && hv->node_type == PT_HOST_VAR && hv->info.host_var.index < parser->host_var_count;
+  return hv != NULL && hv->node_type == PT_HOST_VAR
+	 && (hv->info.host_var.index < parser->host_var_count || pt_is_derived_host_var (parser, hv->info.host_var.index));
 }
 
 /*
@@ -2527,7 +2923,9 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
       return false;
     }
 
-  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->next)
+  /* range items are OR-ed alternatives chained through or_next (the list qo_range_selectivity
+   * walks); walking `next` here saw only the first item of an IN-list */
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
     {
       if (range_node->node_type != PT_EXPR)
 	{
@@ -2613,205 +3011,6 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
   return false;
 }
 
-struct bind_fp_walk_ctx
-{
-  PARSER_CONTEXT *parser;
-  PT_NODE *statement;		/* for resolving a column's class through its spec (an aliased
-				 * spec exposes the alias in name.resolved, not the class name) */
-  std::uint64_t fp;
-  bool found;
-};
-
-/* fingerprint contribution of one host-variable bound of a range item: the same histogram
- * probe and the same quantization the (column op ?) path uses, so a bound that lands in
- * the same estimate band keeps the plan. include_equal/is_ge follow the range op. */
-static void
-bind_fp_mix_range_bound (bind_fp_walk_ctx *ctx, PT_NODE *name, PT_NODE *bound, PT_OP_TYPE range_op, bool is_ge,
-			 bool include_equal, bool equality)
-{
-  DB_VALUE *val;
-  int idx;
-  double sel = 0.0;
-  bool ok = false;
-  std::uint64_t component;
-
-  if (!histogram_is_user_host_var (ctx->parser, bound))
-    {
-      return;
-    }
-
-  idx = bound->info.host_var.index;
-  if (idx < 0 || idx >= ctx->parser->host_var_count + ctx->parser->auto_param_count
-      || ctx->parser->host_variables == NULL)
-    {
-      return;
-    }
-  val = &ctx->parser->host_variables[idx];
-
-  if (equality)
-    {
-      histogram_get_equal_selectivity (name, val, &sel, &ok);
-    }
-  else
-    {
-      histogram_get_comp_selectivity (name, val, is_ge, include_equal, &sel, &ok);
-    }
-
-  if (!ok)
-    {
-      /* no histogram estimate for this bound -> no band to fingerprint; contribute
-       * nothing (see the (column op ?) path for the full rationale) */
-      return;
-    }
-
-  /* stepwise for equality, 0.01 steps for the linearly interpolated range estimate
-   * (see the (column op ?) path for both rationales) */
-  component = equality ? (std::uint64_t) (sel * 1.0e12) : (std::uint64_t) (sel * 100.0);
-
-  ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) range_op), bind_fp_hash_name (name)),
-			 component);
-  ctx->found = true;
-}
-
-/* fingerprint of a (column RANGE {...}) term: mix every host-variable bound of every range
- * item. The plan-relevant quantity is the term's total selectivity, which the optimizer
- * derives from these same per-bound probes (qo_range_selectivity), so banding each bound
- * bands the total. */
-static void
-bind_fp_mix_range (bind_fp_walk_ctx *ctx, PT_NODE *node, PT_NODE *name)
-{
-  PT_NODE *range_node;
-
-  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->next)
-    {
-      if (range_node->node_type != PT_EXPR)
-	{
-	  continue;
-	}
-
-      switch (range_node->info.expr.op)
-	{
-	case PT_BETWEEN_EQ_NA:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_EQ_NA, false, false, true);
-	  break;
-	case PT_BETWEEN_GT_INF:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_GT_INF, true, false, false);
-	  break;
-	case PT_BETWEEN_GE_INF:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_GE_INF, true, true, false);
-	  break;
-	case PT_BETWEEN_INF_LT:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_INF_LT, false, false, false);
-	  break;
-	case PT_BETWEEN_INF_LE:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_INF_LE, false, true, false);
-	  break;
-	case PT_BETWEEN_GE_LE:
-	case PT_BETWEEN_GE_LT:
-	case PT_BETWEEN_GT_LE:
-	case PT_BETWEEN_GT_LT:
-	{
-	  /* two-sided: the lower bound prices as a >= / > probe, the upper as a <= / < one */
-	  const PT_OP_TYPE op = range_node->info.expr.op;
-	  const bool lo_include = (op == PT_BETWEEN_GE_LE || op == PT_BETWEEN_GE_LT);
-	  const bool hi_include = (op == PT_BETWEEN_GE_LE || op == PT_BETWEEN_GT_LE);
-
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, op, true, lo_include, false);
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg2, op, false, hi_include, false);
-	  break;
-	}
-	default:
-	  break;
-	}
-    }
-}
-
-static PT_NODE *
-bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
-{
-  bind_fp_walk_ctx *ctx = (bind_fp_walk_ctx *) arg;
-
-  PT_NODE *name, *hv;
-  bool reversed = false;
-
-  if (histogram_split_hv_range (parser, node, &name))
-    {
-      bind_fp_mix_range (ctx, node, name);
-      return node;
-    }
-
-  if (!histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
-    {
-      return node;
-    }
-
-  PT_OP_TYPE op = node->info.expr.op;
-
-  int idx = hv->info.host_var.index;
-  if (idx < 0 || idx >= parser->host_var_count + parser->auto_param_count || parser->host_variables == NULL)
-    {
-      return node;
-    }
-  DB_VALUE *val = &parser->host_variables[idx];
-
-  double sel = 0.0;
-  bool ok = false;
-  switch (op)
-    {
-    case PT_EQ:
-      histogram_get_equal_selectivity (name, val, &sel, &ok);
-      break;
-    case PT_GT:
-      histogram_get_comp_selectivity (name, val, !reversed, false, &sel, &ok);
-      break;
-    case PT_GE:
-      histogram_get_comp_selectivity (name, val, !reversed, true, &sel, &ok);
-      break;
-    case PT_LT:
-      histogram_get_comp_selectivity (name, val, reversed, false, &sel, &ok);
-      break;
-    case PT_LE:
-      histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
-      break;
-    default:
-      break;
-    }
-
-  if (!ok)
-    {
-      /* the histogram cannot price this predicate (no histogram on the column, or an
-       * unprobeable type/value). The whole machine is specified over histogram estimate
-       * bands -- without an estimate there is no band, so this term contributes nothing:
-       * a raw value hash here would (a) replan the first execution of statements on
-       * never-analyzed tables for zero gain (the recompile still prices with
-       * DEFAULT_*_SELECTIVITY) and (b) under bind sensitivity give every distinct value
-       * its own fingerprint, replanning per value. Value-shape recompiles (LIKE, MRO,
-       * SORT-LIMIT) have their own machinery and do not need this one. */
-      return node;
-    }
-
-  std::uint64_t component;
-  if (op == PT_EQ)
-    {
-      /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
-       * the same class produce the same estimate, hence the same fingerprint, hence reuse */
-      component = (std::uint64_t) (sel * 1.0e12);
-    }
-  else
-    {
-      /* range estimates interpolate LINEARLY inside the straddling bucket, so the raw
-       * estimate is continuous in the bound value: a fine quantization would hand nearly
-       * every bound its own fingerprint (a replan per value). 0.01 steps bound the
-       * distinct fingerprints of one predicate to ~100. */
-      component = (std::uint64_t) (sel * 100.0);
-    }
-
-  ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) op), bind_fp_hash_name (name)),
-			 component);
-  ctx->found = true;
-  return node;
-}
-
 struct hv_pred_ctx
 {
   bool found;
@@ -2843,31 +3042,849 @@ histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
   return ctx.found;
 }
 
-bool
-histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp)
-{
-  assert (out_fp != NULL);
+/*===========================================================================*/
+/* bind-value plans: per-predicate fingerprint, the hint check, target selection */
 
-  bind_fp_walk_ctx ctx;
-  ctx.parser = parser;
-  ctx.statement = statement;
-  ctx.fp = 0;
-  ctx.found = false;
+/* The band and the floor are constants (histogram_cl.hpp), deliberately not system parameters:
+ * the one thing a DBA decides is how many plans a query may keep (plan_cache_bind_variants);
+ * nobody has a basis to pick a band or a floor per installation. */
+
+/* the predicates of one fingerprint walk, in tree order */
+struct bind_term_ctx
+{
+  PARSER_CONTEXT *parser;
+  bool want_names;		/* build the log labels (only when something will be logged) */
+  BIND_TERM_MEMO *memo;		/* the statement's last pricing per predicate; NULL = price everything */
+  int count;
+  double rows[BIND_WATCH_MAX_TERMS];
+  char name[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
+};
+
+/* the label of a predicate for the log */
+static void
+bind_term_label (bind_term_ctx *ctx, int i, PT_NODE *name, const char *opstr)
+{
+  if (ctx->want_names)
+    {
+      snprintf (ctx->name[i], BIND_WATCH_NAME_LEN, "%s.%s%s",
+		(name->info.name.resolved != NULL) ? name->info.name.resolved : "?",
+		(name->info.name.original != NULL) ? name->info.name.original : "?", opstr);
+    }
+  else
+    {
+      ctx->name[i][0] = '\0';
+    }
+}
+
+/* the predicate about to take the next slot was priced under these very values last time: take
+ * the rows from the memo instead of probing the histogram again. key = 0 never matches. */
+static bool
+bind_term_memo_hit (bind_term_ctx *ctx, PT_NODE *name, const char *opstr, std::uint64_t key)
+{
+  int i = ctx->count;
+
+  if (ctx->memo == NULL || key == 0 || i >= BIND_WATCH_MAX_TERMS || ctx->memo->key[i] != key)
+    {
+      return false;
+    }
+  ctx->count++;
+  ctx->rows[i] = ctx->memo->rows[i];
+  bind_term_label (ctx, i, name, opstr);
+  return true;
+}
+
+/* record one priced predicate: the rows it is expected to scan, and a label for the log.
+ * key (in): what the pricing depended on (bind_term_key), remembered with the rows; 0 = none */
+static void
+bind_term_add (bind_term_ctx *ctx, PT_NODE *name, const char *opstr, double sel, std::uint64_t key)
+{
+  double total_rows;
+  int i;
+
+  if (ctx->count >= BIND_WATCH_MAX_TERMS)
+    {
+      return;			/* the first BIND_WATCH_MAX_TERMS are watched, the rest are not */
+    }
+  i = ctx->count;
+  if (ctx->memo != NULL && ctx->memo->total_rows[i] > 0.0 && ctx->memo->name[i] == name
+      && ctx->memo->histogram[i] == name->info.name.histogram)
+    {
+      /* the column's row count does not move with the values, and its histogram stays the one
+       * the statement fetched: read it once */
+      total_rows = ctx->memo->total_rows[i];
+    }
+  else if (!histogram_get_total_rows (name, &total_rows))
+    {
+      return;
+    }
+
+  ctx->count++;
+  /* a predicate the current value rules out entirely still costs one row's worth of work, and
+   * a ratio needs a non-zero base */
+  ctx->rows[i] = (sel < 0.0) ? BIND_TERM_UNKNOWN : MAX (1.0, sel * total_rows);
+  bind_term_label (ctx, i, name, opstr);
+  if (ctx->memo != NULL)
+    {
+      ctx->memo->name[i] = name;
+      ctx->memo->histogram[i] = name->info.name.histogram;
+      ctx->memo->total_rows[i] = total_rows;
+      ctx->memo->key[i] = key;
+      ctx->memo->rows[i] = ctx->rows[i];
+    }
+}
+
+/* what one predicate's pricing depends on: the predicate itself (its column node, which keeps
+ * its place in the tree for the statement's life), the histogram the node carries (a recompile
+ * can annotate a newer one), its operator, and every byte of its values.
+ * 0 = a value could not be read: never matches a memo entry. */
+static std::uint64_t
+bind_term_key (PT_NODE *name, int op, DB_VALUE *v1, DB_VALUE *v2)
+{
+  std::uint64_t h = 1469598103934665603ULL;
+
+  h = bind_fp_mix (h, (std::uint64_t) (UINTPTR) name);
+  h = bind_fp_mix (h, (std::uint64_t) (UINTPTR) name->info.name.histogram);
+  h = bind_fp_mix (h, (std::uint64_t) op);
+  if ((v1 != NULL && !bind_value_image_mix (&h, v1)) || (v2 != NULL && !bind_value_image_mix (&h, v2)))
+    {
+      return 0;
+    }
+  return (h == 0) ? 1 : h;
+}
+
+/* value behind a comparison operand: a bound host variable, or a constant the rewriter left in
+ * place. Auto-parameterized literals arrive as host variables too and are resolved here -- for
+ * a range term they are part of the term's selectivity even though they are not what makes the
+ * term value-dependent (that test stays histogram_is_user_host_var). */
+static DB_VALUE *
+bind_card_arg_value (PARSER_CONTEXT *parser, PT_NODE *arg)
+{
+  if (arg == NULL)
+    {
+      return NULL;
+    }
+
+  /* same classification the optimizer prices these bounds with (qo_between_range_arg_value), so
+   * the cardinality this walk derives tracks the one the plan was costed with. Materializing a
+   * value here instead (pt_value_to_db) could raise a parser error on a tree that is only being
+   * measured, which would surface as a failure of the statement itself. */
+  switch (qo_classify (arg))
+    {
+    case PC_HOST_VAR:
+    {
+      int idx = arg->info.host_var.index;
+
+      if (parser->host_variables == NULL || idx < 0 || idx >= parser->host_var_count + parser->auto_param_count)
+	{
+	  return NULL;
+	}
+      return &parser->host_variables[idx];
+    }
+    case PC_CONST:
+      return &arg->info.value.db_value;
+    default:
+      return NULL;
+    }
+}
+
+/* does a (column RANGE {...}) term move with the bound values? A property of the statement. */
+static bool
+bind_range_value_dependent (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  PT_NODE *range_node;
+
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
+    {
+      if (range_node->node_type == PT_EXPR
+	  && (histogram_is_user_host_var (parser, range_node->info.expr.arg1)
+	      || histogram_is_user_host_var (parser, range_node->info.expr.arg2)))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* bind_term_key of a (column RANGE {...}) term: every item's operator and bounds */
+static std::uint64_t
+bind_range_key (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *name)
+{
+  std::uint64_t h = bind_term_key (name, (int) PT_RANGE, NULL, NULL);
+  PT_NODE *range_node;
+
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
+    {
+      DB_VALUE *v1, *v2;
+
+      if (range_node->node_type != PT_EXPR)
+	{
+	  return 0;
+	}
+      v1 = bind_card_arg_value (parser, range_node->info.expr.arg1);
+      v2 = bind_card_arg_value (parser, range_node->info.expr.arg2);
+      h = bind_fp_mix (h, (std::uint64_t) range_node->info.expr.op);
+      if ((v1 != NULL && !bind_value_image_mix (&h, v1)) || (v2 != NULL && !bind_value_image_mix (&h, v2)))
+	{
+	  return 0;
+	}
+      h = bind_fp_mix (h, (v1 == NULL ? 1 : 0) + (v2 == NULL ? 2 : 0));
+    }
+  return (h == 0) ? 1 : h;
+}
+
+/* selectivity of a (column RANGE {...}) term, or false when any of its items cannot be priced.
+ * The items are OR-ed alternatives chained through or_next (the same list qo_range_selectivity
+ * walks), so their selectivities add; an unpriceable item would silently shrink that sum, so
+ * the whole term is dropped instead. */
+static bool
+bind_card_range_selectivity (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *name, double *out_sel,
+			     bool *out_value_dependent)
+{
+  PT_NODE *range_node;
+  double total = 0.0;
+  bool priced = true;
+
+  /* whether the term moves with the bound values is a property of the statement: decide it over
+   * every item before any of them fails to price */
+  *out_value_dependent = false;
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
+    {
+      if (range_node->node_type != PT_EXPR)
+	{
+	  return false;
+	}
+      if (histogram_is_user_host_var (parser, range_node->info.expr.arg1)
+	  || histogram_is_user_host_var (parser, range_node->info.expr.arg2))
+	{
+	  *out_value_dependent = true;
+	}
+    }
+
+  for (range_node = node->info.expr.arg2; range_node != NULL && priced; range_node = range_node->or_next)
+    {
+      DB_VALUE *v1, *v2;
+      double item_sel = 0.0;
+
+      v1 = bind_card_arg_value (parser, range_node->info.expr.arg1);
+      v2 = bind_card_arg_value (parser, range_node->info.expr.arg2);
+      if (v1 == NULL)
+	{
+	  priced = false;
+	}
+      else if (DB_IS_NULL (v1) || (v2 != NULL && DB_IS_NULL (v2) && range_node->info.expr.op != PT_BETWEEN_EQ_NA))
+	{
+	  /* a NULL bound matches no row */
+	  item_sel = 0.0;
+	}
+      else if (range_node->info.expr.op == PT_BETWEEN_EQ_NA)
+	{
+	  bool ok = false;
+
+	  histogram_get_equal_selectivity (name, v1, &item_sel, &ok);
+	  priced = ok;
+	}
+      else
+	{
+	  priced = qo_between_range_histogram_selectivity (name, range_node->info.expr.op, v1, v2, &item_sel);
+	}
+      total += item_sel;
+    }
+
+  *out_sel = MIN (1.0, MAX (0.0, total));
+  return priced;
+}
+
+static PT_NODE *
+bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  bind_term_ctx *ctx = (bind_term_ctx *) arg;
+  PT_NODE *name, *hv;
+  bool reversed = false;
+  double sel = 0.0;
+  bool ok = false;
+  const char *opstr;
+  std::uint64_t key;
+
+  if (histogram_split_hv_range (parser, node, &name))
+    {
+      bool value_dependent = false;
+      std::uint64_t key = 0;
+
+      if (bind_range_value_dependent (parser, node))
+	{
+	  key = bind_range_key (parser, node, name);
+	  if (bind_term_memo_hit (ctx, name, " RANGE", key))
+	    {
+	      return node;
+	    }
+	}
+      if (bind_card_range_selectivity (parser, node, name, &sel, &value_dependent))
+	{
+	  if (value_dependent)
+	    {
+	      bind_term_add (ctx, name, " RANGE", sel, key);
+	    }
+	}
+      else if (value_dependent)
+	{
+	  bind_term_add (ctx, name, " RANGE", BIND_TERM_UNKNOWN, key);
+	}
+      return node;
+    }
+
+  if (!histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
+    {
+      return node;
+    }
+
+  {
+    DB_VALUE *val = bind_card_arg_value (parser, hv);
+
+    if (val == NULL)
+      {
+	return node;
+      }
+
+    if (DB_IS_NULL (val))
+      {
+	/* a comparison with NULL matches no row: priced, not dropped -- dropping it would shift
+	 * every later predicate out of its slot */
+	switch (node->info.expr.op)
+	  {
+	  case PT_EQ:
+	  case PT_GT:
+	  case PT_GE:
+	  case PT_LT:
+	  case PT_LE:
+	    bind_term_add (ctx, name, " NULL", 0.0, 0);
+	    break;
+	  default:
+	    break;
+	  }
+	return node;
+      }
+
+    switch (node->info.expr.op)
+      {
+      case PT_EQ:
+	opstr = "=?";
+	break;
+      case PT_GT:
+	opstr = reversed ? "<?" : ">?";
+	break;
+      case PT_GE:
+	opstr = reversed ? "<=?" : ">=?";
+	break;
+      case PT_LT:
+	opstr = reversed ? ">?" : "<?";
+	break;
+      case PT_LE:
+	opstr = reversed ? ">=?" : "<=?";
+	break;
+      default:
+	return node;
+      }
+    key = bind_term_key (name, (int) node->info.expr.op * 2 + (reversed ? 1 : 0), val, NULL);
+    if (bind_term_memo_hit (ctx, name, opstr, key))
+      {
+	return node;
+      }
+
+    switch (node->info.expr.op)
+      {
+      case PT_EQ:
+	histogram_get_equal_selectivity (name, val, &sel, &ok);
+	break;
+      case PT_GT:
+	histogram_get_comp_selectivity (name, val, !reversed, false, &sel, &ok);
+	break;
+      case PT_GE:
+	histogram_get_comp_selectivity (name, val, !reversed, true, &sel, &ok);
+	break;
+      case PT_LT:
+	histogram_get_comp_selectivity (name, val, reversed, false, &sel, &ok);
+	break;
+      case PT_LE:
+	histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
+	break;
+      default:
+	return node;
+      }
+  }
+
+  /* a value the histogram cannot price (a type its keys do not hold) keeps its slot, marked
+   * unknown: the comparison skips it, and the predicates after it stay where they belong */
+  bind_term_add (ctx, name, opstr, ok ? sel : BIND_TERM_UNKNOWN, key);
+  return node;
+}
+
+/* price every predicate under the current values, in tree order. false = nothing priceable,
+ * which the caller reads as "stop watching". */
+static bool
+bind_term_vector (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx, bool want_names,
+		  BIND_TERM_MEMO *memo)
+{
+  ctx->parser = parser;
+  ctx->want_names = want_names;
+  ctx->memo = memo;
+  ctx->count = 0;
 
   bind_fp_active_parser = parser;
   bind_fp_active_statement = statement;
 
-  (void) parser_walk_tree (parser, statement, bind_fp_walk, &ctx, NULL, NULL);
+  (void) parser_walk_tree (parser, statement, bind_term_walk, ctx, NULL, NULL);
 
   bind_fp_active_parser = NULL;
   bind_fp_active_statement = NULL;
 
-  if (!ctx.found)
+  return ctx->count > 0;
+}
+
+bool
+histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_FINGERPRINT *fp,
+			    char (*names)[BIND_WATCH_NAME_LEN], BIND_TERM_MEMO *memo)
+{
+  bind_term_ctx cur;
+  int i;
+
+  assert (fp != NULL);
+  fp->terms = 0;
+  if (!bind_term_vector (parser, statement, &cur, names != NULL, memo))
     {
       return false;
     }
-  *out_fp = (ctx.fp == 0) ? 1 : ctx.fp;	/* 0 is the "not recorded" sentinel */
+  fp->terms = cur.count;
+  for (i = 0; i < cur.count; i++)
+    {
+      fp->rows[i] = cur.rows[i];
+      if (names != NULL)
+	{
+	  memcpy (names[i], cur.name[i], BIND_WATCH_NAME_LEN);
+	}
+    }
   return true;
+}
+
+void
+histogram_bind_describe (char *buf, size_t size, const BIND_FINGERPRINT *now, char (*names)[BIND_WATCH_NAME_LEN],
+			 const BIND_FINGERPRINT *ref)
+{
+  size_t used = 0;
+  int i;
+
+  if (size == 0)
+    {
+      return;
+    }
+  buf[0] = '\0';
+  for (i = 0; i < now->terms && used < size; i++)
+    {
+      int n;
+
+      if (ref != NULL && ref->terms == now->terms)
+	{
+	  n = snprintf (buf + used, size - used, "%s%s %.0f->%.0f", (i > 0) ? ", " : "",
+			(names != NULL) ? names[i] : "?", ref->rows[i], now->rows[i]);
+	}
+      else
+	{
+	  n = snprintf (buf + used, size - used, "%s%s %.0f", (i > 0) ? ", " : "", (names != NULL) ? names[i] : "?",
+			now->rows[i]);
+	}
+      if (n < 0)
+	{
+	  break;
+	}
+      used += (size_t) n;
+    }
+}
+
+/*
+ * histogram_bind_value_hash () - hash of the bound values, to tell "the same values as the last
+ *   execution" without fingerprinting them again
+ * return : the hash; 0 = no values, or one could not be read (never taken as "the same")
+ *
+ * Every byte of every value's packed image is hashed (bind_value_image_mix).
+ */
+UINT64
+histogram_bind_value_hash (PARSER_CONTEXT *parser)
+{
+  std::uint64_t h = 1469598103934665603ULL;
+  int i;
+
+  if (parser == NULL || parser->host_variables == NULL || parser->host_var_count <= 0)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < parser->host_var_count; i++)
+    {
+      if (!bind_value_image_mix (&h, &parser->host_variables[i]))
+	{
+	  return 0;
+	}
+    }
+  return (h == 0) ? 1 : h;
+}
+
+/*
+ * histogram_bind_watch_check () - price the statement's predicates under the current bind
+ *   values and compare each with the rows it was expected to scan when the plan was chosen:
+ *   a replan when any one moved by the band or more, either way. Predicates expected to scan
+ *   fewer rows than the floor on both sides are ignored (1 row becoming 3 moves no plan).
+ */
+bool
+histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, double band,
+			    bool *out_usable)
+{
+  bind_term_ctx cur;
+  const double row_floor = BIND_WATCH_ROW_FLOOR;
+  /* the per-check dump rides on the general debug-log switch (on by default in debug builds,
+   * where the phase-1 measurement runs); the replan reason below is what a DBA asks for when a
+   * plan changed */
+  const bool trace = prm_get_bool_value (PRM_ID_ER_LOG_DEBUG);
+  double worst_fold = 1.0;
+  int worst_i = -1, compared = 0, i;
+  bool out_of_band = false;
+
+  assert (ws != NULL && out_usable != NULL);
+  *out_usable = false;
+
+  if (!bind_term_vector (parser, statement, &cur, true, (ws != NULL) ? &ws->memo : NULL))
+    {
+      return false;
+    }
+  *out_usable = true;
+
+  if (trace)
+    {
+      for (i = 0; i < cur.count; i++)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "bind watch dump: %s scans %.0f rows (plan was chosen at %.0f)\n",
+			 cur.name[i], cur.rows[i], (ws->terms > i) ? ws->rows[i] : -1.0);
+	}
+    }
+
+  if (ws->terms < 0 || ws->terms != cur.count)
+    {
+      /* nothing recorded yet, or the set of priceable predicates itself changed (a NULL makes
+       * a term unpriceable and drops it): there is nothing to compare against */
+      out_of_band = (ws->terms >= 0);
+      if (out_of_band)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bind watch replan (terms): %d priced predicate(s), the plan was chosen with %d\n", cur.count,
+			 ws->terms);
+	}
+      goto record;
+    }
+
+  for (i = 0; i < cur.count; i++)
+    {
+      double then = ws->rows[i], fold;
+
+      if (cur.rows[i] < 0.0 || then < 0.0)
+	{
+	  /* unknown on either side: nothing to compare */
+	  continue;
+	}
+      if (cur.rows[i] < row_floor && then < row_floor)
+	{
+	  continue;
+	}
+      compared++;
+      fold = (cur.rows[i] >= then) ? cur.rows[i] / then : then / cur.rows[i];
+      if (fold > worst_fold)
+	{
+	  worst_fold = fold;
+	  worst_i = i;
+	}
+    }
+
+  if (compared == 0)
+    {
+      return false;
+    }
+
+  if (worst_fold >= band)
+    {
+      /* one line, every predicate: "<label> then->now" -- with the dump off (release builds)
+       * this is the only account of why the plan changed, so it must be complete */
+      char buf[BIND_WATCH_MAX_TERMS * (BIND_WATCH_NAME_LEN + 32)];
+      size_t used = 0;
+
+      out_of_band = true;
+      buf[0] = '\0';
+      for (i = 0; i < cur.count && used < sizeof (buf); i++)
+	{
+	  int n = snprintf (buf + used, sizeof (buf) - used, "%s%s %.0f->%.0f", (i > 0) ? ", " : "", cur.name[i],
+			    ws->rows[i], cur.rows[i]);
+
+	  if (n < 0)
+	    {
+	      break;
+	    }
+	  used += (size_t) n;
+	}
+      _er_log_debug (ARG_FILE_LINE,
+		     "bind watch replan: %s scans %.0f -> %.0f rows (%.1fx %s) over the %.1fx band; %s\n",
+		     cur.name[worst_i], ws->rows[worst_i], cur.rows[worst_i], worst_fold,
+		     (cur.rows[worst_i] >= ws->rows[worst_i]) ? "up" : "down", band, buf);
+    }
+
+record:
+  if (out_of_band || ws->terms < 0)
+    {
+      ws->terms = cur.count;
+      for (i = 0; i < cur.count; i++)
+	{
+	  ws->rows[i] = cur.rows[i];
+	  memcpy (ws->name[i], cur.name[i], BIND_WATCH_NAME_LEN);
+	}
+      return true;
+    }
+  return false;
+}
+
+/*===========================================================================*/
+/* bind-value plan watch: target selection */
+
+/* one histogram-priceable host-variable predicate found while judging candidacy */
+struct bind_target_term
+{
+  UINTPTR spec_id;
+  PT_NODE *name;
+  bool equality;
+  bool has_mcv;
+};
+
+struct bind_target_ctx
+{
+  PARSER_CONTEXT *parser;
+  int specs;			/* specs over real classes anywhere in the statement, subqueries included */
+  int terms;
+  bind_target_term term[BIND_WATCH_MAX_TERMS];
+};
+
+static bool
+bind_target_column_has_mcv (PT_NODE *name)
+{
+  hist::HistogramReader reader;
+
+  if (!histogram_init_reader_from_lhs (name, reader))
+    {
+      return false;
+    }
+  return reader.mcv_count () > 0;
+}
+
+static void
+bind_target_add (bind_target_ctx *ctx, PT_NODE *name, bool equality)
+{
+  int i;
+
+  if (ctx->terms >= (int) (sizeof (ctx->term) / sizeof (ctx->term[0])))
+    {
+      /* a statement with more columns than this is judged by the first ones, the same
+       * predicates its fingerprint keeps */
+      return;
+    }
+  for (i = 0; i < ctx->terms; i++)
+    {
+      if (ctx->term[i].spec_id == name->info.name.spec_id && ctx->term[i].name->info.name.original != NULL
+	  && name->info.name.original != NULL
+	  && intl_identifier_casecmp (ctx->term[i].name->info.name.original, name->info.name.original) == 0)
+	{
+	  ctx->term[i].equality = ctx->term[i].equality || equality;
+	  return;
+	}
+    }
+
+  i = ctx->terms++;
+  ctx->term[i].spec_id = name->info.name.spec_id;
+  ctx->term[i].name = name;
+  ctx->term[i].equality = equality;
+  ctx->term[i].has_mcv = bind_target_column_has_mcv (name);
+}
+
+static PT_NODE *
+bind_target_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  bind_target_ctx *ctx = (bind_target_ctx *) arg;
+  PT_NODE *name;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (node->node_type == PT_SPEC && node->info.spec.entity_name != NULL
+      && node->info.spec.entity_name->node_type == PT_NAME && node->info.spec.derived_table == NULL)
+    {
+      ctx->specs++;
+      return node;
+    }
+
+  if (histogram_split_hv_range (parser, node, &name))
+    {
+      PT_NODE *r;
+      bool equality = false;
+
+      for (r = node->info.expr.arg2; r != NULL; r = r->or_next)
+	{
+	  if (r->node_type == PT_EXPR && r->info.expr.op == PT_BETWEEN_EQ_NA)
+	    {
+	      equality = true;
+	    }
+	  else
+	    {
+	      equality = false;
+	      break;
+	    }
+	}
+      bind_target_add (ctx, name, equality);
+      return node;
+    }
+
+  if (histogram_split_hv_predicate (parser, node, &name, NULL, NULL))
+    {
+      bind_target_add (ctx, name, node->info.expr.op == PT_EQ);
+    }
+  return node;
+}
+
+/* does an equality on these columns pin the spec's access path? A unique key all of whose
+ * columns are matched by an equality yields at most one row whatever the value is, so the
+ * optimizer has nothing left to choose there (qo_iscan_cost prices that path at 0) and
+ * watching the statement for that column is pure cost. */
+static bool
+bind_target_spec_is_unique_pinned (PARSER_CONTEXT *parser, PT_NODE *statement, bind_target_ctx *ctx,
+				   UINTPTR spec_id)
+{
+  const char *class_name = NULL;
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *constraints, *c;
+  int i;
+
+  for (i = 0; i < ctx->terms; i++)
+    {
+      if (ctx->term[i].spec_id == spec_id)
+	{
+	  class_name = histogram_spec_class_name (parser, statement, ctx->term[i].name);
+	  break;
+	}
+    }
+  if (class_name == NULL)
+    {
+      return false;
+    }
+
+  classop = db_find_class (class_name);
+  if (classop == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+  constraints = sm_class_constraints (classop);
+  if (constraints == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      SM_ATTRIBUTE **att;
+      bool all_matched = true;
+
+      if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type) || c->attributes == NULL || c->attributes[0] == NULL
+	  || c->filter_predicate != NULL || c->func_index_info != NULL)
+	{
+	  /* a filtered or function-based unique index does not serve a plain column equality, so
+	   * it pins nothing the optimizer chooses (the grammar rejects both for UNIQUE today) */
+	  continue;
+	}
+
+      for (att = c->attributes; *att != NULL && all_matched; att++)
+	{
+	  bool matched = false;
+
+	  for (i = 0; i < ctx->terms; i++)
+	    {
+	      if (ctx->term[i].spec_id == spec_id && ctx->term[i].equality
+		  && ctx->term[i].name->info.name.original != NULL
+		  && intl_identifier_casecmp (ctx->term[i].name->info.name.original, (*att)->header.name) == 0)
+		{
+		  matched = true;
+		  break;
+		}
+	    }
+	  all_matched = matched;
+	}
+      if (all_matched)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+bool
+histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  bind_target_ctx ctx;
+  int i;
+
+  /* judged whether or not this session has the feature on: the flag lives in the cached plan,
+   * which every session shares, and a plan compiled by a session with plan_cache_bind_variants=0
+   * would otherwise leave the query out for the sessions that have it on. Whether to act on the
+   * flag is decided at execution (db_bind_variant_mode). */
+  if (parser == NULL || statement == NULL || parser->host_var_count <= 0)
+    {
+      return false;
+    }
+  ctx.parser = parser;
+  ctx.specs = 0;
+  ctx.terms = 0;
+
+  /* the MCV test below reads the column's histogram; give the probes the statement so a column
+   * the optimizer did not annotate still resolves through the class cache */
+  bind_fp_active_parser = parser;
+  bind_fp_active_statement = statement;
+
+  (void) parser_walk_tree (parser, statement, bind_target_walk, &ctx, NULL, NULL);
+
+  bind_fp_active_parser = NULL;
+  bind_fp_active_statement = NULL;
+
+  /* single-table queries are out of scope by contract: their worst case is a full scan, so the
+   * table bounds the damage, while a join's error multiplies at every probe with no bound.
+   * The specs are counted over the whole statement, subqueries included: an IN or EXISTS
+   * subquery is usually rewritten into a join, and a correlated one runs once per outer row, so
+   * it multiplies the error just the same (a server-side UPDATE or DELETE has a single target
+   * table and reaches the others only that way). An uncorrelated scalar subquery is counted too;
+   * that only widens the watch. Use the hint when a single-table statement really needs
+   * watching. */
+  if (ctx.specs < 2 || ctx.terms == 0)
+    {
+      return false;
+    }
+
+  for (i = 0; i < ctx.terms; i++)
+    {
+      /* without most-common values the estimate does not move with the value, so watching the
+       * column would cost without ever finding anything */
+      if (!ctx.term[i].has_mcv)
+	{
+	  continue;
+	}
+      if (bind_target_spec_is_unique_pinned (parser, statement, &ctx, ctx.term[i].spec_id))
+	{
+	  continue;
+	}
+      return true;
+    }
+  return false;
 }
 
 /*===========================================================================*/

@@ -31,10 +31,14 @@
 #include <signal.h>
 #if defined(WINDOWS)
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <time.h>
 #else /* ! WINDOWS */
 #include <sys/time.h>
 #include <sys/param.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <ifaddrs.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #endif /* ! WINDOWS */
@@ -69,6 +73,13 @@
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
+
+// TODO: Unless multi-threading is involved, variables may be declared separately for independent operation
+#if 0
+extern class client_support __gv_client_support_local;	// refered to in master.c
+#undef __gv_cvar
+#define __gv_cvar (__gv_client_support_local)
+#endif
 
 static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command);
 static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message);
@@ -1322,15 +1333,21 @@ static void
 css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf)
 {
 #if !defined(WINDOWS)
+  int result;
+
   if (!HA_DISABLED ())
     {
-      if (hb_is_registered_process (conn, buf))
+      result = hb_check_request_eligibility (conn->fd);
+      if (result == HB_HC_ELIGIBLE_LOCAL || result == HB_HC_ELIGIBLE_REMOTE)
 	{
-	  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+	  if (hb_is_registered_process (conn, buf))
 	    {
-	      css_cleanup_info_connection (conn);
+	      if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+		{
+		  css_cleanup_info_connection (conn);
+		}
+	      return;
 	    }
-	  return;
 	}
     }
 
@@ -1633,6 +1650,18 @@ css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn, unsigned short reque
 #if !defined(WINDOWS)
   int error;
 
+  /* Unlike the other remote-allowed HA requests, this one is not gated by
+   * hb_check_request_eligibility (): by the time it naturally arrives in the
+   * deactivation sequence (DEACT_STOP_ALL -> DEACT_CONFIRM_STOP_ALL ->
+   * DEACTIVATE_HEARTBEAT -> DEACT_CONFIRM_NO_SERVER), DEACTIVATE_HEARTBEAT has
+   * already cleared hb_Cluster->nodes via hb_cluster_cleanup (), so the
+   * eligibility check would always fail and "cubrid heartbeat stop --host"
+   * would hang forever retrying. The response depends only on
+   * hb_Deactivate_info's own state, which is idempotent regardless of the
+   * caller: hb_get_deactivating_server_count () is 0 whenever no deactivation
+   * is in progress, and hb_finish_deactivate_server_info () is a no-op on an
+   * already-clean state, so an unauthenticated caller cannot influence or
+   * advance real deactivation progress through this request. */
   if (hb_get_deactivating_server_count () == 0)
     {
       error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
@@ -1666,14 +1695,30 @@ css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn, unsigned short reques
 {
 #if !defined(WINDOWS)
   int error;
+  int result;
 
-  if (hb_is_deactivation_ready () == true)
+  if (HA_DISABLED ())
     {
-      error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
+      /* hb_Cluster is only allocated when HA is enabled; hb_check_request_eligibility ()
+       * dereferences it unconditionally for a non-UNIX-socket peer, so it must not be
+       * called while HA is off. */
+      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
     }
   else
     {
-      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+      result = hb_check_request_eligibility (conn->fd);
+      if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+	}
+      else if (hb_is_deactivation_ready () == true)
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
+	}
+      else
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+	}
     }
 
   if (error != NO_ERRORS)
@@ -1925,6 +1970,127 @@ send_to_client:
 }
 
 /*
+ * IS_MASTER_REQUEST_ALLOWED_ON_REMOTE () - administrative requests a remote
+ *   peer is permitted to issue. This mirrors the client-side
+ *   COMMDB_CMD_ALLOWED_ON_REMOTE () allow-list in commdb.c, plus
+ *   GET_SERVER_STATE which commdb.c never issues but which a broker
+ *   (cub_broker) on a host separate from cub_server/cub_master legitimately
+ *   sends to monitor a remote database server's HA state
+ *   (connect_to_master_for_server_monitor ()/get_server_state_from_master ()
+ *   in broker.c). GET_SERVER_STATE intentionally has no
+ *   hb_check_request_eligibility () gate of its own: that check only admits
+ *   peers registered as HA cluster nodes, which a plain broker host is not.
+ *   It only discloses a coarse HA state for a caller-supplied database name,
+ *   no more sensitive than the already-remote-allowed GET_HA_* queries.
+ *   The enforcement is done on the master so a raw client that does not use
+ *   the commdb utility cannot bypass it. Every request NOT in this list
+ *   (server/master kill, shutdown, server list, ...) must originate from a
+ *   local peer. Most HA requests in this list are additionally restricted to
+ *   eligible peers by hb_check_request_eligibility () inside their own
+ *   handlers; DEACT_CONFIRM_NO_SERVER is the other exception besides
+ *   GET_SERVER_STATE - see the comment on css_process_deact_confirm_no_server ()
+ *   for why it cannot use that check.
+ */
+#define IS_MASTER_REQUEST_ALLOWED_ON_REMOTE(req) \
+  ((req) == DEACT_STOP_ALL || (req) == DEACT_CONFIRM_STOP_ALL \
+   || (req) == DEACT_CONFIRM_NO_SERVER || (req) == DEACTIVATE_HEARTBEAT \
+   || (req) == IS_REGISTERED_HA_PROC || (req) == DEREGISTER_HA_PROCESS_BY_ARGS \
+   || (req) == GET_HA_NODE_LIST || (req) == GET_HA_NODE_LIST_VERBOSE \
+   || (req) == GET_HA_PROCESS_LIST || (req) == GET_HA_PROCESS_LIST_VERBOSE \
+   || (req) == GET_HA_PING_HOST_INFO || (req) == GET_HA_ADMIN_INFO \
+   || (req) == START_HA_UTIL_PROCESS || (req) == GET_SERVER_STATE)
+
+/*
+ * css_master_request_is_local () - is the request peer local?
+ *   return: true for a unix-domain-socket peer or a loopback TCP peer.
+ *   fd(in): the accepted connection socket
+ *
+ * Note: the master listens on INADDR_ANY, so getpeername() is the authority
+ *   on where a request came from. Used to reject administrative master
+ *   requests arriving from a remote, unauthenticated client.
+ */
+static bool
+css_master_request_is_local (SOCKET fd)
+{
+  struct sockaddr_storage addr;
+  socklen_t addr_len = sizeof (addr);
+
+  if (getpeername (fd, (struct sockaddr *) &addr, &addr_len) < 0)
+    {
+      return false;
+    }
+
+  switch (addr.ss_family)
+    {
+#if !defined(WINDOWS)
+    case AF_UNIX:
+      return true;
+#endif /* ! WINDOWS */
+    case AF_INET:
+      {
+	struct sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
+	return (ntohl (addr_in->sin_addr.s_addr) == INADDR_LOOPBACK);
+      }
+    default:
+      return false;
+    }
+}
+
+#if !defined(WINDOWS)
+/*
+ * css_peer_is_local_host () - is the request peer the same host as the master?
+ *   return: true for a unix-domain-socket peer, a loopback TCP peer, or a TCP
+ *           peer whose address is one of this host's own interface addresses.
+ *   fd(in): the accepted connection socket
+ *
+ * Note: unlike css_master_request_is_local () (loopback/unix only, used for the
+ *   admin commands commdb issues over localhost), a co-located cub_server
+ *   registers with cub_master by connecting to the resolved local host name
+ *   (master::connector::connect_to_master () -> GETHOSTNAME ()), so its source
+ *   address may be a non-loopback interface address of this same host. This
+ *   accepts those while still rejecting a genuinely remote peer. The master
+ *   only listens on AF_INET and AF_UNIX sockets, so there is no IPv6 peer.
+ */
+bool
+css_peer_is_local_host (SOCKET fd)
+{
+  struct sockaddr_storage peer;
+  socklen_t peer_len = sizeof (peer);
+  struct in_addr peer_addr;
+  struct ifaddrs *ifaddr, *ifa;
+  bool is_local = false;
+
+  /* a unix-domain or loopback peer */
+  if (css_master_request_is_local (fd))
+    {
+      return true;
+    }
+
+  /* otherwise accept only an IPv4 peer whose address is one of this host's own */
+  if (getpeername (fd, (struct sockaddr *) &peer, &peer_len) < 0 || peer.ss_family != AF_INET)
+    {
+      return false;
+    }
+  peer_addr = ((struct sockaddr_in *) &peer)->sin_addr;
+
+  if (getifaddrs (&ifaddr) != 0)
+    {
+      return false;
+    }
+  for (ifa = ifaddr; ifa != NULL && !is_local; ifa = ifa->ifa_next)
+    {
+      if (ifa->ifa_addr != NULL && ifa->ifa_addr->sa_family == AF_INET
+	  && ((struct sockaddr_in *) ifa->ifa_addr)->sin_addr.s_addr == peer_addr.s_addr)
+	{
+	  is_local = true;
+	}
+    }
+  freeifaddrs (ifaddr);
+  return is_local;
+}
+#endif /* ! WINDOWS */
+
+/*
  * css_process_info_request() - information server main loop
  *   return: none
  *   conn(in)
@@ -1941,7 +2107,20 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   rc = __gv_cvar.css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
     {
-      if (buffer_size && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size, -1) != NO_ERRORS)
+      /* the master listens on INADDR_ANY and applies no
+       * authentication, so administrative requests must be restricted here.
+       * Requests not explicitly allowed on remote are honored only from a
+       * local peer; the remote-allowed HA requests are further checked by
+       * hb_check_request_eligibility() in their handlers. */
+      if (!IS_MASTER_REQUEST_ALLOWED_ON_REMOTE (request) && !css_master_request_is_local (conn->fd))
+	{
+	  css_cleanup_info_connection (conn);
+	  return;
+	}
+
+      if (buffer_size
+	  && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size,
+					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000) != NO_ERRORS)
 	{
 	  if (buffer != NULL)
 	    {
@@ -1950,6 +2129,7 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  css_cleanup_info_connection (conn);
 	  return;
 	}
+
       switch (request)
 	{
 	case GET_START_TIME:

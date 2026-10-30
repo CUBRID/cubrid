@@ -29,8 +29,9 @@
 
 namespace memoize
 {
-  constexpr size_t MEMOIZE_FREE_ITERATION_LIMIT = 1000;
   constexpr double MEMOIZE_HIT_RATIO_THRESHOLD = 0.5;
+  /* the hit ratio is judged only once the storage holds this share of its budget (the subquery cache waits for 60%) */
+  constexpr double MEMOIZE_HIT_RATIO_CHECK_SIZE = 0.6;
 
   template <typename T>
   using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, false>;
@@ -60,6 +61,8 @@ namespace memoize
       };
       struct equal
       {
+	/* the key positions' regu domains (storage::m_key_domains): CBRD-27583 */
+	const std::vector<const TP_DOMAIN *> *m_domains;
 	bool operator() (const key *k1, const key *k2) const;
       };
   };
@@ -81,10 +84,11 @@ namespace memoize
   class storage
   {
     public:
-      storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list);
+      storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list,
+	       bool match_only);
       ~storage();
-      static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl);
-      void init (std::vector<DB_VALUE *> &key_ptr_src);
+      static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only);
+      void init (std::vector<DB_VALUE *> &key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains);
       result_code get ();
       result_code put();
       void start_timer();
@@ -124,10 +128,17 @@ namespace memoize
       key *get_key();
       value *get_value();
       result_code set_value (value *value);
+      bool can_insert ();
+      void stop_insert ();
 
       const size_t m_max_storage_size;
       const int m_key_cnt;
       const int m_value_cnt;
+      /* match-only: remember per key only whether an inner row matched (NL semi/anti inner). put() stores
+       * &m_matched instead of cloning val_list, get() replays it without touching val_list; nullptr still
+       * means "no match". The storage does not know the join type; the executor interprets the two. */
+      const bool m_match_only;
+      value m_matched;
       THREAD_ENTRY *m_thread_p;
       VAL_LIST *m_val_list;
 
@@ -137,9 +148,12 @@ namespace memoize
       size_t m_hash_sz;
       key *m_last_key;
       std::vector<DB_VALUE *> m_keyptr_src;
+      std::vector<const TP_DOMAIN *> m_key_domains;
       std::unordered_multimap<key *, value *, key::hash, key::equal> m_key_value_map;
       std::vector<value *> m_current_value_list;
       bool disabled;
+      /* the budget is used up: lookups go on, nothing more is inserted */
+      bool insert_stopped;
       bool has_range;
       bool key_changed;
       bool current_key_joined;
@@ -149,7 +163,7 @@ namespace memoize
 
 extern "C"
 {
-  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl);
+  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl, bool match_only);
   void clear_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl);
   int memoize_get (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success, bool *is_ended);
   int memoize_put (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success);

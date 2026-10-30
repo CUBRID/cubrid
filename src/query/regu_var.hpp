@@ -30,6 +30,7 @@
 #include "object_primitive.h"
 #include "db_function.hpp"
 #include "xasl_sp.hpp"
+#include "domain_rules.h"
 
 #include <functional>
 
@@ -121,6 +122,29 @@ struct valptr_list_node
   REGU_VARIABLE_LIST valptrp;	/* value pointer list */
   int valptr_cnt;		/* value count */
 
+  /* compiled evaluation program covering the list's expressions (expr_compile.h).
+   * Server-side runtime state, never serialized; built lazily on the first evaluated
+   * row and owned by the XASL clone.  Columns the compiler cannot cover keep their
+   * per-column interpreted fetch (their eval_prog_idx entry is -1).
+   *
+   * Concurrency contract: these fields (and the program they point to) are written with
+   * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+   * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+   * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+   * -- do not add such a caller without making this state per-thread or synchronized. */
+  void *eval_prog;		/* EXPR_PROG * */
+  int *eval_prog_idx;		/* program root index per column, or -1 */
+  int eval_prog_state;		/* 0 = untried, 1 = active, 2 = disabled */
+  /* the program already holds the current row: set when the tuple-descriptor pass asks its
+   * caller to retry through qdata_copy_valptr_list_to_tuple (), consumed by the very next
+   * use of the list so that copy does not evaluate the same row a second time (see
+   * qdata_valptr_prog_ensure ()) */
+  bool eval_prog_row_ready;
+  /* the scan this list projects (ACCESS_SPEC_TYPE *) when it is the node's only heap scan,
+   * so the program may read values the scan's compiled data filter computes; NULL otherwise.
+   * Set by qexec_set_expr_share_spec () before the first row; runtime only. */
+  void *eval_prog_share_spec;
+
   valptr_list_node () = default;
 };
 
@@ -128,7 +152,6 @@ typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
-  TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -136,6 +159,31 @@ struct arith_list_node
   OPERATOR_TYPE opcode;		/* operator value */
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier and datetime extract field specifier */
   cubxasl::pred_expr *pred;		/* predicate expression */
+  /* CBRD-27583: the casts the operator's kernel makes of a value of operand i (left, right, third; a
+   * PREDICATE's truth value and a SYS_CONNECT_BY_PATH's path at 0): conv_type[i] the value's type, conv[i] its
+   * converter into the domain the kernel casts it into, found at unpack (stx_arith_cast_target); NULL where the kernel
+   * casts no value of operand i or the operand's domain is not fixed. Not serialized. */
+  TP_VALUE_CONVERTER conv[3] = {};
+  DB_TYPE conv_type[3] = {};
+  /* CBRD-27583: the error the operator raises where a row computes it over operands that are not NULL -
+   * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
+  int fails = NO_ERROR;
+  /* CBRD-27583: the decision the operator reads, which the compiler decided and the stream carries (a filter or
+   * function index stream, stored in the catalog: the unpack's). The opcode picks the member (arith_decided_arith,
+   * arith_decided_compares):
+   * - T_ADD, T_SUB, T_MUL, T_DIV: arith, what the operator makes of its operands' values, over the domains XASL
+   *   generation gave them (d2, domain_resolve_operand_coercion);
+   * - FIELD, NULLIF, LEAST, GREATEST: compares, the comparisons the node makes - [0] the left operand (FIELD: the third
+   *   against the left), [1] FIELD's third against the right. */
+  union
+  {
+    DOMAIN_ARITH arith;
+    const DOMAIN_COMPARE *compares;
+  } decided = {};
+  /* CBRD-27583: the converter of the operator's value into domain (qdata_coerce_result_to_domain) - an
+   * addition's, subtraction's, multiplication's or division's of decided.arith's type, a concatenation's of the
+   * domain's type - found at unpack; NULL converts nothing. Not serialized. */
+  TP_VALUE_CONVERTER result_conv = NULL;
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */
@@ -164,14 +212,30 @@ const int REGU_VARIABLE_FIELD_NESTED = 0x04;	/* for FIELD function, reguvar is c
 const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; flag used in context of COLLATE
 						 * modifier */
 const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
-const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
-const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
+const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* retired: no setter since 2015, the pack and the unpack assert it
+						 * absent; never reuse the bit */
+const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant: this execution's cache mark, not a type decision */
 const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
+const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
+const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
+							 * key_limit_eval () computes these nodes on their operands */
+
+/* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
+ * prefix converter) and what a failed conversion gives */
+const int REGU_CONV_SELECTION = 0x07;
+const int REGU_CONV_ENUM_NAME =
+	0x04;	/* T_ADD's ENUM into DOUBLE through its name (domain_enumeration_name_converter) */
+const int REGU_CONV_CHAR_PREFIX =
+	0x05;	/* INDEX_PREFIX's CHAR into its column's VARCHAR through its bytes (domain_char_prefix_converter) */
+const int REGU_CONV_NULL_ON_FUNCTION_ERRORS =
+	0x10;	/* an arithmetic operand: NULL under return_null_on_function_errors */
+const int REGU_CONV_INVALID_DATATYPE =
+	0x20;	/* ROUND's and TRUNC's operand: ER_QPROC_INVALID_DATATYPE, NULL under return_null_on_function_errors */
 
 class regu_variable_node
 {
@@ -180,7 +244,11 @@ class regu_variable_node
 
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
-    TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
+    /* CBRD-27583: the domain the value is read in, when its consumer wants it in another (domain); serialized with
+     * the mode the compiler converts it in. conv is the unpack's converter between the two, into vfetch_to */
+    TP_DOMAIN *original_domain = nullptr;
+    TP_VALUE_CONVERTER conv = nullptr;
+    unsigned char conv_mode = 0;	/* REGU_CONV_* */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */
     union regu_data_value
@@ -252,6 +320,12 @@ inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
+inline bool regu_is_variable_pos (const regu_variable_node *regu);
+inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
+inline bool arith_decides_arith (const arith_list_node *arith);
+inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
+inline const DOMAIN_COMPARE *arith_decided_compares (const arith_list_node *arith);
+inline DB_TYPE arith_result_type (const arith_list_node *arith);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -283,5 +357,64 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
       return TP_DOMAIN_TYPE (regu->domain);
     }
   return DB_TYPE_UNKNOWN;
+}
+
+/* A variable POS: a host variable position whose domain the compiler left VARIABLE: the bound value carries its
+ * type. */
+bool
+regu_is_variable_pos (const regu_variable_node *regu)
+{
+  return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
+}
+
+/* CBRD-27583: the domain a regu's own evaluation produces its value in; domain is the one it delivers to its consumer,
+ * after the conversion */
+TP_DOMAIN *
+regu_produced_domain (const regu_variable_node *regu)
+{
+  return regu->conv != NULL ? regu->original_domain : regu->domain;
+}
+
+/* CBRD-27583: whether a node's decision is its arith (T_ADD, T_SUB, T_MUL, T_DIV); else FIELD, NULLIF, LEAST and
+ * GREATEST read compares */
+bool
+arith_decides_arith (const arith_list_node *arith)
+{
+  return arith->opcode == T_ADD || arith->opcode == T_SUB || arith->opcode == T_MUL || arith->opcode == T_DIV;
+}
+
+const DOMAIN_ARITH *
+arith_decided_arith (const arith_list_node *arith)
+{
+  assert (arith_decides_arith (arith));
+  return &arith->decided.arith;
+}
+
+const DOMAIN_COMPARE *
+arith_decided_compares (const arith_list_node *arith)
+{
+  assert (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
+	  || arith->opcode == T_GREATEST);
+  return arith->decided.compares;
+}
+
+/* CBRD-27583: the type of the value an operator coerces into its domain, which its result converter is found
+ * for (result_conv): an addition's, subtraction's, multiplication's or division's decided.arith type (a collection
+ * operator's: its domain's), a concatenation's (T_CONCAT, T_CONCAT_WS, T_STRCAT) its domain's; DB_TYPE_NULL for an
+ * operator that coerces no such value */
+DB_TYPE
+arith_result_type (const arith_list_node *arith)
+{
+  if (arith_decides_arith (arith))
+    {
+      /* a collection operator's value is of its domain's type, the arith type the default without one */
+      return arith->decided.arith.kind == DOMAIN_ARITH_COLLECTION && arith->domain != NULL
+	     ? TP_DOMAIN_TYPE (arith->domain) : arith->decided.arith.type;
+    }
+  if (arith->opcode == T_CONCAT || arith->opcode == T_CONCAT_WS || arith->opcode == T_STRCAT)
+    {
+      return TP_DOMAIN_TYPE (arith->domain);
+    }
+  return DB_TYPE_NULL;
 }
 #endif /* _REGU_VAR_HPP_ */

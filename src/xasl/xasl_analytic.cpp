@@ -31,13 +31,14 @@ namespace cubxasl
   void
   analytic_list_node::init ()
   {
-    /* is_first_exec_time */
-    is_first_exec_time = true;
 
     /* part_value */
     db_make_null (&part_value);
 
     /* curr_cnt */
     curr_cnt = 0;
+
+    /* execution-only field, not part of the stream, so initialize it here */
+    sum_acc.is_active = false;
   }
 }

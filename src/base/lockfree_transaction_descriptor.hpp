@@ -30,6 +30,7 @@
 
 #include "lockfree_transaction_def.hpp"
 
+#include <atomic>
 #include <limits>
 
 // forward definition
@@ -60,6 +61,10 @@ namespace lockfree
 	void retire_node (reclaimable_node &hzp);
 
 	void set_table (table &tbl);
+	// the table this descriptor belongs to. freelist::retire () checks against it that a node is going home:
+	// the whole soundness argument for splicing a run in one CAS is that a descriptor's retired list holds
+	// nodes of one freelist only, and nothing else enforces that.
+	table *get_table () const;
 
 	void start_tran ();
 	void start_tran_and_increment_id ();
@@ -81,9 +86,12 @@ namespace lockfree
 
       private:
 	void reclaim_retired_head ();
+	void reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count);
 
 	table *m_table;
-	id m_tranid;
+	/* Owner writes, compute_min_active_tranid () reads. start_tran () publishes seq_cst, end_tran ()
+	 * clears release, every other access relaxed. */
+	std::atomic<id> m_tranid;
 	id m_last_reclaim_minid;
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;

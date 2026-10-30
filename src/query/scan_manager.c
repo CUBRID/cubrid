@@ -23,10 +23,13 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "qfile_tuple_layout.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <climits>
+#include <algorithm>
 #include "json_builder.h"
 
 #include "error_manager.h"
@@ -94,7 +97,7 @@ struct iss_range_details
   int part_key_desc;		/* last partial key domain is descending */
 };
 
-typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
+typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
 typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 
 typedef enum
@@ -156,34 +159,23 @@ static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
 static void scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list);
 static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
-static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term);
-static int key_val_compare (const void *p1, const void *p2);
-static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
+static ROP_TYPE compare_val_op (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, ROP_TYPE op1, DB_VALUE * val2,
+				const DOMAIN_KEY_BOUND * bound2, ROP_TYPE op2, int num_index_term,
+				const DOMAIN_KEY_RANGES * ranges);
+static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
+static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
+static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
+static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn,
+			   const DOMAIN_KEY_RANGES * ranges);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
-				   int key_minmax, bool is_iss, TP_DOMAIN ** prebuilt_midxkey_domain);
+				   int key_minmax, bool is_iss, TP_DOMAIN * key_domain);
 /* scan_regu_key_to_index_key is declared in scan_manager.h (used by parallel index scan) */
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, VAL_DESCR * vd);
-static int scan_fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
-						  REGU_VARIABLE * key_limit_l, VAL_DESCR * vd);
-static int scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE * numeric_operand,
-						    VAL_DESCR * vd);
-static int scan_handle_it_data_overflow_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
-					       REGU_VARIABLE * key_limit_u, VAL_DESCR * vd,
-					       bool is_user_given_keylimit);
-static int scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
-						   REGU_VARIABLE * key_limit_u, VAL_DESCR * vd,
-						   bool is_user_given_keylimit);
-static int scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
-						  REGU_VARIABLE * key_limit_u, VAL_DESCR * vd, DB_VALUE ** out_dbvalp,
-						  bool is_user_given_keylimit);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -204,9 +196,6 @@ static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
-static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
-					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_VALUE * key, OID * oid,
@@ -216,7 +205,8 @@ static int scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src, INDX_SCAN_ID
 static SCAN_CODE scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp);
 static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					     bool should_go_to_next_value);
-static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term);
+static int scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2,
+			     const DOMAIN_KEY_BOUND * bound2, int num_index_term, const DOMAIN_KEY_RANGES * ranges);
 
 /* for hash list scan */
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -318,8 +308,8 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->need_count_only = false;
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
-  isidp->prebuilt_midxkey_domains = NULL;
   isidp->parallel_pending = NULL;
+  isidp->gby_skip = NULL;
 }
 
 /*
@@ -608,8 +598,8 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	    {
 	      REGU_VARIABLE *regu = &kr->key1->value.funcp->operand->value;
 
+	      /* the skip value is the first index column's: the key writes it under that column's domain */
 	      regu->type = TYPE_DBVAL;
-	      regu->domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (last_key));
 
 	      pr_clear_value (&regu->value.dbval);
 	      pr_clone_value (last_key, &regu->value.dbval);
@@ -626,7 +616,6 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	      REGU_VARIABLE *regu = &kr->key2->value.funcp->operand->value;
 
 	      regu->type = TYPE_DBVAL;
-	      regu->domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (last_key));
 
 	      pr_clear_value (&regu->value.dbval);
 	      pr_clone_value (last_key, &regu->value.dbval);
@@ -771,8 +760,8 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
-  indx_cov->tplrec->size = 0;
-  indx_cov->tplrec->tpl = NULL;
+  *indx_cov->tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  qfile_slot_set_layout (indx_cov->tplrec, &indx_cov->list_id->type_list);
 
   indx_cov->lsid = (QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID));
   if (indx_cov->lsid == NULL)
@@ -818,406 +807,6 @@ exit_on_error:
 }
 
 /*
- * scan_fetch_and_coerce_key_limit_lower () - fetch and coerce lower key limit to BIGINT,
- *                                            handling NUMERIC-to-BIGINT overflow.
- *
- *   return         : NO_ERROR or error code
- *   thread_p (in)  : thread entry
- *   isidp (out)    : index scan id — key_limit_lower is set on success
- *   key_limit_l(in): regu variable for lower key limit
- *   vd (in)        : value descriptor
- */
-static int
-scan_fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_l,
-				       VAL_DESCR * vd)
-{
-  DB_VALUE out_val;
-  int error_code;
-
-  error_code = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, vd, &out_val);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  isidp->key_limit_lower = db_get_bigint (&out_val);
-  return NO_ERROR;
-}
-
-/*
- * scan_check_user_given_keylimit_overflow () - reject a merged user-given KEYLIMIT
- *   when the rownum-derived NUMERIC bound is negative.
- *
- *   return               : NO_ERROR if the NUMERIC operand is non-negative;
- *                          ER_QPROC_INVALID_PARAMETER if negative;
- *                          ER_FAILED on fetch failure or non-NUMERIC value
- *   thread_p (in)        : thread entry
- *   numeric_operand (in) : NUMERIC regu variable inside the merged T_LEAST tree —
- *                          the rownum-derived bound paired with the user KEYLIMIT
- *   vd (in)              : value descriptor
- *
- * Rationale:
- *   A BIGINT-range negative rownum bound combined with a user KEYLIMIT, e.g.
- *       SELECT ... USING INDEX i KEYLIMIT <bigint>
- *       WHERE  ... rownum <  -<bigint>          -- or rownum <= -<bigint>
- *   is already rejected with ER_QPROC_INVALID_PARAMETER at
- *   scan_init_index_key_limit:1175-1188, because the merged upper bound resolves
- *   to a negative BIGINT and is treated as a bad keylimit bound.
- *
- *   The NUMERIC-overflow form, e.g.
- *       SELECT ... USING INDEX i KEYLIMIT <bigint or numeric>
- *       WHERE  ... rownum <  -<huge NUMERIC>    -- or rownum <= -<huge NUMERIC>
- *   carries the same user intent (an unsatisfiable upper bound), but the merged
- *   T_LEAST overflows during BIGINT coercion before reaching that check. Without
- *   this helper, the upper-bound resolver in case2 / case4 / the R_LE branch would
- *   adopt the user KEYLIMIT and silently return rows. To keep both paths
- *   consistent, we apply the same negative-bound rejection policy here.
- *
- *   Positive NUMERIC overflows fall through (return NO_ERROR); the caller then
- *   handles the positive case (adopt left, leftmost sign-clamp, etc.).
- */
-static int
-scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE * numeric_operand, VAL_DESCR * vd)
-{
-  DB_VALUE *dbvalp = NULL;
-
-  assert (numeric_operand != NULL);
-  assert (TP_DOMAIN_TYPE (numeric_operand->domain) == DB_TYPE_NUMERIC);
-
-  if (fetch_peek_dbval (thread_p, numeric_operand, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR || dbvalp == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  if (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (dbvalp))
-    {
-      /* We don't allow users to give us a bad keylimit bound */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-      return ER_QPROC_INVALID_PARAMETER;
-    }
-  return NO_ERROR;
-}
-
-/*
- * scan_handle_it_data_overflow_upper () - handle ER_IT_DATA_OVERFLOW for the upper key limit.
- *
- *   return                       : NO_ERROR or error code; on success isidp->key_limit_upper is set.
- *   thread_p (in)                : thread entry
- *   isidp (out)                  : index scan id — key_limit_upper set on success
- *   key_limit_u (in)             : regu variable for upper key limit (TYPE_INARITH)
- *   vd (in)                      : value descriptor
- *   is_user_given_keylimit (in)  : true if a user KEYLIMIT hint was merged in
- *
- * Note: ER_IT_DATA_OVERFLOW means a NUMERIC value itself exceeds BIGINT range
- *   (e.g. BIGINT < rownum < HUGE). The leftmost NUMERIC leaf's sign decides the bound:
- *     positive NUMERIC -> no upper bound (-1; full scan),
- *     negative NUMERIC -> no rows match (0).
- *   When merged with a user-given KEYLIMIT, a negative NUMERIC is rejected
- *   (see scan_check_user_given_keylimit_overflow ()).
- */
-static int
-scan_handle_it_data_overflow_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_u,
-				    VAL_DESCR * vd, bool is_user_given_keylimit)
-{
-  DB_VALUE *tmp_dbvalp;
-
-  assert (key_limit_u != NULL);
-  assert (key_limit_u->value.arithptr != NULL);
-
-  if (is_user_given_keylimit)
-    {
-      /* rownum <= -HUGE USING INDEX .. KEYLIMIT BIGINT or HUGE */
-      assert (key_limit_u->value.arithptr->rightptr != NULL);
-      int error_code = scan_check_user_given_keylimit_overflow (thread_p,
-								key_limit_u->value.arithptr->rightptr, vd);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-
-  tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, key_limit_u, vd);
-  if (tmp_dbvalp == NULL)
-    {
-      return ER_FAILED;
-    }
-  isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
-  return NO_ERROR;
-}
-
-/*
- * scan_handle_overflow_subtraction_upper () - handle ER_QPROC_OVERFLOW_SUBTRACTION for the upper key limit.
- *
- *   return                       : NO_ERROR or error code; on success isidp->key_limit_upper is set.
- *   thread_p (in)                : thread entry
- *   isidp (out)                  : index scan id — key_limit_upper set on success
- *   key_limit_u (in)             : regu variable for upper key limit (TYPE_INARITH, T_SUB or merged T_LEAST)
- *   vd (in)                      : value descriptor
- *   is_user_given_keylimit (in)  : true if a user KEYLIMIT hint was merged in
- *
- * Note: T_SUB(upper_expr, lower_expr) overflows because a bound contains a huge NUMERIC.
- *   Branch on the top-level left/right structure:
- *     case1: -HUGE < rownum < 5 -> fetch left (BIGINT upper bound)
- *            - left=INARITH[bigint](int,int)
- *            - right=POS_VALUE[numeric]
- *     case2: rownum BETWEEN -HUGE AND 5 -> fetch left (INT/BIGINT upper bound)
- *            - left=POS_VALUE[int|bigint]
- *            - right=INARITH[bigint]
- *     case3: BIGINT or -HUGE < rownum < HUGE -> fetch left (NUMERIC sign check)
- *            - left=INARITH[bigint](numeric,int)
- *            - right=POS_VALUE[numeric]
- *     case4: rownum BETWEEN BIGINT or -HUGE AND HUGE -> fetch left (NUMERIC sign check)
- *            - left=POS_VALUE[numeric]
- *            - right=INARITH[bigint]
- *   When merged with a user-given KEYLIMIT, case2 / case4 reject a negative NUMERIC
- *   on the right side (see scan_check_user_given_keylimit_overflow ()).
- */
-static int
-scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_u,
-					VAL_DESCR * vd, bool is_user_given_keylimit)
-{
-  ARITH_TYPE *arithptr;
-  REGU_VARIABLE *left;
-  REGU_VARIABLE *right;
-  DB_VALUE *tmp_dbvalp;
-  int error_code;
-  bool left_is_inarith;
-  bool left_is_numeric;
-
-  assert (key_limit_u != NULL);
-  assert (key_limit_u->value.arithptr != NULL);
-
-  arithptr = key_limit_u->value.arithptr;
-  left = arithptr->leftptr;
-  right = arithptr->rightptr;
-  assert (left && right);
-
-  left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
-  left_is_numeric = (TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NUMERIC);
-
-  if (left_is_inarith)
-    {
-      /* case1 or case3 */
-      tmp_dbvalp = NULL;
-      if (fetch_peek_dbval (thread_p, left, vd, NULL, NULL, NULL, &tmp_dbvalp) == NO_ERROR && tmp_dbvalp != NULL)
-	{
-	  /* case1 */
-	  switch (DB_VALUE_DOMAIN_TYPE (tmp_dbvalp))
-	    {
-	    case DB_TYPE_BIGINT:
-	      isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
-	      break;
-	    case DB_TYPE_INTEGER:
-	      isidp->key_limit_upper = db_get_int (tmp_dbvalp);
-	      break;
-	    case DB_TYPE_SHORT:
-	      isidp->key_limit_upper = db_get_short (tmp_dbvalp);
-	      break;
-	    default:
-	      assert (false);
-	      return ER_FAILED;
-	    }
-	}
-      else if (er_errid () == ER_IT_DATA_OVERFLOW || er_errid () == ER_QPROC_OVERFLOW_SUBTRACTION)
-	{
-	  /* case3 */
-	  er_clear ();
-	  tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, left, vd);
-	  if (tmp_dbvalp == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-	  isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
-	}
-      else
-	{
-	  return ER_FAILED;
-	}
-    }
-  else if (left_is_numeric)
-    {
-      /* case4 */
-      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH || right->type == TYPE_DBVAL);
-      if (is_user_given_keylimit)
-	{
-	  /* rownum < -HUGE USING INDEX .. KEYLIMIT HUGE */
-	  if (right->type == TYPE_DBVAL)
-	    {
-	      /* DBVAL holds the numeric directly — no arithmetic tree. */
-	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right, vd);
-	    }
-	  else
-	    {
-	      /* Merged T_LEAST tree: numeric leaf is the left child. */
-	      assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
-	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
-	    }
-	  if (error_code != NO_ERROR)
-	    {
-	      return error_code;
-	    }
-	}
-
-      tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, left, vd);
-      if (tmp_dbvalp == NULL)
-	{
-	  return ER_FAILED;
-	}
-      isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
-    }
-  else
-    {
-      /* case2 */
-      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH || right->type == TYPE_DBVAL);
-      tmp_dbvalp = NULL;
-      if (is_user_given_keylimit)
-	{
-	  /* rownum < -HUGE USING INDEX .. KEYLIMIT BIGINT */
-	  if (right->type == TYPE_DBVAL)
-	    {
-	      /* DBVAL holds the numeric directly — no arithmetic tree. */
-	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right, vd);
-	    }
-	  else
-	    {
-	      /* Merged T_LEAST tree: numeric leaf is the left child. */
-	      assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
-	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
-	    }
-	  if (error_code != NO_ERROR)
-	    {
-	      return error_code;
-	    }
-	}
-
-      if (fetch_peek_dbval (thread_p, left, vd, NULL, NULL, NULL, &tmp_dbvalp) != NO_ERROR || tmp_dbvalp == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      switch (DB_VALUE_DOMAIN_TYPE (tmp_dbvalp))
-	{
-	case DB_TYPE_BIGINT:
-	  isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  isidp->key_limit_upper = db_get_int (tmp_dbvalp);
-	  break;
-	case DB_TYPE_SHORT:
-	  isidp->key_limit_upper = db_get_short (tmp_dbvalp);
-	  break;
-	default:
-	  assert (false);
-	  return ER_FAILED;
-	}
-    }
-  return NO_ERROR;
-}
-
-/*
- * scan_fetch_and_coerce_key_limit_upper () - fetch and coerce upper key limit to BIGINT,
- *                                            handling NUMERIC-to-BIGINT overflow.
- *
- *   return         : NO_ERROR or error code
- *   thread_p (in)  : thread entry
- *   isidp (out)    : index scan id — key_limit_upper is set directly on overflow
- *   key_limit_u(in): regu variable for upper key limit
- *   vd (in)        : value descriptor
- *   out_dbvalp(out): set to NULL when overflow is handled (key_limit_upper already set);
- *                    set to the coerced BIGINT DB_VALUE otherwise (caller reads the value)
- *
- * Note: BIGINT overflow can only occur when the bound value is NUMERIC. Two cases arise:
- *   - TYPE_INARITH  : arithmetic expression overflows during fetch (e.g. rownum < 10^100 - 1)
- *   - other types   : coercion to BIGINT overflows (e.g. LIMIT 10^100 stored as NUMERIC)
- * In both cases the sign of the NUMERIC value determines the result:
- *   positive overflow → no upper bound (-1), negative overflow → no rows match (0).
- */
-static int
-scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_u,
-				       VAL_DESCR * vd, DB_VALUE ** out_dbvalp, bool is_user_given_keylimit)
-{
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  TP_DOMAIN_STATUS dom_status;
-  int error_code;
-
-  assert (isidp != NULL);
-  assert (key_limit_u != NULL);
-  assert (vd != NULL);
-  assert (out_dbvalp != NULL);
-
-  *out_dbvalp = NULL;
-
-  if (key_limit_u->type == TYPE_INARITH)
-    {
-      /* rownum < N or rownum <= N: arithmetic may overflow when N exceeds BIGINT range */
-      error_code = fetch_peek_dbval (thread_p, key_limit_u, vd, NULL, NULL, NULL, out_dbvalp);
-      if (error_code != NO_ERROR)
-	{
-	  if (er_errid () == ER_IT_DATA_OVERFLOW)
-	    {
-	      error_code =
-		scan_handle_it_data_overflow_upper (thread_p, isidp, key_limit_u, vd, is_user_given_keylimit);
-	      if (error_code != NO_ERROR)
-		{
-		  return error_code;
-		}
-	    }
-	  else if (er_errid () == ER_QPROC_OVERFLOW_SUBTRACTION)
-	    {
-	      error_code = scan_handle_overflow_subtraction_upper (thread_p, isidp, key_limit_u, vd,
-								   is_user_given_keylimit);
-	      if (error_code != NO_ERROR)
-		{
-		  return error_code;
-		}
-	    }
-	  else
-	    {
-	      return ER_FAILED;
-	    }
-	  er_clear ();
-	  /* overflow handled: *out_dbvalp stays NULL */
-	  return NO_ERROR;
-	}
-    }
-  else
-    {
-      if (fetch_peek_dbval (thread_p, key_limit_u, vd, NULL, NULL, NULL, out_dbvalp) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  /* coerce fetched value to BIGINT */
-  dom_status = tp_value_coerce (*out_dbvalp, *out_dbvalp, domainp);
-  if (dom_status != DOMAIN_COMPATIBLE)
-    {
-      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)
-	{
-	  /* NUMERIC -> BIGINT coercion overflow: handle by sign
-	   * if positive, no upper bound applies (-1; full scan, all rows)
-	   * if negative, no rows match (0; upper bound is unreachable)
-	   */
-	  isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE ((*out_dbvalp)) ? 0 : -1;
-	  er_clear ();
-	  /* overflow handled: *out_dbvalp stays NULL */
-	  *out_dbvalp = NULL;
-	  return NO_ERROR;
-	}
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, *out_dbvalp, domainp);
-      return ER_FAILED;
-    }
-
-  if (DB_VALUE_DOMAIN_TYPE (*out_dbvalp) != DB_TYPE_BIGINT)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_QPROC_INVALID_DATATYPE;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * scan_init_index_key_limit () - initialize/reset index key limits
  *   return: error code
  */
@@ -1225,75 +814,72 @@ static int
 scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop, VAL_DESCR * vd)
 {
   bool is_lower_limit_negative = false;
+  bool is_null = false;
   int error_code;
 
-  if (key_infop->key_limit_l != NULL)
+  isidp->key_limit_lower = -1;
+  isidp->key_limit_upper = -1;
+
+  if (key_infop->key_limit_l == NULL && key_infop->key_limit_u == NULL)
     {
-      error_code = scan_fetch_and_coerce_key_limit_lower (thread_p, isidp, key_infop->key_limit_l, vd);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      if (isidp->key_limit_lower < 0)
-	{
-	  if (key_infop->is_user_given_keylimit == true)
-	    {
-	      /* We don't allow users to give us a bad keylimit bound */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	      return ER_QPROC_INVALID_PARAMETER;
-	    }
-
-	  /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
-	   * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow
-	   * that to happen, since -1 is a special value meaning "there is no lower limit", and certain critical
-	   * decisions (such as resetting the key limit for multiple ranges) depend on knowing whether or not there is
-	   * a lower key limit. We set a flag to remember, later on, to "adjust" the key limits such that, if the lower
-	   * limit is negative, to return no results.
-	   */
-	  is_lower_limit_negative = true;
-	}
+      return NO_ERROR;
     }
-  else
+
+  error_code = fetch_key_limits (thread_p, key_infop->key_limit_l, key_infop->key_limit_l_conv, key_infop->key_limit_u,
+				 key_infop->key_limit_u_conv, vd, &isidp->key_limit_lower, &isidp->key_limit_upper,
+				 &is_null);
+  if (error_code != NO_ERROR)
     {
+      return error_code;
+    }
+
+  if (is_null)
+    {
+      if (key_infop->is_user_given_keylimit == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+
+      /* a NULL bound in the rownum predicate matches no row, as in the sequential scan */
       isidp->key_limit_lower = -1;
+      isidp->key_limit_upper = 0;
+      return NO_ERROR;
     }
 
-  if (key_infop->key_limit_u != NULL)
+  if (key_infop->key_limit_l != NULL && isidp->key_limit_lower < 0)
     {
-      DB_VALUE *dbvalp;
-      error_code =
-	scan_fetch_and_coerce_key_limit_upper (thread_p, isidp, key_infop->key_limit_u, vd, &dbvalp,
-					       key_infop->is_user_given_keylimit);
-      if (error_code != NO_ERROR)
+      if (key_infop->is_user_given_keylimit == true)
 	{
-	  return error_code;
+	  /* We don't allow users to give us a bad keylimit bound */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	  return ER_QPROC_INVALID_PARAMETER;
 	}
 
-      if (dbvalp != NULL)
-	{
-	  isidp->key_limit_upper = db_get_bigint (dbvalp);
-
-	  if (isidp->key_limit_upper < 0)
-	    {
-	      if (key_infop->is_user_given_keylimit == true)
-		{
-		  /* We don't allow users to give us a bad keylimit bound */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-		  return ER_QPROC_INVALID_PARAMETER;
-		}
-
-	      /* Optimizer adopts keylimit optimization.
-	       * Try to sanitize the upper value — it might have been computed from operations on host variables,
-	       * which are unpredictable.
-	       */
-	      isidp->key_limit_upper = 0;
-	    }
-	}
+      /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
+       * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow
+       * that to happen, since -1 is a special value meaning "there is no lower limit", and certain critical
+       * decisions (such as resetting the key limit for multiple ranges) depend on knowing whether or not there is
+       * a lower key limit. We set a flag to remember, later on, to "adjust" the key limits such that, if the lower
+       * limit is negative, to return no results.
+       */
+      is_lower_limit_negative = true;
     }
-  else
+
+  if (key_infop->key_limit_u != NULL && isidp->key_limit_upper < 0)
     {
-      isidp->key_limit_upper = -1;
+      if (key_infop->is_user_given_keylimit == true)
+	{
+	  /* We don't allow users to give us a bad keylimit bound */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	  return ER_QPROC_INVALID_PARAMETER;
+	}
+
+      /* Optimizer adopts keylimit optimization.
+       * Try to sanitize the upper value — it might have been computed from operations on host variables,
+       * which are unpredictable.
+       */
+      isidp->key_limit_upper = 0;
     }
 
   if (is_lower_limit_negative && isidp->key_limit_upper > 0)
@@ -1518,10 +1104,10 @@ range_to_rop (ROP_TYPE * left, ROP_TYPE * right, RANGE range)
  *   return:
  */
 static int
-scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
+scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2, const DOMAIN_KEY_BOUND * bound2,
+		  int num_index_term, const DOMAIN_KEY_RANGES * ranges)
 {
   int rc = DB_UNK;
-  DB_TYPE key_type;
 
   if (val1 == NULL || val2 == NULL)
     {
@@ -1546,17 +1132,25 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
     }
   else
     {
-      key_type = DB_VALUE_DOMAIN_TYPE (val1);
-      if (key_type == DB_TYPE_MIDXKEY)
+      /* two search key bounds' values: the comparisons XASL generation decided for their columns' classes */
+      assert (bound1 != NULL && bound2 != NULL && ranges != NULL);
+      const DOMAIN_KEY_RANGES_PAIR pair = { ranges, {bound1->classes, bound2->classes} };
+      if (DB_VALUE_DOMAIN_TYPE (val1) == DB_TYPE_MIDXKEY)
 	{
 	  int dummy_diff_column;
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
-				&dummy_diff_column, NULL, NULL);
+	    pr_midxkey_compare_resolved (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
+					 &dummy_diff_column, NULL, NULL, domain_key_ranges_element_compare, &pair);
 	}
       else
 	{
-	  rc = tp_value_compare (val1, val2, 1, 1);
+	  bool can_compare = true;
+	  rc = domain_key_ranges_element_compare (&pair, 0, val1, val2, 1, 1, &can_compare);
+	  if (!can_compare && rc != DB_UNK)
+	    {
+	      /* a conversion failed: tp_value_compare answers by the types' rank, without an error */
+	      er_clear ();
+	    }
 	}
     }
 
@@ -1573,7 +1167,8 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
  *   num_index_term(in):
  */
 static ROP_TYPE
-compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term)
+compare_val_op (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, ROP_TYPE op1, DB_VALUE * val2,
+		const DOMAIN_KEY_BOUND * bound2, ROP_TYPE op2, int num_index_term, const DOMAIN_KEY_RANGES * ranges)
 {
   int rc;
 
@@ -1594,7 +1189,7 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
       return (op2 == op1) ? ROP_EQ : ROP_LT;
     }
 
-  rc = scan_key_compare (val1, val2, num_index_term);
+  rc = scan_key_compare (val1, bound1, val2, bound2, num_index_term, ranges);
 
   if (rc == DB_EQ)
     {
@@ -1644,35 +1239,13 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
 }
 
 /*
- * key_val_compare () - key value sorting function
- *   return:
- *   p1 (in): pointer to key1 range
- *   p2 (in): pointer to key2 range
- */
-static int
-key_val_compare (const void *p1, const void *p2)
-{
-  int p1_num_index_term, p2_num_index_term;
-  DB_VALUE *p1_key, *p2_key;
-
-  p1_num_index_term = ((KEY_VAL_RANGE *) p1)->num_index_term;
-  p2_num_index_term = ((KEY_VAL_RANGE *) p2)->num_index_term;
-  assert_release (p1_num_index_term == p2_num_index_term);
-
-  p1_key = &((KEY_VAL_RANGE *) p1)->key1;
-  p2_key = &((KEY_VAL_RANGE *) p2)->key1;
-
-  return scan_key_compare (p1_key, p2_key, p1_num_index_term);
-}
-
-/*
  * eliminate_duplicated_keys () - elimnate duplicated key values
  *   return: number of keys, -1 for error
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
+eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
@@ -1682,7 +1255,8 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
   n = 0;
   while (key_cnt > 1 && n < key_cnt - 1)
     {
-      if (tp_value_compare (&curp->key1, &nextp->key1, 1, 1) == DB_EQ)
+      /* tp_value_compare's: a multi-column key over every column (its columns of other domains as resolved) */
+      if (scan_key_compare (&curp->key1, curp->key1_bound, &nextp->key1, nextp->key1_bound, -1, ranges) == DB_EQ)
 	{
 	  pr_clear_value (&nextp->key1);
 	  pr_clear_value (&nextp->key2);
@@ -1707,7 +1281,7 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
+merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges)
 {
   int cur_n, next_n;
   KEY_VAL_RANGE *curp, *nextp;
@@ -1735,7 +1309,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 
 	  if (is_mergeable == true)
 	    {
-	      cmp_1 = compare_val_op (&curp->key2, cur_op2, &nextp->key1, next_op1, curp->num_index_term);
+	      cmp_1 = compare_val_op (&curp->key2, curp->key2_bound, cur_op2, &nextp->key1, nextp->key1_bound, next_op1,
+				      curp->num_index_term, ranges);
 	      if (cmp_1 == ROP_NA || cmp_1 == ROP_LT)
 		{
 		  is_mergeable = false;	/* error or disjoint */
@@ -1744,7 +1319,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 
 	  if (is_mergeable == true)
 	    {
-	      cmp_2 = compare_val_op (&curp->key1, cur_op1, &nextp->key2, next_op2, curp->num_index_term);
+	      cmp_2 = compare_val_op (&curp->key1, curp->key1_bound, cur_op1, &nextp->key2, nextp->key2_bound, next_op2,
+				      curp->num_index_term, ranges);
 	      if (cmp_2 == ROP_NA || cmp_2 == ROP_GT)
 		{
 		  is_mergeable = false;	/* error or disjoint */
@@ -1754,7 +1330,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	  if (is_mergeable == true)
 	    {
 	      /* determine the lower bound of the merged key range */
-	      cmp_3 = compare_val_op (&curp->key1, cur_op1, &nextp->key1, next_op1, curp->num_index_term);
+	      cmp_3 = compare_val_op (&curp->key1, curp->key1_bound, cur_op1, &nextp->key1, nextp->key1_bound, next_op1,
+				      curp->num_index_term, ranges);
 	      if (cmp_3 == ROP_NA)
 		{
 		  is_mergeable = false;
@@ -1764,7 +1341,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	  if (is_mergeable == true)
 	    {
 	      /* determine the upper bound of the merged key range */
-	      cmp_4 = compare_val_op (&curp->key2, cur_op2, &nextp->key2, next_op2, curp->num_index_term);
+	      cmp_4 = compare_val_op (&curp->key2, curp->key2_bound, cur_op2, &nextp->key2, nextp->key2_bound, next_op2,
+				      curp->num_index_term, ranges);
 	      if (cmp_4 == ROP_NA)
 		{
 		  is_mergeable = false;
@@ -1784,6 +1362,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    {
 	      pr_clear_value (&curp->key1);
 	      curp->key1 = nextp->key1;	/* bitwise copy */
+	      curp->key1_bound = nextp->key1_bound;
 	      db_make_null (&nextp->key1);
 	      cur_op1 = next_op1;
 	    }
@@ -1797,6 +1376,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    {
 	      pr_clear_value (&curp->key2);
 	      curp->key2 = nextp->key2;	/* bitwise copy */
+	      curp->key2_bound = nextp->key2_bound;
 	      db_make_null (&nextp->key2);
 	      cur_op2 = next_op2;
 	    }
@@ -1827,128 +1407,117 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   chk_fn (in): check function for key_vals
  */
 static int
-check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn)
+check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn, const DOMAIN_KEY_RANGES * ranges)
 {
   if (key_cnt <= 1)
     {
       return key_cnt;
     }
 
-  qsort ((void *) key_vals, key_cnt, sizeof (KEY_VAL_RANGE), key_val_compare);
+  /* the comparator carries the bounds' comparisons itself, not a thread-local the sort reads at every comparison;
+   * a stable sort keeps the order glibc's merge sort gave equal key values */
+  /* *INDENT-OFF* */
+  std::stable_sort (key_vals, key_vals + key_cnt,
+		    [ranges] (const KEY_VAL_RANGE & a, const KEY_VAL_RANGE & b)
+  {
+    assert_release (a.num_index_term == b.num_index_term);
+    return scan_key_compare (const_cast < DB_VALUE * >(&a.key1), a.key1_bound, const_cast < DB_VALUE * >(&b.key1),
+			     b.key1_bound, a.num_index_term, ranges) < 0;
+  });
+  /* *INDENT-ON* */
 
-  return ((*key_val_fn) (key_vals, key_cnt));
+  return ((*key_val_fn) (key_vals, key_cnt, ranges));
 }
 
 /* shared with parallel index scan: same dedup/merge serial path runs in scan_open_index_scan. */
 int
-scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt)
+scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
+				const DOMAIN_KEY_RANGES * ranges)
 {
   if (range_type == R_KEYLIST)
     {
-      return check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys);
+      return check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys, ranges);
     }
   if (range_type == R_RANGELIST)
     {
-      return check_key_vals (key_vals, key_cnt, merge_key_ranges);
+      return check_key_vals (key_vals, key_cnt, merge_key_ranges, ranges);
     }
   return key_cnt;
 }
 
 /*
- * scan_dbvals_to_midxkey () -
+ * scan_dbvals_to_midxkey () - a multi-column search key from its bound's values
  *   return: NO_ERROR or ER_code
  *
  *   retval (out):
- *   indexal (out):
- *   btree_domainp (in):
+ *   indexable (out):
+ *   btree_domainp (in): the B-tree's key domain
  *   num_term (in):
- *   func (in):
+ *   func (in): the bound's F_MIDXKEY
  *   vd (in):
  *   key_minmax (in):
  *   is_iss (in)
+ *   key_domain (in): the domain the key is written with: the index's, or the one XASL generation made for a bound
+ *		      with a column that keeps its value's own domain (KEY_RANGE.key1_domain / key2_domain)
+ *
+ * XASL generation decided how each column takes its values (CBRD-27583): a converted column's regu converts them,
+ * a kept or as-is column's arrive in its own domain. The range writes them under the key domain's columns, up to a
+ * NULL that ends the key (an index skip scan's first column may be NULL) or a maximum string, after which
+ * btree_coerce_key fills the index's columns.
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexable, TP_DOMAIN * btree_domainp,
 			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss,
-			TP_DOMAIN ** prebuilt_midxkey_domain)
+			TP_DOMAIN * key_domain)
 {
   int ret = NO_ERROR;
-  DB_VALUE *val = NULL;
-  DB_TYPE val_type_id;
   DB_MIDXKEY midxkey;
-
-  int idx_ncols = 0, natts, i, j;
+  int idx_ncols = 0, written, i;
   int buf_size;
-
   regu_variable_list_node *operand;
-
+  const TP_DOMAIN *column;
+  const TP_DOMAIN *index_column;	/* the index's column at column's position */
   char *nullmap_ptr;		/* ponter to boundbits */
-
   OR_BUF buf;
-
-  bool need_new_setdomain = false;
-  TP_DOMAIN *idx_setdomain = NULL, *vals_setdomain = NULL;
-  TP_DOMAIN *idx_dom = NULL, *val_dom = NULL, *dom = NULL, *next = NULL, *prebuilt_domain = NULL;
-  DB_TYPE idx_type_id;
-  TP_DOMAIN dom_buf;
-  DB_VALUE *coerced_values = NULL;
-  bool *has_coerced_values = NULL;
-  bool new_setdomain_built = *prebuilt_midxkey_domain != NULL;
+  /* the columns' values, peeked once: most keys have few columns */
+  const DB_VALUE *values_buf[16];
+  const DB_VALUE **values = values_buf;
 
   *indexable = false;
 
-  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY || TP_DOMAIN_TYPE (key_domain) != DB_TYPE_MIDXKEY)
     {
       assert (false);
       return ER_FAILED;
     }
 
   idx_ncols = btree_domainp->precision;
-  if (idx_ncols <= 0)
+  if (idx_ncols <= 0 || idx_ncols != key_domain->precision)
     {
       assert (false);
       return ER_FAILED;
     }
-
-  idx_setdomain = btree_domainp->setdomain;
-
-#if !defined(NDEBUG)
-  {
-    int dom_ncols = 0;
-
-    for (idx_dom = idx_setdomain; idx_dom != NULL; idx_dom = idx_dom->next)
-      {
-	dom_ncols++;
-#if 0
-	/* idx_dom->precision is -1 in the following cases.
-	 * create index idx on t1(IFNULL(a,'x'), b); -- a is char(n)
-	 * Remove the assert check.  */
-	if (idx_dom->precision < 0)
-	  {
-	    assert (false);
-	    return ER_FAILED;
-	  }
-#endif
-      }
-
-    if (dom_ncols <= 0)
-      {
-	assert (false);
-	return ER_FAILED;
-      }
-
-    assert (dom_ncols == idx_ncols);
-  }
-#endif /* NDEBUG */
+  if (idx_ncols > (int) (sizeof (values_buf) / sizeof (values_buf[0])))
+    {
+      values = (const DB_VALUE **) db_private_alloc (thread_p, idx_ncols * sizeof (*values));
+      if (values == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
 
   buf_size = 0;
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
 
-  /* check to need a new setdomain */
-  for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, i = 0; operand != NULL && idx_dom != NULL;
-       operand = operand->next, idx_dom = idx_dom->next, i++)
+  /* each column's value, checked in this order: a NULL ends the key (an index skip scan's first column may be NULL),
+   * then the index key type, then a maximum string */
+  written = 0;
+  for (operand = func->value.funcp->operand, column = key_domain->setdomain, index_column = btree_domainp->setdomain;
+       operand != NULL && column != NULL;
+       operand = operand->next, column = column->next, index_column = index_column != NULL ? index_column->next : NULL)
     {
+      DB_VALUE *val = NULL;
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
       if (ret != NO_ERROR)
 	{
@@ -1957,9 +1526,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
       if (DB_IS_NULL (val))
 	{
-	  if (is_iss && i == 0)
+	  if (is_iss && written == 0)
 	    {
-	      /* If this is INDEX SKIP SCAN we allow the first column to be NULL and we don't need a new domain for it */
+	      /* If this is INDEX SKIP SCAN we allow the first column to be NULL; it is not written */
+	      values[written++] = val;
 	      continue;
 	    }
 	  else
@@ -1969,195 +1539,37 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      idx_type_id = TP_DOMAIN_TYPE (idx_dom);
-      val_type_id = DB_VALUE_DOMAIN_TYPE (val);
-
-      if (!tp_valid_indextype (val_type_id))
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
+      if (!tp_valid_indextype (type))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (idx_type_id),
-		  pr_type_name (val_type_id));
+	  /* named with the index column's type: a kept value's column has the value's own type */
+	  assert (index_column != NULL);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		  pr_type_name (TP_DOMAIN_TYPE (index_column != NULL ? index_column : column)), pr_type_name (type));
 	  goto err_exit;
 	}
 
-      if (TP_IS_STRING_TYPE (val_type_id))
+      if (TP_IS_STRING_TYPE (type) && val->data.ch.medium.is_max_string)
 	{
-	  /* we need to check for maxes */
-	  if (val->data.ch.medium.is_max_string)
-	    {
-	      /* oops, we found max. */
-	      midxkey.min_max_val.position = i;
-	      midxkey.min_max_val.type = MAX_COLUMN;
-
-	      /* just stop here */
-	      break;
-	    }
+	  /* oops, we found max: the columns from here are the index's, NULL-filled by btree_coerce_key */
+	  midxkey.min_max_val.position = written;
+	  midxkey.min_max_val.type = MAX_COLUMN;
+	  break;
 	}
 
-      if (idx_type_id != val_type_id)
+      /* the value has the type its column is written with: a value of another one would be written as garbage */
+      if (type != TP_DOMAIN_TYPE (column) && !(TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (column)))
+	  && !(type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT))
 	{
-	  /* allocate DB_VALUE array to store coerced values. */
-	  if (has_coerced_values == NULL)
-	    {
-	      assert (has_coerced_values == NULL && coerced_values == NULL);
-	      coerced_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * idx_ncols);
-	      if (coerced_values == NULL)
-		{
-		  goto err_exit;
-		}
-	      for (j = 0; j < idx_ncols; j++)
-		{
-		  db_make_null (&coerced_values[j]);
-		}
-
-	      has_coerced_values = (bool *) db_private_alloc (thread_p, sizeof (bool) * idx_ncols);
-	      if (has_coerced_values == NULL)
-		{
-		  goto err_exit;
-		}
-	      memset (has_coerced_values, 0x0, sizeof (bool) * idx_ncols);
-	    }
-
-	  /* Coerce the value to index domain. If there is loss, we should make a new setdomain. */
-	  ret = tp_value_coerce_strict (val, &coerced_values[i], idx_dom);
-	  if (ret != NO_ERROR)
-	    {
-	      need_new_setdomain = true;
-	    }
-	  else
-	    {
-	      has_coerced_values[i] = true;
-	    }
+	  ret = domain_unresolved_error (-1, TP_DOMAIN_TYPE (column));
+	  goto err_exit;
 	}
-      else if (idx_type_id == DB_TYPE_NUMERIC || idx_type_id == DB_TYPE_CHAR || idx_type_id == DB_TYPE_BIT)
-	{
-	  /* skip variable string domain : DB_TYPE_VARCHAR, DB_TYPE_VARBIT */
+      /* CBRD-27583: XASL generation planned the column's type for the value; a string of the other kind would
+       * be written by the column's writer (a CHAR's pads to the value's precision) */
+      assert (type == TP_DOMAIN_TYPE (column) || (type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT));
 
-	  val_dom = tp_domain_resolve_value (val, &dom_buf);
-	  if (val_dom == NULL)
-	    {
-	      goto err_exit;
-	    }
-
-	  if (!tp_domain_match_ignore_order (idx_dom, val_dom, TP_EXACT_MATCH))
-	    {
-	      need_new_setdomain = true;
-	    }
-	}
-    }
-
-  /* calculate midxkey's size & make a new setdomain if need */
-  /* NOTICE that this will stop the iteration on MAX_COLUMN value if exists.
-   * Remaining key values including MAX_COLUMN position will be filled as NULL
-   * by btree_coerce_key at the end of this function.
-   */
-  if (!need_new_setdomain)
-    {
-      new_setdomain_built = false;
-    }
-  if (new_setdomain_built)
-    {
-      prebuilt_domain = (*prebuilt_midxkey_domain)->setdomain;
-    }
-  for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, natts = 0;
-       operand != NULL && idx_dom != NULL
-       && (midxkey.min_max_val.position == -1 || natts < midxkey.min_max_val.position);
-       operand = operand->next, idx_dom = idx_dom->next, natts++)
-    {
-      /* If there is coerced value, we will use it regardless of whether a new setdomain is required or not. */
-    retry:
-      if (has_coerced_values != NULL && has_coerced_values[natts] == true)
-	{
-	  assert (coerced_values != NULL);
-	  val = &coerced_values[natts];
-	}
-      else
-	{
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
-	}
-
-      if (new_setdomain_built)
-	{
-	  dom = prebuilt_domain;
-	  prebuilt_domain = prebuilt_domain->next;
-	  if (natts == 0 && dom->type->id == DB_TYPE_NULL && !DB_IS_NULL (val))
-	    {
-	      need_new_setdomain = true;
-	      new_setdomain_built = false;
-	      dom = NULL;
-	      goto retry;
-	    }
-	}
-      else if (need_new_setdomain == true)
-	{
-	  /* make a value's domain */
-	  val_dom = tp_domain_resolve_value (val, &dom_buf);
-	  if (val_dom == NULL)
-	    {
-	      goto err_exit;
-	    }
-
-	  val_dom = tp_domain_copy (val_dom, false);
-	  if (val_dom == NULL)
-	    {
-	      goto err_exit;
-	    }
-	  val_dom->is_desc = idx_dom->is_desc;
-
-	  /* make a new setdomain */
-	  if (vals_setdomain == NULL)
-	    {
-	      assert (dom == NULL);
-	      vals_setdomain = val_dom;
-	    }
-	  else
-	    {
-	      assert (dom != NULL);
-	      dom->next = val_dom;
-	    }
-
-	  dom = val_dom;
-	}
-      else
-	{
-	  dom = idx_dom;
-	}
-
-      if (DB_IS_NULL (val))
-	{
-	  if (is_iss && natts == 0)
-	    {
-	      /* We allow the first column to be NULL and we're not writing it in the MIDXKEY buffer */
-	      continue;
-	    }
-	  else
-	    {
-	      /* impossible case */
-	      assert_release (false);
-	      goto end;
-	    }
-	}
-
-      buf_size += dom->type->get_index_size_of_value (val);
-    }
-
-  /* add more domain to setdomain for partial key */
-  if (need_new_setdomain == true && !new_setdomain_built)
-    {
-      assert (dom != NULL);
-      if (idx_dom != NULL)
-	{
-	  val_dom = tp_domain_copy (idx_dom, false);
-	  if (val_dom == NULL)
-	    {
-	      goto err_exit;
-	    }
-
-	  dom->next = val_dom;
-	}
+      buf_size += column->type->get_index_size_of_value (val);
+      values[written++] = val;
     }
 
   buf_size += or_multi_header_size (idx_ncols);
@@ -2177,57 +1589,28 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   or_advance (&buf, or_multi_header_size (idx_ncols));
 
   /* generate multi columns key (values -> midxkey.buf) */
-  if (new_setdomain_built)
+  for (i = 0, column = key_domain->setdomain; i < written; i++, column = column->next)
     {
-      dom = (*prebuilt_midxkey_domain)->setdomain;
-    }
-  else
-    {
-      dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
-    }
-
-  for (operand = func->value.funcp->operand, i = 0;
-       operand != NULL && dom != NULL && (i < natts); operand = operand->next, dom = dom->next, i++)
-    {
-      if (has_coerced_values != NULL && has_coerced_values[i] == true)
-	{
-	  assert (coerced_values != NULL);
-	  val = &coerced_values[i];
-	}
-      else
-	{
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
-	}
+      const DB_VALUE *val = values[i];
 
       or_multi_put_element_offset (nullmap_ptr, idx_ncols, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
-      if (DB_IS_NULL (val) || dom->type->id == DB_TYPE_NULL)
+      if (DB_IS_NULL (val))
 	{
-	  if (is_iss && i == 0)
-	    {
-	      /* There is nothing to write for NULL. Just make sure the bit is not set */
-	      assert (or_multi_is_null (nullmap_ptr, i));
-	      continue;
-	    }
-	  else
-	    {
-	      /* impossible case */
-	      assert_release (false);
-	      goto end;
-	    }
+	  /* There is nothing to write for NULL (an index skip scan's first column). Just make sure the bit is not
+	   * set */
+	  assert (is_iss && i == 0);
+	  assert (or_multi_is_null (nullmap_ptr, i));
+	  continue;
 	}
 
-      dom->type->index_writeval (&buf, val);
+      column->type->index_writeval (&buf, (DB_VALUE *) val);
       or_multi_set_not_null (nullmap_ptr, i);
     }
 
   assert (buf_size == CAST_BUFLEN (buf.ptr - buf.buffer));
 
-  for (i = natts; i < idx_ncols; i++)
+  for (i = written; i < idx_ncols; i++)
     {
       assert (or_multi_is_null (nullmap_ptr, i));
       or_multi_put_element_offset (nullmap_ptr, idx_ncols, buf_size, i);
@@ -2237,28 +1620,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   /* Make midxkey DB_VALUE */
   midxkey.size = buf_size;
-  midxkey.ncolumns = natts;
-
-  if (vals_setdomain != NULL)
-    {
-      midxkey.domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, idx_ncols, 0, vals_setdomain);
-      if (midxkey.domain == NULL)
-	{
-	  goto err_exit;
-	}
-
-      midxkey.domain = tp_domain_cache (midxkey.domain);
-      *prebuilt_midxkey_domain = midxkey.domain;
-    }
-  else
-    {
-      midxkey.domain = btree_domainp;
-    }
-
-  if (new_setdomain_built)
-    {
-      midxkey.domain = *prebuilt_midxkey_domain;
-    }
+  midxkey.ncolumns = written;
+  midxkey.domain = key_domain;
 
   ret = db_make_midxkey (retval, &midxkey);
   if (ret != NO_ERROR)
@@ -2272,14 +1635,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   ret = btree_coerce_key (retval, num_term, btree_domainp, key_minmax);
 
-  if (has_coerced_values)
+  if (values != values_buf)
     {
-      db_private_free_and_init (thread_p, has_coerced_values);
-    }
-
-  if (coerced_values)
-    {
-      db_private_free_and_init (thread_p, coerced_values);
+      db_private_free (thread_p, values);
     }
 
   return ret;
@@ -2290,23 +1648,9 @@ end:
       db_private_free_and_init (thread_p, midxkey.buf);
     }
 
-  if (vals_setdomain != NULL)
+  if (values != values_buf)
     {
-      for (dom = vals_setdomain; dom != NULL; dom = next)
-	{
-	  next = dom->next;
-	  tp_domain_free (dom);
-	}
-    }
-
-  if (has_coerced_values)
-    {
-      db_private_free_and_init (thread_p, has_coerced_values);
-    }
-
-  if (coerced_values)
-    {
-      db_private_free_and_init (thread_p, coerced_values);
+      db_private_free (thread_p, values);
     }
 
   return ret;
@@ -2339,6 +1683,10 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
   assert ((key_ranges->range >= GE_LE && key_ranges->range <= INF_LT) || (key_ranges->range == EQ_NA));
   assert (!(key_ranges->key1 == NULL && key_ranges->key2 == NULL));
+
+  /* CBRD-27583: how the bounds' values compare */
+  key_val_range->key1_bound = key_ranges->key1_bound;
+  key_val_range->key2_bound = key_ranges->key2_bound;
 
   if (iscan_id->bt_attrs_prefix_length && iscan_id->bt_num_attrs == 1)
     {
@@ -2395,12 +1743,20 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
-				    &(iscan_id->prebuilt_midxkey_domains[key_range_idx]));
+				    key_ranges->key1_domain != NULL ? key_ranges->key1_domain : btree_domainp);
 	}
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
+	  /* at scan start, an unindexable value fails whatever the rows, named value first as the B-tree compare does
+	   * (a multi-column key's: scan_dbvals_to_midxkey) */
+	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),
+		      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)));
+	      ret = ER_TP_CANT_COERCE;
+	    }
 
 	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
@@ -2443,13 +1799,20 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
-				    &(iscan_id->prebuilt_midxkey_domains[key_range_idx]));
+				    key_ranges->key2_domain != NULL ? key_ranges->key2_domain : btree_domainp);
 	}
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key2, vd, NULL, NULL, NULL, &key_val_range->key2);
 
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
+	  /* as key1's */
+	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key2) && !tp_valid_indextype (db_type))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),
+		      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)));
+	      ret = ER_TP_CANT_COERCE;
+	    }
 
 	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
@@ -2559,7 +1922,9 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	    {
 	      int c = DB_UNK;
 
-	      c = scan_key_compare (&key_val_range->key1, &key_val_range->key2, key_val_range->num_index_term);
+	      c = scan_key_compare (&key_val_range->key1, key_val_range->key1_bound, &key_val_range->key2,
+				    key_val_range->key2_bound, key_val_range->num_index_term,
+				    iscan_id->indx_info->key_ranges_compares);
 
 	      if (c == DB_UNK)
 		{
@@ -2616,6 +1981,16 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
  *
  * Note: If you feel the need
  */
+/* move the keys the B-tree read and filtered since its last range start into the scan's trace */
+static inline void
+scan_add_index_key_stats (SCAN_ID * s_id, INDX_SCAN_ID * iscan_id)
+{
+  s_id->scan_stats.read_keys += iscan_id->bt_scan.read_keys;
+  iscan_id->bt_scan.read_keys = 0;
+  s_id->scan_stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
+  iscan_id->bt_scan.qualified_keys = 0;
+}
+
 static int
 scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 		       DB_BIGINT * key_limit_lower)
@@ -2679,6 +2054,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  db_make_null (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
+	  key_vals[i].key1_bound = key_ranges[i].key1_bound;
+	  key_vals[i].key2_bound = key_ranges[i].key2_bound;
 
 	  key_vals[i].range = key_ranges[i].range;
 	  if (key_vals[i].range == INF_INF)
@@ -2703,12 +2080,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       if (indx_infop->range_type == R_KEYLIST)
 	{
 	  /* eliminate duplicated keys in the search key list */
-	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys);
+	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys,
+							indx_infop->key_ranges_compares);
 	}
       else if (indx_infop->range_type == R_RANGELIST)
 	{
 	  /* merge search key ranges */
-	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, merge_key_ranges);
+	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, merge_key_ranges,
+							indx_infop->key_ranges_compares);
 	}
 
       /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be
@@ -2718,7 +2097,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	      || (indx_infop->groupby_desc && indx_infop->groupby_skip)))
 	{
 	  /* in both cases we should reverse the key lists if we have a reverse order by or group by which is skipped */
-	  check_key_vals (key_vals, key_cnt, reverse_key_list);
+	  check_key_vals (key_vals, key_cnt, reverse_key_list, indx_infop->key_ranges_compares);
 	}
 
       if (key_cnt < 0)
@@ -2958,6 +2337,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	    }
 	  iscan_id->oids_count = bts->n_oids_read_last_iteration;
 	  assert (iscan_id->oids_count >= 0);
+	  if (iscan_id->gby_skip != NULL && iscan_id->gby_skip->visit != NULL && thread_is_on_trace (thread_p))
+	    {
+	      /* S1 leaves no OIDs, so every range runs in this call: count its keys before the next range resets them */
+	      scan_add_index_key_stats (s_id, iscan_id);
+	    }
 
 	  /* We only want to advance the key ptr if we've exhausted the current crop of oids on the current key. */
 	  if (BTREE_END_OF_SCAN (bts))
@@ -3078,6 +2462,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	    }
 	  iscan_id->oids_count = bts->n_oids_read_last_iteration;
 	  assert (iscan_id->oids_count >= 0);
+	  if (iscan_id->gby_skip != NULL && iscan_id->gby_skip->visit != NULL && thread_is_on_trace (thread_p))
+	    {
+	      /* S1 leaves no OIDs, so every range runs in this call: count its keys before the next range resets them */
+	      scan_add_index_key_stats (s_id, iscan_id);
+	    }
 
 	  /* We only want to advance the key ptr if we've exhausted the current crop of oids on the current key. */
 	  if (BTREE_END_OF_SCAN (bts))
@@ -3145,10 +2534,7 @@ end:
 
   if (thread_is_on_trace (thread_p))
     {
-      s_id->scan_stats.read_keys += iscan_id->bt_scan.read_keys;
-      iscan_id->bt_scan.read_keys = 0;
-      s_id->scan_stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
-      iscan_id->bt_scan.qualified_keys = 0;
+      scan_add_index_key_stats (s_id, iscan_id);
     }
 
   return ret;
@@ -3532,6 +2918,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->indx_cov.list_id = indx_info->cov_list_id;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
+  isidp->gby_skip = NULL;
 
   /* index scan info */
   BTS = &isidp->bt_scan;
@@ -3548,6 +2935,14 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTS->is_btid_int_valid = true;
 
   pgbuf_unfix_and_init (thread_p, Root);
+
+  /* XASL generation decided the search keys against the key domain it read for this index: a tree with another one
+   * fails the unresolved-domain check (execution) */
+  if (indx_info->key_type == NULL || !tp_domain_match (indx_info->key_type, BTS->btid_int.key_type, TP_EXACT_MATCH))
+    {
+      (void) domain_unresolved_error (-1, TP_DOMAIN_TYPE (BTS->btid_int.key_type));
+      goto exit_on_error;
+    }
 
   /* initialize key limits */
   if (scan_init_index_key_limit (thread_p, isidp, &indx_info->key_info, vd) != NO_ERROR)
@@ -3741,20 +3136,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
     scan_id->scan_stats.multi_range_opt = isidp->multi_range_opt.use;
   }
-
-  if (isidp->prebuilt_midxkey_domains == NULL && isidp->indx_info->key_info.key_cnt > 0)
-    {
-      isidp->prebuilt_midxkey_domains =
-	(TP_DOMAIN **) db_private_alloc (thread_p, isidp->indx_info->key_info.key_cnt * sizeof (TP_DOMAIN *));
-      if (isidp->prebuilt_midxkey_domains == NULL)
-	{
-	  return ER_FAILED;
-	}
-      for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
-	{
-	  isidp->prebuilt_midxkey_domains[i] = NULL;
-	}
-    }
 
   return ret;
 
@@ -4139,7 +3520,6 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* regulator variable list for build, probe */
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
-  llsidp->hlsid.need_coerce_type = false;
 
   llsidp->is_read_only = is_read_only;
 
@@ -4167,6 +3547,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	    }
 	  if (fhs_create (thread_p, llsidp->hlsid.file.hash_table, llsidp->list_id->tuple_cnt) == NULL)
 	    {
+	      /* the FHSID has no valid files; free it so that closing the scan does not destroy them */
+	      db_private_free_and_init (thread_p, llsidp->hlsid.file.hash_table);
 	      return S_ERROR;
 	    }
 	}
@@ -4180,7 +3562,6 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
-      llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -4501,6 +3882,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 {
   DBLINK_SCAN_ID *dblid = &scan_id->s.dblid;
   DB_TYPE single_node_type = DB_TYPE_NULL;
+  int error;
 
   /* scan type is DBLINK SCAN */
   scan_id->type = S_DBLINK_SCAN;
@@ -4512,7 +3894,12 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
 		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
 
-  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  error = dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  return dblink_plan_columns (&scan_id->s.dblid.scan_info, val_list);
 }
 
 /*
@@ -5415,19 +4802,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 #endif /* SERVER_MODE && !WINDOWS */
 
-      if (isidp->prebuilt_midxkey_domains != NULL)
-	{
-	  for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
-	    {
-	      if (isidp->prebuilt_midxkey_domains[i])
-		{
-		  tp_domain_free (isidp->prebuilt_midxkey_domains[i]);
-		  isidp->prebuilt_midxkey_domains[i] = NULL;
-		}
-	    }
-	  db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
-	}
-
       if (isidp->key_vals)
 	{
 	  isidp->key_vals = NULL;
@@ -5543,12 +4917,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
 	  llsidp->hlsid.temp_key = NULL;
-	}
-      /* free temp new keys and values */
-      if (llsidp->hlsid.temp_new_key != NULL)
-	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, llsidp->hlsid.temp_new_key->val_count);
-	  llsidp->hlsid.temp_new_key = NULL;
 	}
       break;
 
@@ -6403,6 +5771,21 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_gby_skip_note_key_start () - K (CBRD-27664): the candidate row at oidno starts a key record when it reached the
+ *				     next mark. Marks of keys whose objects were all filtered out are passed with it, and
+ *				     the flag stays set until a row is delivered and the executor takes it.
+ */
+static inline void
+scan_gby_skip_note_key_start (INDX_GBY_SKIP * gby, int oidno)
+{
+  while (gby->key_start_next < gby->key_start_cnt && gby->key_starts[gby->key_start_next] <= oidno)
+    {
+      gby->key_start = true;
+      gby->key_start_next++;
+    }
+}
+
+/*
  * scan_next_index_scan () - The scan is moved to the next index scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -6414,7 +5797,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
   FILTER_INFO data_filter;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE lookup_status;
   TRAN_ISOLATION isolation;
 
@@ -6693,6 +6076,11 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       assert (scan_id->position == S_ON);
 
+      if (isidp->gby_skip != NULL)
+	{
+	  scan_gby_skip_note_key_start (isidp->gby_skip, isidp->curr_oidno);
+	}
+
       scan_id->scan_stats.key_qualified_rows++;
 
       /* get pages for read */
@@ -6724,7 +6112,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	  else if (lookup_status == S_DOESNT_EXIST)
 	    {
-	      if (scan_id->mvcc_select_lock_needed && isidp->key_limit_upper != -1)
+	      if (scan_id->mvcc_select_lock_needed && isidp->key_limit_upper != -1
+		  && isidp->key_limit_upper < DB_BIGINT_MAX)
 		{
 		  isidp->key_limit_upper++;
 		}
@@ -6751,8 +6140,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  return S_ERROR;
 		}
-	      tplrec.tpl = isidp->multi_range_opt.tplrec.tpl;
-	      tplrec.size = isidp->multi_range_opt.tplrec.size;
+	      /* the dumped tuple has the covering list's layout: bind + set it */
+	      qfile_slot_set_tuple_ptr_and_layout (&tplrec, isidp->multi_range_opt.tplrec.tpl, 0,
+						   &isidp->indx_cov.list_id->type_list);
 	    }
 	  else
 	    {
@@ -6766,7 +6156,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, isidp->indx_cov.regu_val_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, isidp->indx_cov.regu_val_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -6799,7 +6189,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   BTID *btid;
   char *indx_name_p;
   char *class_name_p;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -7153,14 +6543,9 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   llsidp = &scan_id->s.llsid;
-
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
-
-  resolve_domains_on_list_scan (llsidp, scan_id->val_list);
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {
@@ -7168,7 +6553,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -7231,7 +6616,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -7239,8 +6624,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (llsidp->tplrecp)
 	{
-	  llsidp->tplrecp->size = tplrec.size;
-	  llsidp->tplrecp->tpl = tplrec.tpl;
+	  qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;
@@ -7600,7 +6984,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   DBLINK_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   vaidp = &scan_id->s.dblid;
 
@@ -7739,7 +7123,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       break;
 
-    case QPROC_SINGLE_INNER:	/* currently, not used */
+    case QPROC_SINGLE_INNER:	/* NL SEMI/ANTI JOIN inner: fetch at most one qualifying row (first-match) */
       /* already returned a row? */
       /* if scan works in a single_fetch mode and first qualified scan item has already been fetched, return
        * end_of_scan. */
@@ -7849,22 +7233,19 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   switch (scan_id->type)
     {
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
 
-      tplrec.size = 0;
-      tplrec.tpl = (QFILE_TUPLE) NULL;
-
       while ((qp_scan = qfile_scan_list_prev (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
 	{
 	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -7923,8 +7304,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the rest of the values from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
-		  NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -7932,8 +7312,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (llsidp->tplrecp)
 	    {
-	      llsidp->tplrecp->size = tplrec.size;
-	      llsidp->tplrecp->tpl = tplrec.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	    }
 
 	  return S_SUCCESS;
@@ -7996,7 +7375,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 {
   LLIST_SCAN_ID *llsidp;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
 
   llsidp = &s_id->s.llsid;
@@ -8006,9 +7385,6 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
   s_id->position = scan_pos->position;
 
   /* jump to the previouslt saved scan position and continue from that point on forward */
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
-
   qp_scan = qfile_jump_scan_tuple_position (thread_p, &llsidp->lsid, &scan_pos->ls_tplpos, &tplrec, PEEK);
   if (qp_scan != S_SUCCESS)
     {
@@ -8024,8 +7400,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
       /* fetch the value for the predicate from the tuple */
       if (s_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, s_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
-	      NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, s_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -8088,7 +7463,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 	  /* fetch the rest of the values from the tuple */
 	  if (s_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, s_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, s_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8096,8 +7471,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 
 	  if (llsidp->tplrecp)
 	    {
-	      llsidp->tplrecp->size = tplrec.size;
-	      llsidp->tplrecp->tpl = tplrec.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	    }
 	  return S_SUCCESS;
 	}
@@ -8187,7 +7561,7 @@ scan_finalize (void)
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
+reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges)
 {
   int i, j;
   KEY_VAL_RANGE temp;
@@ -8200,143 +7574,6 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
     }
 
   return key_cnt;
-}
-
-/*
- * resolve_domains_on_list_scan () - scans the structures in a list scan id
- *   and resolves the domains in sub-components like regu variables from scan
- *   predicates;
- *
- *   llsidp (in/out): pointer to list scan id structure
- *   ref_val_list (in): list of DB_VALUEs (val_list_node) used as reference
- *
- *  Note : this function is used in context of HV late binding
- */
-static void
-resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list)
-{
-  regu_variable_list_node *scan_regu = NULL;
-
-  assert (llsidp != NULL);
-
-  if (llsidp->list_id == NULL || ref_val_list == NULL)
-    {
-      return;
-    }
-
-  /* resolve domains on regu_list of scan predicate */
-  for (scan_regu = llsidp->scan_pred.regu_list; scan_regu != NULL; scan_regu = scan_regu->next)
-    {
-      if ((TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
-	   || TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain)) && scan_regu->value.type == TYPE_POSITION)
-	{
-	  int pos = scan_regu->value.value.pos_descr.pos_no;
-	  TP_DOMAIN *new_dom = NULL;
-
-	  assert (pos < llsidp->list_id->type_list.type_cnt);
-	  new_dom = llsidp->list_id->type_list.domp[pos];
-
-	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (new_dom) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      continue;
-	    }
-
-	  scan_regu->value.value.pos_descr.dom = new_dom;
-	  scan_regu->value.domain = new_dom;
-	}
-    }
-
-  /* resolve domains on rest_regu_list of scan predicate */
-  for (scan_regu = llsidp->rest_regu_list; scan_regu != NULL; scan_regu = scan_regu->next)
-    {
-      if ((TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
-	   || TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain) != TP_DOMAIN_COLL_NORMAL)
-	  && scan_regu->value.type == TYPE_POSITION)
-	{
-	  int pos = scan_regu->value.value.pos_descr.pos_no;
-	  TP_DOMAIN *new_dom = NULL;
-
-	  assert (pos < llsidp->list_id->type_list.type_cnt);
-	  new_dom = llsidp->list_id->type_list.domp[pos];
-
-	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (new_dom) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      continue;
-	    }
-	  scan_regu->value.value.pos_descr.dom = new_dom;
-	  scan_regu->value.domain = new_dom;
-	}
-    }
-
-  /* resolve domains on predicate expression of scan predicate */
-  if (llsidp->scan_pred.pred_expr == NULL)
-    {
-      return;
-    }
-
-  if (llsidp->scan_pred.pred_expr->type == T_EVAL_TERM)
-    {
-      EVAL_TERM ev_t = llsidp->scan_pred.pred_expr->pe.m_eval_term;
-
-      if (ev_t.et_type == T_COMP_EVAL_TERM)
-	{
-	  if (ev_t.et.et_comp.lhs != NULL
-	      && (TP_DOMAIN_TYPE (ev_t.et.et_comp.lhs->domain) == DB_TYPE_VARIABLE
-		  || TP_DOMAIN_COLLATION_FLAG (ev_t.et.et_comp.lhs->domain) != TP_DOMAIN_COLL_NORMAL))
-	    {
-	      resolve_domain_on_regu_operand (ev_t.et.et_comp.lhs, ref_val_list, &(llsidp->list_id->type_list));
-	    }
-	  if (ev_t.et.et_comp.rhs != NULL
-	      && (TP_DOMAIN_TYPE (ev_t.et.et_comp.rhs->domain) == DB_TYPE_VARIABLE
-		  || TP_DOMAIN_COLLATION_FLAG (ev_t.et.et_comp.rhs->domain) != TP_DOMAIN_COLL_NORMAL))
-	    {
-	      resolve_domain_on_regu_operand (ev_t.et.et_comp.rhs, ref_val_list, &(llsidp->list_id->type_list));
-	    }
-	}
-    }
-}
-
-/*
- * resolve_domain_on_regu_operand () - resolves a domain on a regu variable
- *    from a scan list; helper functions for 'resolve_domains_on_list_scan'
- *
- *   regu_var (in/out): regulator variable with unresolved domain
- *   ref_val_list (in): list of DB_VALUEs (val_list_node) used for cross-checking
- *   p_type_list (in): list of domains used as reference
- *
- *  Note : this function is used in context of HV late binding
- */
-static void
-resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
-				QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list)
-{
-  assert (regu_var != NULL);
-  assert (ref_val_list != NULL);
-
-  if (regu_var->type == TYPE_CONSTANT)
-    {
-      QPROC_DB_VALUE_LIST value_list;
-      int pos = 0;
-      bool found = false;
-
-      /* search in ref_val_list for the corresponding DB_VALUE */
-      for (value_list = ref_val_list->valp; value_list != NULL; value_list = value_list->next, pos++)
-	{
-	  if (regu_var->value.dbvalptr == ref_val_list->valp->val)
-	    {
-	      found = true;
-	      break;
-	    }
-	}
-
-      if (found)
-	{
-	  assert (pos < p_type_list->type_cnt);
-	  regu_var->domain = p_type_list->domp[pos];
-	}
-    }
 }
 
 /*
@@ -8386,8 +7623,7 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * m
 	}
       memset (multi_range_opt->top_n_items, 0, max_size * sizeof (RANGE_OPT_ITEM *));
 
-      multi_range_opt->tplrec.size = 0;
-      multi_range_opt->tplrec.tpl = NULL;
+      multi_range_opt->tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
       perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MULTI_RANGE_OPT);
     }
@@ -8453,7 +7689,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = qdata_copy_valptr_list_to_tuple (thread_p, iscan_id->indx_cov.output_val_list, iscan_id->indx_cov.val_descr,
-					   tplrec);
+					   &iscan_id->indx_cov.list_id->type_list, tplrec);
   if (error != NO_ERROR)
     {
       return error;
@@ -8779,27 +8015,21 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-  HASH_SCAN_KEY *key, *new_key;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  HASH_SCAN_KEY *key;
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
   TFTID tftid;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
-  new_key = llsidp->hlsid.temp_new_key;
-
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
-
-  resolve_domains_on_list_scan (llsidp, scan_id->val_list);
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8807,27 +8037,14 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       scan_id->scan_stats.read_rows++;
 
-      /* build key */
+      /* build key: XASL generation put the key pair's values in the domain they hash alike in */
       if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, key) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
-      /* create new key */
-      if (llsidp->hlsid.need_coerce_type)
-	{
-	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.probe_regu_list, new_key);
-	  if (new_key == NULL)
-	    {
-	      return S_ERROR;
-	    }
-	}
-      else
-	{
-	  new_key = key;
-	}
 
       /* make hash key */
-      hash_key = qdata_hash_scan_key (new_key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
 
       switch (llsidp->hlsid.hash_list_scan_type)
 	{
@@ -8892,20 +8109,22 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE tpl = NULL;
 
   llsidp = &scan_id->s.llsid;
 
-  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tplrec.tpl)) == S_SUCCESS)
+  /* the probed tuples are copies of list_id tuples; retarget the slot only through the setter */
+  qfile_slot_set_layout (&tplrec, &llsidp->list_id->type_list);
+
+  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tpl)) == S_SUCCESS)
     {
+      qfile_slot_set_tuple_ptr (&tplrec, tpl, 0);
 
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8968,7 +8187,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -8976,8 +8195,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (llsidp->tplrecp)
 	{
-	  llsidp->tplrecp->size = tplrec.size;
-	  llsidp->tplrecp->tpl = tplrec.tpl;
+	  qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;
@@ -9003,7 +8221,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   MHT_HLS_ENTRY *entry;
   QFILE_TUPLE_SIMPLE_POS *simple_pos;
   QFILE_TUPLE_POSITION tuple_pos;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   EH_SEARCH eh_search;
   TFTID result;
 
@@ -9167,7 +8385,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      2. list file size check
  *      3. regu_list_build, regu_list_probe is not null
  *      4. The number of probe regu_var and build regu match
- *      5. type of regu var is not oid && vobj
+ *      5. XASL generation found a domain each key pair hashes alike in (pt_decide_hash_list_keys)
  *      6. list file from dptr is not allowed
 */
 static HASH_METHOD
@@ -9175,13 +8393,12 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
-  DB_TYPE vtype1, vtype2;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   INT64 tuple_cnt;
   UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
 
   assert (hash_list_scan_yn == 0 || hash_list_scan_yn == 1);
-  /* no_hash_list_scan sql hint check */
+  /* no_hash_list_scan sql hint check, or key pairs XASL generation found no domain for */
   if (hash_list_scan_yn == 0)
     {
       return HASH_METH_NOT_USE;
@@ -9206,21 +8423,6 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 
   for (build_cnt = 0; build && probe; build_cnt++)
     {
-      /* type of regu var is not oid && vobj */
-      /* This is the case when type coercion is impossible. so use list scan */
-      /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
-      vtype1 = REGU_VARIABLE_GET_TYPE (&probe->value);
-      vtype2 = REGU_VARIABLE_GET_TYPE (&build->value);
-
-      if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
-	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))
-	{
-	  return HASH_METH_NOT_USE;
-	}
-      if (vtype1 != vtype2)
-	{
-	  llsidp->hlsid.need_coerce_type = true;
-	}
       build = build->next;
       probe = probe->next;
     }

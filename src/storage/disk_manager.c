@@ -3012,7 +3012,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
       goto exit;
     }
 
-  db_make_int (out_values[idx], vhdr->iopagesize);
+  /* CBRD-27583: in the column's declared type (show_meta.c, short), which the output keeps as it comes */
+  db_make_short (out_values[idx], vhdr->iopagesize);
   idx++;
 
   db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
@@ -3224,12 +3225,17 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
   )
 {
   VPID vpid_volheader;
+  int old_wait_msecs;
   int error_code = NO_ERROR;
 
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
 
+  /* this fix has no conditional variant and the caller cannot act on a refusal; a no-wait
+   * transaction must still wait for the volume header */
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (*page_volheader_out == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -3493,6 +3499,7 @@ STATIC_INLINE int
 disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_LATCH_MODE latch_mode)
 {
   VPID vpid = VPID_INITIALIZER;
+  int old_wait_msecs;
   int error_code = NO_ERROR;
 
   assert (cursor->page == NULL);
@@ -3502,7 +3509,11 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
   /* Fix page. */
   vpid.volid = cursor->volheader->volid;
   vpid.pageid = cursor->pageid;
+  /* same as the volume header: a no-wait transaction must still wait for the sector allocation
+   * table page */
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   cursor->page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (cursor->page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -4197,7 +4208,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   int old_wait_msecs;
 
   old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
@@ -4237,7 +4248,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
 exit:
-  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)
@@ -4419,7 +4430,13 @@ error:
   /* abort any changes */
   log_sysop_abort (thread_p);
 
+  /* The IO entries cover the volume extension half of this function; the latch entry covers the page fix half
+   * (disk_get_volheader (), disk_stab_cursor_fix ()). What is left is a logic failure - see
+   * disk_reserve_sectors_in_volume (), which returns ER_FAILED when the cache promised sectors the sector table
+   * does not have. That is the case disk_check () below can actually repair. */
   if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED	/* temp_file_max_size_in_pages reached */
+      || PGBUF_IS_LATCH_REFUSED_ERROR (error_code)	/* a page fix was refused, or its wait timed out */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
     {
@@ -4504,7 +4521,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining > disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);

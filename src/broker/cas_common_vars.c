@@ -58,9 +58,6 @@ T_ERROR_INFO err_info;
 char stripped_column_name;
 char cas_client_type;
 
-/* CAS info buffer */
-char prev_cas_info[CAS_INFO_SIZE];
-
 /* Network socket */
 SOCKET new_req_sock_fd = INVALID_SOCKET;
 

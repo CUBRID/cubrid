@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -46,7 +47,6 @@
 
 #include "porting.h"
 #include "chartype.h"
-#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -562,6 +562,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
@@ -589,7 +590,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
 #define PRM_NAME_MAX_HASH_LIST_SCAN_SIZE "max_hash_list_scan_size"
-#define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
+#define PRM_NAME_MAX_CONNECT_BY_DFS_SIZE "max_connect_by_dfs_size"
 #define PRM_NAME_OPTIMIZER_RESERVE_03 "optimizer_reserve_03"
 #define PRM_NAME_OPTIMIZER_RESERVE_04 "optimizer_reserve_04"
 #define PRM_NAME_OPTIMIZER_RESERVE_05 "optimizer_reserve_05"
@@ -735,7 +736,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
 #define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
-#define PRM_NAME_TASK_GROUP "task_group"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
@@ -762,7 +762,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD "vacuum_ovfp_check_threshold"
 
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
-#define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
 
 #define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
@@ -784,12 +783,18 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD "parallel_index_scan_page_threshold"
 #define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
 #define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
+#define PRM_NAME_INDEX_BUILD_BUFFER_SIZE "index_build_buffer_size"
+#define PRM_NAME_INDEX_BUILD_PARALLELISM "index_build_parallelism"
+#define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
+#define PRM_NAME_PARALLEL_MERGE_JOIN "parallel_merge_join"
+#define PRM_NAME_INDEX_SORT_METHOD "index_sort_method"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
 #define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
 
-#define PRM_NAME_TASK_WORKER "task_worker"
+#define PRM_NAME_MAX_REQUEST_WORKER "max_request_worker"
+#define PRM_NAME_MAX_REQUEST_CONCURRENCY "max_request_concurrency"
 
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
 #define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
@@ -798,6 +803,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
+#define PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS "send_queue_room_wait_msecs"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -817,7 +823,14 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
-// #endregion 
+#define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
+#define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
+#define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
+#define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
+#define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
+
+// #endregion
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -979,6 +992,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
+#define PRM_REQUEST_CONCURRENCY_PER_CORE 6
 
 /* initial error and integer lists */
 static const int int_list_initial[1] = { 0 };
@@ -2106,9 +2120,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-27583: in the plan key, since a bind type signature's plan holds the PLUS concat-or-add choice */
   {PRM_ID_PLUS_AS_CONCAT,
    PRM_NAME_PLUS_AS_CONCAT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -3563,14 +3578,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_OPTIMIZER_RESERVE_02,
-   PRM_NAME_OPTIMIZER_RESERVE_02,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
+  {PRM_ID_MAX_CONNECT_BY_DFS_SIZE,
+   PRM_NAME_MAX_CONNECT_BY_DFS_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_SIZE_UNIT),
+   PRM_BIGINT,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 8 * 1024 * 1024 /* 8 MB */ }},
+   {false, {.bi = 128 * 1024 * 1024 /* 128 MB */ }},
+   {false, {.bi = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -4555,7 +4571,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
+   {false, {.b = true}},
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
@@ -4780,32 +4796,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
-   {false, {.i = 1}},
-   {false, {.i = 1}},
-#endif
-   {false, {.i = 1024}},
-   {false, {.i = 1}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TASK_GROUP,
-   PRM_NAME_TASK_GROUP,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
    {false, {.i = 1}},
    {false, {.i = 1}},
    NULL_SYSPRM_PARAM_VALUE,
-#endif
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -4973,27 +4966,16 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* The DEDUPLICATE index feature was removed; the value is accepted and ignored. */
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
-   // It is not specified in the manual that it can be changed in the session.
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_DEPRECATED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PRINT_INDEX_DETAIL,
-   PRM_NAME_PRINT_INDEX_DETAIL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = 14}},
+   {false, {.i = -1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5189,8 +5171,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2048}},
-   {false, {.i = 2048}},
+   {false, {.i = 256}},
+   {false, {.i = 256}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
@@ -5213,8 +5195,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2048}},
-   {false, {.i = 2048}},
+   {false, {.i = 256}},
+   {false, {.i = 256}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
@@ -5225,10 +5207,74 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 256}},
+   {false, {.i = 256}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* CBRD-27235: index build sort parameters, independent of the query sort (sort_buffer_size,
+   * parallel_sort_page_threshold). index_build_parallelism = -1 follows the parallelism parameter. */
+  {PRM_ID_INDEX_BUILD_BUFFER_SIZE,
+   PRM_NAME_INDEX_BUILD_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 128}},
+   {false, {.i = 128}},
+   NULL_SYSPRM_PARAM_VALUE, {false, {.i = 4}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_size_to_io_pages,
+   (DUP_PRM_FUNC) prm_io_pages_to_size},
+  {PRM_ID_INDEX_BUILD_PARALLELISM,
+   PRM_NAME_INDEX_BUILD_PARALLELISM,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = PRM_MAX_PARALLELISM}},
+   {false, {.i = -1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 2048}},
    {false, {.i = 2048}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_MERGE_JOIN,
+   PRM_NAME_PARALLEL_MERGE_JOIN,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_INDEX_SORT_METHOD,
+   PRM_NAME_INDEX_SORT_METHOD,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_KEYWORD,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if !defined(NDEBUG)
+   {false, {.i = INDEX_SORT_METHOD_AUTO}},
+   {false, {.i = INDEX_SORT_METHOD_AUTO}},
+#else
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}},
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}},
+#endif
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}}, {false, {.i = INDEX_SORT_METHOD_AUTO}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5268,15 +5314,41 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TASK_WORKER,
-   PRM_NAME_TASK_WORKER,
-   (PRM_FOR_SERVER),
+  {PRM_ID_MAX_REQUEST_WORKER,
+   PRM_NAME_MAX_REQUEST_WORKER,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = -1}},
-   {false, {.i = -1}},
-   {false, {.i = 1048576}},
+#if defined (SERVER_MODE)
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
    {false, {.i = 1}},
+   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 1}},
+#endif
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MAX_REQUEST_CONCURRENCY,
+   PRM_NAME_MAX_REQUEST_CONCURRENCY,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count () * PRM_REQUEST_CONCURRENCY_PER_CORE}},
+   {false, {.i = (int) cubthread::system_core_count () * PRM_REQUEST_CONCURRENCY_PER_CORE}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 1}},
+#endif
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5304,11 +5376,13 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 4}},
-   {false, {.i = 4}},
 #if defined (SERVER_MODE)
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
+   {false, {.i = 2}},
+   {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
 #endif
    {false, {.i = 1}},
@@ -5352,6 +5426,20 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 32 * 1024}},	/* 32KB */
    {false, {.i = 1 * 1024 * 1024 * 1024}},	/* 1GB */
    {false, {.i = 0}},		/* no limit */
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   /* 1 s: normal waits under a starved drain measured 0.6-10.8 ms */
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
+   /* connection_timeout's default: the waiter may hold a heap page latch, so it should not outwait a stalled peer */
+   {false, {.i = 5000}},
+   {false, {.i = 0}},		/* 0: close the connection at once, without waiting */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5535,6 +5623,97 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* Optimizer cost unit prices (CBRD-27126). The optimizer runs on the client, so these are
+   * PRM_FOR_CLIENT and take effect from the next compilation after SET SYSTEM PARAMETERS.
+   * PRM_FOR_QRY_STRING puts a tuned value into the XASL cache key (like max_hash_list_scan_size):
+   * without it a session that changes a price keeps hitting plans another session -- or its own
+   * past -- compiled under the old prices, and a new session inherits them. Only values that
+   * differ from the default are appended, so an untouched configuration keeps its cache keys.
+   * Every default is the literal query_planner.c used to hard-code, so an untouched
+   * configuration prices plans exactly as before. cost_seq_page is the unit of the model
+   * (one sequential page read = 1.0); tune the others as ratios to it. The per-tuple CPU
+   * price is an integer reciprocal, cost_cpu_tuples_per_page = 400 ("one page read costs as
+   * much as handling 400 tuples"), because the former literal 0.0025 has no exact float and
+   * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
+   * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
+   * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
+   * free; the Mackert-Lohman formula degrades safely to "no caching" when
+   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
+   * default equals the former 32768 on every page size. */
+  {PRM_ID_COST_SEQ_PAGE,
+   PRM_NAME_COST_SEQ_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_RANDOM_PAGE,
+   PRM_NAME_COST_RANDOM_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_CPU_TUPLES_PER_PAGE,
+   PRM_NAME_COST_CPU_TUPLES_PER_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 400}},
+   {false, {.i = 400}},
+   {false, {.i = 100000000}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
+   PRM_NAME_COST_EFFECTIVE_CACHE_PAGES,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32768}},
+   {false, {.i = 32768}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_HEAP_FETCH_PER_OID,
+   PRM_NAME_COST_HEAP_FETCH_PER_OID,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 100000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* bind-value plan variants (CBRD-27490): how many distinct plans a query may learn for its
+   * bind values; 0 turns the feature off. The client-side compile chooses among them. */
+  {PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+   PRM_NAME_PLAN_CACHE_BIND_VARIANTS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -5550,8 +5729,8 @@ static_assert (PRM_ID_INTL_NUMBER_LANG == 193, "update SysParam.java");
 static_assert (PRM_ID_INTL_DATE_LANG == 194, "update SysParam.java");
 static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
-static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 335, "update SysParam.java");
-static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 355, "update SysParam.java");
+static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
+static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
@@ -5605,6 +5784,20 @@ static const int *PARAM_VALUE_SHARE[] = {
  */
 SESSION_PARAM *cached_session_parameters = NULL;
 #endif /* CS_MODE */
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * session parameter values of the sub-client of the current thread (see sysprm_set_sub_client_session_parameters ())
+ *
+ * TODO: It is read by prm_get_* () for every session parameter, and in a shared library each access may call
+ *       __tls_get_addr () (general-dynamic TLS model). If it matters on hot paths (e.g., parser, type conversion),
+ *       consider __attribute__ ((tls_model ("initial-exec"))) for this variable only. It is small (a pointer), so
+ *       it fits in the static TLS surplus even when libcubridcs is loaded by dlopen () (e.g., the cubrid utility).
+ *       Do not apply initial-exec to the whole library for that reason.
+ */
+CUB_THREAD_LOCAL SESSION_PARAM *sysprm_Sub_client_session_params = NULL;
+#define PRM_SUB_CLIENT_SESSION_PARAM(id) (&sysprm_Sub_client_session_params[prm_Def_session_idx[(id)]])
+#endif
 
 /*
  * Keyword searches do a intl_mbs_ncasecmp(), using the LENGTH OF THE TABLE KEY
@@ -5669,6 +5862,12 @@ static const KEYVAL pgbuf_debug_page_validation_level_words[] = {
 static const KEYVAL null_words[] = {
   {"null", 0},
   {"0", 0}
+};
+
+static const KEYVAL index_sort_method_words[] = {
+  {"auto", INDEX_SORT_METHOD_AUTO},
+  {"radix", INDEX_SORT_METHOD_RADIX},
+  {"compare", INDEX_SORT_METHOD_COMPARE}
 };
 
 static const KEYVAL ha_mode_words[] = {
@@ -5945,10 +6144,13 @@ static bool prm_set_default_internal (SYSPRM_PARAM * prm);
 static int sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
 static const int *sysprm_find_shared_system_parameter (SYSPRM_PARAM * prm);
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER))
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id);
 #endif /* SERVER_MODE */
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+static bool sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value);
+#endif
 
 #if defined (CS_MODE)
 static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
@@ -6224,6 +6426,43 @@ sysprm_check_id_order ()
 }
 #endif
 
+
+#if defined (CS_MODE)
+void
+sysprm_load_session_parameters ()
+{
+  int i;
+  int num_session_prms;
+  SESSION_PARAM *sprm = NULL;
+
+  /* cache session parameters */
+  if (cached_session_parameters != NULL)
+    {
+      /* free previous cache */
+      sysprm_free_session_parameters (&cached_session_parameters);
+    }
+  cached_session_parameters = sysprm_alloc_session_parameters ();
+  num_session_prms = 0;
+  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
+	{
+	  assert (prm_Def_session_idx[i] == num_session_prms);
+	  sprm = &cached_session_parameters[num_session_prms++];
+	  sprm->prm_id = (PARAM_ID) i;
+	  sprm->flag = (GET_PRM (i)->dynamic_flag);
+	  sprm->datatype = GET_PRM (i)->datatype;
+	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
+	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+      else
+	{
+	  assert (prm_Def_session_idx[i] == -1);
+	}
+    }
+}
+#endif /* CS_MODE */
+
 /*
  * sysprm_load_and_init_internal - Read system parameters from the init files
  *   return: NO_ERROR or ER_FAILED
@@ -6245,10 +6484,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   struct stat stat_buf;
   int r = NO_ERROR;
   char *s;
-#if defined (CS_MODE)
-  SESSION_PARAM *sprm = NULL;
-  int num_session_prms;
-#endif
 
 #ifndef NDEBUG
   sysprm_check_id_order ();
@@ -6423,31 +6658,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 
 #if defined (CS_MODE)
-  /* cache session parameters */
-  if (cached_session_parameters != NULL)
-    {
-      /* free previous cache */
-      sysprm_free_session_parameters (&cached_session_parameters);
-    }
-  cached_session_parameters = sysprm_alloc_session_parameters ();
-  num_session_prms = 0;
-  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
-    {
-      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
-	{
-	  assert (prm_Def_session_idx[i] == num_session_prms);
-	  sprm = &cached_session_parameters[num_session_prms++];
-	  sprm->prm_id = (PARAM_ID) i;
-	  sprm->flag = (GET_PRM (i)->dynamic_flag);
-	  sprm->datatype = GET_PRM (i)->datatype;
-	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
-	  sysprm_update_session_prm_flag_allocated (sprm);
-	}
-      else
-	{
-	  assert (prm_Def_session_idx[i] == -1);
-	}
-    }
+  sysprm_load_session_parameters ();
 #endif /* CS_MODE */
 
 #if !defined(NDEBUG)
@@ -7722,6 +7933,9 @@ prm_get_keyval (const SYSPRM_PARAM * prm, int value, const char *name)
     case PRM_ID_COMPAT_MODE:
       return prm_keyword (value, name, compat_words, DIM (compat_words));
 
+    case PRM_ID_INDEX_SORT_METHOD:
+      return prm_keyword (value, name, index_sort_method_words, DIM (index_sort_method_words));
+
     case PRM_ID_CHECK_PEER_ALIVE:
       return prm_keyword (value, name, check_peer_alive_words, DIM (check_peer_alive_words));
 
@@ -7815,7 +8029,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_INT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -7910,7 +8124,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_FLOAT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8036,7 +8250,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.i;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8131,7 +8345,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.f;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8294,7 +8508,20 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
       if (PRM_IS_FOR_CLIENT (prm))
 	{
 	  /* set the value here */
-	  sysprm_set_sysprm_value_from_parameter (&prm_value->value, prm);
+#if defined (MULTI_CONN_TO_A_SERVER)
+	  if (PRM_SUB_CLIENT_SESSION (prm->id))
+	    {
+	      /* the value of the session of the sub-client of this thread */
+	      SYSPRM_PARAM sub_client_prm = *prm;
+
+	      sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (prm->id)->value;
+	      sysprm_set_sysprm_value_from_parameter (&prm_value->value, &sub_client_prm);
+	    }
+	  else
+#endif
+	    {
+	      sysprm_set_sysprm_value_from_parameter (&prm_value->value, prm);
+	    }
 	}
       else
 	{
@@ -9481,6 +9708,23 @@ sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag
    * on server */
 #endif /* SERVER_MODE */
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (PRM_SUB_CLIENT_SESSION (prm->id))
+    {
+      /* update the session parameter of the sub-client of this thread, not prm_Def shared with the other clients */
+      (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm->id), value);
+
+      /* Set the cached parsed session timezone region of this thread */
+      if (prm->id == PRM_ID_TIMEZONE
+	  && tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ()) != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_PARAM;
+	}
+
+      return PRM_ERR_NO_ERROR;
+    }
+#endif
+
   sysprm_set_system_parameter_value (prm, value, set_flag);
 
   /* Set the cached parsed system timezone region on the server */
@@ -9767,6 +10011,14 @@ prm_set_default (SYSPRM_PARAM * prm)
     {
       return ER_FAILED;
     }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (PRM_SUB_CLIENT_SESSION (prm->id))
+    {
+      /* set a copy of the default value to the session parameter of the sub-client of this thread */
+      return sysprm_set_value_internal (prm, prm->default_value.v, false, true);
+    }
+#endif
 
   if (!prm_set_default_internal (prm))
     {
@@ -10084,19 +10336,19 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
-  SYSPRM_PARAM *task_worker_prm;
-  SYSPRM_PARAM *task_group_prm;
-  SYSPRM_PARAM *thread_core_count_prm;
 #if defined (SERVER_MODE)
+  SYSPRM_PARAM *max_request_worker_prm;
+  SYSPRM_PARAM *max_request_concurrency_prm;
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
+  int system_cpu_count;
+  int client_limit;
+  int max_value;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
-  int system_cpu_count;
-  int task_worker;
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -10144,49 +10396,34 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       system_cpu_count = cubthread::system_core_count ();
-      task_worker = css_get_max_connections ();
-#else
-      system_cpu_count = 1;
-      task_worker = system_cpu_count * 6;
-#endif
 
-      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
-      if (PRM_GET_INT (task_worker_prm->value) < 0)
+      /* request worker, request concurrency */
+      max_request_worker_prm = GET_PRM (PRM_ID_MAX_REQUEST_WORKER);
+      max_request_concurrency_prm = GET_PRM (PRM_ID_MAX_REQUEST_CONCURRENCY);
+
+      if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
-	  /* the value of task worker is default. */
-	  sprintf (newval, "%d", task_worker);
-	  (void) prm_set (task_worker_prm, newval, false);
+	  /* client count describes ingress pressure, not useful execution concurrency. Keep the normal target stable */
+	  /* the elastic worker pool adds temporary capacity only when queued work stops making progress. */
+	  client_limit = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
+	  max_value = std::min (system_cpu_count * PRM_REQUEST_CONCURRENCY_PER_CORE,
+				std::min (client_limit, CSS_MAX_CLIENT_COUNT / 2));
+	  sprintf (newval, "%d", std::max (system_cpu_count, max_value));
+	  (void) prm_set (max_request_concurrency_prm, newval, false);
+	}
+      /* max_request_worker is an absolute lazy hard cap. keep its default at CSS_MAX_CLIENT_COUNT. the worker pool */
+      /* approaches it with bounded pool-wide growth and reserves a small portion for blocking continuations. */
+      if (PRM_GET_INT (max_request_worker_prm->value) < PRM_GET_INT (max_request_concurrency_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_request_concurrency_prm->value));
+	  if (prm_set (max_request_worker_prm, newval, false) != PRM_ERR_NO_ERROR)
+	    {
+	      sprintf (newval, "%d", system_cpu_count);
+	      (void) prm_set (max_request_worker_prm, newval, false);
+	    }
 	}
 
-      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
-
-      /* thread_core_count was renamed to task_group by CBRD-26255. The old name is kept only as a
-       * deprecated alias, so that a cubrid.conf written for 11.4 or earlier still boots. task_group is
-       * the authoritative name: the alias is applied only when task_group itself was not given, no
-       * matter in which order the two appear in cubrid.conf.
-       *
-       * TODO: remove PRM_ID_THREAD_CORE_COUNT, its prm_Def entry and this block when the deprecation
-       *       period for the rename is over.
-       */
-      thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
-      if (PRM_IS_SET (thread_core_count_prm) && !PRM_IS_SET (task_group_prm))
-	{
-	  sprintf (newval, "%d", MIN (PRM_GET_INT (thread_core_count_prm->value), system_cpu_count));
-	  (void) prm_set (task_group_prm, newval, true);
-	}
-
-      if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
-	{
-	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-
-#if defined (SERVER_MODE)
+      /* connection worker */
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
       min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
@@ -10720,6 +10957,12 @@ prm_get_value (PARAM_ID prm_id)
 	}
     }
 #endif
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (PRM_SUB_CLIENT_SESSION (prm_id))
+    {
+      return &(PRM_SUB_CLIENT_SESSION_PARAM (prm_id)->value);
+    }
+#endif
 
   switch (GET_PRM (prm_id)->datatype)
     {
@@ -10740,6 +10983,31 @@ prm_get_value (PARAM_ID prm_id)
   return NULL;
 }
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * sysprm_set_sub_client_session_value () - set a session parameter of the sub-client of this thread
+ *
+ * return      : true if prm_id is a session parameter of the sub-client of this thread and the value is set to it,
+ *		 false otherwise (the caller sets prm_Def)
+ * prm_id (in) : parameter id
+ * value (in)  : new value; a string or an integer list is owned by the parameter, as prm_set_*_value () does
+ *
+ * Note: prm_get_* () reads the session parameters of a sub-client from sysprm_Sub_client_session_params, so
+ *	 prm_set_*_value () must write them there too, not to prm_Def shared with the other connections.
+ */
+static bool
+sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value)
+{
+  if (!PRM_SUB_CLIENT_SESSION (prm_id))
+    {
+      return false;
+    }
+
+  (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm_id), value);
+  return true;
+}
+#endif
+
 /*
  * prm_set_integer_value () - set a new value to a parameter of type integer
  *
@@ -10754,6 +11022,18 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.i = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_INT (GET_PRM (prm_id)->value) = value;
 
@@ -10773,6 +11053,18 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.b = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_BOOL (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10791,6 +11083,18 @@ prm_set_float_value (PARAM_ID prm_id, float value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.f = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_FLOAT (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10808,6 +11112,18 @@ prm_set_string_value (PARAM_ID prm_id, char *value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.str = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
@@ -10837,6 +11153,18 @@ prm_set_integer_list_value (PARAM_ID prm_id, int *value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.integer_list = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
       free_and_init (PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value));
@@ -10863,6 +11191,18 @@ prm_set_bigint_value (PARAM_ID prm_id, UINT64 value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.bi = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_BIGINT (GET_PRM (prm_id)->value) = value;
 
@@ -11115,6 +11455,106 @@ sysprm_free_session_parameters (SESSION_PARAM ** session_parameters_ptr)
 
   free_and_init (*session_parameters_ptr);
 }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * sysprm_set_sub_client_session_parameters () - set the session parameter values of the sub-client of this thread
+ *
+ * return : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ * session_params (in) : session parameter values (an array of NUM_SESSION_PRM entries)
+ *
+ * Note: The values are copied into the thread-local sysprm_Sub_client_session_params, which is used instead of
+ *	 prm_Def for the session parameters on this thread, like the session parameters of a connection on server.
+ *	 prm_Def is shared with the main client and the other sub-clients, so it must not be changed by a sub-client.
+ */
+int
+sysprm_set_sub_client_session_parameters (const SESSION_PARAM * session_params)
+{
+  SESSION_PARAM *params;
+  int i;
+  char *timezone;
+
+  assert (session_params != NULL);
+
+  params = sysprm_alloc_session_parameters ();
+  if (params == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < NUM_SESSION_PRM; i++)
+    {
+      params[i].prm_id = session_params[i].prm_id;
+      params[i].flag = session_params[i].flag;
+      params[i].datatype = session_params[i].datatype;
+      PRM_CLEAR_BIT (PRM_ALLOCATED, params[i].flag);
+
+      /* duplicate the values that need memory allocation */
+      if (params[i].datatype == PRM_STRING)
+	{
+	  if (session_params[i].value.str != NULL)
+	    {
+	      char *str = strdup (session_params[i].value.str);
+
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  strlen (session_params[i].value.str) + 1);
+		  sysprm_free_session_parameters (&params);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      params[i].value.str = str;
+	    }
+	}
+      else if (params[i].datatype == PRM_INTEGER_LIST)
+	{
+	  if (session_params[i].value.integer_list != NULL)
+	    {
+	      size_t size = (session_params[i].value.integer_list[0] + 1) * sizeof (int);
+	      int *list = (int *) malloc (size);
+
+	      if (list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		  sysprm_free_session_parameters (&params);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      memcpy (list, session_params[i].value.integer_list, size);
+	      params[i].value.integer_list = list;
+	    }
+	}
+      else
+	{
+	  /* no memory allocation */
+	  params[i].value = session_params[i].value;
+	}
+      sysprm_update_session_prm_flag_allocated (&params[i]);
+    }
+
+  sysprm_free_sub_client_session_parameters ();
+  sysprm_Sub_client_session_params = params;
+
+  /* Set the cached parsed session timezone region of this thread */
+  timezone = prm_get_string_value (PRM_ID_TIMEZONE);
+  if (timezone != NULL)
+    {
+      (void) tz_str_to_region (timezone, strlen (timezone), tz_get_client_tz_region_session ());
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * sysprm_free_sub_client_session_parameters () - free the session parameter values of the sub-client of this thread
+ *
+ * return : void
+ */
+void
+sysprm_free_sub_client_session_parameters (void)
+{
+  sysprm_free_session_parameters (&sysprm_Sub_client_session_params);
+}
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
 /*
  * sysprm_pack_sysprm_value () - Packs a sysprm_value.
@@ -11702,6 +12142,9 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
   return NO_ERROR;
 }
 
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE) || (defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER))
 /*
  * sysprm_set_session_parameter_value - set a new value for the session
  *					parameter identified by id.
@@ -11812,7 +12255,7 @@ sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_I
 
   return PRM_ERR_NO_ERROR;
 }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || (CS_MODE && MULTI_CONN_TO_A_SERVER) */
 
 /*
  * sysprm_compare_values () - compare two system parameter values
@@ -12085,6 +12528,27 @@ sysprm_print_parameters_for_qry_string (void)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+      if (PRM_SUB_CLIENT_SESSION (i))
+	{
+	  /* print the value of the session of the sub-client of this thread, if it differs from the default value */
+	  SYSPRM_PARAM sub_client_prm = *GET_PRM (i);
+
+	  sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (i)->value;
+	  if (PRM_IS_FOR_QRY_STRING (&sub_client_prm) && sysprm_compare_values (&sub_client_prm) != 0)
+	    {
+	      n = prm_print (&sub_client_prm, ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+	      ptr += n;
+	      len -= n;
+
+	      *ptr++ = ';';
+	      len--;
+	      assert (len > 0);
+	    }
+	  continue;
+	}
+#endif
+
       if (PRM_PRINT_QRY_STRING (i))
 	{
 	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
@@ -12144,10 +12608,27 @@ sysprm_print_parameters_for_ha_repl (void)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
-      if (!PRM_IS_FOR_HA_CONTEXT (GET_PRM (i)))
+      SYSPRM_PARAM *prm = GET_PRM (i);
+      bool is_different;
+
+      if (!PRM_IS_FOR_HA_CONTEXT (prm))
 	{
 	  continue;
 	}
+
+      is_different = PRM_IS_DIFFERENT (prm);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+      /* copy-initialized, since SYSPRM_PARAM has const members and cannot be assigned */
+      SYSPRM_PARAM sub_client_prm = *prm;
+
+      if (PRM_SUB_CLIENT_SESSION (i))
+	{
+	  /* print the value of the session of the sub-client of this thread, not prm_Def of the main client */
+	  sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (i)->value;
+	  prm = &sub_client_prm;
+	  is_different = (sysprm_compare_values (prm) != 0);
+	}
+#endif
 
       if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
@@ -12173,12 +12654,12 @@ sysprm_print_parameters_for_ha_repl (void)
 		}
 	    }
 	}
-      else if (!PRM_IS_DIFFERENT (GET_PRM (i)))
+      else if (!is_different)
 	{
 	  continue;
 	}
 
-      n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
+      n = prm_print (prm, ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
       ptr += n;
       len -= n;
 

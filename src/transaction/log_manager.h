@@ -63,7 +63,7 @@ extern bool log_is_in_crash_recovery (void);
 extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
-extern LOG_LSA *log_get_append_lsa (void);
+extern LOG_LSA log_get_append_lsa (void);
 extern LOG_LSA *log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
@@ -162,6 +162,7 @@ extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_undoredo_sysmeta_version (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages);
 #endif
@@ -199,6 +200,12 @@ extern SCAN_CODE log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int 
 extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr);
 extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa,
 				      RECDES * recdes);
+/* read an undo image out of the in-flight window instead of draining to a log page first */
+extern bool log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, RECDES * recdes,
+					       SCAN_CODE * scan_out);
+/* read an undo image in place out of the log page buffer instead of copying its page first */
+extern bool log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, const LOG_LSA * copied_lsa,
+					     RECDES * recdes, SCAN_CODE * scan_out);
 
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
@@ -238,15 +245,76 @@ extern void cdc_daemons_destroy ();
 extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
 extern int cdc_find_lsa_in_progress ();
 
+/*
+ * Log-extraction sessions, common to CDC and flashback.
+ *
+ * Each of them keeps one server-wide session that only the connection which
+ * opened it may use or end, and both read the log on behalf of a DBA. The
+ * functions below are the single place that decides who may do so; CDC and
+ * flashback differ only in the arguments they pass (who counts as a DBA, and
+ * whether a new connection may take over a live session).
+ *
+ * The owner is remembered by fd and client id, not by CSS_CONN_ENTRY: an entry
+ * is reused once its connection closes, so a pointer alone cannot tell a later,
+ * unrelated connection from the one that opened the session.
+ */
+typedef struct log_extract_owner
+{
+  pthread_mutex_t lock;
+  SOCKET fd;			/* the owner's socket, INVALID_SOCKET if there is no session */
+  int client_id;		/* the owner's client id, -1 if there is no session */
+  bool busy;			/* one of the owner's requests is being served */
+} LOG_EXTRACT_OWNER;
+
+#define LOG_EXTRACT_OWNER_INITIALIZER { PTHREAD_MUTEX_INITIALIZER, INVALID_SOCKET, -1, false }
+
+typedef enum
+{
+  LOG_EXTRACT_CDC,		/* a CDC log-server channel, authenticated by its own handshake */
+  LOG_EXTRACT_FLASHBACK		/* a booted client connection running flashback */
+} LOG_EXTRACT_KIND;
+
+typedef enum
+{
+  LOG_EXTRACT_LSA_ISSUED,	/* the position the server handed out last */
+  LOG_EXTRACT_LSA_PREVIOUS,	/* the position before that, asked again after a lost reply */
+  LOG_EXTRACT_LSA_IN_RANGE,	/* not handed out, but inside the range the session was opened for */
+  LOG_EXTRACT_LSA_REJECTED
+} LOG_EXTRACT_LSA_MATCH;
+
+extern bool log_extract_check_authorization (THREAD_ENTRY * thread_p, LOG_EXTRACT_KIND kind);
+extern bool log_extract_owner_claim (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p, bool takeover,
+				     SOCKET * prev_fd, int *prev_client_id);
+extern bool log_extract_owner_is_owner (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p);
+extern bool log_extract_owner_is_active (LOG_EXTRACT_OWNER * owner);
+extern bool log_extract_owner_begin_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p);
+extern void log_extract_owner_end_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p);
+extern bool log_extract_owner_release (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p);
+extern void log_extract_owner_lock (LOG_EXTRACT_OWNER * owner);
+extern void log_extract_owner_unlock (LOG_EXTRACT_OWNER * owner);
+extern bool log_extract_owner_is_owner_locked (const LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p);
+extern void log_extract_owner_clear_locked (LOG_EXTRACT_OWNER * owner);
+extern LOG_EXTRACT_LSA_MATCH log_extract_match_lsa (const LOG_LSA * lsa, const LOG_LSA * issued,
+						    const LOG_LSA * previous, const LOG_LSA * range_start,
+						    const LOG_LSA * range_end);
+
+/* The connection that opened the CDC session. Only a connection that passed the
+ * CDC challenge can claim it (scdc_start_session), so every other CDC request only
+ * has to check that its caller is this owner, with no new wire field. */
+extern LOG_EXTRACT_OWNER cdc_Session_owner;
+
 /* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
+extern bool cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+			       bool * is_dba_group);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
 				  uint64_t * classoids, int num_class);
 extern int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info);
 extern int cdc_initialize ();
 extern int cdc_finalize ();
 extern int cdc_free_extraction_filter ();
-extern int cdc_cleanup ();
+extern int cdc_cleanup (THREAD_ENTRY * thread_p);
+extern void cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa);
 extern void cdc_cleanup_consumer ();
 extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
 extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);

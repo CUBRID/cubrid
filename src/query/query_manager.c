@@ -1267,6 +1267,19 @@ end:
 
   if (xasl_buf_info)
     {
+      /* a one-shot XASL (not a cached clone): release what qexec_execute_query () keeps for a
+       * clone's next execution -- the compiled expression programs -- before the tree goes.
+       * This is the same two-pass contract xcache_clone_decache () applies to a clone (the
+       * final clear at the end of the execution, then a full clear with XASL_DECACHE_CLONE
+       * set when the clone is retired), so qexec_clear_xasl () already has to be safe to
+       * re-enter on a cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so
+       * it carries no CLEAR_AT_CLONE_DECACHE marks: the flagged pass touches only the programs,
+       * the status of the sub-XASLs and the disposable signatures, nothing the first pass freed. */
+      if (xasl_p != NULL)
+	{
+	  XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);
+	  (void) qexec_clear_xasl (thread_p, xasl_p, true, false);
+	}
       /* free the XASL tree */
       free_xasl_unpack_info (thread_p, xasl_buf_info);
     }
@@ -1352,6 +1365,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
 
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+  thread_p->trace_plan_detail = IS_XASL_TRACE_PLAN_DETAIL (*flag_p);
 
   is_xasl_pinned_reference = IS_XASL_CACHE_PINNED_REFERENCE (*flag_p);
 
@@ -1364,8 +1378,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -1483,7 +1498,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  if (cached_result)
 	    {
 	      /* found the cached result */
-	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	      if (server_cache_time_p != NULL)
+		{
+		  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+		}
 	    }
 	}
     }
@@ -1607,14 +1625,26 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      goto end;
 	    }
 
-	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
-	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
+	  /* list_id_p is a QFILE_SKIP_DEPENDENT clone, so a borrowed worker-page chain (qfile_connect_list) is only
+	   * visible on the query entry's original list. Cache entries outlive the query while those worker FILE_TEMP
+	   * files are retired at query end, so flatten whenever the base is not FILE_QUERY_AREA or a chain exists. */
+	  if (list_id_p->tfile_vfid != NULL
+	      && (list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA
+		  || (query_p->list_id != NULL && query_p->list_id->dependent_list_id != NULL)))
 	    {
 	      /* duplicate the list file */
 	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p, QFILE_FLAG_RESULT_FILE);
 	      if (tmp_list_id_p)
 		{
-		  qfile_destroy_list (thread_p, list_id_p);
+		  /* Retire the base and any borrowed worker files through the owner, then hand the duplicate to the
+		   * query entry: later page fetches go through query_p->list_id->tfile_vfid, and destroying a
+		   * FILE_QUERY_AREA base frees that struct. */
+		  qfile_destroy_list (thread_p, query_p->list_id);
+		  if (qfile_copy_list_id (query_p->list_id, tmp_list_id_p, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		    {
+		      QFILE_FREE_AND_INIT_LIST_ID (tmp_list_id_p);
+		      goto exit_on_error;
+		    }
 		  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
 		  list_id_p = tmp_list_id_p;
 		}
@@ -1667,7 +1697,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  /* record list cache entry into the query entry for qfile_end_use_of_list_cache_entry() */
 	  query_p->list_ent = list_cache_entry_p;
 
-	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	  if (server_cache_time_p != NULL)
+	    {
+	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	    }
 	}
     }
 
@@ -1704,6 +1737,13 @@ end:
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
       perfmon_start_watch (thread_p);
+    }
+
+  /* the trace is in the session by now; a flag left on would make the next requests of this thread count trace
+   * statistics. A nested query (a method query in SA_MODE) leaves the flag to the query it runs in */
+  if (thread_get_recursion_depth (thread_p) == 0)
+    {
+      thread_trace_off (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -1748,11 +1788,6 @@ exit_on_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (xasl_trace == true && saved_is_stats_on == false)
-    {
-      perfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -1871,6 +1906,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+  thread_p->trace_plan_detail = IS_XASL_TRACE_PLAN_DETAIL (*flag_p);
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
@@ -1881,8 +1917,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -2010,6 +2047,13 @@ end:
       perfmon_start_watch (thread_p);
     }
 
+  /* the trace is in the session by now; a flag left on would make the next requests of this thread count trace
+   * statistics. A nested query (a method query in SA_MODE) leaves the flag to the query it runs in */
+  if (thread_get_recursion_depth (thread_p) == 0)
+    {
+      thread_trace_off (thread_p);
+    }
+
 #if defined (SERVER_MODE)
   qmgr_reset_query_exec_info (tran_index);
 #endif
@@ -2039,11 +2083,6 @@ exit_on_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (xasl_trace == true && saved_is_stats_on == false)
-    {
-      perfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -2135,16 +2174,29 @@ xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xqmgr_drop_query_plans_by_sha1 () - Drop all the stored query plans
- *   return: NO_ERROR or ER_FAILED
+ * xqmgr_drop_query_plans_by_sha1 () - Drop the stored query plans of the sha1
+ *   return: NO_ERROR
  *
- * Note: Clear sha1 XASL/filter predicate cache entries out upon request of the client.
+ * Note: Clear sha1 XASL cache entries out upon request of the client.
  */
 int
-xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1)
+xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1)
 {
   xcache_remove_by_sha1 (thread_p, sha1);
   return NO_ERROR;
+}
+
+/*
+ * xqmgr_drop_query_clones () - Drop the XASL clones kept in the stored query plans
+ *   return: error code
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ *
+ * Note: The plans stay in the XASL cache.
+ */
+int
+xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  return xcache_drop_clones (thread_p, sha1);
 }
 
 /*
@@ -3010,27 +3062,52 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   static int temp_mem_buffer_pages = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES);
   static int index_scan_key_buffer_pages = prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
-  assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
-
-  if (!QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
+  if (membuf_type == TEMP_FILE_MEMBUF_NONE)
     {
-      return NULL;
-    }
-
-  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
-
-  tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
-  if (tfile_vfid_p == NULL)
-    {
+      /* not cached: created when needed and freed by qmgr_put_temp_file_into_list () when released */
+      num_buffer_pages = 0;
       tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
-    }
+      if (tfile_vfid_p == NULL)
+	{
+	  return NULL;
+	}
 
-  if (tfile_vfid_p == NULL)
+      tfile_vfid_p->membuf = NULL;
+      tfile_vfid_p->membuf_last = temp_mem_buffer_pages - 1;
+    }
+  else if (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
     {
+      num_buffer_pages =
+	((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
+
+      tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
+      if (tfile_vfid_p == NULL)
+	{
+	  tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
+	  if (tfile_vfid_p == NULL)
+	    {
+	      return NULL;
+	    }
+	}
+
+      tfile_vfid_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tfile_vfid_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
+      tfile_vfid_p->membuf_last = -1;
+
+      page_p =
+	(PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf + DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT));
+
+      for (i = 0; i < num_buffer_pages; i++)
+	{
+	  tfile_vfid_p->membuf[i] = page_p;
+	  qmgr_put_page_header (page_p, &pgheader);
+	  page_p += DB_PAGESIZE;
+	}
+    }
+  else
+    {
+      assert (false);		/* impossible case: an invalid membuf type */
       return NULL;
     }
-
-  tfile_vfid_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tfile_vfid_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
 
   /* initialize tfile_vfid */
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
@@ -3039,17 +3116,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tfile_vfid_p->membuf_type = membuf_type;
   tfile_vfid_p->preserved = false;
   tfile_vfid_p->tde_encrypted = false;
-  tfile_vfid_p->membuf_last = -1;
-
-  page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
-		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
-
-  for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
-    {
-      tfile_vfid_p->membuf[i] = page_p;
-      qmgr_put_page_header (page_p, &pgheader);
-      page_p += DB_PAGESIZE;
-    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
@@ -3988,6 +4054,7 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
     }
 
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
+  dblink_conn_entry->conn_info.xa_unsupported = false;
   dblink_conn_entry->is_2pc_participant = set_participant;
   dblink_conn_entry->has_uncommitted_dml = false;
 

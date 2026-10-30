@@ -84,6 +84,7 @@
 #include "porting.h"
 #include "log_manager.h"
 #include "catalog_class.h"
+#include "system_metadata_version.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -105,6 +106,7 @@
 #ifdef CCI_XA
 #include "dblink_2pc_daemon.h"
 #endif /* CCI_XA */
+#include "domain_rules.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -142,11 +144,6 @@ struct boot_dbparm
 enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
-
-#if defined(SA_MODE)
-extern void boot_client_all_finalize (int final_level);
-#endif /* SA_MODE */
-
 
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
@@ -1878,7 +1875,10 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  session_states_init (thread_p);
+  if (session_states_init (thread_p) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -2293,7 +2293,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -2334,9 +2338,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* we need to manually add root class HFID to cache */
-  error_code =
-    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
-			   boot_Db_parm->rootclass_name);
+  error_code = heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -2387,7 +2389,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
@@ -2598,13 +2604,18 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tran_index = NULL_TRAN_INDEX;
   logtb_set_to_system_tran_index (thread_p);
 
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+  tf_compile_meta_classes ();
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {
+      if (log_Gl.hdr.sysmeta_version != SYSTEM_METADATA_VERSION)
+	{
+	  error_code = (log_Gl.hdr.sysmeta_version > SYSTEM_METADATA_VERSION)
+	    ? ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED : ER_SYSMETA_UPGRADE_REQUIRED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error;
+	}
+
       if (catcls_Enable != true)
 	{
 	  error_code = catcls_compile_catalog_classes (thread_p);
@@ -2643,6 +2654,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
+  /* the key pair table, the comparison of every pair of value keys, before the first query needs it: its time
+   * and memory move from the first comparison to the boot */
+  domain_type_pair_table_init ();
+
 #if defined (SA_MODE)
   /* Completely vacuum database. */
   if (r_args == NULL || r_args->is_restore_from_backup == false)
@@ -2675,7 +2690,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  session_states_init (thread_p);
+  error_code = session_states_init (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
@@ -2944,6 +2963,13 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	   * Nothing to do */
 	  goto exit;
 	}
+
+      if (err != ER_TDE_MASTER_KEY_NOT_FOUND && err != ER_TDE_INVALID_MASTER_KEY)
+	{
+	  /* the key file itself is fine and something else failed, so case (2)
+	   * below would discard a usable key file. */
+	  goto exit;
+	}
     }
 
   /* 
@@ -3082,18 +3108,13 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
   (void) heap_update_all_bestspaces (thread_p);
 
-  /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
-   * resumes at the last value issued instead of past the block end. Must run while the heap and log
-   * managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted. The
-   * write opens a system operation, which the system main transaction may not do, so borrow a
-   * system worker - an interrupted xvacuum () may have left one - and put the main one back. */
-  if (thread_p->get_system_tdes () == NULL)
-    {
-      thread_p->claim_system_worker ();
-    }
+#if defined (SA_MODE)
+  /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so the next
+   * standalone process resumes at the last value issued instead of past the block end. Must run while
+   * the heap and log managers are still up; serial_finalize_cache_pool runs after the volumes are
+   * dismounted. A server does this before its log writer stops, in serial_flush_cache_pool_replicated. */
   serial_flush_cache_pool (thread_p);
-  thread_p->retire_system_worker ();
-  logtb_set_to_system_tran_index (thread_p);
+#endif /* SA_MODE */
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
@@ -3204,8 +3225,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
   if (!adm_prg_file_name.empty ())
     {
-      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name.c_str (), "migrate_", strlen ("migrate_")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0)
 	{
 	  check_coll_and_timezone.check_db_coll = false;
 	}
@@ -3412,6 +3432,8 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 #endif
 
       perfmon_stop_watch (thread_p);
+      /* a trace counts in these without a watch; the next client of this index must not read them */
+      memset (pstat_Global.tran_stats[tran_index], 0, pstat_Global.n_stat_values * sizeof (UINT64));
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.get_db_user ());
@@ -3633,7 +3655,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_class_info (thread_p, oid, &hfid, NULL, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_class_hfid (thread_p, oid, &hfid, NULL) != NO_ERROR)
     {
       return DISK_ERROR;
     }
@@ -3904,9 +3926,10 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
       es_final ();
+      /* the key pair table's string targets are cached domains */
+      domain_type_pair_table_final ();
       tp_final ();
       locator_free_areas ();
-      set_final ();
       sysprm_final ();
       area_final ();
       msgcat_final ();
@@ -4905,7 +4928,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5024,9 +5051,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
   /* we need to manually add root class HFID to cache */
-  error_code =
-    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
-			   boot_Db_parm->rootclass_name);
+  error_code = heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -5123,7 +5148,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
    */
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
@@ -5478,7 +5507,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5558,7 +5591,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       ASSERT_ERROR ();
       goto error_exit;
     }
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
@@ -5968,8 +6005,6 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_UTILITY";
     case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
-    case DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG:
-      return "ADMIN_CSQL_REBUILD_CATALOG";
     case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
     case DB_CLIENT_TYPE_LOG_APPLIER:

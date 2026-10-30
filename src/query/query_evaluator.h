@@ -150,4 +150,12 @@ extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, in
 				   FILTER_INFO * filter);
 extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification);
 
+struct DOMAIN_COMPARE;
+/* A comparison of two values unpack decided outside a predicate term: FIELD, NULLIF, LEAST and GREATEST, LIMIT's row
+ * count, a merge join's column, a PX instnum limit's rounding. */
+extern DB_VALUE_COMPARE_RESULT eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
+							     const val_descr * vd, const DB_VALUE * value1,
+							     const DB_VALUE * value2, int total_order,
+							     bool * can_compare);
+
 #endif /* _QUERY_EVALUATOR_H_ */

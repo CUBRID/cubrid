@@ -114,6 +114,8 @@ struct leaf_rec
   short key_len;
 };
 
+struct DOMAIN_KEY_BOUND;
+
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
 struct btid_int
@@ -130,7 +132,6 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
-  int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */
 };
 
@@ -142,6 +143,10 @@ struct btree_keyrange
   DB_VALUE *lower_key;
   DB_VALUE *upper_key;
   int num_index_term;
+  /* CBRD-27583: how lower_key and upper_key compare with the index keys (KEY_VAL_RANGE.key1_bound / key2_bound);
+   * NULL for a key of the index's own domain */
+  const DOMAIN_KEY_BOUND *lower_bound;
+  const DOMAIN_KEY_BOUND *upper_bound;
 };
 
 /* Forward definition. */
@@ -209,6 +214,17 @@ struct btree_scan
 
   /* TO BE REMOVED - maybe */
   VPID O_vpid;			/* vpid of overflow page */
+  /* CBRD-27401: resuming by OID is exact only while two facts hold -- (a) a non-unique key's overflow chain is
+   * globally OID-ordered, and (b) a snapshot sees at most one version of an OID. Breaking either makes the resume
+   * point silently skip or repeat rows. See btree_ovf_scan_locate_resume () for (a) and the anchor comment in
+   * btree_range_scan_select_visible_oids () for (b). */
+  OID O_last_oid;		/* CBRD-27401: OID of the last object of the current key's overflow chain that was
+				 * visible to this scan's snapshot, when the key is partially processed and the chain
+				 * is OID-ordered (non-unique index). The chain is resumed from this OID rather than
+				 * from a page, because overflow pages may be merged or freed while the scan is
+				 * interrupted. */
+  OID O_last_visible_oid;	/* CBRD-27401: OID of the last object of the current key's overflow chain accepted by
+				 * the snapshot so far. Becomes O_last_oid if the key is interrupted. */
 
   /* TO BE REMOVED when btree_find_next_index_record is removed. */
   PAGE_PTR P_page;		/* page ptr to previous leaf page */
@@ -288,7 +304,6 @@ struct btree_scan
   bool is_btid_int_valid;
   bool is_scan_started;
   bool force_restart_from_root;
-  bool is_fk_remake;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   PERF_UTIME_TRACKER time_track;
 
   void *bts_other;
@@ -299,6 +314,8 @@ struct btree_scan
     (bts)->P_vpid.pageid = NULL_PAGEID;			\
     (bts)->C_vpid.pageid = NULL_PAGEID;			\
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
+    OID_SET_NULL (&(bts)->O_last_oid);			\
+    OID_SET_NULL (&(bts)->O_last_visible_oid);		\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
     (bts)->slot_id = NULL_SLOTID;			\
@@ -341,7 +358,6 @@ struct btree_scan
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bts_other = NULL;				\
-    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_RESET_SCAN(bts)				\
@@ -349,6 +365,8 @@ struct btree_scan
     (bts)->P_vpid.pageid = NULL_PAGEID;			\
     (bts)->C_vpid.pageid = NULL_PAGEID;			\
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
+    OID_SET_NULL (&(bts)->O_last_oid);			\
+    OID_SET_NULL (&(bts)->O_last_visible_oid);		\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
     (bts)->slot_id = -1;				\
@@ -362,7 +380,6 @@ struct btree_scan
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
-    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
@@ -420,8 +437,6 @@ struct btree_capacity
   int fence_key_cnt;		/* Number of fence-keys */
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
-  int deduplicate_dis_key_cnt;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  int avg_val_per_dedup_key;	/* Average number of values (OIDs) per deduplicate key */
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -700,6 +715,36 @@ struct btree_insert_list
 };
 // *INDENT-ON*
 
+typedef enum
+{
+  BTREE_KEY_PEEK,		/* data is borrowed; its owner must keep it alive */
+  BTREE_KEY_COPY		/* data is the key's own copy */
+} BTREE_KEY_MODE;
+
+/* A key as a b+tree record stores it: the index_writeval () image and its length. */
+typedef struct btree_key BTREE_KEY;
+struct btree_key
+{
+  TP_DOMAIN *domain;		/* the domain data was written with: key_type on a leaf, nonleaf_key_type above */
+  const char *data;
+  int length;			/* byte length of data */
+  BTREE_KEY_MODE mode;
+  char *storage;		/* BTREE_KEY_COPY only: the buffer data points into */
+  int capacity;			/* BTREE_KEY_COPY only: bytes storage can hold */
+};
+
+/* key_domain must not be named domain: the macro would replace the member name too. */
+#define BTREE_KEY_INIT(key, key_domain)	\
+  do					\
+    {					\
+      (key)->domain = (key_domain);	\
+      (key)->data = NULL;		\
+      (key)->length = 0;		\
+      (key)->mode = BTREE_KEY_COPY;	\
+      (key)->storage = NULL;		\
+      (key)->capacity = 0;		\
+    } while (false)
+
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -711,11 +756,6 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SC
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				   OID * found_oid);
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-					     key_val_range * kv_range, bool * is_newly);
-extern int btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_domain, DB_VALUE * fk_key,
-					       DB_VALUE * new_key);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 extern void bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -904,10 +944,15 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 
-extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
+extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+			     const DOMAIN_KEY_BOUND * bound, DB_VALUE_COMPARE_RESULT equal_as, VPID * pg_vpid,
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_locate_key_from_saved_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					     const LOG_LSA * leaf_lsa, VPID * leaf_vpid, PAGE_PTR * leaf_page,
+					     INT16 * slot_id, bool * leaf_unchanged, bool * found);
 /* exposed for parallel index scan key-comparison descent */
 extern int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
+				      const DOMAIN_KEY_BOUND * bound, DB_VALUE_COMPARE_RESULT equal_as,
 				      INT16 * slot_id, VPID * child_vpid, page_key_boundary * page_bounds);
 extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
@@ -916,14 +961,13 @@ extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTI
 /* Stores an overflow key on behalf of btree_write_record_ex () and returns the VPID of its first page.  Lets the
  * parallel no-logging index build route overflow keys through its own page provider instead of
  * btree_store_overflow_key (). */
-typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, DB_VALUE * key, int key_len,
-					 BTREE_NODE_TYPE node_type, VPID * first_vpid);
+typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, const BTREE_KEY * key, VPID * first_vpid);
 
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
-			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
-extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-				  BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+			       BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec,
+				  const BTREE_KEY * key, BTREE_NODE_TYPE node_type, int key_type,
 				  OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
 				  BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg);
 extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
@@ -931,6 +975,11 @@ extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 			      BTREE_SCAN * bts);
 extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
 						  int do_coercion, int total_order, int *start_colp);
+extern DB_VALUE_COMPARE_RESULT btree_compare_search_key (const BTID_INT * btid, DB_VALUE * bound_key,
+							 const DOMAIN_KEY_BOUND * bound, DB_VALUE * key,
+							 int *start_colp);
+extern DB_VALUE_COMPARE_RESULT btree_compare_key_to_bound (const BTID_INT * btid, DB_VALUE * key, DB_VALUE * bound_key,
+							   const DOMAIN_KEY_BOUND * bound, int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
