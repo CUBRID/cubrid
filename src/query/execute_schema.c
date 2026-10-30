@@ -2055,8 +2055,12 @@ check_procedure_grantable (MOP proc_mop)
 {
   DB_VALUE generated_val;
   int error = NO_ERROR;
+  int au_save;
 
+  /* the grantor may not be able to read the catalog */
+  AU_SAVE_AND_DISABLE (au_save);
   error = db_get (proc_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  AU_RESTORE (au_save);
   if (error != NO_ERROR)
     {
       return error;
