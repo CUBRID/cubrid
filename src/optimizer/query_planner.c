@@ -15455,6 +15455,7 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
   PT_NODE *group_sort_list = NULL;
   QO_ENV *env;
   bool is_prefix = false, is_groupby_skip = false;
+  int t;
 
   if (plan == NULL || plan->info == NULL)
     {
@@ -15472,6 +15473,18 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
   if (group_by == NULL || group_by->flag.with_rollup)
     {
       goto cleanup;
+    }
+
+  if (statement->info.query.q.select.connect_by)
+    {
+      goto cleanup;
+    }
+  for (t = 0; t < (signed) plan->info->planner->T; t++)
+    {
+      if (QO_TERM_CLASS (&plan->info->planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  goto cleanup;
+	}
     }
 
   group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_prefix, false);
