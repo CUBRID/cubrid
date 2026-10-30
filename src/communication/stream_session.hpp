@@ -93,7 +93,7 @@ class stream_handle_object
  * with more to report does not change every other one's signature to say it. */
 struct stream_result
 {
-  std::int64_t count;		/* rows for COPY, bytes for a value stream */
+  std::int64_t count;		/* rows for COPY and LOB DML; a result_is_handle kind's staged bytes */
   stream_handle_object *staged;	/* result_is_handle kinds: what END issues the client a handle for */
 };
 
