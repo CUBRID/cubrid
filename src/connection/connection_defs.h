@@ -514,7 +514,7 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
-  // CBRD-27446: the index the server assigned, as opposed to one a packet claims
+  // the index the server assigned, as opposed to one a packet claims
   void assign_tran_index (int tran_index);
   bool claim_tran_index (int tran_index);
   void release_tran_index (void);
@@ -545,7 +545,7 @@ private:
   // note - I want to protect this.
   int transaction_id;
   // *INDENT-OFF*
-  std::atomic<int> owned_tran_index;	/* assigned by the server, or NULL_TRAN_INDEX (CBRD-27446) */
+  std::atomic<int> owned_tran_index;	/* assigned by the server, or NULL_TRAN_INDEX */
   std::atomic<bool> reported_foreign_tran_index;	/* a mismatching claim is logged once */
   std::atomic<size_t> pending_request_count;
   std::atomic<size_t> working_task_count;

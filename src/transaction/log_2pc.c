@@ -1262,7 +1262,7 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * clie
   logtb_free_tran_index (thread_p, client_tdes->tran_index);
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
 #if defined (SERVER_MODE)
-  /* CBRD-27446: the connection now runs under the attached index */
+  /* the connection now runs under the attached index */
   if (thread_p->conn_entry != NULL)
     {
       thread_p->conn_entry->assign_tran_index (tdes->tran_index);

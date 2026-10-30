@@ -3262,7 +3262,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   showstmt_scan_init ();
 
 #if defined (SERVER_MODE)
-  /* CBRD-27446: a connection runs under one transaction index; registering again
+  /* a connection runs under one transaction index; registering again
    * would orphan the first one, which nothing would then release */
   if (thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () != NULL_TRAN_INDEX)
     {
@@ -3292,7 +3292,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
   else if (tran_index != NULL_TRAN_INDEX && !thread_p->conn_entry->claim_tran_index (tran_index))
     {
-      /* CBRD-27446: the only place an index is assigned to a connection. Another
+      /* the only place an index is assigned to a connection. Another
        * registration on this connection, run at the same time, passed the check
        * above too and got its index in first: give this one back */
       logtb_release_tran_index (thread_p, tran_index);
