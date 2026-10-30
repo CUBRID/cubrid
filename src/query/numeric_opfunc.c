@@ -4164,10 +4164,37 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
     {
       ret = db_make_int (answer, (numeric_is_negative (dbv1) ? -1 : 1));
     }
-  else if (prec1 == prec2 && scale1 == scale2)
+  else if (scale1 == scale2)
     {
-      /* Simple case. Just compare two numbers. */
+      /* equal scales: the coefficients order the values exactly, whatever the precisions */
       cmp_rez = numeric_operation_compare (db_locate_numeric (dbv1), db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+      if (numeric_is_negative (dbv1))
+	{
+	  cmp_rez = -cmp_rez;
+	}
+      ret = db_make_int (answer, cmp_rez);
+    }
+  else if (db_locate_numeric (dbv1)[0] == 0 && db_locate_numeric (dbv2)[0] == 0
+	   && scale1 - scale2 <= NUMERIC_AGG_EXPR_POW10_MAX_EXP && scale2 - scale1 <= NUMERIC_AGG_EXPR_POW10_MAX_EXP)
+    {
+      /* both coefficients fit a u128: scale up the one of the smaller scale; past 2^128 it is the larger */
+      const DB_C_NUMERIC buf1 = db_locate_numeric (dbv1);
+      const DB_C_NUMERIC buf2 = db_locate_numeric (dbv2);
+      uint128_t c1 = ((uint128_t) numeric_get_uint64_from_be (buf1 + 1) << 64)
+	| numeric_get_uint64_from_be (buf1 + 1 + sizeof (uint64_t));
+      uint128_t c2 = ((uint128_t) numeric_get_uint64_from_be (buf2 + 1) << 64)
+	| numeric_get_uint64_from_be (buf2 + 1 + sizeof (uint64_t));
+
+      if (scale1 < scale2)
+	{
+	  cmp_rez = __builtin_mul_overflow (c1, _gv_numeric_agg_expr_pow10_u128[scale2 - scale1], &c1)
+	    ? 1 : (c1 > c2) - (c1 < c2);
+	}
+      else
+	{
+	  cmp_rez = __builtin_mul_overflow (c2, _gv_numeric_agg_expr_pow10_u128[scale1 - scale2], &c2)
+	    ? -1 : (c1 > c2) - (c1 < c2);
+	}
       if (numeric_is_negative (dbv1))
 	{
 	  cmp_rez = -cmp_rez;
