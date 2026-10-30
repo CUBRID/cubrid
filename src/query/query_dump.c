@@ -23,10 +23,6 @@
 #ident "$Id$"
 
 #include "config.h"
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_plan.h"
-#include "object_domain_convert.h"
-#endif
 #include <stdio.h>
 
 #include "json_builder.h"
@@ -43,6 +39,10 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "expr_compile.h"
+#include "query_opfunc.h"
+#endif
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
@@ -115,7 +115,6 @@ static bool qdump_print_value_type_addr (REGU_VARIABLE * value);
 static bool qdump_print_oid (OID * oidptr);
 static bool qdump_print_predicate (PRED_EXPR * predptr);
 static const char *qdump_relation_operator_string (int op);
-static const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
 static bool qdump_print_arith_expression (ARITH_TYPE * arith_p);
 static bool qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr);
 static bool qdump_print_arith (int type, void *ptr);
@@ -1249,15 +1248,6 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
     }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (value_p->plan_item != NULL)
-    {
-      const DOMAIN_PLAN_ITEM *item = value_p->plan_item;
-      const char *classes[] = { "?", "CONST", "ROW", "CORR", "NON_CACHEABLE" };
-      fprintf (foutput, "{plan class=%s resolved=%d ref=%d flags=0x%03x}", classes[item->operand_class],
-	       item->resolved_index, item->ref, item->flags);
-    }
-#endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
@@ -1450,27 +1440,6 @@ qdump_print_oid (OID * oid_p)
   return true;
 }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* A comparison term's resolved comparison: its method, the resolve_domains index of a late-bind one, and the sides
- * resolve_domains converts once (a literal, a bind or a constant expression) */
-static void
-qdump_print_compare_plan (const DOMAIN_COMPARE_PLAN * comparison)
-{
-  if (comparison == NULL)
-    {
-      return;
-    }
-  const char *methods[] = { "LATE_BIND", "LATE_BIND_SESSION", "VALUES", "DIRECT", "CONVERT", "COLLATIONS", "OBJECT",
-    "RANK", "KEYS"
-  };
-  const int method = (int) comparison->fixed.method;
-  fprintf (foutput, "{compare method=%s index=%d constant=%d,%d}",
-	   method >= 0 && method < (int) (sizeof (methods) / sizeof (methods[0])) ? methods[method] : "?",
-	   comparison->fixed.compare_index, comparison->literal[0] != NULL || comparison->constant[0] != NULL,
-	   comparison->literal[1] != NULL || comparison->constant[1] != NULL);
-}
-#endif
-
 static bool
 qdump_print_comp_eval_term (EVAL_TERM * term_p)
 {
@@ -1485,9 +1454,6 @@ qdump_print_comp_eval_term (EVAL_TERM * term_p)
     {
       qdump_print_value (et_comp_p->rhs);
     }
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  qdump_print_compare_plan (et_comp_p->domain_compare);
-#endif
 
   return true;
 }
@@ -1515,20 +1481,6 @@ qdump_print_alsm_eval_term (EVAL_TERM * term_p)
     }
 
   qdump_print_value (et_alsm_p->elemset);
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (et_alsm_p->domain_compare != NULL)
-    {
-      const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = et_alsm_p->domain_compare;
-      const char *kinds[] = { "PAIR", "ROW", "LATE_BIND" };
-      fprintf (foutput, "{elements kind=%s row=%d resolved=%d}",
-	       comparison->kind < sizeof (kinds) / sizeof (kinds[0]) ? kinds[comparison->kind] : "?", comparison->row,
-	       comparison->resolved_elements_index);
-      if (comparison->kind == DOMAIN_ELEMENTS_PAIR)
-	{
-	  qdump_print_compare_plan (&comparison->pair);
-	}
-    }
-#endif
 
   return true;
 }
@@ -1778,7 +1730,434 @@ qdump_relation_operator_string (int op)
     }
 }
 
-static const char *
+/*
+ * qdump_arith_opcode_name () - the OPERATOR_TYPE's own name (T_xxx), for a listing that names an operator the symbol
+ *   table above does not (a function opcode); generated from the enum in storage_common.h
+ */
+const char *
+qdump_arith_opcode_name (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_ADD:
+      return "T_ADD";
+    case T_SUB:
+      return "T_SUB";
+    case T_MUL:
+      return "T_MUL";
+    case T_DIV:
+      return "T_DIV";
+    case T_UNPLUS:
+      return "T_UNPLUS";
+    case T_UNMINUS:
+      return "T_UNMINUS";
+    case T_PRIOR:
+      return "T_PRIOR";
+    case T_CONNECT_BY_ROOT:
+      return "T_CONNECT_BY_ROOT";
+    case T_QPRIOR:
+      return "T_QPRIOR";
+    case T_BIT_NOT:
+      return "T_BIT_NOT";
+    case T_BIT_AND:
+      return "T_BIT_AND";
+    case T_BIT_OR:
+      return "T_BIT_OR";
+    case T_BIT_XOR:
+      return "T_BIT_XOR";
+    case T_BIT_COUNT:
+      return "T_BIT_COUNT";
+    case T_BITSHIFT_LEFT:
+      return "T_BITSHIFT_LEFT";
+    case T_BITSHIFT_RIGHT:
+      return "T_BITSHIFT_RIGHT";
+    case T_INTDIV:
+      return "T_INTDIV";
+    case T_INTMOD:
+      return "T_INTMOD";
+    case T_IF:
+      return "T_IF";
+    case T_IFNULL:
+      return "T_IFNULL";
+    case T_ISNULL:
+      return "T_ISNULL";
+    case T_ACOS:
+      return "T_ACOS";
+    case T_ASIN:
+      return "T_ASIN";
+    case T_ATAN:
+      return "T_ATAN";
+    case T_ATAN2:
+      return "T_ATAN2";
+    case T_COS:
+      return "T_COS";
+    case T_SIN:
+      return "T_SIN";
+    case T_TAN:
+      return "T_TAN";
+    case T_COT:
+      return "T_COT";
+    case T_PI:
+      return "T_PI";
+    case T_DEGREES:
+      return "T_DEGREES";
+    case T_RADIANS:
+      return "T_RADIANS";
+    case T_FORMAT:
+      return "T_FORMAT";
+    case T_CONCAT:
+      return "T_CONCAT";
+    case T_CONCAT_WS:
+      return "T_CONCAT_WS";
+    case T_FIELD:
+      return "T_FIELD";
+    case T_LEFT:
+      return "T_LEFT";
+    case T_RIGHT:
+      return "T_RIGHT";
+    case T_REPEAT:
+      return "T_REPEAT";
+    case T_SPACE:
+      return "T_SPACE";
+    case T_LOCATE:
+      return "T_LOCATE";
+    case T_MID:
+      return "T_MID";
+    case T_STRCMP:
+      return "T_STRCMP";
+    case T_REVERSE:
+      return "T_REVERSE";
+    case T_DISK_SIZE:
+      return "T_DISK_SIZE";
+    case T_LN:
+      return "T_LN";
+    case T_LOG2:
+      return "T_LOG2";
+    case T_LOG10:
+      return "T_LOG10";
+    case T_ADDDATE:
+      return "T_ADDDATE";
+    case T_DATE_ADD:
+      return "T_DATE_ADD";
+    case T_SUBDATE:
+      return "T_SUBDATE";
+    case T_DATE_SUB:
+      return "T_DATE_SUB";
+    case T_DATE_FORMAT:
+      return "T_DATE_FORMAT";
+    case T_STR_TO_DATE:
+      return "T_STR_TO_DATE";
+    case T_MOD:
+      return "T_MOD";
+    case T_POSITION:
+      return "T_POSITION";
+    case T_SUBSTRING:
+      return "T_SUBSTRING";
+    case T_SUBSTRING_INDEX:
+      return "T_SUBSTRING_INDEX";
+    case T_OCTET_LENGTH:
+      return "T_OCTET_LENGTH";
+    case T_BIT_LENGTH:
+      return "T_BIT_LENGTH";
+    case T_CHAR_LENGTH:
+      return "T_CHAR_LENGTH";
+    case T_MD5:
+      return "T_MD5";
+    case T_LOWER:
+      return "T_LOWER";
+    case T_UPPER:
+      return "T_UPPER";
+    case T_LIKE_LOWER_BOUND:
+      return "T_LIKE_LOWER_BOUND";
+    case T_LIKE_UPPER_BOUND:
+      return "T_LIKE_UPPER_BOUND";
+    case T_TRIM:
+      return "T_TRIM";
+    case T_LTRIM:
+      return "T_LTRIM";
+    case T_RTRIM:
+      return "T_RTRIM";
+    case T_LPAD:
+      return "T_LPAD";
+    case T_RPAD:
+      return "T_RPAD";
+    case T_REPLACE:
+      return "T_REPLACE";
+    case T_TRANSLATE:
+      return "T_TRANSLATE";
+    case T_ADD_MONTHS:
+      return "T_ADD_MONTHS";
+    case T_LAST_DAY:
+      return "T_LAST_DAY";
+    case T_MONTHS_BETWEEN:
+      return "T_MONTHS_BETWEEN";
+    case T_SYS_DATE:
+      return "T_SYS_DATE";
+    case T_SYS_TIME:
+      return "T_SYS_TIME";
+    case T_SYS_TIMESTAMP:
+      return "T_SYS_TIMESTAMP";
+    case T_UTC_TIME:
+      return "T_UTC_TIME";
+    case T_UTC_DATE:
+      return "T_UTC_DATE";
+    case T_TIME_FORMAT:
+      return "T_TIME_FORMAT";
+    case T_TIMESTAMP:
+      return "T_TIMESTAMP";
+    case T_UNIX_TIMESTAMP:
+      return "T_UNIX_TIMESTAMP";
+    case T_FROM_UNIXTIME:
+      return "T_FROM_UNIXTIME";
+    case T_SYS_DATETIME:
+      return "T_SYS_DATETIME";
+    case T_YEAR:
+      return "T_YEAR";
+    case T_MONTH:
+      return "T_MONTH";
+    case T_DAY:
+      return "T_DAY";
+    case T_HOUR:
+      return "T_HOUR";
+    case T_MINUTE:
+      return "T_MINUTE";
+    case T_SECOND:
+      return "T_SECOND";
+    case T_QUARTER:
+      return "T_QUARTER";
+    case T_WEEKDAY:
+      return "T_WEEKDAY";
+    case T_DAYOFWEEK:
+      return "T_DAYOFWEEK";
+    case T_DAYOFYEAR:
+      return "T_DAYOFYEAR";
+    case T_TODAYS:
+      return "T_TODAYS";
+    case T_FROMDAYS:
+      return "T_FROMDAYS";
+    case T_TIMETOSEC:
+      return "T_TIMETOSEC";
+    case T_SECTOTIME:
+      return "T_SECTOTIME";
+    case T_MAKEDATE:
+      return "T_MAKEDATE";
+    case T_MAKETIME:
+      return "T_MAKETIME";
+    case T_WEEK:
+      return "T_WEEK";
+    case T_TO_CHAR:
+      return "T_TO_CHAR";
+    case T_TO_DATE:
+      return "T_TO_DATE";
+    case T_TO_TIME:
+      return "T_TO_TIME";
+    case T_TO_TIMESTAMP:
+      return "T_TO_TIMESTAMP";
+    case T_TO_DATETIME:
+      return "T_TO_DATETIME";
+    case T_TO_NUMBER:
+      return "T_TO_NUMBER";
+    case T_CURRENT_VALUE:
+      return "T_CURRENT_VALUE";
+    case T_NEXT_VALUE:
+      return "T_NEXT_VALUE";
+    case T_CAST:
+      return "T_CAST";
+    case T_CAST_NOFAIL:
+      return "T_CAST_NOFAIL";
+    case T_CAST_WRAP:
+      return "T_CAST_WRAP";
+    case T_CASE:
+      return "T_CASE";
+    case T_EXTRACT:
+      return "T_EXTRACT";
+    case T_LOCAL_TRANSACTION_ID:
+      return "T_LOCAL_TRANSACTION_ID";
+    case T_FLOOR:
+      return "T_FLOOR";
+    case T_CEIL:
+      return "T_CEIL";
+    case T_SIGN:
+      return "T_SIGN";
+    case T_POWER:
+      return "T_POWER";
+    case T_ROUND:
+      return "T_ROUND";
+    case T_LOG:
+      return "T_LOG";
+    case T_EXP:
+      return "T_EXP";
+    case T_SQRT:
+      return "T_SQRT";
+    case T_TRUNC:
+      return "T_TRUNC";
+    case T_ABS:
+      return "T_ABS";
+    case T_CHR:
+      return "T_CHR";
+    case T_INSTR:
+      return "T_INSTR";
+    case T_LEAST:
+      return "T_LEAST";
+    case T_GREATEST:
+      return "T_GREATEST";
+    case T_STRCAT:
+      return "T_STRCAT";
+    case T_NULLIF:
+      return "T_NULLIF";
+    case T_COALESCE:
+      return "T_COALESCE";
+    case T_NVL:
+      return "T_NVL";
+    case T_NVL2:
+      return "T_NVL2";
+    case T_DECODE:
+      return "T_DECODE";
+    case T_RAND:
+      return "T_RAND";
+    case T_DRAND:
+      return "T_DRAND";
+    case T_RANDOM:
+      return "T_RANDOM";
+    case T_DRANDOM:
+      return "T_DRANDOM";
+    case T_INCR:
+      return "T_INCR";
+    case T_DECR:
+      return "T_DECR";
+    case T_SYS_CONNECT_BY_PATH:
+      return "T_SYS_CONNECT_BY_PATH";
+    case T_DATE:
+      return "T_DATE";
+    case T_TIME:
+      return "T_TIME";
+    case T_DATEDIFF:
+      return "T_DATEDIFF";
+    case T_TIMEDIFF:
+      return "T_TIMEDIFF";
+    case T_ROW_COUNT:
+      return "T_ROW_COUNT";
+    case T_LAST_INSERT_ID:
+      return "T_LAST_INSERT_ID";
+    case T_DEFAULT:
+      return "T_DEFAULT";
+    case T_LIST_DBS:
+      return "T_LIST_DBS";
+    case T_BIT_TO_BLOB:
+      return "T_BIT_TO_BLOB";
+    case T_BLOB_TO_BIT:
+      return "T_BLOB_TO_BIT";
+    case T_CHAR_TO_CLOB:
+      return "T_CHAR_TO_CLOB";
+    case T_CLOB_TO_CHAR:
+      return "T_CLOB_TO_CHAR";
+    case T_LOB_LENGTH:
+      return "T_LOB_LENGTH";
+    case T_TYPEOF:
+      return "T_TYPEOF";
+    case T_INDEX_CARDINALITY:
+      return "T_INDEX_CARDINALITY";
+    case T_ESTIMATED_TABLE_ROWS:
+      return "T_ESTIMATED_TABLE_ROWS";
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+      return "T_ESTIMATED_AVG_ROW_LENGTH";
+    case T_ESTIMATED_DATA_LENGTH:
+      return "T_ESTIMATED_DATA_LENGTH";
+    case T_ESTIMATED_DATA_FREE:
+      return "T_ESTIMATED_DATA_FREE";
+    case T_EVALUATE_VARIABLE:
+      return "T_EVALUATE_VARIABLE";
+    case T_DEFINE_VARIABLE:
+      return "T_DEFINE_VARIABLE";
+    case T_PREDICATE:
+      return "T_PREDICATE";
+    case T_EXEC_STATS:
+      return "T_EXEC_STATS";
+    case T_ADDTIME:
+      return "T_ADDTIME";
+    case T_BIN:
+      return "T_BIN";
+    case T_FINDINSET:
+      return "T_FINDINSET";
+    case T_HEX:
+      return "T_HEX";
+    case T_ASCII:
+      return "T_ASCII";
+    case T_CONV:
+      return "T_CONV";
+    case T_INET_ATON:
+      return "T_INET_ATON";
+    case T_INET_NTOA:
+      return "T_INET_NTOA";
+    case T_TO_ENUMERATION_VALUE:
+      return "T_TO_ENUMERATION_VALUE";
+    case T_CHARSET:
+      return "T_CHARSET";
+    case T_COLLATION:
+      return "T_COLLATION";
+    case T_WIDTH_BUCKET:
+      return "T_WIDTH_BUCKET";
+    case T_TRACE_STATS:
+      return "T_TRACE_STATS";
+    case T_AES_ENCRYPT:
+      return "T_AES_ENCRYPT";
+    case T_AES_DECRYPT:
+      return "T_AES_DECRYPT";
+    case T_SHA_ONE:
+      return "T_SHA_ONE";
+    case T_SHA_TWO:
+      return "T_SHA_TWO";
+    case T_INDEX_PREFIX:
+      return "T_INDEX_PREFIX";
+    case T_TO_BASE64:
+      return "T_TO_BASE64";
+    case T_FROM_BASE64:
+      return "T_FROM_BASE64";
+    case T_SYS_GUID:
+      return "T_SYS_GUID";
+    case T_UUID:
+      return "T_UUID";
+    case T_UUID_FORMAT:
+      return "T_UUID_FORMAT";
+    case T_SLEEP:
+      return "T_SLEEP";
+    case T_DBTIMEZONE:
+      return "T_DBTIMEZONE";
+    case T_SESSIONTIMEZONE:
+      return "T_SESSIONTIMEZONE";
+    case T_TZ_OFFSET:
+      return "T_TZ_OFFSET";
+    case T_NEW_TIME:
+      return "T_NEW_TIME";
+    case T_FROM_TZ:
+      return "T_FROM_TZ";
+    case T_TO_DATETIME_TZ:
+      return "T_TO_DATETIME_TZ";
+    case T_TO_TIMESTAMP_TZ:
+      return "T_TO_TIMESTAMP_TZ";
+    case T_UTC_TIMESTAMP:
+      return "T_UTC_TIMESTAMP";
+    case T_CRC32:
+      return "T_CRC32";
+    case T_CURRENT_DATETIME:
+      return "T_CURRENT_DATETIME";
+    case T_CURRENT_TIMESTAMP:
+      return "T_CURRENT_TIMESTAMP";
+    case T_CURRENT_DATE:
+      return "T_CURRENT_DATE";
+    case T_CURRENT_TIME:
+      return "T_CURRENT_TIME";
+    case T_CONV_TZ:
+      return "T_CONV_TZ";
+    case T_COLLECTION_TO_STRING:
+      return "T_COLLECTION_TO_STRING";
+    default:
+      return "T_?";
+    }
+}
+
+/* the operator's display symbol (+, -, ...) or "undefined" */
+const char *
 qdump_arith_operator_string (OPERATOR_TYPE opcode)
 {
   switch (opcode)
@@ -2426,14 +2805,6 @@ qdump_print_xasl (xasl_node * xasl_p)
     }
 
   fprintf (foutput, "\n<start of xasl structure %p>\n", xasl_p);
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  if (xasl_p->domain_plan != NULL)
-    {
-      const DOMAIN_PLAN *plan = xasl_p->domain_plan;
-      fprintf (foutput, "domain plan: items=%d resolved=%d refs=%d(+%d) late_bind_nodes=%d\n",
-	       plan->n_items, plan->n_resolved, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_late_bind_nodes);
-    }
-#endif
   qdump_print_xasl_type (xasl_p);
 
   if (xasl_p->flag)
@@ -2505,6 +2876,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_NO_MEMOIZE);
 	  fprintf (foutput, "%sXASL_NO_MEMOIZE", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_FOLLOWING_JOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_FOLLOWING_JOIN);
+	  fprintf (foutput, "%sXASL_NL_FOLLOWING_JOIN", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
@@ -3161,7 +3539,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
 
 #if !WINDOWS
-      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+      /* a partitioned class goes back to S_HEAP_SCAN after its last partition, as the text dump expects */
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	{
 	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {
@@ -3324,6 +3703,12 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       if (xasl_p->px_executor)
 	{
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
+	}
+
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  trace_json_object_set_new (proc, "parallel merge workers", trace_json_integer (xasl_p->executed_parallelism));
 	}
 
       trace_json_object_set_new (proc, "outer", outer);
@@ -3817,6 +4202,156 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 }
 
 /*
+ * qdump_print_expr_compile_text () - compiled expression-program section of the SQL
+ *				      trace (see expr_compile.h): one summary line per
+ *				      program (is it active, what does it cover) and its
+ *				      per-step listing (kernels, cells, domains, prologue
+ *				      marks, jump targets), only for a session that shows its
+ *				      plans in detail (csql ;plan detail, XASL_TRACE_PLAN_DETAIL)
+ *				      -- it is the plan's execution shape, not something a user
+ *				      reading a plain trace needs, and the default trace stays
+ *				      what a build without this feature prints
+ */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+void
+qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag)
+{
+  cubxasl::aggregate_list_node * agg_list = NULL, *agg;
+  OUTPTR_LIST *outs[2] = { NULL, NULL };
+  const char *out_names[2] = { "output list", "group output list" };
+  const char *sfx = (tag != NULL) ? tag : "";
+  int i, k;
+
+  /* Nothing of this section is in the default trace: it is the compiler's coverage state
+   * (which lists compiled, how many columns a program covers, who owns an accumulator), and
+   * a user has no knob to act on it -- there is no hint and no parameter that turns the
+   * compiler on or off for a statement.  Printing it by default made every trace-carrying
+   * test answer depend on the coverage of the day and re-blessed again with each coverage
+   * commit.  A session that asks for its plans in detail (csql ;plan detail: the client sends
+   * XASL_TRACE_PLAN_DETAIL with the trace) gets the summary lines and the step listings
+   * together; the default trace stays byte-identical to a build without this feature. */
+  if (!thread_get_thread_entry_info ()->trace_plan_detail)
+    {
+      return;
+    }
+
+  outs[0] = xasl_p->outptr_list;
+  if (xasl_p->type == BUILDLIST_PROC)
+    {
+      agg_list = xasl_p->proc.buildlist.g_agg_list;
+      outs[1] = xasl_p->proc.buildlist.g_outptr_list;
+    }
+  else if (xasl_p->type == BUILDVALUE_PROC)
+    {
+      agg_list = xasl_p->proc.buildvalue.agg_list;
+    }
+
+  if (agg_list != NULL && agg_list->operand_prog_state == 3)
+    {
+      /* every candidate operand is a plain column or a wired constant: no program is
+       * needed, the accumulator's fast path reads such an operand in place */
+      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent,
+	       ' ', sfx);
+    }
+  else if (agg_list != NULL && agg_list->operand_prog_state != 0)
+    {
+      if (agg_list->operand_prog_state != 1)
+	{
+	  /* "not covered" is a diagnostic: this list had compilable candidates and the
+	   * compiler left them interpreted.  A list that never offered a candidate --
+	   * COUNT(*)/GROUPBY_NUM-only, or nothing participates -- is not a missed
+	   * coverage, so it prints nothing (the same policy the output list uses).
+	   * The compiler marks candidates by assigning operand_prog_base >= 0. */
+	  bool had_candidates = false;
+
+	  for (agg = agg_list; agg != NULL; agg = agg->next)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  had_candidates = true;
+		  break;
+		}
+	    }
+	  if (had_candidates)
+	    {
+	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)%s\n", indent, ' ', sfx);
+	    }
+	}
+      else
+	{
+	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active%s\n", indent, ' ', sfx);
+	  for (agg = agg_list, i = 0; agg != NULL; agg = agg->next, i++)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  int root = agg_list->operand_prog_idx[agg->operand_prog_base];
+
+		  fprintf (fp, "%*cagg[%d]: %s", indent + 2, ' ', i,
+			   (root >= 0) ? "operand from program" : "operand interpreted");
+		  if (agg->accumulator.shared_from > 0)
+		    {
+		      /* a sharer adds nothing per row: it reads the owner's accumulator at finalize
+		       * -- an AVG divides that sum by the shared count, a SUM takes it as is */
+		      fprintf (fp, ", shares agg[%d]'s accumulator (%s)", agg->accumulator.shared_from - 1,
+			       (agg->function == PT_AVG) ? "avg = its sum / count at finalize"
+			       : (agg->function == PT_SUM) ? "sum read from it at finalize" : "read at finalize");
+		    }
+		  fprintf (fp, "\n");
+		}
+	    }
+	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
+	}
+    }
+
+  /* data filters of this node's access specs (compiled scan predicates) */
+  {
+    ACCESS_SPEC_TYPE *spec;
+
+    for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
+      {
+	if (spec->where_pred == NULL || spec->where_pred->scan_prog_state == 0)
+	  {
+	    continue;
+	  }
+	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
+		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
+	if (spec->where_pred->scan_prog_state == 1)
+	  {
+	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
+	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
+	  }
+      }
+  }
+
+  for (k = 0; k < 2; k++)
+    {
+      OUTPTR_LIST *out = outs[k];
+
+      /* Only an active program is reported. A list that was never tried (0) or that the
+       * compiler declined (2) runs entirely on the interpreted path, so its trace must stay
+       * byte-identical to a build without this feature -- printing a line for it would make
+       * every such statement's trace differ. */
+      if (out == NULL || out->eval_prog_state != 1)
+	{
+	  continue;
+	}
+      else
+	{
+	  int covered = 0;
+
+	  for (i = 0; i < out->valptr_cnt; i++)
+	    {
+	      covered += (out->eval_prog_idx[i] >= 0) ? 1 : 0;
+	    }
+	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
+		   out->valptr_cnt, sfx);
+	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+	}
+    }
+}
+#endif /* SERVER_MODE || SA_MODE */
+
+/*
  * qdump_print_stats_text () -
  *   return:
  *   fp(in):
@@ -3867,6 +4402,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) xasl_p->func_stats.time, (long long int) xasl_p->func_stats.fetches,
 		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
 	}
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      qdump_print_expr_compile_text (fp, xasl_p, indent, NULL);
+#endif
       break;
 
     case UNION_PROC:
@@ -3894,20 +4432,22 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case MERGELIST_PROC:
+      fprintf (fp, "MERGELIST");
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  fprintf (fp, " (parallel merge workers: %d)", xasl_p->executed_parallelism);
+	}
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp,
-		   "MERGELIST (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+	  fprintf (fp, " (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)",
 		   xasl_p->px_executor->get_parallelism () + 1,
 		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
 		   (long long int) xasl_p->px_executor->get_stats ().fetches,
 		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
 		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
 	}
-      else
-	{
-	  fprintf (fp, "MERGELIST\n");
-	}
+      fprintf (fp, "\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
       break;
@@ -4249,29 +4789,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
-      fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s", indent, ' ',
+      fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n", indent, ' ',
 	       TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
 	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
-
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  fprintf (fp, ")");
-	}
-      else
-	{
-	  fprintf (fp, ", collision_rate: %.0f%%)", stats->collision_rate * 100);
-	}
-#else
-      fprintf (fp, ")");
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_PROFILE_TIME
-      fprintf (fp, ", (F: %d, H: %d, I: %d)", TO_MSEC (stats->profile.build.fetch), TO_MSEC (stats->profile.build.hash),
-	       TO_MSEC (stats->profile.build.insert));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-      fprintf (fp, "\n");
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
@@ -4300,17 +4820,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       else
 	{
 	  fprintf (fp,
-		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
+		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
 		   indent, ' ', TO_MSEC (stats->probe.elapsed_time), stats->probe.fetches, stats->probe.ioreads,
 		   stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
-
-#if HASHJOIN_PROFILE_TIME
-	  fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (stats->profile.probe.fetch),
-		   TO_MSEC (stats->profile.probe.hash), TO_MSEC (stats->profile.probe.search),
-		   TO_MSEC (stats->profile.probe.match), TO_MSEC (stats->profile.probe.add));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-	  fprintf (fp, "\n");
 	}
 
       /* no parallel subquery */
@@ -4331,110 +4843,29 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
 	  indent += 2;
 
-	  fprintf (fp, "%*cBUILD (time: %d..%d, fetch: %ld, ioread: %ld, rows: %ld, method: %s",
+	  fprintf (fp, "%*cBUILD (time: %d..%d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n",
 		   indent, ' ', TO_MSEC (stats->build.range_elapsed_time.min),
 		   TO_MSEC (stats->build.range_elapsed_time.max), stats->build.fetches, stats->build.ioreads,
 		   stats->build.qualified_rows, hash_method_str);
-	}
-      else
-	{
-	  fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s",
-		   indent, ' ', TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
-		   stats->build.qualified_rows, hash_method_str);
-	}
-
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  fprintf (fp, ")\n");
-	}
-      else
-	{
-	  fprintf (fp, ", collision_rate: %.0f%%)\n", stats->collision_rate * 100);
-	}
-#else
-      fprintf (fp, ")\n");
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_DUMP_PARTITION
-      indent += 2;
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  fprintf (fp, "%*c#%d (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)", indent,
-		   ' ', part_index + 1, TO_MSEC (current_stats->build.elapsed_time), current_stats->build.fetches,
-		   current_stats->build.ioreads, current_stats->build.qualified_rows,
-		   qdump_hashjoin_type_string (current_stats->hash_method));
-
-#if HASHJOIN_PROFILE_TIME
-	  fprintf (fp, ", (F: %d, H: %d, I: %d)",
-		   TO_MSEC (current_stats->profile.build.fetch), TO_MSEC (current_stats->profile.build.hash),
-		   TO_MSEC (current_stats->profile.build.insert));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-	  fprintf (fp, "\n");
-	}
-
-      indent -= 2;
-#endif /* HASHJOIN_DUMP_PARTITION */
-
-      if (stats->num_parallel_threads > 1)
-	{
 	  fprintf (fp,
 		   "%*cPROBE (time: %d..%d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
 		   indent, ' ', TO_MSEC (stats->probe.range.elapsed_time.min),
 		   TO_MSEC (stats->probe.range.elapsed_time.max), stats->probe.fetches, stats->probe.ioreads,
 		   stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
+
+	  indent -= 2;
 	}
       else
 	{
+	  fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s)\n",
+		   indent, ' ', TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
+		   stats->build.qualified_rows, hash_method_str);
 	  fprintf (fp,
 		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
 		   indent, ' ', TO_MSEC (stats->probe.elapsed_time),
 		   stats->probe.fetches, stats->probe.ioreads, stats->probe.read_rows, stats->probe.read_keys,
 		   stats->probe.qualified_rows);
 	}
-
-#if HASHJOIN_DUMP_PARTITION
-      indent += 2;
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  fprintf (fp,
-		   "%*c#%d (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
-		   indent, ' ', part_index + 1, TO_MSEC (current_stats->probe.elapsed_time),
-		   current_stats->probe.fetches, current_stats->probe.ioreads, current_stats->probe.read_rows,
-		   current_stats->probe.read_keys, current_stats->probe.qualified_rows);
-
-#if HASHJOIN_PROFILE_TIME
-	  fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
-		   TO_MSEC (current_stats->profile.probe.fetch), TO_MSEC (current_stats->profile.probe.hash),
-		   TO_MSEC (current_stats->profile.probe.search), TO_MSEC (current_stats->profile.probe.match),
-		   TO_MSEC (current_stats->profile.probe.add));
-#endif /* HASHJOIN_PROFILE_TIME */
-
-	  fprintf (fp, "\n");
-	}
-
-      indent -= 2;
-#endif /* HASHJOIN_DUMP_PARTITION */
-
-      if (stats->num_parallel_threads > 1)
-	{
-	  indent -= 2;
-	}
-
-#if HASHJOIN_PROFILE_TIME
-      fprintf (fp, "%*cMERGE (time: %d, fetch: %ld, ioread: %ld, rows: %ld)\n", indent, ' ',
-	       TO_MSEC (stats->profile.merge.elapsed_time), stats->profile.merge.fetches, stats->profile.merge.ioreads,
-	       stats->profile.merge.qualified_rows);
-#endif /* HASHJOIN_PROFILE_TIME */
     }
 
   /* parallel subquery or partitioned hash join */
@@ -4570,26 +5001,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (build, "ioread", trace_json_integer (stats->build.ioreads));
       trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
       trace_json_object_set_new (build, "method", trace_json_string (qdump_hashjoin_type_string (stats->hash_method)));
-
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  /* nothing to do */
-	}
-      else
-	{
-	  trace_json_object_set_new (build, "collision_rate", trace_json_real (stats->collision_rate * 100));
-	}
-#endif /* HASHJOIN_COLLISION_RATE */
       trace_json_object_set_new (parent, "build", build);
-
-#if HASHJOIN_PROFILE_TIME
-      profile = trace_json_object ();
-      trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (stats->profile.build.fetch)));
-      trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (stats->profile.build.hash)));
-      trace_json_object_set_new (profile, "I", trace_json_integer (TO_MSEC (stats->profile.build.insert)));
-      trace_json_object_set_new (build, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
@@ -4607,16 +5019,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (probe, "readkeys", trace_json_integer (stats->probe.read_keys));
       trace_json_object_set_new (probe, "rows", trace_json_integer (stats->probe.qualified_rows));
       trace_json_object_set_new (parent, "probe", probe);
-
-#if HASHJOIN_PROFILE_TIME
-      profile = trace_json_object ();
-      trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (stats->profile.probe.fetch)));
-      trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (stats->profile.probe.hash)));
-      trace_json_object_set_new (profile, "S", trace_json_integer (TO_MSEC (stats->profile.probe.search)));
-      trace_json_object_set_new (profile, "M", trace_json_integer (TO_MSEC (stats->profile.probe.match)));
-      trace_json_object_set_new (profile, "A", trace_json_integer (TO_MSEC (stats->profile.probe.add)));
-      trace_json_object_set_new (probe, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
 
       if (stats->num_parallel_threads > 1)
 	{
@@ -4677,46 +5079,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (build, "rows", trace_json_integer (stats->build.qualified_rows));
       trace_json_object_set_new (build, "method", trace_json_string (hash_method_str));
 
-#if HASHJOIN_COLLISION_RATE
-      if (stats->use_hash_file)
-	{
-	  /* nothing to do */
-	}
-      else
-	{
-	  trace_json_object_set_new (build, "collision_rate", trace_json_real (stats->collision_rate * 100));
-	}
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_DUMP_PARTITION
-      part_array = trace_json_array ();
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  input = trace_json_object ();
-	  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (current_stats->build.elapsed_time)));
-	  trace_json_object_set_new (input, "fetch", trace_json_integer (current_stats->build.fetches));
-	  trace_json_object_set_new (input, "ioread", trace_json_integer (current_stats->build.ioreads));
-	  trace_json_object_set_new (input, "rows", trace_json_integer (current_stats->build.qualified_rows));
-	  trace_json_object_set_new (input, "method",
-				     trace_json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
-	  trace_json_array_append_new (part_array, input);
-
-#if HASHJOIN_PROFILE_TIME
-	  profile = trace_json_object ();
-	  trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (current_stats->profile.build.fetch)));
-	  trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (current_stats->profile.build.hash)));
-	  trace_json_object_set_new (profile, "I", trace_json_integer (TO_MSEC (current_stats->profile.build.insert)));
-	  trace_json_object_set_new (input, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
-	}
-
-      trace_json_object_set_new (build, "partition_list", part_array);
-#endif /* HASHJOIN_DUMP_PARTITION */
-
       probe = trace_json_object ();
       if (stats->num_parallel_threads > 1)
 	{
@@ -4734,38 +5096,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (probe, "readkeys", trace_json_integer (stats->probe.read_keys));
       trace_json_object_set_new (probe, "rows", trace_json_integer (stats->probe.qualified_rows));
 
-#if HASHJOIN_DUMP_PARTITION
-      part_array = trace_json_array ();
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  input = trace_json_object ();
-	  trace_json_object_set_new (input, "part_id", trace_json_integer (part_index + 1));
-	  trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (current_stats->probe.elapsed_time)));
-	  trace_json_object_set_new (input, "fetch", trace_json_integer (current_stats->probe.fetches));
-	  trace_json_object_set_new (input, "ioread", trace_json_integer (current_stats->probe.ioreads));
-	  trace_json_object_set_new (input, "readrows", trace_json_integer (current_stats->probe.read_rows));
-	  trace_json_object_set_new (input, "readkeys", trace_json_integer (current_stats->probe.read_keys));
-	  trace_json_object_set_new (input, "rows", trace_json_integer (current_stats->probe.qualified_rows));
-	  trace_json_array_append_new (part_array, input);
-
-#if HASHJOIN_PROFILE_TIME
-	  profile = trace_json_object ();
-	  trace_json_object_set_new (profile, "F", trace_json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
-	  trace_json_object_set_new (profile, "H", trace_json_integer (TO_MSEC (current_stats->profile.probe.hash)));
-	  trace_json_object_set_new (profile, "S", trace_json_integer (TO_MSEC (current_stats->profile.probe.search)));
-	  trace_json_object_set_new (profile, "M", trace_json_integer (TO_MSEC (current_stats->profile.probe.match)));
-	  trace_json_object_set_new (profile, "A", trace_json_integer (TO_MSEC (current_stats->profile.probe.add)));
-	  trace_json_object_set_new (input, "profile", profile);
-#endif /* HASHJOIN_PROFILE_TIME */
-	}
-
-      trace_json_object_set_new (probe, "partition_list", part_array);
-#endif /* HASHJOIN_DUMP_PARTITION */
-
       if (stats->num_parallel_threads > 1)
 	{
 	  parallel = trace_json_object ();
@@ -4780,15 +5110,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	  trace_json_object_set_new (parent, "build", build);
 	  trace_json_object_set_new (parent, "probe", probe);
 	}
-
-#if HASHJOIN_PROFILE_TIME
-      merge = trace_json_object ();
-      trace_json_object_set_new (merge, "time", trace_json_integer (TO_MSEC (stats->profile.merge.elapsed_time)));
-      trace_json_object_set_new (merge, "fetch", trace_json_integer (stats->profile.merge.fetches));
-      trace_json_object_set_new (merge, "ioread", trace_json_integer (stats->profile.merge.ioreads));
-      trace_json_object_set_new (merge, "rows", trace_json_integer (stats->profile.merge.qualified_rows));
-      trace_json_object_set_new (parent, "merge", merge);
-#endif /* HASHJOIN_PROFILE_TIME */
     }
 
   /* parallel subquery or partitioned hash join */

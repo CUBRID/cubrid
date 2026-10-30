@@ -30,6 +30,7 @@
 #include <sys/timeb.h>
 #include <time.h>
 #include <assert.h>
+#include <utility>
 
 #include "authenticate.h"
 #include "db.h"
@@ -43,6 +44,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "object_domain.h"
+#include "object_representation.h"	/* db_string_put_cs_and_collation */
 #include "object_primitive.h"
 #include "schema_manager.h"
 #include "view_transform.h"
@@ -64,6 +66,8 @@
 
 #define MAX_SERVER_TIME_CACHE	60	/* secs */
 
+#define DB_MAX_SIGNATURE_PLANS 16	/* compilations a statement handle keeps for its other bind signatures */
+
 enum
 {
   StatementInitialStage = 0,
@@ -78,6 +82,16 @@ static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
+static DB_SESSION *db_open_buffer_copy_local (const char *text, size_t len);
+static bool db_needs_bind_signature_plan (const DB_SESSION * session);
+static int db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values);
+static bool db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values);
+static bool db_keeps_signature_plan (const DB_SESSION * replaced);
+static bool db_compiles_at_execution (DB_SESSION * session, int stmt_ndx);
+static void db_swap_compilation (DB_SESSION * a, DB_SESSION * b);
+static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
+				      const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p);
+static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
@@ -92,24 +106,40 @@ static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, i
 					   DB_PREPARE_SUBQUERY_INFO ** subquery_info);
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
+static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
+static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int do_replan_statement_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool force_compile);
+
+/* what one bind-value check of the hint (or the first peek) says about the cached plan */
+typedef enum
+{
+  BIND_WATCH_OFF,		/* not checked */
+  BIND_WATCH_KEEP,		/* checked, and every predicate is inside the band */
+  BIND_WATCH_REPLAN,		/* checked, and one is not: regenerate the plan */
+  BIND_WATCH_STOP		/* checked, but nothing here can be priced */
+} BIND_WATCH_VERDICT;
+
+static BIND_WATCH_STATE **db_stmt_bind_watch_ptr (PT_NODE * statement);
+static BIND_WATCH_STATE *db_stmt_bind_watch_state (PARSER_CONTEXT * parser, PT_NODE * statement);
+static bool db_bind_watch_is_open (PT_NODE * statement);
+static BIND_WATCH_VERDICT db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement);
+static bool db_bind_variant_mode (PT_NODE * statement);
+static int db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
-							   bool force_replan);
-static DB_SESSION *db_prepared_tree_lookup (const DB_SESSION * owner, const char *name);
+							   bool force_replan, bool * signature_miss);
+static DB_SESSION *db_prepared_tree_lookup (const char *name, const char *text);
 static bool db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * subsession);
-static void db_prepared_tree_remove (DB_SESSION * owner, const char *name);
-static void db_prepared_tree_free_all (DB_SESSION * owner);
+static void db_prepared_tree_remove (const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
 static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
 static bool db_check_where_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
 
-static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
-static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg,
 						 int *continue_walk);
@@ -155,13 +185,13 @@ db_is_bind_sensitive (PT_NODE * statement)
 }
 
 /*
- * db_stmt_bind_fp_ptr () - the statement's bind-value fingerprint slot, when the statement
- *   type takes part in bind-value plan fixing (queries, UPDATE, DELETE)
- * return         : pointer to the fingerprint or NULL
+ * db_stmt_bind_watch_ptr () - the statement's bind-value watch slot, when the statement type
+ *   takes part in bind-value plan fixing (queries, UPDATE, DELETE)
+ * return         : pointer to the watch-state pointer, or NULL
  * statement (in) : statement being executed
  */
-static UINT64 *
-db_stmt_bind_fp_ptr (PT_NODE * statement)
+static BIND_WATCH_STATE **
+db_stmt_bind_watch_ptr (PT_NODE * statement)
 {
   if (statement == NULL)
     {
@@ -169,58 +199,596 @@ db_stmt_bind_fp_ptr (PT_NODE * statement)
     }
   if (PT_IS_QUERY (statement))
     {
-      return &statement->info.query.bind_fp;
+      return &statement->info.query.bind_watch;
     }
   if (statement->node_type == PT_UPDATE)
     {
-      return &statement->info.update.bind_fp;
+      return &statement->info.update.bind_watch;
     }
   if (statement->node_type == PT_DELETE)
     {
-      return &statement->info.delete_.bind_fp;
+      return &statement->info.delete_.bind_watch;
     }
   return NULL;
 }
 
+/*
+ * db_stmt_bind_watch_state () - the statement's bind-value state, allocated on first use
+ * return         : the state, NULL for a statement type that has none (or out of memory)
+ */
+static BIND_WATCH_STATE *
+db_stmt_bind_watch_state (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  BIND_WATCH_STATE **ws_p = db_stmt_bind_watch_ptr (statement);
+  BIND_WATCH_STATE *ws;
+
+  if (ws_p == NULL)
+    {
+      return NULL;
+    }
+  if (*ws_p != NULL)
+    {
+      return *ws_p;
+    }
+  ws = (BIND_WATCH_STATE *) parser_alloc (parser, sizeof (BIND_WATCH_STATE));
+  if (ws == NULL)
+    {
+      er_clear ();
+      return NULL;
+    }
+  memset (ws, 0, sizeof (BIND_WATCH_STATE));
+  ws->terms = -1;
+  ws->base_known = false;
+  ws->state = BIND_VARIANT_STATE_WATCH;
+  ws->cur_variant = -1;
+  *ws_p = ws;
+  return ws;
+}
+
+/*
+ * db_bind_watch_is_open () - does this execution owe a check of the hint path?
+ * return         : true when the fingerprint must be compared on this execution
+ * statement (in) : statement being executed
+ *
+ * Two reasons:
+ *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): every execution, no limit --
+ *     the user asked for it;
+ *   - the driver-neutral first peek: the plan was chosen with unbound markers, so the first
+ *     execution prices it once (what develop does with the feature off).
+ * Statements in plan-variant mode never get here (db_bind_variant_mode ()).
+ */
+static bool
+db_bind_watch_is_open (PT_NODE * statement)
+{
+  if (db_stmt_bind_watch_ptr (statement) == NULL)
+    {
+      return false;
+    }
+  return db_is_bind_sensitive (statement) || statement->flag.hv_pred_plan_unpeeked;
+}
+
+/*
+ * db_bind_watch_verdict () - one check of the hint path (or the first peek)
+ * return         : what the caller should do with the plan
+ * parser (in)    : parser holding the statement and the bound values
+ * statement (in) : statement being executed
+ */
+static BIND_WATCH_VERDICT
+db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  BIND_WATCH_STATE *ws;
+  UINT64 value_hash;
+  bool usable = false;
+  bool replan, hinted;
+
+  if (!db_bind_watch_is_open (statement))
+    {
+      return BIND_WATCH_OFF;
+    }
+  ws = db_stmt_bind_watch_state (parser, statement);
+  if (ws == NULL)
+    {
+      return BIND_WATCH_OFF;
+    }
+
+  value_hash = histogram_bind_value_hash (parser);
+  if (value_hash != 0 && value_hash == ws->value_hash)
+    {
+      /* the same values as the last check: no estimate can have moved */
+      return BIND_WATCH_KEEP;
+    }
+  ws->value_hash = value_hash;
+  hinted = db_is_bind_sensitive (statement);
+
+  replan = histogram_bind_watch_check (parser, statement, ws, hinted ? BIND_WATCH_HINT_BAND : BIND_WATCH_BAND, &usable);
+  if (!usable)
+    {
+      /* nothing in this statement is priced by a histogram, and that cannot change while this
+       * plan lives -- the plan is invalidated together with the statistics */
+      return BIND_WATCH_STOP;
+    }
+  if (!replan)
+    {
+      return BIND_WATCH_KEEP;
+    }
+  ws->replans++;
+  return BIND_WATCH_REPLAN;
+}
+
+/*
+ * db_bind_variant_mode () - does this statement choose among plan variants (bind_variant.h)?
+ * return         : true for a SELECT picked by target selection while the feature is on, unless
+ *                  the hint asks for the every-execution path instead
+ */
+static bool
+db_bind_variant_mode (PT_NODE * statement)
+{
+  if (statement == NULL || !statement->flag.bind_watch_candidate || statement->flag.cannot_prepare)
+    {
+      return false;
+    }
+  if (!PT_IS_QUERY (statement))
+    {
+      /* UPDATE / DELETE only on the server-side path, whose plan is one cache entry named by the
+       * statement text. The client-side path (triggers, views) prepares a fresh internal SELECT
+       * each time; a variant compile there would replace the query's base entry. */
+      if (!((statement->node_type == PT_UPDATE && statement->info.update.server_update)
+	    || (statement->node_type == PT_DELETE && statement->info.delete_.server_delete)))
+	{
+	  return false;
+	}
+    }
+  return (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0
+	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && !db_is_bind_sensitive (statement));
+}
+
+/*
+ * db_stmt_bind_variant_key_ptr () - where the statement keeps the key of its current plan variant
+ */
+static const char **
+db_stmt_bind_variant_key_ptr (PT_NODE * statement)
+{
+  if (PT_IS_QUERY (statement))
+    {
+      return &statement->info.query.bind_variant_key;
+    }
+  if (statement->node_type == PT_UPDATE)
+    {
+      return &statement->info.update.bind_variant_key;
+    }
+  if (statement->node_type == PT_DELETE)
+    {
+      return &statement->info.delete_.bind_variant_key;
+    }
+  return NULL;
+}
+
+/*
+ * db_bind_variant_key () - the hash-text key of one variant of the base entry's generation,
+ *   built once per generation and kept in the state
+ */
+static const char *
+db_bind_variant_key (PARSER_CONTEXT * parser, BIND_WATCH_STATE * ws, int variant)
+{
+  char buf[96];
+
+  if (variant < 0 || variant >= BIND_VARIANT_MAX_COMPILES)
+    {
+      return NULL;
+    }
+  if (ws->variant_key[variant] == NULL)
+    {
+      snprintf (buf, sizeof (buf), " /* bind variant %d.%06d #%d */", ws->base_time.sec, ws->base_time.usec, variant);
+      ws->variant_key[variant] = pt_append_string (parser, NULL, buf);
+    }
+  return ws->variant_key[variant];
+}
+
+/*
+ * db_bind_variant_remember () - keep the statement's XASL_ID as its current variant's
+ */
+static void
+db_bind_variant_remember (PT_NODE * statement)
+{
+  BIND_WATCH_STATE **ws_p = db_stmt_bind_watch_ptr (statement);
+  BIND_WATCH_STATE *ws = (ws_p != NULL) ? *ws_p : NULL;
+
+  if (ws == NULL || ws->cur_variant < 0 || ws->cur_variant >= BIND_VARIANT_MAX_COMPILES || statement->xasl_id == NULL)
+    {
+      return;
+    }
+  XASL_ID_COPY (&ws->variant_id[ws->cur_variant], statement->xasl_id);
+  ws->id_known[ws->cur_variant] = true;
+}
+
+/*
+ * db_bind_variant_switch () - make the statement's XASL_ID the plan of a variant
+ * return         : error code
+ * variant (in)   : the variant; -1 = the base entry
+ * compile (in)   : compile it under the current values even when it is cached (a new variant)
+ *
+ * A variant this statement ran before is reached by its remembered XASL_ID, without a round
+ * trip. Otherwise this is a cache lookup; when the variant's entry was evicted it is compiled
+ * again under the current values, which are the nearest to it anyway -- that decides nothing
+ * about which plans the query has.
+ */
+static int
+db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws, int variant, bool compile)
+{
+  const char **key_p = db_stmt_bind_variant_key_ptr (statement);
+  const char *old_key;
+  int err;
+
+  if (!compile && variant == ws->cur_variant && statement->xasl_id != NULL)
+    {
+      return NO_ERROR;
+    }
+  old_key = *key_p;
+  *key_p = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
+
+  if (!compile && variant >= 0 && variant < BIND_VARIANT_MAX_COMPILES && ws->id_known[variant])
+    {
+      XASL_ID *xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
+
+      if (xasl_id != NULL)
+	{
+	  XASL_ID_COPY (xasl_id, &ws->variant_id[variant]);
+	  pt_free_statement_xasl_id (statement);
+	  statement->xasl_id = xasl_id;
+	  ws->cur_variant = variant;
+	  return NO_ERROR;
+	}
+    }
+
+  err = do_replan_statement_internal (parser, statement, compile);
+  if (err != NO_ERROR)
+    {
+      /* keep the key on the variant cur_variant names, so a later prepare of the statement
+       * does not file its plan under the variant that failed */
+      *key_p = old_key;
+      return err;
+    }
+  ws->cur_variant = variant;
+  db_bind_variant_remember (statement);
+  return NO_ERROR;
+}
+
+/*
+ * db_bind_variant_learn () - keep what the server said about the query's variants
+ */
+static void
+db_bind_variant_learn (BIND_WATCH_STATE * ws, const BIND_VARIANT_REPLY * reply)
+{
+  int i;
+
+  if (reply->state != BIND_VARIANT_STATE_WATCH && ws->state == BIND_VARIANT_STATE_WATCH)
+    {
+      _er_log_debug (ARG_FILE_LINE, "bind variant learning done: %d plan(s) from %d compile(s) -- %s\n",
+		     reply->plans, reply->compiles, (reply->state == BIND_VARIANT_STATE_DONE)
+		     ? "the plan is final, values are no longer checked" : "each execution runs the nearest plan");
+    }
+  ws->state = reply->state;
+  ws->plans = reply->plans;
+  ws->n_records = reply->n_records;
+  for (i = 0; i < reply->n_records && i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ws->records[i] = reply->records[i];
+    }
+}
+
+/*
+ * db_bind_variant_nearest () - run the variant nearest to the values
+ */
+static int
+db_bind_variant_nearest (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws,
+			 const BIND_FINGERPRINT * fp)
+{
+  double dist = DBL_MAX;
+  int i = bind_variant_nearest (ws->records, ws->n_records, fp, BIND_WATCH_ROW_FLOOR, &dist);
+
+  if (i < 0)
+    {
+      return NO_ERROR;
+    }
+  return db_bind_variant_switch (parser, statement, ws, ws->records[i].variant, false);
+}
+
+/*
+ * db_bind_variant_rebase () - attach the statement to the query's current base entry: its
+ *   generation is gone (DDL, eviction, cache drop), so the variants start over
+ */
+static int
+db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws)
+{
+  int err, i;
+
+  ws->base_known = false;
+  ws->state = BIND_VARIANT_STATE_WATCH;
+  ws->n_records = 0;
+  ws->cur_variant = -1;
+  ws->polls = 0;
+  ws->checks = 0;
+  ws->plans = 0;
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ws->id_known[i] = false;
+      ws->variant_key[i] = NULL;	/* the keys name the old generation */
+    }
+  /* the generation ended with a DDL or the statistics may be new: price everything again */
+  memset (&ws->memo, 0, sizeof (ws->memo));
+  *db_stmt_bind_variant_key_ptr (statement) = NULL;
+
+  err = do_replan_statement_internal (parser, statement, false);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (statement->xasl_id != NULL)
+    {
+      ws->base_sha1 = statement->xasl_id->sha1;
+      ws->base_time = statement->xasl_id->time_stored;
+      ws->base_known = true;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * db_bind_variant_step () - choose the plan variant this execution runs (bind_variant.h)
+ * return         : error code; on success statement->xasl_id is the plan to run
+ * parser (in)    : parser holding the statement and the bound values
+ * statement (in) : SELECT in plan-variant mode, prepared
+ *
+ * The same values as the previous execution run the same plan, unchecked. New values are
+ * fingerprinted and matched against the directory this client already has; only when nothing
+ * there suits does the client ask the server, which answers with a variant another client added
+ * since, or reserves one to compile while the query is still learning. A compile that produced
+ * a plan the query already has is folded into that variant. Once the query is done learning:
+ * one plan means the values are not looked at again, several mean each new set of values runs
+ * the nearest plan, without asking the server and without compiling.
+ */
+static int
+db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  BIND_WATCH_STATE *ws;
+  BIND_FINGERPRINT fp;
+  BIND_VARIANT_REQUEST req;
+  BIND_VARIANT_REPLY reply;
+  UINT64 value_hash;
+  int err, attempt, k, i;
+  double dist;
+
+  ws = db_stmt_bind_watch_state (parser, statement);
+  if (ws == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (ws->state == BIND_VARIANT_STATE_WATCH && ws->plans == 1 && ws->checks >= BIND_VARIANT_SETTLE_CHECKS)
+    {
+      /* still one plan after that many sets of new values: take the query as stable */
+      ws->state = BIND_VARIANT_STATE_DONE;
+      _er_log_debug (ARG_FILE_LINE, "bind variant learning done: 1 plan after %d checks -- the plan is final, "
+		     "values are no longer checked\n", ws->checks);
+    }
+  if (ws->state == BIND_VARIANT_STATE_DONE)
+    {
+      /* one plan, or nothing to choose by: the values are not looked at again, not even hashed */
+      return NO_ERROR;
+    }
+
+  value_hash = histogram_bind_value_hash (parser);
+  if (ws->cur_variant >= 0 && value_hash != 0 && value_hash == ws->value_hash)
+    {
+      return NO_ERROR;
+    }
+  ws->value_hash = value_hash;
+  if (ws->state == BIND_VARIANT_STATE_WATCH)
+    {
+      ws->checks++;
+    }
+
+  if (!histogram_bind_fingerprint (parser, statement, &fp, NULL, &ws->memo))
+    {
+      /* no predicate of the statement is backed by a histogram: the plan cannot depend on the
+       * values, and that cannot change while the plan lives */
+      ws->state = BIND_VARIANT_STATE_DONE;
+      return NO_ERROR;
+    }
+  if (!bind_fingerprint_known (&fp))
+    {
+      /* these values price nothing (types the histograms do not hold): there is nothing to
+       * choose a plan by, so this execution keeps the one in hand -- and only this execution:
+       * the next values may well be priceable */
+      return NO_ERROR;
+    }
+
+  if (!ws->base_known)
+    {
+      if (statement->xasl_id == NULL)
+	{
+	  return NO_ERROR;
+	}
+      ws->base_sha1 = statement->xasl_id->sha1;
+      ws->base_time = statement->xasl_id->time_stored;
+      ws->base_known = true;
+      ws->cur_variant = -1;
+    }
+
+  /* the directory this client already holds first: a variant that suits costs no round trip.
+   * Once the query is done learning the nearest one is taken whatever the distance. */
+  i = bind_variant_nearest (ws->records, ws->n_records, &fp, BIND_WATCH_ROW_FLOOR, &dist);
+  if (i >= 0 && (dist < BIND_WATCH_BAND || ws->state == BIND_VARIANT_STATE_SELECT))
+    {
+      return db_bind_variant_switch (parser, statement, ws, ws->records[i].variant, false);
+    }
+  if (ws->state == BIND_VARIANT_STATE_SELECT)
+    {
+      return NO_ERROR;
+    }
+
+  memset (&req, 0, sizeof (req));
+  req.op = BIND_VARIANT_OP_CHECK;
+  req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS);
+  req.band = BIND_WATCH_BAND;
+  req.floor = BIND_WATCH_ROW_FLOOR;
+  req.fp = fp;
+
+  for (attempt = 0; attempt < 2; attempt++)
+    {
+      req.sha1 = ws->base_sha1;
+      req.time_stored = ws->base_time;
+      err = qmgr_bind_variant (&req, &reply);
+      if (err != NO_ERROR)
+	{
+	  /* the plan in hand still answers the query; never fail it over the variants */
+	  er_clear ();
+	  ws->state = BIND_VARIANT_STATE_DONE;
+	  return NO_ERROR;
+	}
+      if (reply.result != BIND_VARIANT_NOT_FOUND)
+	{
+	  break;
+	}
+      err = db_bind_variant_rebase (parser, statement, ws);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      if (!ws->base_known)
+	{
+	  return NO_ERROR;
+	}
+    }
+  if (reply.result == BIND_VARIANT_NOT_FOUND)
+    {
+      ws->state = BIND_VARIANT_STATE_DONE;
+      return NO_ERROR;
+    }
+
+  /* the record nearest to these values before this request, to tell the log what moved */
+  i = bind_variant_nearest (reply.records, reply.n_records, &fp, BIND_WATCH_ROW_FLOOR, &dist);
+  db_bind_variant_learn (ws, &reply);
+
+  switch (reply.result)
+    {
+    case BIND_VARIANT_MATCH:
+      return db_bind_variant_switch (parser, statement, ws, reply.variant, false);
+
+    case BIND_VARIANT_FROZEN:
+      if (ws->state == BIND_VARIANT_STATE_WATCH && ++ws->polls >= BIND_VARIANT_MAX_POLLS)
+	{
+	  /* done learning but a variant is still being compiled, and it may never come back
+	   * (its client died): settle on the plans there are */
+	  ws->state = (reply.plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
+	  _er_log_debug (ARG_FILE_LINE, "bind variant learning done: %d plan(s), a compile never came back\n",
+			 reply.plans);
+	}
+      if (ws->state == BIND_VARIANT_STATE_DONE)
+	{
+	  /* one plan: every record reaches it */
+	  return (ws->n_records > 0) ? db_bind_variant_switch (parser, statement, ws, ws->records[0].variant,
+							       false) : NO_ERROR;
+	}
+      /* several plans, or a compile still in flight (asked again next time): the nearest */
+      return db_bind_variant_nearest (parser, statement, ws, &fp);
+
+    case BIND_VARIANT_COMPILE:
+      k = reply.variant;
+      parser->bind_plan_sig = 0;
+      err = db_bind_variant_switch (parser, statement, ws, k, true);
+      if (err != NO_ERROR)
+	{
+	  /* give the reserved variant back, or the query would count it as a compile in flight
+	   * until its base entry goes (the server also expires it, for a client that dies here) */
+	  memset (&req, 0, sizeof (req));
+	  req.op = BIND_VARIANT_OP_ABANDON;
+	  req.sha1 = ws->base_sha1;
+	  req.time_stored = ws->base_time;
+	  req.variant = k;
+	  er_stack_push ();
+	  (void) qmgr_bind_variant (&req, &reply);
+	  er_stack_pop ();
+	  return err;
+	}
+
+      memset (&req, 0, sizeof (req));
+      req.op = BIND_VARIANT_OP_REGISTER;
+      req.sha1 = ws->base_sha1;
+      req.time_stored = ws->base_time;
+      req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS);
+      req.variant = k;
+      req.plan_sig = parser->bind_plan_sig;
+      req.fp = fp;
+      err = qmgr_bind_variant (&req, &reply);
+      if (err != NO_ERROR || reply.result == BIND_VARIANT_NOT_FOUND)
+	{
+	  /* the compiled plan suits these values; run it and let the next request sort it out */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+
+      {
+	/* the labels are built only here, for the log: a compile is rare, a fingerprint is not */
+	char names[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
+	char buf[BIND_WATCH_MAX_TERMS * (BIND_WATCH_NAME_LEN + 32)];
+	BIND_FINGERPRINT named;
+
+	buf[0] = '\0';
+	if (histogram_bind_fingerprint (parser, statement, &named, names, &ws->memo))
+	  {
+	    histogram_bind_describe (buf, sizeof (buf), &named, names, (i >= 0) ? &ws->records[i].fp : NULL);
+	  }
+	if (reply.result == BIND_VARIANT_SAME_PLAN && reply.variant != k)
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "bind variant compile: same plan as #%d (%d compile(s), %d plan(s)); %s\n",
+			   reply.variant, reply.compiles, reply.plans, buf);
+	    db_bind_variant_learn (ws, &reply);
+	    return db_bind_variant_switch (parser, statement, ws, reply.variant, false);
+	  }
+	_er_log_debug (ARG_FILE_LINE, "bind variant compile: new plan #%d (%d compile(s), %d plan(s)); %s\n", k,
+		       reply.compiles, reply.plans, buf);
+	db_bind_variant_learn (ws, &reply);
+      }
+      return NO_ERROR;
+
+    default:
+      return NO_ERROR;
+    }
+}
+
 int g_open_buffer_control_flags = 0;
 
-/* Per-session registry of the compiled subsessions of SQL-level prepared statements
+/* Registry of the compiled subsessions of SQL-level prepared statements
  * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests
  * lets the bind-sensitivity check regenerate only the plan and the XASL when the USING
  * values land in a different histogram bucket; parsing, semantic checks and rewrites
  * are not repeated.
  *
- * A kept subsession hangs on its owner session's `kept_trees` list (linked through the
- * subsession's own `next`) and carries the prepared name in `kept_stmt_name`. Prepared
- * names are per-connection and a kept tree never outlives the session that prepared it,
- * so the owner session IS the registry scope: closing it releases the kept trees, with no
- * process-global list, no lock and no owner back-pointer to invalidate. The list is
- * separate from the transient `next` chain (which grows with every non-candidate EXECUTE)
- * so a lookup walks only the kept names. Entries are released on DROP PREPARE, on
- * re-PREPARE of the same name, when a kept tree turns out to be stale, and when the owner
- * session is closed.
+ * A kept subsession carries the prepared name in `kept_stmt_name` and hangs on the client's
+ * list db_Kept_trees (linked through the subsession's own `next`). CBRD-27583: a
+ * prepared name belongs to the server session, which outlives the client sessions (csql
+ * opens one per statement, the CAS one per request), so the list is the client's, not a
+ * session's: an entry carries the server session it was prepared in (`kept_session_id`) and
+ * matches only in that session and for the statement text the server holds for the name
+ * (another CAS sharing the server session may have prepared it again). A change of server
+ * session (db_set_session_id) and db_shutdown release every entry; DROP PREPARE, re-PREPARE
+ * of the same name and a stale kept tree release its own. The client library runs one
+ * thread per connection, so the list takes no lock.
  */
+static DB_SESSION *db_Kept_trees = NULL;
 
 /*
- * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from its
- *   owner's kept list
+ * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from the
+ *   kept list
  * return     : the detached subsession or NULL
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
  */
 static DB_SESSION *
-db_prepared_tree_unlink (DB_SESSION * owner, const char *name)
+db_prepared_tree_unlink (const char *name)
 {
-  DB_SESSION **prev;
-  DB_SESSION *s;
+  DB_SESSION **prev = &db_Kept_trees;
 
-  if (owner == NULL)
-    {
-      return NULL;
-    }
-
-  prev = &owner->kept_trees;
-  for (s = owner->kept_trees; s != NULL; s = s->next)
+  for (DB_SESSION * s = db_Kept_trees; s != NULL; s = s->next)
     {
       if (s->kept_stmt_name != NULL && strcmp (s->kept_stmt_name, name) == 0)
 	{
@@ -235,7 +803,7 @@ db_prepared_tree_unlink (DB_SESSION * owner, const char *name)
 
 /*
  * db_prepared_tree_close() - release a detached kept subsession
- * kept (in) : subsession already unlinked from the owner's kept list (may be NULL)
+ * kept (in) : subsession already unlinked from the kept list (may be NULL)
  */
 static void
 db_prepared_tree_close (DB_SESSION * kept)
@@ -250,42 +818,38 @@ db_prepared_tree_close (DB_SESSION * kept)
 /*
  * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
  * return     : the kept session or NULL
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
+ * text (in)  : the statement text the server holds for the name
  *
- * Note: the returned session is owned by `owner`; the caller uses it on the same
- *       connection thread that PREPAREs/EXECUTEs/DROPs this name, which is what scopes
- *       its lifetime.
+ * Note: CBRD-27583: a tree kept in another server session or for another text is closed: the name was prepared again
  */
 static DB_SESSION *
-db_prepared_tree_lookup (const DB_SESSION * owner, const char *name)
+db_prepared_tree_lookup (const char *name, const char *text)
 {
-  DB_SESSION *s;
+  DB_SESSION *s = db_prepared_tree_unlink (name);
 
-  if (owner == NULL)
+  if (s != NULL && (s->kept_session_id != db_get_session_id () || s->parser->original_buffer == NULL
+		    || strcmp (s->parser->original_buffer, text) != 0))
     {
+      db_prepared_tree_close (s);
       return NULL;
     }
-
-  for (s = owner->kept_trees; s != NULL; s = s->next)
+  if (s != NULL)
     {
-      if (s->kept_stmt_name != NULL && strcmp (s->kept_stmt_name, name) == 0)
-	{
-	  return s;
-	}
+      s->next = db_Kept_trees;
+      db_Kept_trees = s;
     }
-  return NULL;
+  return s;
 }
 
 /*
  * db_prepared_tree_remove() - drop the kept subsession of a prepared statement
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
  */
 static void
-db_prepared_tree_remove (DB_SESSION * owner, const char *name)
+db_prepared_tree_remove (const char *name)
 {
-  db_prepared_tree_close (db_prepared_tree_unlink (owner, name));
+  db_prepared_tree_close (db_prepared_tree_unlink (name));
 }
 
 /*
@@ -293,8 +857,8 @@ db_prepared_tree_remove (DB_SESSION * owner, const char *name)
  *   replacing any previous tree kept under the same name. On failure the caller keeps
  *   the subsession where it is (the owner's transient chain), so it is still released
  *   with the owner.
- * return          : true when the subsession was moved to the owner's kept list
- * owner (in)      : session that owns the prepared name
+ * return          : true when the subsession was moved to the kept list
+ * owner (in)      : session whose transient chain holds the subsession
  * name (in)       : prepared statement name
  * subsession (in) : compiled subsession holding the post-transform tree
  */
@@ -313,7 +877,7 @@ db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * su
     }
 
   /* move it off the transient chain: both lists link through `next`, and the owner's close
-   * walks each of them, so the subsession must be on exactly one */
+   * walks its chain, so the subsession must be on exactly one */
   for (sp = &owner->next; *sp != NULL; sp = &((*sp)->next))
     {
       if (*sp == subsession)
@@ -324,25 +888,54 @@ db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * su
     }
   subsession->next = NULL;
 
-  /* a tree kept under this name from an earlier execution is now superseded */
-  db_prepared_tree_remove (owner, name);
+  /* CBRD-27583: a tree kept under this name for another bind type signature, and the ones it keeps, stay beside it
+   * (the least recently used beyond DB_MAX_SIGNATURE_PLANS closed); else a tree kept from an earlier execution is
+   * now superseded */
+  DB_SESSION *other = db_prepared_tree_unlink (name);
+  if (other != NULL && other->parser->host_var_compiled_domains != NULL
+      && subsession->parser->host_var_compiled_domains != NULL
+      && !pt_host_vars_match_signature (other->parser, subsession->parser->host_var_count,
+					subsession->parser->host_variables))
+    {
+      free_and_init (other->kept_stmt_name);
+      other->next = other->signature_plans;
+      other->signature_plans = NULL;
+      subsession->signature_plans = other;
+      int kept = 1;
+      DB_SESSION **link = &other->next;
+      for (; *link != NULL && kept < DB_MAX_SIGNATURE_PLANS; kept++)
+	{
+	  link = &(*link)->next;
+	}
+      while (*link != NULL)
+	{
+	  DB_SESSION *plan = *link;
+	  *link = plan->next;
+	  plan->next = NULL;
+	  db_close_session_local (plan);
+	}
+    }
+  else
+    {
+      db_prepared_tree_close (other);
+    }
 
   subsession->kept_stmt_name = kept_name;
-  subsession->next = owner->kept_trees;
-  owner->kept_trees = subsession;
+  subsession->kept_session_id = db_get_session_id ();
+  subsession->next = db_Kept_trees;
+  db_Kept_trees = subsession;
   return true;
 }
 
 /*
- * db_prepared_tree_free_all() - release every tree kept for a session being closed
- * owner (in) : session being closed
+ * db_prepared_tree_free_all() - release every kept tree: the server session changed or the client shuts down
  */
-static void
-db_prepared_tree_free_all (DB_SESSION * owner)
+void
+db_prepared_tree_free_all (void)
 {
-  DB_SESSION *kept = owner->kept_trees;
+  DB_SESSION *kept = db_Kept_trees;
 
-  owner->kept_trees = NULL;
+  db_Kept_trees = NULL;
   while (kept != NULL)
     {
       DB_SESSION *next = kept->next;
@@ -433,7 +1026,9 @@ db_open_local (void)
   session->is_subsession_for_prepared = false;
   session->next = NULL;
   session->kept_stmt_name = NULL;
-  session->kept_trees = NULL;
+  session->kept_session_id = DB_EMPTY_SESSION;
+  session->signature_plans = NULL;
+  session->bind_domains_from = NULL;
 
   return session;
 }
@@ -482,6 +1077,38 @@ db_open_buffer_local (const char *buffer)
     }
 
   return session;
+}
+
+/*
+ * db_open_buffer_copy_local () - CBRD-27583: db_open_buffer_local of a copy of the text its parser owns: the session's
+ *   statements point into their text, and a kept or signature compilation outlives the buffer it is opened from
+ * return: the session (its statements NULL when the text did not parse), NULL when it cannot be opened (er_errid ())
+ */
+static DB_SESSION *
+db_open_buffer_copy_local (const char *text, size_t len)
+{
+  DB_SESSION *session = db_open_local ();
+  char *copy;
+
+  if (session == NULL)
+    {
+      return NULL;
+    }
+  copy = (char *) parser_alloc (session->parser, len + 1);
+  if (copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
+      db_close_session_local (session);
+      return NULL;
+    }
+  memcpy (copy, text, len);
+  copy[len] = '\0';
+  if (g_open_buffer_control_flags & PARSER_FOR_PLCSQL_STATIC_SQL)
+    {
+      session->parser->flag.is_parsing_static_sql = 1;
+    }
+  session->statements = parser_parse_string_with_escapes (session->parser, copy, false);
+  return session->statements != NULL ? initialize_session (session) : session;
 }
 
 /*
@@ -811,6 +1438,127 @@ db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits)
   return err;
 }
 
+/* CBRD-27583: a statement do_prepare_statement makes a plan for */
+static bool
+db_is_plan_statement (const PT_NODE * statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_INSERT:
+    case PT_UPDATE:
+    case PT_DELETE:
+    case PT_MERGE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * db_begin_signature_compile () - CBRD-27583: the values (or their types) of an execution are bound for the
+ *   compilation of their bind type signature: the positions get their compiled domains from it
+ *   (pt_typed_bind_comparison, db_set_host_var_compiled_domains), their STR_TO_DATE format classes from the values and
+ *   their bind domains (the types the bind converts the values into) from type checking. A compilation without values
+ *   has none.
+ */
+static int
+db_begin_signature_compile (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  if (parser->host_var_count <= 0)
+    {
+      return NO_ERROR;
+    }
+  if (parser->host_var_compiled_domains == NULL)
+    {
+      parser->host_var_compiled_domains = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+      if (parser->host_var_compiled_domains == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  parser->host_var_count * sizeof (TP_DOMAIN *));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  int err = pt_set_host_var_format_classes (parser, count, values);
+  if (err == NO_ERROR && parser->host_var_bind_domains == NULL)
+    {
+      parser->host_var_bind_domains = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+      if (parser->host_var_bind_domains == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, parser->host_var_count * sizeof (TP_DOMAIN *));
+	}
+    }
+  return err;
+}
+
+/*
+ * db_set_host_var_compiled_domains () - CBRD-27583: after the compilation of a bind type signature, a value-typed
+ *   position the translation did not assign (pt_assign_host_var_positions; a statement without one) records the domain
+ *   of the value it was compiled with (a NULL value: the NULL domain). The plan is the plan of these types:
+ *   pt_set_host_variables flags a value of another type and the statement is recompiled for it.
+ */
+static void
+db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
+{
+  if (parser->host_var_compiled_domains == NULL || parser->host_variables == NULL)
+    {
+      return;
+    }
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      TP_DOMAIN *expected = parser->host_var_expected_domains[i];
+      if (pt_host_var_is_context_typed (expected) && !pt_host_var_is_leave_typed (expected)
+	  && !pt_host_var_is_char_typed (expected))
+	{
+	  continue;
+	}
+      if (parser->host_var_compiled_domains[i] == NULL)
+	{
+	  parser->host_var_compiled_domains[i] = pt_host_var_is_char_typed (expected)
+	    && !pt_host_var_is_leave_typed (expected)
+	    ? pt_host_var_sent_domain (parser, i, expected) : pt_host_var_value_domain (parser, i);
+	}
+    }
+}
+
+/*
+ * db_has_untyped_host_var () - CBRD-27583: whether a value-typed position has no compiled domain yet, or a STR_TO_DATE
+ *   format position no format class: the statement was compiled without values and has no plan until an execution
+ *   compiles the plan of its signature
+ */
+static bool
+db_has_untyped_host_var (const PARSER_CONTEXT * parser)
+{
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      if ((!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+	   || pt_host_var_is_leave_typed (parser->host_var_expected_domains[i])
+	   || pt_host_var_is_char_typed (parser->host_var_expected_domains[i]))
+	  && (parser->host_var_compiled_domains == NULL || parser->host_var_compiled_domains[i] == NULL))
+	{
+	  return true;
+	}
+      const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[i] : 0;
+      if ((format_class & PT_HOST_VAR_FORMAT_POSITION)
+	  && PT_HOST_VAR_FORMAT_CLASS (format_class) == PT_HOST_VAR_FORMAT_UNKNOWN)
+	{
+	  /* a STR_TO_DATE format position compiled without its format: the result type is not known */
+	  return true;
+	}
+      if ((format_class & PT_HOST_VAR_ELT_POSITION)
+	  && (parser->host_var_elt_indexes == NULL || parser->host_var_elt_indexes[i] == PT_HOST_VAR_ELT_UNKNOWN))
+	{
+	  /* an ELT index position compiled without its value: which argument types the result is not known */
+	  return true;
+	}
+    }
+  return false;
+}
+
 /*
  * db_compile_statement_local() -
  * return:
@@ -891,6 +1639,25 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
+  /* CBRD-27583: the session's host variables are this statement's only when it has markers of its own: an EXECUTE
+   * leaves the prepared statement's values in the session's parser */
+  int n_markers = 0;
+  if (parser->host_var_count > 0)
+    {
+      (void) parser_walk_tree (parser, statement, pt_count_input_markers, &n_markers, NULL, NULL);
+    }
+
+  if (parser->flag.set_host_var == 1 && n_markers > 0)
+    {
+      /* CBRD-27583: values pushed before the compilation: the plan is the plan of their types */
+      err = db_begin_signature_compile (parser, parser->host_var_count, parser->host_variables);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      db_untype_null_host_variables (parser);
+    }
+
   /*
      pt_rewrite_for_dblink:
      the dblink with remote-table-name@server-name should be converted as
@@ -968,6 +1735,20 @@ db_compile_statement_local (DB_SESSION * session)
   if (seed == 0)
     {
       srand48 (seed = (long) time (NULL));
+    }
+
+  /* CBRD-27583: the second compilation of a signature types its positions with the bind domains the first one's plan
+   * differs from */
+  if (session->bind_domains_from != NULL && n_markers > 0)
+    {
+      pt_take_host_var_bind_domains (parser, session->bind_domains_from);
+    }
+
+  /* CBRD-27583: mark the positions where a NULL cannot change the answer (any NULL value there shares one plan),
+   * before type checking types the binds */
+  if (n_markers > 0)
+    {
+      pt_classify_host_var_positions (parser, statement);
     }
 
   /* do semantic check for the statement */
@@ -1066,6 +1847,24 @@ db_compile_statement_local (DB_SESSION * session)
   session->statements[stmt_ndx] = statement;
   session->stage[stmt_ndx] = StatementCompiledStage;
 
+  /* CBRD-27583: the cache key token and the regu domain of a value-typed position read its compiled domain */
+  if (n_markers > 0)
+    {
+      db_set_host_var_compiled_domains (parser);
+    }
+
+  /* CBRD-27583: the bind (do_cast_host_variables_to_expected_domain) converts a value into another type than this
+   * compilation planned its position with: no plan; the caller compiles the text once more, the positions taking their
+   * bind domains. Only where the statement is compiled before its values are bound and this compilation makes the
+   * plan: not a compilation that consumes the values (set_host_var), an EXECUTE's that binds them first (a subsession
+   * for a prepared statement: DML, a stored function, RECOMPILE), nor a statement its execution compiles with the
+   * values (cannot_prepare). */
+  if (n_markers > 0 && parser->flag.set_host_var == 0 && !session->is_subsession_for_prepared
+      && !statement->flag.cannot_prepare && pt_host_var_bind_domains_differ (parser))
+    {
+      parser->flag.bind_domains_differ = 1;
+      return stmt_ndx + 1;
+    }
 
   /*
    * Preparation Stage
@@ -1077,9 +1876,17 @@ db_compile_statement_local (DB_SESSION * session)
    * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
    * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
    * prepare_and_execute_query(). */
-  if (!parser->flag.is_parsing_static_sql && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0
-      && statement->flag.cannot_prepare == 0)
+  if (!parser->flag.is_parsing_static_sql && !parser->flag.is_verifying_static_sql_text
+      && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
+      if (n_markers > 0 && db_is_plan_statement (statement) && db_has_untyped_host_var (parser))
+	{
+	  /* CBRD-27583: compiled without values, a value-typed position has no type yet: no plan now; the first
+	   * execution compiles the plan of its bind type signature (db_push_values) */
+	  session->stage[stmt_ndx] = StatementPreparedStage;
+	  return stmt_ndx + 1;
+	}
+
       if (session->is_subsession_for_prepared)
 	{
 	  /* cast host variables to their expected domain, before XASL generation. */
@@ -1093,6 +1900,12 @@ db_compile_statement_local (DB_SESSION * session)
 		  return er_errid ();
 		}
 	      return err;
+	    }
+	  if (n_markers > 0)
+	    {
+	      /* CBRD-27583: the plan of a bind type signature is shared by every value of it: its generation must not
+	       * fold the values in (1-3) */
+	      session->parser->flag.set_host_var = 0;
 	    }
 	}
 
@@ -1921,10 +2734,332 @@ db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values)
 		  return ER_PT_SEMANTIC;
 		}
 	    }
+
+	  if (db_needs_bind_signature_plan (session))
+	    {
+	      int error = db_use_bind_signature_plan (session, count, in_values);
+	      if (error != NO_ERROR)
+		{
+		  /* no compilation of these values' bind type signature: nothing executes them */
+		  parser->flag.set_host_var = 0;
+		}
+	      return error;
+	    }
 	}
     }
 
   return NO_ERROR;
+}
+
+/*
+ * db_needs_bind_signature_plan () - CBRD-27583: whether the values just pushed into a driver session (db_compile_statement,
+ *   db_push_values, db_execute_and_keep_statement) have a bind type signature its compilation has no plan for: the
+ *   statement was prepared without values (a value-typed position has no type yet), or a value-typed position received
+ *   a value of another type. The SQL-level EXECUTE recompiles in its own subsessions (do_recompile_and_execute_prepared_
+ *   statement, the kept trees), so their pushes are not this one's.
+ */
+static bool
+db_needs_bind_signature_plan (const DB_SESSION * session)
+{
+  const PARSER_CONTEXT *parser = session->parser;
+
+  if (session->is_subsession_for_prepared || session->kept_stmt_name != NULL || session->dimension < 1
+      || session->stage == NULL || parser->flag.set_host_var == 0 || parser->flag.is_parsing_static_sql
+      || prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) <= 0)
+    {
+      return false;
+    }
+
+  /* several statements prepared at once (a driver's "a; b") share the positions: the plan of a signature is the
+   * compilation of the whole text, so every statement must be one a plan serves */
+  bool plan_statement = false;
+  for (int i = 0; i < session->dimension; i++)
+    {
+      const PT_NODE *statement = session->statements[i];
+      /* the statements after stmt_ndx are not compiled yet (ux_execute_all compiles each before executing it) */
+      if (statement == NULL || statement->flag.cannot_prepare
+	  || (i < session->stmt_ndx && session->stage[i] < StatementPreparedStage))
+	{
+	  return false;
+	}
+      plan_statement = plan_statement || db_is_plan_statement (statement);
+    }
+  if (!plan_statement)
+    {
+      return false;
+    }
+  /* a compilation made while execution was skipped has no plan: the next executed one compiles its own */
+  return parser->flag.bind_signature_changed || db_has_untyped_host_var (parser)
+    || (parser->flag.plan_only_signature && !qo_need_skip_execution ());
+}
+
+/*
+ * db_use_bind_signature_plan () - CBRD-27583: make the compilation of the pushed values' bind type signature the driver
+ *   session's current one: the one it keeps for that signature, else a new one. Every execution of a signature the
+ *   session compiled once, the same one or alternating types, costs one server request, as without signatures.
+ */
+static int
+db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values)
+{
+  if (!db_take_signature_plan (session, count, values))
+    {
+      return db_recompile_for_bind_signature (session, count, values);
+    }
+  pt_set_host_variables (session->parser, count, values);
+  if (session->parser->flag.set_host_var == 0 && pt_has_error (session->parser))
+    {
+      pt_report_to_ersys (session->parser, PT_SEMANTIC);
+      pt_reset_error (session->parser);
+      return ER_PT_SEMANTIC;
+    }
+  assert (!session->parser->flag.bind_signature_changed);
+  return NO_ERROR;
+}
+
+/*
+ * db_take_signature_plan () - CBRD-27583: make the kept compilation of these values' bind type signature the session's
+ *   current one (the current one takes its place, the most recently used first in signature_plans)
+ *   return: whether the session keeps one; the caller binds the values into it
+ */
+static bool
+db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values)
+{
+  for (DB_SESSION ** link = &session->signature_plans; *link != NULL; link = &(*link)->next)
+    {
+      DB_SESSION *plan = *link;
+      if (pt_host_vars_match_signature (plan->parser, count, values))
+	{
+	  db_swap_compilation (session, plan);
+	  *link = plan->next;
+	  if (db_keeps_signature_plan (plan))
+	    {
+	      plan->next = session->signature_plans;
+	      session->signature_plans = plan;
+	    }
+	  else
+	    {
+	      plan->next = NULL;
+	      db_close_session_local (plan);
+	    }
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * db_keeps_signature_plan () - CBRD-27583: whether the compilation a signature's plan replaced as the session's current
+ *   one is kept in signature_plans: it is the plan of its own signature - typed positions, a cacheable statement, made
+ *   while execution was not skipped (a level 514 compilation has no XASL)
+ */
+static bool
+db_keeps_signature_plan (const DB_SESSION * replaced)
+{
+  return replaced->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (replaced->parser)
+    && !replaced->statements[0]->flag.cannot_prepare && !replaced->parser->flag.plan_only_signature;
+}
+
+/*
+ * db_compiles_at_execution () - CBRD-27583: whether a driver session compiles its statement text for this execution:
+ *   a statement reading or assigning session variables compiles at every execution, the first one included (a SET
+ *   between the preparation and the execution gives a variable its type), and its plan is not cached
+ */
+static bool
+db_compiles_at_execution (DB_SESSION * session, int stmt_ndx)
+{
+  PT_NODE *statement = session->statements[stmt_ndx];
+
+  return session->dimension == 1 && !session->is_subsession_for_prepared && session->kept_stmt_name == NULL
+    && statement != NULL && statement->flag.cannot_prepare && db_is_plan_statement (statement)
+    && pt_has_session_variable (session->parser, statement);
+}
+
+/*
+ * db_swap_compilation () - CBRD-27583: exchange the compilations of two sessions of one statement text
+ */
+static void
+db_swap_compilation (DB_SESSION * a, DB_SESSION * b)
+{
+  std::swap (a->parser, b->parser);
+  std::swap (a->statements, b->statements);
+  std::swap (a->type_list, b->type_list);
+  std::swap (a->stage, b->stage);
+  std::swap (a->dimension, b->dimension);
+  /* stmt_ndx stays: it is the driver's progress through the statements (the CAS compiles each one just before it
+   * executes it), not the compilation's; a compilation swapped in has the statements compiled so far compiled, the
+   * rest compile at their turn (db_compile_signature_text) */
+  std::swap (a->include_oid, b->include_oid);
+}
+
+/*
+ * db_compile_signature_text () - CBRD-27583: compile the driver session's statement text in a new session for the bind
+ *   type signature of these values, as the SQL-level EXECUTE does (a SELECT sees the values' types only, DML the
+ *   values); the second compilation of a signature takes the bind domains the first one found
+ *   typed(out): the new session, which the caller closes
+ */
+static int
+db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
+			   const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p)
+{
+  const PT_NODE *statement = session->statements[0];
+  PARSER_CONTEXT *old_parser = session->parser;
+  DB_SESSION *typed = NULL;
+  int err = NO_ERROR;
+
+  /* one statement compiles from its own text; several, from the text they were prepared from together */
+  const char *text = session->dimension == 1 ? statement->sql_user_text : old_parser->original_buffer;
+  const size_t text_len = session->dimension == 1 ? (size_t) statement->sql_user_text_len : strlen (text);
+  typed = *typed_p = db_open_buffer_copy_local (text, text_len);
+  if (typed == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  if (typed->statements == NULL || pt_has_error (typed->parser))
+    {
+      pt_report_to_ersys (typed->parser, PT_SYNTAX);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  if (typed->dimension != session->dimension || typed->parser->host_var_count != old_parser->host_var_count)
+    {
+      err = ER_IT_INCORRECT_HOSTVAR_COUNT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, old_parser->host_var_count, typed->parser->host_var_count);
+      return err;
+    }
+
+  typed->include_oid = session->include_oid;
+  typed->parser->flag.is_holdable = old_parser->flag.is_holdable;
+  typed->parser->flag.is_auto_commit = old_parser->flag.is_auto_commit;
+  typed->parser->flag.return_generated_keys = old_parser->flag.return_generated_keys;
+  typed->parser->flag.is_xasl_pinned_reference = old_parser->flag.is_xasl_pinned_reference;
+  typed->parser->flag.recompile_xasl_pinned = old_parser->flag.recompile_xasl_pinned;
+  typed->parser->flag.is_system_generated_stmt = old_parser->flag.is_system_generated_stmt;
+  typed->parser->flag.plan_only_signature = qo_need_skip_execution ();
+
+  err = db_begin_signature_compile (typed->parser, count, values);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  bool selects_only = true;
+  for (int i = 0; i < typed->dimension; i++)
+    {
+      selects_only = selects_only && pt_node_to_cmd_type (typed->statements[i]) == CUBRID_STMT_SELECT;
+    }
+  if (selects_only)
+    {
+      db_bind_value_types (typed->parser, count, values);
+    }
+  else
+    {
+      /* DML compiles with the values bound: a client-side trigger UPDATE evaluates them at compile */
+      pt_set_host_variables (typed->parser, count, values);
+      typed->parser->flag.set_host_var = 0;
+      db_untype_null_host_variables (typed->parser);
+    }
+  /* the statements the session has compiled so far (a prefix: the CAS compiles each one just before it executes it);
+   * a later one may read a table an earlier one creates, so it compiles at its turn, in this compilation */
+  int compiled = 0;
+  while (compiled < session->dimension && session->stage[compiled] >= StatementPreparedStage)
+    {
+      compiled++;
+    }
+  typed->bind_domains_from = bind_domains_from;
+  do
+    {
+      /* db_compile_statement_local compiles the next statement, 0 after the last */
+      err = db_compile_statement_local (typed);
+    }
+  while (err > 0 && typed->stmt_ndx < compiled);
+  typed->bind_domains_from = NULL;
+  return err < 0 ? err : NO_ERROR;
+}
+
+/*
+ * db_recompile_for_bind_signature () - CBRD-27583: compile the driver session's statement text again for the bind
+ *   type signature of the values just pushed (db_compile_signature_text; once more when the bind converts a value into
+ *   another type than the compilation planned it with), and make that compilation the session's current
+ *   one. The session keeps the compilation it replaces when that one has a plan (signature_plans): the driver keeps
+ *   its handle and every later execution of either signature runs without compiling.
+ */
+static int
+db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values)
+{
+  const PT_NODE *statement = session->statements[0];
+  DB_SESSION *typed = NULL;
+  int err = NO_ERROR;
+
+  if (session->dimension == 1 ? statement->sql_user_text == NULL || statement->sql_user_text_len <= 0
+      : session->parser->original_buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+
+  err = db_compile_signature_text (session, count, values, NULL, &typed);
+  if (err == NO_ERROR && typed->parser->flag.bind_domains_differ)
+    {
+      DB_SESSION *first = typed;
+      err = db_compile_signature_text (session, count, values, first->parser, &typed);
+      db_close_session_local (first);
+    }
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+
+  pt_set_host_variables (typed->parser, count, values);
+  if (typed->parser->flag.set_host_var == 0 && pt_has_error (typed->parser))
+    {
+      pt_report_to_ersys (typed->parser, PT_SEMANTIC);
+      pt_reset_error (typed->parser);
+      err = ER_PT_SEMANTIC;
+      goto end;
+    }
+  /* the values a signature was compiled for take its plan (a NULL too, where it was compiled as another type) */
+  assert (!typed->parser->flag.bind_signature_changed);
+
+#if !defined (NDEBUG)
+  /* one statement text: one column list */
+  {
+    int columns[2] = { 0, 0 };
+    for (DB_QUERY_TYPE * col = session->type_list[0]; col != NULL; col = col->next)
+      {
+	columns[0]++;
+      }
+    for (DB_QUERY_TYPE * col = typed->type_list[0]; col != NULL; col = col->next)
+      {
+	columns[1]++;
+      }
+    assert (columns[0] == columns[1] || columns[0] == 0);
+  }
+#endif
+  db_swap_compilation (session, typed);
+  if (db_keeps_signature_plan (typed))
+    {
+      /* the replaced compilation is the plan of its own signature: kept, the least recently used one beyond
+       * DB_MAX_SIGNATURE_PLANS closed */
+      typed->next = session->signature_plans;
+      session->signature_plans = typed;
+      DB_SESSION **link = &session->signature_plans;
+      int kept = 0;
+      for (; *link != NULL && kept < DB_MAX_SIGNATURE_PLANS; kept++)
+	{
+	  link = &(*link)->next;
+	}
+      while (*link != NULL)
+	{
+	  DB_SESSION *plan = *link;
+	  *link = plan->next;
+	  plan->next = NULL;
+	  db_close_session_local (plan);
+	}
+      return NO_ERROR;
+    }
+
+end:
+  db_close_session_local (typed);
+  return err;
 }
 
 /*
@@ -2000,11 +3135,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   PT_NODE *statement;
   DB_QUERY_RESULT *qres;
   DB_VALUE *val;
-  UINT64 *bind_fp_p;
   int err = NO_ERROR;
   int server_info_bits;
 
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_CLASS_MODIFICATION_STATUS cls_status = DB_CLASS_NOT_MODIFIED;
 
   if (result != NULL)
@@ -2055,6 +3189,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       pt_report_to_ersys (session->parser, PT_SEMANTIC);
       return er_errid ();
+    }
+
+  if (db_compiles_at_execution (session, stmt_ndx))
+    {
+      err = db_recompile_for_bind_signature (session, session->parser->host_var_count, session->parser->host_variables);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
 
   /*
@@ -2144,8 +3287,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  do_recompile = true;
 	}
 
+      /* CBRD-27583: a plan-only request (the CAS's plan of an executed statement text) compiles: its plan is printed */
       if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
-	  && statement->info.execute.name != NULL)
+	  && statement->info.execute.name != NULL && !qo_need_skip_execution ())
 	{
 	  /* A kept tree exists only for statements whose plan was fixed under the first
 	   * execution's bind values (they have a histogram-usable predicate; see the
@@ -2154,10 +3298,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * plan_cache_bind_sensitivity on, the check inside
 	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
 	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
-	  DB_SESSION *kept = db_prepared_tree_lookup (session, statement->info.execute.name->info.name.original);
+	  const PT_NODE *text = statement->info.execute.query;
+	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original,
+						      (const char *) text->info.value.data_value.str->bytes);
 
 	  if (kept != NULL)
 	    {
+	      bool signature_miss = false;
+
 	      /* do_recompile carries the compile-stage verdicts that made the cached XASL
 	       * unusable as-is: the LIKE / MRO / SORT-LIMIT checks and the UNPEEKED flag
 	       * null the XASL id when this execution's values require a fresh plan. The
@@ -2165,8 +3313,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	       * verdict must ride along -- otherwise a LIMIT value crossing the MRO
 	       * threshold would silently keep the previous plan (review report: with the
 	       * kept tree alive, limit 50 -> 500 stayed on the MRO plan instead of
-	       * recompiling to SORT). */
-	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, do_recompile);
+	       * recompiling to SORT). CBRD-27583: a PREPARE that made no plan leaves no XASL id, which is no verdict. */
+	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result,
+								    do_recompile
+								    && !statement->info.execute.plan_at_execute,
+								    &signature_miss);
 	      if (err >= 0)
 		{
 		  return err;
@@ -2183,8 +3334,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  return err;
 		}
 	      /* the kept tree is stale (schema change / cache invalidation); discard it
-	       * and fall back to a fresh compilation of the stored statement text */
-	      db_prepared_tree_remove (session, statement->info.execute.name->info.name.original);
+	       * and fall back to a fresh compilation of the stored statement text. CBRD-27583: a signature it has no
+	       * compilation of is compiled from the text too, and the kept tree stays for its own ones. */
+	      if (!signature_miss)
+		{
+		  db_prepared_tree_remove (statement->info.execute.name->info.name.original);
+		}
 	      er_clear ();
 	      pt_reset_error (parser);
 	      do_recompile = true;
@@ -2235,29 +3390,33 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
        * this, CCI/JDBC prepared statements -- which never build a PT_EXECUTE_PREPARE node and so never
        * reach the header-flag consumer in do_get_prepared_statement_info () -- would never price a
        * `?` predicate with real values. */
-      bind_fp_p = db_stmt_bind_fp_ptr (statement);
-      if ((statement->flag.hv_pred_plan_unpeeked || db_is_bind_sensitive (statement)) && bind_fp_p != NULL
-	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
+      if (db_bind_variant_mode (statement) && parser->flag.set_host_var && parser->host_var_count > 0
+	  && statement->xasl_id != NULL)
 	{
-	  UINT64 bind_fp = 0;
-
-	  if (!histogram_bind_fingerprint (parser, statement, &bind_fp))
+	  /* a SELECT picked by target selection runs the plan variant its values call for
+	   * (bind_variant.h); that also settles the first peek, since no variant is chosen under
+	   * unbound markers */
+	  err = db_bind_variant_step (parser, statement);
+	  if (err != NO_ERROR)
 	    {
-	      /* nothing in this statement is priced by a histogram (e.g. its tables have no
-	       * collected statistics), and that cannot change while this plan lives -- the plan
-	       * is invalidated with the statistics. Clear the unpeeked flag so later executions
-	       * stop re-walking the tree for an answer that cannot change. */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
+	      update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
+	      assert (result == NULL || *result == NULL);
+	      return err;
 	    }
-	  else if (*bind_fp_p != bind_fp)
+	  statement->flag.hv_pred_plan_unpeeked = 0;
+	}
+      else if (db_bind_watch_is_open (statement) && parser->flag.set_host_var && parser->host_var_count > 0
+	       && statement->xasl_id != NULL)
+	{
+	  BIND_WATCH_VERDICT watch = db_bind_watch_verdict (parser, statement);
+
+	  if (watch == BIND_WATCH_REPLAN)
 	    {
-	      /* The bound values land in different histogram territory (a different MCV/bucket,
-	       * hence a different selectivity) than the values the cached plan was chosen under --
-	       * or this is the first execution and the plan was compiled with unbound markers.
-	       * Regenerate the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement ()
-	       * redoes only plan selection and XASL generation; parsing, semantic checks and
-	       * rewrites are NOT repeated. With the values now bound, the histogram probes price
-	       * the predicates with their real selectivities. */
+	      /* The values price at least one predicate out of band against the plan -- or this
+	       * is the first execution and the plan was compiled with unbound markers. Regenerate
+	       * the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement () redoes only
+	       * plan selection and XASL generation; parsing, semantic checks and rewrites are NOT
+	       * repeated. */
 	      err = do_replan_statement_with_bind_peek (parser, statement);
 	      if (err != NO_ERROR)
 		{
@@ -2265,11 +3424,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  assert (result == NULL || *result == NULL);
 		  return err;
 		}
-	      *bind_fp_p = bind_fp;
-	      /* the regenerated plan was chosen under real values, so the unpeeked contract is
-	       * satisfied; any further replan is up to the parameter / hint */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
 	    }
+	  /* the plan has now been priced under real values (or nothing in it can be priced, which
+	   * cannot change while it lives), so the unpeeked contract is satisfied either way */
+	  statement->flag.hv_pred_plan_unpeeked = 0;
 	}
 
       /* now, execute the statement by calling do_execute_statement() */
@@ -2306,6 +3464,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      /* retry the statement by calling do_prepare/execute_statement() */
 	      if (do_prepare_statement (parser, statement) == NO_ERROR)
 		{
+		  if (db_bind_variant_mode (statement))
+		    {
+		      /* the variant's remembered XASL_ID was stale; keep the fresh one */
+		      db_bind_variant_remember (statement);
+		    }
 		  err = do_execute_statement (parser, statement);
 		}
 	    }
@@ -2330,7 +3493,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	{
 	  assert (parser->flag.set_host_var == 1);
 	}
-      if (parser->host_var_count > 0 || parser->auto_param_count > 0)
+      /* CBRD-27583: a session-variable statement compiled for this execution's bind type signature runs its
+       * compilation: binding the values into the tree would type the binds as literals (their collation's
+       * coercibility, a compile-time collation error where the row evaluation gives -1150) */
+      const bool signature_compiled = parser->host_var_compiled_domains != NULL && db_is_plan_statement (statement)
+	&& pt_has_session_variable (parser, statement);
+      if ((parser->host_var_count > 0 || parser->auto_param_count > 0) && !signature_compiled)
 	{
 	  /* In this case, pt_bind_values_to_hostvars() will change PT_HOST_VAR node. Must duplicate the statement and
 	   * execute with the new one and free the copied one before returning */
@@ -2892,7 +4060,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   db_init_prepare_info (&prepare_info);
 
   /* re-PREPARE of the same name invalidates the tree kept for bind-sensitive replans */
-  db_prepared_tree_remove (session, name);
+  db_prepared_tree_remove (name);
 
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
@@ -2952,6 +4120,10 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
     prepared_session->parser->host_var_count + prepared_session->parser->auto_param_count;
   prepare_info.host_variables.vals = prepared_session->parser->host_variables;
   prepare_info.host_var_expected_domains = prepared_session->parser->host_var_expected_domains;
+  prepare_info.host_var_derived_from = prepared_session->parser->host_var_derived_from;
+  prepare_info.host_var_derived_pads = prepared_session->parser->host_var_derived_pads;
+  prepare_info.host_var_derived_count = prepared_session->parser->host_var_derived_count;
+  prepare_info.host_var_format_classes = prepared_session->parser->host_var_format_classes;
   /* set autoparam count */
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
@@ -3101,6 +4273,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   statement->info.execute.oids_included = prepare_info.oids_included;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
+  statement->info.execute.plan_at_execute = prepare_info.stmt_type == CUBRID_STMT_SELECT && XASL_ID_IS_NULL (&xasl_id);
 
   /* restore host variables used by this statement */
   for (i = 0, hv = parser->host_variables; i < parser->host_var_count + parser->auto_param_count; i++, hv++)
@@ -3117,6 +4290,26 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
     {
       free_and_init (parser->host_var_expected_domains);
     }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
+    }
+  if (parser->host_var_format_classes)
+    {
+      free_and_init (parser->host_var_format_classes);
+    }
+  if (parser->host_var_elt_indexes)
+    {
+      free_and_init (parser->host_var_elt_indexes);
+    }
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
 
   parser->auto_param_count = 0;
   parser->host_var_count = 0;
@@ -3124,8 +4317,14 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   parser->auto_param_count = prepare_info.auto_param_count;
   parser->host_variables = prepare_info.host_variables.vals;
   parser->host_var_expected_domains = prepare_info.host_var_expected_domains;
+  parser->host_var_derived_from = prepare_info.host_var_derived_from;
+  parser->host_var_derived_pads = prepare_info.host_var_derived_pads;
+  parser->host_var_derived_count = prepare_info.host_var_derived_count;
+  /* an AGNOSTIC position (a NULL there cannot change the answer) binds only whether its value is NULL */
+  parser->host_var_format_classes = prepare_info.host_var_format_classes;
   parser->host_var_count = prepare_info.host_variables.size - prepare_info.auto_param_count;
 
+  /* CBRD-27583: the bind fills the derived positions from the user values too (pt_set_host_variables) */
   err = do_set_user_host_variables (session, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
@@ -3134,6 +4333,15 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 
   parser->host_var_count += prepare_info.auto_param_count;
   parser->auto_param_count = 0;
+  parser->host_var_derived_count = 0;
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
   parser->flag.set_host_var = 1;
 
   /* Like optimization check: if host-variables were used in LIKE conditions, check if query needs to be recompiled
@@ -3155,7 +4363,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	}
 
       /* query has to be multi range opt candidate */
-      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
+      if (xasl_header.xasl_flag & XASL_LIMIT_OPT_FLAGS)
 	{
 	  if (db_check_limit_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {
@@ -3176,6 +4384,15 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	   * whether a later bucket change replans again). Unconditional like the
 	   * driver-neutral first peek in do_prepare_select () -- same SQL, same first
 	   * execution behavior on every driver. */
+	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	}
+      else if ((xasl_header.xasl_flag & BIND_WATCH_CANDIDATE)
+	       && prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0)
+	{
+	  /* a target of the plan variants whose base plan was compiled under bound values (by a
+	   * session with plan_cache_bind_variants=0, whose first execution fixed it): the cached
+	   * XASL_ID alone would run that plan for every value. Take the same path as above, whose
+	   * first execution chooses the variant and keeps the tree for the next ones. */
 	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	}
     }
@@ -3234,8 +4451,22 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
   DB_VALUE *host_vars = session->parser->host_variables;
   TP_DOMAIN **expected_domains = session->parser->host_var_expected_domains;
   DB_VALUE *hv = NULL;
-  TP_DOMAIN *hv_dom = NULL, *d = NULL;
+  TP_DOMAIN *hv_dom = NULL;
   int i = 0;
+
+  /* CBRD-27583: the derived positions a compilation made after the values were bound take their user value before
+   * it is cast for its own position */
+  for (i = hv_count; i < hv_count + session->parser->auto_param_count; i++)
+    {
+      if (pt_is_derived_host_var (session->parser, i) && DB_IS_NULL (&host_vars[i])
+	  && pt_set_derived_host_variable (session->parser, i,
+					   &host_vars[session->parser->host_var_derived_from[i]]) != NO_ERROR)
+	{
+	  pt_report_to_ersys (session->parser, PT_EXECUTION);
+	  pt_reset_error (session->parser);
+	  return ER_PT_EXECUTE;
+	}
+    }
 
   for (i = 0; i < hv_count; i++)
     {
@@ -3257,11 +4488,11 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
       db_make_null (&char_cast);
       if (tp_value_cast_preserve_domain (hv, keep_varchar ? &char_cast : hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
+	  const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
+	  char name[256];
 	  pr_clear_value (&char_cast);
-	  d = pt_type_enum_to_db_domain (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		       d);
-	  tp_domain_free (d);
+		       pt_host_var_coerce_target (session->parser, i, typ, target, name, sizeof (name)));
 	  pt_report_to_ersys (session->parser, PT_EXECUTION);
 	  pt_reset_error (session->parser);
 	  return ER_PT_EXECUTE;
@@ -3272,6 +4503,128 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
   session->parser->flag.set_host_var = 1;
 
   return NO_ERROR;
+}
+
+/*
+ * db_bind_value_types () - CBRD-27583: bind the TYPES of an execution's values, not the values: each host variable
+ *   becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a NULL value a
+ *   plain NULL. The compilation of their bind type signature reads the types; the code the set_host_var flag does not
+ *   guard reads NULLs and bakes no value into a plan the cache keys by type.
+ */
+static void
+db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  for (int i = 0; i < parser->host_var_count && i < count; i++)
+    {
+      const DB_VALUE *val = &values[i];
+      DB_VALUE *hv = &parser->host_variables[i];
+      const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      pr_clear_value (hv);
+      if (type == DB_TYPE_NULL)
+	{
+	  db_make_null (hv);
+	  continue;
+	}
+      /* a fixed BIT compiles as the floating BIT (pt_host_var_value_domain) */
+      db_value_domain_init (hv, type, type == DB_TYPE_BIT ? TP_FLOATING_PRECISION_VALUE : DB_VALUE_PRECISION (val),
+			    DB_VALUE_SCALE (val));
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));
+	}
+    }
+}
+
+/*
+ * db_untype_null_host_variables () - CBRD-27583: a NULL value bound for a compilation is a plain NULL, whatever type
+ *   header the driver gave it: the signature of a NULL is NULL (pt_value_has_domain_type), and a typed NULL in
+ *   the host variables of a compilation stands for a value of that type (db_bind_value_types)
+ */
+static void
+db_untype_null_host_variables (PARSER_CONTEXT * parser)
+{
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      DB_VALUE *hv = &parser->host_variables[i];
+      if (DB_IS_NULL (hv) && DB_VALUE_DOMAIN_TYPE (hv) != DB_TYPE_NULL)
+	{
+	  pr_clear_value (hv);
+	  db_make_null (hv);
+	}
+    }
+}
+
+/*
+ * db_show_limit_host_var () - give a host variable of a LIMIT its value (db_show_limit_values)
+ */
+static PT_NODE *
+db_show_limit_host_var (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  const DB_VALUE_ARRAY *values = (const DB_VALUE_ARRAY *) arg;
+
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
+      && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count
+      && node->info.host_var.index < values->size)
+    {
+      DB_VALUE *hv = &parser->host_variables[node->info.host_var.index];
+
+      pr_clear_value (hv);
+      (void) pr_clone_value (&values->vals[node->info.host_var.index], hv);
+    }
+  return node;
+}
+
+/*
+ * db_show_limit_values () - CBRD-27583: the compilation of a bind type signature sees the values of the host
+ *   variables in the statement's LIMIT or ORDERBY_NUM () bound: the MRO and SORT-LIMIT choices read them
+ *   (pt_get_query_limit_value), and each later EXECUTE of the kept tree checks its own values against them
+ *   (do_reexecute_prepared_statement_from_kept_tree). A subquery's LIMIT, which that check does not read, stays unseen.
+ */
+static void
+db_show_limit_values (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE_ARRAY * values)
+{
+  if (statement != NULL && PT_IS_QUERY (statement))
+    {
+      (void) parser_walk_tree (parser, statement->info.query.limit, db_show_limit_host_var, values, NULL, NULL);
+      (void) parser_walk_tree (parser, statement->info.query.orderby_for, db_show_limit_host_var, values, NULL, NULL);
+    }
+}
+
+/*
+ * do_set_user_host_variable_types () - CBRD-27583: bind the TYPES of the USING values (db_bind_value_types), and
+ *   the values of a LIMIT (db_show_limit_values)
+ */
+static int
+do_set_user_host_variable_types (DB_SESSION * session, PT_NODE * using_list)
+{
+  PARSER_CONTEXT *parser = session->parser;
+  DB_VALUE_ARRAY values_array;
+  int err = NO_ERROR;
+
+  values_array.size = 0;
+  values_array.vals = NULL;
+  if (values_list_to_values_array (parser, using_list, &values_array) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  if (parser->host_var_count != values_array.size)
+    {
+      err = ER_IT_INCORRECT_HOSTVAR_COUNT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, values_array.size, parser->host_var_count);
+    }
+  else
+    {
+      err = db_begin_signature_compile (parser, values_array.size, values_array.vals);
+      if (err == NO_ERROR)
+	{
+	  db_bind_value_types (parser, values_array.size, values_array.vals);
+	  db_show_limit_values (parser, session->statements[0], &values_array);
+	}
+    }
+  db_value_clear_array (&values_array);
+  free_and_init (values_array.vals);
+  return err;
 }
 
 /*
@@ -3305,6 +4658,14 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
   else
     {
       err = db_push_values (session, values_array.size, values_array.vals);
+      if (err == NO_ERROR && session->kept_stmt_name != NULL && session->parser->flag.bind_signature_changed
+	  && db_take_signature_plan (session, values_array.size, values_array.vals))
+	{
+	  /* CBRD-27583: a kept tree runs its compilation of these values' bind type signature, matched by the values
+	   * themselves (the ones bound into the other signature's plan were cast into its domains) */
+	  err = db_push_values (session, values_array.size, values_array.vals);
+	  assert (err != NO_ERROR || !session->parser->flag.bind_signature_changed);
+	}
     }
 
   db_value_clear_array (&values_array);
@@ -3513,11 +4874,41 @@ db_reset_cte_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       node->info.query.correlation_level = 0;
       node->info.query.flag.uncorr_hoisted = 0;
     }
+  if (node != NULL && node->node_type == PT_SELECT)
+    {
+      /* the previous generation's planner marked the parallel scan of its driving spec
+       * (qo_apply_parallel_index_scan_threshold): this generation's plan decides again, the hints' marks stay */
+      const PT_HINT_ENUM hint = node->info.query.q.select.hint;
+      for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	{
+	  if (!(hint & PT_HINT_NO_PARALLEL_SCAN))
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag & ~PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	    }
+	  if (!(hint & PT_HINT_PARALLEL))
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag & ~PT_SPEC_FLAG_PARALLEL_THREAD);
+	    }
+	}
+    }
   return node;
 }
 
 static int
 do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  return do_replan_statement_internal (parser, statement, true);
+}
+
+/*
+ * do_replan_statement_internal () - regenerate plan selection and XASL from the kept tree
+ * return : error code
+ * force_compile (in) : true = compile and replace the cache entry (a replan); false = take the
+ *                      statement's cache entry when it is there, compile only when it is not
+ *                      (switching to a plan variant)
+ */
+static int
+do_replan_statement_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool force_compile)
 {
   int err;
   unsigned int save_recompile = statement->flag.recompile;
@@ -3528,7 +4919,7 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
       pt_free_statement_xasl_id (statement);
     }
   (void) parser_walk_tree (parser, statement, db_reset_cte_xasl_pre, NULL, NULL, NULL);
-  statement->flag.recompile = 1;
+  statement->flag.recompile = force_compile ? 1 : 0;
   er_clear ();
   pt_reset_error (parser);
   parser->query_id = NULL_QUERY_ID;
@@ -3595,20 +4986,32 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
  * result (out)      : execution result
  * force_replan (in) : an existing signal (invalidated XASL, LIKE/limit optimization
  *                     check) already requires replanning under the current values
+ * signature_miss (out) : CBRD-27583: the values have a bind type signature the kept tree has no compilation of
  */
 static int
 do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept, PT_NODE * statement,
-						DB_QUERY_RESULT ** result, bool force_replan)
+						DB_QUERY_RESULT ** result, bool force_replan, bool * signature_miss)
 {
   int err = NO_ERROR;
 
   assert (statement->node_type == PT_EXECUTE_PREPARE);
   assert (kept != NULL && kept->statements != NULL && kept->statements[0] != NULL);
 
+  kept->parser->flag.bind_signature_changed = 0;
   err = do_set_user_host_variables (kept, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
       return err;
+    }
+  if (kept->parser->flag.bind_signature_changed)
+    {
+      /* CBRD-27583: the kept tree has no compilation of these values' bind type signature (do_set_user_host_variables
+       * takes the one it has): the caller compiles the statement text for it and keeps it beside this one
+       * (db_prepared_tree_register) */
+      kept->parser->flag.bind_signature_changed = 0;
+      *signature_miss = true;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
     }
 
   kept->parser->flag.set_host_var = 0;
@@ -3620,43 +5023,48 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
 
   {
     PT_NODE *stmt0 = kept->statements[0];
-    UINT64 fp = 0;
-    UINT64 *fp_p = db_stmt_bind_fp_ptr (stmt0);
+    /* CBRD-27583: the LIMIT values decide again whether the plan's MRO / SORT-LIMIT choice holds, the check
+     * do_get_prepared_statement_info makes on a plan the PREPARE made */
     bool replan = force_replan;
-    bool have_fp = false;
 
-    if (fp_p != NULL && (replan || db_is_bind_sensitive (stmt0)))
+    if (!replan && PT_IS_QUERY (stmt0))
       {
-	/* walk for the fingerprint only when something consumes it: the bucket comparison
-	 * below (parameter / hint on) or the baseline recorded after a forced replan. With
-	 * the parameter off and no replan signal the value would go unread, so the kept
-	 * re-execution skips the tree walk entirely. */
-	have_fp = histogram_bind_fingerprint (kept->parser, stmt0, &fp);
+	replan = pt_recompile_for_limit_optimizations (kept->parser, stmt0, stmt0->info.query.limit_opt_flags);
       }
 
-    if (!replan && have_fp && *fp_p != fp)
+    if (db_bind_variant_mode (stmt0) && stmt0->xasl_id != NULL)
       {
-	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
-	 * territory (a different MCV / bucket, hence a different selectivity) than the values
-	 * the kept plan was fixed under, so the plan is regenerated for them. The check has to
-	 * happen here: the equivalent check in db_execute_and_keep_statement_local () is gated
-	 * on parser->flag.set_host_var, which this path (like the recompile path) clears before
-	 * execution, so on the kept tree it never fires. */
-	replan = true;
+	/* see the equivalent step in db_execute_and_keep_statement_local (), gated there on
+	 * parser->flag.set_host_var, which this path clears before execution */
+	err = db_bind_variant_step (kept->parser, stmt0);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	stmt0->flag.hv_pred_plan_unpeeked = 0;
+      }
+    else if (db_bind_watch_is_open (stmt0))
+      {
+	/* the check runs even when something else already forced a replan: it records the rows
+	 * the next check compares against, and without it the baseline would be the one the
+	 * forced plan replaced. It has to happen here: the equivalent check in
+	 * db_execute_and_keep_statement_local () is gated on parser->flag.set_host_var, which
+	 * this path clears before execution, so on the kept tree it never fires. */
+	if (db_bind_watch_verdict (kept->parser, stmt0) == BIND_WATCH_REPLAN)
+	  {
+	    replan = true;
+	  }
+	stmt0->flag.hv_pred_plan_unpeeked = 0;
       }
 
     if (replan)
       {
 	/* regenerate plan + XASL from the kept post-transform tree (no parse / semantic /
-	 * rewrite pass) and record the fingerprint of the values it was fixed under */
+	 * rewrite pass) */
 	err = do_replan_statement_with_bind_peek (kept->parser, stmt0);
 	if (err != NO_ERROR)
 	  {
 	    return err;
-	  }
-	if (have_fp)
-	  {
-	    *fp_p = fp;
 	  }
       }
   }
@@ -3681,11 +5089,16 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   int err = NO_ERROR;
   int idx = 0;
   DB_SESSION *new_session = NULL;
+  DB_SESSION *first = NULL;
   bool is_bind_candidate = false;
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+compile_text:
+  /* CBRD-27583: a kept compilation outlives this statement's text, so it parses a copy */
+  new_session =
+    db_open_buffer_copy_local ((const char *) statement->info.execute.query->info.value.data_value.str->bytes,
+			       strlen ((const char *) statement->info.execute.query->info.value.data_value.str->bytes));
   if (new_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3693,6 +5106,10 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
     }
 
   new_session->is_subsession_for_prepared = true;
+  /* CBRD-27583: the second compilation of this signature, when the bind converts a value of the first one into another
+   * type than it planned the position with (a SELECT compiled before its values are bound); the first one stays among
+   * the subsessions */
+  new_session->bind_domains_from = first != NULL ? first->parser : NULL;
 
   /* add the new session to the subsessions list */
   if (session->next == NULL)
@@ -3718,7 +5135,14 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
    * may legally bind different types on every execution. The values are bound afterwards.
    * DML keeps the original bind-then-compile order: its compilation consumes the values
    * (e.g. the OID-collecting subselect built for a client-side trigger UPDATE evaluates
-   * WHERE/LIMIT host variables at compile), so compiling unbound silently updates 0 rows. */
+   * WHERE/LIMIT host variables at compile), so compiling unbound silently updates 0 rows.
+   *
+   * CBRD-27583: either way the compilation is the one of this execution's bind type signature
+   * : the positions the context leaves untyped take the type of their bound value.
+   * The SELECT branch shows the compilation the values' TYPES only -- a NULL carrying each
+   * value's type header -- so that nothing the set_host_var flag does not guard (the LIKE
+   * rewrite) reads a value into a plan that is cached by type. The values of a LIMIT are shown:
+   * the MRO / SORT-LIMIT choices they decide are checked again at each EXECUTE (db_show_limit_values). */
   if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT || statement->info.execute.bind_before_compile
       || statement->info.execute.recompile)
     {
@@ -3735,6 +5159,13 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	  return err;
 	}
       new_session->parser->flag.set_host_var = 0;
+      err = db_begin_signature_compile (new_session->parser, new_session->parser->host_var_count,
+					new_session->parser->host_variables);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      db_untype_null_host_variables (new_session->parser);
 
       idx = db_compile_statement (new_session);
       if (idx < 0)
@@ -3749,6 +5180,11 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        * in-compile expected-domain cast (db_compile_statement's subsession block) must not
        * run -- it has nothing to cast yet. The values are bound and cast to their expected
        * domains right below, like the db_compile/db_push_values flow. */
+      err = do_set_user_host_variable_types (new_session, statement->info.execute.using_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
       new_session->is_subsession_for_prepared = false;
       idx = db_compile_statement (new_session);
       new_session->is_subsession_for_prepared = true;
@@ -3756,6 +5192,11 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
+	}
+      if (new_session->parser->flag.bind_domains_differ)
+	{
+	  first = new_session;
+	  goto compile_text;
 	}
 
       /* set host variable values in new session */
@@ -3768,49 +5209,73 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       new_session->parser->flag.set_host_var = 0;
     }
 
-  if (new_session->parser->flag.set_host_var == 0)
+  /* Cast host variable to expected domain. CBRD-27583: also where db_compile_statement already cast -- the
+   * expected domains the compilation itself decided (a comparison's conversion of the bind side,
+   * pt_typed_bind_comparison) apply to this execution's values too; the cast is idempotent. */
+  new_session->parser->flag.set_host_var = 0;
+  err = do_cast_host_variables_to_expected_domain (new_session);
+  if (err != NO_ERROR)
     {
-      /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
-      err = do_cast_host_variables_to_expected_domain (new_session);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
+      return err;
     }
 
   if ((statement->info.execute.stmt_type == CUBRID_STMT_SELECT
        || statement->info.execute.stmt_type == CUBRID_STMT_UPDATE
        || statement->info.execute.stmt_type == CUBRID_STMT_DELETE)
       && statement->info.execute.using_list != NULL && new_session->statements[0] != NULL
-      && db_stmt_bind_fp_ptr (new_session->statements[0]) != NULL)
+      && db_stmt_bind_watch_ptr (new_session->statements[0]) != NULL
+      && !(new_session->statements[0]->flag.cannot_prepare
+	   && pt_has_session_variable (new_session->parser, new_session->statements[0])))
     {
-      UINT64 fp = 0;
-
+      /* CBRD-27583: a statement with session variables keeps no tree: each EXECUTE compiles its text */
       /* first execution: if the statement has a host-variable PREDICATE the histogram can
-       * price (histogram_bind_fingerprint returns true), fix the plan under the actual
-       * bind values instead of the unbound markers the PREPARE-time plan was chosen under.
-       * Gating on a real predicate candidate keeps the regeneration off statements whose
-       * only host variables are select-list arguments (e.g. analytic min(?) over ()).
-       * This runs regardless of plan_cache_bind_sensitivity -- with the parameter off the
-       * fixed plan simply stays for every later execution; with it on, later bucket
-       * changes replan again. */
-      if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
+       * price, fix the plan under the actual bind values instead of the unbound markers the
+       * PREPARE-time plan was chosen under, and record the rows those values price so the
+       * next EXECUTE compares against them -- otherwise it would find nothing recorded and
+       * replan a plan that is already right for its values. Gating on a real predicate
+       * candidate keeps the regeneration off statements whose only host variables are
+       * select-list arguments (e.g. analytic min(?) over ()). */
+      if (db_bind_variant_mode (new_session->statements[0]) && new_session->statements[0]->xasl_id != NULL)
 	{
-	  err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
+	  err = db_bind_variant_step (new_session->parser, new_session->statements[0]);
 	  if (err != NO_ERROR)
 	    {
 	      return err;
 	    }
-	  *db_stmt_bind_fp_ptr (new_session->statements[0]) = fp;
+	  new_session->statements[0]->flag.hv_pred_plan_unpeeked = 0;
 	  is_bind_candidate = true;
+	}
+      else if (db_bind_watch_is_open (new_session->statements[0]))
+	{
+	  BIND_WATCH_VERDICT watch = db_bind_watch_verdict (new_session->parser, new_session->statements[0]);
+
+	  if (watch == BIND_WATCH_REPLAN)
+	    {
+	      err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
+	      if (err != NO_ERROR)
+		{
+		  return err;
+		}
+	    }
+	  new_session->statements[0]->flag.hv_pred_plan_unpeeked = 0;
+	  is_bind_candidate = (watch != BIND_WATCH_OFF && watch != BIND_WATCH_STOP);
 	}
     }
 
+  /* the first compilation it took the bind domains from closes with this statement's session; a kept one outlives it */
+  new_session->bind_domains_from = NULL;
   new_session->parser->flag.is_holdable = session->parser->flag.is_holdable;
   new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
   err = db_execute_and_keep_statement_local (new_session, 1, result);
 
-  if (err >= 0 && is_bind_candidate && statement->info.execute.name != NULL)
+  /* CBRD-27583: a PREPARE that made no plan has the compilation of each bind type signature kept as a driver
+   * session keeps it (db_recompile_for_bind_signature), so a later EXECUTE of the signature compiles nothing */
+  const bool signature_plan = statement->info.execute.plan_at_execute
+    && new_session->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (new_session->parser)
+    && !new_session->statements[0]->flag.cannot_prepare;
+  /* a plan-only compilation made no XASL */
+  if (err >= 0 && (is_bind_candidate || signature_plan) && statement->info.execute.name != NULL
+      && !qo_need_skip_execution ())
     {
       /* the plan was fixed under this first execution's bind values. Keep the compiled
        * (post-transform) tree so the next EXECUTE of this name reuses that fixed plan
@@ -3834,7 +5299,7 @@ do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
 {
   const char *const name = statement->info.prepare.name->info.name.original;
 
-  db_prepared_tree_remove (session, name);
+  db_prepared_tree_remove (name);
   return csession_delete_prepared_statement (name);
 }
 
@@ -4288,9 +5753,13 @@ db_close_session_local (DB_SESSION * session)
     {
       return;
     }
-  /* the trees kept for this session's prepared statements (a kept subsession is itself
-   * never an owner, so its list is empty) */
-  db_prepared_tree_free_all (session);
+  while (session->signature_plans != NULL)
+    {
+      DB_SESSION *plan = session->signature_plans;
+      session->signature_plans = plan->next;
+      plan->next = NULL;
+      db_close_session_local (plan);
+    }
   prepared = session->next;
   while (prepared)
     {
@@ -4344,8 +5813,29 @@ db_close_session_local (DB_SESSION * session)
     {
       free_and_init (parser->host_var_expected_domains);
     }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
+    }
+  if (parser->host_var_format_classes)
+    {
+      free_and_init (parser->host_var_format_classes);
+    }
+  if (parser->host_var_elt_indexes)
+    {
+      free_and_init (parser->host_var_elt_indexes);
+    }
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
 
   parser->host_var_count = parser->auto_param_count = 0;
+  parser->host_var_derived_count = 0;
 
   pt_free_orphans (session->parser);
   parser_free_parser (session->parser);
@@ -4754,6 +6244,36 @@ db_check_single_query (DB_SESSION * session)
   return NO_ERROR;
 }
 
+/*
+ * db_check_driver_multiple_statements () - CBRD-27583: several statements a driver prepares at once share one bind
+ *   type signature, and a statement reading or assigning a session variable compiles at every execution: such a text
+ *   with host variables or session variables is refused (sets the error)
+ * return : NO_ERROR or ER_IT_MULTIPLE_STATEMENT
+ * session(in) : the parsed statements
+ */
+int
+db_check_driver_multiple_statements (DB_SESSION * session)
+{
+  if (session->dimension < 2)
+    {
+      return NO_ERROR;
+    }
+
+  /* shortcut: until CBRD-27763 decides how a driver prepares several statements */
+  bool refused = session->parser->host_var_count > 0;
+  for (int i = 0; i < session->dimension && !refused; i++)
+    {
+      refused = session->statements[i] != NULL && pt_has_session_variable (session->parser, session->statements[i]);
+    }
+  if (refused)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
+      return ER_IT_MULTIPLE_STATEMENT;
+    }
+
+  return NO_ERROR;
+}
+
 #if !defined (SERVER_MODE)
 /*
  * db_get_parser() - This function returns session's parser
@@ -4956,110 +6476,6 @@ void
 db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version)
 {
   tm_Tran_read_fetch_instance_version = read_Fetch_Instance_Version;
-}
-
-/*
- * pt_has_modified_class -
- *   return:
- *
- *   parser(in):
- *   statement(in/out):
- */
-static DB_CLASS_MODIFICATION_STATUS
-pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  DB_CLASS_MODIFICATION_STATUS status = DB_CLASS_NOT_MODIFIED;
-
-  parser_walk_tree (parser, statement, pt_has_modified_class_helper, &status, NULL, NULL);
-
-  return status;
-}
-
-/*
- * pt_has_modified_class_helper -
- *   return:
- *
- *   parser(in):
- *   node(in/out):
- *   arg(in/out):
- *   continue_walk(in/out):
- */
-static PT_NODE *
-pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
-  PT_NODE *class_;
-  MOP clsmop = NULL;
-  SM_CLASS *sm_class = NULL;
-  int error = NO_ERROR;
-
-  if (*status != DB_CLASS_NOT_MODIFIED)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_SPEC)
-    {
-      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
-	{
-	  clsmop = class_->info.name.db_object;
-
-	  if (clsmop == NULL)
-	    {
-	      continue;
-	    }
-
-	  if (clsmop->decached)
-	    {
-	      /* the class might be aborted. */
-	      *status = DB_CLASS_MODIFIED;
-	    }
-	  else
-	    {
-	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
-	      if (error != NO_ERROR)
-		{
-		  if (error == ER_HEAP_UNKNOWN_OBJECT)
-		    {
-		      /* the class might be dropped. */
-		      *status = DB_CLASS_MODIFIED;
-		    }
-		  else
-		    {
-		      *status = DB_CLASS_ERROR;
-		    }
-		}
-	    }
-	  if (*status != DB_CLASS_NOT_MODIFIED)
-	    {
-	      /* don't revisit leaves */
-	      *continue_walk = PT_STOP_WALK;
-	      break;
-	    }
-
-	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
-	    {
-	      continue;
-	    }
-
-	  if (class_->info.name.db_object_chn == NULL_CHN)
-	    {
-	      class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
-	    }
-	  else if (class_->info.name.db_object_chn != locator_get_cache_coherency_number (clsmop))
-	    {
-	      *status = DB_CLASS_MODIFIED;
-
-	      /* don't revisit leaves */
-	      *continue_walk = PT_STOP_WALK;
-	      break;
-	    }
-	}
-    }
-
-  return node;
 }
 
 /*

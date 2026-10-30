@@ -91,8 +91,11 @@ typedef enum
   F_SOME
 } QL_FLAG;
 
-struct DOMAIN_COMPARE_PLAN;
-struct DOMAIN_ELEMENT_COMPARE_PLAN;
+struct DOMAIN_COMPARE;
+struct DOMAIN_OPERAND_COERCION;
+struct DOMAIN_PRUNE_CONVERSION;
+struct DOMAIN_BOUND_CONVERSION;
+struct tp_domain;
 
 namespace cubxasl
 {
@@ -112,9 +115,24 @@ namespace cubxasl
     regu_variable_node *rhs;
     REL_OP rel_op;
     DB_TYPE type;
-    /* load-derived, not serialized: the comparison the load or resolve_domains resolved; the union already
-     * holds rlike_eval_term's four pointers, so this changes neither the node's size nor the stream */
-    const DOMAIN_COMPARE_PLAN *domain_compare;
+    /* CBRD-27583: the comparison of the two sides' domains, which the compiler decided and the stream carries (a
+     * filter or function index stream, stored in the catalog: the unpack's), in the unpack arena; NULL where a side's
+     * domain leaves
+     * its values' type or collation to the data: the values decide (comparison method VALUES) */
+    const DOMAIN_COMPARE *compare;
+    /* CBRD-27583: an ORDERBY_NUM upper bound `ORDERBY_NUM () < bound` (xasl_orderbynum_upper_bound): the
+     * operand coercion of bound - 1, which the compiler decided (unpack arena); NULL for any other term */
+    const DOMAIN_OPERAND_COERCION *bound_coercion;
+    /* CBRD-27583: an ORDERBY_NUM upper bound's conversion into INTEGER (top-N) or an INST_NUM upper limit's into
+     * BIGINT, found by the unpack (unpack arena); NULL for any other term */
+    const DOMAIN_BOUND_CONVERSION *bound_conversion;
+    /* CBRD-27583: a partitioned class's term between a value (a constant, a bind) and what is not one: the
+     * value's side (0 lhs, 1 rhs; -1 none) and the other side's domain, into which partition pruning converts the value
+     * to hash it or to evaluate a partition expression on it (XASL generation, streamed), and the converter the unpack
+     * found (unpack arena; NULL without prune_domain) */
+    signed char prune_side;
+    tp_domain *prune_domain;
+    const DOMAIN_PRUNE_CONVERSION *prune;
   };
 
   struct alsm_eval_term
@@ -124,9 +142,19 @@ namespace cubxasl
     QL_FLAG eq_flag;
     REL_OP rel_op;
     DB_TYPE item_type;
-    /* load-derived, not serialized: the element comparisons the load or resolve_domains resolved; the union
-     * grows to 40 bytes in memory, the stream is unchanged */
-    const DOMAIN_ELEMENT_COMPARE_PLAN *domain_compare;
+    /* CBRD-27583: what the unpack decided the item compares with (unpack arena, not serialized): a list's column or a
+     * right side that is no collection by compare; NULL: a collection's elements by the item's row of the type pair
+     * comparison table (compare_row), or by the two values' keys where the row is -1; compare_each: the row's cell of
+     * a constant collection's elements of one key, which every non-NULL element reads (NULL: each element's own) */
+    int compare_row;
+    const DOMAIN_COMPARE *compare;
+    const DOMAIN_COMPARE *compare_each;
+    /* CBRD-27583: a partitioned class's item against a list of values of one domain (prune_element): the item's
+     * domain, into which partition pruning converts each element (XASL generation, streamed; NULL none), and the
+     * converter the unpack found (unpack arena) */
+    tp_domain *prune_domain;
+    tp_domain *prune_element;
+    const DOMAIN_PRUNE_CONVERSION *prune;
   };
 
   struct like_eval_term
@@ -165,6 +193,21 @@ namespace cubxasl
       pred_expr *m_not_term;
     } pe;
     TYPE_PRED_EXPR type;
+
+    /* compiled scan-filter form of this tree (expr_compile.c), resolved lazily by the
+     * first eval_data_filter () of an execution and KEPT with the clone: when the execution
+     * ends (qexec_clear_pred () with is_final) its slot values are released and it stays
+     * for the clone's next execution, which re-verifies the host-variable type signature
+     * and recompiles on a mismatch; it is freed when the clone is released
+     * (XASL_DECACHE_CLONE).  Only the tree's root ever holds one.
+     * Concurrency contract: these fields (and the program they point to) are written with
+     * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+     * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+     * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+     * -- do not add such a caller without making this state per-thread or synchronized. */
+    void *scan_prog;
+    int scan_prog_state;	/* 0 = not tried yet, 1 = active, 2 = keep the interpreted path */
+    unsigned int scan_prog_gen;	/* bumped on every compile; consumers sharing its slots record it */
 
     void clear_xasl ();
   };

@@ -134,7 +134,7 @@ typedef struct schema_def
  *    currently is called only from AU_SET_USER
  */
 
-static SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
+static CUB_THREAD_LOCAL SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
 
 #define WC_PERIOD L'.'
 
@@ -244,23 +244,28 @@ const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
  *    doubly linked list for faster removal.
 */
 
-SM_DESCRIPTOR *sm_Descriptors = NULL;
+static CUB_THREAD_LOCAL SM_DESCRIPTOR *sm_Descriptors = NULL;
 
 /* ROOT_CLASS GLOBALS */
 /* Global root class structure */
-ROOT_CLASS sm_Root_class;
+CUB_THREAD_LOCAL ROOT_CLASS sm_Root_class;
 
 /* Global MOP for the root class object.  Used by the locator */
-MOP sm_Root_class_mop = NULL;
+CUB_THREAD_LOCAL MOP sm_Root_class_mop = NULL;
 
 /* Name of the root class */
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = NULL;
+#else
 HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+#endif
 
-static unsigned int local_schema_version = 0;
-static unsigned int global_schema_version = 0;
+
+static CUB_THREAD_LOCAL unsigned int local_schema_version = 0;
+static CUB_THREAD_LOCAL unsigned int global_schema_version = 0;
 
 static int domain_search (MOP dclass_mop, MOP class_mop);
 static int annotate_method_files (MOP classmop, SM_CLASS * class_);
@@ -2022,11 +2027,14 @@ sm_get_method_source_file (MOP obj, const char *name)
  */
 
 void
-sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
+sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub)
 {
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
 
-  COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+  if (!is_sub)
+    {
+      COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+    }
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
@@ -2039,6 +2047,7 @@ sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
   sm_Descriptors = NULL;
 }
 
+#if defined(SA_MODE)
 /*
  * sm_create_root() - Called when the database is first created.
  *    Sets up the root class globals, used later when the root class
@@ -2065,6 +2074,7 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   /* Sets up sm_Root_class_mop and Rootclass_oid */
   locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
 }
+#endif
 
 /*
  * sm_free_resident_classes_virtual_query_cache () - free virual query cache of resident classes
@@ -4352,15 +4362,22 @@ sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
  * sm_update_all_statistics() - Update the statistics for all classes
  * 			        in the database.
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   random_seed(in): sampling seed for the histogram build
+ *   no_histogram(in): true iff WITH NO HISTOGRAM - skip the histogram pass entirely
+ *   skip_histogram_mops(in): classes excluded from the histogram pass (optimizedb --no-histogram-classes);
+ *                            their class statistics are still updated. NULL if none
+ *   n_skip(in): number of entries in skip_histogram_mops
  *   return: NO_ERROR on success, non-zero for ERROR
  */
 
 int
-sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
+sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram, MOP * skip_histogram_mops, int n_skip)
 {
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
+  /* both phases report their progress against the same start */
+  INT64 run_start_msec = stats_progress_clock_msec ();
 
   /* make sure the workspace is flushed before calculating stats */
   if (locator_all_flush () != NO_ERROR)
@@ -4369,34 +4386,37 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ );
-  if (error == NO_ERROR)
+  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ , run_start_msec);
+  if (error != NO_ERROR)
     {
-      /* Need to reset the statistics cache for all resident classes */
-      for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+      /* do not build histograms over a failed server-side statistics update */
+      return error;
+    }
+
+  /* Need to reset the statistics cache for all resident classes */
+  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+    {
+      if (!WS_IS_DELETED (cl->op))
 	{
-	  if (!WS_IS_DELETED (cl->op))
+	  /* uncache statistics only if object is cached - MOP trickery */
+	  class_ = (SM_CLASS *) cl->op->object;
+	  if (class_ != NULL && class_->class_type == SM_CLASS_CT)
 	    {
-	      /* uncache statistics only if object is cached - MOP trickery */
-	      class_ = (SM_CLASS *) cl->op->object;
-	      if (class_ != NULL && class_->class_type == SM_CLASS_CT)
+	      if (class_->stats != NULL)
 		{
-		  if (class_->stats != NULL)
-		    {
-		      stats_free_statistics (class_->stats);
-		      class_->stats = NULL;
-		    }
-		  /* make sure the class is flushed but quit if an error happens */
-		  if (locator_flush_class (cl->op) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      return (er_errid ());
-		    }
-		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
+		  stats_free_statistics (class_->stats);
+		  class_->stats = NULL;
+		}
+	      /* make sure the class is flushed but quit if an error happens */
+	      if (locator_flush_class (cl->op) != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return (er_errid ());
+		}
+	      error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
+	      if (error != NO_ERROR)
+		{
+		  return error;
 		}
 	    }
 	}
@@ -4404,7 +4424,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
 
   if (!no_histogram)
     {
-      error = update_histogram_for_all_classes (random_seed);
+      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip, run_start_msec);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -9610,12 +9630,6 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
-		{
-		  assert (attrs[i + 1] == NULL);
-		  continue;
-		}
-
 	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
@@ -10044,7 +10058,6 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
-	      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10858,9 +10871,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error =
-	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
-			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -11005,12 +11016,6 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   if (has_instances > 0)
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
-
-      // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
-	{
-	  n_attrs--;
-	}
 
       domain = construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1, NULL);
       if (domain == NULL)
@@ -14331,7 +14336,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-      bool is_fk = false;
 
       switch (type)
 	{
@@ -14346,7 +14350,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-	  is_fk = true;
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14378,12 +14381,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
-	    {
-	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
-	      assert (i == n_attrs);
-	      break;
-	    }
 
 	  do_desc = false;	/* init */
 	  if (asc_desc)

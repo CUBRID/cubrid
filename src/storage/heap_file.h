@@ -159,6 +159,9 @@ struct heap_scancache
 						 * in the scan */
     PGBUF_COPY_BUFFER_HANDLE local_cache_handle;	/* local page cache for a cached scan; NULL unless cached scan */
     VPID local_cache_vpid;		/* VPID currently held in local_cache_handle */
+    VPID insert_hint_vpid;	/* page of this scan's previous insert, tried first on the next insert */
+    int insert_hint_l1_pos;	/* position of insert_hint_vpid in the bestspace L1 arrays, -1 if unknown;
+				 * lets bestspace::update_freespace skip the sweep over all shards */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
 
     void start_area ();
@@ -496,6 +499,9 @@ extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, H
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
+					HEAP_CACHE_ATTRINFO * attr_info, const TP_DOMAIN * domain, DB_TYPE value_type,
+					TP_VALUE_CONVERTER conv);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
@@ -507,12 +513,7 @@ extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts
 					     TP_DOMAIN * midxkey_domain, OID * cur_oid);
 
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
-					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
-					   bool is_check_foreign);
-
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-extern int heap_get_compress_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
-					   int *last_asc_desc, TP_DOMAIN ** tpdomain);
+					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info);
 
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,
 					  HEAP_CACHE_ATTRINFO * attr_info);
@@ -526,8 +527,7 @@ extern HEAP_ATTRVALUE *heap_attrvalue_locate (ATTR_ID attrid, HEAP_CACHE_ATTRINF
 extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
-					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain,
-					 OID * rec_oid, bool is_check_foreign);
+					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain);
 
 extern BTID *heap_indexinfo_get_btid (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo);
 extern int heap_indexinfo_get_num_attrs (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo);

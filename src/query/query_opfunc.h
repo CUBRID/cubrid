@@ -35,6 +35,11 @@
 #include "thread_compat.hpp"
 
 // forward definitions
+namespace cubxasl
+{
+  struct aggregate_accumulator;
+  struct aggregate_list_node;
+}
 struct function_node;
 class regu_variable_node;
 struct DOMAIN_ARITH;
@@ -65,33 +70,42 @@ extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_E
 									valptr_list_node * valptr_list, val_descr * vd,
 									qfile_list_id * list_id);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
+extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list);
+extern void qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool is_final,
+					    bool free_it);
+extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,
+					    val_descr * val_desc_p);
 
 /* T_ADD, T_SUB, T_MUL or T_DIV over two values, as the plan resolved it before any row (DOMAIN_ARITH: a node's
  * RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE); no
- * value's type is read for the dispatch */
+ * value's type is read for the dispatch. result_conv: the plan's converter of the value into domain_p (CBRD-27583),
+ * NULL converts nothing */
 extern int qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1, DB_VALUE * dbval2,
-			      DB_VALUE * res, tp_domain * domain_p);
+			      DB_VALUE * res, tp_domain * domain_p, TP_VALUE_CONVERTER result_conv);
+/* CBRD-27583: conv casts a dbval2 of type planned into domain (NULL: none planned) */
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
-				    tp_domain * domain, const int max_allowed_size, const char *warning_context);
+				    tp_domain * domain, const int max_allowed_size, const char *warning_context,
+				    DB_TYPE planned, TP_VALUE_CONVERTER conv);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res, int incval);
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
-extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
+/* CBRD-27583: planned = the type the concatenation's value has, result_conv its converter into domain_p */
+extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
+			       DB_TYPE planned, TP_VALUE_CONVERTER result_conv, const ARITH_TYPE * arith);
 /* The error of an operand coercion that fails, as tp_value_auto_cast sets it */
 extern int qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target);
 /* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row
  * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] and arith is what the operator
- * makes of the coerced operands - a RESOLVED_DOMAIN's or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing;
- * temporaries[i]: operand i converted once for its scope already */
+ * makes of the coerced operands - a RESOLVED_DOMAIN's or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing */
 extern int qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
 					const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith,
 					DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
-					const DB_VALUE * const *temporaries = NULL);
+					TP_VALUE_CONVERTER result_conv);
 
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
-				       qfile_tuple_value_type_list * type_list, const val_descr * vd);
+				       qfile_tuple_value_type_list * type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
 				    QFILE_TUPLE_RECORD * tplrec);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
@@ -110,8 +124,10 @@ extern bool qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_
 					    DB_VALUE * result_val_p, val_descr * vd);
 extern bool qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
 				   DB_VALUE * result_val_p, val_descr * vd);
+/* CBRD-27583: arg_conv converts a value of the argument's type arg_type into a string (ARITH_TYPE.conv[1]) */
 extern bool qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
-						DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd);
+						DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd,
+						DB_TYPE arg_type, TP_VALUE_CONVERTER arg_conv);
 extern int qdata_bit_not_dbval (DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_bit_and_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
 extern int qdata_bit_or_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);

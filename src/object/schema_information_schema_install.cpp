@@ -19,13 +19,11 @@
 #include "schema_information_schema_install.hpp"
 
 #include "authenticate.h"
-#include "dbi.h"
 #include "dbtype_def.h"
-#include "schema_manager.h"
-#include "schema_information_schema_builder.hpp"
+#include "schema_information_schema.hpp"
 #include "schema_information_schema_constants.h"
-#include "schema_information_schema_definition.hpp"
-#include "schema_system_catalog_install.hpp"
+#include "schema_system_metadata_builder.hpp"
+#include "schema_system_metadata_definition.hpp"
 
 /*
  * Column order policy for information_schema views
@@ -33,73 +31,47 @@
  * Reference: https://www.postgresql.org/docs/current/information-schema.html
  */
 
-static std::vector<cubschema::info_schema_function> info_schema_list;
-
-void
-info_schema_init (void)
+static std::vector<cubschema::system_metadata_definition>
+info_schema_get_view_definitions (void)
 {
   using namespace cubschema;
 
-  info_schema_list.emplace_back (INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
-				 information_schema_initializer::get_view_column_privileges ());
-  info_schema_list.emplace_back (INFO_SCHEMA_COLUMNS_NAME, information_schema_initializer::get_view_columns ());
-  info_schema_list.emplace_back (INFO_SCHEMA_DOMAINS_NAME, information_schema_initializer::get_view_domains ());
-  info_schema_list.emplace_back (INFO_SCHEMA_FOREIGN_SERVERS_NAME,
-				 information_schema_initializer::get_view_foreign_servers ());
-  info_schema_list.emplace_back (INFO_SCHEMA_KEY_COLUMN_USAGE_NAME,
-				 information_schema_initializer::get_view_key_column_usage ());
-  info_schema_list.emplace_back (INFO_SCHEMA_PARAMETERS_NAME, information_schema_initializer::get_view_parameters ());
-  info_schema_list.emplace_back (INFO_SCHEMA_PARTITIONS_NAME, information_schema_initializer::get_view_partitions ());
-  info_schema_list.emplace_back (INFO_SCHEMA_REFERENTIAL_CONS_NAME,
-				 information_schema_initializer::get_view_referential_constraints ());
-  info_schema_list.emplace_back (INFO_SCHEMA_ROUTINE_PRIVILEGES_NAME,
-				 information_schema_initializer::get_view_routine_privileges ());
-  info_schema_list.emplace_back (INFO_SCHEMA_ROUTINES_NAME, information_schema_initializer::get_view_routines ());
-  info_schema_list.emplace_back (INFO_SCHEMA_SCHEMATA_NAME, information_schema_initializer::get_view_schemata ());
-  info_schema_list.emplace_back (INFO_SCHEMA_SEQUENCES_NAME, information_schema_initializer::get_view_sequences ());
-  info_schema_list.emplace_back (INFO_SCHEMA_STATISTICS_NAME, information_schema_initializer::get_view_statistics ());
-  info_schema_list.emplace_back (INFO_SCHEMA_SYNONYMS_NAME, information_schema_initializer::get_view_synonyms ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TABLE_CONSTRAINTS_NAME,
-				 information_schema_initializer::get_view_table_constraints ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TABLE_PRIVILEGES_NAME,
-				 information_schema_initializer::get_view_table_privileges ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TABLES_NAME, information_schema_initializer::get_view_tables ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TRIGGERS_NAME, information_schema_initializer::get_view_triggers ());
-  info_schema_list.emplace_back (INFO_SCHEMA_VIEWS_NAME, information_schema_initializer::get_view_views ());
+  return
+  {
+    information_schema_initializer::get_view_column_privileges (),
+    information_schema_initializer::get_view_columns (),
+    information_schema_initializer::get_view_domains (),
+    information_schema_initializer::get_view_foreign_servers (),
+    information_schema_initializer::get_view_key_column_usage (),
+    information_schema_initializer::get_view_parameters (),
+    information_schema_initializer::get_view_partitions (),
+    information_schema_initializer::get_view_referential_constraints (),
+    information_schema_initializer::get_view_routine_privileges (),
+    information_schema_initializer::get_view_routines (),
+    information_schema_initializer::get_view_schemata (),
+    information_schema_initializer::get_view_sequences (),
+    information_schema_initializer::get_view_statistics (),
+    information_schema_initializer::get_view_synonyms (),
+    information_schema_initializer::get_view_table_constraints (),
+    information_schema_initializer::get_view_table_privileges (),
+    information_schema_initializer::get_view_tables (),
+    information_schema_initializer::get_view_triggers (),
+    information_schema_initializer::get_view_views ()
+  };
 }
 
 int
 info_schema_install (void)
 {
+  const std::vector<cubschema::system_metadata_definition> view_defs = info_schema_get_view_definitions ();
   int error_code = NO_ERROR;
-  const size_t num_vclasses = info_schema_list.size ();
   int save;
 
+  namespace metadata_builder = cubschema::system_metadata_builder;
+
   AU_SAVE_AND_DISABLE (save);
-  au_set_user (Au_dba_user);
-
-  using info_builder = cubschema::information_schema_builder;
-
-  for (size_t i = 0; i < num_vclasses; i++)
-    {
-      MOP class_mop = info_builder::create_and_mark_system_class (info_schema_list[i].name);
-      if (class_mop == nullptr)
-	{
-	  assert (false);
-	  error_code = er_errid();
-	  goto end;
-	}
-
-      error_code = info_builder::build_vclass (class_mop, info_schema_list[i].definition);
-      if (error_code != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-end:
+  error_code = metadata_builder::install_vclasses (view_defs);
   AU_RESTORE (save);
-  info_schema_list.clear ();
 
   return error_code;
 }
@@ -107,44 +79,27 @@ end:
 int
 info_schema_rebuild_vclasses (void)
 {
+  const std::vector<cubschema::system_metadata_definition> view_defs = info_schema_get_view_definitions ();
   int error_code = NO_ERROR;
-  /* build_vclass () hands the vclasses to the INFORMATION_SCHEMA user, so they only answer to the qualified name */
+  /* the views are in the INFORMATION_SCHEMA user schema, so their names carry its prefix */
   const std::string owner_prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
   int save;
 
-  using info_builder = cubschema::information_schema_builder;
+  namespace metadata_builder = cubschema::system_metadata_builder;
 
-  info_schema_init ();
   AU_SAVE_AND_DISABLE (save);
-
-  for (size_t i = 0; i < info_schema_list.size () && error_code == NO_ERROR; i++)
-    {
-      MOP class_mop = db_find_class ((owner_prefix + info_schema_list[i].name).c_str ());
-      if (class_mop == nullptr)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  break;
-	}
-
-      error_code = info_builder::build_vclass (class_mop, info_schema_list[i].definition);
-      if (error_code == NO_ERROR)
-	{
-	  error_code = sm_destroy_representations (class_mop);
-	}
-    }
-
+  error_code = metadata_builder::rebuild_vclasses (view_defs, owner_prefix);
   AU_RESTORE (save);
-  info_schema_list.clear ();
 
   return error_code;
 }
 
 namespace cubschema
 {
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_column_privileges ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
 		   // columns
@@ -159,26 +114,15 @@ namespace cubschema
       {"is_grantable", format_varchar (3)},
       {attribute_kind::QUERY_SPEC, sm_define_view_column_privileges_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_columns ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_COLUMNS_NAME,
 		   // columns
@@ -215,26 +159,15 @@ namespace cubschema
       {"is_visible", format_varchar (3)},
       {attribute_kind::QUERY_SPEC, sm_define_view_columns_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_domains ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_DOMAINS_NAME,
 		   // columns
@@ -264,26 +197,15 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_domains_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_foreign_servers ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_FOREIGN_SERVERS_NAME,
 		   // columns
@@ -305,26 +227,15 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_foreign_servers_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_key_column_usage ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_KEY_COLUMN_USAGE_NAME,
 		   // columns
@@ -343,26 +254,15 @@ namespace cubschema
       {"referenced_column_name", format_varchar (255)},
       {attribute_kind::QUERY_SPEC, sm_define_view_key_column_usage_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_parameters ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_PARAMETERS_NAME,
 		   // columns
@@ -388,26 +288,15 @@ namespace cubschema
       {"parameter_comment", format_varchar (1024)},
       {attribute_kind::QUERY_SPEC, sm_define_view_parameters_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_partitions ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_PARTITIONS_NAME,
 		   // columns
@@ -434,26 +323,15 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_partitions_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_referential_constraints ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_REFERENTIAL_CONS_NAME,
 		   // columns
@@ -471,26 +349,15 @@ namespace cubschema
       {"referenced_table_name", format_varchar (255)},
       {attribute_kind::QUERY_SPEC, sm_define_view_referential_constraints_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_routine_privileges ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_ROUTINE_PRIVILEGES_NAME,
 		   // columns
@@ -507,26 +374,15 @@ namespace cubschema
       {"is_grantable", format_varchar (3)},
       {attribute_kind::QUERY_SPEC, sm_define_view_routine_privileges_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_routines ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_ROUTINES_NAME,
 		   // columns
@@ -564,26 +420,15 @@ namespace cubschema
       {"definer", format_varchar (DB_MAX_USER_LENGTH)},
       {attribute_kind::QUERY_SPEC, sm_define_view_routines_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_schemata ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_SCHEMATA_NAME,
 		   // columns
@@ -599,26 +444,15 @@ namespace cubschema
       {"create_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_schemata_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_sequences ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_SEQUENCES_NAME,
 		   // columns
@@ -641,26 +475,15 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_sequences_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_statistics ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_STATISTICS_NAME,
 		   // columns
@@ -683,32 +506,20 @@ namespace cubschema
       {"is_visible", format_varchar (3)},
       {"expression", format_varchar (1023)},
       {"filter_condition", "string"},
-      {"deduplicate_level", "integer"},
       {"create_time", "datetime"},
       {"update_time", "datetime"},
       {"access_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_statistics_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_synonyms ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_SYNONYMS_NAME,
 		   // columns
@@ -725,25 +536,14 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_synonyms_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_table_constraints ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_TABLE_CONSTRAINTS_NAME,
 		   // columns
@@ -760,26 +560,15 @@ namespace cubschema
       {"enforced", format_varchar (3)},
       {attribute_kind::QUERY_SPEC, sm_define_view_table_constraints_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_table_privileges ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_TABLE_PRIVILEGES_NAME,
 		   // columns
@@ -793,26 +582,15 @@ namespace cubschema
       {"is_grantable", format_varchar (3)},
       {attribute_kind::QUERY_SPEC, sm_define_view_table_privileges_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_tables ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_TABLES_NAME,
 		   // columns
@@ -836,26 +614,15 @@ namespace cubschema
       {"last_analyzed", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_tables_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_triggers ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_TRIGGERS_NAME,
 		   // columns
@@ -883,26 +650,15 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_triggers_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
-  information_schema_definition
+  system_metadata_definition
   information_schema_initializer::get_view_views ()
   {
-    return information_schema_definition (
+    return system_metadata_definition (
 		   // name
 		   INFO_SCHEMA_VIEWS_NAME,
 		   // columns
@@ -919,19 +675,8 @@ namespace cubschema
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_views_spec ()}
     },
-    // constraint
-    {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-    // initializer
-    nullptr
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 }

@@ -24,7 +24,7 @@
 #include "qfile_tuple_layout.h"
 
 #include "arithmetic.h"
-#include "btree.h"                          // btree_find_min_or_max_key, btree_get_unique_statistics_for_count
+#include "btree.h"		// btree_find_min_or_max_key, btree_get_unique_statistics_for_count
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "fetch.h"
@@ -35,11 +35,13 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "expr_compile.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
-#include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
+#include "system_parameter.h"
+#include "xasl.h"		// QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
 #include "statistics.h"
 
@@ -66,8 +68,7 @@ using namespace cubquery;
 //
 static int qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-    tp_domain *func_domain, db_value *value, bool is_acc_to_acc,
-    const DB_VALUE *temporary = NULL);
+    tp_domain *func_domain, db_value *value, bool is_acc_to_acc);
 static void qdata_clear_value_array (DB_VALUE *values, int count);
 static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p,
     cubxasl::aggregate_accumulator *acc,
@@ -356,7 +357,8 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 	    }
 	}
       // these functions only affect acc.value and new_acc can be treated as an ordinary value
-      error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
+      error =
+	      qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
       break;
 
     // JSON_ARRAYAGG: append the partial arrays by preserving every element.
@@ -438,14 +440,14 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
       else if (acc->curr_cnt >= 1 && new_acc->curr_cnt >= 1)
 	{
 	  /* acc.value += new_acc.value: two DOUBLEs by construction */
-	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value, new_acc->value, acc->value, double_domain)
+	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value, new_acc->value, acc->value, double_domain, NULL)
 	      != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  /* acc.value2 += new_acc.value2 */
-	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value2, new_acc->value2, acc->value2, double_domain)
+	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value2, new_acc->value2, acc->value2, double_domain, NULL)
 	      != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -470,6 +472,35 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 }
 
 /*
+ * qdata_copy_to_accumulator () - CBRD-27583: a value copied into an aggregate's accumulator, in value_dom: with
+ *   the converter the node planned for its argument's type (first_conv, tp_value_cast_force's conversion), a clone
+ *   where it planned none
+ *   return: NO_ERROR or the conversion's error
+ *   is_acc_to_acc(in): an accumulator merged in, which comes in the type its state left it (a spilled partial):
+ *		       tp_value_cast_force converts it
+ */
+int
+qdata_copy_to_accumulator (const cubxasl::aggregate_accumulator_domain *acc_dom, const DB_VALUE *value,
+			   DB_VALUE *acc_value, bool is_acc_to_acc)
+{
+  if (is_acc_to_acc)
+    {
+      return TP_DOMAIN_TYPE (acc_dom->value_dom) != DB_VALUE_DOMAIN_TYPE (value)
+	     ? db_value_coerce (value, acc_value, acc_dom->value_dom) : pr_clone_value (value, acc_value);
+    }
+  if (acc_dom->first_conv == NULL)
+    {
+      /* a value of the argument's type, which the node found to be value_dom's */
+      assert (DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) == TP_DOMAIN_TYPE (acc_dom->value_dom));
+      return pr_clone_value (value, acc_value);
+    }
+  const TP_DOMAIN_STATUS status = tp_value_cast_with_converter (value, acc_value, acc_dom->value_dom, true,
+				  DB_VALUE_DOMAIN_TYPE (value), acc_dom->first_conv);
+  return status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (status, ARG_FILE_LINE, value,
+	 acc_dom->value_dom);
+}
+
+/*
  * qdata_aggregate_value_to_accumulator () - aggregate a value to accumulator
  *   returns: error code or NO_ERROR
  *   thread_p(in): thread
@@ -479,13 +510,11 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
  *   func_domain(in): function domain
  *   value(in): value
  *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
- *   temporary(in): SUM, AVG: the value converted once for its scope for the operand coercion of the add; NULL none
  */
 static int
 qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
 				      cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-				      tp_domain *func_domain, db_value *value, bool is_acc_to_acc,
-				      const DB_VALUE *temporary)
+				      tp_domain *func_domain, db_value *value, bool is_acc_to_acc)
 {
   DB_VALUE squared;
   bool copy_operator = false;
@@ -611,8 +640,10 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
     case PT_AVG:
     case PT_SUM:
     {
-      /* whether the accumulator takes this value's type */
-      bool use_sum_acc = SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (value));
+      /* whether the typed accumulator takes the value: the node planned it for its argument's type; an accumulator
+       * merged in comes in the type its state left it */
+      bool use_sum_acc = is_acc_to_acc ? SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (value))
+			 : domain->accumulator_takes;
 
       if (acc->curr_cnt < 1)
 	{
@@ -627,13 +658,12 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
 	    }
-	  /* unsupported types keep the per-row add into acc->value, after the operand coercion the setup resolved for a
+	  /* unsupported types keep the per-row add into acc->value, after the operand coercion the node planned for a
 	   * value; another accumulator comes in the accumulator's type */
-	  const DB_VALUE *const temporaries[2] = { NULL, temporary };
 	  const DOMAIN_OPERAND_COERCION *coercion = &domain->operand_coercion;
 	  if (qdata_coerce_arith_operands (T_ADD, is_acc_to_acc ? NULL : coercion->conv,
 					   coercion->operand_domain, &coercion->arith, acc->value, value, acc->value,
-					   domain->value_dom, temporaries) != NO_ERROR)
+					   domain->value_dom, coercion->result) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -654,16 +684,25 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
     case PT_VARIANCE:
     case PT_VAR_POP:
     case PT_VAR_SAMP:
-      /* coerce value to DOUBLE domain */
-      if (tp_value_coerce (value, value, domain->value_dom) != DOMAIN_COMPATIBLE)
+      /* into DOUBLE with the converter the node planned for its argument's type, none for a DOUBLE */
+      if (!is_acc_to_acc && domain->operand_coercion.conv[1] != NULL)
 	{
-	  return ER_FAILED;
+	  DB_VALUE coerced;
+	  db_make_null (&coerced);
+	  if (tp_value_convert (domain->operand_coercion.conv[1], domain->value_dom, value, &coerced)
+	      != DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&coerced);
+	      return ER_FAILED;
+	    }
+	  pr_clear_value (value);
+	  *value = coerced;
 	}
 
       if (acc->curr_cnt < 1)
 	{
 	  /* calculate X^2: two DOUBLEs by construction (domain_arith_double) */
-	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, value, value, &squared, domain->value2_dom) != NO_ERROR)
+	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, value, value, &squared, domain->value2_dom, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -679,13 +718,13 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       else
 	{
 	  /* compute X^2 */
-	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, value, value, &squared, domain->value2_dom) != NO_ERROR)
+	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, value, value, &squared, domain->value2_dom, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  /* acc.value += X */
-	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value, value, acc->value, domain->value_dom)
+	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value, value, acc->value, domain->value_dom, NULL)
 	      != NO_ERROR)
 	    {
 	      pr_clear_value (&squared);
@@ -693,7 +732,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	    }
 
 	  /* acc.value += X^2 */
-	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value2, &squared, acc->value2, domain->value2_dom)
+	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value2, &squared, acc->value2, domain->value2_dom, NULL)
 	      != NO_ERROR)
 	    {
 	      pr_clear_value (&squared);
@@ -720,21 +759,10 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
   /* copy operator if necessary */
   if (copy_operator)
     {
-      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       pr_clear_value (acc->value);
-
-      if (TP_DOMAIN_TYPE (domain->value_dom) != type)
+      if (qdata_copy_to_accumulator (domain, value, acc->value, is_acc_to_acc) != NO_ERROR)
 	{
-	  int coerce_error = db_value_coerce (value, acc->value, domain->value_dom);
-	  if (coerce_error != NO_ERROR)
-	    {
-	      /* set error here */
-	      return ER_FAILED;
-	    }
-	}
-      else
-	{
-	  pr_clone_value (value, acc->value);
+	  return ER_FAILED;
 	}
     }
 
@@ -814,7 +842,7 @@ qdata_agg_may_share_accumulator (const cubxasl::aggregate_list_node *agg_p, cons
    * is checked by qdata_agg_share_args_equal (). */
   return (qdata_agg_is_plain_sum_avg (agg_p) && !agg_p->flag.agg_optimized
 	  && (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_INARITH)
-	  && qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom != NULL);
+	  && agg_p->accumulator_domain.value_dom != NULL);
 }
 
 /*
@@ -918,9 +946,81 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list, const VA
 	   acc_owner_p = acc_owner_p->next, acc_owner_index++)
 	{
 	  if (acc_owner_p->accumulator.shared_from == 0 && qdata_agg_may_share_accumulator (acc_owner_p, vd)
-	      && qexec_accumulator_domain (vd, acc_owner_p->plan_item)->value_dom
-	      == qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom
+	      && acc_owner_p->accumulator_domain.value_dom == agg_p->accumulator_domain.value_dom
 	      && qdata_agg_share_args_equal (&acc_owner_p->operands->value, &agg_p->operands->value))
+	    {
+	      agg_p->accumulator.shared_from = acc_owner_index + 1;
+	      break;
+	    }
+	}
+    }
+}
+
+/*
+ * qdata_link_shared_accumulators_by_cell () - extend accumulator sharing to operands the
+ *                                             compiled operand program evaluates into the
+ *                                             same cell
+ *   agg_list(in/out): aggregate list of the query (head carries the program)
+ *
+ * qdata_link_shared_accumulators () compares the operand regu trees, so SUM (a + b) and
+ * AVG (b + a), or two operands whose literals are distinct plan nodes with the same value,
+ * accumulate separately.  The compiled program (expr_compile.h) has already resolved such
+ * operands to one cell -- common sub-expressions once, commuted operands, literals by value
+ * -- and a root cell holds the operand's value for the row unconditionally, so two plain
+ * SUM/AVG whose roots are the same cell compute the identical value on every row and may
+ * share exactly like regu-equal ones.  Only adds links; runs on the first evaluation of
+ * every execution, after the program was verified (or recompiled) for that execution's
+ * bind types -- the unification of two roots can depend on them (a coercion step inserted
+ * for one binding and not another), so a link is never taken from an earlier execution's
+ * program.  Like the regu-based link it needs the accumulator domains resolved.
+ *
+ * Callers: qdata_evaluate_aggregate_list () (first evaluation of an execution) and the
+ * BUILDVALUE end-of-execution link site in query_executor.c, where develop's
+ * qdata_link_shared_accumulators () resets every link right before finalize and the cell
+ * links must be re-derived (from the same program the rows used).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
+ * write_finalize () merges a worker's accumulators into the coordinator's without
+ * propagating shared sums first, and the coordinator (no program) would not know the link.
+ * The parallel hash GROUP BY worker is fine: its partial groups leave through
+ * qdata_save_agg_htable_to_list (), which propagates shared sums before flattening.
+ */
+void
+qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list, const VAL_DESCR *vd)
+{
+  cubxasl::aggregate_list_node *agg_p, *acc_owner_p;
+  EXPR_PROG *prog;
+  int index, acc_owner_index, root, owner_root;
+
+  if (agg_list == NULL || agg_list->operand_prog_state != 1 || agg_list->operand_prog == NULL
+      || agg_list->operand_prog_idx == NULL)
+    {
+      return;
+    }
+  prog = (EXPR_PROG *) agg_list->operand_prog;
+
+  for (agg_p = agg_list, index = 0; agg_p != NULL; agg_p = agg_p->next, index++)
+    {
+      if (agg_p->accumulator.shared_from != 0 || agg_p->operand_prog_base < 0
+	  || !qdata_agg_may_share_accumulator (agg_p, vd))
+	{
+	  continue;
+	}
+      root = agg_list->operand_prog_idx[agg_p->operand_prog_base];
+      if (root < 0)
+	{
+	  continue;
+	}
+
+      for (acc_owner_p = agg_list, acc_owner_index = 0; acc_owner_p != agg_p;
+	   acc_owner_p = acc_owner_p->next, acc_owner_index++)
+	{
+	  if (acc_owner_p->accumulator.shared_from != 0 || acc_owner_p->operand_prog_base < 0
+	      || !qdata_agg_may_share_accumulator (acc_owner_p, vd)
+	      || acc_owner_p->accumulator_domain.value_dom != agg_p->accumulator_domain.value_dom)
+	    {
+	      continue;
+	    }
+	  owner_root = agg_list->operand_prog_idx[acc_owner_p->operand_prog_base];
+	  if (owner_root >= 0 && prog->root_cells[owner_root] == prog->root_cells[root])
 	    {
 	      agg_p->accumulator.shared_from = acc_owner_index + 1;
 	      break;
@@ -956,9 +1056,233 @@ qdata_clear_value_array (DB_VALUE *values, int count)
  *        Alternate accumulators can not be used for DISTINCT processing or
  *        the GROUP_CONCAT and MEDIAN function.
  */
+/* does the arithmetic tree under regu contain a division?  (the one fused-path shape whose result can
+ * differ from the program's: the DOUBLE zero test, see qdata_agg_operand_prog_compile ()) */
+static bool
+qdata_agg_operand_has_div (const REGU_VARIABLE *regu)
+{
+  if (regu == NULL || regu->type != TYPE_INARITH || regu->value.arithptr == NULL)
+    {
+      return false;
+    }
+  if (regu->value.arithptr->opcode == T_DIV)
+    {
+      return true;
+    }
+  return qdata_agg_operand_has_div (regu->value.arithptr->leftptr)
+	 || qdata_agg_operand_has_div (regu->value.arithptr->rightptr);
+}
+
+/*
+ * qdata_agg_operand_prog_compile () - lazily compile the operand expressions of a whole
+ *				       aggregate list into one program (expr_compile.h)
+ *
+ * Only plain accumulating functions participate; the operands of any aggregate the
+ * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones, and
+ * the index-boundary MIN/MAX whose operand the loop stops fetching once it is_ended) are
+ * left out so the unconditional per-row program evaluation cannot change behavior.
+ * Roots the expression compiler cannot cover purely are excluded the same way (the
+ * compiler is called without fallback roots), so every compiled step is side-effect
+ * free.
+ *
+ * The program evaluates the operands of EVERY participating aggregate before the
+ * per-row loop accumulates the first one, whereas the interpreted loop fetches and
+ * accumulates one aggregate at a time.  This is deliberate: one pass over the flat step
+ * array is what removes the per-aggregate fetch dispatch, and it is what lets a
+ * sub-expression shared by several aggregates (SUM (x * y), AVG (x * y)) compile to a
+ * single step chain.  The only observable consequence is WHICH error a row that fails
+ * twice reports: when accumulating aggregate i overflows on a row whose operand of a
+ * later aggregate j also fails, the interpreter reports i's accumulate error and this
+ * path reports j's operand error.  The row fails either way, and operand errors keep
+ * their list order among themselves because roots are emitted in list order.
+ *
+ * Exported (not static) for the parallel BUILDVALUE_OPT accumulation loop, which
+ * compiles each worker's clone the same way.
+ */
+void
+qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				val_descr *val_desc_p)
+{
+  cubxasl::aggregate_list_node *agg_p;
+  REGU_VARIABLE *roots[128];
+  int *idx = NULL;
+  int n = 0, k;
+  int depth_budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  EXPR_PROG *prog;
+  bool side_effect_covered = false, side_effect_uncovered = false;
+
+  agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
+
+  /* collect candidate operands in evaluation order */
+  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+    {
+      bool participates;
+
+      switch (agg_p->function)
+	{
+	case PT_SUM:
+	case PT_AVG:
+	case PT_MIN:
+	case PT_MAX:
+	case PT_COUNT:
+	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
+	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
+	   * the interpreted path so the program never evaluates an operand the interpreter
+	   * would not.  Nothing is lost: such a list is MIN/MAX-only
+	   * (pt_set_access_spec_for_aggregation ()) over a scan the executor stops after one
+	   * or two rows, where compiling would only cost. */
+	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
+	  break;
+	default:
+	  participates = false;
+	  break;
+	}
+
+      agg_p->operand_prog_base = -1;
+      if (!participates)
+	{
+	  /* an operand the program will not evaluate (GROUP_CONCAT's, say) keeps its place in the
+	   * interpreter's order: see the side-effect rule below the loop */
+	  for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	    {
+	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  continue;
+	}
+
+      agg_p->operand_prog_base = n;
+      for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	{
+	  bool word_operand;
+
+	  if (n >= (int) DIM (roots))
+	    {
+	      return;
+	    }
+	  /* A plain SUM/AVG over a NUMERIC {+,-,*} tree of plain leaves is the shape the accumulate
+	   * loop below already evaluates in CBRD-27178's word domain and adds to SUM_ACC without a
+	   * DB_VALUE (qdata_agg_expr_eval_numeric () -> numeric_sum_acc_add_expr_val ()); develop
+	   * applies the same test when it marks REGU_VARIABLE_AGG_OPERAND.  Compiling it instead
+	   * would pack a DB_VALUE per arithmetic step, coerce it to the result domain per row and
+	   * unpack it again at the accumulator, which made exactly this aggregate slower than
+	   * develop (review 2026-09-23); a word root inside the program was measured slower than
+	   * the loop's own branch as well (the program's dispatch on top of the same walk).  So the
+	   * operand stays out of the program (root -1) and the loop's word branch takes it.  The
+	   * other operands of the list keep the program, its leaf sharing and the filter values. */
+	  word_operand = ((agg_p->function == PT_SUM || agg_p->function == PT_AVG) && agg_p->option != Q_DISTINCT
+			  && operand->next == NULL && operand->value.type == TYPE_INARITH
+			  && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_NUMERIC
+			  && fetch_is_agg_expr_shape (&operand->value, depth_budget));
+	  /* The same for an operand that is only the cast the parser wraps a SUM/AVG argument in
+	   * (SUM (int_col) is a BIGINT, so the argument comes as CAST_WRAP (int_col AS BIGINT)):
+	   * develop marks it REGU_VARIABLE_AGG_OPERAND and its fused register path reads the
+	   * integer straight through the wrap (fetch.c).  The compiler used to decline such a
+	   * root, leaving it there; now that the wrap compiles, keep it there on purpose -- a cast
+	   * kernel would cost a DB_VALUE slot and a forced cast per row where the loop reads a
+	   * word, and that shape has not been measured against the loop. */
+	  if (!word_operand && operand->value.type == TYPE_INARITH
+	      && operand->value.value.arithptr->opcode == T_CAST_WRAP
+	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND))
+	    {
+	      word_operand = true;
+	    }
+	  /* And for a DOUBLE tree with a division that develop's fused register path takes
+	   * (fetch_peek_arith (), REGU_VARIABLE_AGG_OPERAND): that path divides doubles with its
+	   * own zero test (right == 0.0, fetch_agg_expr_eval_dbl ()) while the program has no
+	   * DOUBLE division kernel and its generic step goes through qdata_arith_dbval ()'s
+	   * DBL_EPSILON test, so SUM (d / x) over x = 1e-20 raised "divide by zero" where develop
+	   * returns a value (review 2026-10-15).  Only this shape differs: the INT trees and the
+	   * DOUBLE {+,-,*} trees compute the same in the fused registers, the kernels and the
+	   * interpreter, and keep the program (its leaf sharing and shared accumulators). */
+	  if (!word_operand && operand->value.type == TYPE_INARITH
+	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND)
+	      && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_DOUBLE
+	      && fetch_is_agg_expr_shape (&operand->value, depth_budget)
+	      && qdata_agg_operand_has_div (&operand->value))
+	    {
+	      word_operand = true;
+	    }
+	  if (word_operand)
+	    {
+	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  else
+	    {
+	      side_effect_covered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  roots[n++] = word_operand ? NULL : &operand->value;
+	}
+    }
+
+  if (n == 0)
+    {
+      return;
+    }
+  if (side_effect_covered && side_effect_uncovered)
+    {
+      /* The program evaluates its operands before the loop, so a serial or a session variable in
+       * a compiled operand would be consumed before one in an operand the loop still fetches in
+       * list order: MAX (s.NEXT_VALUE * 1), GROUP_CONCAT (s.NEXT_VALUE) gave 5 / '2,4,6' where
+       * the interpreter gives 6 / '1,3,5' (review 2026-10-15).  The same rule as the projection
+       * list's (expr_prog_compile_roots_impl ()): when side effects would end up on both sides
+       * of the program, the whole list stays interpreted. */
+      return;
+    }
+
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return;
+    }
+
+  /* wired-only programs are wanted here: even when every operand is a plain
+   * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
+   * scan), the accumulate kernels below still skip the per-row operand vector, its
+   * deep copy and the accumulate dispatch */
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx,
+				  agg_list_p->operand_prog_share_spec);
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return;
+    }
+
+  /* an aggregate whose every operand was excluded keeps its base but reads -1 entries */
+  for (k = 0; k < n; k++)
+    {
+      if (idx[k] >= 0)
+	{
+	  break;
+	}
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  agg_list_p->operand_prog = prog;
+  agg_list_p->operand_prog_idx = idx;
+  agg_list_p->operand_prog_state = 1;
+
+  /* a program that computes nothing (every covered operand is a plain column or a wired
+   * constant) does nothing the fast path's own peek does not: the accumulator
+   * (SUM_ACC, query_sum_accumulator.h) reads such an operand in place */
+  if (prog->n_compute == 0 && prog->n_shared == 0)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      agg_list_p->operand_prog = NULL;
+      agg_list_p->operand_prog_idx = NULL;
+      agg_list_p->operand_prog_state = 3;
+    }
+}
+
 int
 qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index)
+			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list,
+			       bool use_desc_index)
 {
   cubxasl::aggregate_list_node *agg_p;
   cubxasl::aggregate_accumulator *accumulator;
@@ -968,8 +1292,57 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   int i, error;
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
+  EXPR_PROG *operand_prog = NULL;
+  bool compiled_now = false;
   DB_VALUE stack_values[AGG_MAX_OPERANDS];
   int n_values = 0;
+
+  if (agg_list_p != NULL)
+    {
+      if (agg_list_p->operand_prog_state == 0)
+	{
+	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	  compiled_now = true;
+	}
+      if (agg_list_p->operand_prog_state == 1)
+	{
+	  operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
+	  if (!expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
+	    {
+	      /* the scan filter whose slots it reads was recompiled: recompile */
+	      expr_prog_free (operand_prog);
+	      free_and_init (agg_list_p->operand_prog_idx);
+	      agg_list_p->operand_prog = NULL;
+	      agg_list_p->operand_prog_state = 0;
+	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
+	      compiled_now = true;
+	    }
+	}
+      if (operand_prog != NULL)
+	{
+	  /* The program says which
+	   * operands are one and the same cell: let SUM/AVG over them share an accumulator.
+	   * Derived once per execution -- qdata_link_shared_accumulators () reset the links
+	   * at execution start -- from the program of THIS execution, never from a program a
+	   * later row may replace.  A hash GROUP BY entry created before this row keeps its
+	   * own links and accumulates such a pair separately (correct, just not shared). */
+	  unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
+
+	  if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
+	    {
+	      qdata_link_shared_accumulators_by_cell (agg_list_p, val_desc_p);
+	      agg_list_p->operand_prog_link_stamp = stamp;
+	    }
+	}
+      /* every participating operand of the row is evaluated here, before any aggregate
+       * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
+       * precedence this implies on a row that fails twice */
+      if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
@@ -1036,29 +1409,43 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       if (qdata_agg_is_plain_sum_avg (agg_p))
 	{
 	  DB_VALUE *peek_val = NULL;
+	  int prog_root = (operand_prog != NULL && agg_p->operand_prog_base >= 0)
+			  ? agg_list_p->operand_prog_idx[agg_p->operand_prog_base] : -1;
 
-	  if (accumulator->sum_acc.is_active && accumulator->sum_acc.sum_type == DB_TYPE_NUMERIC
-	      && agg_p->operands->value.type == TYPE_INARITH)
+	  if (prog_root >= 0)
 	    {
-	      NUMERIC_AGG_EXPR_VAL cv;
-
-	      if (qdata_agg_expr_eval_numeric (&agg_p->operands->value, &cv))
-		{
-		  if (numeric_sum_acc_add_expr_val (&accumulator->sum_acc, &cv) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
-
-		  accumulator->curr_cnt++;
-		  continue;
-		}
+	      /* The compiled operand program (expr_compile.h) evaluated this operand for the
+	       * row already, together with every other operand of the list (shared
+	       * sub-expressions once, the scan filter's values reused): read its cell.  The
+	       * value then takes the same accumulator path as a peeked operand below. */
+	      peek_val = expr_prog_value (operand_prog, prog_root);
 	    }
-
-	  /* Peek the operand instead of copying it. For a marked arithmetic
-	   * expression this also runs the fused evaluation in fetch_peek_arith (). */
-	  if (fetch_peek_dbval (thread_p, &agg_p->operands->value, val_desc_p, NULL, NULL, NULL, &peek_val) != NO_ERROR)
+	  else
 	    {
-	      return ER_FAILED;
+	      if (accumulator->sum_acc.is_active && accumulator->sum_acc.sum_type == DB_TYPE_NUMERIC
+		  && agg_p->operands->value.type == TYPE_INARITH)
+		{
+		  NUMERIC_AGG_EXPR_VAL cv;
+
+		  if (qdata_agg_expr_eval_numeric (&agg_p->operands->value, &cv))
+		    {
+		      if (numeric_sum_acc_add_expr_val (&accumulator->sum_acc, &cv) != NO_ERROR)
+			{
+			  return ER_FAILED;
+			}
+
+		      accumulator->curr_cnt++;
+		      continue;
+		    }
+		}
+
+	      /* Peek the operand instead of copying it. For a marked arithmetic
+	       * expression this also runs the fused evaluation in fetch_peek_arith (). */
+	      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, val_desc_p, NULL, NULL, NULL, &peek_val) !=
+		  NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 
 	  if (DB_IS_NULL (peek_val))
@@ -1066,9 +1453,10 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      continue;
 	    }
 
-	  if (accumulator->sum_acc.is_active
-	      && accumulator->sum_acc.sum_type == sum_acc_agg_sum_type_for (DB_VALUE_DOMAIN_TYPE (peek_val)))
+	  /* an active typed accumulator takes the argument's type (accumulator_takes), every value's */
+	  if (accumulator->sum_acc.is_active)
 	    {
+	      assert (accumulator->sum_acc.sum_type == sum_acc_agg_sum_type_for (DB_VALUE_DOMAIN_TYPE (peek_val)));
 	      if (qdata_sum_acc_add_dbv (&accumulator->sum_acc, peek_val) != NO_ERROR)
 		{
 		  return ER_FAILED;
@@ -1078,16 +1466,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      continue;
 	    }
 
-	  /* a value a scope fixes is converted once per scope for the operand coercion of the add;
-	   * the first value is the accumulator's as it is. The setup fixed whether it is one. */
-	  cubxasl::aggregate_accumulator_domain *acc_dom = qexec_accumulator_domain (val_desc_p, agg_p->plan_item);
-	  const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
-	  const DB_VALUE *temporary = acc_dom->temporary >= 0 && accumulator->curr_cnt >= 1
-				      ? qexec_execution_temporary (thread_p, val_desc_p, acc_dom->temporary,
-					  coercion->conv[1], coercion->operand_domain[1], peek_val) : NULL;
-	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, acc_dom,
-		  agg_p->function, qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->plan_item),
-		  peek_val, false, temporary);
+	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+		  agg_p->function, agg_p->domain, peek_val, false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -1097,13 +1477,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  continue;
 	}
 
-      /* the function's domain and operand type in this execution: its setup's, or what its interpolation took at an
-       * earlier group's end. The rows never change them, so only the paths that use them read them. */
-      TP_DOMAIN *agg_domain = qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->plan_item);
-      const DB_TYPE agg_operand_type = qexec_node_operand_type (val_desc_p, agg_p->opr_dbtype, agg_p->plan_item);
+      TP_DOMAIN *agg_domain = agg_p->domain;
+      const DB_TYPE agg_operand_type = agg_p->opr_dbtype;
 
       /* fetch operands value. aggregate regulator variable should only contain constants */
       REGU_VARIABLE_LIST operand = NULL;
+      int opr_ordinal = agg_p->operand_prog_base;
       n_values = 0;
       for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
@@ -1119,9 +1498,24 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  db_make_null (&stack_values[n_values]);
 	  n_values++;
 
+	  int prog_root = -1;
+	  if (operand_prog != NULL && opr_ordinal >= 0)
+	    {
+	      prog_root = agg_list_p->operand_prog_idx[opr_ordinal++];
+	    }
+
+	  if (prog_root >= 0)
+	    {
+	      /* the compiled program evaluated this operand for the row already */
+	      if (pr_clone_value (expr_prog_value (operand_prog, prog_root), &stack_values[n_values - 1]) != NO_ERROR)
+		{
+		  qdata_clear_value_array (stack_values, n_values);
+		  return ER_FAILED;
+		}
+	    }
 	  // fetch it
-	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
-				&stack_values[n_values - 1]) != NO_ERROR)
+	  else if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				     &stack_values[n_values - 1]) != NO_ERROR)
 	    {
 	      qdata_clear_value_array (stack_values, n_values);
 	      return ER_FAILED;
@@ -1135,21 +1529,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    case PT_MIN:
 	      if (use_desc_index == agg_p->flag.part_key_descending)
 		{
-		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&stack_values[0]);
 		  pr_clear_value (accumulator->value);
-
-		  if (TP_DOMAIN_TYPE (agg_domain) != type)
+		  if (qdata_copy_to_accumulator (&agg_p->accumulator_domain, &stack_values[0], accumulator->value,
+						 false) != NO_ERROR)
 		    {
-		      int coerce_error = db_value_coerce (&stack_values[0], accumulator->value, agg_domain);
-		      if (coerce_error != NO_ERROR)
-			{
-			  /* set error here */
-			  return ER_FAILED;
-			}
-		    }
-		  else
-		    {
-		      pr_clone_value (&stack_values[0], accumulator->value);
+		      return ER_FAILED;
 		    }
 		  agg_p->is_ended = true;
 		  qdata_clear_value_array (stack_values, n_values);
@@ -1161,21 +1545,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    case PT_MAX:
 	      if (use_desc_index != agg_p->flag.part_key_descending)
 		{
-		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&stack_values[0]);
 		  pr_clear_value (accumulator->value);
-
-		  if (TP_DOMAIN_TYPE (agg_domain) != type)
+		  if (qdata_copy_to_accumulator (&agg_p->accumulator_domain, &stack_values[0], accumulator->value,
+						 false) != NO_ERROR)
 		    {
-		      int coerce_error = db_value_coerce (&stack_values[0], accumulator->value, agg_domain);
-		      if (coerce_error != NO_ERROR)
-			{
-			  /* set error here */
-			  return ER_FAILED;
-			}
-		    }
-		  else
-		    {
-		      pr_clone_value (&stack_values[0], accumulator->value);
+		      return ER_FAILED;
 		    }
 		  agg_p->is_ended = true;
 		  qdata_clear_value_array (stack_values, n_values);
@@ -1303,7 +1677,9 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    {
 	      if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
 		{
-		  if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE)
+		  /* XASL generation casts the ratio to DOUBLE: a NULL is the value without its type */
+		  assert (DB_IS_NULL (percentile_val) || DB_VALUE_TYPE (percentile_val) == DB_TYPE_DOUBLE);
+		  if (DB_IS_NULL (percentile_val))
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 		      return ER_FAILED;
@@ -1320,7 +1696,6 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->sort_list == NULL)
 		{
-		  TP_DOMAIN *tmp_domain_p = NULL;
 		  TP_DOMAIN_STATUS status;
 
 		  /* host var or constant */
@@ -1346,22 +1721,30 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
 			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
-		      /* the setup gave the function its type (DOUBLE for a string; resolve_domains' for a value
-		       * argument, which it rejected before any row when it could not type it), so the value converts
-		       * to that type; no cascade resolves it here */
-		      if (TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_DOUBLE && TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_DATETIME
-			  && TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_TIME)
+		      /* XASL generation gave the function its type (DOUBLE for a string), which the value takes with the
+		       * converter the node planned for its argument's type, as a listed value does */
+		      assert (TP_DOMAIN_TYPE (agg_domain) == DB_TYPE_DOUBLE
+			      || TP_DOMAIN_TYPE (agg_domain) == DB_TYPE_DATETIME
+			      || TP_DOMAIN_TYPE (agg_domain) == DB_TYPE_TIME);
+		      const DOMAIN_OPERAND_COERCION *coercion = &agg_p->accumulator_domain.operand_coercion;
+		      DB_VALUE converted;
+		      db_make_null (&converted);
+		      status = coercion->conv[1] == NULL ? DOMAIN_INCOMPATIBLE
+			       : tp_value_convert (coercion->conv[1], coercion->operand_domain[1], db_value_p, &converted);
+		      if (status == DOMAIN_COMPATIBLE)
 			{
-			  qdata_clear_value_array (stack_values, n_values);
-			  return qexec_domain_unresolved (val_desc_p, agg_p->plan_item, agg_domain);
+			  pr_clear_value (db_value_p);
+			  *db_value_p = converted;
 			}
-		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (agg_domain));
-		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
+		      else
+			{
+			  pr_clear_value (&converted);
+			}
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
+				  fcode_get_uppercase_name (agg_p->function), pr_type_name (TP_DOMAIN_TYPE (agg_domain)));
 
 			  qdata_clear_value_array (stack_values, n_values);
 			  return error;
@@ -1384,8 +1767,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
 	    {
-	      if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE
-		  || db_get_double (percentile_val) != percentile->cur_group_percentile)
+	      if (DB_IS_NULL (percentile_val) || db_get_double (percentile_val) != percentile->cur_group_percentile)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
 		  return ER_FAILED;
@@ -1421,9 +1803,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       else
 	{
 	  /* aggregate value */
-	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator,
-		  qexec_accumulator_domain (val_desc_p, agg_p->plan_item), agg_p->function, agg_domain,
-		  stack_values, n_values);
+	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+		  agg_p->function, agg_domain, stack_values, n_values);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
@@ -1582,12 +1963,6 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
     }
 
   pr_clear_value (agg_p->accumulator.value);
-  /* a COUNT merges two BIGINTs by construction: the rule over them, read once for the hierarchy */
-  DOMAIN_ARITH count_arith;
-  {
-    DB_TYPE left_target, right_target;
-    (void) domain_arith_rule (T_ADD, DB_TYPE_BIGINT, DB_TYPE_BIGINT, &left_target, &right_target, &count_arith);
-  }
   /* iterate through classes in the hierarchy and merge aggregate values */
   for (i = 0; i < helper->count && error == NO_ERROR; i++)
     {
@@ -1605,8 +1980,10 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 	{
 	case PT_COUNT:
 	  /* add current value to result */
-	  error = qdata_arith_dbval (T_ADD, &count_arith, agg_p->accumulator.value, &result, &result,
-				     qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item));
+	  /* a COUNT merges two BIGINTs into its BIGINT domain by construction: nothing to convert */
+	  assert (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_BIGINT);
+	  error = qdata_arith_dbval (T_ADD, &domain_arith_bigint, agg_p->accumulator.value, &result, &result,
+				     agg_p->domain, NULL);
 	  pr_clear_value (agg_p->accumulator.value);
 	  break;
 	case PT_COUNT_STAR:
@@ -1621,10 +1998,11 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 		  goto cleanup;
 		}
 	    }
-	  else
+	  else if (!DB_IS_NULL (agg_p->accumulator.value))
 	    {
-
-	      cmp = tp_value_compare (agg_p->accumulator.value, &result, true, true);
+	      /* a class with no value (empty or all NULL) gives NULL: not a minimum */
+	      cmp = eval_compare_values_resolved (thread_p, agg_p->merge_compare, NULL, agg_p->accumulator.value, &result,
+						  1, NULL);
 	      if (cmp == DB_LT)
 		{
 		  /* agg_p->value is lower than result so make it the new minimum */
@@ -1647,9 +2025,10 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 		  goto cleanup;
 		}
 	    }
-	  else
+	  else if (!DB_IS_NULL (agg_p->accumulator.value))
 	    {
-	      cmp = tp_value_compare (agg_p->accumulator.value, &result, true, true);
+	      cmp = eval_compare_values_resolved (thread_p, agg_p->merge_compare, NULL, agg_p->accumulator.value, &result,
+						  1, NULL);
 	      if (cmp == DB_GT)
 		{
 		  /* agg_p->value is greater than result so make it the new maximum */
@@ -1796,10 +2175,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
       TP_DOMAIN *tmp_domain_ptr = NULL;
-      /* the function's domain in this execution */
-      TP_DOMAIN *agg_domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-      /* a SUM / AVG over distinct values holds the first one as it is until it adds another */
-      const TP_DOMAIN *raw_domain = NULL;
+      TP_DOMAIN *agg_domain = agg_p->domain;
 
       if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV || agg_p->function == PT_VAR_POP
 	  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
@@ -1876,48 +2252,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  if (agg_p->flag.agg_optimized == false)
 	    {
-	      /* the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE key sorts its
-	       * list's domain: qexec_setup_interpolation_list), in a sort list the execution owns */
-	      SORT_LIST *sort_list = agg_p->sort_list;
-	      if (sort_list != NULL)
-		{
-		  TP_DOMAIN *key_domain = QPROC_IS_INTERPOLATION_FUNC (agg_p)
-					  ? qexec_interpolation_list_domain (vd, sort_list->pos_descr.dom, agg_p->plan_item)
-					  : sort_list->pos_descr.dom;
-		  if (domain_is_variable (key_domain))
-		    {
-		      assert (sort_list->pos_descr.pos_no < agg_p->list_id->type_list.type_cnt);
-		      key_domain = agg_p->list_id->type_list.domp[sort_list->pos_descr.pos_no];
-		    }
-		  if (key_domain != sort_list->pos_descr.dom)
-		    {
-		      int n_keys = 0;
-		      for (SORT_LIST *key = agg_p->sort_list; key != NULL; key = key->next)
-			{
-			  n_keys++;
-			}
-		      sort_list = qfile_allocate_sort_list (thread_p, n_keys);
-		      if (sort_list == NULL)
-			{
-			  error = ER_FAILED;
-			  goto exit;
-			}
-		      for (SORT_LIST *src = agg_p->sort_list, *dest = sort_list; src != NULL;
-			   src = src->next, dest = dest->next)
-			{
-			  dest->s_order = src->s_order;
-			  dest->s_nulls = src->s_nulls;
-			  dest->pos_descr = src->pos_descr;
-			}
-		      sort_list->pos_descr.dom = key_domain;
-		    }
-		}
-
-	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, sort_list, agg_p->option, false);
-	      if (sort_list != agg_p->sort_list)
-		{
-		  qfile_free_sort_list (thread_p, sort_list);
-		}
+	      /* the keys sort the list's column in its compiled domain (pt_set_interpolation_list_domain,
+	       * pt_decide_aggregate_domains) */
+	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
 	      if (list_id_p != NULL && er_has_error ())
 		{
@@ -1974,28 +2311,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		  else
 		    {
 		      /* the first distinct value is taken as it is, the second added to it and every later one to the
-		       * sum's domain, each with the operand coercion of the values' types: a SUM or an AVG plans both
-		       * from the list's column domain */
+		       * sum, with the operand coercions the node planned (distinct_coercion, operand_coercion) */
 		      const bool sum_or_avg = agg_p->function == PT_SUM || agg_p->function == PT_AVG;
-		      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
-		      const TP_DOMAIN *sum_domain = agg_p->function == PT_AVG && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
-						    ? column
-						    : qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom;
-		      DOMAIN_OPERAND_COERCION coerce_second = {}, coerce_later = {};
-		      if (sum_or_avg && sum_domain != NULL)
-			{
-			  const DOMAIN_OPERAND second[2] =
-			  {
-			    {column, TP_DOMAIN_TYPE (column), -1, false}, {column, TP_DOMAIN_TYPE (column), -1, false}
-			  };
-			  const DOMAIN_OPERAND later[2] =
-			  {
-			    {sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, false},
-			    {column, TP_DOMAIN_TYPE (column), -1, false}
-			  };
-			  domain_resolve_operand_coercion (T_ADD, second, &coerce_second);
-			  domain_resolve_operand_coercion (T_ADD, later, &coerce_later);
-			}
 		      bool added = false;
 		      while (true)
 			{
@@ -2040,14 +2357,26 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      || agg_p->function == PT_VAR_POP || agg_p->function == PT_STDDEV_POP
 			      || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
 			    {
-			      if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
+			      /* the list holds the argument's type: the converter into DOUBLE the node planned */
+			      const TP_VALUE_CONVERTER into_double = agg_p->accumulator_domain.operand_coercion.conv[1];
+			      if (into_double != NULL)
 				{
-				  ASSERT_ERROR_AND_SET (error);
+				  DB_VALUE coerced;
+				  db_make_null (&coerced);
+				  const TP_DOMAIN_STATUS status = tp_value_convert (into_double, tmp_domain_ptr, &dbval,
+								  &coerced);
+				  if (status != DOMAIN_COMPATIBLE)
+				    {
+				      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &dbval, tmp_domain_ptr);
+				      (void) pr_clear_value (&coerced);
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p, list_id_p);
+				      goto exit;
+				    }
 				  (void) pr_clear_value (&dbval);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
+				  dbval = coerced;
 				}
 			    }
 
@@ -2072,7 +2401,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_POP
 				  || agg_p->function == PT_STDDEV_SAMP || agg_p->function == PT_VAR_SAMP)
 				{
-				  error = qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr);
+				  error = qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr, NULL);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -2105,7 +2434,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				}
 			      else
 				{
-				  raw_domain = sum_or_avg ? column : NULL;
 				  if (tmp_pr_type->setval (agg_p->accumulator.value, &dbval, true) != NO_ERROR)
 				    {
 				      assert (false);
@@ -2120,7 +2448,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_POP
 				  || agg_p->function == PT_STDDEV_SAMP || agg_p->function == PT_VAR_SAMP)
 				{
-				  error = qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr);
+				  error = qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr, NULL);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -2132,7 +2460,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				    }
 
 				  error = qdata_arith_dbval (T_ADD, &domain_arith_double, agg_p->accumulator.value2, &sqr_val,
-							     agg_p->accumulator.value2, tmp_domain_ptr);
+							     agg_p->accumulator.value2, tmp_domain_ptr, NULL);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -2161,27 +2489,26 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      else
 				{
 
+				  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
+				  /* the sum in value_dom, cast to agg_p->domain at the end; an AVG over a NUMERIC keeps
+				   * the sum floating */
 				  TP_DOMAIN *domain_ptr =
 					  tmp_domain_ptr != NULL ? tmp_domain_ptr
-					  : qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom;
-				  /* accumulator domain should be used instead of agg_p->domain for SUM/AVG evaluation
-				   * at the end cast the result to agg_p->domain */
-				  if ((agg_p->function == PT_AVG)
-				      && (dbval.domain.general_info.type == DB_TYPE_NUMERIC))
-				    {
-				      domain_ptr = NULL;
-				    }
+					  : agg_p->function == PT_AVG && acc_dom->value_dom != NULL
+					  && TP_DOMAIN_TYPE (acc_dom->value_dom) == DB_TYPE_NUMERIC ? NULL : acc_dom->value_dom;
 
 				  /* a STDDEV / VARIANCE adds two DOUBLEs by construction */
-				  const DOMAIN_OPERAND_COERCION *coercion = added ? &coerce_later : &coerce_second;
+				  const DOMAIN_OPERAND_COERCION *coercion =
+					  added ? &acc_dom->operand_coercion : &acc_dom->distinct_coercion;
 				  error = qdata_coerce_arith_operands (T_ADD,
 								       sum_or_avg ? coercion->conv : NULL,
 								       coercion->operand_domain,
 								       sum_or_avg ? &coercion->arith : &domain_arith_double,
 								       agg_p->accumulator.value, &dbval,
-								       agg_p->accumulator.value, domain_ptr);
+								       agg_p->accumulator.value, domain_ptr,
+								       sum_or_avg && domain_ptr != NULL
+								       ? coercion->result : NULL);
 				  added = true;
-				  raw_domain = NULL;
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -2221,24 +2548,12 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-	  /* compute AVG(X) = SUM(X)/COUNT(X), with the division's operand coercion for the sum's type - a distinct string
-	   * held as it is - resolved from the sum's domain */
+	  /* compute AVG(X) = SUM(X)/COUNT(X), with the division's operand coercion the node planned */
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
-	  const TP_DOMAIN *sum_domain =
-		  raw_domain != NULL ? raw_domain : qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom;
-	  DOMAIN_OPERAND_COERCION operand_coercion = {};
-	  if (sum_domain != NULL)
-	    {
-	      const DOMAIN_OPERAND operands[2] =
-	      {
-		{sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, false}, {double_domain_ptr, DB_TYPE_DOUBLE, -1, false}
-	      };
-	      domain_resolve_operand_coercion (T_DIV, operands, &operand_coercion);
-	    }
-	  error = qdata_coerce_arith_operands (T_DIV, operand_coercion.conv, operand_coercion.operand_domain,
-					       &operand_coercion.arith, agg_p->accumulator.value, &dbval, &xavgval,
-					       double_domain_ptr);
+	  const DOMAIN_OPERAND_COERCION *divide = &agg_p->accumulator_domain.divide_coercion;
+	  error = qdata_coerce_arith_operands (T_DIV, divide->conv, divide->operand_domain, &divide->arith,
+					       agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr, divide->result);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2247,13 +2562,10 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_AVG)
 	    {
+	      /* the division's result domain made it a DOUBLE */
+	      assert (DB_IS_NULL (&xavgval) || DB_VALUE_DOMAIN_TYPE (&xavgval) == DB_TYPE_DOUBLE);
 	      (void) pr_clear_value (agg_p->accumulator.value);
-	      if (tp_value_coerce (&xavgval, agg_p->accumulator.value, double_domain_ptr) != DOMAIN_COMPATIBLE)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		  goto exit;
-		}
-
+	      (void) pr_clone_value (&xavgval, agg_p->accumulator.value);
 	      continue;
 	    }
 
@@ -2280,7 +2592,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  error = qdata_arith_dbval (T_DIV, &domain_arith_double, agg_p->accumulator.value2, &dbval, &x2avgval,
-				     double_domain_ptr);
+				     double_domain_ptr, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2289,7 +2601,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  /* compute {SUM(X) / (n)} OR {SUM(X) / (n-1)} for xxx_SAMP agg */
 	  error = qdata_arith_dbval (T_DIV, &domain_arith_double, agg_p->accumulator.value, &dbval, &xavg_1val,
-				     double_domain_ptr);
+				     double_domain_ptr, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2297,7 +2609,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for xxx_SAMP agg */
-	  error = qdata_arith_dbval (T_MUL, &domain_arith_double, &xavgval, &xavg_1val, &xavg2val, double_domain_ptr);
+	  error = qdata_arith_dbval (T_MUL, &domain_arith_double, &xavgval, &xavg_1val, &xavg2val, double_domain_ptr, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2306,7 +2618,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) /
 	   * (n-1)} for xxx_SAMP aggregates */
-	  error = qdata_arith_dbval (T_SUB, &domain_arith_double, &x2avgval, &xavg2val, &varval, double_domain_ptr);
+	  error = qdata_arith_dbval (T_SUB, &domain_arith_double, &x2avgval, &xavg2val, &varval, double_domain_ptr, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2322,18 +2634,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_STDDEV || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_STDDEV_SAMP)
 	    {
-	      TP_DOMAIN *tmp_domain_ptr;
-
-	      db_value_domain_init (&dval, DB_TYPE_DOUBLE, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	      /* Construct TP_DOMAIN whose type is DB_TYPE_DOUBLE */
-	      tmp_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	      if (tp_value_coerce (&varval, &dval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		  goto exit;
-		}
-
-	      dtmp = db_get_double (&dval);
+	      /* the subtraction's result domain made the variance a DOUBLE */
+	      assert (DB_VALUE_DOMAIN_TYPE (&varval) == DB_TYPE_DOUBLE);
+	      dtmp = db_get_double (&varval);
 
 	      /* mathematically, dtmp should be zero or positive; however, due to some precision errors, in some cases
 	       * it can be a very small negative number of which we cannot extract the square root */
@@ -2349,10 +2652,16 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* Resolve the final result of aggregate function. Since the evaluation value might be changed to keep the
        * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the
        * result to the original domain. */
-      if (agg_p->function == PT_SUM && agg_domain != qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom)
+      const TP_DOMAIN *value_dom = agg_p->accumulator_domain.value_dom;
+      if (agg_p->function == PT_SUM && agg_domain != value_dom)
 	{
-	  /* cast value */
-	  error = db_value_coerce (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain);
+	  /* the sum in value_dom - a single distinct FLOAT, held as it is, casts to the FLOAT it is - with the converter
+	   * the node planned */
+	  const TP_DOMAIN_STATUS status =
+		  tp_value_cast_with_converter (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain, true,
+						TP_DOMAIN_TYPE (value_dom), agg_p->accumulator_domain.final_conv);
+	  error = status == DOMAIN_COMPATIBLE ? NO_ERROR
+		  : tp_domain_status_er_set (status, ARG_FILE_LINE, agg_p->accumulator.value, agg_domain);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2397,8 +2706,6 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
   SORT_LIST *sort_p;
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
-  DB_DOMAIN *dom;
-  HL_HEAPID save_heapid = 0;
 
   assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operands->value.type == TYPE_REGU_VAR_LIST);
 
@@ -2442,42 +2749,16 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	}
 
       /* now we have found the start of the const list, fetch DB_VALUE from the list into info.dist_percent */
-      regu_tmp_node = regu_var_list;
       for (i = 0; i < nloops; i++)
 	{
 	  val_node_p = &info_p->const_array[i];
+	  /* in the ORDER BY item's domain: XASL generation cast the value into it */
 	  if (fetch_peek_dbval (thread_p, &regu_var_node->value, val_desc_p, NULL, NULL, NULL, val_node_p) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 
-	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
-	  dom = qexec_get_node_domain (val_desc_p, regu_tmp_node->value.domain, regu_tmp_node->value.plan_item);
-
-	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-	    {
-	      save_heapid = db_change_private_heap (thread_p, 0);
-	    }
-
-	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
-	    {
-	      if (save_heapid != 0)
-		{
-		  (void) db_change_private_heap (thread_p, save_heapid);
-		  save_heapid = 0;
-		}
-
-	      goto exit_on_error;
-	    }
-
-	  if (save_heapid != 0)
-	    {
-	      (void) db_change_private_heap (thread_p, save_heapid);
-	      save_heapid = 0;
-	    }
-
 	  regu_var_node = regu_var_node->next;
-	  regu_tmp_node = regu_tmp_node->next;
 	}
     }
 
@@ -2532,11 +2813,12 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	}
       else
 	{
-	  /* non-NULL values comparison */
-	  pr_type_p = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
-	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL,
-				   qexec_get_node_domain (val_desc_p, regu_var_node->value.domain,
-				       regu_var_node->value.plan_item)->collation_id);
+	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into; a list column of a
+	   * variable domain compares in its value's type */
+	  const TP_DOMAIN *order_domain = regu_var_node->value.domain;
+	  pr_type_p = TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE ? order_domain->type
+		      : pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
+	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL, order_domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}
@@ -2591,9 +2873,10 @@ exit_on_error:
  *   thread_p(in): thread
  *   val_cnt(in): size of key
  *   alloc_vals(in): if true will allocate dbvalues
+ *   compares(in): per key column, the domain its values compare in (the context's key_compares)
  */
 aggregate_hash_key *
-qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
+qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals, const tp_domain **compares)
 {
   aggregate_hash_key *key;
   int i;
@@ -2623,6 +2906,7 @@ qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
 
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
+  key->compares = compares;
   return key;
 }
 
@@ -2921,20 +3205,12 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
 
   for (i = 0; i < ckey1->val_count; i++)
     {
-      /* a key from the scan against one read back from a partial list: two sources whose types can differ, compared
-       * by the key pair table; one type without a collation compares as it is, which is
-       * domain_compare_by_type_pair's first answer, here without its call at every probe */
-      const DB_VALUE *value1 = ckey1->values[i];
-      const DB_VALUE *value2 = ckey2->values[i];
-      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
-      if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
-	{
-	  result = tp_value_compare_with_error (value1, value2, 0, 1, NULL);
-	}
-      else
-	{
-	  result = domain_compare_by_type_pair (value1, value2, 0, 1, NULL);
-	}
+      /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
+       * regu's, which types the partial list's column): they hash alike exactly when they compare equal. Exception to
+       * deciding before the rows: keys whose domains leave a value's type to the data compare by their values */
+      result = ckey1->compares != NULL ? domain_compare_in_domain (ckey1->compares[i], ckey1->values[i],
+	       ckey2->values[i], 0, 1)
+	       : tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;
@@ -2978,7 +3254,7 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
   if (key)
     {
       /* make a copy */
-      new_key = qdata_alloc_agg_hkey (thread_p, key->val_count, false);
+      new_key = qdata_alloc_agg_hkey (thread_p, key->val_count, false, key->compares);
     }
 
   if (new_key)
@@ -2998,12 +3274,14 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
 /*
  * qdata_load_agg_hvalue_in_agg_list () - load hash value in aggregate list
+ *   return: void
  *   value(in): aggregate hash value
  *   agg_list(in): aggregate list
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
 void
-qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list, bool copy_vals)
+qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
+				   bool copy_vals)
 {
   int i = 0;
 
@@ -3299,8 +3577,8 @@ end:
  *   acc_dom(in): accumulator domains
  */
 SCAN_CODE
-qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id, aggregate_hash_key *key,
-				 aggregate_hash_value *value, tp_domain **key_dom,
+qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
+				 aggregate_hash_key *key, aggregate_hash_value *value, tp_domain **key_dom,
 				 cubxasl::aggregate_accumulator_domain **acc_dom)
 {
   SCAN_CODE sc;
@@ -3388,30 +3666,27 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
 
 /*
  * qdata_aggregate_list_domain () - the domain an aggregate's DISTINCT or sorted list opens with
- *   return: a MEDIAN / PERCENTILE's list domain, which its key sorts (qexec_setup_interpolation_list); the argument's
- *	     for any other aggregate (qexec_setup_aggregate_lists), and for a MEDIAN / PERCENTILE over a constant or a
- *	     host variable, which has no sort list
+ *   return: a MEDIAN / PERCENTILE's list domain, which its key sorts (pt_set_interpolation_list_domain); the
+ *	     argument's for any other aggregate, and for a MEDIAN / PERCENTILE over a constant or a host variable, which
+ *	     has no sort list
  */
 tp_domain *
 qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_node *agg_p)
 {
-  /* the domains in this execution: the setup's, in the execution domains */
-  return QPROC_IS_INTERPOLATION_FUNC (agg_p) && agg_p->sort_list != NULL
-	 ? qexec_interpolation_list_domain (vd, agg_p->sort_list->pos_descr.dom, agg_p->plan_item)
-	 : qexec_get_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.plan_item);
+  return QPROC_IS_INTERPOLATION_FUNC (agg_p) && agg_p->sort_list != NULL ? agg_p->sort_list->pos_descr.dom
+	 : agg_p->operands->value.domain;
 }
 
 /*
  * qdata_update_agg_interpolation_func_value_and_domain () - a MEDIAN / PERCENTILE value converted to the function's
  *   domain before it goes into the function's list
- *   return: NO_ERROR, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN for a string the function cannot take, another
- *	     conversion's error, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution)) where the
- *	     function or its list has no type
- *   agg_p(in): the function; its domain and its list's were set before the first row
- *   dbval(in/out): the value, converted in place
+ *   return: NO_ERROR, or ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN for any value the function's type does not take
+ *	     (a CBRD-27583 specification change)
+ *   agg_p(in): the function; XASL generation decided its domain and its list's
+ *   dbval(in/out): the value, replaced by its conversion
  *
  * The function's domain is DOUBLE for a number or a string, a date or time type's own, or any number for
- * PERCENTILE_DISC; the list holds that type (qexec_setup_interpolation_list). Neither changes here.
+ * PERCENTILE_DISC; the list holds that type (pt_set_interpolation_list_domain).
  */
 int
 qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxasl::aggregate_list_node *agg_p,
@@ -3425,44 +3700,41 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
       return NO_ERROR;
     }
 
-  /* the function's domain in this execution */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-
-  const DB_TYPE domain_type = TP_DOMAIN_TYPE (domain);
-  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL
-      || ! (TP_IS_DATE_OR_TIME_TYPE (domain_type)
-	    || (agg_p->function == PT_PERCENTILE_DISC ? TP_IS_NUMERIC_TYPE (domain_type) : domain_type == DB_TYPE_DOUBLE)))
+  TP_DOMAIN *domain = agg_p->domain;
+  assert (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == TP_DOMAIN_TYPE (domain));
+  /* the converter the compiler planned (domain_plan_aggregate_accumulator); none for an argument of the function's
+   * type */
+  const TP_VALUE_CONVERTER conv = agg_p->accumulator_domain.operand_coercion.conv[1];
+  if (conv == NULL)
     {
-      return qexec_domain_unresolved (vd, agg_p->plan_item, domain);
+      return NO_ERROR;
     }
-
-  if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != domain_type)
+  DB_VALUE converted;
+  if (tp_value_convert (conv, domain, dbval, &converted) != DOMAIN_COMPATIBLE)
     {
-      return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->list_id->type_list.domp[0]);
+      pr_clear_value (&converted);
+      er_clear ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
+	      fcode_get_uppercase_name (agg_p->function), pr_type_name (TP_DOMAIN_TYPE (domain)));
+      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
     }
-
-  if (DB_VALUE_DOMAIN_TYPE (dbval) != domain_type)
-    {
-      const bool string_value = TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval));
-      const bool value_argument = agg_p->plan_item != NULL && (agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT);
-      int error = db_value_coerce (dbval, dbval, domain);
-      if (error != NO_ERROR)
-	{
-	  if (!string_value || (!value_argument && agg_p->list_id->tuple_cnt == 0))
-	    {
-	      /* the function's error, as the cast of the first value reported it: a value of a type the function cannot
-	       * take (a bit string, a collection), or the first value of a string column or expression (a date string
-	       * under the compiled DOUBLE); a later string that does not convert fails as the conversion does, and a
-	       * value argument (a literal, a bind, a session variable read) keeps the conversion's error */
-	      er_clear ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-		      fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
-	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-	    }
-	  return error;
-	}
-    }
+  pr_clear_value (dbval);
+  *dbval = converted;
   return NO_ERROR;
+}
+
+/*
+ * qdata_group_concat_argument_type () - CBRD-27583: the type of a GROUP_CONCAT's argument, which the compiler
+ *   planned the cast of a value into the function's domain for (accumulator_domain.operand_coercion.conv[1],
+ *   domain_plan_aggregate_accumulator)
+ */
+static DB_TYPE
+qdata_group_concat_argument_type (const AGGREGATE_TYPE *agg_p)
+{
+  const REGU_VARIABLE *operand = &agg_p->operands->value;
+  const TP_DOMAIN *argument = operand->type == TYPE_INARITH || operand->type == TYPE_OUTARITH
+			      ? operand->value.arithptr->domain : operand->domain;
+  return argument != NULL ? TP_DOMAIN_TYPE (argument) : DB_TYPE_NULL;
 }
 
 /*
@@ -3475,8 +3747,7 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
 int
 qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue)
 {
-  /* the function's domain in this execution */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
+  TP_DOMAIN *domain = agg_p->domain;
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
@@ -3509,13 +3780,15 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
       agg_p->accumulator.value->domain.general_info.is_null = 0;
     }
 
-  /* concat the first value */
-  result_domain = ((TP_DOMAIN_TYPE (domain) == agg_type) ? domain : NULL);
+  /* concat the first value: CBRD-27583: a value that is not a string casts into the function's domain, which
+   * its accumulator keeps (qdata_concatenate_dbval) */
+  result_domain = domain;
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
   error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain,
-					max_allowed_size, "GROUP_CONCAT()");
+					max_allowed_size, "GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
+					agg_p->accumulator_domain.operand_coercion.conv[1]);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3545,8 +3818,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
 int
 qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue)
 {
-  /* the function's domain in this execution */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
+  TP_DOMAIN *domain = agg_p->domain;
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
@@ -3556,7 +3828,8 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
 
-  result_domain = ((TP_DOMAIN_TYPE (domain) == agg_type) ? domain : NULL);
+  /* CBRD-27583: a value that is not a string casts into the function's domain (qdata_concatenate_dbval) */
+  result_domain = domain;
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
@@ -3574,8 +3847,9 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->accumulator.value2))
     {
+      /* the separator is a string, which casts nothing */
       if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, agg_p->accumulator.value2, &tmp_val,
-				   result_domain, max_allowed_size, "GROUP_CONCAT()") != NO_ERROR)
+				   result_domain, max_allowed_size, "GROUP_CONCAT()", DB_TYPE_NULL, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3595,7 +3869,8 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
   pr_clear_value (&tmp_val);
 
   if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
-			       "GROUP_CONCAT()") != NO_ERROR)
+			       "GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
+			       agg_p->accumulator_domain.operand_coercion.conv[1]) != NO_ERROR)
     {
       /* dbvalue is caller-owned; the caller clears it. */
       return ER_FAILED;
@@ -3661,19 +3936,13 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd, 
       c_row_num_d = ceil (row_num_d);
     }
 
-  /* the function takes the domain the interpolation gives, and its type as the operand type, as its execution
-   * domains */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
+  /* the list holds the function's type, so the interpolation keeps the decided domain */
+  TP_DOMAIN *domain = agg_p->domain;
   error =
 	  qdata_get_interpolation_function_result (thread_p, scan_id, scan_id->list_id.type_list.domp[0], 0, row_num_d,
 	      f_row_num_d, c_row_num_d, agg_p->accumulator.value, &domain,
 	      agg_p->function);
-
-  if (error == NO_ERROR)
-    {
-      qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, domain);
-      qexec_take_operand_type (vd, agg_p->plan_item, agg_p->opr_dbtype, TP_DOMAIN_TYPE (domain));
-    }
+  assert (error != NO_ERROR || domain == agg_p->domain);
 
   return error;
 }

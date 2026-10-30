@@ -110,29 +110,10 @@ extern unsigned int db_on_server;
  * and oid promotion cannot be controlled there.
  *
  */
-#if defined (SERVER_MODE)
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 1
-#else
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 0
+#if !defined (SERVER_MODE)
+#define PR_INHIBIT_OID_PROMOTION_DEFAULT (0)
 #endif
 
-/*
- * NUMERIC_HEADER_SIZE
- * The numeric header is 3 bytes in size.
- * - header[0]: Total byte size of the numeric data (header + data).
- *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
- *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
- *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
- *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
- * - header[1]: Precision and scale sign bit.
- *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
- *              Bits 0-6: Precision value (1 ~ 40).
- * - header[2]: Scale value.
- *              Bits 0-7: Scale absolute value (0 ~ 214).
- *                        Positive scale: 0 ~ 252.
- *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
- */
-#define NUMERIC_HEADER_SIZE (3)
 #define FLOAT_NUMERIC_SIZE (NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE)
 
 #define STR_SIZE(prec, codeset)                                             \
@@ -799,7 +780,8 @@ static int mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN *
 				     char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2,
 							   int do_coercion, int total_order, int column,
-							   PR_MIDXKEY_ELEMENT_COMPARE element_compare);
+							   PR_MIDXKEY_ELEMENT_COMPARE element_compare,
+							   const void *element_context);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 							 int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -905,9 +887,11 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
  *    Area used for allocation of value containers that may be given out
  *    to database applications.
  */
-static AREA *Value_area = NULL;
+static CUB_THREAD_LOCAL AREA *Value_area = NULL;
 
-int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
+#if !defined (SERVER_MODE)
+CUB_THREAD_LOCAL int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
+#endif
 
 int pr_Enable_string_compression = true;
 const PR_TYPE tp_Null = {
@@ -7691,7 +7675,8 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
 static DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2, int do_coercion,
-			    int total_order, int column, PR_MIDXKEY_ELEMENT_COMPARE element_compare)
+			    int total_order, int column, PR_MIDXKEY_ELEMENT_COMPARE element_compare,
+			    const void *element_context)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE val1, val2;
@@ -7726,7 +7711,7 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
   if (element_compare != NULL)
     {
       /* the caller's plan for this column's two keys */
-      c = element_compare (column, &val1, &val2, do_coercion, total_order, &comparable);
+      c = element_compare (element_context, column, &val1, &val2, do_coercion, total_order, &comparable);
     }
   else
     {
@@ -7757,13 +7742,13 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
 {
   return pr_midxkey_compare_resolved (mul1, mul2, do_coercion, total_order, num_index_term, start_colp, diff_column,
-				      dom_is_desc, result_size, NULL);
+				      dom_is_desc, result_size, NULL, NULL);
 }
 
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
 			     int num_index_term, int *start_colp, int *diff_column, bool * dom_is_desc,
-			     int *result_size, PR_MIDXKEY_ELEMENT_COMPARE element_compare)
+			     int *result_size, PR_MIDXKEY_ELEMENT_COMPARE element_compare, const void *element_context)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -7941,7 +7926,8 @@ pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coerci
 		  /* coercion and comparison
 		   * val1 and val2 have different domain
 		   */
-		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order, i, element_compare);
+		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order, i, element_compare,
+						  element_context);
 		}
 
 	      if (c == DB_EQ)
@@ -9936,78 +9922,6 @@ error:
       midxkey->buf = NULL;
     }
   return ER_FAILED;
-}
-
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-int
-pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
-{
-  TP_DOMAIN *dom;
-  DB_MIDXKEY *midxkey;
-  int i, total_size, header_size, offset;
-  char *new_IDXbuf;
-  char *nullmap_ptr;
-  OR_BUF buf;
-
-  /* phase 1: find old */
-  midxkey = db_get_midxkey (keyval);
-  if (midxkey == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  assert (midxkey->ncolumns == 0 && midxkey->size == 0);
-
-  header_size = or_multi_header_size (num_dbvals + tail_null_cnt);
-  total_size = header_size;
-
-  /* phase 2: calculate how many bytes need */
-  total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
-
-  /* phase 3: initialize new_IDXbuf */
-  new_IDXbuf = (char *) db_private_alloc (NULL, total_size);
-  if (new_IDXbuf == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  or_init (&buf, new_IDXbuf, -1);
-
-  nullmap_ptr = new_IDXbuf;
-  or_multi_clear_header (nullmap_ptr, num_dbvals + tail_null_cnt);
-
-  or_advance (&buf, header_size);
-
-  /* phase 4: copy new_IDXbuf from old */
-  for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
-    {
-      /* check for added val is NULL */
-      if (DB_IS_NULL (&dbvals[i]))
-	{
-	  continue;		/* skip and go ahead */
-	}
-
-      dom->type->index_writeval (&buf, &dbvals[i]);
-
-      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
-    }				/* for (i = 0, ...) */
-
-  assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
-
-  for (i = num_dbvals; i < (num_dbvals + tail_null_cnt); i++)
-    {
-      assert (or_multi_is_null (nullmap_ptr, i));
-      or_multi_put_element_offset (nullmap_ptr, num_dbvals + tail_null_cnt, total_size, i);
-    }
-
-  or_multi_put_size_offset (nullmap_ptr, midxkey->ncolumns + num_dbvals + tail_null_cnt, total_size);
-
-  midxkey->buf = new_IDXbuf;
-  midxkey->size = total_size;
-  midxkey->ncolumns += (num_dbvals + tail_null_cnt);
-
-  return NO_ERROR;
 }
 
 /*

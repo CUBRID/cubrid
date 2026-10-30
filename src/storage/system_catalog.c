@@ -1569,12 +1569,10 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
   if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
     {
       btree_stats_p->pkeys_size = tp_domain_size (btree_stats_p->key_type->setdomain);
-      btree_stats_p->dedup_idx = GET_DECOMPRESS_IDX_HEADER (root_header);
     }
   else
     {
       btree_stats_p->pkeys_size = 1;
-      btree_stats_p->dedup_idx = -1;
     }
 
   /* cut-off to stats */
@@ -2530,7 +2528,6 @@ catalog_copy_btree_statistic (BTREE_STATS * new_btree_stats_p, int new_btree_sta
 	  new_stats_p->keys = pre_stats_p->keys;
 	  new_stats_p->key_type = pre_stats_p->key_type;
 	  new_stats_p->pkeys_size = pre_stats_p->pkeys_size;
-	  new_stats_p->dedup_idx = pre_stats_p->dedup_idx;
 
 	  assert (new_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (k = 0; k < new_stats_p->pkeys_size; k++)
@@ -2577,7 +2574,7 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
 
 /*
  * catalog_initialize () - Initialize data for further catalog operations
- *   return: nothing
+ *   return: NO_ERROR or error code
  *   catid(in): Catalog identifier taken from the system page
  *
  * Note: Creates and initializes a main memory hash table that will be
@@ -2587,9 +2584,11 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
  * data in the catalog header. This routine should always be
  * called before any other catalog operations, except catalog creation.
  */
-void
+int
 catalog_initialize (CTID * catalog_id_p)
 {
+  int error_code;
+
   // protect against repeated hashmap initializations
   catalog_Hashmap.destroy ();
 
@@ -2599,8 +2598,12 @@ catalog_initialize (CTID * catalog_id_p)
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
 
-  // init
-  catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100, catalog_entry_Descriptor);
+  error_code = catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100,
+				     catalog_entry_Descriptor);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   catalog_Max_record_size =
     spage_max_record_size () - CATALOG_PAGE_HEADER_SIZE - CATALOG_MAX_SLOT_ID_SIZE - CATALOG_MAX_SLOT_ID_SIZE;
@@ -2610,6 +2613,7 @@ catalog_initialize (CTID * catalog_id_p)
       catalog_initialize_max_space (&catalog_Max_space);
       catalog_is_header_initialized = true;
     }
+  return NO_ERROR;
 }
 
 /*
@@ -4877,9 +4881,7 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
 
       prefix = "";
       assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-      assert (bt_statsp->dedup_idx != 0);
-      int pkeys_size = (bt_statsp->dedup_idx >= 0) ? bt_statsp->dedup_idx : bt_statsp->pkeys_size;
-      for (i = 0; i < pkeys_size; i++)
+      for (i = 0; i < bt_statsp->pkeys_size; i++)
 	{
 	  fprintf (stdout, "%s%lld", prefix, (long long) bt_statsp->pkeys[i]);
 	  prefix = ",";
@@ -5443,11 +5445,6 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
   if (TP_DOMAIN_TYPE (p_stat_info->key_type) == DB_TYPE_MIDXKEY)
     {
       key_size = tp_domain_size (p_stat_info->key_type->setdomain);
-      if (p_stat_info->dedup_idx > 0)
-	{
-	  // Avoid providing information about columns added with deduplicate options.
-	  key_size--;
-	}
     }
   else
     {

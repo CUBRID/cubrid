@@ -114,22 +114,7 @@ struct leaf_rec
   short key_len;
 };
 
-// *INDENT-OFF*
-enum DOMAIN_SEARCH_KEYS : unsigned char;
-// *INDENT-ON*
-
-/* How an index scan's B-tree compares its search key values with the index keys: the scan's choice from its key
- * plan, made before any row (scan_index_search_compare). */
-enum BTREE_SEARCH_COMPARE
-{
-  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* btree_compare_key_with's type and collation checks, then the key plan's
-					 * comparison of a value that does not compare as it is (by value outside a
-					 * query plan) */
-  BTREE_SEARCH_COMPARE_DIRECT,	/* a single-column key whose values all have the index column's type and collation:
-				 * the column's cmpval */
-  BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN	/* a multi-column key whose values all have their columns' types and
-					 * collations: the midxkey comparison without the plan's element comparison */
-};
+struct DOMAIN_KEY_BOUND;
 
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
@@ -146,12 +131,7 @@ struct btid_int
   VFID ovfid;
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
-  BTREE_SEARCH_COMPARE search_compare;	/* how the comparisons of an index scan's search key values compare; derived
-					 * with search_keys; RESOLVED outside an index scan */
-  DOMAIN_SEARCH_KEYS search_keys;	/* what the comparisons of an index scan's search key values read; derived
-					 * from INDX_SCAN_ID's key plan; DOMAIN_SEARCH_KEYS_NONE outside an index scan */
   int rev_level;
-  int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */
 };
 
@@ -163,6 +143,10 @@ struct btree_keyrange
   DB_VALUE *lower_key;
   DB_VALUE *upper_key;
   int num_index_term;
+  /* CBRD-27583: how lower_key and upper_key compare with the index keys (KEY_VAL_RANGE.key1_bound / key2_bound);
+   * NULL for a key of the index's own domain */
+  const DOMAIN_KEY_BOUND *lower_bound;
+  const DOMAIN_KEY_BOUND *upper_bound;
 };
 
 /* Forward definition. */
@@ -320,7 +304,6 @@ struct btree_scan
   bool is_btid_int_valid;
   bool is_scan_started;
   bool force_restart_from_root;
-  bool is_fk_remake;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   PERF_UTIME_TRACKER time_track;
 
   void *bts_other;
@@ -375,7 +358,6 @@ struct btree_scan
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bts_other = NULL;				\
-    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_RESET_SCAN(bts)				\
@@ -398,7 +380,6 @@ struct btree_scan
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
-    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
@@ -456,8 +437,6 @@ struct btree_capacity
   int fence_key_cnt;		/* Number of fence-keys */
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
-  int deduplicate_dis_key_cnt;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  int avg_val_per_dedup_key;	/* Average number of values (OIDs) per deduplicate key */
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -777,11 +756,6 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SC
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				   OID * found_oid);
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-					     key_val_range * kv_range, bool * is_newly);
-extern int btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_domain, DB_VALUE * fk_key,
-					       DB_VALUE * new_key);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 extern void bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -970,10 +944,15 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 
-extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
+extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+			     const DOMAIN_KEY_BOUND * bound, DB_VALUE_COMPARE_RESULT equal_as, VPID * pg_vpid,
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_locate_key_from_saved_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					     const LOG_LSA * leaf_lsa, VPID * leaf_vpid, PAGE_PTR * leaf_page,
+					     INT16 * slot_id, bool * leaf_unchanged, bool * found);
 /* exposed for parallel index scan key-comparison descent */
 extern int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
+				      const DOMAIN_KEY_BOUND * bound, DB_VALUE_COMPARE_RESULT equal_as,
 				      INT16 * slot_id, VPID * child_vpid, page_key_boundary * page_bounds);
 extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
@@ -996,8 +975,11 @@ extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 			      BTREE_SCAN * bts);
 extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
 						  int do_coercion, int total_order, int *start_colp);
-extern DB_VALUE_COMPARE_RESULT btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2,
+extern DB_VALUE_COMPARE_RESULT btree_compare_search_key (const BTID_INT * btid, DB_VALUE * bound_key,
+							 const DOMAIN_KEY_BOUND * bound, DB_VALUE * key,
 							 int *start_colp);
+extern DB_VALUE_COMPARE_RESULT btree_compare_key_to_bound (const BTID_INT * btid, DB_VALUE * key, DB_VALUE * bound_key,
+							   const DOMAIN_KEY_BOUND * bound, int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);

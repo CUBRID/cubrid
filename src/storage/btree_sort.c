@@ -24,11 +24,14 @@
  * and feeds them to btree_construct_leafs (), either serially or through the parallel index-leaf
  * pipeline (per-worker sector scans -> per-worker runs -> key-range shards -> parallel leaf build).
  *
- * The engine phases (private slotted page, natural merge run generation, k-way merge, temp file
- * I/O, merge work queue) are kept structurally aligned with external_sort.c on purpose: the
- * convergence checkpoint of CBRD-27235 diffs the two engines function by function.  Everything
+ * The engine phases (private slotted page, run generation (btsort_inphase_sort),
+ * k-way merge, temp file I/O, merge work queue) are kept structurally aligned with external_sort.c on
+ * purpose: the convergence checkpoint of CBRD-27235 diffs the two engines function by function.  Everything
  * the query processor needs but the index build does not (SORT_ELIM_DUP merge, top-N limit,
  * ORDER BY / GROUP BY / ANALYTIC parallel arms, trace statistics) is intentionally absent.
+ *
+ * The in-memory run sorters live in btree_sort_<name>.cpp behind BTSORT_RUN_SORTER (btree_sort.h);
+ * btsort_run_pick_sorter () picks one per index build.
  */
 
 #ident "$Id$"
@@ -44,8 +47,12 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "memory_alloc.h"
+#include "btree.h"
 #include "btree_sort.h"
+#include "btree_sort_radix.hpp"
 #include "btree_load.h"
+#include "object_domain.h"
+#include "object_primitive.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "page_buffer.h"
@@ -68,13 +75,6 @@
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/* One slot of the run built in memory: where the record starts, counted from
- * sort_param->internal_memory; its length is in its header. The arrays that btsort_run_sort orders
- * hold these slots, not the records. The 32-bit slot bounds the sort buffer (see btree_sort). */
-typedef UINT32 BTSORT_RUN_SLOT;
-#define BTSORT_REC_AT(base, slot)  ((char *) (base) + *(slot))
-#define BTSORT_MAX_BUFFERS_FOR_RUN_SLOT ((int) (INT_MAX / DB_PAGESIZE))
 
 /* The placeholder of a record in the multipage file: a BIGONE header and the record's VPID */
 #define BTSORT_BIGONE_REC_SIZE  (BTSORT_REC_HEADER_SIZE + (int) sizeof (VPID))
@@ -235,6 +235,9 @@ struct btsort_param
   BTSORT_CMP_FUNC *cmp_fn;
   void *cmp_arg;
 
+  /* The sorter of the in-memory runs */
+  const BTSORT_RUN_SORTER *sorter;
+
   /* input function to apply on temporary records */
   BTSORT_GET_FUNC *get_fn;
   void *get_arg;
@@ -294,22 +297,6 @@ typedef INT16 BTSORT_PAGE_SLOT;
 static_assert (IO_MAX_PAGE_SIZE - sizeof (BTSORT_SPAGE_HEADER) - sizeof (BTSORT_PAGE_SLOT) <= BTSORT_REC_MAX_LENGTH,
 	       "the record of a full run page must fit in the length field of its header");
 
-typedef struct btsort_srun BTSORT_SRUN;
-struct btsort_srun
-{
-  char low_high;		/* location info LOW('L') : otherbase HIGH('H') : base */
-  unsigned short tree_depth;	/* depth of this node : leaf is 1 */
-  long start;
-  long stop;
-};
-
-typedef struct btsort_stack BTSORT_STACK;
-struct btsort_stack
-{
-  int top;
-  BTSORT_SRUN *srun;
-};
-
 /* parallel merge work queue (defined with the merge queue functions below) */
 typedef struct btsort_merge_queue_ctx BTSORT_MERGE_QUEUE_CTX;
 
@@ -319,20 +306,15 @@ static INT16 btsort_spage_get_numrecs (PAGE_PTR pgptr);
 static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 * space);
 static INT16 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
 static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
-static void btsort_run_flip (BTSORT_RUN_SLOT * start, BTSORT_RUN_SLOT * stop);
-static void btsort_run_find (const char *base, BTSORT_RUN_SLOT * source, long *top, BTSORT_STACK * st_p, long limit,
-			     BTSORT_CMP_FUNC * compare, void *comp_arg);
-static void btsort_run_merge (const char *base, BTSORT_RUN_SLOT * low, BTSORT_RUN_SLOT * high, BTSORT_STACK * st_p,
-			      BTSORT_CMP_FUNC * compare, void *comp_arg);
-static BTSORT_RUN_SLOT *btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param,
-					 BTSORT_RUN_SLOT * slots, long limit, BTSORT_RUN_SLOT * other_slots,
-					 long *srun_limit);
+static int btsort_compare_records (const void *first, const void *second, void *arg);
+static const BTSORT_RUN_SORTER *btsort_run_pick_sorter (const SORT_ARGS * sort_args);
 static void btsort_listfile_execute (cubthread::entry & thread_ref, BTSORT_PARAM * sort_param);
 static int btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
+static void btsort_log_build_summary (const BTSORT_PARAM * sort_param, const BTSORT_PARAM * px_sort_param);
 static int btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_GET_FUNC * get_fn,
 				void *get_arg, unsigned int *total_numrecs);
 static int btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_file, int *cur_page,
-			     char *output_buffer, BTSORT_RUN_SLOT * index_area, int numrecs);
+			     char *output_buffer, const BTSORT_RUN_SORTER * sorter, BTSORT_RUN * run);
 static char *btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_get_avg_numpages_of_nonempty_tmpfile (BTSORT_PARAM * sort_param);
@@ -619,361 +601,127 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
 }
 
 /*
- * btsort_run_flip () - Flip a run in place
- *   return: void
- *   start(in):
- *   stop(in):
+ * btsort_compare_records () - Compares two sort records in index key order
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record (bt_load_put_buf_to_record ())
+ *   second(in): sort record
+ *   arg(in): SORT_ARGS *
  *
- * Note: Odd runs will have middle pointer undisturbed.
+ * Note: The key is compared by bt_load_cmp_key_bytes (), in the order the leaf loader expects.
  */
-static void
-btsort_run_flip (BTSORT_RUN_SLOT * start, BTSORT_RUN_SLOT * stop)
+static int
+btsort_compare_records (const void *first, const void *second, void *arg)
 {
-  BTSORT_RUN_SLOT temp;
+  char *mem1 = (char *) first;
+  char *mem2 = (char *) second;
+  int has_null;
+  SORT_ARGS *sort_args;
+  TP_DOMAIN *key_type;
+  char *oidptr1, *oidptr2;
+  int c = DB_UNK;
 
-  while (start < stop)
+  sort_args = (SORT_ARGS *) arg;
+  key_type = sort_args->key_type;
+
+  assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
+  assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
+
+  /* key_off skips the OIDs and the MVCCIDs at once */
+  has_null = BTSORT_REC_HDR (mem1)->has_null || BTSORT_REC_HDR (mem2)->has_null;
+
+  oidptr1 = BTSORT_REC_OID (mem1);
+  oidptr2 = BTSORT_REC_OID (mem2);
+
+  mem1 = BTSORT_REC_KEY (mem1);
+  mem2 = BTSORT_REC_KEY (mem2);
+
+  assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
+  assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
+
+#if !defined(NDEBUG)
+  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
-      temp = *start;
-      *start = *stop;
-      *stop = temp;
-      start++;
-      stop--;
-    }
+      int i;
+      TP_DOMAIN *dom;
 
-  return;
-}
+      for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
+      assert (i == key_type->precision);
 
-/*
- * btsort_run_find () - Finds the longest ascending or descending run it can
- *   return:
- *   source(in):
- *   top(in):
- *   st_p(in):
- *   limit(in):
- *   compare(in):
- *   comp_arg(in):
- *
- * Note: Flip descending run, and assign RUN start and stop
- */
-static void
-btsort_run_find (const char *base, BTSORT_RUN_SLOT * source, long *top, BTSORT_STACK * st_p, long limit,
-		 BTSORT_CMP_FUNC * compare, void *comp_arg)
-{
-  BTSORT_RUN_SLOT *start;
-  BTSORT_RUN_SLOT *stop;
-  BTSORT_RUN_SLOT *next_stop;
-  BTSORT_RUN_SLOT *limit_p;
-  BTSORT_SRUN *srun_p;
-  int cmp;
-  bool increasing_order;
-
-  /* init new BTSORT_SRUN */
-  st_p->top++;
-  srun_p = &(st_p->srun[st_p->top]);
-  srun_p->tree_depth = 1;
-  srun_p->low_high = 'H';
-  srun_p->start = *top;
-
-  if (*top >= (limit - 1))
-    {
-      /* degenerate run length 1. Must go ahead and compare with length 2, because we may need to flip them */
-      srun_p->stop = limit - 1;
-      *top = limit;
-
-      return;
-    }
-
-  start = &source[*top];
-  stop = start + 1;
-  next_stop = stop + 1;
-  limit_p = &source[limit];
-
-  /* have a non-trivial run of length 2 or more */
-  cmp = (*compare) (BTSORT_REC_AT (base, start), BTSORT_REC_AT (base, stop), comp_arg);
-  if (cmp > 0)
-    {
-      increasing_order = false;	/* mark as non-increasing order run */
-
-      while (next_stop < limit_p
-	     && ((cmp = (*compare) (BTSORT_REC_AT (base, stop), BTSORT_REC_AT (base, next_stop), comp_arg)) >= 0))
+      if (sort_args->func_index_info != NULL)
 	{
-	  assert (cmp != 0);	/* compare_driver breaks key ties by OID */
-
-	  stop = next_stop;
-	  next_stop = next_stop + 1;
-	}
-    }
-  else
-    {
-      increasing_order = true;	/* mark as increasing order run */
-
-      assert (cmp != 0);	/* compare_driver breaks key ties by OID */
-
-      /* build increasing order run */
-      while (next_stop < limit_p
-	     && ((cmp = (*compare) (BTSORT_REC_AT (base, stop), BTSORT_REC_AT (base, next_stop), comp_arg)) <= 0))
-	{
-	  assert (cmp != 0);	/* compare_driver breaks key ties by OID */
-
-	  stop = next_stop;
-	  next_stop = next_stop + 1;
-	}
-    }
-
-  /* change non-increasing order run to increasing order run */
-  if (increasing_order != true)
-    {
-      btsort_run_flip (start, stop);
-    }
-
-  *top += CAST_BUFLEN (stop - start);	/* advance to last visited */
-  srun_p->stop = *top;
-
-  (*top)++;			/* advance to next unvisited element */
-
-  return;
-}
-
-/*
- * btsort_run_merge () - Merges two runs from source to dest, updateing dest_top
- *   return:
- *   low(in):
- *   high(in):
- *   st_p(in):
- *   compare(in):
- *   comp_arg(in):
- */
-static void
-btsort_run_merge (const char *base, BTSORT_RUN_SLOT * low, BTSORT_RUN_SLOT * high, BTSORT_STACK * st_p,
-		  BTSORT_CMP_FUNC * compare, void *comp_arg)
-{
-  char dest_low_high;
-  BTSORT_RUN_SLOT *left_start, *right_start;
-  BTSORT_RUN_SLOT *left_stop, *right_stop;
-  BTSORT_RUN_SLOT *dest_ptr;
-  BTSORT_SRUN *left_srun_p, *right_srun_p;
-  int cmp;
-
-  do
-    {
-      /* STEP 1: initialize */
-      left_srun_p = &(st_p->srun[st_p->top - 1]);
-      right_srun_p = &(st_p->srun[st_p->top]);
-
-      left_srun_p->tree_depth++;
-
-      if (left_srun_p->low_high == 'L')
-	{
-	  left_start = &low[left_srun_p->start];
-	  left_stop = &low[left_srun_p->stop];
+	  /* In the following cases, the precision may be smaller than n_attrs.  
+	   * create index idx on tbl(left(s2, v1),v3); 
+	   * So, remove the assert().  */
+	  //assert (sort_args->n_attrs <= key_type->precision);
 	}
       else
 	{
-	  left_start = &high[left_srun_p->start];
-	  left_stop = &high[left_srun_p->stop];
+	  assert (sort_args->n_attrs == key_type->precision);
 	}
-
-      if (right_srun_p->low_high == 'L')
-	{
-	  right_start = &low[right_srun_p->start];
-	  right_stop = &low[right_srun_p->stop];
-	}
-      else
-	{
-	  right_start = &high[right_srun_p->start];
-	  right_stop = &high[right_srun_p->stop];
-	}
-
-      /* STEP 2: check CON conditions srun follows ascending order. if (left_max < right_min) do FORWARD-CON. we use
-       * '<' instead of '<=' */
-      cmp = (*compare) (BTSORT_REC_AT (base, left_stop), BTSORT_REC_AT (base, right_start), comp_arg);
-      if (cmp < 0)
-	{
-	  /* con == TRUE */
-	  dest_low_high = right_srun_p->low_high;
-
-	  if (left_srun_p->low_high == right_srun_p->low_high && left_srun_p->stop + 1 == right_srun_p->start)
-	    {
-	      ;
-	    }
-	  else
-	    {
-	      /* move LEFT to RIGHT's current PART */
-	      if (right_srun_p->low_high == 'L')
-		{
-		  dest_ptr = &low[right_srun_p->start - 1];
-		}
-	      else
-		{
-		  dest_ptr = &high[right_srun_p->start - 1];
-		}
-
-	      while (left_stop >= left_start)
-		{
-		  /* copy LEFT */
-		  *dest_ptr-- = *left_stop--;
-		}
-	    }
-	}
-      else
-	{
-	  /* con == FALSE do the actual merge; right-shift merge slots */
-	  if (right_srun_p->low_high == 'L')
-	    {
-	      dest_low_high = 'H';
-	      dest_ptr = &high[right_srun_p->stop];
-	    }
-	  else
-	    {
-	      dest_low_high = 'L';
-	      dest_ptr = &low[right_srun_p->stop];
-	    }
-
-	  while (left_stop >= left_start && right_stop >= right_start)
-	    {
-	      cmp = (*compare) (BTSORT_REC_AT (base, left_stop), BTSORT_REC_AT (base, right_stop), comp_arg);
-	      assert (cmp != 0);	/* compare_driver breaks key ties by OID */
-	      if (cmp > 0)
-		{
-		  *dest_ptr-- = *left_stop--;
-		}
-	      else
-		{
-		  *dest_ptr-- = *right_stop--;
-		}
-	    }
-
-	  while (left_stop >= left_start)
-	    {
-	      /* copy the rest of LEFT */
-	      *dest_ptr-- = *left_stop--;
-	    }
-	  while (right_stop >= right_start)
-	    {
-	      /* copy the rest of RIGHT */
-	      *dest_ptr-- = *right_stop--;
-	    }
-	}
-
-      /* STEP 3: reconfig BTSORT_STACK */
-      st_p->top--;
-      left_srun_p->low_high = dest_low_high;
-      left_srun_p->start = right_srun_p->start - (left_srun_p->stop - left_srun_p->start + 1);
-      left_srun_p->stop = right_srun_p->stop;
-
+      assert (key_type->setdomain != NULL);
     }
-  while ((st_p->top >= 1)	/* may need to merge */
-	 && (st_p->srun[st_p->top - 1].tree_depth == st_p->srun[st_p->top].tree_depth));
+#endif
 
-  return;
+  c = bt_load_cmp_key_bytes (key_type, mem1, mem2, has_null != 0);
+
+  /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
+  assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
+
+  /* compare OID for non-unique index */
+  if (c == DB_EQ)
+    {
+      OID first_oid, second_oid;
+
+      OR_GET_OID (oidptr1, &first_oid);
+      OR_GET_OID (oidptr2, &second_oid);
+
+      assert_release (!OID_EQ (&first_oid, &second_oid));
+      return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
+    }
+
+  return c;
 }
 
 /*
- * btsort_run_sort () - An implementation of a run-sort algorithm
- *   return: pointer to the sorted area
- *   thread_p(in):
- *   sort_param(in): sort parameters
- *   base(in): pointer to the element at the base of the table
- *   limit(in): numrecs of before current sort
- *   otherbase(in): pointer to alternate area suffecient to store base-limit
- *   srun_limit(in): numrecs of after current sort
+ * btsort_run_pick_sorter () - Picks the in-memory run sorter of this index build
+ *   return: the sorter, never NULL
+ *   sort_args(in):
  *
- * Note: This sorts files by successive merging of runs.
- *
- *       This has the advantage of being liner on sorted or reversed data,
- *       and being order N log base k N, where k is the average length of a
- *       run. Note that k must be at least 2, so the worst case is N log2 N.
- *
- *       Overall, since long runs are common, this beats the pants off
- *       quick-sort.
- *
- *       This could be sped up a bit by looking for N runs, and sorting these
- *       into lists of concatennatable runs.
+ * Note: index_sort_method = compare keeps the merge sorter, and auto or radix takes the radix sorter when the key
+ *       domain has a radix key.
  */
-static BTSORT_RUN_SLOT *
-btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_RUN_SLOT * slots, long limit,
-		 BTSORT_RUN_SLOT * other_slots, long *srun_limit)
+static const BTSORT_RUN_SORTER *
+btsort_run_pick_sorter (const SORT_ARGS * sort_args)
 {
-  BTSORT_CMP_FUNC *compare;
-  void *comp_arg;
-  const char *rec_base = sort_param->internal_memory;
-  BTSORT_RUN_SLOT *src, *dest, *result;
-  BTSORT_STACK sr_stack, *st_p;
-  long src_top = 0;
-  int cnt;
+  int method = prm_get_integer_value (PRM_ID_INDEX_SORT_METHOD);
+  const TP_DOMAIN *key_domain = sort_args->key_type;
 
-  assert_release (limit == *srun_limit);
-
-  if (limit <= 1)
+  if (method == INDEX_SORT_METHOD_COMPARE)
     {
-      return slots;
+      return &btsort_merge_sorter;
     }
 
-  /* init */
-  compare = sort_param->cmp_fn;
-  comp_arg = sort_param->cmp_arg;
-
-  src = slots;
-  dest = other_slots;
-  result = NULL;
-
-  st_p = &sr_stack;
-  st_p->top = -1;
-
-  cnt = (int) (log10 (ceil ((double) limit / 2.0)) / log10 (2.0)) + 2;
-
-  st_p->srun = (BTSORT_SRUN *) db_private_alloc (NULL, cnt * sizeof (BTSORT_SRUN));
-  if (st_p->srun == NULL)
+  if (radix_sort_supports_key (key_domain))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cnt * sizeof (BTSORT_SRUN));
-      return NULL;
+      return &btsort_radix_sorter;
     }
 
-  do
+  if (method == INDEX_SORT_METHOD_RADIX)
     {
-      btsort_run_find (rec_base, src, &src_top, st_p, limit, compare, comp_arg);
-      if (src_top < limit)
-	{
-	  btsort_run_find (rec_base, src, &src_top, st_p, limit, compare, comp_arg);
-	}
-
-      while ((st_p->top >= 1)	/* may need to merge */
-	     && ((src_top >= limit)	/* case 1: final merge stage */
-		 || ((src_top < limit)	/* case 2: non-final merge stage */
-		     && (st_p->srun[st_p->top - 1].tree_depth == st_p->srun[st_p->top].tree_depth))))
-	{
-	  btsort_run_merge (rec_base, dest, src, st_p, compare, comp_arg);
-	}
-    }
-  while (src_top < limit);
-
-  /* save limit of non-duplicated value slot */
-  *srun_limit = limit - st_p->srun[0].start;
-
-  /* move base pointer */
-  result = slots + st_p->srun[0].start;
-
-  if (st_p->srun[0].low_high == 'L')
-    {
-      result = other_slots + st_p->srun[0].start;
+      er_log_debug (ARG_FILE_LINE, "index_sort_method=radix: no radix key for the key domain (type %d), "
+		    "compare sorting", key_domain != NULL ? (int) TP_DOMAIN_TYPE (key_domain) : -1);
     }
 
-  assert (result != NULL);
-
-  db_private_free_and_init (NULL, st_p->srun);
-
-  return result;
+  return &btsort_merge_sorter;
 }
 
 /*
  * btree_sort () - External sort entry point for the b+tree bulk loader
  *   return: NO_ERROR or error code
  *   get_fn(in): input function (btree_sort_get_next)
- *   get_arg(in): SORT_ARGS *
+ *   sort_args(in): the key domain and the scan state of this index build
  *   put_fn(in): output function (btree_construct_leafs)
  *   put_arg(in): LOAD_ARGS *
- *   cmp_fn(in): key comparison function
- *   cmp_arg(in): SORT_ARGS *
  *   includes_tde_class(in): whether any scanned class is TDE-encrypted (temp files follow)
  *
  * Note: The former sort_listfile() of external_sort.c shared with the query processor.  Only the SORT_INDEX_LEAF shape
@@ -981,8 +729,8 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_RUN_
  *       sized from the sort buffer parameter (the loader never passes an input page estimate).
  */
 int
-btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BTSORT_PUT_FUNC * put_fn,
-	    void *put_arg, BTSORT_CMP_FUNC * cmp_fn, void *cmp_arg, bool includes_tde_class)
+btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_args, BTSORT_PUT_FUNC * put_fn,
+	    void *put_arg, bool includes_tde_class)
 {
   int error = NO_ERROR;
   BTSORT_PARAM ori_sort_param;
@@ -1015,11 +763,13 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   sort_param->complete_cond = &complete_cond;
 #endif /* SERVER_MODE */
 
-  sort_param->cmp_fn = cmp_fn;
-  sort_param->cmp_arg = cmp_arg;
+  sort_param->cmp_fn = btsort_compare_records;
+  sort_param->cmp_arg = sort_args;
+
+  sort_param->sorter = btsort_run_pick_sorter (sort_args);
 
   sort_param->get_fn = get_fn;
-  sort_param->get_arg = get_arg;
+  sort_param->get_arg = sort_args;
 
   sort_param->put_fn = put_fn;
   sort_param->put_arg = put_arg;
@@ -1045,7 +795,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
    * the parameter and the floor the code needs: one page goes to the output buffer and the slots
    * grow down from it. */
   sort_param->tot_buffers = MAX (4, prm_get_integer_value (PRM_ID_INDEX_BUILD_BUFFER_SIZE));
-  sort_param->tot_buffers = MIN (sort_param->tot_buffers, BTSORT_MAX_BUFFERS_FOR_RUN_SLOT);
+  sort_param->tot_buffers = MIN (sort_param->tot_buffers, BTSORT_RUN_MAX_BUFFERS);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
@@ -1184,6 +934,11 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   error = btsort_listfile_internal (thread_p, sort_param);
 #endif
 
+  if (error == NO_ERROR)
+    {
+      btsort_log_build_summary (sort_param, px_sort_param);
+    }
+
 cleanup:
 #if defined(SERVER_MODE)
   pthread_mutex_destroy (&px_mtx);
@@ -1218,6 +973,41 @@ cleanup:
     }
 
   return error;
+}
+
+/*
+ * btsort_log_build_summary () - Logs the result of the sort, once per index build
+ *   return: void
+ *   sort_param(in):
+ *   px_sort_param(in): the workers' sort parameters, summed when parallel
+ *
+ * Note: Logged regardless of er_log_debug. A single run output from memory is not counted as flushed.
+ */
+static void
+btsort_log_build_summary (const BTSORT_PARAM * sort_param, const BTSORT_PARAM * px_sort_param)
+{
+  const SORT_ARGS *sort_args = (const SORT_ARGS *) sort_param->get_arg;
+  unsigned int numrecs = 0;
+  int runs = 0;
+  int i;
+
+  if (sort_param->px_parallel_num > 1)
+    {
+      for (i = 0; i < sort_param->px_parallel_num; i++)
+	{
+	  numrecs += px_sort_param[i].total_numrecs;
+	  runs += px_sort_param[i].tot_runs;
+	}
+    }
+  else
+    {
+      numrecs = sort_param->total_numrecs;
+      runs = sort_param->tot_runs;
+    }
+
+  _er_log_debug (ARG_FILE_LINE, "btree_sort: btid(%d, (%d, %d)), sorter %s, parallel %d, %u records, "
+		 "%d runs flushed, buffer %d pages\n", BTID_AS_ARGS (sort_args->btid->sys_btid),
+		 sort_param->sorter->name, sort_param->px_parallel_num, numrecs, runs, sort_param->tot_buffers);
 }
 
 #if defined(SERVER_MODE)
@@ -1411,14 +1201,12 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   /* Variables for the internal memory */
   RECDES temp_recdes;
   RECDES long_recdes;		/* Record desc. for reading in long sorting records */
-  char *item_ptr;		/* Pointer to the first free location of the temp. records region of internal memory */
-  long numrecs;			/* Number of records kept in the internal memory */
-  bool once_flushed = false;
-  long saved_numrecs;
-  char *base = sort_param->internal_memory;	/* run area; slots address records relative to it */
-  BTSORT_RUN_SLOT *saved_index_area;
-  BTSORT_RUN_SLOT *index_area;	/* Part of internal memory keeping the slots of the records */
-  BTSORT_RUN_SLOT *index_buff;	/* buffer area to sort the slots */
+  const BTSORT_RUN_SORTER *sorter = sort_param->sorter;
+  BTSORT_RUN run;
+  bool once_flushed = false;	/* the first run is a normal one, still readable from memory */
+  char *rec_ptr;		/* from reserve () */
+  const char *sorted_rec;	/* from next () */
+  int room;			/* bytes writable at rec_ptr */
   BTSORT_REC_HEADER *header;
   int i;
   int error = NO_ERROR;
@@ -1441,49 +1229,37 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   output_buffer = sort_param->internal_memory + ((long) (sort_param->tot_buffers - 1) * DB_PAGESIZE);
   assert (output_buffer > sort_param->internal_memory);
 
-  numrecs = 0;
-  saved_numrecs = 0;
   *total_numrecs = 0;
-  saved_index_area = NULL;
-  item_ptr = base;
-  index_area = (BTSORT_RUN_SLOT *) (output_buffer - sizeof (BTSORT_RUN_SLOT));
-  index_buff = index_area - 1;
+  BTSORT_RUN_INIT (&run, sort_param->internal_memory, output_buffer, sort_param->cmp_fn, sort_param->cmp_arg);
+
+  rec_ptr = NULL;
   temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
   temp_recdes.length = 0;
 
   long_recdes.area_size = 0;
   long_recdes.data = NULL;
 
+  sorter->init (&run, ((SORT_ARGS *) get_arg)->key_type);
+
   for (;;)
     {
-      if ((char *) index_buff < item_ptr)
+      rec_ptr = sorter->reserve (&run, BTSORT_MAXREC_LENGTH, &room);
+
+      if (rec_ptr == NULL || room <= BTSORT_MIN_REC_AREA)
 	{
-	  /* Internal memory is already full */
+	  /* internal memory is not enough */
 	  status = BTSORT_REC_DOESNT_FIT;
 	}
       else
 	{
-	  /* Internal memory is not full; try to get the next item */
-	  temp_recdes.data = item_ptr;
-	  if (((int) ((char *) index_buff - item_ptr)) < BTSORT_MAXREC_LENGTH)
-	    {
-	      /* each record takes two slots, one per array; keep a record's worth in reserve */
-	      temp_recdes.area_size = (int) ((char *) index_buff - item_ptr) - (4 * sizeof (BTSORT_RUN_SLOT));
-	    }
+	  temp_recdes.data = rec_ptr;
+	  temp_recdes.area_size = room;
 
-	  if (temp_recdes.area_size <= BTSORT_MIN_REC_AREA)
+	  status = (*get_fn) (thread_p, &temp_recdes, get_arg);
+	  /* There are no more input records; So, break the loop */
+	  if (status == BTSORT_NOMORE_RECS)
 	    {
-	      /* internal memory is not enough */
-	      status = BTSORT_REC_DOESNT_FIT;
-	    }
-	  else
-	    {
-	      status = (*get_fn) (thread_p, &temp_recdes, get_arg);
-	      /* There are no more input records; So, break the loop */
-	      if (status == BTSORT_NOMORE_RECS)
-		{
-		  break;
-		}
+	      break;
 	    }
 	}
 
@@ -1495,42 +1271,30 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  goto exit_on_error;
 
 	case BTSORT_REC_DOESNT_FIT:
-	  if (numrecs > 0)
+	  if (run.numrecs > 0)
 	    {
 	      /* Perform internal sorting and flush the run */
 
-	      index_area++;
-
-	      index_area = btsort_run_sort (thread_p, sort_param, index_area, numrecs, index_buff, &numrecs);
-	      *total_numrecs += numrecs;
-
-	      if (index_area == NULL || numrecs < 0)
+	      error = sorter->sort (thread_p, &run);
+	      if (error != NO_ERROR)
 		{
-		  error = ER_FAILED;
 		  goto exit_on_error;
 		}
+	      *total_numrecs += run.numrecs;
 
-	      error =
-		btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs);
+	      error = btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, sorter, &run);
 	      if (error != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
 
-	      /* Prepare for the next internal sorting run */
-
 	      if (sort_param->tot_runs == 1)
 		{
 		  once_flushed = true;
-		  saved_numrecs = numrecs;
-		  saved_index_area = index_area;
 		}
 
-	      numrecs = 0;
-	      item_ptr = base;
-	      index_area = (BTSORT_RUN_SLOT *) (output_buffer - sizeof (BTSORT_RUN_SLOT));
-	      index_buff = index_area - 1;
-	      temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
+	      /* new run, and the flushed run stays readable from memory if the input ends here */
+	      sorter->reset (&run);
 
 	      /* Switch to the next Temp file */
 	      if (++out_curfile >= sort_param->half_files)
@@ -1613,38 +1377,49 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 		    }
 		}
 
+	      /* the run is empty, so the placeholder fits */
+	      rec_ptr = sorter->reserve (&run, BTSORT_BIGONE_REC_SIZE, &room);
+	      if (rec_ptr == NULL || room < BTSORT_BIGONE_REC_SIZE)
+		{
+		  /* This should never happen */
+		  error = ER_GENERIC_ERROR;
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  goto exit_on_error;
+		}
+
 	      /* Create a multipage record for this long record : insert to multipage_file and put the pointer as the
 	       * first record in this run */
-	      if (overflow_insert (thread_p, &sort_param->multipage_file, BTSORT_BIGONE_VPID (item_ptr), &long_recdes,
-				   FILE_TEMP) != NO_ERROR)
+	      if (overflow_insert (thread_p, &sort_param->multipage_file, BTSORT_BIGONE_VPID (rec_ptr),
+				   &long_recdes, FILE_TEMP) != NO_ERROR)
 		{
 		  ASSERT_ERROR_AND_SET (error);
 		  goto exit_on_error;
 		}
 
 	      /* the placeholder: a BIGONE header ahead of the VPID that overflow_insert wrote */
-	      header = BTSORT_REC_HDR (item_ptr);
+	      header = BTSORT_REC_HDR (rec_ptr);
 	      header->length = BTSORT_BIGONE_REC_SIZE;
 	      header->is_bigone = 1;
 	      header->has_null = 0;
 	      header->key_off = 0;
 	      header->flags = 0;
-	      *index_area = CAST_BUFLEN (item_ptr - base);
-	      numrecs++;
 
-	      error =
-		btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs);
+	      /* a run of the placeholder alone */
+	      sorter->accept (&run, BTSORT_BIGONE_REC_SIZE);
+	      error = sorter->sort (thread_p, &run);
 	      if (error != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
 
-	      /* Prepare for the next internal sorting run */
-	      numrecs = 0;
-	      item_ptr = base;
-	      index_area = (BTSORT_RUN_SLOT *) (output_buffer - sizeof (BTSORT_RUN_SLOT));
-	      index_buff = index_area - 1;
-	      temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
+	      error = btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, sorter, &run);
+	      if (error != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      /* new run, as a BIGONE run is never output from memory */
+	      sorter->reset (&run);
 
 	      /* Switch to the next Temp file */
 	      if (++out_curfile >= sort_param->half_files)
@@ -1655,17 +1430,10 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  break;
 
 	case BTSORT_SUCCESS:
-	  /* Proceed the pointers; the record carries its length in its header */
+	  /* the record length goes in its header */
 	  assert (temp_recdes.length <= BTSORT_REC_MAX_LENGTH);
-	  BTSORT_REC_HDR (item_ptr)->length = temp_recdes.length;
-	  *index_area = CAST_BUFLEN (item_ptr - base);
-	  numrecs++;
-
-	  index_area--;
-	  index_buff--;		/* decrease once for the slot, once for the slot buffer of the run sort */
-	  index_buff--;		/* must keep track because index_buff is used to detect when sort buffer is full */
-
-	  item_ptr += DB_ALIGN (temp_recdes.length, INT_ALIGNMENT);
+	  BTSORT_REC_HDR (rec_ptr)->length = temp_recdes.length;
+	  sorter->accept (&run, temp_recdes.length);
 	  break;
 
 	default:
@@ -1676,26 +1444,22 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	}
     }
 
-  if (numrecs > 0)
+  if (run.numrecs > 0)
     {
       /* The input file has finished; process whatever is left over in the internal memory */
 
-      index_area++;
-
-      index_area = btsort_run_sort (thread_p, sort_param, index_area, numrecs, index_buff, &numrecs);
-      *total_numrecs += numrecs;
-
-      if (index_area == NULL || numrecs < 0)
+      error = sorter->sort (thread_p, &run);
+      if (error != NO_ERROR)
 	{
-	  error = ER_FAILED;
 	  goto exit_on_error;
 	}
+      *total_numrecs += run.numrecs;
 
       if (sort_param->tot_runs > 0 || BTSORT_IS_PARALLEL (sort_param))
 	{
 	  /* There has been other runs produced already */
 
-	  error = btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs);
+	  error = btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, sorter, &run);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -1706,10 +1470,10 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  /* No run has been produced yet There is no need for the merging phase; directly output the sorted temp
 	   * records. */
 
-	  for (i = 0; i < numrecs; i++)
+	  while ((sorted_rec = sorter->next (&run)) != NULL)
 	    {
 	      /* Obtain the output record for this temporary record */
-	      temp_recdes.data = BTSORT_REC_AT (base, &index_area[i]);
+	      temp_recdes.data = (char *) sorted_rec;
 	      temp_recdes.length = BTSORT_REC_HDR (temp_recdes.data)->length;
 
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
@@ -1724,10 +1488,11 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
     {
       if (once_flushed)
 	{
-	  for (i = 0; i < saved_numrecs; i++)
+	  /* the only run is still in the buffer, and next () reads it from the start */
+	  while ((sorted_rec = sorter->next (&run)) != NULL)
 	    {
 	      /* Obtain the output record for this temporary record */
-	      temp_recdes.data = BTSORT_REC_AT (base, &saved_index_area[i]);
+	      temp_recdes.data = (char *) sorted_rec;
 	      temp_recdes.length = BTSORT_REC_HDR (temp_recdes.data)->length;
 
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
@@ -1784,23 +1549,20 @@ exit_on_error:
  *   cur_page(in): current page of each temp file (used to determine
  *                 where, within the file, the run should be flushed)
  *   output_buffer(in): output buffer to use for flushing the records
- *   index_area(in): index area keeping ordered pointers to the records
- *   numrecs(in): number of records the run includes
+ *   sorter(in):
+ *   run(in/out): sorted run
  *
- * Note: This function flushes a run to the specified output file. The records
- *       of the run are loaded to the output buffer in the order imposed by
- *       the index area (i.e., on the order of pointers to these records).
- *       This buffer is written to the successive pages of the specified file
- *       when it is full.
+ * Note: Writes the records in next () order to the output buffer, and the buffer to the file page by
+ *       page.
  */
 static int
 btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_file, int *cur_page, char *output_buffer,
-		  BTSORT_RUN_SLOT * index_area, int numrecs)
+		  const BTSORT_RUN_SORTER * sorter, BTSORT_RUN * run)
 {
   int error = NO_ERROR;
   int run_size;
   RECDES out_recdes;
-  int i;
+  const char *rec;
 
   /* Make sure the the temp file indexed by out_file has been created; if not, create it now. */
   if (sort_param->temp[out_file].volid == NULL_VOLID)
@@ -1818,9 +1580,9 @@ btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_fi
   btsort_spage_initialize (output_buffer);
 
   /* Insert each record to the output buffer and flush the buffer when it is full */
-  for (i = 0; i < numrecs; i++)
+  while ((rec = sorter->next (run)) != NULL)
     {
-      out_recdes.data = BTSORT_REC_AT (sort_param->internal_memory, &index_area[i]);
+      out_recdes.data = (char *) rec;
       out_recdes.length = BTSORT_REC_HDR (out_recdes.data)->length;
 
       if (btsort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
@@ -4218,24 +3980,15 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
     {
       error = bt_load_worker_close_shard (thread_p, load_args);
     }
+  /* The build's first failure (e.g. the dedicated vacuum-notification-limit error of a no-logging build) reaches the
+   * leader through the page provider: bt_load_worker_epilogue () keeps that worker's error context, and the leader
+   * takes it in its own thread once every worker is done.  Writing it into the leader's context from here would race
+   * with the leader, which serves page refills and may push and pop its error stack meanwhile. */
   error = bt_load_worker_epilogue (thread_p, load_args, error);
   thread_p->pop_resource_tracks ();
 
   pthread_mutex_lock (sort_param->px_mtx);
   sort_param->px_status = error == NO_ERROR ? BTSORT_PX_DONE : BTSORT_PX_ERR_FAILED;
-  if (error != NO_ERROR)
-    {
-      /* first-error-wins: only the first failing shard publishes its error context (e.g. the dedicated
-       * vacuum-notification-limit error of a no-logging build) into the main thread's context. */
-      if (sort_param->ori_sort_param == NULL || !sort_param->ori_sort_param->px_error_published)
-	{
-	  if (sort_param->ori_sort_param != NULL)
-	    {
-	      sort_param->ori_sort_param->px_error_published = true;
-	    }
-	  sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	}
-    }
   thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);

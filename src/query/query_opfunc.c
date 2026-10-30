@@ -35,6 +35,7 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
+#include "expr_compile.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "object_domain.h"
@@ -111,7 +112,7 @@ static int qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT i, DB_VALU
 
 static int qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p);
 static int qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
-					TP_DOMAIN * domain_p);
+					TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER result_conv);
 static int qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 				     TP_DOMAIN * domain_p);
@@ -123,8 +124,10 @@ static int qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, D
 				    TP_DOMAIN * domain_p);
 static int qdata_add_datetime_value (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
 				     TP_DOMAIN * domain_p);
-static int qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p);
-static int qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+static int qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+					  TP_VALUE_CONVERTER conv);
+static int qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+				 TP_VALUE_CONVERTER conv);
 
 static int qdata_subtract_short (short s1, short s2, DB_VALUE * result_p);
 static int qdata_subtract_int (int i1, int i2, DB_VALUE * result_p);
@@ -189,10 +192,11 @@ static int qdata_number_monetary (OPERATOR_TYPE opcode, DB_VALUE * value1, DB_VA
 static int qdata_number_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * value1, DB_VALUE * value2,
 				  DB_VALUE * result_p);
 static int qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * value1,
-				      DB_VALUE * value2, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+				      DB_VALUE * value2, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+				      TP_VALUE_CONVERTER result_conv);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							      VAL_DESCR * val_desc_p, DB_VALUE * cast_into);
+							      VAL_DESCR * val_desc_p);
 static int qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 static int qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
@@ -336,6 +340,251 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
 }
 
 /*
+ * qdata_valptr_prog_compile () - lazily compile a value pointer list's expressions into
+ *				  one program (expr_compile.h)
+ *
+ * Hidden columns are excluded: the consumers below never evaluate them.  Columns whose
+ * fetch semantics depend on runtime regu flags (strict casts of INSERT/UPDATE value
+ * lists, analytic windows) are excluded the same way and keep their per-column
+ * interpreted fetch, as does every column the expression compiler cannot cover purely.
+ * A program that would only repeat leaf fetches (no computing step) is dropped.
+ */
+static void
+qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)
+{
+  REGU_VARIABLE *roots[128];
+  REGU_VARIABLE_LIST reg_var_p;
+  int *idx = NULL;
+  int n = 0, k;
+  EXPR_PROG *prog;
+
+  if (valptr_list_p->valptr_cnt <= 0 || valptr_list_p->valptr_cnt > (int) DIM (roots))
+    {
+      valptr_list_p->eval_prog_state = 2;
+      return;
+    }
+
+  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
+
+  for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
+    {
+      bool excluded = (reg_var_p->value.flags
+		       & (REGU_VARIABLE_HIDDEN_COLUMN | REGU_VARIABLE_UPD_INS_LIST
+			  | REGU_VARIABLE_ANALYTIC_WINDOW)) != 0;
+
+      roots[n++] = excluded ? NULL : &reg_var_p->value;
+    }
+
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return;
+    }
+
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, false, true, idx,
+				  valptr_list_p->eval_prog_share_spec);
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return;
+    }
+  if (prog->n_compute == 0 && prog->n_shared == 0)
+    {
+      /* only leaf fetches: the per-column interpreted path does the same work without
+       * the program indirection (a column served from the data filter's slot is a
+       * computed value, even though no step of this program computes it) */
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  /* keep only fully-covered columns on the program path; a column whose root fell out
+   * keeps the interpreted per-column fetch */
+  for (k = 0; k < n; k++)
+    {
+      if (idx[k] >= 0)
+	{
+	  break;
+	}
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  valptr_list_p->eval_prog = prog;
+  valptr_list_p->eval_prog_idx = idx;
+  valptr_list_p->eval_prog_state = 1;
+}
+
+/*
+ * qdata_valptr_prog_ensure () - the list's active program with this row already
+ *				 evaluated, or NULL to use the interpreted path
+ *
+ * reuse_row: the caller is qdata_copy_valptr_list_to_tuple () taking over a row whose
+ * tuple-descriptor pass just returned QPROC_TPLDESCR_RETRY_*.  That pass already ran the
+ * program for this row (eval_prog_row_ready), so the slots still hold the row's values and
+ * running it again would only repeat the work -- the interpreted path fetches every column
+ * twice on this route, once for the descriptor and once for the copy, because
+ * fetch_peek_arith () keeps no per-row result.  The mark is consumed by whichever
+ * ensure () comes next, so it cannot outlive the row it was set for: a fresh evaluation
+ * always drops it first.
+ */
+static EXPR_PROG *
+qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
+			  bool reuse_row, int *error_p)
+{
+  EXPR_PROG *prog = NULL;
+
+  *error_p = NO_ERROR;
+
+  if (valptr_list_p->eval_prog_row_ready)
+    {
+      valptr_list_p->eval_prog_row_ready = false;
+      if (reuse_row)
+	{
+	  return (EXPR_PROG *) valptr_list_p->eval_prog;
+	}
+    }
+
+  if (valptr_list_p->eval_prog_state == 0)
+    {
+      qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+    }
+  if (valptr_list_p->eval_prog_state == 1)
+    {
+      prog = (EXPR_PROG *) valptr_list_p->eval_prog;
+      if (!expr_prog_share_current (prog, valptr_list_p->eval_prog_share_spec))
+	{
+	  /* the scan filter whose slots it reads was recompiled: recompile */
+	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+	  valptr_list_p->eval_prog_state = 0;
+	  qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+	  prog = (valptr_list_p->eval_prog_state == 1) ? (EXPR_PROG *) valptr_list_p->eval_prog : NULL;
+	}
+    }
+
+  if (prog != NULL && expr_prog_eval (prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
+    {
+      *error_p = ER_FAILED;
+      return NULL;
+    }
+  return prog;
+}
+
+/*
+ * qdata_free_valptr_list_prog () - release a value pointer list's compiled program
+ *
+ * Note: the state goes back to 0 (compile on next use).  State 2 is reserved for
+ * "compilation declined" set by the compile step.
+ */
+void
+qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p)
+{
+  if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
+    {
+      return;
+    }
+  expr_prog_free ((EXPR_PROG *) valptr_list_p->eval_prog);
+  valptr_list_p->eval_prog = NULL;
+  free_and_init (valptr_list_p->eval_prog_idx);
+  valptr_list_p->eval_prog_state = 0;
+  valptr_list_p->eval_prog_row_ready = false;
+}
+
+/*
+ * qdata_release_valptr_list_prog () - a clear of the XASL node that owns the list's compiled
+ *				       program
+ *
+ * free_it: the XASL clone is being released (XASL_DECACHE_CLONE): free the program.
+ * is_final: the execution is over.  The program stays with the clone for its next execution
+ * and only its slot values are released (expr_prog_reset ()), which also re-arms the
+ * prologues for that next execution.
+ * A clear that is neither -- a correlated subquery rewound for the next outer row -- keeps
+ * the slots and the prologues: the bound values and the literals do not change within one
+ * execution, so re-running the prologue per outer row would only
+ * repeat work (that is exactly the per-execution cost this program was compiled to save).
+ * The row-ready mark is dropped on every clear; it costs nothing and cannot outlive its row
+ * anyway (qdata_valptr_prog_ensure () consumes it).
+ */
+void
+qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool is_final, bool free_it)
+{
+  if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
+    {
+      return;
+    }
+  if (free_it)
+    {
+      qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+      return;
+    }
+  if (is_final)
+    {
+      expr_prog_reset ((EXPR_PROG *) valptr_list_p->eval_prog);
+    }
+  valptr_list_p->eval_prog_row_ready = false;
+}
+
+#if !defined (NDEBUG)
+/*
+ * qdata_check_output_column () - CBRD-27583: an output column's value comes in the column's domain - its
+ *   producer's, now that no column cast converts it; a NUMERIC domain of the default precision takes a NUMERIC of any
+ *   precision and scale, as the cast into it kept them, and one of precision 0 too: the cast into it kept the default
+ *   precision and the column reads as NULL (mr_data_readval_numeric, a known long-standing behavior); a bound value
+ *   comes as the client sent it, as before CBRD-27510: of the column's type with its own precision, scale
+ *   and collation (num_idx's UPDATE), or a string as CHAR or VARCHAR (cbrd_27615's MERGE)
+ */
+static void
+qdata_check_output_column (const REGU_VARIABLE * regu_var_p, const TP_DOMAIN * domain, const DB_VALUE * value)
+{
+  if (domain == NULL || DB_IS_NULL (value) || REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW))
+    {
+      return;
+    }
+  const DB_TYPE dom_type = TP_DOMAIN_TYPE (domain);
+  const DB_TYPE val_type = DB_VALUE_TYPE (value);
+  if (dom_type == DB_TYPE_NULL || dom_type == DB_TYPE_VARIABLE
+      || (val_type == DB_TYPE_OID && (dom_type == DB_TYPE_OID || dom_type == DB_TYPE_VOBJ))
+      || (regu_var_p->type == TYPE_POS_VALUE
+	  && (val_type == dom_type || (TP_IS_CHAR_TYPE (val_type) && TP_IS_CHAR_TYPE (dom_type))))
+      || (val_type == dom_type
+	  && (val_type != DB_TYPE_NUMERIC || domain->precision == DB_DEFAULT_NUMERIC_PRECISION || domain->precision == 0
+	      || (value->domain.numeric_info.precision == domain->precision
+		  && value->domain.numeric_info.scale == domain->scale))))
+    {
+      return;
+    }
+  assert (false);
+}
+#endif /* !NDEBUG */
+
+/*
+ * qdata_get_dbval_from_prog () - a column's value from the evaluated program, read as
+ *				  qdata_get_dbval_from_constant_regu_variable () reads it
+ */
+static DB_VALUE *
+qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, EXPR_PROG * prog, int root_idx,
+			   const val_descr * val_desc_p)
+{
+  DB_VALUE *peek_value_p = expr_prog_value (prog, root_idx);
+
+  assert (regu_var_p != NULL);
+  assert (regu_var_p->domain != NULL);
+  /* flag-dependent fetch semantics were excluded at compile time */
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
+
+#if !defined (NDEBUG)
+  qdata_check_output_column (regu_var_p, regu_var_p->domain, peek_value_p);
+#endif
+
+  return peek_value_p;
+}
+
+/*
  * qdata_copy_valptr_list_to_tuple () -
  *   return: NO_ERROR, or ER_code
  *   valptr_list(in)    : Value pointer list
@@ -354,14 +603,15 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *vals_buf[QDATA_TUPLE_VALS_STACK], **vals = vals_buf;
-  /* a column's value cast into the column's domain, kept off the value its producer owns; a column past the stack
-   * array casts in place, as every column did (qdata_get_dbval_from_constant_regu_variable) */
-  DB_VALUE cast_buf[QDATA_TUPLE_VALS_STACK];
   int k, n, error = NO_ERROR;
+  EXPR_PROG *eval_prog;
+  int prog_error;
 
-  for (k = 0; k < QDATA_TUPLE_VALS_STACK; k++)
+  /* a QPROC_TPLDESCR_RETRY_* on this same row has already evaluated the program: reuse it */
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, true, &prog_error);
+  if (prog_error != NO_ERROR)
     {
-      db_make_null (&cast_buf[k]);
+      return ER_FAILED;
     }
 
   if (valptr_list_p->valptr_cnt > QDATA_TUPLE_VALS_STACK)
@@ -373,7 +623,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	}
     }
 
-  /* fetch each value once (qdata_get_dbval_from_constant_regu_variable evaluates the regu variable) */
+  /* fetch each value once (qdata_get_dbval_from_constant_regu_variable evaluates the regu variable; a
+   * column the compiled program covers is read from the program's cell instead) */
   n = 0;
   reg_var_p = valptr_list_p->valptrp;
   for (k = 0; k < valptr_list_p->valptr_cnt; k++, reg_var_p = reg_var_p->next)
@@ -382,8 +633,16 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	{
 	  continue;
 	}
-      vals[n] = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p,
-							     n < QDATA_TUPLE_VALS_STACK ? &cast_buf[n] : NULL);
+      if (eval_prog != NULL && valptr_list_p->eval_prog_idx[k] >= 0)
+	{
+	  vals[n] =
+	    qdata_get_dbval_from_prog (thread_p, &reg_var_p->value, eval_prog, valptr_list_p->eval_prog_idx[k],
+				       val_desc_p);
+	}
+      else
+	{
+	  vals[n] = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
+	}
       if (vals[n] == NULL)
 	{
 	  error = ER_FAILED;
@@ -395,10 +654,6 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   error = qdata_copy_values_to_tuple (thread_p, vals, n, type_list, tuple_record_p);
 
 end:
-  for (k = 0; k < n && k < QDATA_TUPLE_VALS_STACK; k++)
-    {
-      pr_clear_value (&cast_buf[k]);
-    }
   if (vals != vals_buf)
     {
       db_private_free (thread_p, vals);
@@ -540,6 +795,16 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
   DB_VALUE *value;
   int i, values_size = 0;
   bool has_null = false;
+  EXPR_PROG *eval_prog;
+  int prog_error;
+
+  /* the list's compiled program (expr_compile.h), evaluated for this row; NULL keeps every
+   * column on the interpreted fetch */
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, false, &prog_error);
+  if (prog_error != NO_ERROR)
+    {
+      return QPROC_TPLDESCR_FAILURE;
+    }
 
   tuple_desc_p->tpl_size = 0;
   tuple_desc_p->f_cnt = 0;
@@ -558,9 +823,15 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
 	{
 	  continue;
 	}
-      value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p,
-							   tuple_desc_p->f_cnt < tuple_desc_p->f_cast_cnt
-							   ? &tuple_desc_p->f_cast[tuple_desc_p->f_cnt] : NULL);
+      if (eval_prog != NULL && valptr_list_p->eval_prog_idx[i] >= 0)
+	{
+	  value =
+	    qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i], val_desc_p);
+	}
+      else
+	{
+	  value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+	}
       tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = value;
       if (value == NULL)
 	{
@@ -605,17 +876,32 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
  *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_xxx, or QPROC_TPLDESCR_FAILURE
  *   list_id(in/out): destination with f_valp/f_len already allocated
  *
- * The list opened with the plan's domains (qdata_get_valptr_type_list), so its layout is settled before the first
- * tuple and no row resolves a column: collection and sizing are one pass. The compressed string, if any, is
+ * The list opened with its columns' compiled domains (qdata_get_valptr_type_list), so its layout is settled before the
+ * first tuple and no row resolves a column: collection and sizing are one pass. The compressed string, if any, is
  * deallocated later, after copying the db_value into the tuple.
  */
 QPROC_TPLDESCR_STATUS
 qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
 					   val_descr * val_desc_p, qfile_list_id * list_id)
 {
+  QPROC_TPLDESCR_STATUS status;
+
   assert (list_id->type_list.layout_ready);
-  return qdata_collect_tuple_values < true > (thread_p, valptr_list_p, val_desc_p, &list_id->tpl_descr,
-					      &list_id->type_list);
+  status = qdata_collect_tuple_values < true > (thread_p, valptr_list_p, val_desc_p, &list_id->tpl_descr,
+						&list_id->type_list);
+
+  /* A retry sends the caller to qdata_copy_valptr_list_to_tuple () for this same row before
+   * it touches another one (the query_executor.c callers and the parallel result handler
+   * alike), and the collection above has already run the compiled program for the row
+   * (qdata_collect_tuple_values ()): hand it over instead of letting that copy evaluate it a
+   * second time. */
+  if ((status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC)
+      && valptr_list_p->eval_prog_state == 1 && valptr_list_p->eval_prog != NULL)
+    {
+      valptr_list_p->eval_prog_row_ready = true;
+    }
+
+  return status;
 }
 
 /*
@@ -636,11 +922,13 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valpt
   reg_var_p = valptr_list_p->valptrp;
   for (i = 0; i < valptr_list_p->valptr_cnt; i++)
     {
-      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p, NULL);
+      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
       if (dbval_p != NULL)
 	{
-	  if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	  /* a host variable's value is the bound value itself (fetch_peek_dbval): it stays for the next evaluation */
+	  if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE)
+	      && reg_var_p->value.type != TYPE_POS_VALUE)
 	    {
 	      /* this may be shared with another regu variable that was already evaluated */
 	      pr_clear_value (dbval_p);
@@ -673,9 +961,7 @@ qdata_add_short (short s1, short s2, DB_VALUE * result_p)
 {
   short result;
 
-  result = s1 + s2;
-
-  if (OR_CHECK_ADD_OVERFLOW (s1, s2, result))
+  if (OR_ADD_OVERFLOW (s1, s2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -690,9 +976,9 @@ qdata_add_int (int i1, int i2, DB_VALUE * result_p)
 {
   int result;
 
-  result = i1 + i2;
-
-  if (OR_CHECK_ADD_OVERFLOW (i1, i2, result))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_ADD_OVERFLOW) */
+  if (OR_ADD_OVERFLOW (i1, i2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -707,9 +993,9 @@ qdata_add_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT result;
 
-  result = bi1 + bi2;
-
-  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_ADD_OVERFLOW) */
+  if (OR_ADD_OVERFLOW (bi1, bi2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -1091,9 +1377,11 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi, DB_VALUE * resu
 
   u1 = bi;
   u2 = *utime;
-  utmp = u1 + u2;
-
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+  /* u1 and u2 are DB_BIGINT, so this addition is signed. The sum used to be formed
+   * with a plain + and then inspected with OR_CHECK_UNS_ADD_OVERFLOW, an unsigned
+   * wraparound test: forming it is itself the overflow, which is undefined, and the
+   * compiler may drop the test along with it. The builtin decides beforehand. */
+  if (OR_ADD_OVERFLOW (u1, u2, &utmp) || INT_MAX < utmp)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -1357,9 +1645,11 @@ qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE 
 
   u1 = bi;
   u2 = utime;
-  utmp = u1 + u2;
-
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+  /* u1 and u2 are DB_BIGINT, so this addition is signed. The sum used to be formed
+   * with a plain + and then inspected with OR_CHECK_UNS_ADD_OVERFLOW, an unsigned
+   * wraparound test: forming it is itself the overflow, which is undefined, and the
+   * compiler may drop the test along with it. The builtin decides beforehand. */
+  if (OR_ADD_OVERFLOW (u1, u2, &utmp) || INT_MAX < utmp)
     {
       err = ER_QPROC_OVERFLOW_ADDITION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -1582,9 +1872,11 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi, DB_VALUE * result
 
   u1 = bi;
   u2 = *date;
-  utmp = u1 + u2;
-
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
+  /* u1 and u2 are DB_BIGINT, so this addition is signed. The sum used to be formed
+   * with a plain + and then inspected with OR_CHECK_UNS_ADD_OVERFLOW, an unsigned
+   * wraparound test: forming it is itself the overflow, which is undefined, and the
+   * compiler may drop the test along with it. The builtin decides beforehand. */
+  if (OR_ADD_OVERFLOW (u1, u2, &utmp) || utmp > DB_DATE_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -1628,8 +1920,14 @@ qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * r
   return NO_ERROR;
 }
 
+/*
+ * qdata_add_sequence_to_dbval () - two collections added in domain_p: a sequence appended to a sequence, the union of
+ *   sets or multisets. CBRD-27583: the first sequence converts into domain_p with the converter the plan found
+ *   for a value of type planned (result_conv, the one qdata_coerce_result_to_domain uses)
+ */
 static int
-qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
+			     DB_TYPE planned, TP_VALUE_CONVERTER result_conv)
 {
   DB_SET *set_tmp;
   DB_SEQ *seq_tmp, *seq_tmp1;
@@ -1656,7 +1954,7 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
 
   if (TP_DOMAIN_TYPE (domain_p) == DB_TYPE_SEQUENCE)
     {
-      if (tp_value_coerce (seq_val_p, result_p, domain_p) != DOMAIN_COMPATIBLE)
+      if (tp_value_coerce_with_converter (seq_val_p, result_p, domain_p, planned, result_conv) != DOMAIN_COMPATIBLE)
 	{
 	  return ER_FAILED;
 	}
@@ -1685,7 +1983,9 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
   else
     {
       /* set or multiset */
-      if (set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p) < 0)
+      int error;
+      error = set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p);
+      if (error < 0)
 	{
 	  return ER_FAILED;
 	}
@@ -1853,34 +2153,68 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALUE * r
   return NO_ERROR;
 }
 
+/*
+ * qdata_coerce_result_to_domain () - CBRD-27583: an operator's value into the domain its node or its plan names
+ *   (tp_value_coerce's coercion), by the converter the plan found before the rows for a value of the planned type
+ *   return: NO_ERROR or ER_code
+ *   domain_p(in): the domain; NULL none
+ *   planned(in): the type the operator's value has - the arith kind's, a concatenation's domain's
+ *   conv(in): tp_value_find_converter (planned, domain_p, IMPLICIT); NULL converts nothing
+ */
 static int
-qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
-  int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
-
-  if (domain_p != NULL)
+  if (domain_p == NULL)
     {
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
-	  assert_release (error != NO_ERROR);
-	}
+      return NO_ERROR;
     }
-
-  return error;
+  if (DB_IS_NULL (result_p))
+    {
+      /* tp_value_coerce's: a NULL comes out bare */
+      db_make_null (result_p);
+      return NO_ERROR;
+    }
+  TP_DOMAIN_STATUS dom_status;
+  if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
+    {
+      /* the plan's converter, which the cast takes in place of its lookup */
+      if (conv == NULL)
+	{
+	  return NO_ERROR;
+	}
+      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+    }
+  else
+    {
+      /* CBRD-27583: not reached - a value of another type than planned, or a domain that leaves the value's type or
+       * collation to it (checked also for compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT
+       * results); a release build coerces it by its own type */
+      assert (false);
+      dom_status = tp_value_coerce (result_p, result_p, domain_p);
+    }
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      const int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
+      assert_release (error != NO_ERROR);
+      return error;
+    }
+  return NO_ERROR;
 }
 
+/*
+ * qdata_cast_to_domain () - a value cast into domain_p, with the converter unpack found for a value of type planned
+ *   (conv; NULL none): CBRD-27583
+ */
 static int
-qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+		      TP_VALUE_CONVERTER conv)
 {
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
 
   if (domain_p != NULL)
     {
-      dom_status = tp_value_cast (dbval_p, result_p, domain_p, false);
+      dom_status = tp_value_cast_with_converter (dbval_p, result_p, domain_p, false, planned, conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval_p, domain_p);
@@ -1908,62 +2242,6 @@ qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, c
   return error;
 }
 
-#if !defined (NDEBUG)
-/* Whether two types are one for an operand coercion: a character, bit or collection type stands for its type family */
-static bool
-qdata_operand_coercion_type_holds (DB_TYPE value, DB_TYPE resolved)
-{
-  return value == resolved || (TP_IS_CHAR_TYPE (value) && TP_IS_CHAR_TYPE (resolved))
-    || (TP_IS_BIT_TYPE (value) && TP_IS_BIT_TYPE (resolved)) || (TP_IS_SET_TYPE (value) && TP_IS_SET_TYPE (resolved));
-}
-
-/*
- * qdata_assert_operand_coercion_resolved () - debug cross-check: the operand coercion a caller resolved for two values
- *   that are not NULL is the resolver's type rules over the values' own types: the same target types, and the
- *   converter of the value's own type, CHAR and VARCHAR standing for each other (their converters read any string)
- */
-static void
-qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
-					const TP_DOMAIN * const *operand_domain, const DB_VALUE * dbval1_p,
-					const DB_VALUE * dbval2_p)
-{
-  const DB_VALUE *values[2] = { dbval1_p, dbval2_p };
-  const DOMAIN_OPERAND operands[2] = {
-    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, false}
-  };
-  DOMAIN_OPERAND_COERCION expected;
-  domain_resolve_operand_coercion (opcode, operands, &expected);
-  for (int i = 0; i < 2; i++)
-    {
-      if (conv[i] == NULL && expected.conv[i] == NULL)
-	{
-	  /* neither converts the value: its type is the operator's to take */
-	  continue;
-	}
-      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (values[i]);
-      const TP_DOMAIN *resolved = operand_domain[i];
-      bool same = resolved != NULL
-	&& qdata_operand_coercion_type_holds (TP_DOMAIN_TYPE (expected.operand_domain[i]), TP_DOMAIN_TYPE (resolved));
-      if (same && conv[i] != expected.conv[i])
-	{
-	  const DB_TYPE sibling =
-	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
-	  same = sibling != type && conv[i] != NULL && expected.conv[i] != NULL
-	    && conv[i] == tp_value_find_converter (sibling, resolved, DOMAIN_CONVERT_ASSIGN);
-	}
-      if (!same)
-	{
-	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d expected=%d\n",
-		   (int) opcode, i, (int) DB_VALUE_DOMAIN_TYPE (values[0]), (int) DB_VALUE_DOMAIN_TYPE (values[1]),
-		   resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
-		   expected.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (expected.operand_domain[i]) : -1);
-	}
-      assert (same);
-    }
-}
-
-#endif
-
 /*
  * qdata_coerce_arith_operands () - an addition, subtraction, multiplication or division over its operands' operand
  *   coercion, resolved before any row, then the typed operator, which casts nothing
@@ -1972,8 +2250,8 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
  *   conv(in), operand_domain(in), arith(in): conv[0..1], operand_domain[0..1] and arith of the operand coercion - a
  *	       node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION (domain_resolve_operand_coercion); conv
  *	       NULL converts nothing
- *   temporaries(in): [2] an operand its scope converted once already: the operator takes it in place
- *	       of the conversion; NULL none
+ *   domain_p(in), result_conv(in): the result's domain and the plan's converter of the operator's value into it
+ *	       (qdata_arith_dbval)
  *
  * Over two values that are not NULL, each operand the plan converts gets a value of its own, in this order - the
  * second operand first but for a subtraction - and a conversion that fails has tp_value_auto_cast's outcome: NULL
@@ -1984,16 +2262,13 @@ int
 qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
 			     const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p,
 			     DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
-			     const DB_VALUE * const *temporaries)
+			     TP_VALUE_CONVERTER result_conv)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   if (conv == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
-      return qdata_arith_dbval (opcode, arith, dbval1_p, dbval2_p, result_p, domain_p);
+      return qdata_arith_dbval (opcode, arith, dbval1_p, dbval2_p, result_p, domain_p, result_conv);
     }
-#if !defined (NDEBUG)
-  qdata_assert_operand_coercion_resolved (opcode, conv, operand_domain, dbval1_p, dbval2_p);
-#endif
   DB_VALUE *operand[2] = { dbval1_p, dbval2_p };
   DB_VALUE converted[2];
   int used = 0;
@@ -2003,14 +2278,6 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
       const int i = opcode == T_SUB ? k : 1 - k;
       if (conv[i] == NULL)
 	{
-	  continue;
-	}
-      if (temporaries != NULL && temporaries[i] != NULL)
-	{
-	  /* a copy that frees nothing: the scope's value stays its owner's */
-	  converted[i] = *temporaries[i];
-	  converted[i].need_clear = false;
-	  operand[i] = &converted[i];
 	  continue;
 	}
       used |= 1 << i;
@@ -2030,7 +2297,7 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
     }
   if (error == NO_ERROR)
     {
-      error = qdata_arith_dbval (opcode, arith, operand[0], operand[1], result_p, domain_p);
+      error = qdata_arith_dbval (opcode, arith, operand[0], operand[1], result_p, domain_p, result_conv);
     }
   for (int i = 0; i < 2; i++)
     {
@@ -2437,6 +2704,8 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *   domain_p(in)	  : DB domain of result
  *   max_allowed_size(in) : max allowed size for result
  *   warning_context(in)  : used only to display truncation warning context
+ *   planned(in), conv(in): the converter of a dbval2 of type planned into domain_p the plan found (CBRD-27583,
+ *			    a GROUP_CONCAT's argument); NULL none
  *
  * Note: Concatenates a db_values to string db value.
  *	 Value to be added is truncated in case the allowed size would be
@@ -2448,7 +2717,8 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  */
 int
 qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
-			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context)
+			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context,
+			 DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
   DB_TYPE type2, type1;
   int error = NO_ERROR;
@@ -2483,6 +2753,10 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+      /* CBRD-27583: type checking coerced the separator and the function into the argument's collation, so a
+       * GROUP_CONCAT's accumulator and its values share it (db_string_concatenate merges nothing) */
+      assert (!(TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
+	      || db_get_string_collation (dbval1_p) == db_get_string_collation (dbval2_p));
       val_size = db_get_string_size (dbval2_p);
       if (res_size >= max_allowed_size)
 	{
@@ -2536,7 +2810,10 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_ENUMERATION:
       {
 	TP_DOMAIN_STATUS err_dom;
-	err_dom = tp_value_cast (dbval2_p, &arg_val, domain_p, false);
+	/* CBRD-27583: a number, date, time or ENUM argument casts into the function's domain with the
+	 * converter the plan found (domain_plan_aggregate_accumulator); that VARCHAR is the accumulator's type */
+	assert (conv != NULL && DB_VALUE_DOMAIN_TYPE (dbval1_p) == TP_DOMAIN_TYPE (domain_p));
+	err_dom = tp_value_cast_with_converter (dbval2_p, &arg_val, domain_p, false, planned, conv);
 
 	if (err_dom == DOMAIN_COMPATIBLE)
 	  {
@@ -2619,9 +2896,7 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
     {
     case DB_TYPE_SHORT:
       s1 = db_get_short (dbval_p);
-      stmp = s1 + inc_val;
-      if ((inc_val > 0 && OR_CHECK_ADD_OVERFLOW (s1, inc_val, stmp))
-	  || (inc_val < 0 && OR_CHECK_SUB_UNDERFLOW (s1, -inc_val, stmp)))
+      if (OR_ADD_OVERFLOW (s1, inc_val, &stmp))
 	{
 	  stmp = 0;
 	}
@@ -2631,9 +2906,7 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
 
     case DB_TYPE_INTEGER:
       i1 = db_get_int (dbval_p);
-      itmp = i1 + inc_val;
-      if ((inc_val > 0 && OR_CHECK_ADD_OVERFLOW (i1, inc_val, itmp))
-	  || (inc_val < 0 && OR_CHECK_SUB_UNDERFLOW (i1, -inc_val, itmp)))
+      if (OR_ADD_OVERFLOW (i1, inc_val, &itmp))
 	{
 	  itmp = 0;
 	}
@@ -2643,9 +2916,7 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
 
     case DB_TYPE_BIGINT:
       bi1 = db_get_bigint (dbval_p);
-      bitmp = bi1 + inc_val;
-      if ((inc_val > 0 && OR_CHECK_ADD_OVERFLOW (bi1, inc_val, bitmp))
-	  || (inc_val < 0 && OR_CHECK_SUB_UNDERFLOW (bi1, -inc_val, bitmp)))
+      if (OR_ADD_OVERFLOW (bi1, inc_val, &bitmp))
 	{
 	  bitmp = 0;
 	}
@@ -2666,9 +2937,7 @@ qdata_subtract_short (short s1, short s2, DB_VALUE * result_p)
 {
   short stmp;
 
-  stmp = s1 - s2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (s1, s2, stmp))
+  if (OR_SUB_OVERFLOW (s1, s2, &stmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -2683,9 +2952,9 @@ qdata_subtract_int (int i1, int i2, DB_VALUE * result_p)
 {
   int itmp;
 
-  itmp = i1 - i2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_SUB_OVERFLOW) */
+  if (OR_SUB_OVERFLOW (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -2700,9 +2969,9 @@ qdata_subtract_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT bitmp;
 
-  bitmp = bi1 - bi2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_SUB_OVERFLOW) */
+  if (OR_SUB_OVERFLOW (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -2896,8 +3165,7 @@ qdata_subtract_datetime (DB_DATETIME * dt1, DB_DATETIME * dt2, DB_VALUE * result
   u1 = ((DB_BIGINT) dt1->date) * MILLISECONDS_OF_ONE_DAY + dt1->time;
   u2 = ((DB_BIGINT) dt2->date) * MILLISECONDS_OF_ONE_DAY + dt2->time;
 
-  tmp = u1 - u2;
-  if (OR_CHECK_SUB_UNDERFLOW (u1, u2, tmp))
+  if (OR_SUB_OVERFLOW (u1, u2, &tmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_FAILED;
@@ -3642,8 +3910,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
 	  return qdata_subtract_utime_to_bigint_asymmetry (date_val_p, bi2, date, result_p, domain_p);
 	}
 
-      bitmp = bi1 - bi2;
-      if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp) || OR_CHECK_UINT_OVERFLOW (bitmp) || bitmp < DB_DATE_MIN)
+      if (OR_SUB_OVERFLOW (bi1, bi2, &bitmp) || OR_CHECK_UINT_OVERFLOW (bitmp) || bitmp < DB_DATE_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DATE_UNDERFLOW, 0);
 	  return ER_FAILED;
@@ -4267,10 +4534,9 @@ qdata_number_as_double (DB_VALUE * value, double *d)
 }
 
 /*
- * qdata_number_numeric () - the NUMERIC of a NUMERIC with an integer or another NUMERIC: two NUMERICs by the float
- *   NUMERIC operations; a NUMERIC with an integer by the NUMERIC operations over the integer coerced to NUMERIC
- *   (qdata_coerce_dbval_to_numeric), the addition taking the coerced integer first and the others their operands in
- *   order, as the typed operators did
+ * qdata_number_numeric () - the NUMERIC of a NUMERIC with an integer or another NUMERIC, by the float NUMERIC
+ *   operations: a NUMERIC with an integer over the integer coerced to NUMERIC (qdata_coerce_dbval_to_numeric), the
+ *   addition taking the coerced integer first and the others their operands in order, as the typed operators did
  *   return: NO_ERROR, or the operator's overflow error
  */
 static int
@@ -4315,18 +4581,18 @@ qdata_number_numeric (OPERATOR_TYPE opcode, DB_VALUE * value1, DB_VALUE * value2
       switch (opcode)
 	{
 	case T_ADD:
-	  error = numeric_db_value_add (&coerced, numeric, result_p);
+	  error = float_numeric_db_value_add (&coerced, numeric, result_p);
 	  break;
 	case T_SUB:
-	  error = numeric_first ? numeric_db_value_sub (value1, &coerced, result_p)
-	    : numeric_db_value_sub (&coerced, value2, result_p);
+	  error = numeric_first ? float_numeric_db_value_sub (value1, &coerced, result_p)
+	    : float_numeric_db_value_sub (&coerced, value2, result_p);
 	  break;
 	case T_MUL:
-	  error = numeric_db_value_mul (numeric, &coerced, result_p);
+	  error = float_numeric_db_value_mul (numeric, &coerced, result_p);
 	  break;
 	default:
-	  error = numeric_first ? numeric_db_value_div (value1, &coerced, result_p)
-	    : numeric_db_value_div (&coerced, value2, result_p);
+	  error = numeric_first ? float_numeric_db_value_div (value1, &coerced, result_p)
+	    : float_numeric_db_value_div (&coerced, value2, result_p);
 	  break;
 	}
     }
@@ -4530,7 +4796,7 @@ qdata_number_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * val
  */
 static int
 qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * value1, DB_VALUE * value2,
-			   DB_VALUE * result_p, TP_DOMAIN * domain_p)
+			   DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER result_conv)
 {
   if (domain_p == NULL)
     {
@@ -4539,7 +4805,7 @@ qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE *
   switch (opcode)
     {
     case T_ADD:
-      return qdata_add_sequence_to_dbval (value1, value2, result_p, domain_p);
+      return qdata_add_sequence_to_dbval (value1, value2, result_p, domain_p, planned, result_conv);
     case T_SUB:
       return qdata_subtract_sequence_to_dbval (value1, value2, result_p, domain_p);
     default:
@@ -4612,14 +4878,15 @@ qdata_assert_arith_value (const DOMAIN_ARITH * arith, const DB_VALUE * result_p)
  *   concatenation (qdata_strcat_dbval answers a NULL string, as the typed addition let it).
  *   return: NO_ERROR, or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
- *   arith(in): the plan - a node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double
- *	       for an accumulation in DOUBLE; a plan nothing resolved (DOMAIN_ARITH_UNRESOLVED) is the caller's
- *	       unresolved-domain check, never seen here
+ *   arith(in): the plan - a node's ARITH_TYPE.decided.arith (the unpack refuses a node it cannot decide), a SUM's or
+ *	       AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE
  *   domain_p(in): the domain the result is coerced to; NULL none
+ *   result_conv(in): the converter of a value of arith's type into domain_p the plan found
+ *		     (qdata_coerce_result_to_domain); NULL converts nothing
  */
 int
 qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
-		   DB_VALUE * result_p, TP_DOMAIN * domain_p)
+		   DB_VALUE * result_p, TP_DOMAIN * domain_p, TP_VALUE_CONVERTER result_conv)
 {
   int error = NO_ERROR;
 
@@ -4632,14 +4899,14 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
 
   if (dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
-      /* a NULL operand: no value, before any plan (a node without one answers its NULL operand too), but under plus
-       * as concatenation a NULL string, which qdata_strcat_dbval answers (oracle_style_empty_string); a NULL without a
-       * string type (a NULL made bare) is no value */
+      /* a NULL operand: no value, before any plan, but under plus as concatenation a NULL string, which
+       * qdata_strcat_dbval answers (oracle_style_empty_string); a NULL without a string type (a NULL made bare) is no
+       * value */
       if (arith != NULL && arith->kind == DOMAIN_ARITH_CONCAT && dbval1_p != NULL && dbval2_p != NULL
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval1_p))
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval2_p)))
 	{
-	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv, NULL);
 	}
       return NO_ERROR;
     }
@@ -4658,7 +4925,7 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
   if (arith->kind == DOMAIN_ARITH_CONCAT)
     {
       /* plus as concatenation */
-      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv, NULL);
     }
 
   if (opcode == T_DIV && qdata_is_divided_zero (dbval2_p))
@@ -4680,6 +4947,10 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
       return NO_ERROR;
     }
 
+  /* a collection operator makes its value in the domain it is given (qdata_collection_operator): arith's type is the
+   * one a missing domain defaults to */
+  const DB_TYPE planned = arith->kind == DOMAIN_ARITH_COLLECTION && domain_p != NULL ? TP_DOMAIN_TYPE (domain_p)
+    : arith->type;
   switch (arith->kind)
     {
     case DOMAIN_ARITH_NUMBER:
@@ -4696,7 +4967,8 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
       break;
 
     case DOMAIN_ARITH_COLLECTION:
-      error = qdata_collection_operator (opcode, arith->type, dbval1_p, dbval2_p, result_p, domain_p);
+      error = qdata_collection_operator (opcode, arith->type, dbval1_p, dbval2_p, result_p, domain_p, planned,
+					 result_conv);
       break;
 
     case DOMAIN_ARITH_REJECT_OR_NULL:
@@ -4724,7 +4996,7 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
   qdata_assert_arith_value (arith, result_p);
 #endif
 
-  return qdata_coerce_result_to_domain (result_p, domain_p);
+  return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
 }
 
 /*
@@ -4869,9 +5141,12 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
  *   dbval2(in) :
  *   res(in)    :
  *   domain(in) :
+ *   arith(in)  : CBRD-27583: the node, whose converters of its operands into its domain (ARITH_TYPE.conv) give an
+ *		  operand that is the value its type; NULL for none
  */
 int
-qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
+qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p,
+		    DB_TYPE planned, TP_VALUE_CONVERTER result_conv, const ARITH_TYPE * arith)
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
@@ -4899,6 +5174,9 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     {
       cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
     }
+  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row reaches
+   * the cast of a value by its type here */
+  assert (cast_dom1 == NULL && cast_dom2 == NULL);
 
   db_make_null (&cast_value1);
   db_make_null (&cast_value2);
@@ -4947,7 +5225,17 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       if ((DB_IS_NULL (dbval1_p) && QSTR_IS_ANY_CHAR_OR_BIT (type2))
 	  || (DB_IS_NULL (dbval2_p) && QSTR_IS_ANY_CHAR_OR_BIT (type1)))
 	{
-	  ;			/* go ahead */
+	  /* CBRD-27583: the other operand is the value: one of another type than planned takes the node's domain by the
+	   * converter its operand's type found at unpack, as the row coerced it before */
+	  const int i = DB_IS_NULL (dbval1_p) ? 1 : 0;
+	  const DB_TYPE type = i == 0 ? type1 : type2;
+	  if (arith != NULL && domain_p == arith->domain && type != planned && type == arith->conv_type[i])
+	    {
+	      dom_status = tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p, type,
+							      arith->conv[i]);
+	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR
+		: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, i == 0 ? dbval1_p : dbval2_p, domain_p);
+	    }
 	}
       else
 	{
@@ -5001,7 +5289,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
-      error = qdata_add_sequence_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+      error = qdata_add_sequence_to_dbval (dbval1_p, dbval2_p, result_p, domain_p, planned, result_conv);
       break;
 
     case DB_TYPE_TIME:
@@ -5058,7 +5346,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       pr_clear_value (&cast_value2);
     }
 
-  return qdata_coerce_result_to_domain (result_p, domain_p);
+  return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
 }
 
 /*
@@ -5162,14 +5450,10 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
  * type list.  Regu variables that are hidden columns are not
  * entered as part of the type list because they are not entered
  * in the list file.
- *
- * A column the compiler left variable takes the plan's domain for this execution: the list holds that domain
- * from its first tuple on, a column over a session variable read too. A variable column without one fails the
- * unresolved-domain check (execution).
  */
 int
 qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
-			    qfile_tuple_value_type_list * type_list_p, const VAL_DESCR * vd)
+			    qfile_tuple_value_type_list * type_list_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count;
@@ -5210,15 +5494,7 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
     {
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  /* the column regu's domain now: its execution domain once this execution gave it one */
-	  TP_DOMAIN *now = qexec_get_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.plan_item);
-	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.plan_item);
-	  if (domain == NULL)
-	    {
-	      db_private_free_and_init (thread_p, type_list_p->domp);
-	      return qexec_domain_unresolved (vd, reg_var_p->value.plan_item, reg_var_p->value.domain);
-	    }
-	  type_list_p->domp[i++] = (TP_DOMAIN *) domain;
+	  type_list_p->domp[i++] = reg_var_p->value.domain;
 	}
 
       reg_var_p = reg_var_p->next;
@@ -5274,19 +5550,13 @@ qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
  *       return a pointer to it.
  *
  * Note: Regulator variable should point to only constant values.
- *   cast_into(in): the value a value not of the column's domain is cast into, so the peeked value keeps its own
- *		    type; NULL casts the peeked value in place (qdata_set_valptr_list_unbound, a column past the
- *		    stack array of qdata_copy_valptr_list_to_tuple)
+ *   CBRD-27583: the value comes in the column's domain - its producer's; no column cast converts it
  */
 static DB_VALUE *
 qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
-					     VAL_DESCR * val_desc_p, DB_VALUE * cast_into)
+					     VAL_DESCR * val_desc_p)
 {
   DB_VALUE *peek_value_p;
-  DB_TYPE dom_type, val_type;
-  TP_DOMAIN_STATUS dom_status;
-  int result;
-  HL_HEAPID save_heapid = 0;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -5296,90 +5566,14 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
       REGU_VARIABLE_SET_FLAG (regu_var_p, REGU_VARIABLE_STRICT_TYPE_CAST);
     }
 
-  result = fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p);
-  if (result != NO_ERROR)
+  if (fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p) != NO_ERROR)
     {
       return NULL;
     }
 
-  if (!DB_IS_NULL (peek_value_p))
-    {
-      val_type = DB_VALUE_TYPE (peek_value_p);
-      assert (val_type != DB_TYPE_NULL);
-
-      /* the column's domain in this execution: the one its fetch took, or its plan's - the list was opened with the
-       * plan's domains (qdata_get_valptr_type_list), so the value is cast to the same domain the column holds */
-      TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
-      TP_DOMAIN *domain = (TP_DOMAIN *) qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item);
-      if (domain == NULL)
-	{
-	  domain = now;
-	}
-      dom_type = TP_DOMAIN_TYPE (domain);
-      if (dom_type != DB_TYPE_NULL)
-	{
-	  assert (dom_type != DB_TYPE_NULL);
-
-	  if (val_type == DB_TYPE_OID)
-	    {
-	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
-	    }
-	  else if (val_type != dom_type
-		   || (val_type == DB_TYPE_NUMERIC
-		       && (peek_value_p->domain.numeric_info.precision != domain->precision
-			   || peek_value_p->domain.numeric_info.scale != domain->scale)))
-	    {
-	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW))
-		{
-		  /* do not cast at here, is handled at analytic function evaluation later */
-		  ;
-		}
-	      else
-		{
-		  if (cast_into != NULL)
-		    {
-		      /* a copy, cast in place as the value itself was: the peeked value - a scan's value another column
-		       * reads too - keeps the type its producer gave it, which the plan of that column's node
-		       * describes; the cast of a copy is the cast of the value (a string cast over itself keeps its
-		       * own padding, a cast into another value pads anew) */
-		      pr_clear_value (cast_into);
-		      if (pr_clone_value (peek_value_p, cast_into) != NO_ERROR)
-			{
-			  return NULL;
-			}
-		      dom_status = tp_value_auto_cast (cast_into, cast_into, domain);
-		      if (dom_status != DOMAIN_COMPATIBLE)
-			{
-			  result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, cast_into, domain);
-			  return NULL;
-			}
-		      peek_value_p = cast_into;
-		    }
-		  else
-		    {
-		      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-			{
-			  save_heapid = db_change_private_heap (thread_p, 0);
-			}
-
-		      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
-		      if (save_heapid != 0)
-			{
-			  (void) db_change_private_heap (thread_p, save_heapid);
-			  save_heapid = 0;
-			}
-		      if (dom_status != DOMAIN_COMPATIBLE)
-			{
-			  result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
-			  return NULL;
-			}
-		    }
-		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
-			  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
-		}
-	    }
-	}
-    }
+#if !defined (NDEBUG)
+  qdata_check_output_column (regu_var_p, regu_var_p->domain, peek_value_p);
+#endif
 
   return peek_value_p;
 }
@@ -5409,7 +5603,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
 
   result_p = regu_func_p->value.funcp->value;
   operand = regu_func_p->value.funcp->operand;
-  domain_p = qexec_get_node_domain (val_desc_p, regu_func_p->domain, regu_func_p->plan_item);
+  domain_p = regu_func_p->domain;
   db_make_null (&dbval);
 
   if (stype == DB_TYPE_SET)
@@ -5792,7 +5986,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  domain_p = qexec_get_node_domain (val_desc_p, function_p->domain, function_p->plan_item);
+  domain_p = regu_produced_domain (function_p);
   list_id_p = operand->value.value.srlist_id->list_id;
   db_make_null (&dbval);
 
@@ -5999,16 +6193,11 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      /* the column's domain in this execution: the argument reads a value pointer, whose domain is its producer's
-       * resolution (a derived-table column a bind types) when the compiler left it variable */
-      const TP_DOMAIN *column_domain = qexec_consumer_domain (vd, regu_p->domain, regu_p->plan_item);
-      if (column_domain == NULL)
-	{
-	  qfile_close_scan (thread_p, &s_id);
-	  (void) qexec_domain_unresolved (vd, regu_p->plan_item, regu_p->domain);
-	  return false;
-	}
-      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, (TP_DOMAIN *) column_domain) != NO_ERROR)
+      /* exception to deciding before the rows: an argument whose domain leaves its values' type to the data reads the
+       * list's column as the list holds it */
+      assert (!domain_is_variable (regu_p->domain));
+      TP_DOMAIN *column_domain = domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, column_domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -6172,10 +6361,12 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
  *  regu_p1(in): column
  *  regu_p2(in): character
  *  result_val_p(in/out):
+ *  arg_type(in), arg_conv(in): the converter of a value of the argument's type into a string unpack found
  */
 bool
 qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
-				    DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd)
+				    DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd, DB_TYPE arg_type,
+				    TP_VALUE_CONVERTER arg_conv)
 {
   QFILE_TUPLE tpl;
   QFILE_LIST_ID *list_id_p;
@@ -6332,16 +6523,12 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
       need_clear_arg_dbval = false;
       if (!use_extended)
 	{
-	  /* get the required column, in its domain of this execution (as CONNECT_BY_ROOT reads its argument) */
+	  /* get the required column, as CONNECT_BY_ROOT reads its argument */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      const TP_DOMAIN *column_domain = qexec_consumer_domain (vd, regu_p->domain, regu_p->plan_item);
-	      if (column_domain == NULL)
-		{
-		  (void) qexec_domain_unresolved (vd, regu_p->plan_item, regu_p->domain);
-		  goto error;
-		}
-	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, (TP_DOMAIN *) column_domain) != NO_ERROR)
+	      TP_DOMAIN *column_domain =
+		domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, column_domain) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -6375,8 +6562,10 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	}
       else
 	{
-	  /* cast result to string; this call also allocates the container */
-	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain) != NO_ERROR)
+	  /* cast result to string; this call also allocates the container. CBRD-27583: the body converts
+	   * the argument - the simple path reads the ancestor tuple's column, not the argument regu - with the converter
+	   * unpack found for the argument's type */
+	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain, arg_type, arg_conv) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -7359,10 +7548,11 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
   for (INT64 step = 0; step < count; step++)
     {
       // we're trying to benchmark the expression in target reguvar by running it many times. even if all operands are
-      // constant, we still have to repeat the operations: the load marks the target's nodes as row operands, so the
-      // resolve_domains never evaluates them once
+      // constant, we still have to repeat the operations. for that, we need to make sure nested regu variables are not
+      // flagged as constants
       //
       // node that they still may be other optimizations that are not so easily disabled
+      fetch_force_not_const_recursive (*target_reguvar);
       error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tplrec, &target_value);
       if (error != NO_ERROR)
 	{
@@ -7858,6 +8048,9 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
       type = TP_DOMAIN_TYPE (*result_dom);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
+	  /* CBRD-27583: the compiler gives a value of no number or date type the function's DOUBLE, whose
+	   * conversion before the function raises the error */
+	  assert (false);
 	  error = qdata_update_interpolation_func_value_and_domain (f_value, result, result_dom);
 	  if (error != NO_ERROR)
 	    {
@@ -7921,6 +8114,9 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       type = TP_DOMAIN_TYPE (*result_dom);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
+	  /* CBRD-27583: the compiler gives a value of no number or date type the function's DOUBLE, whose
+	   * conversion before the function raises the error */
+	  assert (false);
 	  /* try to coerce f_value to double, datetime then time and save domain for next coerce */
 	  error = qdata_update_interpolation_func_value_and_domain (f_value, f_value, result_dom);
 	  if (error != NO_ERROR)
@@ -8220,7 +8416,7 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCA
   db_make_null (&c_fetch_value);
 
   /* overflow check */
-  if (OR_CHECK_BIGINT_OVERFLOW (f_row_num_d))
+  if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (f_row_num_d))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 0);
 
