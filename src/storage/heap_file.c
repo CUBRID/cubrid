@@ -11373,10 +11373,11 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
 	  db_make_null (&value->dbvalue);
 	}
-      else if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue) && !DB_IS_NULL (attr_val))
+      else if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
 	{
-	  /* the NOT NULL constraint is checked before the coercion, but a non-NULL value can be NULL after it,
-	   * as '' to NUMERIC with numeric_empty_string_as_null */
+	  /* NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
+	   * '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
+	   * return_null_on_function_errors. */
 	  ret = ER_NULL_CONSTRAINT_VIOLATION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
 	}
@@ -17690,12 +17691,33 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    }
 	}
 
-      if (!DB_IS_NULL (&orig_value))
+      if (!DB_IS_NULL (&orig_value) && DB_IS_NULL (&(value->dbvalue)))
 	{
-	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null */
-	  assert (!DB_IS_NULL (&(value->dbvalue))
-		  || (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
-		      && QSTR_IS_ANY_CHAR (src_type)));
+	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null. */
+	  assert (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
+		  && QSTR_IS_ANY_CHAR (src_type));
+
+	  /* For attributes that are already NOT NULL, treat values that become NULL during coercion as
+	   * conversion failures, since existing NULL values are checked only when NOT NULL is newly added. */
+	  if (value->last_attrepr->is_notnull)
+	    {
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
+		{
+		  error = ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  goto exit;
+		}
+
+	      error =
+		db_value_domain_default (&(value->dbvalue), dest_type, dest_prec, dest_dom->scale, dest_dom->codeset,
+					 dest_dom->collation_id, &dest_dom->enumeration);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      log_warning = true;
+	      warning_code = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
+	    }
 	}
 
       if (log_warning)
