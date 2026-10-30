@@ -6123,6 +6123,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->sel_hist_fallback = false;
   env->fk_join_info = NULL;
   env->n_fk_join_info = 0;
+  env->session_var_peeks = NULL;
 
   return env;
 }
@@ -6261,6 +6262,15 @@ qo_env_free (QO_ENV * env)
       bitset_delset (&(env->fake_terms));
       bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
       pr_clear_value (&QO_ENV_LIMIT_VALUE (env));
+
+      while (env->session_var_peeks != NULL)
+	{
+	  QO_SESSION_VAR_PEEK *peek = env->session_var_peeks;
+
+	  env->session_var_peeks = peek->peek_next;
+	  pr_clear_value (&peek->var_value);
+	  free_and_init (peek);
+	}
 
       if (env->planner)
 	{
