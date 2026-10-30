@@ -1504,7 +1504,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1389 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
 
-1390 Last Error
+1390 HA constraint violation: Altering superclass '%1$s' would leave replication subclass '%2$s' with invalid replication constraints.
+
+1391 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
