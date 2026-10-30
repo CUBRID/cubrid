@@ -1838,9 +1838,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   bool do_rollback = false;
   int au_save = 0;
   DB_OBJECT *histogram_obj = NULL;
-  DB_OBJECT *vclass;
   bool need_check_repl_constraint = false;
-  const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2001,13 +1999,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
-	  /* 
-	   * entity_name is required for performing the HA replication constraint check 
-	   * after all ALTER clauses have been processed. 
-	   * Since the check must be based on the final table name, 
-	   * entity_name is continuously updated as each RENAME clause is applied.
-	   */
-	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
@@ -2062,14 +2053,29 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (need_check_repl_constraint)
     {
-      vclass = db_find_class (entity_name);
+      DB_OBJECT *class_obj = alter->info.alter.entity_name->info.name.db_object;
+      int is_vclass;
 
-      if (!sm_is_replication_class (vclass))
+      if (class_obj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error_exit;
+	}
+
+      is_vclass = db_is_vclass (class_obj);
+      if (is_vclass < 0)
+	{
+	  error_code = is_vclass;
+	  goto error_exit;
+	}
+
+      /* Vclasses do not store data and therefore do not require a replication key. */
+      if (is_vclass > 0 || !sm_is_replication_class (class_obj))
 	{
 	  return NO_ERROR;
 	}
 
-      error_code = check_ha_repl_constraint (vclass);
+      error_code = check_ha_repl_constraint (class_obj);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -11890,12 +11896,15 @@ static int
 do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
   const char *entity_name = NULL;
   DB_OBJECT *class_obj = NULL;
   DB_CTMPL *ctemplate = NULL;
   MOP class_mop = NULL;
+  MOP *sub_partitions = NULL;
   bool tran_saved = false;
   PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
+  bool replication_off = !IS_ALTER_STMT_SET_REPL_OPTION (replication_node);
 
   if (!HA_DISABLED ())
     {
@@ -11952,12 +11961,29 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
 
   class_mop = ctemplate->op;
-  error =
-    sm_set_class_flag (class_mop, SM_CLASSFLAG_DATA_REPLICATION_OFF, !IS_ALTER_STMT_SET_REPL_OPTION (replication_node));
+  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_DATA_REPLICATION_OFF, replication_off);
   if (error != NO_ERROR)
     {
       error = er_errid ();
       goto exit;
+    }
+
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (is_partition == DB_PARTITIONED_CLASS)
+    {
+      for (int i = 0; sub_partitions[i] != NULL; i++)
+	{
+	  error = sm_set_class_flag (sub_partitions[i], SM_CLASSFLAG_DATA_REPLICATION_OFF, replication_off);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
     }
 
   /* force schema update to server */
@@ -11976,6 +12002,11 @@ exit:
     {
       dbt_abort_class (ctemplate);
       ctemplate = NULL;
+    }
+
+  if (sub_partitions != NULL)
+    {
+      free_and_init (sub_partitions);
     }
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
