@@ -1149,7 +1149,7 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
 
 /*
  * logtb_release_conn_tran_index - if the calling connection owns tran_index,
- *   it no longer does (CBRD-27446).
+ *   it no longer does.
  */
 static void
 logtb_release_conn_tran_index (THREAD_ENTRY * thread_p, int tran_index)
