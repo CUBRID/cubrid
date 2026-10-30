@@ -249,7 +249,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplPkgInit =
             new String[] {
+                // a method, not the static block itself, so that it can have a RETURN statement
                 "static {",
+                "  initPkg();",
+                "}",
+                "private static void initPkg() {",
                 "  Long[] sql_rowcount = new Long[] { null };",
                 "  %'+BODY'%",
                 "}"

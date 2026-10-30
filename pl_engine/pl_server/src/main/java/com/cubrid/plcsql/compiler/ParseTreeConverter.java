@@ -103,7 +103,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public UnitPkg convertPackageCode(ParseTree specTree, ParseTree bodyTree) {
 
-        symbolStack.pushSymbolTable("package", null);
+        symbolStack.pushSymbolTable("package", Misc.RoutineType.PKG_INIT);
 
         Create_package_specContext specContext =
                 ((Sql_scriptContext) specTree).create_package_spec();
@@ -2598,7 +2598,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Misc.RoutineType routineType = symbolStack.getCurrentScope().routineType;
         if (ctx.expression() == null) {
-            if (routineType != Misc.RoutineType.PROC) {
+            if (routineType == Misc.RoutineType.FUNC) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s030
                         "function "
@@ -2607,12 +2607,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             return new StmtReturn(ctx, null, null);
         } else {
-            if (routineType != Misc.RoutineType.FUNC) {
+            if (routineType == Misc.RoutineType.PROC) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s031
                         "procedure "
                                 + symbolStack.getCurrentScope().routine
                                 + " may not return a value");
+            }
+            if (routineType == Misc.RoutineType.PKG_INIT) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s113
+                        "package initialization block may not return a value");
             }
 
             String routine = symbolStack.getCurrentScope().routine;

@@ -82,6 +82,7 @@ public class Misc {
     public enum RoutineType {
         FUNC,
         PROC,
+        PKG_INIT,
     }
 
     public static String peelCharString(String s) {
