@@ -433,6 +433,8 @@ extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len
 extern int stream_from_abort (void);
 extern bool stream_from_is_open (void);
 extern void stream_from_reset (void);
+extern bool stream_from_holds_download (void);
+extern bool stream_from_holds_handle (INT64 handle);
 extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
 				  INT64 * handle, char *buf, int *nread, int *reply_flags);
 extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);

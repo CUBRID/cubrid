@@ -377,6 +377,9 @@ tran_commit (bool retain_lock)
       er_log_debug (ARG_FILE_LINE, "tran_commit: DB_CONNECTION_STATUS_RESET\n");
     }
 
+  /* the transaction is over on the server, and every download handle with it */
+  stream_from_reset ();
+
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
 

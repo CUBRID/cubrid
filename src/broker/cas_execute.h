@@ -106,8 +106,7 @@ extern int ux_stream_read_open (int stream_kind, char *config, int config_len, b
 				char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-extern bool ux_stream_holds_download (void);
-extern void ux_stream_end_tran (void);
+extern void ux_stream_result_set_commit (T_REQ_INFO * req_info);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

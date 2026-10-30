@@ -58,9 +58,10 @@ namespace
 	return desc.sink != NULL && desc.source == NULL;
       }
 
-    /* nothing a download ends or stages: its handle is the read itself */
+    /* nothing a download ends or stages, and its handle reads in one transaction: the client forgets its
+     * downloads at every transaction end, so a handle that outlived one could never be released */
     return desc.direction == STREAM_DOWNLOAD && desc.source != NULL && desc.sink == NULL && !desc.ends_unit_of_work
-	   && !desc.result_is_handle;
+	   && !desc.result_is_handle && desc.scope == STREAM_SCOPE_TRAN;
   }
 
   /* the registered record of kind in direction, or NULL with the transport-common error set */

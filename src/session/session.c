@@ -250,11 +250,13 @@ static void session_control_daemon_destroy ();
 session_state::session_state ()
 {
   pthread_mutex_init (&mutex, NULL);
+  stream_handles_p = new stream_handle_table ();
 }
 
 session_state::~session_state ()
 {
   pthread_mutex_destroy (&mutex);
+  delete stream_handles_p;
 }
 // *INDENT-ON*
 

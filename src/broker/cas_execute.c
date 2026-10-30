@@ -937,7 +937,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
       return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
     }
 
-  ux_stream_end_tran ();
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -5345,7 +5344,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
-	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	      ux_stream_result_set_commit (req_info);
 	    }
 
 
@@ -5428,7 +5427,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
-	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	      ux_stream_result_set_commit (req_info);
 	    }
 	  break;
 	}
@@ -5444,7 +5443,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
-	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	      ux_stream_result_set_commit (req_info);
 	    }
 	  break;
 	}
@@ -10610,68 +10609,18 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 }
 
 /*
- * Download handles this connection holds, as the READ_OPEN replies named them. The CAS keeps them to know,
- * without knowing any kind, which handles are downloads and whether one still ties the transaction.
- */
-static INT64 *stream_Downloads = NULL;
-static int stream_Download_count = 0;
-static int stream_Download_capacity = 0;
-
-static int
-stream_download_add (INT64 handle)
-{
-  if (stream_Download_count == stream_Download_capacity)
-    {
-      int capacity = stream_Download_capacity == 0 ? 16 : 2 * stream_Download_capacity;
-      INT64 *grown = (INT64 *) REALLOC (stream_Downloads, capacity * sizeof (INT64));
-
-      if (grown == NULL)
-	{
-	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	}
-      stream_Downloads = grown;
-      stream_Download_capacity = capacity;
-    }
-
-  stream_Downloads[stream_Download_count++] = handle;
-  return 0;
-}
-
-/* true if handle was one of this connection's downloads */
-static bool
-stream_download_remove (INT64 handle)
-{
-  for (int i = 0; i < stream_Download_count; i++)
-    {
-      if (stream_Downloads[i] == handle)
-	{
-	  stream_Downloads[i] = stream_Downloads[--stream_Download_count];
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
- * ux_stream_holds_download () - Does a download handle still tie this connection's transaction?
+ * ux_stream_result_set_commit () - Owe the auto-commit a finished result set pays
  *
- * A download reads in its transaction the way an open result set does, so the commit owed in auto-commit mode
- * waits until the last of both is gone.
- */
-bool
-ux_stream_holds_download (void)
-{
-  return stream_Download_count > 0;
-}
-
-/*
- * ux_stream_end_tran () - The transaction ended: every download handle went with it on the server
+ * A download reads in its transaction the way an open result set does, so while one is open the commit waits for
+ * the last release (ux_stream_settle_release).
  */
 void
-ux_stream_end_tran (void)
+ux_stream_result_set_commit (T_REQ_INFO * req_info)
 {
-  stream_Download_count = 0;
+  if (!stream_from_holds_download ())
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
 }
 
 /*
@@ -10686,7 +10635,6 @@ ux_stream_reset (void)
 {
   stream_from_reset ();
   stream_Deferred_auto_commit = false;
-  ux_stream_end_tran ();
 }
 
 /*
@@ -10946,17 +10894,19 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 /*
  * ux_stream_settle_release () - Pay the auto-commit a download deferred, if its release was the last tie
  *
- * Not while an upload is open: its debt stays for END, or for the next commit the connection makes.
+ * Always as a commit, a failed read included: a read writes nothing, and what the commit carries is the work of
+ * statements the client was told had finished. Not while an upload is open: its debt stays for END, or for the
+ * next commit the connection makes.
  */
 static void
-ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
+ux_stream_settle_release (bool auto_commit, T_REQ_INFO * req_info)
 {
-  if (!auto_commit || ux_stream_holds_download () || stream_from_is_open () || hm_has_result_tied_to_tran ())
+  if (!auto_commit || stream_from_holds_download () || stream_from_is_open () || hm_has_result_tied_to_tran ())
     {
       return;
     }
 
-  req_info->need_auto_commit = (err_code < 0) ? TRAN_AUTOROLLBACK : TRAN_AUTOCOMMIT;
+  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 }
 
 /* what a read request asked of the core, and what the core's reply means to the driver */
@@ -11016,20 +10966,11 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
 
   err_code = stream_from_read_open (stream_kind, config, config_len, first_max, ux_stream_server_read_flags (flags),
 				    &handle, buffer, &nread, &reply_flags);
-  if (err_code == NO_ERROR && handle != 0)
-    {
-      err_code = stream_download_add (handle);
-      if (err_code < 0)
-	{
-	  (void) stream_from_release (handle);
-	  FREE_MEM (buffer);
-	  NET_BUF_ERR_SET (net_buf);
-	  return err_code;
-	}
-    }
   if (err_code < 0)
     {
       FREE_MEM (buffer);
+      /* the open may have started the transaction it failed in */
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, req_info);
       return ux_stream_error (err_code, net_buf);
     }
 
@@ -11049,7 +10990,7 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
   /* a value read in one call left no handle, so nothing ties the transaction it was read in */
   if (reply_flags & STREAM_FLAG_RELEASED)
     {
-      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, 0, req_info);
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, req_info);
     }
 
   return 0;
@@ -11085,14 +11026,13 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
     }
 
   err_code = stream_from_read (handle, buffer, max, ux_stream_server_read_flags (flags), &nread, &reply_flags);
+  if (reply_flags & STREAM_FLAG_RELEASED)
+    {
+      ux_stream_settle_release (auto_commit, req_info);
+    }
   if (err_code < 0)
     {
       FREE_MEM (buffer);
-      /* the server released the handle with the failed read */
-      if (stream_download_remove (handle))
-	{
-	  ux_stream_settle_release (auto_commit, err_code, req_info);
-	}
       return ux_stream_error (err_code, net_buf);
     }
 
@@ -11104,11 +11044,6 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
       net_buf_cp_str (net_buf, buffer, nread);
     }
   FREE_MEM (buffer);
-
-  if ((reply_flags & STREAM_FLAG_RELEASED) && stream_download_remove (handle))
-    {
-      ux_stream_settle_release (auto_commit, 0, req_info);
-    }
 
   return 0;
 }
@@ -11124,10 +11059,10 @@ ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_IN
 {
   int err_code = NO_ERROR;
 
-  if (stream_download_remove (handle))
+  if (stream_from_holds_handle (handle))
     {
       err_code = stream_from_release (handle);
-      ux_stream_settle_release (auto_commit, err_code, req_info);
+      ux_stream_settle_release (auto_commit, req_info);
     }
 
   if (err_code < 0)

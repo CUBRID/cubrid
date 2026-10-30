@@ -12732,7 +12732,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   int config_len = 0;
   int error_code = NO_ERROR;
   INT64 count = 0;
-  const stream_kind_desc *desc;
+  const stream_kind_desc *opened = NULL;
   stream_session *session = NULL;
 
   if (reqlen >= header_size)
@@ -12757,6 +12757,8 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
+  /* from here on the kind's factory may put work into the transaction */
+  opened = stream_kind_find (stream_kind);
   session = stream_session_create (thread_p, stream_kind, ptr, config_len, &error_code);
   if (session == NULL)
     {
@@ -12798,15 +12800,14 @@ send_reply:
 
   {
     /* The kind's answer rides back so the CAS knows, without naming the consumer,
-     * whether this stream's END finishes a statement -- on a failure too, since a
-     * factory or a first chunk may already have put work into the transaction. */
+     * whether this stream's END finishes a statement -- on a failure too, once the
+     * factory has run, since it or a first chunk may have put work into the transaction. */
     OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
     char *ptr_reply;
 
-    desc = stream_kind_find (stream_kind);
     ptr_reply = or_pack_int (reply, error_code);
-    ptr_reply = or_pack_int (ptr_reply, (desc != NULL && desc->ends_unit_of_work) ? 1 : 0);
+    ptr_reply = or_pack_int (ptr_reply, (opened != NULL && opened->ends_unit_of_work) ? 1 : 0);
     ptr_reply = or_pack_int64 (ptr_reply, count);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }

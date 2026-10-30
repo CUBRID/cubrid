@@ -112,7 +112,7 @@ extern int stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &ta
 				 int *reply_flags, std::int64_t *handle);
 
 /* The next piece of an open download; buf holds stream_read_bound (max) bytes.
- * A read that fails releases its handle. */
+ * A read that fails releases its handle, with STREAM_FLAG_RELEASED. */
 extern int stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::int64_t handle,
 				 int tran_index, int max, int flags, char *buf, int *nread, int *reply_flags);
 
