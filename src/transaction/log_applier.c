@@ -7888,6 +7888,7 @@ static int
 la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 {
   int error = NO_ERROR;
+  bool labeled;
 
   if (LSA_GT (final, &la_Info.committed_lsa))
     {
@@ -7938,8 +7939,13 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	}
 
       /* without this the outer commit, whose dependency is this LSA, would wait forever */
-      if (la_wset_label_trid == lrec->trid)
+      labeled = (la_wset_label_trid == lrec->trid);
+      if (labeled)
 	{
+	  /* the label belonged to this SYSOP_END; a later unlabeled SYSOP_END of the trid must not match it again */
+	  la_wset_label_trid = NULL_TRANID;
+	  LSA_SET_NULL (&la_wset_label_dependency_seq);
+
 	  error = la_coordinator_complete_without_task (final);
 	  if (error != NO_ERROR)
 	    {
@@ -7952,14 +7958,14 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 		    lrec->trid, (long long) final->pageid, (int) final->offset, (void *) sysop_apply,
 		    (sysop_apply ? (void *) sysop_apply->head : NULL), (long long) la_Info.committed_lsa.pageid,
 		    (int) la_Info.committed_lsa.offset);
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= (la_wset_label_trid == lrec->trid ? 1 : 2))
+      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= (labeled ? 1 : 2))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[WSET] coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
 			 "action=defer labeled=%d long=%d\n",
 			 lrec->trid, (long long) final->pageid, (int) final->offset,
 			 (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
-			 sysop_apply == NULL ? 0 : sysop_apply->num_items, (int) (la_wset_label_trid == lrec->trid),
+			 sysop_apply == NULL ? 0 : sysop_apply->num_items, (int) labeled,
 			 (int) (sysop_apply != NULL && sysop_apply->is_long_trans));
 	}
     }

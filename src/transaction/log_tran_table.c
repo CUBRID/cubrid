@@ -186,6 +186,9 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
   if (newptr != NULL)
     {
       tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
+      /* recovery analysis fills slots directly without log_sysop_start, so the new slots must not hold garbage
+       * that log_sysop_commit_internal could read (repl_flushed, wset_mark) */
+      memset (&tdes->topops.stack[tdes->topops.max], 0, (size_t) num_elms * sizeof (*tdes->topops.stack));
       if (tdes->topops.max == 0)
 	{
 	  tdes->topops.last = -1;
