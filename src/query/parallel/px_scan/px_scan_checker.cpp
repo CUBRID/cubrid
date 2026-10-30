@@ -200,7 +200,7 @@ namespace parallel_scan
 	return false;
       }
     const BUILDLIST_PROC_NODE &buildlist = arg->proc.buildlist;
-    if (buildlist.groupby_list == nullptr || buildlist.g_with_rollup || buildlist.g_grbynum_pred != nullptr)
+    if (buildlist.groupby_list == nullptr || buildlist.g_grbynum_pred != nullptr)
       {
 	return false;
       }
