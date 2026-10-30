@@ -2554,8 +2554,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
       vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page, helper->forward_oid.slotid, &helper->record,
 					 true);
 
-      pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
-      helper->forward_page = NULL;
+      /* Keep the forward page fixed until the sysop ends. Until then, an abort or the restart undo of this sysop
+       * puts REC_NEWHOME back into the vacuumed slot, so no other transaction may reuse the slot. */
+      pgbuf_set_dirty (thread_p, helper->forward_page, DONT_FREE);
 
       /* Delete OOS records (if any) before committing the sysop. */
       if (has_oos)
@@ -2564,12 +2565,15 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 							     oos_emptied_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
+	      /* The caller unfixes the forward page. */
 	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
 	}
 
       log_sysop_commit (thread_p);
+
+      pgbuf_unfix_and_init (thread_p, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
