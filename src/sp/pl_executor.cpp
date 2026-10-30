@@ -32,6 +32,7 @@
 #include "method_struct_parameter_info.hpp"
 
 #include "pl_comm.h"
+#include "pl_struct_compile.hpp"
 #include "pl_query_cursor.hpp"
 #include "sp_code.hpp"
 #include "xserver_interface.h"
@@ -117,6 +118,7 @@ namespace cubpl
 //////////////////////////////////////////////////
   executor::executor (pl_signature &sig)
     : m_sig (sig)
+    , m_rights_pushed (false)
   {
     session *sess = get_session ();
     if (sess)
@@ -279,7 +281,6 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
-    bool rights_pushed = false;
 
     if (m_stack == NULL)
       {
@@ -297,14 +298,8 @@ namespace cubpl
 	return er_errid ();
       }
 
-    // execution rights
+    // execution rights: switched on the first callback to the client (see send_callback_recv ())
     assert (m_sig.auth != NULL);
-    error = change_exec_rights (m_sig.auth);
-    if (error != NO_ERROR)
-      {
-	goto exit;
-      }
-    rights_pushed = true;
 
     error = request_invoke_command ();
     if (error != NO_ERROR)
@@ -324,9 +319,9 @@ exit:
 	m_stack->reset_query_handlers ();
       }
 
-    // restore execution rights. Not when the switch above failed: there is nothing of ours to pop, and a pop
-    // would take off a user pushed by an outer caller instead.
-    if (rights_pushed && change_exec_rights (NULL) != NO_ERROR)
+    // restore execution rights. Not when they were not switched, or the switch failed: there is nothing of ours to
+    // pop, and a pop would take off a user pushed by an outer caller instead.
+    if (m_rights_pushed && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
       }
@@ -341,45 +336,64 @@ exit:
     int is_restore = (auth_name == NULL) ? 1 : 0;
     int client_error = NO_ERROR;
 
-    auto get_result = [&] (const cubmem::block & b)
-    {
-      packing_unpacker result_unpacker (b.ptr, (size_t) b.dim);
-      result_unpacker.unpack_int (client_error);
-      return NO_ERROR;
-    };
-
-    // wait for the client to finish the switch. Switching the user can fetch objects from the server in this
-    // transaction, and a transaction must not be worked on by two threads at a time.
-    // The client may have switched the rights by the time an interrupt is noticed. Take its reply regardless,
-    // or a switch that did happen would be taken as failed and not be undone.
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client_recv (false, get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
-		std::string (auth_name));
+	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client_recv (false, get_result, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
       }
+
+#if defined (SERVER_MODE)
+    // wait for the client to finish the switch. Switching the user can fetch objects from the server in this
+    // transaction, and a transaction must not be worked on by two threads at a time.
+    // The client does not reply to CHANGE_RIGHTS, and it is not made to. That is for compatibility with the clients
+    // (CAS) of the earlier releases: an earlier client would never reply, and a reply from a newer client would be
+    // taken by a server of an earlier release, which does not wait for one, as the reply to its next request.
+    // To wait, send a barrier instead: a callback that every client replies to. The client handles the callbacks
+    // one by one in order, so its reply to the barrier means the switch is over. An empty GET_GLOBAL_SEMANTICS is
+    // the barrier: the client replies to it at once with no access to the server. Do not change how the client
+    // handles it.
+    // If the switch fails, the client sends METHOD_ERROR with its error before it replies to the barrier.
+    // The client may have switched the rights by the time an interrupt is noticed. Take its replies regardless,
+    // or a switch that did happen would be taken as failed and not be undone.
+    if (error == NO_ERROR)
+      {
+	int status = METHOD_RESPONSE_SUCCESS;
+	auto get_status = [&] (const cubmem::block & b)
+	{
+	  packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+	  unpacker.unpack_int (status);
+	  if (status == METHOD_ERROR)
+	    {
+	      unpacker.unpack_int (client_error);
+	    }
+	  return NO_ERROR;
+	};
+
+	global_semantics_request barrier;
+	error = m_stack->send_data_to_client_recv (false, get_status, barrier);
+	if (error == NO_ERROR && status == METHOD_ERROR)
+	  {
+	    // the reply to the barrier is yet to come
+	    error = xs_callback_receive (m_stack->get_thread_entry (), get_status, false);
+	  }
+      }
+#else
+    // SA_MODE: the client has finished the switch when the send returns, and the send fails if the switch failed
+#endif
 
     if (error == NO_ERROR && client_error != NO_ERROR)
       {
 	// the client refused the switch, e.g. the owner no longer exists. Running the routine with whatever rights
-	// happen to be in effect is not an option. The client error's own arguments are not sent over, so it cannot
-	// be raised here as it is. Report it wrapped in ER_METHOD_CALLBACK instead.
+	// happen to be in effect is not an option. The client error that came along with METHOD_ERROR is set by now
+	// (see css_test_for_client_errors ()). ER_METHOD_CALLBACK is only for the case it is not.
 	error = client_error;
 	if (er_errid () == NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_METHOD_CALLBACK, 2, client_error,
 		    (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights");
-	  }
-	else
-	  {
-	    // the routine already failed. Keep its error for the user, but do not lose this one: the client may be
-	    // left with the owner's rights if the restore failed
-	    er_log_debug (ARG_FILE_LINE, "%s (client error %d) after error %d",
-			  (is_restore == 0) ? "failed to switch the execution rights" : "failed to restore the execution rights",
-			  client_error, er_errid ());
 	  }
       }
 
@@ -715,7 +729,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (true, get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
+    error = send_callback_recv (get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
     return error;
   }
 
@@ -773,7 +787,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (true, get_execute_info, code, request);
+    error = send_callback_recv (get_execute_info, code, request);
     request.clear ();
 
     return error;
@@ -879,7 +893,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
+    error = send_callback_recv (java_lambda, code, request);
     return error;
   }
 
@@ -898,7 +912,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
+    error = send_callback_recv (java_lambda, code, request);
     return error;
   }
 
@@ -916,7 +930,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command, oid);
+    error = send_callback_recv (java_lambda, code, command, oid);
     return error;
   }
 
@@ -937,7 +951,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
+    error = send_callback_recv (java_lambda, code, request);
     return error;
   }
 
@@ -981,7 +995,7 @@ exit:
 	}
     };
 
-    error = m_stack->send_data_to_client_recv (true, get_make_outresult_info, code, query_id);
+    error = send_callback_recv (get_make_outresult_info, code, query_id);
 
     return error;
   }
@@ -999,7 +1013,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, handler_id);
+    error = send_callback_recv (java_lambda, code, handler_id);
     return error;
   }
 
@@ -1017,7 +1031,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command);
+    error = send_callback_recv (java_lambda, code, command);
     return error;
   }
 
