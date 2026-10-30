@@ -4909,10 +4909,22 @@ qo_node_scan_blocks (QO_NODE * node)
 static bool
 qo_plan_nl_chain_has_semi_anti (QO_PLAN * plan)
 {
-  while (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN
-	 && (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
-	     || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN))
+  while (plan != NULL)
     {
+      if (plan->plan_type == QO_PLANTYPE_FOLLOW)
+	{
+	  /* a path fetch stays in the scan chain of its head (gen_outer ()) */
+	  plan = plan->plan_un.follow.head;
+	  continue;
+	}
+
+      if (plan->plan_type != QO_PLANTYPE_JOIN
+	  || (plan->plan_un.join.join_method != QO_JOINMETHOD_NL_JOIN
+	      && plan->plan_un.join.join_method != QO_JOINMETHOD_IDX_JOIN))
+	{
+	  break;
+	}
+
       if (qo_plan_semi_anti_join_type (plan->plan_un.join.inner) != PT_JOIN_NONE)
 	{
 	  return true;
