@@ -325,6 +325,7 @@ inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
+inline bool is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
@@ -369,6 +370,24 @@ bool
 regu_is_variable_pos (const regu_variable_node *regu)
 {
   return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
+}
+
+/* whether a regu is a cast (T_CAST, T_CAST_WRAP): the operand whose fetch error a date/time function replaces with a
+ * conversion error (fetch.c), which the expression compiler mirrors on the server and at XASL generation */
+bool
+is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
+{
+  if (regu_var == NULL)
+    {
+      return false;
+    }
+
+  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+    {
+      return (regu_var->value.arithptr->opcode == T_CAST || regu_var->value.arithptr->opcode == T_CAST_WRAP);
+    }
+
+  return false;
 }
 
 /* CBRD-27583: the domain a regu's own evaluation produces its value in; domain is the one it delivers to its consumer,

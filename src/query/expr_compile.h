@@ -50,7 +50,16 @@
 #endif /* WINDOWS */
 
 #include "dbtype_def.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "query_evaluator.h"
+#else /* CBRD-27361: a client compiles programs at XASL generation */
+#include "object_domain.h"
+#include "query_list.h"
+namespace cubthread
+{
+  class entry;
+}
+#endif
 #include "porting_inline.hpp"
 #include "regu_var.hpp"
 

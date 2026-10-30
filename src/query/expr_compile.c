@@ -40,15 +40,17 @@
 #include "db_date.h"
 #include "dbtype.h"
 #include "error_manager.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "fetch.h"
 #include "fetch_arith_ops.h"
 #include "query_dump.h"		/* qdump_arith_opcode_name () for the listing */
+#include "query_executor.h"
+#endif /* SERVER_MODE || SA_MODE */
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "query_executor.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl.h"
@@ -166,6 +168,36 @@ struct expr_pred
   int n_share;
 };
 
+/* What a compile reads besides the tree (CBRD-27361): the server compiles on a clone's first evaluation with the
+ * execution's value descriptor; a client compiles at XASL generation, where only the plan's host variable count is
+ * known, and where what the server's unpack derives from the stream (a regu's converter, a term's comparison, an
+ * arithmetic node's decision) is not set on the tree yet. */
+typedef struct expr_compile_env EXPR_COMPILE_ENV;
+struct expr_compile_env
+{
+  cubthread::entry * thread_p;
+  val_descr *vd;		/* the server's value descriptor; NULL at XASL generation */
+  int n_hostvars;		/* the host variables the plan binds (vd->dbval_cnt, XASL_NODE.dbval_cnt) */
+  bool at_generation;		/* compiled by a client at XASL generation */
+};
+
+/* the environment of a compile on the server, on a clone's first evaluation */
+static EXPR_COMPILE_ENV
+expr_server_env (cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_COMPILE_ENV env;
+
+  env.thread_p = thread_p;
+  env.vd = vd;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  env.n_hostvars = (vd != NULL) ? vd->dbval_cnt : 0;
+#else
+  env.n_hostvars = 0;
+#endif
+  env.at_generation = false;
+  return env;
+}
+
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
 typedef struct expr_build_ctx EXPR_BUILD_CTX;
 struct expr_build_ctx
@@ -281,8 +313,7 @@ struct expr_build_ctx
 				 * random, or sets or reads a session variable: its evaluation order against such a
 				 * node in another column is observable (expr_arith_side_effect ()) */
 
-  val_descr *vd;		/* bind-time value descriptor (host variable types) */
-    cubthread::entry * thread_p;
+  EXPR_COMPILE_ENV env;		/* who compiles, and the plan's host variables */
 };
 
 #if !defined (NDEBUG)
@@ -291,6 +322,45 @@ static void expr_image_check_prog (const EXPR_PROG * prog, REGU_VARIABLE ** root
 				   const void *share_spec);
 static void expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr);
 #endif
+
+static void
+expr_pred_free (EXPR_PRED * pred)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  expr_pred_free (pred->lhs);
+  expr_pred_free (pred->rhs);
+  if (pred->kids != NULL)
+    {
+      int i;
+
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  expr_pred_free (pred->kids[i]);
+	}
+      free_and_init (pred->kids);
+    }
+  if (pred->rhs_pinned)
+    {
+      pr_clear_value (&pred->pinned_rhs);
+    }
+  free_and_init (pred);
+}
+
+/* The domain a host variable leaf's value is of: its compiled domain, which the XASL fixes for every execution (a
+ * value without a converter is of its type, expr_k_hostvar asserts it). The one place where a position the plan leaves
+ * to its value's type would be excepted. */
+static const TP_DOMAIN *
+expr_hostvar_domain (const REGU_VARIABLE * regu)
+{
+  assert (regu->type == TYPE_POS_VALUE);
+  return regu->domain;
+}
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* the kernels and the row loop run on the server; a client compiles programs at XASL generation (CBRD-27361) */
 
 /******************************************************************************
  * kernels
@@ -1151,32 +1221,6 @@ expr_pred_eval (const EXPR_PRED * pred)
     }
 }
 
-static void
-expr_pred_free (EXPR_PRED * pred)
-{
-  if (pred == NULL)
-    {
-      return;
-    }
-  expr_pred_free (pred->lhs);
-  expr_pred_free (pred->rhs);
-  if (pred->kids != NULL)
-    {
-      int i;
-
-      for (i = 0; i < pred->n_kids; i++)
-	{
-	  expr_pred_free (pred->kids[i]);
-	}
-      free_and_init (pred->kids);
-    }
-  if (pred->rhs_pinned)
-    {
-      pr_clear_value (&pred->pinned_rhs);
-    }
-  free_and_init (pred);
-}
-
 /* Run the steps of [start, end) for the current row.  A kernel that returns EXPR_JUMPED has
  * put the step the row continues at into ctx->jump; every other non-zero return is an
  * error.  Jumps never leave the range they were compiled in (a lazy node jumps past
@@ -1394,15 +1438,6 @@ expr_k_leaf_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
-/* The domain a host variable leaf's value is of: its compiled domain, which the XASL fixes for every execution (a
- * value without a converter is of its type, expr_k_hostvar asserts it). The one place where a position the plan leaves
- * to its value's type would be excepted. */
-static const TP_DOMAIN *
-expr_hostvar_domain (const REGU_VARIABLE * regu)
-{
-  assert (regu->type == TYPE_POS_VALUE);
-  return regu->domain;
-}
 
 /* publish the address of a host variable; rebinding per evaluation keeps the program
  * valid when a new request supplies a different value array */
@@ -1593,12 +1628,14 @@ expr_k_try_operand (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return EXPR_JUMPED;
 }
 
+#endif /* SERVER_MODE || SA_MODE */
+
 /******************************************************************************
  * compiler
  ******************************************************************************/
 
 static int expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
-static EXPR_PROG *expr_node_compile (cubthread::entry * thread_p, REGU_VARIABLE * regu, val_descr * vd);
+static EXPR_PROG *expr_node_compile (const EXPR_COMPILE_ENV * env, REGU_VARIABLE * regu);
 static int expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
 static void expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root);
 static bool expr_literal_same (const DB_VALUE * a, const DB_VALUE * b);
@@ -1744,8 +1781,7 @@ expr_share_find (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 
 static void expr_build_free_preds (EXPR_BUILD_CTX * bctx);
 static void expr_pred_bind (EXPR_PRED * pred);
-static EXPR_PROG *expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd,
-				    EXPR_PRED * extra_pred);
+static EXPR_PROG *expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, EXPR_PRED * extra_pred);
 static int expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx);
 
 static int
@@ -1883,12 +1919,14 @@ enum expr_kernel_id
   EXPR_KID_COUNT
 };
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static const EXPR_KERNEL_FN expr_Kernels[EXPR_KID_COUNT] = {
   NULL,
 #define EXPR_KID_FN(name) expr_k_ ## name,
   EXPR_KERNEL_LIST (EXPR_KID_FN)
 #undef EXPR_KID_FN
 };
+#endif /* SERVER_MODE || SA_MODE */
 
 static EXPR_STEP *
 expr_new_step (EXPR_BUILD_CTX * bctx, int kernel, int out_cell)
@@ -2456,17 +2494,13 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
  ******************************************************************************/
 
 /* The value a TYPE_POS_VALUE publishes: the bound value itself.  The index is into vd->dbval_ptr; -1 when the
- * descriptor holds no such value. */
+ * plan binds no such value. */
 static int
 expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
-  const VAL_DESCR *vd = bctx != NULL ? bctx->vd : NULL;
+  const int n = bctx != NULL ? bctx->env.n_hostvars : 0;
 
-  if (vd == NULL)
-    {
-      return -1;
-    }
-  return (regu->value.val_pos >= 0 && regu->value.val_pos < vd->dbval_cnt) ? regu->value.val_pos : -1;
+  return (regu->value.val_pos >= 0 && regu->value.val_pos < n) ? regu->value.val_pos : -1;
 }
 
 /* The domain an arithmetic node computes in, as fetch_peek_arith () reads it: its compiled domain.  NULL: the node
@@ -2521,7 +2555,7 @@ expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
-      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->vd, regu);
+      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->env.vd, regu);
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   return expr_leaf_type (bctx, regu);
@@ -2585,7 +2619,7 @@ expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
-      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->vd, regu);
+      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->env.vd, regu);
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->domain == NULL)
@@ -2977,8 +3011,7 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
       return NULL;
     }
   memset (bctx, 0, sizeof (*bctx));
-  bctx->vd = vd;
-  bctx->thread_p = thread_p;
+  bctx->env = expr_server_env (thread_p, vd);
 
   /* a filter tree deeper than the limit stays interpreted (its own guard; the operand programs check theirs on the row) */
   pred = expr_scan_pred_build (bctx, pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH), true);
@@ -3001,7 +3034,7 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
     }
   if (has_compiled_side)
     {
-      pred->prog = expr_prog_finish (bctx, NULL, 0, vd, pred);
+      pred->prog = expr_prog_finish (bctx, NULL, 0, pred);
       if (pred->prog == NULL)
 	{
 	  /* the step-owned predicate trees are gone with the failed finish; the tree's own
@@ -3071,6 +3104,7 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
     }
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /* mirror of the eval_pred () walk over the compiled tree; fetch errors are V_ERROR and
  * a NULL side is V_UNKNOWN before the right side is even fetched, exactly as
  * eval_pred_comp0 () orders them */
@@ -3204,6 +3238,8 @@ expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd
   return expr_scan_pred_eval_node (root, &ctx);
 }
 
+#endif /* SERVER_MODE || SA_MODE */
+
 void
 expr_scan_pred_free (void *compiled)
 {
@@ -3225,6 +3261,7 @@ expr_scan_pred_free (void *compiled)
   expr_pred_free (root);
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 void
 expr_scan_pred_reset (void *compiled)
 {
@@ -4234,6 +4271,8 @@ expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, v
   return expr_scan_pred_eval_node (pred, &ctx);
 }
 
+#endif /* SERVER_MODE || SA_MODE */
+
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
  * Operand sub-expressions compile through expr_compile_node (), so their steps run
  * unconditionally in the main loop.  eval_pred () does not: its AND/OR loops stop at the
@@ -4887,7 +4926,6 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 {
   ARITH_TYPE *arith = regu->value.arithptr;
   const char *spec = expr_generic_operand_spec (arith->opcode, exec_domain);
-  FETCH_ARITH_OP fn = fetch_arith_op (arith->opcode);
   int cells[4] = { -1, -1, -1, -1 };
   EXPR_STEP *step;
   int cell, err_code = NO_ERROR, lazy_mask = 0, lazy_start = -1, guard = 0, saved_guard = 0, cse_mark = 0, node_mark =
@@ -4895,10 +4933,14 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   bool width_bucket = false;
   const char *p;
 
-  if (spec == NULL || fn == NULL)
+  if (spec == NULL)
     {
       return -1;
     }
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* every opcode with an operand rule has an operator body (fetch_arith_op ()), bound with the program */
+  assert (fetch_arith_op (arith->opcode) != NULL);
+#endif
   if (strchr (spec, '!') != NULL)
     {
       err_code = (strchr (spec, '!')[1] == 'd') ? ER_DATE_CONVERSION : ER_TIME_CONVERSION;
@@ -5022,7 +5064,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 static int
 expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
 {
-  EXPR_PROG *sub = expr_node_compile (bctx->thread_p, regu, bctx->vd);
+  EXPR_PROG *sub = expr_node_compile (&bctx->env, regu);
   EXPR_STEP *step;
   int cell;
 
@@ -5313,7 +5355,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	int c1, c2;
 
 	/* the node's compiled domain; NULL where it leaves its type to the values */
-	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->vd, regu);
+	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->env.vd, regu);
 
 	if (arith == NULL)
 	  {
@@ -5972,6 +6014,7 @@ expr_pred_bind (EXPR_PRED * pred)
     {
       expr_pred_bind (pred->kids[i]);
     }
+#if defined (SERVER_MODE) || defined (SA_MODE)
   if (pred->kind == EXPR_PRED_COMP || pred->kind == EXPR_PRED_COMP_TORDER || pred->kind == EXPR_PRED_COMP_FETCH)
     {
       const PRED_EXPR *term = (const PRED_EXPR *) pred->fetch_src;
@@ -5979,6 +6022,7 @@ expr_pred_bind (EXPR_PRED * pred)
       pred->eval = expr_pred_cmp_leaf (pred->fast_type, pred->rel_op);
       pred->compare = (term != NULL) ? term->pe.m_eval_term.et.et_comp.compare : NULL;
     }
+#endif
   if (pred->kind == EXPR_PRED_COMP_FETCH)
     {
       /* a side not compiled is fetched per row into its holder (expr_scan_side_fetch) */
@@ -6201,6 +6245,7 @@ expr_prog_materialize (EXPR_PROG * prog, const EXPR_PRED * share_pred)
       EXPR_STEP *step = &prog->steps[i];
 
       assert (step->kernel_id > EXPR_KID_NONE && step->kernel_id < EXPR_KID_COUNT);
+#if defined (SERVER_MODE) || defined (SA_MODE)
       step->kernel = expr_Kernels[step->kernel_id];
       if (step->kernel_id == EXPR_KID_generic)
 	{
@@ -6211,6 +6256,7 @@ expr_prog_materialize (EXPR_PROG * prog, const EXPR_PRED * share_pred)
 	{
 	  step->result_conv = step->regu->value.arithptr->result_conv;
 	}
+#endif
 
       /* argument cells were encoded 1-based (EXPR_ARG_ENCODE); NULL means unused */
       if (step->arg1p != NULL)
@@ -6264,7 +6310,7 @@ expr_prog_materialize (EXPR_PROG * prog, const EXPR_PRED * share_pred)
  * (NULL when none) whose cells and regions are resolved against this program as well.
  * NULL on allocation failure; the build context's predicate trees are then already freed. */
 static EXPR_PROG *
-expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd, EXPR_PRED * extra_pred)
+expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, EXPR_PRED * extra_pred)
 {
   EXPR_PROG *prog;
   int i, slot_next = 0;
@@ -6393,8 +6439,8 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 }
 
 static EXPR_PROG *
-expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots,
-			      val_descr * vd, bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
+expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, const EXPR_COMPILE_ENV * env, REGU_VARIABLE ** roots,
+			      int in_roots, bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
 			      int *root_idx_out, const void *share_spec, int force_nest_depth)
 {
   EXPR_PROG *prog = NULL;
@@ -6409,8 +6455,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
     }
 
   memset (bctx, 0, sizeof (*bctx));
-  bctx->vd = vd;
-  bctx->thread_p = thread_p;
+  bctx->env = *env;
   bctx->force_nest_depth = force_nest_depth;
   expr_share_attach (bctx, share_spec);
 
@@ -6509,11 +6554,11 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
       return NULL;
     }
 
-  return expr_prog_finish (bctx, root_cells, n_roots, vd, NULL);
+  return expr_prog_finish (bctx, root_cells, n_roots, NULL);
 }
 
 static EXPR_PROG *
-expr_prog_compile_roots_ex (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
+expr_prog_compile_roots_ex (const EXPR_COMPILE_ENV * env, REGU_VARIABLE ** roots, int in_roots,
 			    bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
 			    int *root_idx_out, const void *share_spec, int force_nest_depth)
 {
@@ -6526,7 +6571,7 @@ expr_prog_compile_roots_ex (cubthread::entry * thread_p, REGU_VARIABLE ** roots,
     {
       return NULL;
     }
-  prog = expr_prog_compile_roots_impl (bctx, thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
+  prog = expr_prog_compile_roots_impl (bctx, env, roots, in_roots, allow_fallback_roots, allow_wired_only,
 				       only_compute_roots, root_idx_out, share_spec, force_nest_depth);
   free_and_init (bctx);
   return prog;
@@ -6537,13 +6582,13 @@ expr_prog_compile_roots_ex (cubthread::entry * thread_p, REGU_VARIABLE ** roots,
  * only below the root: nesting the root again would be this same compile); the retry nests the root's operands
  * outright, so the root's steps always fit, and an operand too big for a program nests again inside. */
 static EXPR_PROG *
-expr_node_compile (cubthread::entry * thread_p, REGU_VARIABLE * regu, val_descr * vd)
+expr_node_compile (const EXPR_COMPILE_ENV * env, REGU_VARIABLE * regu)
 {
-  EXPR_PROG *prog = expr_prog_compile_roots_ex (thread_p, &regu, 1, vd, false, true, false, NULL, NULL, 0);
+  EXPR_PROG *prog = expr_prog_compile_roots_ex (env, &regu, 1, false, true, false, NULL, NULL, 0);
 
   if (prog == NULL)
     {
-      prog = expr_prog_compile_roots_ex (thread_p, &regu, 1, vd, false, true, false, NULL, NULL, 2);
+      prog = expr_prog_compile_roots_ex (env, &regu, 1, false, true, false, NULL, NULL, 2);
     }
   return prog;
 }
@@ -6553,7 +6598,8 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out,
 			 const void *share_spec)
 {
-  EXPR_PROG *prog = expr_prog_compile_roots_ex (thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
+  const EXPR_COMPILE_ENV env = expr_server_env (thread_p, vd);
+  EXPR_PROG *prog = expr_prog_compile_roots_ex (&env, roots, in_roots, allow_fallback_roots, allow_wired_only,
 						only_compute_roots, root_idx_out, share_spec, 0);
 
 #if !defined (NDEBUG)
@@ -6562,6 +6608,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   return prog;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Cold half of expr_prog_eval (): decide which prologue steps this row must still run and
  * record the answer for the rest of the execution.  Runs on the first row of a program and
  * on the first row after the executing query changes. */
@@ -7109,6 +7156,8 @@ expr_prog_share_current (const EXPR_PROG * prog, const void *share_spec)
   return spec != NULL && spec->where_pred != NULL && spec->where_pred->scan_prog_state == 1
     && spec->where_pred->scan_prog != NULL && spec->where_pred->scan_prog_gen == prog->share_gen;
 }
+
+#endif /* SERVER_MODE || SA_MODE */
 
 void
 expr_prog_free (EXPR_PROG * prog)
