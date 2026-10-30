@@ -49,7 +49,8 @@ enum
   LK_NOTGRANTED_DUE_TIMEOUT = 4,
   LK_NOTGRANTED_DUE_ERROR = 5,
   LK_GRANTED_PUSHINSET_LOCKONE = 6,
-  LK_GRANTED_PUSHINSET_RELOCKALL = 7
+  LK_GRANTED_PUSHINSET_RELOCKALL = 7,
+  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* lock_object_ahead_of_waiters () only */
 };
 
 enum
@@ -98,6 +99,8 @@ struct lk_entry
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
+  int transient_count;		/* requests on this entry that the statement gives up before commit */
+  bool shared_requested;	/* a request on this entry asked for S: the holder read the object and decided */
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
@@ -226,9 +229,20 @@ extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, c
 extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
 				   int cond_flag, int wait_msecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag);
+extern int lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+				  int cond_flag);
+extern int lock_object_ahead_of_waiters (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+					 bool transient);
+extern void lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock);
+extern bool lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p);
+extern bool lock_transient_scope_start (THREAD_ENTRY * thread_p);
+extern void lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release);
+extern void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
+extern void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
 extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
+extern bool lock_is_transaction_mvccid_held (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
@@ -264,6 +278,7 @@ extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_L
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int waiter_index, LK_RES * res);
 extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock);
+extern bool lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
 extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOCK * ex_lock);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);

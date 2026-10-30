@@ -2577,6 +2577,9 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
   scan_id->direction = S_FORWARD;
 
   scan_id->mvcc_select_lock_needed = mvcc_select_lock_needed;
+  /* set by the two openers that reach a row-lock site; every other scan type leaves them off */
+  scan_id->upddel_target_scan = false;
+  scan_id->lock_ends_with_statement = false;
   scan_id->scan_op_type = scan_op_type;
   scan_id->fixed = fixed;
 
@@ -2594,6 +2597,25 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
   scan_id->val_list = val_list;	/* points to the XASL tree */
   scan_id->vd = vd;		/* set value descriptor pointer */
   scan_id->scan_immediately_stop = false;
+}
+
+/*
+ * scan_set_upddel_target () - Say whether the row locks this scan takes end with the statement
+ *   return: void
+ *   thread_p(in): thread entry
+ *   scan_id(in/out): the scan being opened
+ *   upddel_target_scan(in): the row locks are the statement's (outermost READ COMMITTED DELETE/UPDATE target);
+ *			   kept across a partition switch
+ *   cls_oid(in): the class this scan is on -- the pruned partition, on a partition switch
+ *
+ * Note: decided per class, since a partition can differ from its root; see locator_class_keeps_row_locks ().
+ */
+static void
+scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, const OID * cls_oid)
+{
+  scan_id->upddel_target_scan = upddel_target_scan;
+  scan_id->lock_ends_with_statement = (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
+				       && !locator_class_keeps_row_locks (thread_p, cls_oid));
 }
 
 /*
@@ -2627,7 +2649,8 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
 int
 scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
-		     bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+		     bool mvcc_select_lock_needed, bool upddel_target_scan, SCAN_OPERATION_TYPE scan_op_type,
+		     int fixed, int grouped,
 		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		     /* fields of HEAP_SCAN_ID */
 		     OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
@@ -2651,6 +2674,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch, join_dbval, val_list,
 		     vd);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
 
   /* initialize HEAP_SCAN_ID structure */
   hsidp = &scan_id->s.hsid;
@@ -2842,7 +2866,8 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      /* fields of SCAN_ID */
-		      bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+		      bool mvcc_select_lock_needed, bool upddel_target_scan, SCAN_OPERATION_TYPE scan_op_type,
+		      int fixed, int grouped,
 		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		      /* fields of INDX_SCAN_ID */
 		      indx_info * indx_info, OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_key,
@@ -2874,6 +2899,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch, join_dbval, val_list,
 		     vd);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
 
   /* read Root page header info */
   btid = &indx_info->btid;
@@ -5415,7 +5441,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* get with lock and reevaluate if the visible version wasn't the latest version */
 	  sp_scan =
 	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
-							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED,
+							 scan_id->lock_ends_with_statement, true);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
@@ -6256,7 +6283,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 
       sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
 							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
-							     &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+							     &mvcc_reev_data, LOG_WARNING_IF_DELETED,
+							     scan_id->lock_ends_with_statement, true);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
