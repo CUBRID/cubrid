@@ -1591,17 +1591,9 @@ extern "C"
 	}
     }
 
-    /* Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). The key plan storage stays with the scan:
-     * the key ranges init_on_main built read it, and the parallel scan's close releases it after its workers. */
-    const domain_plan_index *key_plan = scan_id->s.isid.key_plan;
-    const RESOLVED_INDEX_KEYS *resolved_keys = scan_id->s.isid.resolved_keys;
-    scan_key_state *key_state = scan_id->s.isid.key_state;
-    scan_id->s.isid.key_state = nullptr;
+    /* Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). */
     scan_close_scan (thread_p, scan_id);
     scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
-    scan_id->s.pisid.key_plan = key_plan;
-    scan_id->s.pisid.resolved_keys = resolved_keys;
-    scan_id->s.pisid.key_state = key_state;
 
     if (scan_id->s.isid.indx_cov.list_id != NULL)
       {
@@ -1700,10 +1692,10 @@ namespace parallel_scan
       }
     /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees. */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
-    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state, false);
+    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state);
     if (new_xasl_state == nullptr)
       {
-	/* the copy of the resolved domains sets its own error (the block size, a value's clone) */
+	/* the copy sets its own error (a value's clone) */
 	if (er_errid () == NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
@@ -1884,6 +1876,9 @@ namespace parallel_scan
 	      {
 		return S_ERROR;
 	      }
+	    /* close the lists before a worker can connect its own to them (finalize_node) */
+	    m_result_handler->read_initialize (m_thread_p);
+	    m_result_handler_read_initialized = true;
 	  }
 
 	err_code = start_tasks();

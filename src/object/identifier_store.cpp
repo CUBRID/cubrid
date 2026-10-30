@@ -20,25 +20,15 @@
 
 #include "identifier_store.hpp"
 
-#include "language_support.h"
 #include "chartype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubbase
 {
-  identifier_store::identifier_store (const std::vector <std::string> &string_vec, const bool check_valid)
-    : m_identifiers (string_vec.begin(), string_vec.end ()), m_size (m_identifiers.size ())
+  identifier_store::identifier_store (const std::vector <std::string> &string_vec)
+    : m_identifiers (string_vec.begin(), string_vec.end ())
   {
-    // this routine checks whether the conditions in the above comment are satisfied and set the m_is_valid variable.
-    // If check_valid is false, it is assumed to be valid without checking whether the conditions of the comment are satisfied.
-    // Currently only (1) is able to be checked.
-    m_is_valid = (check_valid) ? check_identifier_condition () : true;
-  }
-
-  identifier_store::~identifier_store ()
-  {
-    m_identifiers.clear ();
   }
 
   bool
@@ -48,76 +38,19 @@ namespace cubbase
   }
 
   bool
-  identifier_store::is_valid () const
+  identifier_store::check_identifier_is_valid (const std::string_view str)
   {
-    return m_is_valid;
-  }
-
-  int
-  identifier_store::get_size () const
-  {
-    return m_size;
-  }
-
-  bool
-  identifier_store::check_identifier_condition () const
-  {
-    // TODO: check_identifier_condition () is not considering the following yet.
-    // * Checking unicode letters
-    // * Checking reserved keywords
-    // * Checking enclosing in Double quotes, Square brackets, or Backtick symobls
-    bool is_valid = true;
-    for (const std::string_view elem : m_identifiers)
+    // check _db
+    if (str.size () < SYSTEM_CLASS_PREFIX.length ()
+	|| strncasecmp (str.data(), SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) != 0)
       {
-	// Check (1)
-	is_valid = check_identifier_is_valid (elem, false);
-	if (is_valid == false)
+	int size = str.size ();
+	for (int i = 0; i < size; i++)
 	  {
-	    break;
-	  }
-      }
-    return is_valid;
-  }
-
-  bool
-  identifier_store::is_enclosed (const std::string_view i)
-  {
-    int size = i.size ();
-    if (size >= 2)
-      {
-	return ((i[0] == '"' || i[0] == '[' || i[0] == '`')
-		&& (i[size - 1] == '"' || i[size - 1] == ']' || i[size - 1] == '`'));
-      }
-    return false;
-  }
-
-  bool
-  identifier_store::check_identifier_is_valid (const std::string_view str, bool is_enclosed)
-  {
-    if (is_enclosed)
-      {
-	// enclosed in Double Quotes, Square Brackets, or Backtick Symbol
-	if (std::any_of (str.begin(), str.end(), [] (char c)
-	{
-	  return (c == '.' || c == '[' || c == ']');
-	  }))
-	{
-	  return false;
-	}
-      }
-    else
-      {
-	// check _db
-	if (strncasecmp (str.data(), SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) != 0)
-	  {
-	    int size = str.size ();
-	    for (int i = 0; i < size; i++)
+	    if ((i == 0 && !char_isalpha (str[0]))
+		|| (i >= 1 && (!char_isalnum (str[i]) && str[i] != '_' && str[i] != '.')))
 	      {
-		if ((i == 0 && !char_isalpha (str[0]))
-		    || (i >= 1 && (!char_isalnum (str[i]) && str[i] != '_' && str[i] != '.')))
-		  {
-		    return false;
-		  }
+		return false;
 	      }
 	  }
       }
