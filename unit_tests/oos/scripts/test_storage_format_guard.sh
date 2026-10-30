@@ -18,8 +18,7 @@
 
 # Boot must refuse a database whose first volume carries another storage format stamp before it reads anything
 # else, and deletedb must still remove such a database. Databases of 11.5 builds before the stamp hold 0 there.
-# The database belongs to this test (setup_isolated_db.sh) and no server runs on it, so volume 0 is patched in
-# place: zeroing the stamp is how a pre-stamp database looks to this build.
+# The database belongs to this test (setup_isolated_db.sh) and no server runs on it, so volume 0 is patched in place.
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -63,9 +62,14 @@ read_stamp ()
   od -A n -t d4 -j "$stamp_offset" -N 4 "$volume" | tr -d ' '
 }
 
-zero_stamp ()
+write_stamp ()
 {
-  printf '\0\0\0\0' | dd of="$volume" bs=1 seek="$stamp_offset" count=4 conv=notrunc status=none
+  local value="$1" byte encoded='' i
+  for i in "${byte_order[@]}"; do
+    printf -v byte '\\%03o' "$(( (value >> (8 * i)) & 255 ))"
+    encoded+="$byte"
+  done
+  printf '%b' "$encoded" | dd of="$volume" bs=1 seek="$stamp_offset" count=4 conv=notrunc status=none
 }
 
 open_database ()
@@ -79,13 +83,15 @@ expect_refused ()
   local what="$1"
   local log="$2"
   local rc="$3"
+  local stamp="$4"
 
-  [ "$rc" -ne 0 ] || fail "$what accepted a database without the storage format stamp"
+  [ "$rc" -ne 0 ] || fail "$what accepted a database with storage format $stamp"
   [ "$rc" -lt 128 ] || fail "$what died (exit $rc) instead of refusing the database"
-  grep -Eq "format 0, this build $revision|형식 0, 현재 빌드 $revision" "$log" \
+  grep -Eq "format $stamp, this build $revision|형식 $stamp, 현재 빌드 $revision" "$log" \
     || { cat "$log" >&2; fail "$what did not report the incompatible storage format"; }
 }
 
+[ "$db_name" = oosformatdb ] && oos_database_owned "$db_name" || fail "database $db_name is not the owned format guard fixture"
 [ -f "$volume" ] || fail "missing volume $volume"
 open_database fresh || { cat "$work_dir/fresh.log" >&2; fail 'a database created by this build was refused'; }
 # A database created by this build carries its DISK_STORAGE_FORMAT_REVISION, never the pre-stamp 0.
@@ -94,26 +100,40 @@ revision=$(read_stamp)
 
 dd if="$volume" of="$saved_stamp" bs=1 skip="$stamp_offset" count=4 status=none
 restore_on_exit=true
-zero_stamp
+if [ "$(printf '\1\0\0\0' | od -A n -t u4 | tr -d ' ')" -eq 1 ]; then
+  byte_order=(0 1 2 3)
+else
+  byte_order=(3 2 1 0)
+fi
 
-rc=0
-open_database pre_stamp || rc=$?
-expect_refused 'csql -S' "$work_dir/pre_stamp.log" "$rc"
+stamps=(0)
+if [ "$revision" -gt 1 ]; then
+  stamps+=("$((revision - 1))")
+fi
+stamps+=("$((revision + 1))")
 
-rc=0
-cubrid checkdb -S "$db_name" < /dev/null > "$work_dir/checkdb.log" 2>&1 || rc=$?
-expect_refused 'checkdb -S' "$work_dir/checkdb.log" "$rc"
+for stamp in "${stamps[@]}"; do
+  write_stamp "$stamp"
 
-# xboot_emergency_patch has its own copy of the check.
-rc=0
-cubrid emergency_patchlog "$db_name" < /dev/null > "$work_dir/patchlog.log" 2>&1 || rc=$?
-expect_refused 'emergency_patchlog' "$work_dir/patchlog.log" "$rc"
+  rc=0
+  open_database mismatch || rc=$?
+  expect_refused 'csql -S' "$work_dir/mismatch.log" "$rc" "$stamp"
+
+  rc=0
+  cubrid checkdb -S "$db_name" < /dev/null > "$work_dir/checkdb.log" 2>&1 || rc=$?
+  expect_refused 'checkdb -S' "$work_dir/checkdb.log" "$rc" "$stamp"
+
+  # xboot_emergency_patch has its own copy of the check.
+  rc=0
+  cubrid emergency_patchlog "$db_name" < /dev/null > "$work_dir/patchlog.log" 2>&1 || rc=$?
+  expect_refused 'emergency_patchlog' "$work_dir/patchlog.log" "$rc" "$stamp"
+done
 
 restore_stamp
-restore_on_exit=false
 open_database restored \
   || { cat "$work_dir/restored.log" >&2; fail 'the restored stamp did not make the database usable'; }
 
 # Leave the database refused: the fixture cleanup's deletedb must still remove it.
-zero_stamp
-printf 'PASS: storage format guard refuses a pre-stamp database and accepts its own\n'
+write_stamp 0
+restore_on_exit=false
+printf 'PASS: storage format guard refuses incompatible formats and accepts its own\n'
