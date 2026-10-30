@@ -285,6 +285,13 @@ struct expr_build_ctx
     cubthread::entry * thread_p;
 };
 
+#if !defined (NDEBUG)
+/* debug: a compiled program or scan filter goes through its image and back (see "program images") */
+static void expr_image_check_prog (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roots, const int *root_idx,
+				   const void *share_spec);
+static void expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr);
+#endif
+
 /******************************************************************************
  * kernels
  *
@@ -3007,6 +3014,9 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
     }
   expr_pred_bind (pred);
   free_and_init (bctx);
+#if !defined (NDEBUG)
+  expr_image_check_scan_pred (pred, pr);
+#endif
   return pred;
 }
 
@@ -5943,9 +5953,6 @@ expr_build_free_preds (EXPR_BUILD_CTX * bctx)
     }
 }
 
-/* decode the 1-based argument-cell indexes recorded during predicate compilation; remap
- * translates build-order step indexes into their final position for the operand regions of
- * scan-filter leaves */
 /* The tree's pointers into this process, which the compiler does not keep -- it records the leaf's type and
  * operator and the term it compiled: a comparison leaf's (type, operator) kernel, bound so the row makes one indirect
  * call instead of testing the type and then the operator, and the term's decided comparison; a fetched side's
@@ -5990,23 +5997,50 @@ expr_pred_bind (EXPR_PRED * pred)
     }
 }
 
+/* the build-order step indexes of a scan-filter leaf's operand regions, translated into the program's layout (remap) */
 static void
-expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog, const int *remap)
+expr_pred_layout (EXPR_PRED * pred, const int *remap)
 {
+  int i;
+
   if (pred == NULL)
     {
       return;
     }
-  expr_pred_materialize (pred->lhs, prog, remap);
-  expr_pred_materialize (pred->rhs, prog, remap);
-  if (pred->kids != NULL)
+  expr_pred_layout (pred->lhs, remap);
+  expr_pred_layout (pred->rhs, remap);
+  for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
     {
-      int i;
-
-      for (i = 0; i < pred->n_kids; i++)
+      expr_pred_layout (pred->kids[i], remap);
+    }
+  if (pred->kind == EXPR_PRED_COMP_FETCH)
+    {
+      if (pred->lhs_compiled && pred->lhs_n > 0)
 	{
-	  expr_pred_materialize (pred->kids[i], prog, remap);
+	  pred->lhs_start = remap[pred->lhs_start];
 	}
+      if (pred->rhs_compiled && pred->rhs_n > 0)
+	{
+	  pred->rhs_start = remap[pred->rhs_start];
+	}
+    }
+}
+
+/* decode the 1-based argument-cell indexes recorded during predicate compilation into the program's cells */
+static void
+expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog)
+{
+  int i;
+
+  if (pred == NULL)
+    {
+      return;
+    }
+  expr_pred_materialize (pred->lhs, prog);
+  expr_pred_materialize (pred->rhs, prog);
+  for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
+    {
+      expr_pred_materialize (pred->kids[i], prog);
     }
   if (pred->kind == EXPR_PRED_COMP_FETCH)
     {
@@ -6014,18 +6048,10 @@ expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog, const int *remap)
       if (pred->lhs_compiled)
 	{
 	  pred->arg1p = &prog->cells[(intptr_t) pred->arg1p - 1];
-	  if (pred->lhs_n > 0)
-	    {
-	      pred->lhs_start = remap[pred->lhs_start];
-	    }
 	}
       if (pred->rhs_compiled)
 	{
 	  pred->arg2p = &prog->cells[(intptr_t) pred->arg2p - 1];
-	  if (pred->rhs_n > 0)
-	    {
-	      pred->rhs_start = remap[pred->rhs_start];
-	    }
 	}
       return;
     }
@@ -6077,13 +6103,6 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
   return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, false, NULL, NULL);
 }
 
-/* Turn the build context into a program: allocate the arrays, lay the steps out as
- * [literal prologue][host-variable prologue][row steps], resolve every cell index and
- * owned-slot marker into an address.  root_cells
- * lists the cell of each list element (n_roots may be 0 for a program that only serves
- * regions, e.g. a scan filter's operands); extra_pred is a caller-owned predicate tree
- * (NULL when none) whose cells and regions are resolved against this program as well.
- * NULL on allocation failure; the build context's predicate trees are then already freed. */
 /* the address cell i reads, bound from the source the compiler recorded; NULL for a cell a step publishes.
  * share_pred: the scan's compiled data filter whose result slots EXPR_CSRC_SHARE cells read */
 static DB_VALUE *
@@ -6104,28 +6123,25 @@ expr_cell_source_addr (const EXPR_PROG * prog, int i, const EXPR_PRED * share_pr
     }
 }
 
+/* A program's arrays for n_steps steps, n_cells cells, n_slots owned slots and n_roots roots: the steps zeroed, the
+ * slots NULL.  NULL on allocation failure. */
 static EXPR_PROG *
-expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd, EXPR_PRED * extra_pred)
+expr_prog_alloc (int n_steps, int n_cells, int n_slots, int n_roots)
 {
   EXPR_PROG *prog;
-  int i, slot_next = 0;
-  int remap[EXPR_MAX_STEPS];
-  int remap_boundary[EXPR_MAX_STEPS];
+  int i;
 
   prog = (EXPR_PROG *) malloc (sizeof (EXPR_PROG));
   if (prog == NULL)
     {
-      expr_build_free_preds (bctx);
       return NULL;
     }
   memset (prog, 0, sizeof (*prog));
 
-  prog->n_steps = bctx->n_steps;
-  prog->n_cells = bctx->n_cells;
-  prog->n_slots = bctx->n_slots;
+  prog->n_steps = n_steps;
+  prog->n_cells = n_cells;
+  prog->n_slots = n_slots;
   prog->n_roots = n_roots;
-  prog->n_shared = bctx->n_shared;
-  prog->share_gen = bctx->share_gen;
 
   prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
   prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
@@ -6154,22 +6170,121 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
       prog->n_steps = 0;
       prog->n_slots = 0;
       expr_prog_free (prog);
-      expr_build_free_preds (bctx);
       return NULL;
     }
-
+  memset (prog->steps, 0, sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
   for (i = 0; i < prog->n_slots; i++)
     {
       db_make_null (&prog->slots[i]);
     }
+  return prog;
+}
+
+/* Bind a laid-out program to this process: kernel ids to their functions, a generic step's operator body and an
+ * arithmetic step's node converter from its regu, the cells of literals, value-list slots and the scan filter's
+ * result slots (share_pred) to their values, cell indexes to cell addresses, owned-slot markers to slots, and a
+ * CASE's predicate trees likewise.  The program is laid out by expr_prog_finish () or read from an image
+ * (expr_prog_image_unpack ()); nothing here decides. */
+static void
+expr_prog_materialize (EXPR_PROG * prog, const EXPR_PRED * share_pred)
+{
+  int i, slot_next = 0;
+
+  /* stable addresses, bound from their sources; step-published cells start NULL */
+  for (i = 0; i < prog->n_cells; i++)
+    {
+      prog->cells[i] = expr_cell_source_addr (prog, i, share_pred);
+    }
+
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      EXPR_STEP *step = &prog->steps[i];
+
+      assert (step->kernel_id > EXPR_KID_NONE && step->kernel_id < EXPR_KID_COUNT);
+      step->kernel = expr_Kernels[step->kernel_id];
+      if (step->kernel_id == EXPR_KID_generic)
+	{
+	  /* the opcode's body (fetch_arith_ops.c) */
+	  step->fn = (void *) fetch_arith_op (step->regu->value.arithptr->opcode);
+	}
+      else if (step->node_conv)
+	{
+	  step->result_conv = step->regu->value.arithptr->result_conv;
+	}
+
+      /* argument cells were encoded 1-based (EXPR_ARG_ENCODE); NULL means unused */
+      if (step->arg1p != NULL)
+	{
+	  step->arg1p = &prog->cells[(intptr_t) step->arg1p - 1];
+	}
+      if (step->arg2p != NULL)
+	{
+	  step->arg2p = &prog->cells[(intptr_t) step->arg2p - 1];
+	}
+      if (step->arg3p != NULL)
+	{
+	  step->arg3p = &prog->cells[(intptr_t) step->arg3p - 1];
+	}
+      if (step->arg4p != NULL)
+	{
+	  step->arg4p = &prog->cells[(intptr_t) step->arg4p - 1];
+	}
+      step->out_cell = &prog->cells[(intptr_t) step->out_cell];
+      if (step->out != NULL)
+	{
+	  assert (slot_next < prog->n_slots);
+	  step->out = &prog->slots[slot_next++];
+	  /* a slot-owning step publishes the SAME address on every row -- CSE guarantees one
+	   * producer per cell -- so the cell is wired here instead of in the kernel.  Only the
+	   * pointer-select kernels (NVL, CASE without a cast, leaf fetch, host variable) keep a
+	   * per-row publish, because the address they publish changes with the data. */
+	  *step->out_cell = step->out;
+	}
+      if (step->pred != NULL)
+	{
+	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog);
+	  expr_pred_bind ((EXPR_PRED *) step->pred);
+	}
+    }
+  /* a step that writes another step's slot (a lazy NULL check, a CASE's ELSE publisher)
+   * takes that slot's address now that slots are assigned */
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      if (prog->steps[i].alias_of >= 0)
+	{
+	  prog->steps[i].out = prog->steps[prog->steps[i].alias_of].out;
+	}
+    }
+}
+
+/* Turn the build context into a program: allocate the arrays, lay the steps out as
+ * [literal prologue][host-variable prologue][row steps], then bind it (expr_prog_materialize ()).  root_cells
+ * lists the cell of each list element (n_roots may be 0 for a program that only serves
+ * regions, e.g. a scan filter's operands); extra_pred is a caller-owned predicate tree
+ * (NULL when none) whose cells and regions are resolved against this program as well.
+ * NULL on allocation failure; the build context's predicate trees are then already freed. */
+static EXPR_PROG *
+expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd, EXPR_PRED * extra_pred)
+{
+  EXPR_PROG *prog;
+  int i, slot_next = 0;
+  int remap[EXPR_MAX_STEPS];
+  int remap_boundary[EXPR_MAX_STEPS];
+
+  prog = expr_prog_alloc (bctx->n_steps, bctx->n_cells, bctx->n_slots, n_roots);
+  if (prog == NULL)
+    {
+      expr_build_free_preds (bctx);
+      return NULL;
+    }
+  prog->n_shared = bctx->n_shared;
+  prog->share_gen = bctx->share_gen;
+
   for (i = 0; i < prog->n_cells; i++)
     {
       prog->cell_src[i] = bctx->cell_src[i];
       prog->cell_regu[i] = bctx->cell_regu[i];
       prog->cell_share[i] = bctx->cell_share[i];
-      /* stable addresses, bound from their sources; step-published cells start NULL */
-      prog->cells[i] = expr_cell_source_addr (prog, i, bctx->share_pred);
-      assert (prog->cells[i] == bctx->cells[i]);
     }
   if (prog->n_roots > 0)
     {
@@ -6259,73 +6374,20 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	  }
       }
   }
-  slot_next = 0;
+  /* the operand regions of a caller-owned predicate tree (a compiled scan filter) follow their steps */
+  expr_pred_layout (extra_pred, remap);
 
-  /* materialize: kernel ids -> their functions, cell indexes -> cell addresses, owned-slot markers -> slot
-   * addresses */
-  for (i = 0; i < prog->n_steps; i++)
+  expr_prog_materialize (prog, bctx->share_pred);
+#if !defined (NDEBUG)
+  for (i = 0; i < prog->n_cells; i++)
     {
-      EXPR_STEP *step = &prog->steps[i];
-
-      assert (step->kernel_id > EXPR_KID_NONE && step->kernel_id < EXPR_KID_COUNT);
-      step->kernel = expr_Kernels[step->kernel_id];
-      if (step->kernel_id == EXPR_KID_generic)
-	{
-	  /* the opcode's body (fetch_arith_ops.c) */
-	  step->fn = (void *) fetch_arith_op (step->regu->value.arithptr->opcode);
-	}
-      else if (step->node_conv)
-	{
-	  step->result_conv = step->regu->value.arithptr->result_conv;
-	}
-
-      /* argument cells were encoded 1-based (EXPR_ARG_ENCODE); NULL means unused */
-      if (step->arg1p != NULL)
-	{
-	  step->arg1p = &prog->cells[(intptr_t) step->arg1p - 1];
-	}
-      if (step->arg2p != NULL)
-	{
-	  step->arg2p = &prog->cells[(intptr_t) step->arg2p - 1];
-	}
-      if (step->arg3p != NULL)
-	{
-	  step->arg3p = &prog->cells[(intptr_t) step->arg3p - 1];
-	}
-      if (step->arg4p != NULL)
-	{
-	  step->arg4p = &prog->cells[(intptr_t) step->arg4p - 1];
-	}
-      step->out_cell = &prog->cells[(intptr_t) step->out_cell];
-      if (step->out != NULL)
-	{
-	  assert (slot_next < prog->n_slots);
-	  step->out = &prog->slots[slot_next++];
-	  /* a slot-owning step publishes the SAME address on every row -- CSE guarantees one
-	   * producer per cell -- so the cell is wired here instead of in the kernel.  Only the
-	   * pointer-select kernels (NVL, CASE without a cast, leaf fetch, host variable) keep a
-	   * per-row publish, because the address they publish changes with the data. */
-	  *step->out_cell = step->out;
-	}
-      if (step->pred != NULL)
-	{
-	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog, remap);
-	  expr_pred_bind ((EXPR_PRED *) step->pred);
-	}
+      /* bound from the recorded source: the address the compiler wired */
+      assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
     }
-  /* a step that writes another step's slot (a lazy NULL check, a CASE's ELSE publisher)
-   * takes that slot's address now that slots are assigned */
-  for (i = 0; i < prog->n_steps; i++)
-    {
-      if (prog->steps[i].alias_of >= 0)
-	{
-	  prog->steps[i].out = prog->steps[prog->steps[i].alias_of].out;
-	}
-    }
+#endif
 
-  /* a predicate tree the caller owns (a compiled scan filter) resolves its cells and
-   * operand regions against the same program */
-  expr_pred_materialize (extra_pred, prog, remap);
+  /* a predicate tree the caller owns (a compiled scan filter) resolves its cells against the same program */
+  expr_pred_materialize (extra_pred, prog);
 
   return prog;
 }
@@ -6491,8 +6553,13 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out,
 			 const void *share_spec)
 {
-  return expr_prog_compile_roots_ex (thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
-				     only_compute_roots, root_idx_out, share_spec, 0);
+  EXPR_PROG *prog = expr_prog_compile_roots_ex (thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
+						only_compute_roots, root_idx_out, share_spec, 0);
+
+#if !defined (NDEBUG)
+  expr_image_check_prog (prog, roots, in_roots, root_idx_out, share_spec);
+#endif
+  return prog;
 }
 
 /* Cold half of expr_prog_eval (): decide which prologue steps this row must still run and
@@ -7094,3 +7161,1234 @@ expr_prog_free (EXPR_PROG * prog)
     }
   free_and_init (prog);
 }
+
+/******************************************************************************
+ * program images (CBRD-27361: the lowering moves to XASL generation)
+ *
+ * A compiled program written so that another process holding the same XASL tree rebuilds it: what the compiler
+ * decided, and no address of this process.  A node of the tree the program reads is named by its position in a
+ * pre-order walk of the program's roots (EXPR_NODE_TABLE) -- the tree unpacked from the same stream walks to the
+ * same nodes in the same order -- with a tag of the node's kind the reader checks; cells, slots and steps by their
+ * indexes, a kernel by its id, a domain and a pinned literal as the stream packs them.  expr_prog_image_pack ()
+ * writes a program, expr_prog_image_unpack () lays its image out over the roots of the tree it is read with and
+ * binds it as a program compiled there is bound (expr_prog_materialize ()); a compiled scan filter likewise.
+ * A debug build round-trips every program it compiles and compares the copy with the original.
+ ******************************************************************************/
+
+#define EXPR_IMAGE_VERSION 1
+#define EXPR_IMAGE_MAX_NODES 65536	/* a larger tree is not imaged */
+
+/* the nodes of a program's tree in pre-order: REGU_VARIABLE (arithmetic operands and predicate, function
+ * operands) and PRED_EXPR (connective operands, a term's operands) */
+typedef struct expr_node_ord EXPR_NODE_ORD;
+struct expr_node_ord
+{
+  const void *node;
+  int ord;
+};
+
+typedef struct expr_node_table EXPR_NODE_TABLE;
+struct expr_node_table
+{
+  const void **node;
+  unsigned char *is_pred;	/* node[i] is a PRED_EXPR, else a REGU_VARIABLE */
+  int n;
+  int cap;
+  EXPR_NODE_ORD *by_addr;	/* the nodes sorted by address, built by the first lookup */
+  bool failed;			/* out of memory, or more than EXPR_IMAGE_MAX_NODES nodes */
+};
+
+static void expr_node_walk_pred (EXPR_NODE_TABLE * t, const PRED_EXPR * pr);
+
+static void
+expr_node_table_add (EXPR_NODE_TABLE * t, const void *node, bool is_pred)
+{
+  if (t->failed)
+    {
+      return;
+    }
+  if (t->n == t->cap)
+    {
+      int cap = MAX (64, t->cap * 2);
+      const void **nodes;
+      unsigned char *is_pred_arr;
+
+      if (t->n >= EXPR_IMAGE_MAX_NODES)
+	{
+	  t->failed = true;
+	  return;
+	}
+      nodes = (const void **) realloc (t->node, sizeof (void *) * cap);
+      if (nodes == NULL)
+	{
+	  t->failed = true;
+	  return;
+	}
+      t->node = nodes;
+      is_pred_arr = (unsigned char *) realloc (t->is_pred, cap);
+      if (is_pred_arr == NULL)
+	{
+	  t->failed = true;
+	  return;
+	}
+      t->is_pred = is_pred_arr;
+      t->cap = cap;
+    }
+  t->node[t->n] = node;
+  t->is_pred[t->n] = is_pred ? 1 : 0;
+  t->n++;
+}
+
+static void
+expr_node_walk_regu (EXPR_NODE_TABLE * t, const REGU_VARIABLE * regu)
+{
+  if (regu == NULL || t->failed)
+    {
+      return;
+    }
+  expr_node_table_add (t, regu, false);
+  switch (regu->type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu->value.arithptr != NULL)
+	{
+	  expr_node_walk_regu (t, regu->value.arithptr->leftptr);
+	  expr_node_walk_regu (t, regu->value.arithptr->rightptr);
+	  expr_node_walk_regu (t, regu->value.arithptr->thirdptr);
+	  expr_node_walk_pred (t, regu->value.arithptr->pred);
+	}
+      break;
+    case TYPE_FUNC:
+      if (regu->value.funcp != NULL)
+	{
+	  REGU_VARIABLE_LIST op;
+
+	  for (op = regu->value.funcp->operand; op != NULL; op = op->next)
+	    {
+	      expr_node_walk_regu (t, &op->value);
+	    }
+	}
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+expr_node_walk_pred (EXPR_NODE_TABLE * t, const PRED_EXPR * pr)
+{
+  if (pr == NULL || t->failed)
+    {
+      return;
+    }
+  expr_node_table_add (t, pr, true);
+  switch (pr->type)
+    {
+    case T_PRED:
+      expr_node_walk_pred (t, pr->pe.m_pred.lhs);
+      expr_node_walk_pred (t, pr->pe.m_pred.rhs);
+      break;
+    case T_NOT_TERM:
+      expr_node_walk_pred (t, pr->pe.m_not_term);
+      break;
+    case T_EVAL_TERM:
+      switch (pr->pe.m_eval_term.et_type)
+	{
+	case T_COMP_EVAL_TERM:
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_comp.lhs);
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_comp.rhs);
+	  break;
+	case T_ALSM_EVAL_TERM:
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_alsm.elem);
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_alsm.elemset);
+	  break;
+	case T_LIKE_EVAL_TERM:
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_like.src);
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_like.pattern);
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_like.esc_char);
+	  break;
+	case T_RLIKE_EVAL_TERM:
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_rlike.src);
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_rlike.pattern);
+	  expr_node_walk_regu (t, pr->pe.m_eval_term.et.et_rlike.case_sensitive);
+	  break;
+	default:
+	  break;
+	}
+      break;
+    default:
+      break;
+    }
+}
+
+/* the table of a program's roots (NULL entries are columns it does not cover) or of a filter's tree */
+static void
+expr_node_table_build (EXPR_NODE_TABLE * t, REGU_VARIABLE * const *roots, int n_roots, const PRED_EXPR * pr)
+{
+  int i;
+
+  memset (t, 0, sizeof (*t));
+  for (i = 0; roots != NULL && i < n_roots; i++)
+    {
+      expr_node_walk_regu (t, roots[i]);
+    }
+  expr_node_walk_pred (t, pr);
+}
+
+static void
+expr_node_table_free (EXPR_NODE_TABLE * t)
+{
+  free_and_init (t->node);
+  free_and_init (t->is_pred);
+  free_and_init (t->by_addr);
+}
+
+static int
+expr_node_ord_cmp (const void *a, const void *b)
+{
+  const EXPR_NODE_ORD *x = (const EXPR_NODE_ORD *) a, *y = (const EXPR_NODE_ORD *) b;
+
+  if (x->node != y->node)
+    {
+      return ((uintptr_t) x->node < (uintptr_t) y->node) ? -1 : 1;
+    }
+  return x->ord - y->ord;
+}
+
+/* a node's position in the walk (a node the tree shares is named by any of its positions: they all walk to it), or
+ * -1 */
+static int
+expr_node_table_find (EXPR_NODE_TABLE * t, const void *node)
+{
+  int lo, hi;
+
+  if (t->by_addr == NULL)
+    {
+      int i;
+
+      t->by_addr = (EXPR_NODE_ORD *) malloc (sizeof (EXPR_NODE_ORD) * MAX (1, t->n));
+      if (t->by_addr == NULL)
+	{
+	  return -1;
+	}
+      for (i = 0; i < t->n; i++)
+	{
+	  t->by_addr[i].node = t->node[i];
+	  t->by_addr[i].ord = i;
+	}
+      qsort (t->by_addr, t->n, sizeof (EXPR_NODE_ORD), expr_node_ord_cmp);
+    }
+  lo = 0;
+  hi = t->n - 1;
+  while (lo <= hi)
+    {
+      int mid = (lo + hi) / 2;
+
+      if (t->by_addr[mid].node == node)
+	{
+	  return t->by_addr[mid].ord;
+	}
+      if ((uintptr_t) t->by_addr[mid].node < (uintptr_t) node)
+	{
+	  lo = mid + 1;
+	}
+      else
+	{
+	  hi = mid - 1;
+	}
+    }
+  return -1;
+}
+
+/* what a reader checks the node at a position against: its kind, type and operator */
+static int
+expr_node_tag (const void *node, bool is_pred)
+{
+  if (is_pred)
+    {
+      const PRED_EXPR *pr = (const PRED_EXPR *) node;
+      int sub = 0;
+
+      if (pr->type == T_PRED)
+	{
+	  sub = pr->pe.m_pred.bool_op;
+	}
+      else if (pr->type == T_EVAL_TERM)
+	{
+	  sub = (pr->pe.m_eval_term.et_type << 8)
+	    | (pr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM ? (pr->pe.m_eval_term.et.et_comp.rel_op & 0xFF) : 0);
+	}
+      return (2 << 24) | ((pr->type & 0xFF) << 16) | (sub & 0xFFFF);
+    }
+  else
+    {
+      const REGU_VARIABLE *regu = (const REGU_VARIABLE *) node;
+      int sub = 0;
+
+      if ((regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
+	{
+	  sub = regu->value.arithptr->opcode;
+	}
+      return (1 << 24) | ((regu->type & 0xFF) << 16) | (sub & 0xFFFF);
+    }
+}
+
+/* writes an image, or (buf NULL) counts its bytes; offsets follow an aligned start */
+typedef struct expr_image_writer EXPR_IMAGE_WRITER;
+struct expr_image_writer
+{
+  char *buf;
+  char *ptr;
+  int size;
+  EXPR_NODE_TABLE *nodes;
+  bool failed;			/* the program reads something an image cannot name */
+};
+
+static void
+expr_image_put_int (EXPR_IMAGE_WRITER * w, int v)
+{
+  if (w->buf != NULL)
+    {
+      w->ptr = or_pack_int (w->ptr, v);
+    }
+  w->size += OR_INT_SIZE;
+}
+
+static void
+expr_image_put_node (EXPR_IMAGE_WRITER * w, const void *node, bool is_pred)
+{
+  int ord = -1;
+
+  if (node != NULL)
+    {
+      ord = expr_node_table_find (w->nodes, node);
+      if (ord < 0 || w->nodes->is_pred[ord] != (is_pred ? 1 : 0))
+	{
+	  w->failed = true;
+	  ord = -1;
+	}
+    }
+  expr_image_put_int (w, ord);
+  expr_image_put_int (w, ord >= 0 ? expr_node_tag (node, is_pred) : 0);
+}
+
+static void
+expr_image_put_domain (EXPR_IMAGE_WRITER * w, TP_DOMAIN * domain)
+{
+  expr_image_put_int (w, domain != NULL ? 1 : 0);
+  if (domain == NULL)
+    {
+      return;
+    }
+  if (w->buf != NULL)
+    {
+      w->ptr = or_pack_domain (w->ptr, domain, 1, 0);
+      w->ptr = PTR_ALIGN (w->ptr, INT_ALIGNMENT);
+    }
+  w->size = DB_ALIGN (w->size + or_packed_domain_size (domain, 1), INT_ALIGNMENT);
+}
+
+static void
+expr_image_put_value (EXPR_IMAGE_WRITER * w, DB_VALUE * value)
+{
+  /* or_pack_value () starts at a MAX_ALIGNMENT boundary */
+  w->size = DB_ALIGN (w->size, MAX_ALIGNMENT);
+  if (w->buf != NULL)
+    {
+      w->ptr = or_pack_value (w->ptr, value);
+      w->ptr = PTR_ALIGN (w->ptr, INT_ALIGNMENT);
+    }
+  w->size = DB_ALIGN (w->size + or_packed_value_size (value, 0, 1, 1), INT_ALIGNMENT);
+}
+
+/* a cell a step or a leaf reads: its index + 1, 0 for none */
+static int
+expr_image_cell (EXPR_IMAGE_WRITER * w, const EXPR_PROG * prog, DB_VALUE * const *cellp)
+{
+  if (cellp == NULL)
+    {
+      return 0;
+    }
+  if (prog == NULL || cellp < prog->cells || cellp >= prog->cells + prog->n_cells)
+    {
+      w->failed = true;
+      return 0;
+    }
+  return (int) (cellp - prog->cells) + 1;
+}
+
+static void expr_image_put_prog (EXPR_IMAGE_WRITER * w, const EXPR_PROG * prog);
+
+/* a predicate tree whose cells are prog's (the tree's structure; a scan filter's program and share registry are
+ * the image's, expr_scan_pred_image_pack ()) */
+static void
+expr_image_put_pred (EXPR_IMAGE_WRITER * w, const EXPR_PRED * pred, const EXPR_PROG * prog)
+{
+  const bool fetch = pred->kind == EXPR_PRED_COMP_FETCH;
+  int i;
+
+  expr_image_put_int (w, pred->kind);
+  expr_image_put_int (w, pred->rel_op);
+  expr_image_put_int (w, pred->fast_type);
+  /* a fetched side of a scan-filter leaf reads its holder (expr_pred_bind ()), not a cell */
+  expr_image_put_int (w, (fetch && !pred->lhs_compiled) ? 0 : expr_image_cell (w, prog, pred->arg1p));
+  expr_image_put_int (w, (fetch && !pred->rhs_compiled) ? 0 : expr_image_cell (w, prog, pred->arg2p));
+  expr_image_put_int (w, fetch ? 0 : expr_image_cell (w, prog, pred->arg3p));
+  expr_image_put_node (w, pred->fetch_lhs, false);
+  expr_image_put_node (w, pred->fetch_rhs, false);
+  expr_image_put_node (w, pred->fetch_src, true);
+  expr_image_put_int (w, pred->lhs_compiled ? 1 : 0);
+  expr_image_put_int (w, pred->rhs_compiled ? 1 : 0);
+  expr_image_put_int (w, pred->lhs_start);
+  expr_image_put_int (w, pred->lhs_n);
+  expr_image_put_int (w, pred->rhs_start);
+  expr_image_put_int (w, pred->rhs_n);
+  expr_image_put_int (w, pred->rhs_pinned ? 1 : 0);
+  if (pred->rhs_pinned)
+    {
+      expr_image_put_value (w, CONST_CAST (DB_VALUE *, &pred->pinned_rhs));
+    }
+  expr_image_put_int (w, pred->lhs != NULL ? 1 : 0);
+  if (pred->lhs != NULL)
+    {
+      expr_image_put_pred (w, pred->lhs, prog);
+    }
+  expr_image_put_int (w, pred->rhs != NULL ? 1 : 0);
+  if (pred->rhs != NULL)
+    {
+      expr_image_put_pred (w, pred->rhs, prog);
+    }
+  expr_image_put_int (w, pred->kids != NULL ? pred->n_kids : -1);
+  for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
+    {
+      expr_image_put_pred (w, pred->kids[i], prog);
+    }
+}
+
+static void
+expr_image_put_prog (EXPR_IMAGE_WRITER * w, const EXPR_PROG * prog)
+{
+  int i, slot_next = 0;
+
+  expr_image_put_int (w, prog->n_steps);
+  expr_image_put_int (w, prog->n_cells);
+  expr_image_put_int (w, prog->n_slots);
+  expr_image_put_int (w, prog->n_roots);
+  expr_image_put_int (w, prog->n_prologue);
+  expr_image_put_int (w, prog->n_exec_prologue);
+  expr_image_put_int (w, prog->n_compute);
+  expr_image_put_int (w, prog->max_level);
+  expr_image_put_int (w, prog->n_shared);
+  expr_image_put_int (w, (int) prog->share_gen);
+  for (i = 0; i < prog->n_cells; i++)
+    {
+      const int src = prog->cell_src[i];
+
+      expr_image_put_int (w, src);
+      expr_image_put_node (w, (src == EXPR_CSRC_LITERAL || src == EXPR_CSRC_VALUE) ? prog->cell_regu[i] : NULL, false);
+      expr_image_put_int (w, (src == EXPR_CSRC_SHARE) ? prog->cell_share[i] : -1);
+    }
+  for (i = 0; i < prog->n_roots; i++)
+    {
+      expr_image_put_int (w, prog->root_cells[i]);
+    }
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      const EXPR_STEP *step = &prog->steps[i];
+      const bool owns_slot = step->out != NULL && step->alias_of < 0;
+
+      if (owns_slot && step->out != &prog->slots[slot_next++])
+	{
+	  /* slots are the owning steps' in step order (expr_prog_materialize ()) */
+	  w->failed = true;
+	}
+      expr_image_put_int (w, step->kernel_id);
+      expr_image_put_int (w, expr_image_cell (w, prog, step->arg1p));
+      expr_image_put_int (w, expr_image_cell (w, prog, step->arg2p));
+      expr_image_put_int (w, expr_image_cell (w, prog, step->arg3p));
+      expr_image_put_int (w, expr_image_cell (w, prog, step->arg4p));
+      expr_image_put_int (w, expr_image_cell (w, prog, step->out_cell) - 1);
+      expr_image_put_int (w, owns_slot ? 1 : 0);
+      expr_image_put_int (w, step->alias_of);
+      expr_image_put_int (w, step->jump_to);
+      expr_image_put_int (w, step->level);
+      expr_image_put_int (w, step->aux);
+      expr_image_put_int (w, step->node_conv ? 1 : 0);
+      expr_image_put_node (w, step->regu, false);
+      expr_image_put_domain (w, step->domain);
+      expr_image_put_int (w, step->pred != NULL ? 1 : 0);
+      if (step->pred != NULL)
+	{
+	  expr_image_put_pred (w, (const EXPR_PRED *) step->pred, prog);
+	}
+      if (step->kernel_id == EXPR_KID_nested_prog)
+	{
+	  /* the subtree's own program: its nodes are in this tree */
+	  expr_image_put_prog (w, (const EXPR_PROG *) step->fn);
+	}
+    }
+  if (slot_next != prog->n_slots)
+    {
+      w->failed = true;
+    }
+}
+
+/* the bytes of an image: a counting pass, then the writing one */
+static char *
+expr_image_write (EXPR_NODE_TABLE * nodes, void (*body) (EXPR_IMAGE_WRITER *, const void *, const void *),
+		  const void *arg1, const void *arg2, int *size_out)
+{
+  EXPR_IMAGE_WRITER w;
+  char *buf;
+
+  *size_out = 0;
+  if (nodes->failed)
+    {
+      return NULL;
+    }
+  memset (&w, 0, sizeof (w));
+  w.nodes = nodes;
+  body (&w, arg1, arg2);
+  if (w.failed)
+    {
+      *size_out = -1;
+      return NULL;
+    }
+  buf = (char *) malloc (MAX (1, w.size));
+  if (buf == NULL)
+    {
+      return NULL;
+    }
+  w.buf = w.ptr = buf;
+  w.size = 0;
+  body (&w, arg1, arg2);
+  if (w.failed || w.ptr != buf + w.size)
+    {
+      assert (w.failed);
+      free_and_init (buf);
+      return NULL;
+    }
+  *size_out = w.size;
+  return buf;
+}
+
+typedef struct expr_image_prog_arg EXPR_IMAGE_PROG_ARG;
+struct expr_image_prog_arg
+{
+  int n_roots;
+  const int *root_idx;
+};
+
+static void
+expr_image_body_prog (EXPR_IMAGE_WRITER * w, const void *prog, const void *arg)
+{
+  const EXPR_IMAGE_PROG_ARG *a = (const EXPR_IMAGE_PROG_ARG *) arg;
+  int i;
+
+  expr_image_put_int (w, EXPR_IMAGE_VERSION);
+  /* which root of the tree each program root is */
+  expr_image_put_int (w, a->root_idx != NULL ? a->n_roots : -1);
+  for (i = 0; a->root_idx != NULL && i < a->n_roots; i++)
+    {
+      expr_image_put_int (w, a->root_idx[i]);
+    }
+  expr_image_put_prog (w, (const EXPR_PROG *) prog);
+}
+
+static void
+expr_image_body_scan_pred (EXPR_IMAGE_WRITER * w, const void *compiled, const void *unused)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  int i;
+
+  expr_image_put_int (w, EXPR_IMAGE_VERSION);
+  expr_image_put_int (w, root->prog != NULL ? 1 : 0);
+  if (root->prog != NULL)
+    {
+      expr_image_put_prog (w, root->prog);
+    }
+  expr_image_put_pred (w, root, root->prog);
+  /* the registry of the slots the scan's other consumers read */
+  expr_image_put_int (w, root->n_share);
+  for (i = 0; i < root->n_share; i++)
+    {
+      expr_image_put_node (w, root->share[i].regu, false);
+      expr_image_put_int (w, root->share[i].cell);
+    }
+}
+
+char *
+expr_prog_image_pack (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roots, const int *root_idx, int *size_out)
+{
+  EXPR_NODE_TABLE nodes;
+  EXPR_IMAGE_PROG_ARG arg;
+  char *image;
+
+  arg.n_roots = n_roots;
+  arg.root_idx = root_idx;
+  expr_node_table_build (&nodes, roots, n_roots, NULL);
+  image = expr_image_write (&nodes, expr_image_body_prog, prog, &arg, size_out);
+  expr_node_table_free (&nodes);
+  return image;
+}
+
+char *
+expr_scan_pred_image_pack (const void *compiled, const PRED_EXPR * pr, int *size_out)
+{
+  EXPR_NODE_TABLE nodes;
+  char *image;
+
+  expr_node_table_build (&nodes, NULL, 0, pr);
+  image = expr_image_write (&nodes, expr_image_body_scan_pred, compiled, NULL, size_out);
+  expr_node_table_free (&nodes);
+  return image;
+}
+
+/* reads an image; any value out of range fails the read */
+typedef struct expr_image_reader EXPR_IMAGE_READER;
+struct expr_image_reader
+{
+  const char *ptr;
+  const char *end;
+  EXPR_NODE_TABLE *nodes;
+  bool failed;
+};
+
+static int
+expr_image_get_int (EXPR_IMAGE_READER * r)
+{
+  int v = 0;
+
+  if (r->failed || r->ptr + OR_INT_SIZE > r->end)
+    {
+      r->failed = true;
+      return 0;
+    }
+  r->ptr = or_unpack_int (CONST_CAST (char *, r->ptr), &v);
+  return v;
+}
+
+/* an int in [lo, hi] */
+static int
+expr_image_get_range (EXPR_IMAGE_READER * r, int lo, int hi)
+{
+  int v = expr_image_get_int (r);
+
+  if (v < lo || v > hi)
+    {
+      r->failed = true;
+      return lo;
+    }
+  return v;
+}
+
+static const void *
+expr_image_get_node (EXPR_IMAGE_READER * r, bool is_pred)
+{
+  int ord = expr_image_get_int (r);
+  int tag = expr_image_get_int (r);
+
+  if (r->failed || ord == -1)
+    {
+      return NULL;
+    }
+  if (ord < 0 || ord >= r->nodes->n || r->nodes->is_pred[ord] != (is_pred ? 1 : 0)
+      || expr_node_tag (r->nodes->node[ord], is_pred) != tag)
+    {
+      /* not the tree the image was written over */
+      r->failed = true;
+      return NULL;
+    }
+  return r->nodes->node[ord];
+}
+
+static TP_DOMAIN *
+expr_image_get_domain (EXPR_IMAGE_READER * r)
+{
+  TP_DOMAIN *domain = NULL;
+  int is_null = 0;
+
+  if (expr_image_get_range (r, 0, 1) == 0 || r->failed)
+    {
+      return NULL;
+    }
+  r->ptr = or_unpack_domain (CONST_CAST (char *, r->ptr), &domain, &is_null);
+  r->ptr = PTR_ALIGN (r->ptr, INT_ALIGNMENT);
+  if (domain == NULL || r->ptr > r->end)
+    {
+      r->failed = true;
+    }
+  return domain;
+}
+
+/* a cell index + 1 as the compiler encodes it (EXPR_ARG_ENCODE), 0 for none */
+static DB_VALUE **
+expr_image_get_cell (EXPR_IMAGE_READER * r, int n_cells)
+{
+  int c = expr_image_get_range (r, 0, n_cells);
+
+  return (c == 0) ? NULL : EXPR_ARG_ENCODE (c - 1);
+}
+
+static EXPR_PROG *expr_image_get_prog (EXPR_IMAGE_READER * r);
+
+/* a predicate tree as the compiler leaves it before its program is bound: cells encoded, regions laid out */
+static EXPR_PRED *
+expr_image_get_pred (EXPR_IMAGE_READER * r, int n_cells, int n_steps, int depth)
+{
+  EXPR_PRED *pred;
+  int n_kids, i;
+
+  if (r->failed || depth > EXPR_IMAGE_MAX_NODES)
+    {
+      r->failed = true;
+      return NULL;
+    }
+  pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+  if (pred == NULL)
+    {
+      r->failed = true;
+      return NULL;
+    }
+  memset (pred, 0, sizeof (*pred));
+  pred->kind = (enum expr_pred_kind) expr_image_get_range (r, EXPR_PRED_COMP, EXPR_PRED_INTERP_COMP0);
+  pred->rel_op = (REL_OP) expr_image_get_int (r);
+  pred->fast_type = (DB_TYPE) expr_image_get_int (r);
+  pred->arg1p = expr_image_get_cell (r, n_cells);
+  pred->arg2p = expr_image_get_cell (r, n_cells);
+  pred->arg3p = expr_image_get_cell (r, n_cells);
+  pred->fetch_lhs = (REGU_VARIABLE *) expr_image_get_node (r, false);
+  pred->fetch_rhs = (REGU_VARIABLE *) expr_image_get_node (r, false);
+  pred->fetch_src = expr_image_get_node (r, true);
+  pred->lhs_compiled = expr_image_get_range (r, 0, 1) != 0;
+  pred->rhs_compiled = expr_image_get_range (r, 0, 1) != 0;
+  pred->lhs_start = expr_image_get_int (r);
+  pred->lhs_n = expr_image_get_range (r, 0, n_steps);
+  pred->rhs_start = expr_image_get_int (r);
+  pred->rhs_n = expr_image_get_range (r, 0, n_steps);
+  if ((pred->lhs_n > 0 && (pred->lhs_start < 0 || pred->lhs_start + pred->lhs_n > n_steps))
+      || (pred->rhs_n > 0 && (pred->rhs_start < 0 || pred->rhs_start + pred->rhs_n > n_steps))
+      || ((pred->lhs_compiled || pred->rhs_compiled) && pred->kind != EXPR_PRED_COMP_FETCH)
+      || (pred->lhs_compiled && pred->arg1p == NULL) || (pred->rhs_compiled && pred->arg2p == NULL))
+    {
+      r->failed = true;
+    }
+  if (expr_image_get_range (r, 0, 1) == 1 && !r->failed)
+    {
+      r->ptr = or_unpack_value (PTR_ALIGN (r->ptr, MAX_ALIGNMENT), &pred->pinned_rhs);
+      r->ptr = PTR_ALIGN (r->ptr, INT_ALIGNMENT);
+      pred->rhs_pinned = true;
+      if (r->ptr > r->end)
+	{
+	  r->failed = true;
+	}
+    }
+  if (expr_image_get_range (r, 0, 1) == 1)
+    {
+      pred->lhs = expr_image_get_pred (r, n_cells, n_steps, depth + 1);
+    }
+  if (expr_image_get_range (r, 0, 1) == 1)
+    {
+      pred->rhs = expr_image_get_pred (r, n_cells, n_steps, depth + 1);
+    }
+  n_kids = expr_image_get_range (r, -1, EXPR_MAX_STEPS);
+  if (n_kids >= 0 && !r->failed)
+    {
+      pred->kids = (EXPR_PRED **) malloc (sizeof (EXPR_PRED *) * MAX (1, n_kids));
+      if (pred->kids == NULL)
+	{
+	  r->failed = true;
+	}
+      else
+	{
+	  memset (pred->kids, 0, sizeof (EXPR_PRED *) * MAX (1, n_kids));
+	  pred->n_kids = n_kids;
+	  for (i = 0; i < n_kids && !r->failed; i++)
+	    {
+	      pred->kids[i] = expr_image_get_pred (r, n_cells, n_steps, depth + 1);
+	    }
+	}
+    }
+  return pred;
+}
+
+/* a program as expr_prog_finish () lays it out, then bound (nested programs bind as they are read; the caller binds
+ * this one, whose scan filter it knows) */
+static EXPR_PROG *
+expr_image_get_prog (EXPR_IMAGE_READER * r)
+{
+  EXPR_PROG *prog;
+  int n_steps, n_cells, n_slots, n_roots, i, n_owned = 0;
+
+  n_steps = expr_image_get_range (r, 0, EXPR_MAX_STEPS);
+  n_cells = expr_image_get_range (r, 0, EXPR_MAX_STEPS);
+  n_slots = expr_image_get_range (r, 0, EXPR_MAX_STEPS);
+  n_roots = expr_image_get_range (r, 0, EXPR_MAX_STEPS);
+  if (r->failed)
+    {
+      return NULL;
+    }
+  prog = expr_prog_alloc (n_steps, n_cells, n_slots, n_roots);
+  if (prog == NULL)
+    {
+      r->failed = true;
+      return NULL;
+    }
+  prog->n_prologue = expr_image_get_range (r, 0, n_steps);
+  prog->n_exec_prologue = expr_image_get_range (r, 0, n_steps - prog->n_prologue);
+  prog->n_compute = expr_image_get_range (r, 0, n_steps);
+  prog->max_level = expr_image_get_int (r);
+  prog->n_shared = expr_image_get_range (r, 0, n_cells);
+  prog->share_gen = (unsigned int) expr_image_get_int (r);
+  for (i = 0; i < n_cells; i++)
+    {
+      int src = expr_image_get_range (r, EXPR_CSRC_STEP, EXPR_CSRC_SHARE);
+      REGU_VARIABLE *regu = (REGU_VARIABLE *) expr_image_get_node (r, false);
+      int share = expr_image_get_range (r, -1, EXPR_MAX_STEPS);
+
+      prog->cell_src[i] = (unsigned char) src;
+      prog->cell_regu[i] = regu;
+      prog->cell_share[i] = (short) share;
+      if ((src == EXPR_CSRC_LITERAL && (regu == NULL || regu->type != TYPE_DBVAL))
+	  || (src == EXPR_CSRC_VALUE && (regu == NULL || regu->type != TYPE_CONSTANT))
+	  || (src == EXPR_CSRC_SHARE && share < 0))
+	{
+	  r->failed = true;
+	}
+    }
+  for (i = 0; i < n_roots; i++)
+    {
+      prog->root_cells[i] = expr_image_get_range (r, 0, MAX (0, n_cells - 1));
+    }
+  /* the steps as the compiler leaves them: cells encoded, an owned slot marked, jumps and aliases laid out */
+  for (i = 0; i < n_steps && !r->failed; i++)
+    {
+      EXPR_STEP *step = &prog->steps[i];
+      int out_cell;
+
+      step->kernel_id = (unsigned char) expr_image_get_range (r, EXPR_KID_NONE + 1, EXPR_KID_COUNT - 1);
+      step->arg1p = expr_image_get_cell (r, n_cells);
+      step->arg2p = expr_image_get_cell (r, n_cells);
+      step->arg3p = expr_image_get_cell (r, n_cells);
+      step->arg4p = expr_image_get_cell (r, n_cells);
+      out_cell = expr_image_get_range (r, 0, MAX (0, n_cells - 1));
+      step->out_cell = (DB_VALUE **) (intptr_t) out_cell;
+      if (expr_image_get_range (r, 0, 1) == 1)
+	{
+	  step->out = (DB_VALUE *) 1;
+	  n_owned++;
+	}
+      step->alias_of = expr_image_get_range (r, -1, n_steps - 1);
+      step->jump_to = expr_image_get_range (r, -1, n_steps);
+      step->level = expr_image_get_int (r);
+      step->aux = expr_image_get_int (r);
+      step->node_conv = expr_image_get_range (r, 0, 1) != 0;
+      step->regu = (REGU_VARIABLE *) expr_image_get_node (r, false);
+      step->domain = expr_image_get_domain (r);
+      if (expr_image_get_range (r, 0, 1) == 1)
+	{
+	  step->pred = expr_image_get_pred (r, n_cells, n_steps, 0);
+	}
+      if (step->kernel_id == EXPR_KID_nested_prog)
+	{
+	  EXPR_PROG *sub = expr_image_get_prog (r);
+
+	  step->fn = (void *) sub;
+	  if (sub != NULL)
+	    {
+	      /* a subtree's program reads no scan filter (expr_node_compile ()) */
+	      expr_prog_materialize (sub, NULL);
+	    }
+	}
+      if ((step->kernel_id == EXPR_KID_generic || step->node_conv)
+	  && (step->regu == NULL || (step->regu->type != TYPE_INARITH && step->regu->type != TYPE_OUTARITH)
+	      || step->regu->value.arithptr == NULL))
+	{
+	  /* bound from the node (expr_prog_materialize ()) */
+	  r->failed = true;
+	}
+      if (step->kernel_id == EXPR_KID_nested_prog && step->fn == NULL)
+	{
+	  r->failed = true;
+	}
+    }
+  for (i = 0; i < n_steps && !r->failed; i++)
+    {
+      if (prog->steps[i].alias_of >= 0 && prog->steps[i].out != NULL)
+	{
+	  /* a step that writes another step's slot owns none (a lazy check may alias a generic step, which owns
+	   * none either: its value is the node's own) */
+	  r->failed = true;
+	}
+    }
+  if (!r->failed && n_owned != n_slots)
+    {
+      r->failed = true;
+    }
+  if (r->failed)
+    {
+      expr_prog_free (prog);
+      return NULL;
+    }
+  return prog;
+}
+
+/* the scan filter whose result slots a program compiled with share_spec reads (expr_share_attach ()) */
+static const EXPR_PRED *
+expr_share_pred_of (const void *share_spec)
+{
+  const ACCESS_SPEC_TYPE *spec = (const ACCESS_SPEC_TYPE *) share_spec;
+
+  if (spec == NULL || spec->type != TARGET_CLASS || spec->where_pred == NULL
+      || spec->where_pred->scan_prog_state != 1 || spec->where_pred->scan_prog == NULL)
+    {
+      return NULL;
+    }
+  return (const EXPR_PRED *) spec->where_pred->scan_prog;
+}
+
+EXPR_PROG *
+expr_prog_image_unpack (const char *image, int size, REGU_VARIABLE ** roots, int n_roots, int *root_idx_out,
+			const void *share_spec)
+{
+  EXPR_NODE_TABLE nodes;
+  EXPR_IMAGE_READER r;
+  EXPR_PROG *prog = NULL;
+  const EXPR_PRED *share_pred = expr_share_pred_of (share_spec);
+  int n_map, i;
+
+  expr_node_table_build (&nodes, roots, n_roots, NULL);
+  memset (&r, 0, sizeof (r));
+  r.ptr = image;
+  r.end = image + size;
+  r.nodes = &nodes;
+  r.failed = nodes.failed;
+  (void) expr_image_get_range (&r, EXPR_IMAGE_VERSION, EXPR_IMAGE_VERSION);
+  n_map = expr_image_get_range (&r, -1, n_roots);
+  if (n_map >= 0 && n_map != n_roots)
+    {
+      r.failed = true;
+    }
+  for (i = 0; i < n_map && !r.failed; i++)
+    {
+      int idx = expr_image_get_range (&r, -1, EXPR_MAX_STEPS - 1);
+
+      if (root_idx_out != NULL)
+	{
+	  root_idx_out[i] = idx;
+	}
+    }
+  if (!r.failed)
+    {
+      prog = expr_image_get_prog (&r);
+    }
+  if (prog != NULL)
+    {
+      for (i = 0; i < prog->n_cells; i++)
+	{
+	  if (prog->cell_src[i] == EXPR_CSRC_SHARE
+	      && (share_pred == NULL || prog->cell_share[i] >= share_pred->n_share))
+	    {
+	      /* the scan's filter does not hold the slot the image reads */
+	      r.failed = true;
+	    }
+	}
+      if (r.failed || r.ptr != r.end)
+	{
+	  expr_prog_free (prog);
+	  prog = NULL;
+	}
+      else
+	{
+	  expr_prog_materialize (prog, share_pred);
+	}
+    }
+  expr_node_table_free (&nodes);
+  return prog;
+}
+
+void *
+expr_scan_pred_image_unpack (const char *image, int size, const PRED_EXPR * pr)
+{
+  EXPR_NODE_TABLE nodes;
+  EXPR_IMAGE_READER r;
+  EXPR_PROG *prog = NULL;
+  EXPR_PRED *root = NULL;
+  int n_share, i;
+
+  expr_node_table_build (&nodes, NULL, 0, pr);
+  memset (&r, 0, sizeof (r));
+  r.ptr = image;
+  r.end = image + size;
+  r.nodes = &nodes;
+  r.failed = nodes.failed;
+  (void) expr_image_get_range (&r, EXPR_IMAGE_VERSION, EXPR_IMAGE_VERSION);
+  if (expr_image_get_range (&r, 0, 1) == 1)
+    {
+      prog = expr_image_get_prog (&r);
+      if (prog == NULL)
+	{
+	  r.failed = true;
+	}
+    }
+  if (!r.failed)
+    {
+      root = expr_image_get_pred (&r, prog != NULL ? prog->n_cells : 0, prog != NULL ? prog->n_steps : 0, 0);
+    }
+  n_share = expr_image_get_range (&r, 0, prog != NULL ? prog->n_cells : 0);
+  if (root != NULL && n_share > 0 && !r.failed)
+    {
+      root->share = (struct expr_share *) malloc (sizeof (struct expr_share) * n_share);
+      if (root->share == NULL)
+	{
+	  r.failed = true;
+	}
+      for (i = 0; i < n_share && !r.failed; i++)
+	{
+	  root->share[i].regu = (const REGU_VARIABLE *) expr_image_get_node (&r, false);
+	  root->share[i].cell = expr_image_get_range (&r, 0, prog->n_cells - 1);
+	  root->share[i].slot = NULL;
+	  root->n_share = i + 1;
+	  if (root->share[i].regu == NULL)
+	    {
+	      r.failed = true;
+	    }
+	}
+    }
+  if (root == NULL)
+    {
+      expr_prog_free (prog);
+      expr_node_table_free (&nodes);
+      return NULL;
+    }
+  root->prog = prog;
+  if (r.failed || r.ptr != r.end)
+    {
+      expr_scan_pred_free (root);
+      expr_node_table_free (&nodes);
+      return NULL;
+    }
+  /* bound as expr_scan_pred_compile () binds the tree it compiled */
+  if (prog != NULL)
+    {
+      expr_prog_materialize (prog, NULL);
+      expr_pred_materialize (root, prog);
+      for (i = 0; i < root->n_share; i++)
+	{
+	  root->share[i].slot = prog->cells[root->share[i].cell];
+	}
+    }
+  expr_pred_bind (root);
+  expr_node_table_free (&nodes);
+  return root;
+}
+
+#if !defined (NDEBUG)
+/* debug: the copy an image makes of a program is the program -- the same steps, cells, slots and predicates, the
+ * same nodes and process addresses where a program holds one (kernels, literals, value slots, a filter's slots) */
+static bool
+expr_image_same_cellp (const EXPR_PROG * a, DB_VALUE * const *pa, const EXPR_PROG * b, DB_VALUE * const *pb)
+{
+  if (pa == NULL || pb == NULL || a == NULL || b == NULL)
+    {
+      return pa == NULL && pb == NULL;
+    }
+  return (pa - a->cells) == (pb - b->cells);
+}
+
+/* the same slot of each program, or the same address outside them */
+static bool
+expr_image_same_valp (const EXPR_PROG * a, const DB_VALUE * va, const EXPR_PROG * b, const DB_VALUE * vb)
+{
+  const bool in_a = a != NULL && va != NULL && va >= a->slots && va < a->slots + a->n_slots;
+  const bool in_b = b != NULL && vb != NULL && vb >= b->slots && vb < b->slots + b->n_slots;
+
+  if (in_a || in_b)
+    {
+      return in_a && in_b && (va - a->slots) == (vb - b->slots);
+    }
+  return va == vb;
+}
+
+static bool expr_image_same_prog (const EXPR_PROG * a, const EXPR_PROG * b);
+
+static bool
+expr_image_same_pred (const EXPR_PRED * x, const EXPR_PROG * pa, const EXPR_PRED * y, const EXPR_PROG * pb)
+{
+  int i;
+
+  if (x == NULL || y == NULL)
+    {
+      return x == y;
+    }
+  if (x->kind != y->kind || x->eval != y->eval || x->rel_op != y->rel_op || x->fast_type != y->fast_type
+      || x->compare != y->compare || x->fetch_lhs != y->fetch_lhs || x->fetch_rhs != y->fetch_rhs
+      || x->fetch_src != y->fetch_src || x->lhs_compiled != y->lhs_compiled || x->rhs_compiled != y->rhs_compiled
+      || x->lhs_n != y->lhs_n || x->rhs_n != y->rhs_n || x->lhs_start != y->lhs_start || x->rhs_start != y->rhs_start
+      || x->rhs_pinned != y->rhs_pinned || x->n_kids != y->n_kids || (x->kids == NULL) != (y->kids == NULL))
+    {
+      return false;
+    }
+  if (x->kind == EXPR_PRED_COMP_FETCH)
+    {
+      /* a fetched side reads the leaf's own holder, a pinned right side the leaf's own value */
+      if ((x->arg1p == &x->fetched1) != (y->arg1p == &y->fetched1)
+	  || (x->arg2p == &x->fetched2) != (y->arg2p == &y->fetched2)
+	  || (x->fetched2 == &x->pinned_rhs) != (y->fetched2 == &y->pinned_rhs)
+	  || (x->lhs_compiled && !expr_image_same_cellp (pa, x->arg1p, pb, y->arg1p))
+	  || (x->rhs_compiled && !expr_image_same_cellp (pa, x->arg2p, pb, y->arg2p)))
+	{
+	  return false;
+	}
+    }
+  else if (!expr_image_same_cellp (pa, x->arg1p, pb, y->arg1p) || !expr_image_same_cellp (pa, x->arg2p, pb, y->arg2p)
+	   || !expr_image_same_cellp (pa, x->arg3p, pb, y->arg3p))
+    {
+      return false;
+    }
+  if (x->rhs_pinned
+      && (DB_VALUE_DOMAIN_TYPE (&x->pinned_rhs) != DB_VALUE_DOMAIN_TYPE (&y->pinned_rhs)
+	  || tp_value_compare (CONST_CAST (DB_VALUE *, &x->pinned_rhs), CONST_CAST (DB_VALUE *, &y->pinned_rhs), 1,
+			       1) != DB_EQ))
+    {
+      return false;
+    }
+  for (i = 0; x->kids != NULL && i < x->n_kids; i++)
+    {
+      if (!expr_image_same_pred (x->kids[i], pa, y->kids[i], pb))
+	{
+	  return false;
+	}
+    }
+  return expr_image_same_pred (x->lhs, pa, y->lhs, pb) && expr_image_same_pred (x->rhs, pa, y->rhs, pb);
+}
+
+static bool
+expr_image_same_prog (const EXPR_PROG * a, const EXPR_PROG * b)
+{
+  int i;
+
+  if (a == NULL || b == NULL)
+    {
+      return a == b;
+    }
+  if (a->n_steps != b->n_steps || a->n_cells != b->n_cells || a->n_slots != b->n_slots || a->n_roots != b->n_roots
+      || a->n_prologue != b->n_prologue || a->n_exec_prologue != b->n_exec_prologue || a->n_compute != b->n_compute
+      || a->max_level != b->max_level || a->n_shared != b->n_shared || a->share_gen != b->share_gen)
+    {
+      return false;
+    }
+  for (i = 0; i < a->n_cells; i++)
+    {
+      const int src = a->cell_src[i];
+
+      if (src != b->cell_src[i] || !expr_image_same_valp (a, a->cells[i], b, b->cells[i])
+	  || ((src == EXPR_CSRC_LITERAL || src == EXPR_CSRC_VALUE) && a->cell_regu[i] != b->cell_regu[i])
+	  || (src == EXPR_CSRC_SHARE && a->cell_share[i] != b->cell_share[i]))
+	{
+	  return false;
+	}
+    }
+  for (i = 0; i < a->n_roots; i++)
+    {
+      if (a->root_cells[i] != b->root_cells[i])
+	{
+	  return false;
+	}
+    }
+  for (i = 0; i < a->n_steps; i++)
+    {
+      const EXPR_STEP *x = &a->steps[i], *y = &b->steps[i];
+
+      if (x->kernel != y->kernel || x->kernel_id != y->kernel_id || x->regu != y->regu || x->aux != y->aux
+	  || x->node_conv != y->node_conv || x->level != y->level || x->skip != y->skip || x->jump_to != y->jump_to
+	  || x->alias_of != y->alias_of
+	  || !(x->domain == y->domain
+	       || (x->domain != NULL && y->domain != NULL && tp_domain_match (x->domain, y->domain, TP_EXACT_MATCH)))
+	  || !expr_image_same_cellp (a, x->arg1p, b, y->arg1p) || !expr_image_same_cellp (a, x->arg2p, b, y->arg2p)
+	  || !expr_image_same_cellp (a, x->arg3p, b, y->arg3p) || !expr_image_same_cellp (a, x->arg4p, b, y->arg4p)
+	  || !expr_image_same_cellp (a, x->out_cell, b, y->out_cell) || !expr_image_same_valp (a, x->out, b, y->out)
+	  || !expr_image_same_pred ((const EXPR_PRED *) x->pred, a, (const EXPR_PRED *) y->pred, b))
+	{
+	  return false;
+	}
+      if (x->kernel_id == EXPR_KID_nested_prog)
+	{
+	  if (!expr_image_same_prog ((const EXPR_PROG *) x->fn, (const EXPR_PROG *) y->fn))
+	    {
+	      return false;
+	    }
+	}
+      else if (x->node_conv ? x->result_conv != y->result_conv : x->fn != y->fn)
+	{
+	  /* a generic step's operator body, an arithmetic step's node converter */
+	  return false;
+	}
+    }
+  return true;
+}
+
+/* debug: every program compiled here goes through its image and back (expr_prog_compile_roots ()) */
+static void
+expr_image_check_prog (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roots, const int *root_idx,
+		       const void *share_spec)
+{
+  int idx_copy[EXPR_MAX_STEPS];
+  EXPR_PROG *copy;
+  char *image;
+  int size, i;
+
+  if (prog == NULL || n_roots > EXPR_MAX_STEPS)
+    {
+      return;
+    }
+  image = expr_prog_image_pack (prog, roots, n_roots, root_idx, &size);
+  /* -1: the program reads a node the walk of its roots does not reach */
+  assert (image != NULL || size != -1);
+  if (image == NULL)
+    {
+      return;
+    }
+  copy = expr_prog_image_unpack (image, size, roots, n_roots, root_idx != NULL ? idx_copy : NULL, share_spec);
+  assert (copy != NULL);
+  assert (expr_image_same_prog (prog, copy));
+  for (i = 0; root_idx != NULL && copy != NULL && i < n_roots; i++)
+    {
+      assert (idx_copy[i] == root_idx[i]);
+    }
+  expr_prog_free (copy);
+  free_and_init (image);
+}
+
+/* debug: likewise a compiled scan filter (expr_scan_pred_compile ()) */
+static void
+expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr)
+{
+  EXPR_PRED *copy;
+  char *image;
+  int size, i;
+
+  image = expr_scan_pred_image_pack (root, pr, &size);
+  assert (image != NULL || size != -1);
+  if (image == NULL)
+    {
+      return;
+    }
+  copy = (EXPR_PRED *) expr_scan_pred_image_unpack (image, size, pr);
+  assert (copy != NULL);
+  if (copy != NULL)
+    {
+      assert (expr_image_same_prog (root->prog, copy->prog));
+      assert (expr_image_same_pred (root, root->prog, copy, copy->prog));
+      assert (root->n_share == copy->n_share);
+      for (i = 0; i < root->n_share && i < copy->n_share; i++)
+	{
+	  assert (root->share[i].regu == copy->share[i].regu && root->share[i].cell == copy->share[i].cell
+		  && expr_image_same_valp (root->prog, root->share[i].slot, copy->prog, copy->share[i].slot));
+	}
+      expr_scan_pred_free (copy);
+    }
+  free_and_init (image);
+}
+#endif /* !NDEBUG */

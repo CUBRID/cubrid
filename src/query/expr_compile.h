@@ -298,6 +298,21 @@ extern void expr_scan_pred_free (void *compiled);
 /* end of an execution for a compiled scan filter: expr_prog_reset () of its operand program */
 extern void expr_scan_pred_reset (void *compiled);
 
+/* CBRD-27361: a compiled program as bytes from which another process holding the same XASL tree rebuilds it (see
+ * "program images" in expr_compile.c).  roots, n_roots: what the program was compiled from (NULL entries: columns it
+ * does not cover), root_idx its root of each (expr_prog_compile_roots ()'s root_idx_out; NULL: none kept).  The
+ * image is malloc'd; NULL on failure, with *size_out -1 when the program reads something an image cannot name. */
+extern char *expr_prog_image_pack (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roots, const int *root_idx,
+				   int *size_out);
+/* the program an image describes, over the same roots of this process's tree and bound here; root_idx_out (may be
+ * NULL) receives the image's root_idx, share_spec is as for expr_prog_compile_roots ().  NULL when the image does not
+ * fit the tree, or on allocation failure. */
+extern EXPR_PROG *expr_prog_image_unpack (const char *image, int size, REGU_VARIABLE ** roots, int n_roots,
+					  int *root_idx_out, const void *share_spec);
+/* likewise a compiled scan filter (expr_scan_pred_compile ()) over its PRED_EXPR */
+extern char *expr_scan_pred_image_pack (const void *compiled, const cubxasl::pred_expr * pr, int *size_out);
+extern void *expr_scan_pred_image_unpack (const char *image, int size, const cubxasl::pred_expr * pr);
+
 /* the operand program of a compiled scan filter, if it has one (SQL trace) */
 extern void expr_scan_pred_dump (FILE * fp, const void *compiled, int indent);
 
