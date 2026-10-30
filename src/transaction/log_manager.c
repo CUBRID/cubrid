@@ -3757,6 +3757,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   /* Remember where the writeset stands so the keys collected inside this operation can be dropped
    * when it ends: a replicating system operation is labeled for commit order, not by its keys. */
   tdes->topops.stack[tdes->topops.last].wset_mark = tdes->wset_hashes.size ();
+  tdes->topops.stack[tdes->topops.last].repl_flushed = false;
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
 }
@@ -4039,11 +4040,18 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 
       /* log system operation end */
       sysop_key_begin = LOG_TDES_LAST_SYSOP (tdes)->wset_mark;
-      if (log_record->type == LOG_SYSOP_END_COMMIT && repl_item_count > 0)
+      if (repl_item_count > 0
+	  || (LOG_TDES_LAST_SYSOP (tdes)->repl_flushed && !LOG_CHECK_LOG_APPLIER (thread_p)
+	      && tdes->is_active_worker_transaction () && log_does_allow_replication () == true))
 	{
 	  /* Commit order: label the operation with the latest coordinate published so far. The slave
 	   * applies it as its own task once everything before it is applied, and the history floor
 	   * raised below makes every later transaction wait for it. No key is published.
+	   * Every system operation whose replication records reached the log while it was the innermost one
+	   * is labeled, whatever its end type: checksumdb appends its statement before log_sysop_commit, and
+	   * an INCR whose heap update allocates a page has the records appended at the SYSOP_END of the
+	   * file allocation (a logical undo). An unlabeled SYSOP_END leaves the records to the outer
+	   * transaction on the slave, which applies them at the outer commit or drops them on its abort.
 	   *
 	   * TODO: Such an operation could instead probe and publish the keys it collected on its own
 	   * SYSOP_END coordinate, so that only a later change to the same serial waits for it. That is
@@ -4971,6 +4979,13 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	    }
 
 	  repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
+
+	  /* Appended before the transaction commits, so it is applied on the slave at the SYSOP_END of the system
+	   * operation open here; log_sysop_commit_internal labels that SYSOP_END. */
+	  if (!is_commit && tdes->topops.last >= 0)
+	    {
+	      tdes->topops.stack[tdes->topops.last].repl_flushed = true;
+	    }
 	}
 
       tdes->append_repl_recidx++;

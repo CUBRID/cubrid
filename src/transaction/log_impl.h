@@ -360,6 +360,8 @@ struct log_topops_addresses
 				 * since it is reset during recovery to the last reference postpone address. */
   size_t wset_mark;		/* number of writeset keys collected when this system operation started; the keys
 				 * added afterwards belong to the operation and are dropped at its SYSOP_END */
+  bool repl_flushed;		/* replication records were appended to the log while this was the innermost open
+				 * system operation, so its SYSOP_END is where the slave must apply them */
 };
 
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
