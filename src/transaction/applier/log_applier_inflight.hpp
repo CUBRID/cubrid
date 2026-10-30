@@ -43,6 +43,7 @@ struct la_inflight_entry
 };
 
 extern int la_inflight_init (int capacity);
+extern void la_inflight_clear (void);
 extern int la_inflight_get_capacity (void);
 extern int la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *seq_out);
 extern LA_INFLIGHT_ENTRY *la_inflight_peek (void);

@@ -60,7 +60,9 @@ static LA_INFLIGHT_ENTRY *la_inflight_find_by_seq (UINT64 seq);
  *   capacity(in): most dispatched, unretired entries at once, the commit-order capacity
  *
  * Note:
- *   A previous allocation is released.
+ *   A previous allocation is released, and the FIFO is emptied before the new one is allocated: applylogdb restarts
+ *   the applier in the same process, and if this allocation fails the caller's shutdown walks the list
+ *   (la_free_unretired_fragments), which must then find it empty rather than read the released array.
  */
 int
 la_inflight_init (int capacity)
@@ -71,6 +73,10 @@ la_inflight_init (int capacity)
     {
       free_and_init (la_Inflight.entries);
     }
+  la_Inflight.capacity = 0;
+  la_Inflight.head = 0;
+  la_Inflight.tail = 0;
+  la_Inflight.count = 0;
 
   la_Inflight.entries = (LA_INFLIGHT_ENTRY *) malloc ((size_t) capacity * sizeof (LA_INFLIGHT_ENTRY));
   if (la_Inflight.entries == NULL)
@@ -81,12 +87,24 @@ la_inflight_init (int capacity)
     }
 
   la_Inflight.capacity = capacity;
-  la_Inflight.head = 0;
-  la_Inflight.tail = 0;
-  la_Inflight.count = 0;
   la_Dispatch_sequence = 0;
 
   return NO_ERROR;
+}
+
+/*
+ * la_inflight_clear() - drop every entry, keeping the allocation
+ *
+ * Note:
+ *   Called when the applier shuts down. The entries point at apply slots the shutdown frees, so none is left
+ *   for a later reader before the next la_inflight_init.
+ */
+void
+la_inflight_clear (void)
+{
+  la_Inflight.head = 0;
+  la_Inflight.tail = 0;
+  la_Inflight.count = 0;
 }
 
 /*
