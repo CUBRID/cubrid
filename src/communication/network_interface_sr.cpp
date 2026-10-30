@@ -9785,7 +9785,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	  intl_identifier_upper (db_user, db_user_upper);
 	}
 
-      /* CBRD-27445: same rule as slogin_user () */
+      /* same rule as slogin_user () */
       if (db_user_upper[0] != '\0'
 	  && (current_user == NULL || intl_identifier_casecmp (current_user, db_user_upper) != 0)
 	  && auth_may_switch_user (thread_p, db_user_upper))
@@ -10253,7 +10253,7 @@ slogin_user (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
       (void) return_error_to_client (thread_p, rid);
       err = ER_FAILED;
     }
-  /* CBRD-27445: switch only with a proof of the new account's password, or as DBA */
+  /* switch only with a proof of the new account's password, or as DBA */
   else if (!auth_may_switch_user (thread_p, username))
     {
       err = ER_AU_INVALID_PASSWORD;
@@ -11809,7 +11809,7 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
  *           on this connection, ER_AU_INVALID_USER if there is no such account,
  *           or another error if the account could not be read.
  *
- * Shared by the CDC handshake and the login password proof (CBRD-27445).
+ * Shared by the CDC handshake and the login password proof.
  */
 static int
 cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba)
@@ -12027,7 +12027,7 @@ auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name)
 
 /*
  * sau_challenge () - first half of proving a password before a client login or
- *   user switch (CBRD-27445), signed the way the CDC handshake is.
+ *   user switch, signed the way the CDC handshake is.
  *
  * Sends a fresh nonce, the scheme the password is stored under, the issue time
  * and a tag over them; nothing is kept on the server. Unlike the CDC channel, an
@@ -12105,7 +12105,7 @@ sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 }
 
 /*
- * sau_response () - second half (CBRD-27445). The request carries the account,
+ * sau_response () - second half. The request carries the account,
  *   nonce, issue time, tag and answer: a fresh tag from this server for this
  *   connection and account plus the right answer prove the password, which the
  *   next login or user switch then spends (css_consume_auth_proof ()).

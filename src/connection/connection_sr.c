@@ -2849,7 +2849,7 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
  */
 /*
  * css_consume_auth_proof () - has this connection just proven user_name's
- *   password (CBRD-27445)? The proof is spent either way.
+ *   password? The proof is spent either way.
  */
 bool
 css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)

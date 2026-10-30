@@ -5334,7 +5334,7 @@ cau_copy_reply_string (char *ptr, char *reply, int reply_size, char *out, int ou
 #endif /* CS_MODE */
 
 /*
- * cau_challenge () - ask the server for a one-time password challenge (CBRD-27445).
+ * cau_challenge () - ask the server for a one-time password challenge.
  *   return: NO_ERROR, or the server's error (ER_AU_INVALID_USER for an unknown account)
  *   user_name (in) : account to prove
  *   scheme (out)   : form its password is stored in, 0 if none
@@ -5411,7 +5411,7 @@ cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, 
 }
 
 /*
- * cau_response () - answer a challenge (CBRD-27445). The challenge goes back
+ * cau_response () - answer a challenge. The challenge goes back
  *   with the answer, so the server can recognise its own without storing it.
  *   return: NO_ERROR if the server accepted it, else ER_AU_INVALID_PASSWORD
  *   user_name (in) : account the challenge was issued for

@@ -287,7 +287,7 @@ authenticate_context::login (const char *name, const char *password, bool ignore
     }
   else
     {
-      /* Change users within an active database. CBRD-27445: prove the new
+      /* Change users within an active database. Prove the new
        * password to the server wherever perform_login () checks it (a DBA group
        * member may switch without one), and keep its forms only once it holds. */
       bool needs_password = !ignore_passwords && (!au_is_dba_group_member (current_user) || ignore_dba_privilege);

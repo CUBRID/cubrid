@@ -385,7 +385,7 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
  * response is a SHA-256 digest in hex. */
 #define CSS_CDC_AUTH_NONCE_SIZE         33
 #define CSS_CDC_AUTH_RESPONSE_SIZE      65
-/* fixed size of the reply to a login password challenge (CBRD-27445): error, scheme,
+/* fixed size of the reply to a login password challenge: error, scheme,
  * nonce, issue time and tag, plus alignment slack; client and server must agree */
 /* salt of a salted password, as hex (ENCRYPT_SALT_SIZE_HEX), plus NUL */
 #define CSS_AU_SALT_SIZE                (64 + 1)
@@ -475,7 +475,7 @@ struct css_conn_entry
    * challenge-response of its own and the outcome is kept here. */
   bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
   volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
-  /* the account whose password this connection proved (CBRD-27445); used once */
+  /* the account whose password this connection proved; used once */
   char auth_user[DB_MAX_USER_LENGTH + 1];
   bool auth_verified;
   int idx;			/* connection index */
