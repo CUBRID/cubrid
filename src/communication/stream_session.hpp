@@ -106,8 +106,9 @@ class stream_session
      * payload needs is the implementation's concern. */
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
-    /* Flush pending work and report the binding's result: rows_loaded for COPY,
-     * bytes written for internal-LOB. The count is 64-bit so a 4GB LOB value fits. */
+    /* Flush pending work and report the binding's result: a row count for COPY
+     * and LOB DML, or, for a result_is_handle kind, the object it staged and its
+     * size, for which the core issues the handle END returns. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
     /* Discard in-flight state so no partial result survives an error. */
