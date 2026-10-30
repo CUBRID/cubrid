@@ -57,6 +57,7 @@
 #include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
 #include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
+#include "dbi.h"		/* db_get_variable (): the value a session variable read is estimated with */
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
 #define TEST_DUMP_PLAN_SORT_COST 0
@@ -596,6 +597,7 @@ static double qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static DB_VALUE *qo_in_list_elem_value (QO_ENV * env, PT_NODE * elem);
+static DB_VALUE *qo_session_variable_value (QO_ENV * env, PT_NODE * node);
 
 static double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr);
@@ -13219,6 +13221,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_OTHER:
 	  /* attr = const */
 
+	  /* CBRD-27144: a session variable read the statement lets the optimizer estimate with its value */
+	  if (pc_rhs == PC_OTHER && (host_var = qo_session_variable_value (env, rhs)) != NULL)
+	    {
+	      histogram_get_equal_selectivity (lhs, host_var, &selectivity, &success);
+	      if (success)
+		{
+		  break;
+		}
+	    }
+
 	  /* check for index on the attribute.  NOTE: For an equality predicate, we treat subqueries as constants. */
 	  lhs_icard = qo_index_cardinality (env, lhs);
 	  if (lhs_icard != 0)
@@ -13610,11 +13622,77 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 }
 
 /*
+ * qo_session_variable_value () - CBRD-27144: the value a histogram probe estimates a session variable read with
+ * return       : the variable's value, or NULL when the read is not one to estimate with it or the variable has none
+ * env (in)     : optimizer environment; it keeps each variable's value for the rest of the block
+ * node (in)    : operand of a predicate
+ *
+ * Note: the parser marks the reads that may be estimated so (PT_EXPR_INFO_PEEK_SESSION_VARIABLE): the statement is
+ *   compiled at every execution and does not assign the variable, so the value now is the one its execution starts
+ *   with, and no other value runs the plan. The session is asked once per variable and block. A variable it cannot
+ *   give (one never set) keeps the default estimate, as an allocation failure does, without an error.
+ */
+static DB_VALUE *
+qo_session_variable_value (QO_ENV * env, PT_NODE * node)
+{
+  QO_SESSION_VAR_PEEK *peek;
+  DB_VALUE *name;
+  const char *name_str;
+
+  if (node == NULL || node->node_type != PT_EXPR || node->info.expr.op != PT_EVALUATE_VARIABLE
+      || !PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_PEEK_SESSION_VARIABLE))
+    {
+      return NULL;
+    }
+
+  name = pt_value_to_db (env->parser, node->info.expr.arg1);
+  if (name == NULL || DB_VALUE_DOMAIN_TYPE (name) != DB_TYPE_CHAR || (name_str = db_get_string (name)) == NULL)
+    {
+      return NULL;
+    }
+
+  for (peek = env->session_var_peeks; peek != NULL; peek = peek->peek_next)
+    {
+      if (intl_identifier_casecmp (peek->var_name, name_str) == 0)
+	{
+	  break;
+	}
+    }
+
+  if (peek == NULL)
+    {
+      peek = (QO_SESSION_VAR_PEEK *) malloc (sizeof (QO_SESSION_VAR_PEEK));
+      if (peek == NULL)
+	{
+	  return NULL;
+	}
+      peek->var_name = name_str;
+      db_make_null (&peek->var_value);
+      peek->peek_next = env->session_var_peeks;
+      env->session_var_peeks = peek;
+
+      /* the same request the typing of the statement made (pt_session_start_domain) */
+      er_stack_push ();
+      if (db_get_variable (name, &peek->var_value) != NO_ERROR)
+	{
+	  pr_clear_value (&peek->var_value);
+	  db_make_null (&peek->var_value);
+	}
+      er_stack_pop ();
+    }
+
+  return DB_IS_NULL (&peek->var_value) ? NULL : &peek->var_value;
+}
+
+/*
  * qo_between_range_arg_value () - the DB_VALUE a between-range bound carries, or NULL when
  *   the bound is not a constant the histogram can be probed with
  * return       : the bound's value, or NULL
  * env (in)     : optimizer environment (host variables live here)
  * arg (in)     : bound node of a between-range expression
+ *
+ * Note: a session variable read the statement lets the optimizer estimate with its value counts as a constant
+ *   (qo_session_variable_value, CBRD-27144): `col > @v` reaches here as a range.
  */
 static DB_VALUE *
 qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
@@ -13630,6 +13708,8 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
       return &env->parser->host_variables[arg->info.host_var.index];
     case PC_CONST:
       return &arg->info.value.db_value;
+    case PC_OTHER:
+      return qo_session_variable_value (env, arg);
     default:
       return NULL;
     }

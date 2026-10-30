@@ -7644,6 +7644,35 @@ pt_count_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   return node;
 }
 
+/* walker of pt_type_session_variables: CBRD-27144 marks a read of a session variable that none of the statement's
+ * assignments (the NULL-terminated array arg) names. The statement is compiled at every execution and its plan is not
+ * cached, so the optimizer may estimate the read with the variable's value (qo_session_variable_value): no other
+ * value runs that plan. A variable the statement assigns changes while it runs, so its reads keep the default. */
+static PT_NODE *
+pt_mark_peekable_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **defines = (PT_NODE **) arg;
+  if (node->node_type != PT_EXPR || node->info.expr.op != PT_EVALUATE_VARIABLE)
+    {
+      return node;
+    }
+  const char *name = pt_session_variable_name (parser, node);
+  if (name == NULL)
+    {
+      return node;
+    }
+  for (int d = 0; defines[d] != NULL; d++)
+    {
+      const char *assigned = pt_session_variable_name (parser, defines[d]);
+      if (assigned != NULL && intl_identifier_casecmp (assigned, name) == 0)
+	{
+	  return node;
+	}
+    }
+  PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_PEEK_SESSION_VARIABLE);
+  return node;
+}
+
 /* CBRD-27583: one session variable type: the DB type, for a string its codeset (fetch_session_read_value) */
 static bool
 pt_session_same_type (const TP_DOMAIN * type, const TP_DOMAIN * other)
@@ -7674,6 +7703,8 @@ pt_session_variable_type_conflict (PARSER_CONTEXT * parser, PT_NODE * define, co
  *   NUMERIC), else the session's - the domain of the variable's value (the last SET VARIABLE's or assignment's type; a
  *   NULL keeps the type), asked once per variable - else none (the NULL type). A string variable the statement
  *   assigns takes its variable-length string (a fixed-length value or another collation converts at the read).
+ *   CBRD-27144: the reads of the variables the statement does not assign are marked for the optimizer to estimate
+ *   with the variables' values (pt_mark_peekable_session_variables).
  *   return: NO_ERROR, or an error where two assignments of the statement give a variable two types
  */
 int
@@ -7759,6 +7790,8 @@ pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->session_variable_domains[v] = pt_session_stored_domain (domain);
 	}
     }
+  /* CBRD-27144: the reads the optimizer may estimate with the variables' values */
+  (void) parser_walk_tree (parser, statement, pt_mark_peekable_session_variables, defines, NULL, NULL);
   return NO_ERROR;
 }
 

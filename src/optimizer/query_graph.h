@@ -897,6 +897,19 @@ struct qo_fk_join_info
 };
 typedef struct qo_fk_join_info QO_FK_JOIN_INFO;
 
+/*
+ * CBRD-27144: the value a session variable had when a query block was optimized, which the histogram probes estimate
+ * its reads with (qo_session_variable_value). Each entry is allocated once, since a probe holds one value while it asks
+ * for another (the two bounds of a BETWEEN); the block's environment frees them (qo_env_free).
+ */
+struct qo_session_var_peek
+{
+  const char *var_name;		/* the variable's name, in the parser's memory */
+  DB_VALUE var_value;		/* its value: NULL when it has none or the session cannot give it */
+  struct qo_session_var_peek *peek_next;
+};
+typedef struct qo_session_var_peek QO_SESSION_VAR_PEEK;
+
 struct qo_env
 {
   /*
@@ -1028,6 +1041,9 @@ struct qo_env
   /* composite FK constraints eligible for the join selectivity floor; see qo_fk_join_info */
   QO_FK_JOIN_INFO *fk_join_info;
   int n_fk_join_info;
+
+  /* CBRD-27144: the session variable values this block's histogram probes asked for, one entry per variable */
+  QO_SESSION_VAR_PEEK *session_var_peeks;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])
