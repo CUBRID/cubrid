@@ -46,4 +46,12 @@
 #define INLINE
 #endif
 
+/* a thread-local variable of a type without constructor or destructor: unlike thread_local, an access from another
+ * translation unit does not check for an initializer */
+#if defined (__GNUC__)
+#define THREAD_LOCAL_TRIVIAL __thread
+#elif defined (_MSC_VER)
+#define THREAD_LOCAL_TRIVIAL __declspec(thread)
+#endif
+
 #endif // _PORTING_INLINE_HPP_

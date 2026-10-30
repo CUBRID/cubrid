@@ -340,7 +340,7 @@ namespace cubstorage
 
   bestspace::status
   bestspace::shard::find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
-			  std::size_t bias, PGBUF_WATCHER &page_watcher)
+			  std::size_t bias, bool may_rediscover, PGBUF_WATCHER &page_watcher)
   {
     status error;
     tier minimum;
@@ -362,7 +362,7 @@ namespace cubstorage
 
     assert (error == status::NOT_FOUND || error == status::CONTENDED);
 
-    return allocate (class_oid, hfid, needed_size, consume_size, page_watcher);
+    return allocate (class_oid, hfid, needed_size, consume_size, may_rediscover, page_watcher);
   }
 
   bestspace::status
@@ -378,6 +378,58 @@ namespace cubstorage
 	STATS_INC (found, 1);
       }
     return result;
+  }
+
+  bool
+  bestspace::shard::update_freespace (VPID vpid, std::uint16_t freespace, std::size_t &entry_index)
+  {
+    std::size_t i;
+
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	if (update_freespace_at (i, vpid, freespace))
+	  {
+	    entry_index = i;
+	    return true;
+	  }
+      }
+
+    return false;
+  }
+
+  bool
+  bestspace::shard::update_freespace_at (std::size_t entry_index, VPID vpid, std::uint16_t freespace)
+  {
+    L1 expected, desired;
+    VPID entry_vpid;
+
+    assert (entry_index < ENTRIES_PER_SHARD);
+
+    while (true)
+      {
+	expected = m_L1[entry_index].load ();
+	entry_vpid = expected.get_vpid ();
+
+	if (!VPID_EQ (&entry_vpid, &vpid))
+	  {
+	    return false;
+	  }
+
+	if (expected.get_freespace () == freespace)
+	  {
+	    return true;
+	  }
+
+	desired = expected;
+	desired.set_freespace (freespace);
+
+	// the caller must hold the page's write latch, so the freespace it records is the page's current value
+	if (m_L1[entry_index].compare_exchange_strong (expected, desired))
+	  {
+	    L2_update (entry_index / L2_FANOUT, entry_index % L2_FANOUT);
+	    return true;
+	  }
+      }
   }
 
   void
@@ -428,6 +480,25 @@ namespace cubstorage
 	l1 = m_L1[i].load ();
 	std::memcpy (&entries[i], &l1, sizeof (bestspace_entry));
       }
+  }
+
+  // rediscover skips a page already advertised by an L1 slot: requeueing it would route concurrent
+  // inserters through the blocking candidate verify path against a page its L1 owner is filling.
+  bool
+  bestspace::shard::holds (const VPID &vpid)
+  {
+    std::size_t i;
+    L1 l1;
+
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	l1 = m_L1[i].load ();
+	if (l1.get_vpid ().pageid == vpid.pageid && l1.get_vpid ().volid == vpid.volid)
+	  {
+	    return true;
+	  }
+      }
+    return false;
   }
 
   bestspace::status
@@ -1041,7 +1112,7 @@ namespace cubstorage
 
   bestspace::status
   bestspace::shard::allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
-			      PGBUF_WATCHER &page_watcher)
+			      bool may_rediscover, PGBUF_WATCHER &page_watcher)
   {
     std::array<VPID, (L3_FANOUT * L2_FANOUT) + ALLOC_BATCH_SIZE> residents;
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
@@ -1067,6 +1138,37 @@ namespace cubstorage
       {
 	allocate_unmark ();
 	return result;
+      }
+
+    // pop returns a full batch only when the queue can cover needed_size; fewer means it cannot
+    // serve this request, so rediscover before extending the file. A relocation holds the heap header
+    // latch here (may_rediscover is false) and must not keep it across the scan's page reads.
+    if (num_candidates < ALLOC_BATCH_SIZE && may_rediscover)
+      {
+	std::size_t num_usable = 0;
+
+	if (m_parent.rediscover (hfid, needed_size, num_usable) != NO_ERROR)
+	  {
+	    m_parent.push_candidates (candidates.data (), num_candidates);
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
+	if (num_usable > 0)
+	  {
+	    // the first pick above already popped these candidates off the queue; return them before the
+	    // re-pick overwrites the array, otherwise reusable pages are dropped on the rediscovery path.
+	    if (num_candidates > 0)
+	      {
+		m_parent.push_candidates (candidates.data (), num_candidates);
+	      }
+	    result = allocate_get_candidates_or_update_residents (class_oid, needed_size, consume_size, residents,
+		     victims, candidates, num_candidates, page_watcher);
+	    if (result == status::FOUND || result == status::FAILURE)
+	      {
+		allocate_unmark ();
+		return result;
+	      }
+	  }
       }
 
     // verify the page has enough freespace and allocate new pages if not
@@ -1225,7 +1327,22 @@ namespace cubstorage
     return m_size;
   }
 
-  void
+  bool
+  bestspace::candidate_queue::update_if_exist (bestspace_entry candidate)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (!remove_if_exist (candidate))
+      {
+	return false;
+      }
+
+    insert (candidate);
+    m_max_freespace.store (m_array[m_size - 1].freespace, std::memory_order_release);
+    return true;
+  }
+
+  bool
   bestspace::candidate_queue::remove_if_exist (bestspace_entry &candidate)
   {
     int i;
@@ -1237,9 +1354,11 @@ namespace cubstorage
 	  {
 	    std::memmove (m_array.data () + i, m_array.data () + i + 1, sizeof (bestspace_entry) * (m_size - i - 1));
 	    m_size--;
-	    break;
+	    return true;
 	  }
       }
+
+    return false;
   }
 
   void
@@ -1282,11 +1401,20 @@ namespace cubstorage
     : m_shards ()
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
+    , m_nonheader_page_capacity (heap_nonheader_page_capacity ())
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
     , m_recs_sumlen (recs_sumlen)
+    , m_scanning (false)
+    , m_scan_enabled (true)
+    , m_scan_fruitless (0)
+    , m_scan_signal (0)
+    , m_scan_signal_at_disable (0)
+    , m_scan_disabled_at (0)
   {
     assert (shard_count > 0);
+
+    VPID_SET_NULL (&m_scan_cursor);
 
     // last updated time
     m_last_updated.store (monotonic_seconds ());
@@ -1340,6 +1468,12 @@ namespace cubstorage
       {
 	m_candidates.try_push (candidates[i]);
       }
+
+    // CBRD-27325: a push is what a turned-off rediscovery waits for (see rediscover_rearm_due)
+    if (num_candidates > 0)
+      {
+	m_scan_signal.fetch_add (1);
+      }
   }
 
   void
@@ -1350,6 +1484,12 @@ namespace cubstorage
     for (i = 0; i < num_candidates; i++)
       {
 	m_candidates.push (candidates[i]);
+      }
+
+    // CBRD-27325: a push is what a turned-off rediscovery waits for (see rediscover_rearm_due)
+    if (num_candidates > 0)
+      {
+	m_scan_signal.fetch_add (1);
       }
   }
 
@@ -1409,11 +1549,7 @@ namespace cubstorage
 
     // strategy
     consume_size = static_cast<int> (size) + SPAGE_SLOT_SIZE;
-    needed_size = consume_size + m_unfill_space;
-    if (needed_size > heap_nonheader_page_capacity ())
-      {
-	needed_size = consume_size;
-      }
+    needed_size = get_needed_size (consume_size);
     if (m_distributed_insert)
       {
 	shard = static_cast<std::size_t> (thread_ref.index) % m_shards.size ();
@@ -1456,33 +1592,52 @@ namespace cubstorage
     return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, is_newrec, page_watcher);
   }
 
-  bestspace::tier
-  bestspace::size_to_tier (std::uint16_t size)
+  void
+  bestspace::update_freespace (VPID vpid, std::uint16_t freespace, int &l1_pos)
   {
-    assert (size <= DB_PAGESIZE);
+    bestspace_entry candidate;
+    std::size_t i, entry_index;
 
-    // FS0: 1-7%
-    // FS1: 8-15%
-    // FS2: 16-24%
-    // FS3: 25-34%
-    // FS4: 35-45%
-    // FS5: 46-57%
-    // FS6: 58-70%
-    // FS7: 71-84%
-    // FS8: 85-100%
-    static constexpr std::int16_t threshold[] = { 7, 15, 24, 34, 45, 57, 70, 84 };
-    std::int16_t percentage;
-    std::int8_t i;
+    candidate.freespace = freespace;
+    candidate.volid = vpid.volid;
+    candidate.pageid = vpid.pageid;
+    m_candidates.update_if_exist (candidate);
 
-    percentage = size * 100 / DB_PAGESIZE;
-    for (i = 0; i < static_cast<std::int8_t> (tier::FS8) + 1; i++)
+    // the same page may also be in another shard's L1;
+    // only one entry is updated, the cached one or else the first match,
+    // as L1_find updates only the entry it hands out
+    if (l1_pos >= 0)
       {
-	if (percentage <= threshold[i])
+	i = static_cast<std::size_t> (l1_pos) / ENTRIES_PER_SHARD;
+	entry_index = static_cast<std::size_t> (l1_pos) % ENTRIES_PER_SHARD;
+	if (i < m_shards.size () && m_shards[i].update_freespace_at (entry_index, vpid, freespace))
 	  {
-	    return static_cast<tier> (i - 1);
+	    return;
+	  }
+	l1_pos = -1;		// unknown; the sweep over all shards sets it again
+      }
+
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	entry_index = 0;
+	if (m_shards[i].update_freespace (vpid, freespace, entry_index))
+	  {
+	    l1_pos = static_cast<int> (i * ENTRIES_PER_SHARD + entry_index);
+	    return;
 	  }
       }
-    return tier::FS8;
+  }
+
+  void
+  bestspace::add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
+			    std::uint64_t recs_sumlen)
+  {
+    std::size_t shard;
+
+    // get_estimates () sums every shard, so any shard can take the count;
+    // the shard is the one find () picks for this thread
+    shard = m_distributed_insert ? static_cast<std::size_t> (thread_ref.index) % m_shards.size () : 0;
+    m_shards[shard].add_estimates (num_pages, recs_num, recs_sumlen);
   }
 
   void
@@ -1547,6 +1702,186 @@ namespace cubstorage
     return m_shards.size ();
   }
 
+  // A turned-off scan comes back on only after a push by another thread since the last scan began, and at most
+  // once per REDISCOVER_REARM_INTERVAL; a push of a page the queue keeps does not by itself mean a page was forgotten.
+  bool
+  bestspace::rediscover_rearm_due ()
+  {
+    return m_scan_signal.load () != m_scan_signal_at_disable.load ()
+	   && monotonic_seconds () - m_scan_disabled_at.load () >= REDISCOVER_REARM_INTERVAL;
+  }
+
+  // Scan up to REDISCOVER_BATCH_SIZE pages of the heap chain from a persistent cursor and return
+  // free ones to the candidate queue. A hint only: consumers re-validate under latch.
+  int
+  bestspace::rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable)
+  {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    bestspace_entry found[REDISCOVER_BATCH_SIZE];
+    PGBUF_WATCHER watcher;
+    std::size_t num_found = 0;
+    std::size_t visited;
+    VPID vpid, next_vpid;
+    std::uint32_t fruitless, budget;
+    int freespace;
+    int wait_msecs;
+    int error;
+    int scan_error = NO_ERROR;
+    bool is_header;
+    bool expected = false;
+
+    num_usable = 0;
+
+    if (!m_scan_enabled.load () && !rediscover_rearm_due ())
+      {
+	return NO_ERROR;
+      }
+    if (!m_scanning.compare_exchange_strong (expected, true))
+      {
+	// another thread is already scanning this heap
+	return NO_ERROR;
+      }
+    if (!m_scan_enabled.load ())
+      {
+	// decided again under m_scanning, so one push re-arms the scan once
+	if (!rediscover_rearm_due ())
+	  {
+	    m_scanning.store (false);
+	    return NO_ERROR;
+	  }
+	m_scan_fruitless.store (0);
+	m_scan_enabled.store (true);
+      }
+
+    // pushes made by other threads from here on re-arm the scan if this scan turns it off
+    std::uint32_t signal_at_start = m_scan_signal.load ();
+
+    vpid = m_scan_cursor;
+
+    wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+    for (visited = 0; visited < REDISCOVER_BATCH_SIZE; visited++)
+      {
+	if (VPID_ISNULL (&vpid))
+	  {
+	    // wrap around: restart from the heap header page
+	    vpid.volid = hfid->vfid.volid;
+	    vpid.pageid = hfid->hpgid;
+	  }
+	is_header = (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid);
+
+	PGBUF_INIT_WATCHER (&watcher, is_header ? PGBUF_ORDERED_HEAP_HDR : PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+	error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, &watcher);
+	if (error != NO_ERROR)
+	  {
+	    if (error == ER_LK_PAGE_TIMEOUT)
+	      {
+		// a busy page keeps the cursor so the next scan resumes here
+		er_clear ();
+	      }
+	    else if (error == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+	      {
+		// a deallocated cursor page: restart from the header next time
+		er_clear ();
+		VPID_SET_NULL (&vpid);
+	      }
+	    else
+	      {
+		// an interruption or an I/O error belongs to the caller; the fix consumed the interrupt flag
+		if (er_errid () == NO_ERROR)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		  }
+		scan_error = er_errid ();
+		VPID_SET_NULL (&vpid);
+	      }
+	    break;
+	  }
+
+	if (!is_header
+	    && !heap_page_is_bestspace (thread_p, watcher.pgptr)
+	    && !heap_page_is_not_in_heap (thread_p, watcher.pgptr))
+	  {
+	    freespace = spage_max_space_for_new_record (thread_p, watcher.pgptr);
+	    if (freespace > 0 && size_to_tier ((std::uint16_t) freespace) >= tier::FS3)
+	      {
+		bool resident = false;
+		for (std::size_t s = 0; s < m_shards.size (); s++)
+		  {
+		    if (m_shards[s].holds (vpid))
+		      {
+			resident = true;
+			break;
+		      }
+		  }
+		if (!resident)
+		  {
+		    found[num_found].freespace = (std::uint16_t) freespace;
+		    found[num_found].volid = vpid.volid;
+		    found[num_found].pageid = vpid.pageid;
+		    num_found++;
+		    if (freespace >= needed_size)
+		      {
+			num_usable++;
+		      }
+		  }
+	      }
+	  }
+
+	error = heap_vpid_next (thread_p, hfid, watcher.pgptr, &next_vpid);
+	pgbuf_ordered_unfix (thread_p, &watcher);
+	if (error != NO_ERROR)
+	  {
+	    // heap_vpid_next () fails without setting an error
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      }
+	    scan_error = er_errid ();
+	    VPID_SET_NULL (&vpid);
+	    break;
+	  }
+	vpid = next_vpid;
+      }
+    (void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
+
+    m_scan_cursor = vpid;
+
+    if (num_found > 0)
+      {
+	push_candidates (found, num_found);
+      }
+
+    if (scan_error == NO_ERROR)
+      {
+	if (num_usable > 0)
+	  {
+	    m_scan_fruitless.store (0);
+	  }
+	else
+	  {
+	    // pages too small for this request are no progress. The live per-shard total bounds the budget:
+	    // the global m_num_pages only refreshes at stats-sync and is far below the real chain early in a run.
+	    int live_pages;
+	    std::uint64_t rn, rs;
+	    get_estimates (live_pages, rn, rs);
+	    budget = (live_pages > 0 && (std::uint32_t) live_pages < REDISCOVER_FRUITLESS_BUDGET)
+		     ? (std::uint32_t) live_pages : REDISCOVER_FRUITLESS_BUDGET;
+	    fruitless = m_scan_fruitless.fetch_add ((std::uint32_t) visited) + (std::uint32_t) visited;
+	    if (live_pages > 0 && fruitless >= budget)
+	      {
+		// this scan's own push above bumped the signal once; any other push since the scan began re-arms it
+		m_scan_signal_at_disable.store (signal_at_start + (num_found > 0 ? 1 : 0));
+		m_scan_disabled_at.store (monotonic_seconds ());
+		m_scan_enabled.store (false);
+	      }
+	  }
+      }
+
+    m_scanning.store (false);
+    return scan_error;
+  }
+
   void
   bestspace::to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates)
   {
@@ -1580,6 +1915,7 @@ namespace cubstorage
 			    needed_size,
 			    consume_size,
 			    bias,
+			    is_newrec,	// a relocation (not a new record) holds the heap header latch
 			    page_watcher);
 	    assert (error == status::FOUND ||
 		    error == status::ALLOCATING ||

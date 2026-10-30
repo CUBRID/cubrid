@@ -123,7 +123,7 @@ namespace parallel_query_execute
     cur_thread_p->trace_plan_detail = parent_thread_p->trace_plan_detail;
     cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
     is_on_root_thread = cur_thread_p == parent_thread_p;
-    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state, false);
+    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state);
     if (new_xasl_state == nullptr && er_errid () == NO_ERROR)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_STATE));
@@ -144,6 +144,16 @@ namespace parallel_query_execute
     /* a state copy that failed (no memory) fails the job as an execution error does */
     err_code = new_xasl_state == nullptr ? ER_OUT_OF_VIRTUAL_MEMORY
 	       : qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
+
+    if (err_code == NO_ERROR && xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
+      {
+	err_code = qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
+	if (err_code == NO_ERROR)
+	  {
+	    is_list_id_exists = true;
+	    qfile_clear_list_id (xasl->list_id);
+	  }
+      }
 
     /* check error */
     if (err_code != NO_ERROR)
@@ -197,12 +207,6 @@ namespace parallel_query_execute
 	logtb_set_tran_index_interrupt (cur_thread_p, cur_thread_p->tran_index, true);
       }
     /* clear contextual data */
-    if (xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
-      {
-	qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
-	is_list_id_exists = true;
-	qfile_clear_list_id (xasl->list_id);
-      }
 #if !defined(NDEBUG)
     er_log_debug (ARG_FILE_LINE, "thread %8ld clears xasl : %p",
 		  syscall (SYS_gettid), xasl);
@@ -210,8 +214,8 @@ namespace parallel_query_execute
     (void) qexec_clear_xasl_for_parallel_aptr (cur_thread_p, xasl, true);
     if (is_list_id_exists)
       {
-	qfile_copy_list_id (xasl->list_id,&list_id, true, QFILE_MOVE_DEPENDENT);
-	qfile_clear_list_id (&list_id);
+	/* Transfer the saved descriptor back without allocating after error handling. */
+	*xasl->list_id = list_id;
       }
     /* restore original values */
     if (collect_stats)

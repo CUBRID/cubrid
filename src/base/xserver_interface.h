@@ -190,6 +190,8 @@ extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, con
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
+extern BTREE_SEARCH xbtree_find_unique_unlocked (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
+						 DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size);
 extern int xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
 				    INT64 * pages_freed, INT64 * pairs_skipped);
@@ -231,7 +233,8 @@ extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char
 						       QUERY_FLAG * flag, int query_timeout);
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
-extern int xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1);
+extern int xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1);
+extern int xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
@@ -266,7 +269,6 @@ extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id);
 extern int xsession_end_session (THREAD_ENTRY * thread, const SESSION_ID id, bool is_keep_session);
 
-extern int xsession_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session);
 extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
 extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force);

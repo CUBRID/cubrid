@@ -31,7 +31,6 @@ static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
-static bool qo_check_nullable_op (PT_NODE * node);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -237,10 +236,10 @@ qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  *   return: true if the operator is nullable-unsafe for 'node' as given
  *   node(in): the expression node to classify
  *
- * Note: shared by qo_check_nullable_expr () and qo_check_nullable_expr_with_spec (),
- *	 so the two callers can never end up checking a different operator list.
+ * Note: shared by qo_check_nullable_expr (), qo_check_nullable_expr_with_spec () and
+ *	 pt_where_rejects_column_null (), so the callers can never end up checking a different operator list.
  */
-static bool
+bool
 qo_check_nullable_op (PT_NODE * node)
 {
   if (node->node_type != PT_EXPR)
@@ -490,6 +489,70 @@ qo_is_reduceable_const (PT_NODE * expr)
 }
 
 /*
+ * qo_bind_copy_user_position () - CBRD-27583: the user position a bind's copies read: a user host variable's own,
+ *   or that of a bind copy a translation already positioned (a later translation, or a copy copied again); -1 for an
+ *   auto-parameterized literal or another derived position, whose copies share its value as a literal's do
+ */
+static int
+qo_bind_copy_user_position (PARSER_CONTEXT * parser, PT_NODE * hv)
+{
+  const int index = hv->info.host_var.index;
+  if (hv->info.host_var.var_type != PT_HOST_IN || index < 0)
+    {
+      return -1;
+    }
+  if (index < parser->host_var_count)
+    {
+      return index;
+    }
+  return pt_is_padded_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+}
+
+/*
+ * qo_bind_copy_domain () - CBRD-27583: the domain the copies of a bind equal to CHAR column column read, the
+ *   column's (length, codeset, collation), as the reduction of a literal casts it, so a copy compares as c4 = vc does
+ *   (c4 = vc and c4 = ? with 12 rejects vc = '12'). NULL when they cannot read it:
+ *   a value with no text (pt_cast_bind_copy_value refuses it: the terms stay unreduced), or a later translation that
+ *   finds no such position of the first one
+ */
+static TP_DOMAIN *
+qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
+{
+  const int user = qo_bind_copy_user_position (parser, hv);
+  if (user < 0)
+    {
+      return NULL;
+    }
+  /* as the reduction of a literal takes arg1's domain below */
+  TP_DOMAIN *domain = pt_node_to_db_domain (parser, column, NULL);
+  domain = domain != NULL ? tp_domain_cache (domain) : NULL;
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_CHAR)
+    {
+      return NULL;
+    }
+  /* without a value (a PREPARE without values, a NULL) the copies share the bind: a later value with no text
+   * fails at its bind (pt_set_derived_host_variable) */
+  const DB_VALUE *value = parser->host_variables != NULL ? &parser->host_variables[user] : NULL;
+  if (value != NULL && !DB_IS_NULL (value))
+    {
+      DB_VALUE cast;
+      db_make_null (&cast);
+      const bool casts = pt_cast_bind_copy_value (value, &cast, domain);
+      pr_clear_value (&cast);
+      if (!casts)
+	{
+	  return NULL;
+	}
+    }
+  if (parser->host_var_derived_from != NULL && !parser->flag.host_var_derive_later
+      && !pt_padded_host_var_position_exists (parser, user, domain))
+    {
+      return NULL;
+    }
+  return domain;
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -520,6 +583,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *expr_prev = NULL;
   PT_NODE *opd1, *opd2;
   DB_VALUE *dbv1, *dbv2;
+  TP_DOMAIN *pad_domain;
+  int pad_user;
 
   /* init */
   orgp = wherep;
@@ -539,6 +604,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
 
       col = NULL;		/* init - reserve for constant column of derived-table */
+      pad_domain = NULL;	/* CBRD-27583: the CHAR(n) a bind's copies read, for an equality with a CHAR column */
+      pad_user = -1;
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
       found_equality_term = (expr->or_next == NULL) ? true : false;
@@ -600,6 +667,22 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	  if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 	    {
+	      if (arg2->node_type == PT_HOST_VAR && arg1->type_enum == PT_TYPE_CHAR
+		  && qo_bind_copy_user_position (parser, arg2) >= 0)
+		{
+		  /* CBRD-27583: the client sends a VARCHAR bind of a CHAR column unpadded, so a plain copy
+		   * would not compare as c4 = ? does (c4 = vc and c4 = ? must not become vc = ?), and a cast of the
+		   * copy would preset the position's domain for every use (PT_CAST type checking). The copies read
+		   * the column's CHAR(n), padded, from a derived position of their own; without a string value to
+		   * pad, or in a later translation the first one gave no such position, the terms stay as they are.
+		   * An auto-parameterized literal has its value: its copies share it */
+		  pad_domain = qo_bind_copy_domain (parser, arg1, arg2);
+		  if (pad_domain == NULL)
+		    {
+		      continue;
+		    }
+		  pad_user = qo_bind_copy_user_position (parser, arg2);
+		}
 	      if (qo_is_reduceable_const (arg2))
 		{
 		  found_equality_term = true;
@@ -945,6 +1028,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  *wherep = save_where_next;
 		  continue;	/* give up */
+		}
+	      if (pad_domain != NULL && temp->node_type == PT_HOST_VAR)
+		{
+		  /* every copy reads the user value as arg1's CHAR(n), padded (pt_assign_host_var_position) */
+		  temp->info.host_var.index = pad_user;
+		  temp->info.host_var.pads_to = pad_domain;
 		}
 	    }
 
@@ -1547,8 +1636,8 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  continue;
 	}
 
-      /* search if there's a term that make this IS NULL/IS NOT NULL node meaningless; that is, a term that has the
-       * same attribute */
+      /* Find a sibling that proves this NULL test redundant or contradictory. Referencing the same
+       * attribute is not enough: a value function or NOT IN over an empty set may accept NULL. */
       found = false;
       for (sibling = *wherep; sibling; sibling = sibling->next)
 	{
@@ -1574,6 +1663,14 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  if (pt_check_path_eq (parser, node_prior, sibling_prior) == 0
 	      || pt_check_path_eq (parser, node_prior, sibling->info.expr.arg2) == 0)
 	    {
+	      if (sibling->info.expr.op != PT_IS_NULL && sibling->info.expr.op != PT_IS_NOT_NULL
+		  && sibling->info.expr.op != PT_NULLSAFE_EQ && qo_check_nullable_op (sibling))
+		{
+		  /* a NOT IN (subquery), a <> ALL (subquery), a IS NOT TRUE, ... can be TRUE for a NULL 'a', so they
+		   * say nothing about 'a IS NULL' or 'a IS NOT NULL'. */
+		  continue;
+		}
+
 	      found = true;
 	      break;
 	    }
@@ -2295,7 +2392,9 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
     }
   bound->info.expr.location = like->info.expr.location;
 
-  bound->type_enum = pattern->type_enum;
+  /* CBRD-27583: the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), in the pattern's
+   * codeset and collation, not a CHAR pattern's CHAR: a key element of a CHAR column keeps its own domain */
+  bound->type_enum = pattern->type_enum == PT_TYPE_CHAR ? PT_TYPE_VARCHAR : pattern->type_enum;
 
   expr_pattern = parser_copy_tree (parser, pattern);
   if (expr_pattern == NULL)
@@ -2347,6 +2446,10 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
   /* copy data type */
   assert (bound->data_type == NULL);
   bound->data_type = parser_copy_tree (parser, pattern->data_type);
+  if (bound->data_type != NULL)
+    {
+      bound->data_type->type_enum = bound->type_enum;
+    }
 
   return bound;
 

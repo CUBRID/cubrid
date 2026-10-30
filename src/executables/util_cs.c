@@ -2254,6 +2254,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   const char *output_file = NULL;
   char *sha1 = NULL;
   bool drop_flag = false;
+  bool drop_clone_flag = false;
   FILE *outfp = NULL;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -2265,9 +2266,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
   drop_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_S);
   output_file = utility_get_option_string_value (arg_map, PLANDUMP_OUTPUT_FILE_S, 0);
   sha1 = utility_get_option_string_value (arg_map, PLANDUMP_SHA1_S, 0);
+  drop_clone_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_CLONE_S);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
+      goto print_plandump_usage;
+    }
+
+  if (drop_clone_flag && drop_flag)
+    {
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PLANDUMP, PLANDUMP_MSG_BAD_OPTION));
       goto print_plandump_usage;
     }
 
@@ -2306,7 +2314,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sha1 != NULL)
+  if (drop_clone_flag)
+    {
+      if (qmgr_drop_query_clones (sha1) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+  else if (sha1 != NULL)
     {
       if (qmgr_drop_query_plans_by_sha1 (sha1) != NO_ERROR)
 	{
@@ -3707,6 +3724,10 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 #if !defined(WINDOWS)
   char *binary_name;
   char executable_path[PATH_MAX];
+#endif
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  db_set_use_utility_thread (true);
 #endif
 
   if (utility_get_option_string_table_size (arg_map) != 1)

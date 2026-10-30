@@ -193,6 +193,7 @@ static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 
 PSTAT_GLOBAL pstat_Global;
 
+// TODO: Is pstat_Metadata still used meaningfully even in CS_MODE?
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_FILE_NUM_CREATES, "Num_file_creates"),
@@ -652,10 +653,16 @@ static const char *perfmon_stat_thread_stat_name (size_t index);
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
-bool perfmon_Iscollecting_stats = false;
+static CUB_THREAD_LOCAL bool perfmon_Iscollecting_stats = false;
 
 /* Client execution statistics */
-static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+static CUB_THREAD_LOCAL PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+
+void
+disable_perfmon_start_stats ()
+{
+  perfmon_Iscollecting_stats = false;
+}
 
 /*
  * perfmon_start_stats - Start collecting client execution statistics
@@ -1878,25 +1885,32 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
   stats[pstat_Metadata[PSTAT_VACUUM_DATA_HIT_RATIO].start_offset] =
     SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
 
-  stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset] =
-    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] -
-	       stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
+  {
+    UINT64 pb_fetches = stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+    UINT64 pb_ioreads = stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+    UINT64 pb_hits = (pb_fetches > pb_ioreads) ? (pb_fetches - pb_ioreads) : 0;
+    stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset] = SAFE_DIV (pb_hits * 100 * 100, pb_fetches);
+  }
 
-  stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] =
-    SAFE_DIV ((stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]
-	       - stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]);
+  {
+    UINT64 log_fetches = stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset];
+    UINT64 log_ioreads = stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset];
+    UINT64 log_hits = (log_fetches > log_ioreads) ? (log_fetches - log_ioreads) : 0;
+    stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] = SAFE_DIV (log_hits * 100 * 100, log_fetches);
+  }
 
   stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset] = 100 * lock_time_usec / 1000;
   stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] = 100 * hold_time_usec / 1000;
   stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] = 100 * fix_time_usec / 1000;
 
-  stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] =
-    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] -
-	       stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] -
-	       stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
+  {
+    UINT64 fix_time = stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset];
+    UINT64 hold_time = stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset];
+    UINT64 lock_time = stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset];
+    UINT64 alloc_time = (hold_time <= fix_time && lock_time <= fix_time - hold_time)
+      ? (fix_time - hold_time - lock_time) : 0;
+    stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] = SAFE_DIV (alloc_time * 100 * 100, fix_time);
+  }
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {

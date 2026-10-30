@@ -97,7 +97,7 @@ static const char *Constraint_properties[] = {
     (SM_IS_CONSTRAINT_UNIQUE_FAMILY((c)->type) && \
      sm_has_non_null_attribute((c)->attributes)))
 
-static AREA *Template_area = NULL;
+static CUB_THREAD_LOCAL AREA *Template_area = NULL;
 
 static void classobj_print_props (DB_SEQ * properties);
 static DB_SEQ *classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info);

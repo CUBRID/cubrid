@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <ctype.h>
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <values.h>
@@ -142,7 +143,12 @@
  * nested loop (22,415 + 2 * (C - 100) > 23,032 needs C > 408).  Re-measure JOB when either
  * bound moves. */
 #define HJ_MEM_ALLOC_CONSTANT 800
-#define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
+/* Per-row CPU of splitting both inputs into partition files when the hash join partitions:
+ * each row is read, hashed and copied once. Measured on the release build as the extra time of
+ * a partitioned over an in-memory join of the same probe, 0.12 to 0.2 us per row: ~10 at the
+ * scale of the two factors above (a build+probe row pair, 40 + 20, is 0.95 us). Replaces the former
+ * HJ_FILE_IO_WEIGHT (0.5 page per input row), which charged rows at a page price. */
+#define HJ_SPLIT_CPU_OVERHEAD_FACTOR 10
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
 					   entries exceed mem_limit * fill-factor, not the raw mem_limit */
@@ -151,13 +157,30 @@
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
-/* Pages assumed cachable for the repeated-probe (Mackert-Lohman) correction in
- * qo_iscan_cost () and qo_nljoin_cost (): cost_effective_cache_pages, default 32768 = the
- * data_buffer_pages default (512M / 16K). The real buffer size is a server-only parameter the
- * client-side optimizer cannot read, so the operator states the assumption here instead
- * (PostgreSQL's effective_cache_size). Denominated in pages, not bytes, so the default stays
- * bit-identical to the former literal on every page size. */
-#define QO_EFFECTIVE_CACHE_PAGES ((double) prm_get_integer_value (PRM_ID_COST_EFFECTIVE_CACHE_PAGES))
+/* Pages assumed cachable: the repeated-probe (Mackert-Lohman) correction in qo_iscan_cost () and
+ * qo_nljoin_cost (), the pointer-follow fetches in qo_follow_cost () and the hash-join partition
+ * files in qo_hjoin_cost () all read through the same page buffer. The larger of
+ * cost_effective_cache_pages (default 32768 = the data_buffer_pages default, 512M / 16K) and the
+ * server's data_buffer_pages, which carries PRM_FORCE_SERVER so the client-side optimizer receives
+ * it at connect (CBRD-27474). The parameter is a floor the buffer size cannot lower: with its
+ * default, buffers up to 512MB keep the previous costs. */
+#define QO_EFFECTIVE_CACHE_PAGES \
+  MAX ((double) prm_get_integer_value (PRM_ID_COST_EFFECTIVE_CACHE_PAGES), \
+       (double) prm_get_integer_value (PRM_ID_PB_NBUFFERS))
+/* Divisor applied to the variable cost of the work the executor runs in parallel: a nested-loop
+ * chain whose driving scan is split among workers, a parallel hash join's build/probe, a parallel
+ * input scan of a hash join (qo_parallel_cost_divisor ()). Deliberately a constant, not the degree: the
+ * degree the optimizer could predict is not what runs -- a scan may still be run serially
+ * (system operation, worker shortage) -- so the realized speed-up lies anywhere between 1x and
+ * the degree; 2 is the geometric middle of 1x..4x, wrong by at most 2x either way. */
+#define QO_PARALLEL_COST_DIVISOR 2.0
+/* qo_query_serial_level (): what the executor runs serially in a query block whatever the plan */
+enum
+{
+  QO_SERIAL_NONE = 0,		/* nothing: scans, nested-loop blocks and hash joins may run in parallel */
+  QO_SERIAL_SCANS = 1,		/* the scans, so the nested-loop blocks they drive; a hash join decides itself */
+  QO_SERIAL_ALL = 2		/* everything */
+};
 #define SORT_MERGE_FAN_IN 4.0	/* the executor merges at most SORT_MAX_HALF_FILES (4) runs per pass
 				   (external_sort.c); that file is server-only, so the value cannot be
 				   included here -- keep in sync manually. */
@@ -228,6 +251,18 @@ static void qo_follow_fprint (QO_PLAN *, FILE *, int);
 static void qo_worst_fprint (QO_PLAN *, FILE *, int);
 
 static void qo_scan_info (QO_PLAN *, FILE *, int);
+/* how a parent join wants a child printed (CBRD-27474): a parallel nested-loop block is shown once,
+ * at its top nested loop, so the joins and the driving scan inside it are not marked again */
+typedef enum
+{
+  QO_PARALLEL_MARK_NONE,	/* the child decides for itself */
+  QO_PARALLEL_MARK_SCAN,	/* a hash join input scan read in parallel */
+  QO_PARALLEL_MARK_IN_BLOCK	/* inside a parallel nested-loop block: not marked */
+} QO_PARALLEL_MARK;
+
+static void qo_scan_info_internal (QO_PLAN *, FILE *, int, bool);
+static void qo_join_info_internal (QO_PLAN *, FILE *, int, bool);
+static void qo_plan_lite_print_child (QO_PLAN *, QO_PLAN *, FILE *, int);
 static void qo_sort_info (QO_PLAN *, FILE *, int);
 static void qo_join_info (QO_PLAN *, FILE *, int);
 static void qo_follow_info (QO_PLAN *, FILE *, int);
@@ -239,7 +274,7 @@ static void qo_plan_del_ref_func (QO_PLAN * plan, void *ignore);
 static void qo_generic_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (*)(QO_PLAN *, void *), void *);
 static void qo_plan_print_sort_spec_helper (PT_NODE *, bool, FILE *, int);
 static void qo_plan_print_sort_spec (QO_PLAN *, FILE *, int);
-static void qo_plan_print_costs (QO_PLAN *, FILE *, int);
+static void qo_plan_print_costs (QO_PLAN *, FILE *, int, bool);
 static void qo_plan_print_projected_segs (QO_PLAN *, FILE *, int);
 static void qo_plan_print_sarged_terms (QO_PLAN *, FILE *, int);
 static void qo_plan_print_outer_join_terms (QO_PLAN *, FILE *, int);
@@ -304,6 +339,9 @@ static void planner_permutate (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NO
 			       BITSET *, BITSET *, BITSET *, BITSET *, int, int *);
 
 static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *, JOIN_TYPE, int);
+static QO_PLAN *qo_distinct_new (QO_PLAN *, QO_INFO *, QO_EQCLASS *);
+static void qo_prepare_distinct_info (QO_PLANNER *);
+static QO_INFO *qo_get_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
@@ -342,7 +380,14 @@ static QO_PLAN *qo_plan_finalize (QO_PLAN *);
 static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *, QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
+static void qo_plan_fprint_internal (QO_PLAN *, FILE *, int, const char *, QO_PARALLEL_MARK);
+static bool qo_plan_runs_parallel (QO_PLAN * plan);
+static QO_PARALLEL_MARK qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child);
+static double qo_parallel_cost_divisor (QO_PLAN * join);
+static double qo_join_input_factor (QO_PLAN * input, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_plan_cmp_parallel_drive (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
+static QO_PLAN *qo_find_best_parallel_driving_plan_on_info (QO_INFO *);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
 static QO_PLAN_COMPARE_RESULT qo_index_covering_plans_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *, QO_PLAN *);
@@ -364,9 +409,18 @@ static int qo_has_is_not_null_term (QO_NODE * node);
 static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
+static bool qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
+static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+						   int *continue_walk);
+static double qo_analytic_sort_cost (QO_PLAN * plan);
+static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static int qo_query_serial_level (QO_ENV * env);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -601,10 +655,12 @@ qo_plan_malloc (QO_ENV * env)
   plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_NO;
 
   plan->has_sort_limit = false;
+  plan->parallel_driven = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
+  plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
   plan->iscan_descent_cpu = 0.0;
 
@@ -1356,7 +1412,8 @@ qo_top_plan_new (QO_PLAN * plan)
 
 	  if (group_sort_list)
 	    {
-	      if (tree->info.query.q.select.connect_by || found_instnum /* && found_grpynum */ )
+	      /* a prefix index orders only the key prefix: its keys do not separate the groups (as ORDER BY below) */
+	      if (tree->info.query.q.select.connect_by || found_instnum /* && found_grpynum */  || is_index_w_prefix)
 		{
 		  ;		/* give up */
 		}
@@ -1666,10 +1723,16 @@ qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
  *   howfar(in):
  */
 static void
-qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
+qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar, bool parallel_scan)
 {
   double fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
+
+  if (parallel_scan)
+    {
+      /* the cost the parent join charged for this scan (qo_join_input_factor ()) */
+      variable /= qo_parallel_cost_divisor (plan);
+    }
   double card = (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan) && plan->limit_nljoin_guessed_card > 0)
     ? plan->limit_nljoin_guessed_card : (plan->info)->cardinality;
 
@@ -2055,7 +2118,8 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
   assert (ni_entry->head != NULL);
 
   assert (scan_method == QO_SCANMETHOD_INDEX_SCAN || scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN
-	  || scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN || scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT);
+	  || scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN || scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT
+	  || scan_method == QO_SCANMETHOD_INDEX_ANALYTIC_SCAN);
 
   assert (scan_method != QO_SCANMETHOD_INDEX_SCAN || !(ni_entry->head->force < 0));
   assert (scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT || range_terms != NULL);
@@ -2161,9 +2225,10 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	  if (bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
 	      if (qo_is_filter_index (index_entryp) || qo_is_iscan_from_orderby (plan)
-		  || qo_is_iscan_from_groupby (plan))
+		  || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_analytic (plan))
 		{
-		  /* filter index has a pre-defined key-range. ordery/groupby scan already checked nullable terms */
+		  /* filter index has a pre-defined key-range. ordery/groupby/analytic scan already checked nullable
+		   * terms */
 		  ;		/* go ahead */
 		}
 	      else
@@ -2567,6 +2632,9 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
+  /* rows in the key range per probe, covering or not; a SEMI / ANTI idx-join inner stops on the first one */
+  planp->iscan_range_rows = MAX (1.0, (double) QO_NODE_NCARD (nodep) * sel);
+
   /* IO cost to fetch objects.  A covering scan fetches no heap page, so it contributes no
    * per-probe object IO here: its pages are the leaf pages charged below as `leaves` (the
    * landing leaf on the fixed side, the rest per probe), exactly like the non-covering scan's
@@ -2777,12 +2845,34 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 {
+  qo_scan_info_internal (plan, f, howfar, false);
+}
+
+/*
+ * qo_scan_info_internal () - qo_scan_info () for a scan whose parallelism the parent decided
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ *   parallel_scan(in): the parent join counted this scan as run in parallel
+ */
+static void
+qo_scan_info_internal (QO_PLAN * plan, FILE * f, int howfar, bool parallel_scan)
+{
   QO_NODE *node = plan->plan_un.scan.node;
   int i, n = 1;
   const char *name;
   char buf[257] = { '\0', };
 
-  fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+  if (parallel_scan)
+    {
+      fprintf (f, "\n%*cParallel %c%s(", (int) howfar, ' ', tolower ((plan->vtbl)->info_string[0]),
+	       (plan->vtbl)->info_string + 1);
+    }
+  else
+    {
+      fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+    }
   if (QO_NODE_INFO (node))
     {
       for (i = 0, n = QO_NODE_INFO_N (node); i < n; i++)
@@ -2801,7 +2891,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "as %s", (name ? name : "(unknown)"));
     }
 
-  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
+  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan))
     {
       BITSET_ITERATOR bi;
       QO_ENV *env;
@@ -2972,6 +3062,63 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
     }
 
   plan = qo_top_plan_new (plan);
+
+  return plan;
+}
+
+/*
+ * qo_distinct_new () - build a plan that reads the subplan once into a temporary file, keeping one row per
+ *      distinct value of the columns the rest of the query reads from that side
+ *   return: the new plan, or NULL
+ *   subplan(in): the plan whose rows are to be collected
+ *   distinct_info(in): the info node that holds the plans of this side read that way; its cardinality is what
+ *		    the removal leaves behind, which is why the plan cannot share the subplan's info
+ *   order(in): the order a merge join asks of this side, or QO_UNORDERED
+ *
+ * Note: which columns those are follows from the plan itself -- only the ones the rest of the query needs
+ *       are projected out of a node (qo_compute_projected_segs ()).  For the inner of a SEMI JOIN they are
+ *       the join columns, since nothing else in the query may read that side.  Once the duplicates are gone
+ *       an ordinary join over these rows returns each outer row at most once, which is what lets the planner
+ *       read this side first instead of once per outer row.
+ *
+ *       Unlike qo_sort_new (), this does not go through qo_top_plan_new (): the plan belongs inside a join,
+ *       not at the top of the query.
+ */
+static QO_PLAN *
+qo_distinct_new (QO_PLAN * subplan, QO_INFO * distinct_info, QO_EQCLASS * order)
+{
+  QO_PLAN *plan;
+
+  if (subplan == NULL || subplan->info == NULL || distinct_info == NULL)
+    {
+      return NULL;
+    }
+
+  plan = qo_plan_malloc ((subplan->info)->env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
+
+  plan->info = distinct_info;
+  plan->refcount = 0;
+  plan->top_rooted = false;
+  plan->well_rooted = false;
+  plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
+  plan->order = order;
+  plan->plan_type = QO_PLANTYPE_SORT;
+  plan->vtbl = &qo_sort_plan_vtbl;
+
+  plan->plan_un.sort.sort_type = SORT_DISTINCT;
+  plan->plan_un.sort.subplan = qo_plan_add_ref (subplan);
+  plan->plan_un.sort.xasl = NULL;
+
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  plan->has_sort_limit = subplan->has_sort_limit;
+  plan->need_final_sort = subplan->need_final_sort;
+
+  qo_plan_compute_cost (plan);
 
   return plan;
 }
@@ -3160,12 +3307,15 @@ qo_sort_cost (QO_PLAN * planp)
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
-      planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
+      planp->variable_cpu_cost = (planp->info)->cardinality * (double) QO_CPU_WEIGHT;
       /* the list file is written and re-read in order: sequential unit price. TEMP_SETUP_COST
        * above is a CPU-side policy offset, not a page count, and is not priced. */
-      planp->variable_io_cost = pages * QO_COST_SEQ_PAGE;
+      planp->variable_io_cost =
+	MAX (1.0, (planp->info)->cardinality * (double) (subplanp->info)->projected_size / (double) IO_PAGESIZE)
+	* QO_COST_SEQ_PAGE;
 
-      if (order != QO_UNORDERED && order != subplanp->order)
+      /* a plan with an info of its own (qo_distinct_new ()) sorts to remove the duplicates whatever the order */
+      if ((order != QO_UNORDERED && order != subplanp->order) || planp->info != subplanp->info)
 	{
 	  double sort_io;
 
@@ -3270,6 +3420,9 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   plan->plan_type = QO_PLANTYPE_JOIN;
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
+  /* there is no semi/anti merge join */
+  assert (join_type != JOIN_INNER || qo_plan_semi_anti_join_type (inner) == PT_JOIN_NONE
+	  || join_method != QO_JOINMETHOD_MERGE_JOIN);
 
   /* An nl/idx join (or cartesian product) emits rows in its outer's order,
    * so it inherits only the outer's final-sort requirement:
@@ -3525,42 +3678,40 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 }
 
 /*
- * qo_plan_semi_anti_join_type () - return PT_JOIN_SEMI/PT_JOIN_ANTI if the inner
- *      plan's representative scan node carries that join type, else PT_JOIN_NONE.
- *      semi/anti are modelled structurally as JOIN_INNER, so this recovers the
- *      real intent from the scan node spec. Shared by plan_generation.c (single-fetch
- *      NL inner tagging) and the optimizer plan-dump labelling here.
- *   return: PT_JOIN_TYPE
- *   plan(in): the inner plan of an NL join
+ * qo_plan_semi_anti_join_type () - recover SEMI/ANTI execution from an inner input.
+ *   A DISTINCT input implements an ordinary inner join; do not follow it to the
+ *   original SEMI scan. A join input has already consumed its own SEMI/ANTI.
  */
 PT_JOIN_TYPE
 qo_plan_semi_anti_join_type (QO_PLAN * plan)
 {
-  PT_NODE *spec;
-
   while (plan != NULL)
     {
+      if (plan->info != NULL && plan->info->is_distinct)
+	{
+	  return PT_JOIN_NONE;
+	}
+
       switch (plan->plan_type)
 	{
 	case QO_PLANTYPE_SCAN:
-	  spec = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node);
-	  if (spec != NULL && (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI))
-	    {
-	      return spec->info.spec.join_type;
-	    }
-	  return PT_JOIN_NONE;
+	  return QO_NODE_IS_SEMI_ANTI_JOIN (plan->plan_un.scan.node)
+	    ? QO_NODE_PT_JOIN_TYPE (plan->plan_un.scan.node) : PT_JOIN_NONE;
 	case QO_PLANTYPE_SORT:
+	  if (plan->plan_un.sort.sort_type == SORT_DISTINCT)
+	    {
+	      return PT_JOIN_NONE;
+	    }
 	  plan = plan->plan_un.sort.subplan;
-	  continue;
+	  break;
 	case QO_PLANTYPE_FOLLOW:
 	  plan = plan->plan_un.follow.head;
-	  continue;
+	  break;
 	default:
-	  /* v1: SEMI/ANTI inner is scan-like; default also hit by ordinary inner joins so no assert.
-	     TODO(composite-RHS): recover the flag explicitly, not silent NONE. */
 	  return PT_JOIN_NONE;
 	}
     }
+
   return PT_JOIN_NONE;
 }
 
@@ -4017,13 +4168,13 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
     {
     case JOIN_INNER:
       {
-	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
-	if (sa == PT_JOIN_SEMI)
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
 	  {
 	    fputs (" (semi join)", f);
 	    break;
 	  }
-	if (sa == PT_JOIN_ANTI)
+	if (semi_anti == PT_JOIN_ANTI)
 	  {
 	    fputs (" (anti join)", f);
 	    break;
@@ -4067,8 +4218,10 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "edge:");
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
-  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "inner: ");
+  qo_plan_fprint_internal (plan->plan_un.join.outer, f, howfar, "outer: ",
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.outer));
+  qo_plan_fprint_internal (plan->plan_un.join.inner, f, howfar, "inner: ",
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.inner));
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -4082,6 +4235,22 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
 {
+  qo_join_info_internal (plan, f, howfar, false);
+}
+
+/*
+ * qo_join_info_internal () - qo_join_info () for a join the parent may have put in a parallel block
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ *   in_block(in): inside a parallel nested-loop block, already marked at its top
+ */
+static void
+qo_join_info_internal (QO_PLAN * plan, FILE * f, int howfar, bool in_block)
+{
+  bool parallel = !in_block && qo_plan_runs_parallel (plan);
+
   if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
     {
       QO_ENV *env;
@@ -4093,7 +4262,15 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       env = (plan->info)->env;
       separator = "";
 
-      fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+      if (parallel)
+	{
+	  fprintf (f, "\n%*cParallel %c%s(", (int) howfar, ' ', tolower ((plan->vtbl)->info_string[0]),
+		   (plan->vtbl)->info_string + 1);
+	}
+      else
+	{
+	  fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+	}
       for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
 	  fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i), buf));
@@ -4103,7 +4280,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
     }
   else
     {
-      fprintf (f, "\n%*cNested loops", (int) howfar, ' ');
+      fprintf (f, "\n%*c%s", (int) howfar, ' ', parallel ? "Parallel nested loops" : "Nested loops");
     }
 
   if (plan->plan_un.join.join_type == JOIN_LEFT)
@@ -4115,8 +4292,35 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, ": right outer");
     }
 
-  qo_plan_lite_print (plan->plan_un.join.outer, f, howfar + INDENT_INCR);
-  qo_plan_lite_print (plan->plan_un.join.inner, f, howfar + INDENT_INCR);
+  qo_plan_lite_print_child (plan, plan->plan_un.join.outer, f, howfar + INDENT_INCR);
+  qo_plan_lite_print_child (plan, plan->plan_un.join.inner, f, howfar + INDENT_INCR);
+}
+
+/*
+ * qo_plan_lite_print_child () - qo_plan_lite_print () of a join input, marking parallel units
+ *   return:
+ *   parent(in): the join
+ *   child(in): its outer or inner
+ *   f(in):
+ *   howfar(in):
+ */
+static void
+qo_plan_lite_print_child (QO_PLAN * parent, QO_PLAN * child, FILE * f, int howfar)
+{
+  QO_PARALLEL_MARK mark = qo_plan_child_parallel_mark (parent, child);
+
+  if (mark == QO_PARALLEL_MARK_SCAN)
+    {
+      qo_scan_info_internal (child, f, howfar, true);
+    }
+  else if (mark == QO_PARALLEL_MARK_IN_BLOCK && child->plan_type == QO_PLANTYPE_JOIN)
+    {
+      qo_join_info_internal (child, f, howfar, true);
+    }
+  else
+    {
+      qo_plan_lite_print (child, f, howfar);
+    }
 }
 
 
@@ -4215,9 +4419,9 @@ qo_can_apply_limit_card (QO_ENV * env)
 static double
 qo_mackert_lohman_pages (double T, double N)
 {
-  /* effective cache: cost_effective_cache_pages (the server's real buffer size is not
-   * visible to the client-side optimizer). b == 0 lands in the T > b branch with lim == 0
-   * and yields pages_fetched == N: no caching, no division by zero. */
+  /* effective cache: the larger of cost_effective_cache_pages and the server's
+   * data_buffer_pages (QO_EFFECTIVE_CACHE_PAGES), so b is never below the buffer's lower
+   * bound and the T > b branch never divides by zero. */
   double b = QO_EFFECTIVE_CACHE_PAGES;
   double lim, pages_fetched;
 
@@ -4246,6 +4450,398 @@ qo_mackert_lohman_pages (double T, double N)
 }
 
 /*
+ * qo_plan_select_hint () - the hint bits of the select a plan belongs to
+ *   return: the hints, PT_HINT_NONE when unavailable
+ *   plan(in):
+ */
+static PT_HINT_ENUM
+qo_plan_select_hint (QO_PLAN * plan)
+{
+  PT_NODE *tree;
+
+  if (plan == NULL || plan->info == NULL || plan->info->env == NULL)
+    {
+      return PT_HINT_NONE;
+    }
+
+  tree = QO_ENV_PT_TREE (plan->info->env);
+  return (tree != NULL && PT_IS_SELECT (tree)) ? tree->info.query.q.select.hint : PT_HINT_NONE;
+}
+
+/*
+ * qo_plan_list_pages () - estimated pages of the list file a plan's result is materialized into
+ *   return: cardinality * projected size / page size (as qo_hjoin_cost () sizes its inputs)
+ *   plan(in):
+ */
+static double
+qo_plan_list_pages (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->info == NULL)
+    {
+      return 0.0;
+    }
+
+  return plan->info->cardinality * (double) plan->info->projected_size / (double) IO_PAGESIZE;
+}
+
+/*
+ * qo_parallel_cost_divisor () - divisor for the work of a join the executor runs in parallel
+ *   return: QO_PARALLEL_COST_DIVISOR capped by parallelism / 2, or 1 when no discount applies
+ *   join(in): the join plan being costed
+ *
+ * Note: the degree is the PARALLEL(n) hint when given -- the executor then uses n and ignores
+ *	 parallelism (compute_parallel_degree ()) -- else parallelism; a degree up to 2 turns the
+ *	 discount off (at most 2x with 2 workers, hence the cap degree / 2), so PARALLEL(0|1)
+ *	 does. So does a query block the executor runs serially whatever the plan
+ *	 (qo_query_serial_level () QO_SERIAL_ALL), and a LIMIT that the joins can stop at
+ *	 (can_apply_limit_card): such a query ends before workers pay off, and the LIMIT-aware
+ *	 nested-loop costing decides those plans. A LIMIT above a GROUP BY or ORDER BY does not
+ *	 stop the joins and keeps the discount.
+ */
+static double
+qo_parallel_cost_divisor (QO_PLAN * join)
+{
+  PT_NODE *tree;
+  double degree = (double) prm_get_integer_value (PRM_ID_PARALLELISM);
+  double divisor;
+
+  if (join->info == NULL || join->info->planner == NULL || join->info->env == NULL)
+    {
+      return 1.0;
+    }
+
+  if (qo_query_serial_level (join->info->env) == QO_SERIAL_ALL)
+    {
+      return 1.0;
+    }
+
+  tree = QO_ENV_PT_TREE (join->info->env);
+  if (tree != NULL && PT_IS_SELECT (tree))
+    {
+      if (tree->info.query.q.select.hint & PT_HINT_PARALLEL)
+	{
+	  degree = (double) tree->info.query.q.select.num_parallel_threads;
+	}
+    }
+
+  divisor = MIN (QO_PARALLEL_COST_DIVISOR, degree / 2.0);
+  if (divisor <= 1.0 || (QO_PLAN_HAS_LIMIT (join) && join->info->planner->can_apply_limit_card))
+    {
+      return 1.0;
+    }
+
+  return divisor;
+}
+
+/*
+ * qo_skip_subquery () - parser_walk_tree pre-function that does not descend into a subquery
+ *   (a subquery is planned with its own environment)
+ */
+static PT_NODE *
+qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (tree != NULL && PT_IS_QUERY (tree))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_check_serial_block_expr () - parser_walk_tree callback looking for an expression of the
+ *   select list or WHERE clause that keeps the executor from running the block in parallel
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: the PT counterparts of what scan_check_parallel_scan_possible () rejects in the XASL
+ *	 (px_scan_checker.cpp): a method or a stored procedure without PARALLEL_ENABLE (TYPE_SP,
+ *	 qo_check_method_call_parallel_eligibility ()), a serial NEXT_VALUE / CURRENT_VALUE and a
+ *	 session variable (the ARITH_TYPE opcodes T_NEXT_VALUE, T_CURRENT_VALUE,
+ *	 T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE), a path expression and an object column
+ *	 (TYPE_ATTR_ID of DB_TYPE_OBJECT / DB_TYPE_OID). In the select list the executor blocks
+ *	 the scan for all of these but the method call (qo_check_serial_select_list_expr ()).
+ */
+static PT_NODE *
+qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (tree == NULL)
+    {
+      return tree;
+    }
+
+  switch (tree->node_type)
+    {
+    case PT_METHOD_CALL:
+      (void) qo_check_method_call_parallel_eligibility (parser, tree, found, continue_walk);
+      break;
+
+    case PT_EXPR:
+      switch (tree->info.expr.op)
+	{
+	case PT_NEXT_VALUE:
+	case PT_CURRENT_VALUE:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+      break;
+
+    case PT_DOT_:
+      *found = true;
+      break;
+
+    case PT_NAME:
+      if (tree->type_enum == PT_TYPE_OBJECT)
+	{
+	  *found = true;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (*found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_check_serial_select_list_expr () - qo_check_serial_block_expr () for the select list
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: a method or a stored procedure without PARALLEL_ENABLE in the output list does not
+ *	 block the parallel scan: the executor only gathers the rows to the main thread to
+ *	 evaluate it (TYPE_SP of an outptr_list sets CANNOT_LIST_MERGE, not CANNOT_PARALLEL_SCAN).
+ *	 Its arguments are still checked.
+ */
+static PT_NODE *
+qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+      return tree;
+    }
+
+  return qo_check_serial_block_expr (parser, tree, arg, continue_walk);
+}
+
+/*
+ * qo_query_serial_level () - what the executor runs serially in this query block whatever the plan
+ *   return: QO_SERIAL_NONE, QO_SERIAL_SCANS (no scan, so no nested-loop block, runs in parallel;
+ *	     a hash join keeps its own decision) or QO_SERIAL_ALL (nothing runs in parallel)
+ *   env(in):
+ *
+ * Note: computed once per environment. Mirrors, at the parse tree the optimizer has, the
+ *	 conditions under which the executor's checks on the XASL keep the block serial; they run
+ *	 only after the plan is chosen, so the optimizer cannot call them. Keep the two in sync.
+ *	 QO_SERIAL_ALL:
+ *	 - SA mode, which has no worker pool;
+ *	 - a query planned by pt_to_merge_xasl (), the USING source included: MERGE executes under
+ *	   a system operation (is_under_system_operation ());
+ *	 - the recursive part of a CTE, a correlated subquery and a CONNECT BY query, which
+ *	   scan_check_parallel_scan_possible () (px_scan_checker.cpp) serializes with what they nest
+ *	   (CTE_PROC recursive_part, dptr, CONNECTBY_PROC).
+ *	 QO_SERIAL_SCANS, where scan_check_parallel_scan_possible () blocks the block's scans:
+ *	 - the source query of UPDATE / DELETE (UPDATE_PROC, DELETE_PROC) and SELECT ... FOR UPDATE;
+ *	 - a select list or WHERE clause holding one of the expressions of
+ *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
+ *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
+ *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression.
+ *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
+ *	 select list, a derived table inside the recursive part of a CTE (planned with its own
+ *	 environment before the part), an ALL superclass scan, a system catalog scan.
+ */
+static int
+qo_query_serial_level (QO_ENV * env)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  int level = QO_SERIAL_NONE;
+  bool found = false;
+
+  if (env->serial_level >= 0)
+    {
+      return env->serial_level;
+    }
+
+#if defined (SA_MODE)
+  /* no worker pool */
+  (void) parser;
+  (void) tree;
+  (void) found;
+  level = QO_SERIAL_ALL;
+#else /* SA_MODE */
+  if (parser != NULL && parser->flag.is_generating_merge_xasl)
+    {
+      level = QO_SERIAL_ALL;
+    }
+  else if (tree != NULL && PT_IS_SELECT (tree))
+    {
+      if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY)
+	  || tree->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY || tree->info.query.correlation_level > 0
+	  || tree->info.query.q.select.connect_by != NULL)
+	{
+	  level = QO_SERIAL_ALL;
+	}
+      else if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE))
+	{
+	  level = QO_SERIAL_SCANS;
+	}
+      else
+	{
+	  PT_NODE *spec;
+
+	  /* a path expression is resolved into path entities of its FROM spec */
+	  for (spec = tree->info.query.q.select.from; spec != NULL && !found; spec = spec->next)
+	    {
+	      if (spec->node_type == PT_SPEC && spec->info.spec.path_entities != NULL)
+		{
+		  found = true;
+		}
+	    }
+
+	  if (!found)
+	    {
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_skip_subquery, NULL,
+				       qo_check_serial_select_list_expr, &found);
+	    }
+	  if (!found)
+	    {
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.where, qo_skip_subquery, NULL,
+				       qo_check_serial_block_expr, &found);
+	    }
+
+	  level = found ? QO_SERIAL_SCANS : QO_SERIAL_NONE;
+	}
+    }
+#endif /* SA_MODE */
+
+  env->serial_level = level;
+  return level;
+}
+
+/*
+ * qo_scan_runs_parallel () - does the executor split this scan among parallel workers
+ *   return: true for a heap scan of at least parallel_scan_page_threshold pages
+ *   scan(in):
+ *
+ * Note: index scans are treated as serial. parallel_scan_page_threshold is a server-only
+ *	 parameter, so a CS client always sees its default (256) here while SA mode reads
+ *	 cubrid.conf; test_mode lowers only the server's copy (prm_tune_parameters (),
+ *	 SERVER_MODE). Do not give it PRM_FOR_CLIENT / PRM_FORCE_SERVER: plan choices must not
+ *	 follow test_mode.
+ */
+static bool
+qo_scan_runs_parallel (QO_PLAN * scan)
+{
+  return (scan->plan_type == QO_PLANTYPE_SCAN && qo_is_seq_scan (scan)
+	  && !(qo_plan_select_hint (scan) & PT_HINT_NO_PARALLEL_SCAN)
+	  && (scan->info == NULL || qo_query_serial_level (scan->info->env) == QO_SERIAL_NONE)
+	  && ((double) QO_NODE_TCARD (scan->plan_un.scan.node)
+	      >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD)));
+}
+
+/*
+ * qo_plan_drives_parallel () - would a nested-loop chain driven by this plan run in parallel
+ *   return: true if the executor splits the driving scan of the chain among workers
+ *   plan(in): the outer of a nested loop
+ *
+ * Note: the executor parallelizes a nested-loop chain by splitting its driving (outermost)
+ *	 scan among workers, each running the whole chain, so the answer is inherited: a heap scan
+ *	 by its own size, a nested loop by its own parallel_driven, and a hash join, merge join
+ *	 or sort -- whose result is materialized into a list file that the chain then scans -- by
+ *	 the estimated size of that list.
+ */
+static bool
+qo_plan_drives_parallel (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->info == NULL || qo_query_serial_level (plan->info->env) != QO_SERIAL_NONE)
+    {
+      return false;
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      return qo_scan_runs_parallel (plan);
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      return plan->parallel_driven;
+    }
+
+  return (!(qo_plan_select_hint (plan) & PT_HINT_NO_PARALLEL_SCAN)
+	  && qo_plan_list_pages (plan) >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD));
+}
+
+/*
+ * qo_hjoin_side_runs_parallel () - would the executor run this build side of a hash join in parallel
+ *   return: true when the side's parallel path is taken
+ *   plan(in): the hash join plan
+ *   divisor(in): qo_parallel_cost_divisor () of the plan
+ *   spills(in): the build input exceeds the in-memory limit (the partitioned path)
+ *   build_pages(in), probe_pages(in): estimated pages of the build and probe input lists
+ *
+ * Note: decided afresh for every hash join, whatever its inputs did. parallel_opt_use, set by
+ *	 qo_join_new () before the join is costed, already folds in NO_PARALLEL_HASH_JOIN,
+ *	 PARALLEL(0|1), a MERGE query and a join predicate calling a non-PARALLEL_ENABLE method.
+ *	 The executor then has two paths: a partitioned join runs build and probe in parallel
+ *	 when the larger input list reaches parallel_hash_join_page_threshold
+ *	 (hjoin_try_parallel ()), an in-memory one only the probe, when the probe list does
+ *	 (hjoin_try_parallel_probe ()). The threshold is the parameter's default (see
+ *	 qo_scan_runs_parallel ()).
+ */
+static bool
+qo_hjoin_side_runs_parallel (QO_PLAN * plan, double divisor, bool spills, double build_pages, double probe_pages)
+{
+  double threshold = (double) prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
+
+  if (divisor <= 1.0
+      || (plan->parallel_opt_use != PLAN_PARALLEL_OPT_USE && plan->parallel_opt_use != PLAN_PARALLEL_OPT_CAN_USE))
+    {
+      return false;
+    }
+
+  return (spills ? MAX (build_pages, probe_pages) : probe_pages) >= threshold;
+}
+
+/*
+ * qo_join_input_factor () - multiplier for the variable cost of a hash join input
+ *   return: 1 / divisor when the input is a heap scan the executor parallelizes, else 1
+ *   input(in): the outer or inner of a hash join (whose inputs are read once)
+ *   divisor(in):
+ *
+ * Note: scan plans keep their serial cost (the access paths of one table are compared at
+ *	 serial cost, and the same scan plan may serve as a per-row nested-loop inner), so the
+ *	 discount of a parallel input scan is applied by the join that consumes it. Join inputs
+ *	 already carry their own discounts.
+ */
+static double
+qo_join_input_factor (QO_PLAN * input, double divisor)
+{
+  return (divisor > 1.0 && qo_scan_runs_parallel (input)) ? 1.0 / divisor : 1.0;
+}
+
+/*
  * qo_nljoin_cost () -
  *   return:
  *   planp(in):
@@ -4255,7 +4851,8 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card, required_card;
+  double guessed_result_cardinality, limit_val, outer_card, required_card, inner_scan_card, inner_fetch_rows;
+  double divisor;
 
   inner = planp->plan_un.join.inner;
 
@@ -4325,10 +4922,40 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
+
+  inner_scan_card = guessed_result_cardinality;
+  inner_fetch_rows = guessed_result_cardinality * MAX (1.0, inner->iscan_index_rows);
+
+  if (planp->plan_un.join.join_type == JOIN_INNER && planp->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN
+      && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE && inner->iscan_range_rows > 0.0)
+    {
+      QO_ENV *env = planp->info->env;
+      QO_TERM *term;
+      BITSET_ITERATOR bi;
+      double hit_prob = 1.0, head_factor, tail_factor;
+      int i;
+
+      /* the key range of an idx-join inner is the join term, so every row in it matches and the scan stops on
+       * the first one it reads; an outer row whose key is absent from the index reads none at all.  The share of
+       * outer rows the inner matches comes from the equality join terms, as hit_prob is the share the join emits */
+      for (i = bitset_iterate (&(planp->info->terms), &bi); i != -1; i = bitset_next_member (&bi))
+	{
+	  term = QO_ENV_TERM (env, i);
+	  if (qo_is_equi_join_term (term))
+	    {
+	      qo_get_term_hit_prob (term, outer->info, inner->info, env, &head_factor, &tail_factor);
+	      hit_prob *= head_factor;
+	    }
+	}
+
+      inner_scan_card = guessed_result_cardinality * hit_prob / inner->iscan_range_rows;
+      inner_fetch_rows = guessed_result_cardinality * hit_prob;
+    }
+
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
    * the inner side really descends once per outer row, so it is charged here and only here --
    * see the publishing comment in qo_iscan_cost (). */
-  inner_cpu_cost = guessed_result_cardinality * (inner->variable_cpu_cost + inner->iscan_descent_cpu);
+  inner_cpu_cost = inner_scan_card * inner->variable_cpu_cost + guessed_result_cardinality * inner->iscan_descent_cpu;
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
@@ -4346,8 +4973,9 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* probes x rows matching the index conditions per probe (BEFORE non-index filters --
        * those rows' pages are fetched regardless of whether the filter later rejects them).
        * Using the filtered join cardinality here under-counted the fetches of strongly-filtered
-       * joins and made orders containing them look too cheap. */
-      N = guessed_result_cardinality * MAX (1.0, inner->iscan_index_rows);
+       * joins and made orders containing them look too cheap.  A SEMI / ANTI idx-join inner fetches
+       * one row per matching outer row (inner_fetch_rows above). */
+      N = inner_fetch_rows;
 
       /* Saturate the heap side and the leaf side separately, each against its own object size:
        * the heap share (iscan_heap_io, recorded by qo_iscan_cost) against the inner table's
@@ -4371,20 +4999,35 @@ qo_nljoin_cost (QO_PLAN * planp)
       leaf_fetched =
 	qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N) * QO_COST_RANDOM_PAGE;
 
-      inner_io_cost = MIN (guessed_result_cardinality * heap_io, heap_fetched)
-	+ MIN (guessed_result_cardinality * leaf_io, leaf_fetched);
+      inner_io_cost = MIN (inner_scan_card * heap_io, heap_fetched) + MIN (inner_scan_card * leaf_io, leaf_fetched);
     }
   else
     {
       /* if inner is seq scan, it is calculated by default card. */
       /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
-      inner_io_cost = (guessed_result_cardinality + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
+      inner_io_cost = (inner_scan_card + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
     }
 
   /* outer side CPU cost of nested-loop block join */
   outer_cpu_cost = outer->variable_cpu_cost;
   /* outer side IO cost of nested-loop block join */
   outer_io_cost = outer->variable_io_cost;
+
+  /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does;
+   * then the per-row inner work is divided, and so is the driving scan when the outer is that
+   * scan itself (a nested-loop or materialized outer already carries its own discount) */
+  divisor = qo_parallel_cost_divisor (planp);
+  planp->parallel_driven = (divisor > 1.0 && qo_plan_drives_parallel (outer));
+  if (planp->parallel_driven)
+    {
+      inner_cpu_cost /= divisor;
+      inner_io_cost /= divisor;
+      if (outer->plan_type == QO_PLANTYPE_SCAN)
+	{
+	  outer_cpu_cost /= divisor;
+	  outer_io_cost /= divisor;
+	}
+    }
 
   /* CPU and IO costs which are variable according to the join plan */
   planp->variable_cpu_cost = inner_cpu_cost + outer_cpu_cost;
@@ -4544,6 +5187,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   double inner_pages, outer_pages;
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
+  double divisor, outer_factor, inner_factor;
+  bool spills, inner_build_parallel, outer_build_parallel;
 
   inner_plan_p = plan_p->plan_un.join.inner;
 
@@ -4579,8 +5224,17 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   plan_p->fixed_cpu_cost = outer_plan_p->fixed_cpu_cost + inner_plan_p->fixed_cpu_cost;
   plan_p->fixed_io_cost = outer_plan_p->fixed_io_cost + inner_plan_p->fixed_io_cost;
 
-  plan_p->variable_cpu_cost = outer_plan_p->variable_cpu_cost + inner_plan_p->variable_cpu_cost;
-  plan_p->variable_io_cost = outer_plan_p->variable_io_cost + inner_plan_p->variable_io_cost;
+  /* parallel execution (CBRD-27474): each input is charged at its parallel cost
+   * (qo_join_input_factor ()), and the build/probe work below is divided where the executor
+   * runs it in parallel (qo_hjoin_side_runs_parallel ()) */
+  divisor = qo_parallel_cost_divisor (plan_p);
+  outer_factor = qo_join_input_factor (outer_plan_p, divisor);
+  inner_factor = qo_join_input_factor (inner_plan_p, divisor);
+
+  plan_p->variable_cpu_cost =
+    outer_plan_p->variable_cpu_cost * outer_factor + inner_plan_p->variable_cpu_cost * inner_factor;
+  plan_p->variable_io_cost =
+    outer_plan_p->variable_io_cost * outer_factor + inner_plan_p->variable_io_cost * inner_factor;
 
   /**
    * STEP 2: Calculate the cost when inner is used as build input.
@@ -4598,11 +5252,15 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
   outer_build_io_cost = outer_pages * QO_COST_SEQ_PAGE;
 
-  /* Partitioned hash join spills to disk once the build input exceeds the in-memory
-   * hash limit. The executor switches to a partitioned (spilling) hash join at
-   * mem_limit * PARTITION_FILL_FACTOR, not the raw max_hash_list_scan_size, so apply the
-   * same fill-factor here; otherwise a build sized in (fill-factor*limit, limit] spills at
-   * run time while the cost model omits the spill IO and underestimates the hash join. */
+  /* Partitioned hash join, as hjoin_check_partition () and hjoin_split_qlist () run it: the join
+   * partitions once the hash entries of the build input exceed mem_limit * PARTITION_FILL_FACTOR
+   * (one decision for the join, made before the build side of an inner join is chosen). Both inputs are then read, hashed and
+   * written once into partition files and each partition is read back once, in order. The
+   * partition files are temporary list pages read through the page buffer, so only the pages
+   * the buffer cannot hold reach the disk: twice (write and read back) the part of both inputs
+   * above QO_EFFECTIVE_CACHE_PAGES, the cache the nested-loop probes also assume. Within a
+   * partition the method (in-memory or hybrid) is chosen again; a hybrid partition's
+   * fetches by position stay in its own, buffer-resident file and are not charged. */
   {
     UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
@@ -4611,17 +5269,54 @@ qo_hjoin_cost (QO_PLAN * plan_p)
      * Keep the two in sync. */
     UINT64 per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + HJ_HASH_ENTRY_POS_SIZE;
 
-    /* spilled partitions are written and re-read in order: sequential unit price */
-    if ((inner_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
+    double build_cardinality;
+
+    /* the side hjoin_check_partition () sizes the partitions by: the build side the join type fixes
+     * (the inner of a LEFT OUTER, SEMI or ANTI join, the outer of a RIGHT OUTER join), else the smaller */
+    if (plan_p->plan_un.join.join_type == JOIN_LEFT
+	|| (plan_p->plan_un.join.join_type == JOIN_INNER && qo_plan_semi_anti_join_type (inner_plan_p) != PT_JOIN_NONE))
       {
-	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * QO_COST_SEQ_PAGE;
+	build_cardinality = inner_cardinality;
+      }
+    else if (plan_p->plan_un.join.join_type == JOIN_RIGHT)
+      {
+	build_cardinality = outer_cardinality;
+      }
+    else
+      {
+	build_cardinality = MIN (inner_cardinality, outer_cardinality);
       }
 
-    if ((outer_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
+    spills = mem_limit > 0 && (build_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR;
+    if (spills)
       {
-	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * QO_COST_SEQ_PAGE;
+	double split_cpu = (inner_cardinality + outer_cardinality) * QO_CPU_WEIGHT * HJ_SPLIT_CPU_OVERHEAD_FACTOR;
+	double split_io = 2.0 * MAX (0.0, inner_pages + outer_pages - QO_EFFECTIVE_CACHE_PAGES) * QO_COST_SEQ_PAGE;
+
+	inner_build_cpu_cost += split_cpu;
+	inner_build_io_cost += split_io;
+	outer_build_cpu_cost += split_cpu;
+	outer_build_io_cost += split_io;
       }
   }
+
+  /* parallel build/probe: whether the executor goes parallel follows its two paths
+   * (qo_hjoin_side_runs_parallel ()); how much is gained is approximated, like the rest of the
+   * parallel discount, by dividing the whole build/probe work -- an in-memory join actually
+   * runs only the probe in parallel, its build being bounded by the in-memory limit */
+  inner_build_parallel = qo_hjoin_side_runs_parallel (plan_p, divisor, spills, inner_pages, outer_pages);
+  if (inner_build_parallel)
+    {
+      inner_build_cpu_cost /= divisor;
+      inner_build_io_cost /= divisor;
+    }
+
+  outer_build_parallel = qo_hjoin_side_runs_parallel (plan_p, divisor, spills, outer_pages, inner_pages);
+  if (outer_build_parallel)
+    {
+      outer_build_cpu_cost /= divisor;
+      outer_build_io_cost /= divisor;
+    }
 
   /**
    * STEP 4: Choose the lowest cost.
@@ -4631,11 +5326,13 @@ qo_hjoin_cost (QO_PLAN * plan_p)
     case JOIN_LEFT:
       plan_p->variable_cpu_cost += inner_build_cpu_cost;
       plan_p->variable_io_cost += inner_build_io_cost;
+      plan_p->parallel_driven = inner_build_parallel;
       break;
 
     case JOIN_RIGHT:
       plan_p->variable_cpu_cost += outer_build_cpu_cost;
       plan_p->variable_io_cost += outer_build_io_cost;
+      plan_p->parallel_driven = outer_build_parallel;
       break;
 
     case JOIN_INNER:
@@ -4644,16 +5341,19 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 	  /* semi/anti always builds the inner side (see hjoin_init_context ()) */
 	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
 	  plan_p->variable_io_cost += inner_build_io_cost;
+	  plan_p->parallel_driven = inner_build_parallel;
 	}
       else if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
 	{
 	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
 	  plan_p->variable_io_cost += inner_build_io_cost;
+	  plan_p->parallel_driven = inner_build_parallel;
 	}
       else
 	{
 	  plan_p->variable_cpu_cost += outer_build_cpu_cost;
 	  plan_p->variable_io_cost += outer_build_io_cost;
+	  plan_p->parallel_driven = outer_build_parallel;
 	}
       break;
 
@@ -4694,13 +5394,13 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
     {
     case JOIN_INNER:
       {
-	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
-	if (sa == PT_JOIN_SEMI)
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
 	  {
 	    fputs (" (semi join)", f);
 	    break;
 	  }
-	if (sa == PT_JOIN_ANTI)
+	if (semi_anti == PT_JOIN_ANTI)
 	  {
 	    fputs (" (anti join)", f);
 	    break;
@@ -4743,8 +5443,10 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
 
-  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "inner: ");
+  qo_plan_fprint_internal (plan->plan_un.join.outer, f, howfar, "outer: ",
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.outer));
+  qo_plan_fprint_internal (plan->plan_un.join.inner, f, howfar, "inner: ",
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.inner));
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -4889,7 +5591,7 @@ qo_follow_cost (QO_PLAN * planp)
        */
       fetch_ios = cardinality;
     }
-  else if (prm_get_integer_value (PRM_ID_PB_NBUFFERS) >= target_pages)
+  else if (QO_EFFECTIVE_CACHE_PAGES >= target_pages)
     {
       /* We have more pointers to follow than pages in the target, but fewer target pages than buffer pages.  Assume
        * that the page buffering will limit the number of of page fetches to the number of target pages.
@@ -4898,7 +5600,7 @@ qo_follow_cost (QO_PLAN * planp)
     }
   else
     {
-      fetch_ios = cardinality * (1.0 - ((double) prm_get_integer_value (PRM_ID_PB_NBUFFERS)) / target_pages);
+      fetch_ios = cardinality * (1.0 - QO_EFFECTIVE_CACHE_PAGES / target_pages);
     }
 
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
@@ -5121,6 +5823,51 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p, QO_PLAN * sort_plan_p)
 }
 
 /*
+ * qo_plan_top_scan () - the scan plan under the top-level sort plans of a single class plan
+ *   return: the scan plan, or NULL if the plan is not a top-level plan over a scan
+ *   plan(in):
+ */
+static QO_PLAN *
+qo_plan_top_scan (QO_PLAN * plan)
+{
+  if (plan == NULL || !plan->top_rooted)
+    {
+      return NULL;
+    }
+
+  while (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.sort_type != SORT_TEMP)
+    {
+      plan = plan->plan_un.sort.subplan;
+    }
+
+  return (plan->plan_type == QO_PLANTYPE_SCAN) ? plan : NULL;
+}
+
+/*
+ * qo_analytic_sort_cost () - the cost of the analytic sort that a sequential scan leaves to the analytic evaluation
+ *			      and that a QO_SCANMETHOD_INDEX_ANALYTIC_SCAN plan saves
+ *   return: cost of sorting the rows of the scan
+ *   plan(in): the scan plan
+ *
+ * Note: It is what qo_sort_cost () adds for a top-level (unordered) ORDER BY sort plan over the scan, so the analytic
+ *   sort skip is weighed the same way as the ORDER BY skip.
+ */
+static double
+qo_analytic_sort_cost (QO_PLAN * plan)
+{
+  double objects, pages;
+
+  objects = (plan->info)->cardinality;
+  pages = objects * (double) (plan->info)->projected_size / (double) IO_PAGESIZE;
+  if (pages < 1.0)
+    {
+      pages = 1.0;
+    }
+
+  return TEMP_SETUP_COST + objects * (double) QO_CPU_WEIGHT + pages * QO_COST_SEQ_PAGE;
+}
+
+/*
  * qo_plan_cmp () -
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
@@ -5157,6 +5904,26 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* Check if RBO is needed */
   ta = af + aa;
   tb = bf + ba;
+
+  /* CBRD-27469: a sequential scan leaves the analytic sort to the analytic evaluation, which the analytic index scan
+   * skips; add that sort to the sequential scan before comparing the two. */
+  {
+    QO_PLAN *a_scan = qo_plan_top_scan (a);
+    QO_PLAN *b_scan = qo_plan_top_scan (b);
+
+    if (a_scan != NULL && b_scan != NULL)
+      {
+	if (qo_is_iscan_from_analytic (a_scan) && qo_is_seq_scan (b_scan))
+	  {
+	    tb += qo_analytic_sort_cost (b_scan);
+	  }
+	else if (qo_is_iscan_from_analytic (b_scan) && qo_is_seq_scan (a_scan))
+	  {
+	    ta += qo_analytic_sort_cost (a_scan);
+	  }
+      }
+  }
+
   if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
       if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_LIMIT_RATIO <= tb))
@@ -5390,12 +6157,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* check index scan */
-      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a)) && qo_is_seq_scan (b))
+      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a) || qo_is_iscan_from_analytic (a)) && qo_is_seq_scan (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b)) && qo_is_seq_scan (a))
+      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b) || qo_is_iscan_from_analytic (b)) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -6025,6 +6792,61 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 }
 
 /*
+ * qo_plan_runs_parallel () - was this join costed as run in parallel (CBRD-27474)
+ *   return: true for a parallel-driven nested loop or a parallel hash join
+ *   plan(in):
+ */
+static bool
+qo_plan_runs_parallel (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN)
+    {
+      return false;
+    }
+
+  /* a parallel nested loop, or a hash join whose build/probe was costed as parallel */
+  return (QO_IS_NL_JOIN (plan) || plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN) && plan->parallel_driven;
+}
+
+/*
+ * qo_plan_child_parallel_mark () - how the join consuming a child wants it printed
+ *   return: QO_PARALLEL_MARK
+ *   parent(in): a join plan
+ *   child(in): its outer or inner
+ *
+ * Note: a parallel nested loop runs its whole chain -- the driving scan and every nested loop
+ *	 above it -- in each worker, so the block is marked once, at its top. A hash join is
+ *	 decided on its own (also when it drives a block), and a scan feeding a hash
+ *	 join is a parallel unit of its own; a scan plan keeps its serial cost and may serve
+ *	 several joins, so that marking is decided here, by the consumer.
+ */
+static QO_PARALLEL_MARK
+qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child)
+{
+  if (child == NULL)
+    {
+      return QO_PARALLEL_MARK_NONE;
+    }
+
+  if (QO_IS_NL_JOIN (parent))
+    {
+      if (parent->parallel_driven && child == parent->plan_un.join.outer
+	  && (child->plan_type == QO_PLANTYPE_SCAN || (child->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (child))))
+	{
+	  return QO_PARALLEL_MARK_IN_BLOCK;
+	}
+      return QO_PARALLEL_MARK_NONE;
+    }
+
+  if (child->plan_type == QO_PLANTYPE_SCAN && qo_join_input_factor (child, qo_parallel_cost_divisor (parent)) < 1.0)
+    {
+      return QO_PARALLEL_MARK_SCAN;
+    }
+
+  return QO_PARALLEL_MARK_NONE;
+}
+
+/*
  * qo_plan_fprint () -
  *   return:
  *   plan(in):
@@ -6034,6 +6856,25 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
  */
 static void
 qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
+{
+  qo_plan_fprint_internal (plan, f, howfar, title, QO_PARALLEL_MARK_NONE);
+}
+
+/*
+ * qo_plan_fprint_internal () - qo_plan_fprint () for a node whose parallel scan the parent decided
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ *   title(in):
+ *   mark(in): how the parent join wants this node printed (qo_plan_child_parallel_mark ())
+ *
+ * Note: a parallel unit -- the top nested loop of a parallel block, a parallel hash join, a
+ *	 parallel input scan of a hash join -- is printed as "parallel <name>"; an input
+ *	 scan with the cost the consuming join charged for it.
+ */
+static void
+qo_plan_fprint_internal (QO_PLAN * plan, FILE * f, int howfar, const char *title, QO_PARALLEL_MARK mark)
 {
   if (howfar < 0)
     {
@@ -6053,6 +6894,10 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
       fprintf (f, TITLE_FMT, title);
     }
 
+  if (mark == QO_PARALLEL_MARK_SCAN || (mark == QO_PARALLEL_MARK_NONE && qo_plan_runs_parallel (plan)))
+    {
+      fputs ("parallel ", f);
+    }
   fputs ((plan->vtbl)->plan_string, f);
 
   {
@@ -6068,7 +6913,7 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
   qo_plan_print_sarged_terms (plan, f, howfar);
   qo_plan_print_subqueries (plan, f, howfar);
   qo_plan_print_sort_spec (plan, f, howfar);
-  qo_plan_print_costs (plan, f, howfar);
+  qo_plan_print_costs (plan, f, howfar, mark == QO_PARALLEL_MARK_SCAN);
   qo_plan_print_analytic_eval (plan, f, howfar);
 }
 
@@ -6537,7 +7382,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 
   for (i = 0; i < planvec->nplans; i++)
     {
-      cmp = qo_plan_cmp (planvec->plan[i], plan);
+      cmp = qo_plan_cmp_parallel_drive (planvec->plan[i], plan, qo_plan_cmp (planvec->plan[i], plan));
 
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_GT)
@@ -6737,6 +7582,84 @@ qo_cmp_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 }
 
 /*
+ * qo_plan_cmp_parallel_drive () - keep a plan that can drive a parallel nested-loop block
+ *   return: cmp, or PLAN_COMP_UNK when the cheaper plan cannot drive one and the other can
+ *   a(in), b(in): two plans of the same info
+ *   cmp(in): qo_plan_cmp (a, b)
+ *
+ * Note: a nested loop whose outer drives in parallel has all its inner probes discounted
+ *	 (qo_nljoin_cost ()), so whether a plan can drive is worth something only to the joins
+ *	 built on it later, like an order. A cheaper plan that cannot drive therefore does not
+ *	 replace a dearer one that can: both stay in the planvec, and qo_examine_nl_join () also
+ *	 tries the latter as an outer (qo_find_best_parallel_driving_plan_on_info ()). The best
+ *	 plan of the info is still the cheapest (qo_find_best_plan_on_planvec ()).
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_plan_cmp_parallel_drive (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp)
+{
+  bool a_drives, b_drives;
+  double a_cost, b_cost;
+
+  if (cmp != PLAN_COMP_LT && cmp != PLAN_COMP_GT)
+    {
+      return cmp;
+    }
+
+  a_drives = qo_plan_drives_parallel (a);
+  b_drives = qo_plan_drives_parallel (b);
+  if (a_drives == b_drives || qo_parallel_cost_divisor (a) <= 1.0)
+    {
+      return cmp;
+    }
+
+  /* only a decision taken on cost: qo_plan_cmp () also prefers a dearer plan on other grounds
+   * (an order-by skip under a LIMIT, a covering index), and keeping the cheaper one beside it
+   * would let qo_find_best_plan_on_planvec (), which compares cost alone, overturn that */
+  a_cost = a->fixed_cpu_cost + a->fixed_io_cost + a->variable_cpu_cost + a->variable_io_cost;
+  b_cost = b->fixed_cpu_cost + b->fixed_io_cost + b->variable_cpu_cost + b->variable_io_cost;
+  if ((cmp == PLAN_COMP_LT) ? (a_cost >= b_cost) : (b_cost >= a_cost))
+    {
+      return cmp;
+    }
+
+  /* LT: a is the cheaper */
+  return ((cmp == PLAN_COMP_LT) ? a_drives : b_drives) ? cmp : PLAN_COMP_UNK;
+}
+
+/*
+ * qo_find_best_parallel_driving_plan_on_info () - the cheapest unordered plan that can drive
+ *						   a parallel nested-loop block
+ *   return: the plan, or NULL when none of the kept plans can
+ *   info(in):
+ */
+static QO_PLAN *
+qo_find_best_parallel_driving_plan_on_info (QO_INFO * info)
+{
+  QO_PLANVEC *pv = &info->best_no_order;
+  QO_PLAN *best_plan = NULL;
+  double best_cost = 0.0, cost;
+  int i;
+
+  for (i = 0; i < pv->nplans; i++)
+    {
+      if (!qo_plan_drives_parallel (pv->plan[i]))
+	{
+	  continue;
+	}
+
+      cost = pv->plan[i]->fixed_cpu_cost + pv->plan[i]->fixed_io_cost + pv->plan[i]->variable_cpu_cost
+	+ pv->plan[i]->variable_io_cost;
+      if (best_plan == NULL || cost < best_cost)
+	{
+	  best_plan = pv->plan[i];
+	  best_cost = cost;
+	}
+    }
+
+  return best_plan;
+}
+
+/*
  * qo_find_best_plan_on_planvec () -
  *   return:
  *   planvec(in):
@@ -6846,6 +7769,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
   info->hit_prob = 1.0;
+  info->is_distinct = false;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -7153,6 +8077,7 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer, QO_INFO * info, JOIN_TY
   temp->analytic_eval_list = NULL;
   temp->plan_type = QO_PLANTYPE_JOIN;
   temp->plan_un.join.join_type = join_type;	/* set nl-join type */
+  temp->plan_un.join.join_method = QO_JOINMETHOD_NL_JOIN;
   temp->plan_un.join.outer = outer;	/* set outer */
 
   temp->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
@@ -7213,7 +8138,17 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	{
 	  QO_PLAN *planp;
 
-	  planp = qo_sort_new (qo_find_best_plan_on_planvec (&info->best_no_order, n), order, SORT_TEMP);
+	  planp = qo_find_best_plan_on_planvec (&info->best_no_order, n);
+	  if (info->is_distinct && planp != NULL)
+	    {
+	      /* qo_sort_new () would skip the DISTINCT plan below it and the removal with it */
+	      assert (planp->plan_type == QO_PLANTYPE_SORT && planp->plan_un.sort.sort_type == SORT_DISTINCT);
+	      planp = qo_distinct_new (planp->plan_un.sort.subplan, info, order);
+	    }
+	  else
+	    {
+	      planp = qo_sort_new (planp, order, SORT_TEMP);
+	    }
 
 	  qo_check_planvec (&info->planvec[order_idx], planp);
 	}
@@ -7262,12 +8197,12 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
     }
 
-  /* inner is single class spec; USE_MERGE does not apply to a semi/anti inner (no semi/anti merge join) */
+  /* inner is single class spec */
   if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
     {
       /* join hint: force idx-join */
     }
-  else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
     {
       /* join hint: force merge-join; skip idx-join */
       goto exit;
@@ -7301,6 +8236,262 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
 exit:
 
   return n;
+}
+
+/*
+ * qo_prepare_distinct_info () - for every SEMI JOIN inner that may be joined the other way round, build the info
+ *      and the plan that read it once with the duplicates removed, and hang them on the planner
+ *   return: nothing
+ *   planner(in):
+ *
+ * Note: a SEMI JOIN returns an outer row once however many inner rows match it, which is why its inner is
+ *       searched once per outer row and is kept behind the side it is joined to (QO_NODE_SEMI_ANTI_DEP_SET).  With
+ *       one row left per distinct join value that reason is gone -- an ordinary join over those rows returns
+ *       the same result -- and the inner may come first.  The join order search lets such an inner ahead of
+ *       the side it depends on in that form only (qo_get_distinct_info_ahead ()); this is where the form is made
+ *       ready, once, before the search starts.  It wins when reading the inner out once is cheaper than
+ *       searching it for every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
+ *
+ *       merge join a SEMI JOIN inner in that form only and never an ANTI JOIN inner, so USE_MERGE on a SEMI/ANTI JOIN
+ *       inner left without it is dropped here: it would leave the node no plan.  USE_HASH stays: a hash join takes a
+ *       SEMI/ANTI JOIN inner as it is.
+ */
+static void
+qo_prepare_distinct_info (QO_PLANNER * planner)
+{
+  QO_ENV *env = planner->env;
+  QO_NODE *node;
+  QO_NODE_INDEX *node_index;
+  QO_INFO *node_info, *distinct_info;
+  QO_PLAN *node_plan, *distinct_plan;
+  QO_TERM *term;
+  QO_SEGMENT *seg;
+  BITSET_ITERATOR si;
+  double distinct_rows;
+  bool ndv_known, eligible;
+  int i, j, t, sg;
+
+  if (planner->distinct_info == NULL)
+    {
+      return;
+    }
+
+  /* A hint that fixes the join order rules the other way round out -- the same thing qo_examine_nl_join () and
+   * qo_examine_idx_join () do where they swap the two sides.  ORDERED and LEADING are read from the statement
+   * because they hold for the whole query; only the hints that can differ per table are stamped on the node
+   * (add_hint ()). */
+  if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
+    {
+      goto exit;
+    }
+
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node_index = QO_NODE_INDEXES (&planner->node[i]);
+      for (j = 0; node_index != NULL && j < QO_NI_N (node_index); j++)
+	{
+	  if (QO_NI_ENTRY (node_index, j)->head->key_limit != NULL)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node = &planner->node[i];
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI)
+	{
+	  continue;
+	}
+
+      /* Every condition joining this node to another must be an equality between plain columns, or there is no
+       * key to remove the duplicates on.  The distinct-value counts of this node's side of those equalities say
+       * how many rows are left; where they are missing, charge the file with every row the node holds, which is
+       * the most the removal can leave and keeps an inner that is small or empty worth reading out. */
+      distinct_rows = 1.0;
+      ndv_known = true;
+      eligible = true;
+      for (t = 0; t < (signed) planner->T && eligible; t++)
+	{
+	  bool has_own_seg = false;
+
+	  term = &planner->term[t];
+	  if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node))
+	      || bitset_cardinality (&(QO_TERM_NODES (term))) < 2)
+	    {
+	      continue;		/* a condition on this node alone stays on its scan */
+	    }
+	  /* qo_is_equi_join_term () wants a plain column on both sides.  QO_TERM_MERGEABLE_EDGE is not enough: it
+	   * is set for any '=' (expr_is_mergable ()), so UPPER (t2.name) = UPPER (t1.name) carries it too, while
+	   * the file removes duplicates by the column t2.name itself -- 'abc' and 'ABC' would both stay and an
+	   * outer row would match twice.  Only a column equated as it is pins the file to one row per outer row, and
+	   * only when both sides are of one type: compared in a wider type (INT as FLOAT) two of its values can be
+	   * equal. */
+	  if (QO_TERM_CLASS (term) != QO_TC_JOIN || !qo_is_equi_join_term (term)
+	      || !pt_check_same_datatype (QO_ENV_PARSER (env), QO_TERM_PT_EXPR (term)->info.expr.arg1,
+					  QO_TERM_PT_EXPR (term)->info.expr.arg2))
+	    {
+	      eligible = false;
+	      break;
+	    }
+
+	  for (sg = bitset_iterate (&(QO_TERM_SEGS (term)), &si); sg != -1; sg = bitset_next_member (&si))
+	    {
+	      seg = QO_ENV_SEG (env, sg);
+	      if (QO_NODE_IDX (QO_SEG_HEAD (seg)) != QO_NODE_IDX (node))
+		{
+		  continue;
+		}
+	      if (QO_SEG_INFO (seg) == NULL || QO_SEG_INFO (seg)->ndv <= 0)
+		{
+		  ndv_known = false;
+		}
+	      else
+		{
+		  distinct_rows *= (double) QO_SEG_INFO (seg)->ndv;
+		}
+	      has_own_seg = true;
+	    }
+	  if (!has_own_seg)
+	    {
+	      eligible = false;
+	    }
+	}
+      if (!eligible)
+	{
+	  continue;
+	}
+
+      node_info = planner->node_info[QO_NODE_IDX (node)];
+      node_plan = qo_find_best_plan_on_info (node_info, QO_UNORDERED, 1.0);
+      if (node_plan == NULL)
+	{
+	  continue;
+	}
+
+      /* the columns are taken as independent, which can put the product above the rows there are to draw from */
+      distinct_rows = MAX (1.0, ndv_known ? MIN (distinct_rows, node_info->cardinality) : node_info->cardinality);
+
+      /* This side read with the duplicates removed holds fewer rows than the side itself, so it needs an info of
+       * its own to say so and to own the plan that reads it that way.  node_info keeps the rows and the plans of
+       * the side joined as a SEMI JOIN inner in the usual way, which every other use of the node still needs. */
+      distinct_info =
+	qo_alloc_info (planner, &(node_info->nodes), &(node_info->terms), &(node_info->eqclasses), distinct_rows,
+		       node_info->total_rows);
+      if (distinct_info == NULL)
+	{
+	  continue;
+	}
+
+      distinct_plan = qo_distinct_new (node_plan, distinct_info, QO_UNORDERED);
+      if (distinct_plan == NULL)
+	{
+	  continue;
+	}
+      if (qo_check_planvec (&distinct_info->best_no_order, distinct_plan) != PLAN_COMP_GT)
+	{
+	  qo_plan_release (distinct_plan);
+	  continue;
+	}
+
+      distinct_info->is_distinct = true;
+      planner->distinct_info[QO_NODE_IDX (node)] = distinct_info;
+    }
+
+exit:
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node = &planner->node[i];
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (node) && planner->distinct_info[i] == NULL)
+	{
+	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) & ~PT_HINT_USE_MERGE);
+	}
+    }
+}
+
+/*
+ * qo_get_distinct_info_ahead () - get a DISTINCT input for a SEMI node placed before its dependencies
+ *   return: the node's DISTINCT info if needed and available, NULL otherwise
+ *   planner(in):
+ *   node(in): the node about to be placed
+ *   visited_nodes(in): the nodes already placed before it
+ *
+ * Note: only a SEMI node with a DISTINCT alternative may precede its SEMI/ANTI dependencies, and only after all
+ *       outer join nodes are placed and when no join method hint names the node. The other dependencies are checked by
+ *       qo_node_can_be_placed (). When the SEMI/ANTI dependencies are already satisfied, qo_get_node_info ()
+ *       returns node_info to retain ordinary SEMI execution.
+ */
+static QO_INFO *
+qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+{
+  QO_NODE *outer_node;
+  int i;
+
+  if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL
+      || bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
+    {
+      return NULL;
+    }
+
+  /* a join method hint on the node says how to join it as the inner, which it is not when placed first */
+  if (QO_NODE_HINT (node)
+      & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH | PT_HINT_NO_USE_HASH))
+    {
+      return NULL;
+    }
+
+  /* an outer join node still to be placed has to come first: an ON term reading it, directly or through an INNER
+   * JOIN node this node depends on, would be evaluated as that outer join's ON and keep its NULL-filled rows */
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      outer_node = &planner->node[i];
+      if (!BITSET_MEMBER (*visited_nodes, i) && QO_NODE_IS_OUTER_JOIN (outer_node))
+	{
+	  return NULL;
+	}
+    }
+
+  return planner->distinct_info[QO_NODE_IDX (node)];
+}
+
+/*
+ * qo_node_can_be_placed () - can the node be joined next to the nodes placed so far?
+ *   return: bool
+ *   planner(in):
+ *   node(in): the node about to be placed
+ *   visited_nodes(in): the nodes already placed; the node itself may be among them, as no node depends on itself
+ *
+ * Note: a node comes after the nodes it depends on (QO_NODE_DEP_SET), after the previous nodes of the outer joins
+ *       it takes part in (QO_NODE_OUTER_DEP_SET) and after the nodes its SEMI/ANTI ON reads
+ *       (QO_NODE_SEMI_ANTI_DEP_SET). Only the last is relaxed, for a SEMI node read with the duplicates removed.
+ */
+static bool
+qo_node_can_be_placed (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+{
+  if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node)))
+      || !bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
+    {
+      return false;
+    }
+
+  return bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
+    || qo_get_distinct_info_ahead (planner, node, visited_nodes) != NULL;
+}
+
+/*
+ * qo_get_node_info () - get the info a node is joined with at its place in the join order
+ *   return: the node's DISTINCT info when placed before its SEMI/ANTI dependencies, its node_info otherwise
+ *   planner(in):
+ *   node(in): the node about to be placed, or placed first
+ *   visited_nodes(in): the nodes already placed
+ */
+static QO_INFO *
+qo_get_node_info (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+{
+  QO_INFO *info = qo_get_distinct_info_ahead (planner, node, visited_nodes);
+
+  return (info != NULL) ? info : planner->node_info[QO_NODE_IDX (node)];
 }
 
 /*
@@ -7395,14 +8586,11 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
     {
       /* At here, inner is single class spec */
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
-
-      /* USE_MERGE does not apply to a semi/anti inner (no semi/anti merge join) */
       if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
 	{
 	  /* join hint: force nl-join */
 	}
-      else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
-	       || ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node)))
+      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
 	{
 	  /* join hint: force idx-join, merge-join; skip nl-join */
 	  goto exit;
@@ -7471,6 +8659,26 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, outer_plan, inner_plan, nl_join_terms,
 					duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
+
+  /* the cheapest outer may not drive a parallel block while a dearer one kept beside it does
+   * (qo_plan_cmp_parallel_drive ()): try that one too, its inner probes being discounted */
+  {
+    QO_PLAN *par_outer_plan = qo_find_best_parallel_driving_plan_on_info (outer_plan->info);
+
+    if (par_outer_plan != NULL && par_outer_plan != outer_plan)
+      {
+	inner_plan =
+	  qo_find_best_nljoin_inner_plan_on_info (par_outer_plan, inner_plan->info, join_type, idx_join_plan_n);
+	if (inner_plan != NULL)
+	  {
+	    n +=
+	      qo_check_plan_on_info (info,
+				     qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, par_outer_plan, inner_plan,
+						  nl_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+						  hash_terms));
+	  }
+      }
+  }
 
 exit:
 
@@ -7772,8 +8980,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	{
 	  /* join hint: force hash-join */
 	}
-      else if ((QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX))
-	       || ((QO_NODE_HINT (hint_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (hint_node)))
+      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
 	{
 	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
 	  goto exit;
@@ -7878,7 +9085,7 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   QO_NODE_INDEX *node_indexp;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
-  QO_PLAN *outer_plan;
+  QO_PLAN *outer_plan, *par_outer_plan;
   int i, n = 0;
   BITSET_ITERATOR iter;
   int t;
@@ -7891,6 +9098,14 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   if (outer_plan == NULL)
     {
       return 0;
+    }
+
+  /* also join from the cheapest outer that drives a parallel block, when that is not the best
+   * (qo_plan_cmp_parallel_drive ()): its index probes are discounted */
+  par_outer_plan = qo_find_best_parallel_driving_plan_on_info (outer);
+  if (par_outer_plan == outer_plan)
+    {
+      par_outer_plan = NULL;
     }
 
 #if 0				/* JOIN_FOLLOW_RESTRICTION */
@@ -7971,6 +9186,12 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 	  n +=
 	    qo_generate_join_index_scan (info, join_type, outer_plan, inner, nodep, ni_entryp, &indexable_terms,
 					 afj_terms, sarged_terms, pinned_subqueries);
+	  if (par_outer_plan != NULL)
+	    {
+	      n +=
+		qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
+					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+	    }
 	}
     }
 
@@ -8004,6 +9225,12 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 		  n +=
 		    qo_generate_join_index_scan (info, join_type, outer_plan, inner, nodep, ni_entryp, &indexable_terms,
 						 afj_terms, sarged_terms, pinned_subqueries);
+		  if (par_outer_plan != NULL)
+		    {
+		      n +=
+			qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
+						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+		    }
 		}
 	    }
 	}
@@ -8229,6 +9456,7 @@ qo_alloc_planner (QO_ENV * env)
     bitset_add (&(planner->all_subqueries), i);
 
   planner->node_info = NULL;
+  planner->distinct_info = NULL;
   planner->join_info = NULL;
   planner->best_info = NULL;
   planner->cp_info = NULL;
@@ -8268,6 +9496,11 @@ qo_planner_free (QO_PLANNER * planner)
   if (planner->node_info)
     {
       free_and_init (planner->node_info);
+    }
+
+  if (planner->distinct_info)
+    {
+      free_and_init (planner->distinct_info);
     }
 
   if (planner->join_info)
@@ -8572,7 +9805,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (bitset_cardinality (visited_nodes) == 1)
     {
       /* current prefix has only one node */
-      head_info = planner->node_info[QO_NODE_IDX (head_node)];
+      head_info = qo_get_node_info (planner, head_node, visited_nodes);
     }
   else
     {
@@ -8586,7 +9819,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     }
 
   /* tail_info points to the node for the single class being added to the prefix */
-  tail_info = planner->node_info[QO_NODE_IDX (tail_node)];
+  tail_info = qo_get_node_info (planner, tail_node, visited_nodes);
 
   /* connect tail_node to the prefix */
   bitset_add (visited_nodes, QO_NODE_IDX (tail_node));
@@ -8983,6 +10216,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       double fk_floor_product;
       double key_factor, key_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
+      bool is_semi_anti;
       BITSET eqclasses;
       BITSET fk_excluded_terms;
       BITSET fk_col_terms;
@@ -8992,6 +10226,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_init (&fk_col_terms, planner->env);
 
       selectivity = 1.0;	/* init */
+      is_semi_anti = join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct;
       fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
       total_rows = head_info->total_rows * tail_info->total_rows;
@@ -9014,7 +10249,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  /* set lower bound of outer join result */
 	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, head_info->cardinality);
 	}
-      else if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+      else if (is_semi_anti)
 	{
 	  /* keep an empty inner from zeroing semi/anti before the reestimate below */
 	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, head_info->cardinality);
@@ -9080,8 +10315,23 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			      continue;
 			    }
 
-			  if (QO_TERM_CLASS (term) != QO_TC_JOIN
-			      || QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
+			  if (QO_TERM_CLASS (term) != QO_TC_JOIN)
+			    {
+			      continue;
+			    }
+
+			  if (fkinfo->col_eqclasses[col] == NULL)
+			    {
+			      /* a SEMI/ANTI equality, kept by qo_match_fk_prefix () */
+			      if (term == fkinfo->col_terms[col])
+				{
+				  bitset_add (&fk_col_terms, i);
+				  found = true;
+				}
+			      continue;
+			    }
+
+			  if (QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
 			    {
 			      continue;
 			    }
@@ -9171,7 +10421,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		      has_ndv =
 			qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
 
-		      if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+		      if (is_semi_anti)
 			{
 			  if (!QO_ON_COND_TERM (term))
 			    {
@@ -9225,13 +10475,17 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			       * decided by whether the outer key is among the inner keys,
 			       * and the other equi-join terms go to on_sel as independent of the key;
 			       * the match is underestimated when a term depends on the key,
-			       * since telling it apart needs multi-column statistics or an FK
-			       *
-			       * TODO: take the terms of one composite PK-FK as one key.
-			       * fk_join_info cannot be reused as is, since it matches the FK columns by eqclass
-			       * and semi/anti equi-join columns stay out of the eqclasses.
+			       * since telling it apart needs multi-column statistics or an FK;
+			       * the columns of a composite FK (fk_excluded_terms) match together and are the key as a whole:
+			       * a pair matches on it with the FK floor (1 / NCARD (pk)), and the outer key is among the inner
+			       * keys at most as often as its least common column
 			       */
-			      if (head_factor <= key_factor)
+			      if (BITSET_MEMBER (fk_excluded_terms, i))
+				{
+				  key_factor = MIN (key_factor, head_factor);
+				  key_sel = fk_floor_product;
+				}
+			      else if (bitset_is_empty (&fk_excluded_terms) && head_factor <= key_factor)
 				{
 				  on_sel *= key_sel;	/* the previous key, 1.0 if none */
 				  key_factor = head_factor;
@@ -9277,7 +10531,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
 	    }
 
-	  if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	  if (is_semi_anti)
 	    {
 	      /* semi/anti returns at most one row per outer row,
 	       * so the estimate uses the probability that an outer row finds a matching inner row, as below
@@ -9396,6 +10650,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   {
     int kept = 0;
     int idx_join_plan_n = 0;
+    QO_INFO *sm_tail_info;
 
     /* for path-term, if join order is correct, we can use follow. */
     if (follow_term && (QO_NODE_IDX (QO_TERM_TAIL (follow_term)) == QO_NODE_IDX (tail_node)))
@@ -9412,8 +10667,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     else
       {
 #if 1				/* CORRELATED_INDEX */
-	/* STEP 5-2: examine idx-join */
-	if (idx_join_cnt)
+	/* STEP 5-2: examine idx-join.  Not for a SEMI JOIN inner added ahead of the side it depends on:
+	 * qo_examine_correlated_index () builds index scans of the node itself, which read it with its
+	 * duplicates, and the only way to read the node in that position is the plan distinct_info holds. */
+	if (idx_join_cnt && !tail_info->is_distinct)
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
@@ -9431,14 +10688,25 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
 			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, &sm_join_terms);
 
+	/* there is no semi/anti merge join: a SEMI JOIN inner is merge joined read with the duplicates removed
+	 * (distinct_info), before or after the side it depends on */
+	sm_tail_info = tail_info;
+	if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
+	  {
+	    sm_tail_info = NULL;
+	    if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI && planner->distinct_info != NULL)
+	      {
+		sm_tail_info = planner->distinct_info[QO_NODE_IDX (tail_node)];
+	      }
+	  }
+
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	/* skip for a semi/anti inner (no semi/anti merge join) */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	if (!bitset_is_empty (&sm_join_terms) && sm_tail_info != NULL)
 	  {
 	    kept +=
-	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
-				     &sarged_terms, &pinned_subqueries);
+	      qo_examine_merge_join (new_info, join_type, head_info, sm_tail_info, &sm_join_terms, &duj_terms,
+				     &afj_terms, &sarged_terms, &pinned_subqueries);
 	  }
 #endif /* MERGE_JOINS */
 
@@ -9512,17 +10780,10 @@ go_ahead_subvisit:
 	  node = QO_ENV_NODE (planner->env, i);
 
 	  /* node dependency check; */
-	  if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node))))
+	  if (!qo_node_can_be_placed (planner, node, visited_nodes))
 	    {
 	      /* node represents dependent tables, so there is no way this combination can work in isolation.  Give up
 	       * so we can try some other combinations.
-	       */
-	      continue;
-	    }
-	  if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
-	    {
-	      /* All previous nodes participating in outer join spec should be joined before. QO_NODE_OUTER_DEP_SET()
-	       * represents all previous nodes which are dependents on the node.
 	       */
 	      continue;
 	    }
@@ -9708,17 +10969,10 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       head_node = QO_ENV_NODE (planner->env, i);
 
       /* head node dependency check; */
-      if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (head_node))))
+      if (!qo_node_can_be_placed (planner, head_node, visited_nodes))
 	{
 	  /* head node represents dependent tables, so there is no way this combination can work in isolation.  Give up
 	   * so we can try some other combinations.
-	   */
-	  continue;
-	}
-      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (head_node))))
-	{
-	  /* All previous nodes participating in outer join spec should be joined before. QO_NODE_OUTER_DEP_SET()
-	   * represents all previous nodes which are dependents on the node.
 	   */
 	  continue;
 	}
@@ -9726,7 +10980,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       if (bitset_is_empty (visited_nodes))
 	{			/* not found outermost nodes */
 
-	  head_info = planner->node_info[QO_NODE_IDX (head_node)];
+	  head_info = qo_get_node_info (planner, head_node, visited_nodes);
 
 	  /* init */
 	  bitset_add (visited_nodes, QO_NODE_IDX (head_node));
@@ -9742,11 +10996,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	      tail_node = QO_ENV_NODE (planner->env, j);
 
 	      /* tail node dependency check; */
-	      if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (tail_node))))
-		{
-		  continue;
-		}
-	      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (tail_node))))
+	      if (!qo_node_can_be_placed (planner, tail_node, visited_nodes))
 		{
 		  continue;
 		}
@@ -10490,6 +11740,17 @@ qo_search_planner (QO_PLANNER * planner)
 	  plan = NULL;
 	  goto end;
 	}
+
+      /* filled in before the search for the SEMI JOIN inners that may be joined the other way round
+       * (qo_prepare_distinct_info ()) */
+      planner->distinct_info = (QO_INFO **) malloc (size);
+      if (planner->distinct_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  plan = NULL;
+	  goto end;
+	}
+      memset (planner->distinct_info, 0, size);
     }
 
   for (i = 0; i < (signed) planner->N; ++i)
@@ -10670,6 +11931,17 @@ qo_search_planner (QO_PLANNER * planner)
 								  QO_SCANMETHOD_INDEX_ORDERBY_SCAN, &seg_terms, NULL));
 		    }
 
+		  /* CBRD-27469: a full index scan that supplies the rows in the PARTITION BY + ORDER BY order of an
+		   * analytic function lets the analytic evaluation skip its sort; the sort it saves is charged to
+		   * the sequential scan in qo_plan_cmp (). */
+		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry))
+		    {
+		      n =
+			qo_check_plan_on_info (info,
+					       qo_index_scan_new (info, node, ni_entry,
+								  QO_SCANMETHOD_INDEX_ANALYTIC_SCAN, &seg_terms, NULL));
+		    }
+
 		  /* CBRD-26906: an interesting-order (group-by / order-by skip) index
 		   * scan also means the hinted index is usable, so a positive index
 		   * hint that only provides ordering (no key-range) still suppresses
@@ -10711,6 +11983,9 @@ qo_search_planner (QO_PLANNER * planner)
 	    }
 	}
     }
+
+  /* a SEMI JOIN inner that may be joined the other way round needs its plan ready before the search starts */
+  qo_prepare_distinct_info (planner);
 
   /*
    * Now remaining_subqueries should contain only entries that depend
@@ -12360,6 +13635,83 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
     }
 }
 
+static UINT64
+qo_plan_sig_mix (UINT64 sig, UINT64 v)
+{
+  sig ^= v + 0x9e3779b97f4a7c15ULL + (sig << 6) + (sig >> 2);
+  return sig;
+}
+
+/*
+ * qo_plan_signature () - fold the shape of a plan into a running signature
+ *   return   : the new signature
+ *   plan (in): plan to sign (NULL signs as "no plan")
+ *   sig (in) : signature so far (the plans of one compile are folded into one)
+ *
+ * The shape is what the plan does: plan types, the join order, join and scan methods and the
+ * index each scan uses, plus the plan-level optimizations. Costs and row estimates are left out,
+ * so two compiles of one query that chose the same plan under different values sign alike.
+ */
+UINT64
+qo_plan_signature (QO_PLAN * plan, UINT64 sig)
+{
+  if (plan == NULL)
+    {
+      return qo_plan_sig_mix (sig, 0x6e6f706cULL);
+    }
+
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_type + 1);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->parallel_opt_use);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->multi_range_opt_use);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->skip_orderby_opt);
+  sig = qo_plan_sig_mix (sig, (UINT64) ((plan->use_iscan_descending ? 1 : 0) | (plan->has_sort_limit ? 2 : 0)));
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.scan.scan_method);
+      sig = qo_plan_sig_mix (sig, (UINT64) (plan->plan_un.scan.node ? QO_NODE_IDX (plan->plan_un.scan.node) : -1));
+      sig = qo_plan_sig_mix (sig, (UINT64) ((plan->plan_un.scan.index_equi ? 1 : 0)
+					    | (plan->plan_un.scan.index_cover ? 2 : 0)
+					    | (plan->plan_un.scan.index_iss ? 4 : 0)
+					    | (plan->plan_un.scan.index_loose ? 8 : 0)));
+      if (plan->plan_un.scan.index != NULL && plan->plan_un.scan.index->head != NULL
+	  && plan->plan_un.scan.index->head->constraints != NULL
+	  && plan->plan_un.scan.index->head->constraints->name != NULL)
+	{
+	  const char *c;
+
+	  for (c = plan->plan_un.scan.index->head->constraints->name; *c != '\0'; c++)
+	    {
+	      sig = qo_plan_sig_mix (sig, (UINT64) (unsigned char) *c);
+	    }
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.sort.sort_type);
+      sig = qo_plan_signature (plan->plan_un.sort.subplan, sig);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.join.join_type);
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.join.join_method);
+      sig = qo_plan_signature (plan->plan_un.join.outer, sig);
+      sig = qo_plan_signature (plan->plan_un.join.inner, sig);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      sig = qo_plan_signature (plan->plan_un.follow.head, sig);
+      sig = qo_plan_sig_mix (sig, (UINT64) (plan->plan_un.follow.path ? QO_TERM_IDX (plan->plan_un.follow.path) : -1));
+      break;
+
+    default:
+      break;
+    }
+
+  return sig;
+}
+
 /*
  * qo_between_range_histogram_selectivity () - selectivity of one between-range operator from
  *   the column histogram. Shared by the RANGE path (attr RANGE {...}) and the BETWEEN path
@@ -12380,7 +13732,7 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
  * arg2_val (in)   : upper bound value, NULL for one-sided operators
  * out_sel (out)   : selectivity in [0,1]
  */
-static bool
+bool
 qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
 					DB_VALUE * arg2_val, double *out_sel)
 {
@@ -13226,6 +14578,24 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 }
 
 /*
+ * qo_is_iscan_from_analytic () - is the plan a full index scan generated to supply rows in the sort order of an
+ *				  analytic function (PARTITION BY + ORDER BY of its OVER clause)
+ *   return: true/false
+ *   plan(in):
+ */
+bool
+qo_is_iscan_from_analytic (QO_PLAN * plan)
+{
+  if (plan && plan->plan_type == QO_PLANTYPE_SCAN
+      && plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ANALYTIC_SCAN)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * qo_validate_index_term_notnull ()
  *  env(in): pointer to the optimizer environment
  *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
@@ -13472,18 +14842,10 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 static int
 qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type)
 {
-  QO_INDEX_ENTRY *index_entryp;
-  int i, ncols;
-  bool is_func_leading;
-  SM_ATTRIBUTE *attr;
-  QO_SEGMENT *segp;
-
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
   assert (ni_entryp->head->class_ != NULL);
   assert (sort_type == SORT_GROUPBY || sort_type == SORT_ORDERBY);
-
-  index_entryp = ni_entryp->head;
 
   if (sort_type == SORT_GROUPBY)
     {
@@ -13499,6 +14861,27 @@ qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_
 	  return 0;
 	}
     }
+
+  return qo_index_holds_all_rows (env, ni_entryp) ? 1 : 0;
+}
+
+/*
+ * qo_index_holds_all_rows () - checks whether every row of the class has a key in the index, so that a full
+ *				index scan returns all the rows a sequential scan would
+ *  return: true if no row can be left out of the index by an all-null key
+ *  env(in): pointer to the optimizer environment
+ *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ */
+static bool
+qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  QO_INDEX_ENTRY *index_entryp;
+  int i, ncols;
+  bool is_func_leading;
+  SM_ATTRIBUTE *attr;
+  QO_SEGMENT *segp;
+
+  index_entryp = ni_entryp->head;
 
   assert (index_entryp->constraints != NULL);
 
@@ -13521,7 +14904,7 @@ qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_
 	  attr = index_entryp->constraints->attributes[i];
 	  if (attr != NULL && (attr->flags & SM_ATTFLAG_NON_NULL))
 	    {
-	      return 1;
+	      return true;
 	    }
 	}
 
@@ -13532,17 +14915,214 @@ qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_
 
       if (qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[i]))
 	{
-	  return 1;
+	  return true;
 	}
 
       segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
       if (segp != NULL && qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
 	{
-	  return 1;
+	  return true;
 	}
     }
 
-  return 0;
+  return false;
+}
+
+typedef struct qo_analytic_cover_arg QO_ANALYTIC_COVER_ARG;
+struct qo_analytic_cover_arg
+{
+  QO_ENV *env;
+  QO_INDEX_ENTRY *index_entryp;
+  PT_NODE *select_list;
+  bool is_desc_scan;		/* USE_DESC_IDX: the index is scanned backward */
+  bool has_covered;		/* some sort list is a prefix of the index key order */
+  bool has_uncovered;		/* some non-empty sort list is not a prefix of the index key order */
+};
+
+/*
+ * qo_index_covers_analytic_sort_pre () - parser_walk_tree pre-callback that measures how much of the sort list of
+ *					  the visited analytic function the index key order covers
+ *   return: tree
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): QO_ANALYTIC_COVER_ARG *
+ *   continue_walk(in/out):
+ *
+ * Note: The sort list is PARTITION BY followed by ORDER BY, matched with the rules of
+ *   pt_count_analytic_covered_sort_list (), which decides the sort skip at XASL generation.
+ */
+static PT_NODE *
+qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  QO_ANALYTIC_COVER_ARG *cover = (QO_ANALYTIC_COVER_ARG *) arg;
+  QO_INDEX_ENTRY *index_entryp = cover->index_entryp;
+  QO_SEGMENT *seg;
+  PT_NODE *spec_lists[2], *spec, *expr;
+  int list_idx, seg_idx, pos, sort_len, covered_len;
+  bool is_desc, is_covering;
+
+  if (PT_IS_QUERY (tree))
+    {
+      /* analytic functions of a subquery do not see the rows of this scan */
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+
+  if (!PT_IS_ANALYTIC_NODE (tree))
+    {
+      return tree;
+    }
+
+  *continue_walk = PT_LIST_WALK;
+
+  spec_lists[0] = tree->info.function.analytic.partition_by;
+  spec_lists[1] = tree->info.function.analytic.order_by;
+
+  sort_len = covered_len = 0;
+  is_covering = true;
+  for (list_idx = 0; list_idx < 2; list_idx++)
+    {
+      for (spec = spec_lists[list_idx]; spec != NULL; spec = spec->next)
+	{
+	  sort_len++;
+	  if (!is_covering)
+	    {
+	      continue;
+	    }
+
+	  is_covering = false;
+	  if (spec->node_type != PT_SORT_SPEC || covered_len >= index_entryp->nsegs)
+	    {
+	      continue;
+	    }
+
+	  seg_idx = index_entryp->seg_idxs[covered_len];
+	  if (seg_idx == -1)
+	    {
+	      continue;
+	    }
+
+	  seg = QO_ENV_SEG (cover->env, seg_idx);
+	  if (QO_SEG_FUNC_INDEX (seg))
+	    {
+	      is_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc;
+	    }
+	  else
+	    {
+	      is_desc = index_entryp->constraints->asc_desc[covered_len];
+	    }
+
+	  if (cover->is_desc_scan)
+	    {
+	      is_desc = !is_desc;
+	    }
+
+	  /* an ascending index run supplies NULLs first and a descending run supplies NULLs last */
+	  if (spec->info.sort_spec.asc_or_desc == PT_DESC)
+	    {
+	      if (!is_desc || pt_to_null_ordering (spec) != S_NULLS_LAST)
+		{
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      if (is_desc || pt_to_null_ordering (spec) != S_NULLS_FIRST)
+		{
+		  continue;
+		}
+	    }
+
+	  /* a sort key that is also in the select list is replaced by its position in the list */
+	  expr = spec->info.sort_spec.expr;
+	  if (expr != NULL && expr->node_type == PT_VALUE && spec->info.sort_spec.pos_descr.pos_no > 0)
+	    {
+	      for (expr = cover->select_list, pos = 1; expr != NULL && pos < spec->info.sort_spec.pos_descr.pos_no;
+		   expr = expr->next, pos++)
+		{
+		  ;
+		}
+	    }
+
+	  if (expr == NULL || pt_check_path_eq (parser, expr, QO_SEG_PT_NODE (seg)) != 0)
+	    {
+	      continue;
+	    }
+
+	  covered_len++;
+	  is_covering = true;
+	}
+    }
+
+  if (sort_len > 0)
+    {
+      if (covered_len == sort_len)
+	{
+	  cover->has_covered = true;
+	}
+      else
+	{
+	  cover->has_uncovered = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_index_covers_analytic_sort () - checks whether a full scan of the index returns the rows in the sort order of
+ *				      an analytic sort group of the query, so that the analytic evaluation can skip
+ *				      its sort (CBRD-26473)
+ *   return: true if the PARTITION BY + ORDER BY list of every analytic function with a sort list is a prefix of
+ *	     the index key order
+ *   env(in): pointer to the optimizer environment
+ *   node(in): the node scanned by the index
+ *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *
+ * Note: XASL generation evaluates analytic functions in sort groups and may merge the sort lists of compatible
+ *   functions into one (pt_metadomains_compatible () compares PARTITION BY keys as sets), so a function that the
+ *   index order covers can end up in a group sorted by a key the index does not supply. Only when every sort list
+ *   is a prefix of the index key order is the merged key a prefix of it as well (the sort columns are numbered in
+ *   the order they first appear, which is then the index order), so that the first group surely skips its sort.
+ */
+static bool
+qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  QO_INDEX_ENTRY *index_entryp = ni_entryp->head;
+  QO_ANALYTIC_COVER_ARG cover;
+
+  if (tree == NULL || tree->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  /* The analytic functions see the scan order only when the scan feeds them directly: no join, grouping or
+   * hierarchical query in between. A partitioned class or a class hierarchy is scanned one class at a time, which
+   * does not keep the index order across the classes. */
+  if (env->nnodes != 1 || tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
+      || QO_NODE_IS_CLASS_HIERARCHY (node) || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
+    {
+      return false;
+    }
+
+  if (qo_is_prefix_index (index_entryp) || !qo_index_holds_all_rows (env, ni_entryp))
+    {
+      return false;
+    }
+
+  cover.env = env;
+  cover.index_entryp = index_entryp;
+  cover.select_list = tree->info.query.q.select.list;
+  cover.is_desc_scan = (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC) != 0;
+  cover.has_covered = false;
+  cover.has_uncovered = false;
+  (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_index_covers_analytic_sort_pre, &cover, NULL,
+			   NULL);
+
+  return cover.has_covered && !cover.has_uncovered;
 }
 
 /*
@@ -14465,7 +16045,8 @@ exit_on_end:
 bool
 qo_is_interesting_order_scan (QO_PLAN * plan)
 {
-  if (qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
+  if (qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan)
+      || qo_is_iscan_from_analytic (plan))
     {
       return true;
     }
@@ -14738,6 +16319,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
+    case QO_SCANMETHOD_INDEX_ANALYTIC_SCAN:
       scan_string = "INDEX SCAN";
       trace_json_object_set_new (scan, "index", trace_json_string (plan->plan_un.scan.index->head->constraints->name));
 
@@ -14879,13 +16461,13 @@ qo_plan_join_print_json (QO_PLAN * plan)
     {
     case JOIN_INNER:
       {
-	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
-	if (sa == PT_JOIN_SEMI)
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
 	  {
 	    type = "semi join";
 	    break;
 	  }
-	if (sa == PT_JOIN_ANTI)
+	if (semi_anti == PT_JOIN_ANTI)
 	  {
 	    type = "anti join";
 	    break;
@@ -15047,11 +16629,14 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
+  const unsigned save_source = parser->flag.print_host_var_source;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+  parser->flag.print_host_var_source = 1;
 
   trace_json_object_set_new (json, "rewritten query", trace_json_string (parser_print_tree (parser, select)));
 
   parser->custom_print = save_custom;
+  parser->flag.print_host_var_source = save_source;
 
   parser->plan_trace[parser->num_plan_trace].format = QUERY_TRACE_JSON;
   parser->plan_trace[parser->num_plan_trace].trace.json_plan = json;
@@ -15096,6 +16681,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
+    case QO_SCANMETHOD_INDEX_ANALYTIC_SCAN:
       fprintf (fp, "INDEX SCAN (%s.%s)", class_name, plan->plan_un.scan.index->head->constraints->name);
 
       env = (plan->info)->env;
@@ -15238,13 +16824,13 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
     {
     case JOIN_INNER:
       {
-	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
-	if (sa == PT_JOIN_SEMI)
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
 	  {
 	    type = "semi join";
 	    break;
 	  }
-	if (sa == PT_JOIN_ANTI)
+	if (semi_anti == PT_JOIN_ANTI)
 	  {
 	    type = "anti join";
 	    break;
@@ -15392,9 +16978,12 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
+  const unsigned save_source = parser->flag.print_host_var_source;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+  parser->flag.print_host_var_source = 1;
   sql = parser_print_tree (parser, select);
   parser->custom_print = save_custom;
+  parser->flag.print_host_var_source = save_source;
 
   if (sql != NULL)
     {

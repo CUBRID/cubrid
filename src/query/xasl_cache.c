@@ -24,9 +24,12 @@
 
 #include "xasl_cache.h"
 
+#include "bind_variant.h"
+
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
+#include "domain_rules.h"
 #include "system_parameter.h"
 #include "list_file.h"
 #include "perf_monitor.h"
@@ -43,6 +46,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <time.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -65,6 +69,21 @@
 
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
 #define XCACHE_PTR_TO_ENTRY(ptr) ((XASL_CACHE_ENTRY *) ptr)
+
+/* the plan variants of one query, kept on its base entry (see bind_variant.h) */
+struct xcache_bind_dir
+{
+  int checks;			/* times a client found nothing suitable in its directory (statistics) */
+  int limit;			/* distinct plans the query may have: the first request's, for every client */
+  int plans;			/* registered variants: distinct plans */
+  int next_variant;		/* variants reserved so far: the compiles the query has made */
+  int n_records;
+  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_COMPILES];
+  bool registered[BIND_VARIANT_MAX_COMPILES];	/* the variant is a plan of the query */
+  bool resolved[BIND_VARIANT_MAX_COMPILES];	/* its compile came back, as a new plan or a known one */
+  UINT64 plan_sig[BIND_VARIANT_MAX_COMPILES];
+  time_t reserved_at[BIND_VARIANT_MAX_COMPILES];	/* when the compile was handed out */
+};
 
 /* xcache statistics. */
 typedef struct xcache_stats XCACHE_STATS;
@@ -296,6 +315,14 @@ static INT32 xcache_entry_get_one_clonesize (XASL_CACHE_ENTRY * xcache_entry);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
+static const char *xcache_skip_quoted (const char *p);
+static const char *xcache_param_count_mark (const char *text);
+static int xcache_param_count (const char *text);
+static int xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compare);
+static int xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * compares);
+
+/* CBRD-27583: the suffix after which the cache key text counts its parameter positions (PT_PRINT_HOST_VAR_COUNT) */
+#define XCACHE_PARAM_COUNT_MARK ";bind_var_cnt="
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -332,8 +359,13 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
   const int freelist_block_count = 2;
   const int freelist_block_size = std::max (1, xcache_Soft_capacity / freelist_block_count);
-  xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size, freelist_block_count,
-		       xcache_Entry_descriptor);
+  if (xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size,
+			   freelist_block_count, xcache_Entry_descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      xcache_log_error ("could not init hash table.\n");
+      return error_code;
+    }
 
   /* Use global heap */
   save_heapid = db_change_private_heap (thread_p, 0);
@@ -417,12 +449,17 @@ xcache_finalize (THREAD_ENTRY * thread_p)
 xasl_cache_ent::xasl_cache_ent ()
 {
   pthread_mutex_init (&cache_clones_mutex, NULL);
+  bind_dir = NULL;
   init_clone_cache ();
 }
 
 xasl_cache_ent::~xasl_cache_ent ()
 {
   assert (cache_clones == NULL || cache_clones == &one_clone);
+  if (bind_dir != NULL)
+    {
+      free_and_init (bind_dir);
+    }
   pthread_mutex_destroy (&cache_clones_mutex);
 }
 
@@ -452,6 +489,7 @@ xcache_entry_alloc (void)
     }
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
+  xcache_entry->bind_dir = NULL;
 
   xcache_entry->list_ht_no = -1;
 
@@ -474,6 +512,10 @@ xcache_entry_free (void *entry)
       /* Should be already freed? */
       assert (false);
       free (xcache_entry->cache_clones);
+    }
+  if (xcache_entry->bind_dir != NULL)
+    {
+      free_and_init (xcache_entry->bind_dir);
     }
   pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
   free (entry);
@@ -498,6 +540,8 @@ xcache_entry_init (void *entry)
   xcache_entry->sql_info.sql_hash_text = NULL;
   xcache_entry->sql_info.sql_user_text = NULL;
   xcache_entry->sql_info.sql_plan_text = NULL;
+  xcache_entry->param_compares = NULL;
+  xcache_entry->n_param_compares = 0;
 
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
   xcache_entry->stream.xasl_id = NULL;
@@ -505,6 +549,7 @@ xcache_entry_init (void *entry)
 
   xcache_entry->free_data_on_uninit = false;
   xcache_entry->mem_size = 0;
+  xcache_entry->bind_dir = NULL;
   xcache_entry->initialized = true;
 
   assert (xcache_entry->n_cache_clones == 0);
@@ -600,8 +645,10 @@ xcache_entry_uninit (void *entry)
 
       if (xcache_entry->sql_info.sql_hash_text != NULL)
 	{
+	  /* with the other texts and param_compares */
 	  free_and_init (xcache_entry->sql_info.sql_hash_text);
 	}
+      xcache_entry->param_compares = NULL;
 
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
@@ -637,9 +684,15 @@ xcache_entry_uninit (void *entry)
       xcache_entry->sql_info.sql_hash_text = NULL;
       xcache_entry->sql_info.sql_plan_text = NULL;
       xcache_entry->sql_info.sql_user_text = NULL;
+      xcache_entry->param_compares = NULL;
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
       assert (xcache_entry->n_cache_clones == 0);
+    }
+  if (xcache_entry->bind_dir != NULL)
+    {
+      /* the query's plan variants go with its base entry: the next execution starts over */
+      free_and_init (xcache_entry->bind_dir);
     }
   xcache_entry->initialized = false;
   return NO_ERROR;
@@ -1166,6 +1219,9 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
       goto error;
     }
   assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
+  /* CBRD-27583: the compiler leaves no regu, arithmetic or list position without a domain */
+  assert (xclone->xasl_buf->n_undecided_regu == 0 && xclone->xasl_buf->n_undecided_arith == 0
+	  && xclone->xasl_buf->n_undecided_position == 0);
 
   xcache_log ("loaded xasl clone: \n"
 	      XCACHE_LOG_ENTRY_TEXT ("entry")
@@ -1467,6 +1523,177 @@ xcache_need_cleanup (void)
 }
 
 /*
+ * xcache_skip_quoted () - CBRD-27583: the last character of the quoted part of a cache key text that starts at
+ *   p - a string literal in single quotes, which doubles its quotes, or an identifier in brackets or double quotes -
+ *   or p itself when none starts there
+ */
+static const char *
+xcache_skip_quoted (const char *p)
+{
+  const char close = *p == '\'' ? '\'' : *p == '[' ? ']' : *p == '"' ? '"' : '\0';
+  if (close == '\0')
+    {
+      return p;
+    }
+  for (p++; *p != '\0'; p++)
+    {
+      if (*p != close)
+	{
+	  continue;
+	}
+      if (close != '\'' || p[1] != '\'')
+	{
+	  return p;
+	}
+      /* a doubled quote */
+      p++;
+    }
+  return p - 1;
+}
+
+/*
+ * xcache_param_count_mark () - CBRD-27583: the count mark a cache key text carries after its statement: the last one,
+ *   found without reading the statement's quotes (a JSON literal prints its own quotes undoubled); NULL without one
+ */
+static const char *
+xcache_param_count_mark (const char *text)
+{
+  const char *mark = NULL;
+  for (const char *p = strstr (text, XCACHE_PARAM_COUNT_MARK); p != NULL; p = strstr (p + 1, XCACHE_PARAM_COUNT_MARK))
+    {
+      mark = p;
+    }
+  return mark;
+}
+
+/*
+ * xcache_param_count () - CBRD-27583: the count of parameter positions a cache key text names after its
+ *   statement, 0 without the count
+ */
+static int
+xcache_param_count (const char *text)
+{
+  const char *mark = xcache_param_count_mark (text);
+  if (mark == NULL)
+    {
+      return 0;
+    }
+  const int count = atoi (mark + sizeof (XCACHE_PARAM_COUNT_MARK) - 1);
+  return count > 0 ? count : 0;
+}
+
+/*
+ * xcache_decide_param_compare () - CBRD-27583: the comparison of two values of a parameter position's type
+ *   return: NO_ERROR, or ER_FAILED for a type no domain has
+ */
+static int
+xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compare)
+{
+  const TP_DOMAIN *domain = tp_domain_resolve_default (type);
+  if (domain != NULL && TP_TYPE_HAS_COLLATION (type))
+    {
+      domain = tp_domain_resolve (type, NULL, domain->precision, domain->scale, NULL, collation);
+    }
+  if (domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  const TP_DOMAIN *const domains[2] = { domain, domain };
+  bool by_type;
+  return domain_decide_comparison (domains, compare, &by_type);
+}
+
+/*
+ * xcache_decide_param_compares () - CBRD-27583: how the result cache compares the values bound to each
+ *   parameter position of a statement: as values of the position's type, which the bind type signature of the cache
+ *   key text names in each of the position's tokens (pt_print_host_var: " ?:N:type", a string's
+ *   " ?:N:type.codeset.collation", then the signature's suffixes)
+ *   return: count, or -1 when two tokens of a position name different types or one names none
+ *   compares(out): count comparisons
+ */
+static int
+xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * compares)
+{
+  if (count <= 0)
+    {
+      return count;
+    }
+  /* each position's type and collation as its first token names them, -1 before */
+  int *named = (int *) malloc (count * sizeof (int));
+  if (named == NULL)
+    {
+      return -1;
+    }
+  for (int i = 0; i < count; i++)
+    {
+      named[i] = -1;
+    }
+
+  int result = count;
+  /* the tokens are in the statement, before its count mark; a position whose token the scan misses (quotes it reads
+   * wrongly) compares its values by their own types, as below */
+  const char *const statement_end = xcache_param_count_mark (text);
+  for (const char *p = text; p < statement_end && result >= 0; p++)
+    {
+      p = xcache_skip_quoted (p);
+      if (p >= statement_end)
+	{
+	  break;
+	}
+      if (p[0] != '?' || p[1] != ':')
+	{
+	  continue;
+	}
+      char *end;
+      const long index = strtol (p + 2, &end, 10);
+      long type = -1, collation = 0;
+      if (end > p + 2 && *end == ':' && isdigit ((unsigned char) end[1]))
+	{
+	  type = strtol (end + 1, &end, 10);
+	}
+      if (type >= 0 && *end == '.')
+	{
+	  /* the codeset, which the collation implies */
+	  (void) strtol (end + 1, &end, 10);
+	  collation = *end == '.' && isdigit ((unsigned char) end[1]) ? strtol (end + 1, &end, 10) : -1;
+	}
+      if (index < 0 || index >= count || type < DB_TYPE_NULL || type > DB_TYPE_LAST || collation < 0
+	  || collation >= LANG_MAX_COLLATIONS)
+	{
+	  result = -1;
+	  break;
+	}
+      const int key = (int) type * LANG_MAX_COLLATIONS + (int) collation;
+      if (named[index] == -1)
+	{
+	  named[index] = key;
+	  if (xcache_decide_param_compare ((DB_TYPE) type, (int) collation, &compares[index]) != NO_ERROR)
+	    {
+	      result = -1;
+	    }
+	}
+      else if (named[index] != key)
+	{
+	  result = -1;
+	}
+      p = end - 1;
+    }
+  for (int i = 0; i < count && result >= 0; i++)
+    {
+      if (named[i] == -1)
+	{
+	  /* a user position a QUERY_CACHE subquery reads only by its derived positions (do_subquery_derives_from) has
+	   * no token in the subquery's text: its values compare by their own types */
+	  const TP_DOMAIN *const none[2] = { NULL, NULL };
+	  bool by_type;
+	  (void) domain_decide_comparison (none, &compares[i], &by_type);
+	}
+    }
+  free (named);
+  return result;
+}
+
+/*
  * xcache_insert () - Insert or recompile XASL cache entry.
  *
  * return	      : Error code.
@@ -1497,6 +1724,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
   struct timeval time_stored;
   size_t sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
   char *strbuf = NULL;
+  size_t param_compares_offset = 0;
+  int n_param_compares = 0;
+  DOMAIN_COMPARE *param_compares = NULL;
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (stream != NULL);
   assert (stream->buffer != NULL || !context->recompile_xasl);
@@ -1542,11 +1772,16 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
     {
       sql_plan_text_len = strlen (context->sql_plan_text) + 1;
     }
-  strbuf = (char *) malloc (sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+  /* CBRD-27583: the result cache's comparisons of the parameter positions follow the texts */
+  n_param_compares = xcache_param_count (context->sql_hash_text);
+  param_compares_offset = sql_hash_text_len + sql_user_text_len + sql_plan_text_len;
+  param_compares_offset = (param_compares_offset + alignof (DOMAIN_COMPARE) - 1) / alignof (DOMAIN_COMPARE)
+    * alignof (DOMAIN_COMPARE);
+  strbuf = (char *) malloc (param_compares_offset + n_param_compares * sizeof (DOMAIN_COMPARE));
   if (strbuf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+	      param_compares_offset + n_param_compares * sizeof (DOMAIN_COMPARE));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1567,6 +1802,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       memcpy (strbuf, context->sql_plan_text, sql_plan_text_len);
       sql_plan_text = strbuf;
     }
+
+  param_compares = n_param_compares > 0 ? (DOMAIN_COMPARE *) (sql_hash_text + param_compares_offset) : NULL;
+  n_param_compares = xcache_decide_param_compares (sql_hash_text, n_param_compares, param_compares);
 
   /* save stored time */
   (void) gettimeofday (&time_stored, NULL);
@@ -1605,6 +1843,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->sql_info.sql_hash_text = sql_hash_text;
       (*xcache_entry)->sql_info.sql_user_text = sql_user_text;
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
+      (*xcache_entry)->param_compares = param_compares;
+      (*xcache_entry)->n_param_compares = n_param_compares;
       (*xcache_entry)->stream = *stream;
       (*xcache_entry)->time_last_rt_check = (INT64) time_stored.tv_sec;
       (*xcache_entry)->time_last_used = time_stored;
@@ -2015,6 +2255,10 @@ xcache_entry_get_entrysize (XASL_CACHE_ENTRY * xcache_entry)
     {
       entry_size += strlen (xcache_entry->sql_info.sql_plan_text) + 1;
     }
+  if (xcache_entry->n_param_compares > 0)
+    {
+      entry_size += sizeof (DOMAIN_COMPARE) * xcache_entry->n_param_compares;
+    }
   return entry_size;
 }
 
@@ -2100,13 +2344,13 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
  *
  * return	     : True if entry is related, false otherwise.
  * xcache_entry (in) : XASL cache entry.
- * arg (in)	     : Pointer to OID.
+ * arg (in)	     : sha1 string.
  */
 static bool
 xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   char sha1_xasl[45];
-  const char *sha1 = (char *) arg;
+  const char *sha1 = (const char *) arg;
 
   assert (xcache_entry != NULL);
   assert (sha1 != NULL);
@@ -2162,6 +2406,65 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 
   xcache_log ("drop all queries \n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
   xcache_invalidate_entries (thread_p, NULL, NULL);
+}
+
+/*
+ * xcache_drop_clones () - Free the clones kept in XASL cache entries. The entries stay in cache.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * sha1 (in)	 : Free only the clones of the entries with this sha1. NULL for all entries.
+ */
+int
+xcache_drop_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+  XASL_CLONE *clones = NULL;
+  int n_clones = 0;
+  int i;
+
+  if (!xcache_Enabled || !xcache_uses_clones ())
+    {
+      return NO_ERROR;
+    }
+
+  /* Free the clones after unlocking cache_clones_mutex; executions of the query lock it to fetch a clone. */
+  clones = (XASL_CLONE *) malloc (xcache_Max_clones * sizeof (XASL_CLONE));
+  if (clones == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, xcache_Max_clones * sizeof (XASL_CLONE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  xcache_check_logging ();
+
+  xcache_log ("drop clones: \n" "\t sha1 = %s \n" XCACHE_LOG_TRAN_TEXT, sha1 != NULL ? sha1 : "(all)",
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+
+  while ((xcache_entry = iter.iterate ()) != NULL)
+    {
+      if (sha1 != NULL && !xcache_entry_is_related_to_sha1 (xcache_entry, sha1))
+	{
+	  continue;
+	}
+
+      (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+      assert (xcache_entry->n_cache_clones <= xcache_Max_clones);
+      n_clones = xcache_entry->n_cache_clones;
+      memcpy (clones, xcache_entry->cache_clones, n_clones * sizeof (XASL_CLONE));
+      xcache_entry->n_cache_clones = 0;
+      (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+
+      for (i = 0; i < n_clones; i++)
+	{
+	  xcache_clone_decache (thread_p, &clones[i], xcache_entry);
+	}
+    }
+
+  free_and_init (clones);
+  return NO_ERROR;
 }
 
 /*
@@ -2254,6 +2557,24 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       if (xcache_uses_clones ())
 	{
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
+	}
+      if (xcache_entry->bind_dir != NULL)
+	{
+	  pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+	  if (xcache_entry->bind_dir != NULL)
+	    {
+	      struct xcache_bind_dir *dir = xcache_entry->bind_dir;
+	      int v, pending = 0;
+
+	      for (v = 0; v < dir->next_variant; v++)
+		{
+		  pending += dir->resolved[v] ? 0 : 1;
+		}
+	      fprintf (fp, "  bind variants: plans = %d, compiles = %d, pending = %d, limit = %d, fingerprints = %d, "
+		       "server checks = %d \n", dir->plans, dir->next_variant, pending, dir->limit, dir->n_records,
+		       dir->checks);
+	    }
+	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 	}
       fprintf (fp, "  sql info: \n");
 
@@ -2795,4 +3116,202 @@ bool
 xcache_uses_clones (void)
 {
   return xcache_Max_clones > 0;
+}
+
+/*
+ * xcache_bind_variant () - find or reserve the plan variant of a query that suits a fingerprint
+ *   nothing in the client's directory suited, or register the plan a reserved variant compiled
+ *   to (see bind_variant.h)
+ * return	: error code
+ * thread_p (in): thread entry
+ * req (in)	: the request; req->sha1 and req->time_stored name the query's base entry
+ * reply (out)	: the outcome, how far the query has learned, and the whole directory
+ *
+ * A base entry of another generation (recompiled, or dropped and inserted again) is not the
+ * one the client's variants belong to: NOT_FOUND, and the client starts over.
+ */
+int
+xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
+{
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+  struct xcache_bind_dir *dir;
+  int error_code = NO_ERROR;
+  int limit, pending, i;
+  time_t now;
+
+  assert (req != NULL && reply != NULL);
+
+  reply->result = BIND_VARIANT_NOT_FOUND;
+  reply->variant = -1;
+  reply->state = BIND_VARIANT_STATE_WATCH;
+  reply->compiles = 0;
+  reply->plans = 0;
+  reply->n_records = 0;
+
+  if (!xcache_Enabled)
+    {
+      return NO_ERROR;
+    }
+
+  error_code = xcache_find_sha1 (thread_p, &req->sha1, XASL_CACHE_SEARCH_GENERIC, &xcache_entry, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (xcache_entry == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (!CACHE_TIME_EQ (&xcache_entry->xasl_id.time_stored, &req->time_stored))
+    {
+      xcache_unfix (thread_p, xcache_entry);
+      return NO_ERROR;
+    }
+
+  limit = req->limit;
+  if (limit > BIND_VARIANT_MAX_COMPILES)
+    {
+      limit = BIND_VARIANT_MAX_COMPILES;
+    }
+  if (limit < 1)
+    {
+      limit = 1;
+    }
+
+  pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+
+  dir = xcache_entry->bind_dir;
+  if (dir == NULL)
+    {
+      dir = (struct xcache_bind_dir *) malloc (sizeof (struct xcache_bind_dir));
+      if (dir == NULL)
+	{
+	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+	  xcache_unfix (thread_p, xcache_entry);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct xcache_bind_dir));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (dir, 0, sizeof (struct xcache_bind_dir));
+      /* the limit is the query's, not the session's: a session with another value of the
+       * parameter would otherwise end the learning early for itself, or carry it past the
+       * point where the others stopped */
+      dir->limit = limit;
+      xcache_entry->bind_dir = dir;
+    }
+  limit = dir->limit;
+
+  now = time (NULL);
+  pending = 0;
+  for (i = 0; i < dir->next_variant; i++)
+    {
+      if (!dir->resolved[i] && now - dir->reserved_at[i] >= BIND_VARIANT_RESERVE_TIMEOUT)
+	{
+	  /* the client the compile was handed to never came back (it died, or lost the
+	   * connection): the variant is given up, or the query would wait for it while its base
+	   * entry lives. A REGISTER that still arrives is taken as usual. */
+	  dir->resolved[i] = true;
+	}
+      if (!dir->resolved[i])
+	{
+	  pending++;
+	}
+    }
+
+  if (req->op == BIND_VARIANT_OP_CHECK)
+    {
+      double dist = DBL_MAX;
+      int nearest;
+
+      dir->checks++;
+      nearest = bind_variant_nearest (dir->records, dir->n_records, &req->fp, req->floor, &dist);
+      if (nearest >= 0 && dist < req->band)
+	{
+	  /* another client added the variant these values call for */
+	  reply->result = BIND_VARIANT_MATCH;
+	  reply->variant = dir->records[nearest].variant;
+	}
+      else if (dir->plans + pending < limit && dir->next_variant < BIND_VARIANT_MAX_COMPILES)
+	{
+	  /* still learning: compile. Compiles still in flight count as plans, so concurrent
+	   * clients cannot overshoot the limit together. */
+	  reply->result = BIND_VARIANT_COMPILE;
+	  reply->variant = dir->next_variant++;
+	  dir->reserved_at[reply->variant] = now;
+	  pending++;
+	}
+      else
+	{
+	  reply->result = BIND_VARIANT_FROZEN;
+	}
+    }
+  else if (req->op == BIND_VARIANT_OP_ABANDON && req->variant >= 0 && req->variant < dir->next_variant)
+    {
+      /* the compile failed on the client: the variant never becomes a plan */
+      dir->resolved[req->variant] = true;
+      reply->result = BIND_VARIANT_NOT_FOUND;
+    }
+  else if (req->op == BIND_VARIANT_OP_REGISTER && req->variant >= 0 && req->variant < dir->next_variant)
+    {
+      int same = -1;
+
+      dir->resolved[req->variant] = true;
+
+      for (i = 0; i < dir->next_variant; i++)
+	{
+	  if (dir->registered[i] && dir->plan_sig[i] == req->plan_sig)
+	    {
+	      same = i;
+	      break;
+	    }
+	}
+      if (same >= 0)
+	{
+	  /* the compile found a plan the query already has: no new variant, only another
+	   * fingerprint that reaches it */
+	  reply->result = BIND_VARIANT_SAME_PLAN;
+	  reply->variant = same;
+	}
+      else
+	{
+	  dir->registered[req->variant] = true;
+	  dir->plan_sig[req->variant] = req->plan_sig;
+	  dir->plans++;
+	  reply->result = BIND_VARIANT_NEW;
+	  reply->variant = req->variant;
+	}
+      if (dir->n_records < BIND_VARIANT_MAX_COMPILES)
+	{
+	  dir->records[dir->n_records].variant = reply->variant;
+	  dir->records[dir->n_records].fp = req->fp;
+	  dir->n_records++;
+	}
+    }
+
+  reply->compiles = dir->next_variant;
+  reply->plans = dir->plans;
+  reply->pending = 0;
+  for (i = 0; i < dir->next_variant; i++)
+    {
+      if (!dir->resolved[i])
+	{
+	  reply->pending++;
+	}
+    }
+  if ((dir->plans >= limit || dir->next_variant >= BIND_VARIANT_MAX_COMPILES) && reply->pending == 0)
+    {
+      /* done learning -- final only once every reserved variant came back: a client that
+       * settled while the last compile was in flight would never see that plan */
+      reply->state = (dir->plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
+    }
+  reply->n_records = dir->n_records;
+  for (i = 0; i < dir->n_records; i++)
+    {
+      reply->records[i] = dir->records[i];
+    }
+
+  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+  xcache_unfix (thread_p, xcache_entry);
+
+  return NO_ERROR;
 }

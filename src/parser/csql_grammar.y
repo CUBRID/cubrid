@@ -2393,6 +2393,7 @@ session_variable_assignment
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2409,6 +2410,7 @@ session_variable_definition
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2421,6 +2423,7 @@ session_variable_expression
 			expr = parser_make_expression (this_parser, PT_EVALUATE_VARIABLE, $1, NULL,
 										   NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -13451,6 +13454,8 @@ select_list
 			if (node)
 			  node->type_enum = PT_TYPE_STAR;
 
+			/* the end of "*" (see pt_record_static_sql_star ()) */
+			PARSER_SAVE_ERR_CONTEXT (node, @1.buffer_pos)
 			$$ = parser_make_link (node, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -15794,6 +15799,7 @@ reserved_func
 	| ELT '(' opt_expression_list ')'
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_ELT, $3, 1, 0);
+                    this_parser->flag.has_str_to_date_or_elt = 1;
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| POSITION '(' expression_ IN_ expression_ ')'
@@ -16444,6 +16450,7 @@ reserved_func
 		{ pop_msg(); }
 		{{
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, $6, parser_make_date_lang (2, NULL));
+			this_parser->flag.has_str_to_date_or_elt = 1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| STR_TO_DATE
@@ -16459,6 +16466,7 @@ reserved_func
 			  }
 
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
+			this_parser->flag.has_str_to_date_or_elt = 1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| CHARSET
@@ -24210,6 +24218,10 @@ parser_keyword_func (const char *name, PT_NODE * args)
     return NULL;
 
   parser_function_code = key->op;
+  if (key->op == PT_STR_TO_DATE)
+    {
+      this_parser->flag.has_str_to_date_or_elt = 1;
+    }
 
   a1 = a2 = a3 = NULL;
   switch (key->op)

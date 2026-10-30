@@ -247,6 +247,10 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 		goto finish_cas;
 	      }
 
+	    /* keeping a session was decided for the session of the client that left (CHANGE CLIENT, RESET, ...).
+	     * Do not carry it over to this client, or its session will also be kept. */
+	    db_set_keep_session (false);
+
 	    if (ops->set_session_id)
 	      {
 		ops->set_session_id (req_info.client_version, conn_info.db_sessionid);
@@ -530,6 +534,9 @@ cas_sig_handler (int signo)
 
   if (signo == SIGTERM || signo == SIGINT)
     {
+      /* flush the SQL log now, since the CAS may be killed before the main loop reaches cas_final () */
+      cas_log_flush_from_signal ();
+
       /* Avoid async-signal-unsafe functions in signal handlers to prevent aborts; defer graceful shutdown to the main loop. */
       cas_shutdown_signo = signo;
       return;
@@ -542,6 +549,8 @@ cas_sig_handler (int signo)
   is_doing_signal_handler = 1;
 
   signal (signo, SIG_IGN);
+
+  cas_log_flush_on_exit ();
 
   er_print_crash_callstack (signo);
 
@@ -577,6 +586,15 @@ cas_register_signal_handlers (void)
   signal (SIGUSR1, SIG_IGN);
   signal (SIGPIPE, SIG_IGN);
   signal (SIGXFSZ, SIG_IGN);
+
+  /* SIGUSR2: SQL log flush timer
+   * SA_SIGINFO distinguishes our timer signal from other SIGUSR2 signals (si_code / si_value).
+   * SA_RESTART prevents EINTR from interrupting idle CAS waits in accept () / recvmsg (). */
+  memset (&act, 0, sizeof (act));
+  act.sa_sigaction = cas_log_sigusr2_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = SA_SIGINFO | SA_RESTART;
+  sigaction (SIGUSR2, &act, NULL);
 }
 #endif /* !WINDOWS */
 
