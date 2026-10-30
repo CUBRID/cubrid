@@ -520,6 +520,7 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   const char *class_name, *name;
   char *saved_dump_filename;
   FILE *saved_dump_fp;
+  struct xasl_supp_info *saved_supp_info;
   bool saved_dump_fp_open, indexed = false, usable = true;
   int saved_level, stmt, pos, c, f, n = 0;
 
@@ -583,11 +584,20 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
    * estimate"), its plan dump -- generating the read's XASL would close the dump file the
    * statement's XASL generation has open -- and its trace: a traced read would become the
    * session's last trace, which SHOW TRACE then reports instead of the statement's (a driver
-   * compiles the statement again for its plan after running it). The read itself runs at level 1, optimized, executed and
+   * compiles the statement again for its plan after running it) -- and the classes its XASL
+   * generation has gathered so far: generating the read's XASL clears them, and a class a
+   * subquery read would then be missing from the cached plan, which a DROP or a grown table no
+   * longer invalidates. The read itself runs at level 1, optimized, executed and
    * not dumped, whatever the statement's level: a plan-only level (2, the one a driver asks for to
    * show a plan) would not execute it, and the plan it shows would not be the one run. */
-  in_read = true;
   er_stack_push ();
+  saved_supp_info = pt_detach_xasl_supp_info ();
+  if (saved_supp_info == NULL)
+    {
+      er_stack_pop ();
+      return NULL;
+    }
+  in_read = true;
   saved_dump_filename = query_Plan_dump_filename;
   saved_dump_fp = query_Plan_dump_fp;
   saved_dump_fp_open = query_Plan_dump_fp_open;
@@ -676,6 +686,7 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   query_Plan_dump_filename = saved_dump_filename;
   query_Plan_dump_fp = saved_dump_fp;
   query_Plan_dump_fp_open = saved_dump_fp_open;
+  pt_attach_xasl_supp_info (saved_supp_info);
   er_stack_pop ();
   in_read = false;
 

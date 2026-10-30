@@ -700,6 +700,48 @@ pt_init_xasl_supp_info ()
   xasl_Supp_info.includes_tde_class = 0;
 }
 
+/*
+ * pt_detach_xasl_supp_info () - take what the XASL generation of a statement has gathered so far (the classes its
+ *				  plan references, their locks and pages, TDE) out of the way of a statement compiled in
+ *				  the middle of it, whose XASL generation starts by clearing it
+ *   return: the gathered information, for pt_attach_xasl_supp_info (); NULL when out of memory
+ */
+struct xasl_supp_info *
+pt_detach_xasl_supp_info (void)
+{
+  XASL_SUPP_INFO *saved;
+
+  saved = (XASL_SUPP_INFO *) malloc (sizeof (XASL_SUPP_INFO));
+  if (saved == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_SUPP_INFO));
+      return NULL;
+    }
+  *saved = xasl_Supp_info;
+  xasl_Supp_info.query_list = NULL;
+  xasl_Supp_info.class_oid_list = NULL;
+  xasl_Supp_info.class_locks = NULL;
+  xasl_Supp_info.tcard_list = NULL;
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  xasl_Supp_info.includes_tde_class = 0;
+  return saved;
+}
+
+/*
+ * pt_attach_xasl_supp_info () - give back what pt_detach_xasl_supp_info () took, dropping what the statement compiled
+ *				  in between left
+ *   return: void
+ *   saved(in): from pt_detach_xasl_supp_info (); freed
+ */
+void
+pt_attach_xasl_supp_info (struct xasl_supp_info *saved)
+{
+  /* the query list of the statement in between belongs to its parser, already freed */
+  pt_init_xasl_supp_info ();
+  xasl_Supp_info = *saved;
+  free_and_init (saved);
+}
+
 
 /*
  * pt_make_connect_by_proc () - makes the XASL of the CONNECT BY node

@@ -145,6 +145,10 @@ extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
 extern bool query_Plan_dump_fp_open;
 
+struct xasl_supp_info;
+extern struct xasl_supp_info *pt_detach_xasl_supp_info (void);
+extern void pt_attach_xasl_supp_info (struct xasl_supp_info *saved);
+
 extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 						     PRED_EXPR * where_pred,
 						     REGU_VARIABLE_LIST pred_list,
