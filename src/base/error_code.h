@@ -1614,7 +1614,10 @@
 #define ER_LOG_RECOVERY_PROGRESS                    -1301
 
 
-#define ER_LAST_ERROR                               -1302
+#define ER_SES_SESSION_SECRET_MISMATCH              -1302
+#define ER_SES_SESSION_NOT_ATTACHED                 -1303
+
+#define ER_LAST_ERROR                               -1304
 
 /*
  * CAUTION!
