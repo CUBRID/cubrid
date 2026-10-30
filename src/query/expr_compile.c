@@ -576,13 +576,12 @@ name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
 
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_float, float_numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_float, float_numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
-/* the float call of qdata_number_numeric (); the fixed64 entry handles the single-word
- * common case bit-identically and declines everything else back to the reference */
+/* the float call of qdata_number_numeric () */
      static int expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_NUMERIC);
-  if (!float_numeric_db_value_mul_fixed64 (a, b, step->out) && float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
+  if (float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_QPROC_OVERFLOW_MULTIPLICATION;

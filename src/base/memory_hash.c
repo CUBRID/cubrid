@@ -620,14 +620,14 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	     */
 	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+		hash = mht_1str_pseudo_key (db_get_numeric (val), DB_NUMERIC_BUF_SIZE);
 	      }
 	    else
 	      {
 		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
-		hash = mht_1str_pseudo_key (calc_buf, -1);
+		hash = mht_1str_pseudo_key (calc_buf, DB_NUMERIC_BUF_SIZE);
 	      }
 	  }
 	  break;
@@ -637,7 +637,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
+	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), db_get_string_size (val));
 	  break;
 	case DB_TYPE_TIME:
 	  {
@@ -2416,8 +2416,6 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_NUMERIC:
 	  {
 	    bool is_float_numeric = false;
-	    unsigned int tmp = 0;
-	    unsigned int *buf;
 	    int precision = 0, scale = 0;
 	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
 
@@ -2432,10 +2430,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	     */
 	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		buf = (unsigned int *) db_locate_numeric (val);
-		memcpy (&tmp, db_locate_numeric (val) + 16, 1);
-
-		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (db_locate_numeric (val)), ht_size);
 	      }
 	    else
 	      {
@@ -2443,10 +2438,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
 
-		buf = (unsigned int *) calc_buf;
-		memcpy (&tmp, (char *) calc_buf + 16, 1);
-
-		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (calc_buf), ht_size);
 	      }
 	  }
 	  break;

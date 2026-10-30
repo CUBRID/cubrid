@@ -35,6 +35,8 @@
 #include "byte_order.h"
 #include "query_sum_accumulator.h"
 
+#include <string.h>
+
 /*
  * Build requirements (enforced via #error)
  *
@@ -145,6 +147,7 @@ extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, D
 
 /* Comparison routines */
 extern int numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern DB_VALUE_COMPARE_RESULT numeric_compare_bigint_num_exact (DB_BIGINT value, const DB_VALUE * num_value);
 
 /* Coercion routines */
 extern void numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negative);
@@ -199,10 +202,6 @@ extern int numeric_get_precision_digits (uint8_t * calc_buf);
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
-/* single-word fast multiply for the compiled expression path: returns 1 when answer
- * was produced (bit-identical to the reference fast path), 0 when the caller must run
- * float_numeric_db_value_mul () */
-extern int float_numeric_db_value_mul_fixed64 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
 extern void float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale);
@@ -253,9 +252,135 @@ extern bool numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMER
 				  bool flip_right_sign, NUMERIC_AGG_EXPR_VAL * out);
 extern void numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer);
 
+extern bool numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool half_up, DB_VALUE * result);
+extern bool numeric_db_value_floor_ceil (const DB_VALUE * value, bool is_floor, DB_VALUE * result);
+
 extern int numeric_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
 extern void numeric_sum_acc_load_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
 extern int numeric_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other);
 extern int numeric_sum_acc_add_expr_val (SUM_ACC * acc, const NUMERIC_AGG_EXPR_VAL * val);
 extern int numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result);
+
+/*
+ * NUMERIC_HEADER_SIZE
+ * The numeric header is 3 bytes in size.  Shared by the generic handler (mr_data_readval_numeric () in
+ * object_primitive.c) and the heap's fixed-column decode kernel (heap_attr_readval_numeric () in
+ * heap_file.c), which parse the same bytes and must agree on where the digits start.
+ * - header[0]: Total byte size of the numeric data (header + data).
+ *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
+ *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
+ *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
+ *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
+ * - header[1]: Precision and scale sign bit.
+ *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
+ *              Bits 0-6: Precision value (1 ~ 40).
+ * - header[2]: Scale value.
+ *              Bits 0-7: Scale absolute value (0 ~ 214).
+ *                        Positive scale: 0 ~ 252.
+ *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
+ */
+#define NUMERIC_HEADER_SIZE (3)
+
+/* how the digits of a NUMERIC value are laid out in its DB_VALUE buffer (DB_NUMERIC::d.buf) and on disk; outside
+ * numeric_opfunc.c, code that reads or writes those bytes goes through numeric_repr_*. The magnitude is one
+ * big-endian binary integer of DB_NUMERIC_BUF_SIZE bytes; the disk keeps its low bytes, the header plus the digits
+ * padded to a multiple of 4. Plain C: dbtype_function.c is compiled as C. */
+
+/* disk size (header included) of a float NUMERIC by its precision */
+static inline int
+numeric_repr_disk_size_by_precision (int precision)
+{
+  static const int size_by_precision[DB_MAX_NUMERIC_PRECISION + 1] = {
+    0, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12,
+    12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20, 20, 20, 20, 20, 20,
+    20
+  };
+
+  return size_by_precision[precision];
+}
+
+/* disk size (header included) of a fixed NUMERIC by its value: a fixed precision is at most 38, so the magnitude
+ * fits in the low 16 bytes */
+static inline int
+numeric_repr_disk_size_by_value (const unsigned char *buf)
+{
+  static const int size_by_bytes[17] = {
+    0, 4, 8, 8, 8, 8, 12, 12, 12, 12, 16, 16, 16, 16, 20, 20, 20
+  };
+  uint64_t word_buf[2];
+
+  /* the bytes stay big-endian: on a little-endian host the leading zero bytes are the trailing zero bits */
+  memcpy (word_buf, buf + 1, sizeof (word_buf));
+  if (word_buf[0] != 0)
+    {
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+      return size_by_bytes[16 - (__builtin_ctzll (word_buf[0]) >> 3)];
+#else
+      return size_by_bytes[16 - (__builtin_clzll (word_buf[0]) >> 3)];
+#endif
+    }
+  if (word_buf[1] != 0)
+    {
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+      return size_by_bytes[8 - (__builtin_ctzll (word_buf[1]) >> 3)];
+#else
+      return size_by_bytes[8 - (__builtin_clzll (word_buf[1]) >> 3)];
+#endif
+    }
+  return size_by_bytes[1];	/* zero */
+}
+
+/* the buffer from the digits of a disk value of disk_size bytes, or from a whole buffer (DB_NUMERIC_BUF_SIZE); 0 for
+ * any other size. A constant length per case keeps the copies inline moves on the row read path (a variable length
+ * becomes rep stos/movs), and one switch for both keeps the row path to a single jump. */
+static inline int
+numeric_repr_read_disk (unsigned char *buf, const unsigned char *digits, int disk_size)
+{
+  switch (disk_size)
+    {
+    case 4:
+      memset (buf, 0, 16);
+      memcpy (buf + 16, digits, 1);
+      return 1;
+    case 8:
+      memset (buf, 0, 12);
+      memcpy (buf + 12, digits, 5);
+      return 1;
+    case 12:
+      memset (buf, 0, 8);
+      memcpy (buf + 8, digits, 9);
+      return 1;
+    case 16:
+      memset (buf, 0, 4);
+      memcpy (buf + 4, digits, 13);
+      return 1;
+    case DB_NUMERIC_BUF_SIZE:
+    case 20:
+      memcpy (buf, digits, DB_NUMERIC_BUF_SIZE);
+      return 1;
+    default:
+      return 0;
+    }
+}
+
+/* the digits of the disk value of disk_size bytes */
+static inline void
+numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int disk_size)
+{
+  const int digits_size = disk_size - NUMERIC_HEADER_SIZE;
+
+  memcpy (digits, buf + DB_NUMERIC_BUF_SIZE - digits_size, digits_size);
+}
+
+/* 32-bit fold of the whole buffer */
+static inline unsigned int
+numeric_repr_fold32 (const unsigned char *buf)
+{
+  unsigned int words[4];
+  unsigned int last = 0;
+
+  memcpy (words, buf, sizeof (words));
+  memcpy (&last, buf + 16, 1);
+  return words[0] ^ words[1] ^ words[2] ^ words[3] ^ last;
+}
 #endif /* _NUMERIC_OPFUNC_H_ */

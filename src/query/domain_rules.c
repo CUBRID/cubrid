@@ -34,6 +34,7 @@
 #include "string_opfunc.h"
 #include "xasl.h"
 #include "query_sum_accumulator.h"
+#include "numeric_opfunc.h"
 #include <atomic>
 #include <cfloat>
 #include <cstddef>
@@ -1104,6 +1105,101 @@ domain_compare_target (const DOMAIN_OPERAND * coerced, DB_TYPE target_type)
   return tp_domain_resolve_default (target_type);
 }
 
+static bool
+domain_type_is_integer (DB_TYPE type)
+{
+  return type == DB_TYPE_SHORT || type == DB_TYPE_INTEGER || type == DB_TYPE_BIGINT;
+}
+
+/* a comparison whose sides keep their types and compare by the exact values: an integer against a NUMERIC (the
+ * integer is not made a NUMERIC first) */
+static bool
+domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2)
+{
+  return (type1 == DB_TYPE_NUMERIC && domain_type_is_integer (type2))
+    || (type2 == DB_TYPE_NUMERIC && domain_type_is_integer (type1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_compare_reverse (DB_VALUE_COMPARE_RESULT c)
+{
+  return c == DB_LT ? DB_GT : c == DB_GT ? DB_LT : c;
+}
+
+/* one cmpval per integer type and side, so the integer's type is the compiled one, not read from each value */
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_short_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			     int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_short (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_int_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			   int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_int (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_bigint_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			      int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_bigint (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			     int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_short (value2), value1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			   int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_int (value2), value1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			      int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_bigint (value2), value1));
+}
+
+/* the compared type's PR_TYPE with an exact comparison's cmpval, made at the first use (after tp_Numeric's
+ * initialization) */
+static PR_TYPE
+domain_exact_number_type (const PR_TYPE * compared, PR_TYPE::cmpval_function_type cmpval)
+{
+  PR_TYPE type = *compared;
+  type.set_cmpval_function (cmpval);
+  return type;
+}
+
+/* the cmpval of a resolved comparison: the compared type's, or an exact number comparison's */
+const PR_TYPE *
+domain_compare_cmp (DB_TYPE source0, DB_TYPE source1, DB_TYPE compared)
+{
+  if (!domain_compare_is_exact_number (source0, source1))
+    {
+      return pr_type_from_id (compared);
+    }
+  static const PR_TYPE exact[2][3] = {
+    {domain_exact_number_type (&tp_Numeric, domain_cmpval_short_numeric),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_int_numeric),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_bigint_numeric)},
+    {domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_short),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_int),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_bigint)}
+  };
+  const DB_TYPE integer = source1 == DB_TYPE_NUMERIC ? source0 : source1;
+
+  return &exact[source1 != DB_TYPE_NUMERIC][integer == DB_TYPE_SHORT ? 0 : integer == DB_TYPE_INTEGER ? 1 : 2];
+}
+
 static int
 domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
 {
@@ -1112,7 +1208,8 @@ domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * resul
   const TP_DOMAIN *target1 = domain_operand_domain (&operands[0]);
   const TP_DOMAIN *target2 = domain_operand_domain (&operands[1]);
 
-  if (type1 != DB_TYPE_NULL && type2 != DB_TYPE_NULL && type1 != type2)
+  if (type1 != DB_TYPE_NULL && type2 != DB_TYPE_NULL && type1 != type2
+      && !domain_compare_is_exact_number (type1, type2))
     {
       switch (tp_value_compare_common_domain (type1, type2))
 	{
@@ -2254,8 +2351,9 @@ domain_compare_mirror (const DOMAIN_COMPARE * compare, DOMAIN_COMPARE * mirrored
   if (compare->cmp != NULL)
     {
       /* cmpval is the first value's type once converted */
-      mirrored->cmp = pr_type_from_id (mirrored->conv[0] != NULL ? TP_DOMAIN_TYPE (mirrored->target[0])
-				       : (DB_TYPE) mirrored->source[0]);
+      mirrored->cmp = domain_compare_cmp ((DB_TYPE) mirrored->source[0], (DB_TYPE) mirrored->source[1],
+					  mirrored->conv[0] != NULL ? TP_DOMAIN_TYPE (mirrored->target[0])
+					  : (DB_TYPE) mirrored->source[0]);
     }
 }
 
@@ -2322,7 +2420,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
       result->method = DOMAIN_COMPARE_OBJECT;
       return NO_ERROR;
     }
-  if (lhs->type != rhs->type)
+  if (lhs->type != rhs->type && !domain_compare_is_exact_number (lhs->type, rhs->type))
     {
       const TP_COMPARE_COERCION coercion = tp_value_compare_common_domain (lhs->type, rhs->type);
       const TP_DOMAIN *target = NULL;
@@ -2383,7 +2481,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   result->converted_first = (unsigned char) after[result->first];
 
   /* the tail on the converted values: the first side's cmpval under the comparison's collation */
-  result->cmp = pr_type_from_id (after[0]);
+  result->cmp = domain_compare_cmp (lhs->type, rhs->type, after[0]);
   if (enum_side >= 0 && key[0]->collation != key[1]->collation)
     {
       /* both sides compare as strings of the ENUM's collation */
