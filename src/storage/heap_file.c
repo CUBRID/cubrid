@@ -6534,6 +6534,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  OID_SET_NULL (&scan_cache->referenced_pk_class);
+  scan_cache->has_referenced_pk = false;
   if (copy_to_local_cache && is_queryscan)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
@@ -6860,6 +6862,8 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
+  OID_SET_NULL (&scan_cache->referenced_pk_class);
+  scan_cache->has_referenced_pk = false;
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return NO_ERROR;

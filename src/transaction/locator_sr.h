@@ -81,6 +81,9 @@ typedef enum
 
 extern bool locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern bool locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid);
+extern bool locator_class_has_referenced_pk (THREAD_ENTRY * thread_p, const OID * class_oid);
+extern bool locator_assigns_referenced_pk (THREAD_ENTRY * thread_p, const OID * class_oid, ATTR_ID * att_id,
+					   int n_att_id);
 
 
 extern int locator_initialize (THREAD_ENTRY * thread_p);
@@ -123,8 +126,7 @@ extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 				 LOCATOR_LOCK_POLICY lock_policy);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
-					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,
-					bool skip_checking_fk);
+					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock);
 extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id,
 				 int n_att_id, OID * oid, OID * class_oid, int op_type,
 				 HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
@@ -144,7 +146,7 @@ extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thr
 							      int ispeeking, int old_chn,
 							      MVCC_REEV_DATA * mvcc_reev_data,
 							      NON_EXISTENT_HANDLING non_ex_handling_type,
-							      bool transient, bool owner_bypass_ok);
+							      bool transient, bool owner_bypass_ok, bool removes_key);
 extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode,
 				     int ispeeking, int chn);

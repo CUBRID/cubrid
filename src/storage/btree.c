@@ -580,6 +580,12 @@ bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 /* BTREE_FIND_FK_OBJECT -
  * Structure used to find if a key of foreign key index has any objects.
  */
+typedef enum
+{
+  BTREE_FK_FIND_CHILD,		/* lock a committed child, waiting out the ones still being written */
+  BTREE_FK_FIND_WRITER		/* pass committed children; report one still being written, without waiting */
+} BTREE_FK_SEARCH;
+
 typedef struct btree_find_fk_object BTREE_FIND_FK_OBJECT;
 struct btree_find_fk_object
 {
@@ -587,12 +593,17 @@ struct btree_find_fk_object
 #if defined (SERVER_MODE)
   OID locked_object;
   LOCK lock_mode;
+  BTREE_FK_SEARCH search;
+  MVCCID writer_before;		/* BTREE_FK_FIND_WRITER reports only a writer whose MVCCID precedes this */
+  bool stop_at_child;		/* BTREE_FK_FIND_WRITER also stops at a committed child */
+  BTREE_FK_CHILDREN *children;	/* BTREE_FK_FIND_WRITER collects the committed children it passes here, if not NULL */
+  MVCCID writer_mvccid;		/* BTREE_FK_FIND_WRITER's answer */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL, false, NULL, MVCCID_NULL }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -1491,6 +1502,11 @@ static int btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT 
 static int btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					   PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 					   void *other_args);
+static int btree_find_foreign_key_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
+					    BTREE_FIND_FK_OBJECT * find_fk_object);
+static BTREE_SEARCH btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
+						DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch,
+						bool lock_found_object, bool fk_existence);
 static int btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 						     PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 						     bool * restart, void *other_args);
@@ -6314,15 +6330,121 @@ error_return:
 int
 btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * found_oid)
 {
+  BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
+  int error_code;
+
+  error_code = btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
+  COPY_OID (found_oid, &find_fk_object.found_oid);
+  return error_code;
+}
+
+/*
+ * btree_find_foreign_key_writer () - Find a transaction still inserting or deleting a child of key, without waiting.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid (in)	   : Foreign key's B-tree ID.
+ * key (in)	   : Parent key.
+ * class_oid (in)  : Child class OID.
+ * before (in)	   : Report only a transaction whose MVCCID precedes this.
+ * stop_at_child (in) : Report none behind a committed child.
+ * children (in/out) : If not NULL, the committed children passed without stopping are added to it.
+ * writer (out)	   : That transaction's MVCCID, or MVCCID_NULL.
+ */
+int
+btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, MVCCID before,
+			       bool stop_at_child, BTREE_FK_CHILDREN * children, MVCCID * writer)
+{
+  BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
+  int error_code;
+
+  *writer = MVCCID_NULL;
+#if defined (SERVER_MODE)
+  find_fk_object.search = BTREE_FK_FIND_WRITER;
+  find_fk_object.writer_before = before;
+  find_fk_object.stop_at_child = stop_at_child;
+  find_fk_object.children = children;
+  error_code = btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
+  *writer = find_fk_object.writer_mvccid;
+#else /* !SERVER_MODE */
+  error_code = NO_ERROR;
+#endif /* !SERVER_MODE */
+  return error_code;
+}
+
+/*
+ * btree_fk_children_clear () - Free what btree_find_foreign_key_writer () collected.
+ *
+ * thread_p (in)     : Thread entry.
+ * children (in/out) : Collected children; emptied.
+ */
+void
+btree_fk_children_clear (THREAD_ENTRY * thread_p, BTREE_FK_CHILDREN * children)
+{
+  if (children->oids != NULL)
+    {
+      db_private_free_and_init (thread_p, children->oids);
+    }
+  if (children->class_oids != NULL)
+    {
+      db_private_free_and_init (thread_p, children->class_oids);
+    }
+  children->count = 0;
+  children->capacity = 0;
+}
+
+#if defined (SERVER_MODE)
+/*
+ * btree_fk_children_add () - Add a committed child to what btree_find_foreign_key_writer () collects.
+ *
+ * return	     : Error code.
+ * thread_p (in)     : Thread entry.
+ * children (in/out) : Collected children.
+ * oid (in)	     : Child OID.
+ * class_oid (in)    : Child class OID.
+ */
+static int
+btree_fk_children_add (THREAD_ENTRY * thread_p, BTREE_FK_CHILDREN * children, const OID * oid, const OID * class_oid)
+{
+  if (children->count == children->capacity)
+    {
+      int capacity = (children->capacity == 0) ? 16 : 2 * children->capacity;
+      OID *oids = (OID *) db_private_realloc (thread_p, children->oids, capacity * sizeof (OID));
+      OID *class_oids;
+
+      if (oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      children->oids = oids;
+      class_oids = (OID *) db_private_realloc (thread_p, children->class_oids, capacity * sizeof (OID));
+      if (class_oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      children->class_oids = class_oids;
+      children->capacity = capacity;
+    }
+  COPY_OID (&children->oids[children->count], oid);
+  COPY_OID (&children->class_oids[children->count], class_oid);
+  children->count++;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
+static int
+btree_find_foreign_key_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
+				 BTREE_FIND_FK_OBJECT * find_fk_object)
+{
   BTREE_SCAN btree_scan;
   int error_code = NO_ERROR;
   key_val_range kv_range;
-  BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
 
   assert (btid != NULL);
   assert (key != NULL);
   assert (class_oid != NULL);
-  assert (found_oid != NULL);
 
   /* Find if key has any objects. */
 
@@ -6339,16 +6461,16 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   kv_range.num_index_term = 0;
 
   /* Initialize not found. */
-  OID_SET_NULL (&find_fk_object.found_oid);
+  OID_SET_NULL (&find_fk_object->found_oid);
 
 #if defined (SERVER_MODE)
   /* Use S_LOCK to block found object. */
-  find_fk_object.lock_mode = S_LOCK;
+  find_fk_object->lock_mode = S_LOCK;
 #endif /* SERVER_MODE */
   /* Prepare scan. */
   BTREE_INIT_SCAN (&btree_scan);
   error_code =
-    btree_prepare_bts (thread_p, &btree_scan, btid, NULL, &kv_range, NULL, NULL, NULL, NULL, false, &find_fk_object);
+    btree_prepare_bts (thread_p, &btree_scan, btid, NULL, &kv_range, NULL, NULL, NULL, NULL, false, find_fk_object);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -6358,16 +6480,13 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
-  /* Output found object. */
-  COPY_OID (found_oid, &find_fk_object.found_oid);
-
 #if defined (SERVER_MODE)
-  if (error_code != NO_ERROR || OID_ISNULL (&find_fk_object.found_oid))
+  if (error_code != NO_ERROR || OID_ISNULL (&find_fk_object->found_oid))
     {
       /* Release lock on object if any. */
-      if (!OID_ISNULL (&find_fk_object.locked_object))
+      if (!OID_ISNULL (&find_fk_object->locked_object))
 	{
-	  lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_object.locked_object,
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_object->locked_object,
 						   &btree_scan.btid_int.topclass_oid, S_LOCK);
 	}
     }
@@ -26772,6 +26891,10 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
 	}
     }
 
+  /* The parent learns of this foreign key only after this check (update_foreign_key_ref ()), so a parent DELETE in
+   * between would scan no children for it.  xlocator_check_fk_validity () keeps the parent's writers out with SIX on
+   * its class to commit, which covers this row lock; the lock still counts for a partitioned parent, whose rows are
+   * locked on the partition and not on the class holding the SIX. */
   /* a NULL btid: no partition can hold the key */
   ret_search = BTID_IS_NULL (&local_btid) ? BTREE_KEY_NOTFOUND
     : xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
@@ -26795,7 +26918,6 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
     }
 
   assert (ret_search == BTREE_KEY_FOUND);
-  /* TODO: For read committed... Do we need to keep the lock? */
 
   if (clear_pcontext == true)
     {
@@ -27839,7 +27961,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    }
 
 	  /* No writer left to wait out (our own insert, or one that just ended): lock the object as usual. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
+	  assert (find_unique_helper->fk_existence
+		  || !lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
@@ -27847,6 +27970,17 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  if (!find_unique_helper->lock_found_object)
 	    {
 	      /* the caller settles on the heap's last version, where the row's owner shows; do not lock from the key */
+	      COPY_OID (&find_unique_helper->oid, &unique_oid);
+	      find_unique_helper->found_object = true;
+	      return NO_ERROR;
+	    }
+	  if (find_unique_helper->fk_existence)
+	    {
+	      /* No lock on a committed parent.  The child publishes its foreign-key entries before this probe, and a
+	       * parent DELETE or key change delete-marks the key before it scans for children, so one meets the other:
+	       * this probe meets the mark and waits the deleter out, or the parent's scan meets the child's entry and
+	       * waits that child out, under every referential action. */
+	      assert (OID_ISNULL (&find_unique_helper->locked_oid));
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;
 	      return NO_ERROR;
@@ -28738,6 +28872,17 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 }
 
 /*
+ * xbtree_find_unique_fk_existence () - Foreign-key existence probe: no lock on the committed parent it finds.
+ */
+BTREE_SEARCH
+xbtree_find_unique_fk_existence (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
+				 bool is_all_class_srch)
+{
+  return btree_find_unique_internal (thread_p, btid, S_SELECT_WITH_LOCK, key, class_oid, oid, is_all_class_srch, true,
+				     true);
+}
+
+/*
  * btree_find_unique_internal () - Find (and sometimes lock) object in key of unique index.
  *
  * return		  : BTREE_SEARCH result.
@@ -28750,10 +28895,12 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
  * is_all_class_srch (in) : True if search is based on all classes contained in the class hierarchy.
  * lock_found_object (in) : False to return the first object of an S_DELETE / S_UPDATE lookup without locking it; the
  *			    caller then settles on the heap's last version, where the row's owner is visible.
+ * fk_existence (in)	  : True to take no lock on a committed parent (foreign-key existence probe).
  */
 static BTREE_SEARCH
 btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
-			    OID * class_oid, OID * oid, bool is_all_class_srch, bool lock_found_object)
+			    OID * class_oid, OID * oid, bool is_all_class_srch, bool lock_found_object,
+			    bool fk_existence)
 {
   /* Helper used to describe find unique process and to output results. */
   BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
@@ -28766,6 +28913,8 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
   int lock_result;
   LOCK class_lock;
 #endif
+
+  find_unique_helper.fk_existence = fk_existence;
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -28927,7 +29076,7 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
 
 #if defined (SERVER_MODE)
       /* Safe guard: object is supposed to be locked. */
-      assert (scan_op_type == S_SELECT || !lock_found_object
+      assert (scan_op_type == S_SELECT || !lock_found_object || find_unique_helper.fk_existence
 	      || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
@@ -28958,7 +29107,7 @@ BTREE_SEARCH
 xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
 		    OID * class_oid, OID * oid, bool is_all_class_srch)
 {
-  return btree_find_unique_internal (thread_p, btid, scan_op_type, key, class_oid, oid, is_all_class_srch, true);
+  return btree_find_unique_internal (thread_p, btid, scan_op_type, key, class_oid, oid, is_all_class_srch, true, false);
 }
 
 /*
@@ -28981,7 +29130,8 @@ xbtree_find_unique_unlocked (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATIO
 			     OID * class_oid, OID * oid, bool is_all_class_srch)
 {
   assert (scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
-  return btree_find_unique_internal (thread_p, btid, scan_op_type, key, class_oid, oid, is_all_class_srch, false);
+  return btree_find_unique_internal (thread_p, btid, scan_op_type, key, class_oid, oid, is_all_class_srch, false,
+				     false);
 }
 
 /*
@@ -30795,6 +30945,50 @@ btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTR
       OID_SET_NULL (&find_fk_obj->locked_object);
     }
 }
+
+/*
+ * btree_fk_child_is_ours () - Whether a child's last version carries this transaction's own, still active insert id
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * oid (in)	   : Child OID.
+ * class_oid (in)  : Child class OID.
+ * ours (out)	   : true when it does.
+ *
+ * Note: the caller holds no page latch.
+ */
+static int
+btree_fk_child_is_ours (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, bool * ours)
+{
+  HEAP_GET_CONTEXT context;
+  MVCC_REC_HEADER mvcc_header;
+  SCAN_CODE scan;
+  int error_code = NO_ERROR;
+
+  *ours = false;
+  heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
+  scan = heap_prepare_get_context (thread_p, &context, false, LOG_WARNING_IF_DELETED);
+  if (scan == S_SUCCESS)
+    {
+      scan = heap_get_mvcc_header (thread_p, &context, &mvcc_header);
+    }
+  if (scan == S_SUCCESS)
+    {
+      *ours = (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+	       && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)));
+    }
+  else if (scan == S_ERROR && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+    }
+  else
+    {
+      /* gone since the key was read: the locked re-read decides */
+      er_clear ();
+    }
+  heap_clean_get_context (thread_p, &context);
+  return error_code;
+}
 #endif /* SERVER_MODE */
 
 /*
@@ -30851,6 +31045,18 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	MVCCID fk_writer_mvccid = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	  ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
 
+	if (find_fk_obj->search == BTREE_FK_FIND_WRITER)
+	  {
+	    if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid)
+		&& MVCC_ID_PRECEDES (fk_writer_mvccid, find_fk_obj->writer_before))
+	      {
+		find_fk_obj->writer_mvccid = fk_writer_mvccid;
+		bts->end_scan = true;
+		*stop = true;
+	      }
+	    return NO_ERROR;
+	  }
+
 	/* the writer may have ended since mvcc_satisfies_delete (), so re-read the key either way */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 	if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid))
@@ -30873,6 +31079,34 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
     case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
+      if (find_fk_obj->search != BTREE_FK_FIND_CHILD)
+	{
+	  /* the restrict check fails at once on this child only if it locks it at once; otherwise the child's holder
+	   * is still writing, and a writer later in the key may be the one to wait for */
+	  if (find_fk_obj->stop_at_child)
+	    {
+	      lock_result = lock_object (thread_p, oid, class_oid, S_LOCK, LK_COND_LOCK);
+	      if (lock_result == LK_GRANTED)
+		{
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, S_LOCK);
+		  bts->end_scan = true;
+		  *stop = true;
+		}
+	      else if (lock_result != LK_NOTGRANTED_DUE_TIMEOUT)
+		{
+		  int error_code;
+
+		  ASSERT_ERROR_AND_SET (error_code);
+		  return error_code;
+		}
+	    }
+	  if (!bts->end_scan && find_fk_obj->children != NULL)
+	    {
+	      /* an updater of the child leaves no trace here: the caller reads the child itself */
+	      return btree_fk_children_add (thread_p, find_fk_obj->children, oid, class_oid);
+	    }
+	  return NO_ERROR;
+	}
       /* Try conditional lock */
       /* Make sure there is no other object already locked. */
       if (!OID_ISNULL (&find_fk_obj->locked_object))
@@ -30923,6 +31157,25 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
   btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+
+  {
+    bool ours;
+    int error_code = btree_fk_child_is_ours (thread_p, oid, class_oid, &ours);
+
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+    if (ours && lock_is_held_only_by_writers (thread_p, oid, class_oid))
+      {
+	/* the child we last wrote still refers to the key, and its holders wait on our stamp: found, without the
+	 * lock we would queue behind them for (see locator_last_version_is_ours ()) */
+	COPY_OID (&find_fk_obj->found_oid, oid);
+	bts->end_scan = true;
+	*stop = true;
+	return NO_ERROR;
+      }
+  }
 
   lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)

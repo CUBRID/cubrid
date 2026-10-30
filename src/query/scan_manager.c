@@ -2580,6 +2580,7 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
   /* set by the two openers that reach a row-lock site; every other scan type leaves them off */
   scan_id->upddel_target_scan = false;
   scan_id->lock_ends_with_statement = false;
+  scan_id->removes_referenced_keys = false;
   scan_id->scan_op_type = scan_op_type;
   scan_id->fixed = fixed;
 
@@ -2616,6 +2617,10 @@ scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_
   scan_id->upddel_target_scan = upddel_target_scan;
   scan_id->lock_ends_with_statement = (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
 				       && !locator_class_keeps_row_locks (thread_p, cls_oid));
+  scan_id->removes_referenced_keys =
+    ((scan_id->scan_op_type == S_DELETE || (scan_id->scan_op_type == S_UPDATE && scan_id->changes_referenced_key))
+     && scan_id->mvcc_select_lock_needed && cls_oid != NULL && !OID_ISNULL (cls_oid)
+     && locator_class_has_referenced_pk (thread_p, cls_oid));
 }
 
 /*
@@ -5442,7 +5447,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  sp_scan =
 	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
 							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED,
-							 scan_id->lock_ends_with_statement, true);
+							 scan_id->lock_ends_with_statement, true,
+							 scan_id->removes_referenced_keys);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
@@ -6284,7 +6290,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
 							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
 							     &mvcc_reev_data, LOG_WARNING_IF_DELETED,
-							     scan_id->lock_ends_with_statement, true);
+							     scan_id->lock_ends_with_statement, true,
+							     scan_id->removes_referenced_keys);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
