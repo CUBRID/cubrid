@@ -178,6 +178,9 @@ struct expr_build_ctx
   DB_VALUE *cells[EXPR_MAX_STEPS];
   int n_cells;
   bool cell_is_slot[EXPR_MAX_STEPS];	/* the cell is published by a step into slots[] */
+  unsigned char cell_src[EXPR_MAX_STEPS];	/* enum expr_cell_src: where the cell's address comes from */
+  REGU_VARIABLE *cell_regu[EXPR_MAX_STEPS];	/* the literal's or value slot's regu */
+  short cell_share[EXPR_MAX_STEPS];	/* the filter's share index */
 
   /* step reads only compile-time literals; hoisted to run once per program lifetime */
   bool step_prologue[EXPR_MAX_STEPS];
@@ -1716,8 +1719,8 @@ expr_share_same (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * mine, const 
     }
 }
 
-/* the filter's result slot for an expression it already computes, or NULL */
-static DB_VALUE *
+/* the filter's share index for an expression it already computes, or -1 */
+static int
 expr_share_find (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
   int i;
@@ -1726,10 +1729,10 @@ expr_share_find (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     {
       if (expr_share_same (bctx, regu, bctx->share_pred->share[i].regu))
 	{
-	  return bctx->share_pred->share[i].slot;
+	  return i;
 	}
     }
-  return NULL;
+  return -1;
 }
 
 static void expr_build_free_preds (EXPR_BUILD_CTX * bctx);
@@ -1738,7 +1741,7 @@ static EXPR_PROG *expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells
 static int expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx);
 
 static int
-expr_new_cell (EXPR_BUILD_CTX * bctx, DB_VALUE * stable_addr)
+expr_new_cell (EXPR_BUILD_CTX * bctx, DB_VALUE * stable_addr, int src, REGU_VARIABLE * regu, int share)
 {
   if (bctx->n_cells >= EXPR_MAX_STEPS)
     {
@@ -1747,6 +1750,9 @@ expr_new_cell (EXPR_BUILD_CTX * bctx, DB_VALUE * stable_addr)
     }
   bctx->cells[bctx->n_cells] = stable_addr;	/* NULL when a step will publish it */
   bctx->cell_is_slot[bctx->n_cells] = (stable_addr == NULL);
+  bctx->cell_src[bctx->n_cells] = (unsigned char) src;
+  bctx->cell_regu[bctx->n_cells] = regu;
+  bctx->cell_share[bctx->n_cells] = (short) share;
   bctx->cell_fixed[bctx->n_cells] = EXPR_CELL_ROW;
   return bctx->n_cells++;
 }
@@ -1814,7 +1820,7 @@ expr_step_hoist (EXPR_BUILD_CTX * bctx, EXPR_STEP * step, int cell, int c1, int 
 
 /* The kernels by id.  A step names its kernel by id (EXPR_STEP.kernel_id): that is what the compiler decides
  * and what a program carried apart from this process can hold.  The row loop calls the function the id maps to
- * (expr_Kernels, set into EXPR_STEP.kernel); 0 is no kernel. */
+ * (expr_Kernels, set into EXPR_STEP.kernel when the program is materialized); 0 is no kernel. */
 #define EXPR_KERNEL_LIST(X) \
   X (add_int) \
   X (sub_int) \
@@ -1889,7 +1895,6 @@ expr_new_step (EXPR_BUILD_CTX * bctx, int kernel, int out_cell)
   step = &bctx->steps[bctx->n_steps++];
   memset (step, 0, sizeof (*step));
   step->kernel_id = (unsigned char) kernel;
-  step->kernel = expr_Kernels[kernel];
   step->out_cell = (DB_VALUE **) (intptr_t) out_cell;	/* index; fixed up in materialize */
   step->jump_to = -1;
   step->alias_of = -1;
@@ -1937,7 +1942,6 @@ expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, int kernel, int out_cell
   step = &bctx->steps[pos];
   memset (step, 0, sizeof (*step));
   step->kernel_id = (unsigned char) kernel;
-  step->kernel = expr_Kernels[kernel];
   step->out_cell = (DB_VALUE **) (intptr_t) out_cell;
   step->jump_to = -1;
   step->alias_of = -1;
@@ -1964,7 +1968,7 @@ expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, int kernel, int *cell_out)
       *cell_out = -1;
       return NULL;
     }
-  cell = expr_new_cell (bctx, NULL);
+  cell = expr_new_cell (bctx, NULL, EXPR_CSRC_STEP, NULL, -1);
   step = expr_new_step (bctx, kernel, cell);
   assert (cell >= 0 && step != NULL);
   step->out_cell = (DB_VALUE **) (intptr_t) cell;	/* index; fixed up in materialize */
@@ -5108,11 +5112,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
   /* the scan's data filter may already compute this very expression for the row */
   if (bctx->share_pred != NULL)
     {
-      DB_VALUE *slot = expr_share_find (bctx, regu);
+      int share = expr_share_find (bctx, regu);
 
-      if (slot != NULL)
+      if (share >= 0)
 	{
-	  cell = expr_new_cell (bctx, slot);
+	  cell = expr_new_cell (bctx, bctx->share_pred->share[share].slot, EXPR_CSRC_SHARE, NULL, share);
 	  if (cell >= 0)
 	    {
 	      bctx->cell_shared[cell] = true;
@@ -5200,7 +5204,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       cell = expr_cse_find (bctx, regu->value.dbvalptr, -1, -1, -1, -1);
       if (cell < 0)
 	{
-	  cell = expr_new_cell (bctx, regu->value.dbvalptr);
+	  cell = expr_new_cell (bctx, regu->value.dbvalptr, EXPR_CSRC_VALUE, regu, -1);
 	  if (cell >= 0)
 	    {
 	      expr_cse_add (bctx, regu->value.dbvalptr, -1, -1, -1, -1, cell, 0);
@@ -5220,7 +5224,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  }
 	if (cell < 0)
 	  {
-	    cell = expr_new_cell (bctx, &regu->value.dbval);
+	    cell = expr_new_cell (bctx, &regu->value.dbval, EXPR_CSRC_LITERAL, regu, -1);
 	    if (cell >= 0)
 	      {
 		bctx->cell_fixed[cell] = EXPR_CELL_LITERAL;
@@ -6041,6 +6045,26 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
  * regions, e.g. a scan filter's operands); extra_pred is a caller-owned predicate tree
  * (NULL when none) whose cells and regions are resolved against this program as well.
  * NULL on allocation failure; the build context's predicate trees are then already freed. */
+/* the address cell i reads, bound from the source the compiler recorded; NULL for a cell a step publishes.
+ * share_pred: the scan's compiled data filter whose result slots EXPR_CSRC_SHARE cells read */
+static DB_VALUE *
+expr_cell_source_addr (const EXPR_PROG * prog, int i, const EXPR_PRED * share_pred)
+{
+  switch (prog->cell_src[i])
+    {
+    case EXPR_CSRC_LITERAL:
+      return &prog->cell_regu[i]->value.dbval;
+    case EXPR_CSRC_VALUE:
+      return prog->cell_regu[i]->value.dbvalptr;
+    case EXPR_CSRC_SHARE:
+      assert (share_pred != NULL && prog->cell_share[i] >= 0 && prog->cell_share[i] < share_pred->n_share);
+      return (share_pred != NULL && prog->cell_share[i] < share_pred->n_share)
+	? share_pred->share[prog->cell_share[i]].slot : NULL;
+    default:
+      return NULL;
+    }
+}
+
 static EXPR_PROG *
 expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd, EXPR_PRED * extra_pred)
 {
@@ -6067,6 +6091,9 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
   prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
   prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
   prog->root_cells = (int *) malloc (sizeof (int) * MAX (1, prog->n_roots));
+  prog->cell_src = (unsigned char *) malloc (sizeof (unsigned char) * MAX (1, prog->n_cells));
+  prog->cell_regu = (REGU_VARIABLE **) malloc (sizeof (REGU_VARIABLE *) * MAX (1, prog->n_cells));
+  prog->cell_share = (short *) malloc (sizeof (short) * MAX (1, prog->n_cells));
 
   /* A slot is exactly one cache line wide (asserted below) and every row writes both its
    * head (the domain word) and its tail (the need_clear byte), so a slot that straddles a
@@ -6080,7 +6107,8 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
   static_assert (sizeof (DB_VALUE) == EXPR_CACHE_LINE, "slot alignment assumes one DB_VALUE per cache line");
   prog->slots =
     (DB_VALUE *) cub_aligned_alloc (EXPR_CACHE_LINE, sizeof (DB_VALUE) * MAX (1, prog->n_slots), __FILE__, __LINE__);
-  if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL)
+  if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL
+      || prog->cell_src == NULL || prog->cell_regu == NULL || prog->cell_share == NULL)
     {
       /* neither array is initialized yet: the steps hold no valid pred pointers and the
        * slots are not DB_VALUEs, so expr_prog_free () must not walk either of them */
@@ -6097,7 +6125,12 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
     }
   for (i = 0; i < prog->n_cells; i++)
     {
-      prog->cells[i] = bctx->cells[i];	/* stable addresses; step-published cells start NULL */
+      prog->cell_src[i] = bctx->cell_src[i];
+      prog->cell_regu[i] = bctx->cell_regu[i];
+      prog->cell_share[i] = bctx->cell_share[i];
+      /* stable addresses, bound from their sources; step-published cells start NULL */
+      prog->cells[i] = expr_cell_source_addr (prog, i, bctx->share_pred);
+      assert (prog->cells[i] == bctx->cells[i]);
     }
   if (prog->n_roots > 0)
     {
@@ -6189,10 +6222,14 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
   }
   slot_next = 0;
 
-  /* materialize: cell indexes -> cell addresses, owned-slot markers -> slot addresses */
+  /* materialize: kernel ids -> their functions, cell indexes -> cell addresses, owned-slot markers -> slot
+   * addresses */
   for (i = 0; i < prog->n_steps; i++)
     {
       EXPR_STEP *step = &prog->steps[i];
+
+      assert (step->kernel_id > EXPR_KID_NONE && step->kernel_id < EXPR_KID_COUNT);
+      step->kernel = expr_Kernels[step->kernel_id];
 
       /* argument cells were encoded 1-based (EXPR_ARG_ENCODE); NULL means unused */
       if (step->arg1p != NULL)
@@ -6993,6 +7030,18 @@ expr_prog_free (EXPR_PROG * prog)
   if (prog->root_cells != NULL)
     {
       free_and_init (prog->root_cells);
+    }
+  if (prog->cell_src != NULL)
+    {
+      free_and_init (prog->cell_src);
+    }
+  if (prog->cell_regu != NULL)
+    {
+      free_and_init (prog->cell_regu);
+    }
+  if (prog->cell_share != NULL)
+    {
+      free_and_init (prog->cell_share);
     }
   free_and_init (prog);
 }

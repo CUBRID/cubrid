@@ -62,6 +62,15 @@ namespace cubxasl
 }
 
 typedef struct expr_prog EXPR_PROG;
+
+/* where a cell's value comes from: what a program records so its addresses can be bound apart from the compiler */
+enum expr_cell_src
+{
+  EXPR_CSRC_STEP = 0,		/* a step of the program publishes it */
+  EXPR_CSRC_LITERAL,		/* a literal: the regu's own DB_VALUE (TYPE_DBVAL) */
+  EXPR_CSRC_VALUE,		/* a value-list slot: the regu's dbvalptr (TYPE_CONSTANT) */
+  EXPR_CSRC_SHARE		/* a result slot of the scan's compiled data filter, by its share index */
+};
 typedef struct expr_step EXPR_STEP;
 typedef struct expr_eval_ctx EXPR_EVAL_CTX;
 
@@ -164,6 +173,9 @@ struct expr_prog
 
   DB_VALUE **cells;		/* pointer cells (see file comment) */
   int n_cells;
+  unsigned char *cell_src;	/* each cell's source (enum expr_cell_src): the addresses are bound from these */
+  REGU_VARIABLE **cell_regu;	/* EXPR_CSRC_LITERAL, EXPR_CSRC_VALUE: the regu the cell reads */
+  short *cell_share;		/* EXPR_CSRC_SHARE: the filter's share index */
 
   int *root_cells;		/* cell index of each compiled list element, in list order */
   int n_roots;
