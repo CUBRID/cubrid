@@ -5094,6 +5094,22 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
+  /* CBRD-27852: close the subsessions the earlier executions of this session compiled; a client that executes the
+   * same EXECUTE handle again (a driver statement, db_execute_and_keep_statement) would otherwise keep one per
+   * execution until it closes the handle. Their executions are over: a result holds copies of what it reads (its
+   * list id, column types and values), and a kept one is off this chain (db_prepared_tree_register). A subsession
+   * links through next on another list (the kept trees, a signature's plans): only a client's own session owns its
+   * chain. */
+  while (!session->is_subsession_for_prepared && session->next != NULL)
+    {
+      DB_SESSION *done = session->next;
+
+      assert (done->is_subsession_for_prepared);
+      session->next = done->next;
+      done->next = NULL;
+      db_close_session_local (done);
+    }
+
 compile_text:
   /* CBRD-27583: a kept compilation outlives this statement's text, so it parses a copy */
   new_session =
