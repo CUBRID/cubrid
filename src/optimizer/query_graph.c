@@ -244,6 +244,8 @@ static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
 static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
+static void qo_add_null_supplier_dep_set (QO_ENV *);
+static void qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -584,25 +586,8 @@ qo_optimize_helper (QO_ENV * env)
 	}
     }
 
-  /* a semi/anti join after a right outer join that fills a node its ON reads with NULL comes after that join */
-  for (n = 1; n < env->nnodes; n++)
-    {
-      node = QO_ENV_NODE (env, n);
-      if (!QO_NODE_IS_SEMI_ANTI_JOIN (node))
-	{
-	  continue;
-	}
-
-      for (k = 1; k < n; k++)
-	{
-	  p_node = QO_ENV_NODE (env, k);
-	  if (QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_RIGHT_OUTER
-	      && bitset_intersects (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node))))
-	    {
-	      QO_ADD_SEMI_ANTI_DEP_SET (node, p_node);
-	    }
-	}
-    }
+  /* order each on_node after the outer joins that null-supply what its ON clause reads */
+  qo_add_null_supplier_dep_set (env);
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
@@ -6482,6 +6467,113 @@ qo_discover_edges (QO_ENV * env)
 }
 
 /*
+ * qo_get_null_suppliers () - Collect every preceding outer join on_node that
+ *   can null-pad a node NODE that NODE's ON clause reads: a LEFT OUTER
+ *   on_node that is itself read, or a RIGHT/FULL OUTER on_node whose own
+ *   outer_dep_set holds a node NODE's ON clause reads.
+ *   env(in):
+ *   node(in):
+ *   suppliers(out): caller-initialized bitset; this adds the index of each
+ *	  such outer join on_node to it.
+ *
+ * Note: Computed fresh from ON-clause references and node join types, not
+ *   from NODE's own (possibly hint-populated) QO_NODE_OUTER_DEP_SET -- the
+ *   ORDERED/LEADING hint handling in add_hint() also fills that field, to
+ *   force a visiting order, independent of any outer join. A caller that
+ *   needs to tell a genuine null-supplier dependency apart from hint-forced
+ *   ordering must call this instead of reading the node's stored field.
+ */
+static void
+qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
+{
+  int k, i;
+  QO_NODE *k_node;
+  QO_TERM *term;
+  BITSET refs;
+  bool null_supplies;
+
+  bitset_init (&refs, env);
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (QO_ON_COND_TERM (term) && QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node))
+	{
+	  bitset_union (&refs, &(QO_TERM_NODES (term)));
+	}
+    }
+  bitset_remove (&refs, QO_NODE_IDX (node));
+
+  for (k = 1; k < env->nnodes; k++)
+    {
+      k_node = QO_ENV_NODE (env, k);
+      if (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
+	{
+	  continue;
+	}
+
+      null_supplies = false;
+      if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_LEFT_OUTER)
+	{
+	  null_supplies = BITSET_MEMBER (refs, k);
+	}
+      else if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_RIGHT_OUTER
+	       || QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_FULL_OUTER)
+	{
+	  null_supplies = bitset_intersects (&refs, &(QO_NODE_OUTER_DEP_SET (k_node)));
+	}
+
+      if (null_supplies)
+	{
+	  bitset_add (suppliers, k);
+	}
+    }
+
+  bitset_delset (&refs);
+}
+
+/*
+ * qo_add_null_supplier_dep_set () -
+ *   An on_node whose ON clause reads node M must be joined after every preceding
+ *   outer join on_node that can null-pad M: a LEFT OUTER on_node that is M itself,
+ *   or a RIGHT/FULL OUTER on_node whose outer_dep_set holds M.
+ */
+static void
+qo_add_null_supplier_dep_set (QO_ENV * env)
+{
+  int n, k;
+  QO_NODE *node, *k_node;
+  BITSET suppliers;
+  BITSET_ITERATOR bi;
+
+  bitset_init (&suppliers, env);
+
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_NONE)
+	{
+	  continue;
+	}
+
+      BITSET_CLEAR (suppliers);
+      qo_get_null_suppliers (env, node, &suppliers);
+
+      for (k = bitset_iterate (&suppliers, &bi); k != -1; k = bitset_next_member (&bi))
+	{
+	  if (BITSET_MEMBER (QO_NODE_OUTER_DEP_SET (node), k))
+	    {
+	      continue;
+	    }
+	  k_node = QO_ENV_NODE (env, k);
+	  QO_ADD_OUTER_DEP_SET (node, k_node);
+	}
+    }
+
+  bitset_delset (&suppliers);
+}
+
+/*
  * qo_classify_outerjoin_terms () -
  *   return:
  *   env(in):
@@ -6550,7 +6642,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
 	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
+	      /* inner / semi / anti: structurally inner, no outer-join classification. Join-order
+	       * dependency on a preceding null-supplying outer join is now handled at the node level
+	       * by qo_add_null_supplier_dep_set(), not here. */
+	      continue;
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -8528,11 +8623,14 @@ static void
 qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 {
   int ti, t;
+  BITSET suppliers;
 
   for (ti = 0; ti < env->nsegs; ti++)
     {
       root_arr[ti] = ti;
     }
+
+  bitset_init (&suppliers, env);
 
   for (t = 0; t < env->nterms; t++)
     {
@@ -8544,6 +8642,19 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
 	{
 	  continue;
+	}
+      if (QO_ON_COND_TERM (jterm))
+	{
+	  QO_NODE *jon = QO_ENV_NODE (env, QO_TERM_LOCATION (jterm));
+	  if (QO_NODE_PT_JOIN_TYPE (jon) == PT_JOIN_INNER)
+	    {
+	      BITSET_CLEAR (suppliers);
+	      qo_get_null_suppliers (env, jon, &suppliers);
+	      if (!bitset_is_empty (&suppliers))
+		{
+		  continue;	/* reads a null-supplied node; conditional, not an unconditional edge */
+		}
+	    }
 	}
       /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
        * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
@@ -8591,6 +8702,8 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 	}
       root_arr[ti] = r;
     }
+
+  bitset_delset (&suppliers);
 }
 
 /*
