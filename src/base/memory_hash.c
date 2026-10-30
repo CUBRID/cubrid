@@ -620,14 +620,14 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	     */
 	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+		hash = mht_1str_pseudo_key (db_get_numeric (val), DB_NUMERIC_BUF_SIZE);
 	      }
 	    else
 	      {
 		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
-		hash = mht_1str_pseudo_key (calc_buf, -1);
+		hash = mht_1str_pseudo_key (calc_buf, DB_NUMERIC_BUF_SIZE);
 	      }
 	  }
 	  break;
@@ -637,7 +637,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
+	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), db_get_string_size (val));
 	  break;
 	case DB_TYPE_TIME:
 	  {
