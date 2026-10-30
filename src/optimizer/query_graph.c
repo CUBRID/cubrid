@@ -8529,7 +8529,8 @@ qo_assign_eq_classes (QO_ENV * env)
  * The node's own selectivity becomes k over the table's rows. Nothing else changes: no derived
  * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
  * the index scan cost already reads. Every failure along the way -- a node not joined by an
- * equality, a system class, a predicate the pass cannot evaluate, no index on a filter column, no
+ * equality, a system class, a predicate the pass cannot evaluate, no index on a filter column (a
+ * class of at most ROW_SNAPSHOT_HINT_SCAN_ROWS rows is scanned when the statement is hinted), no
  * row or more than row_snapshot_max_rows rows selected, a key the histogram cannot price, a join
  * between two snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
  */
@@ -8646,9 +8647,11 @@ qo_row_snapshot_apply (QO_ENV * env)
       if (ok)
 	{
 	  /* NULL without an index on a filter column, past max_rows rows or with none: the
-	   * histograms keep the estimate */
+	   * histograms keep the estimate. Hinted ROW_SNAPSHOT, a class the statistics count as small
+	   * is read without the index too. */
 	  snapshots[n] = row_snapshot_read (QO_NODE_INFO (node)->info[0].mop, QO_NODE_INFO (node)->info[0].smclass,
-					    columns, filters, f, max_rows);
+					    columns, filters, f, max_rows, (hint & PT_HINT_ROW_SNAPSHOT)
+					    && QO_NODE_NCARD (node) <= ROW_SNAPSHOT_HINT_SCAN_ROWS);
 	}
       for (t = 0; t < f; t++)
 	{

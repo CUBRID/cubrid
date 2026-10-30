@@ -72,16 +72,20 @@ typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 extern int row_snapshot_max_rows (void);
 /* the limit of a statement hinted ROW_SNAPSHOT while row_snapshot_max_rows is 0: its default */
 #define ROW_SNAPSHOT_HINT_MAX_ROWS 100
+/* a statement hinted ROW_SNAPSHOT also reads a class without an index on the filter column when
+ * the statistics count at most this many rows: the hint takes them to be current */
+#define ROW_SNAPSHOT_HINT_SCAN_ROWS 1000
 
 /* the columns of a user class that a read can return, with no rows: what the filters resolve
  * their columns against. NULL for a system class or a class with none. */
 extern ROW_SNAPSHOT *row_snapshot_columns (SM_CLASS *class_);
 
 /* read the rows of classop that pass every filter, at most max_rows of them. NULL when no filter
- * column leads an index of the class (the read would scan the table), when more rows pass, or on
- * any failure; the error and the plan dump of the statement being planned are left as they were. */
+ * column leads an index of the class (the read would scan the table) and scan is false, when more
+ * rows pass, or on any failure; the error and the plan dump of the statement being planned are
+ * left as they were. */
 extern ROW_SNAPSHOT *row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns,
-					const ROW_SNAPSHOT_FILTER *filters, int n_filters, int max_rows);
+					const ROW_SNAPSHOT_FILTER *filters, int n_filters, int max_rows, bool scan);
 
 extern void row_snapshot_free (ROW_SNAPSHOT *snapshot);
 

@@ -507,7 +507,7 @@ row_snapshot_columns (SM_CLASS *class_)
 
 ROW_SNAPSHOT *
 row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, const ROW_SNAPSHOT_FILTER *filters,
-		   int n_filters, int max_rows)
+		   int n_filters, int max_rows, bool scan)
 {
   /* the read is a statement on the same class with the same filters: planning it must not read
    * again. The client runs one statement at a time, so a plain flag will do. */
@@ -568,7 +568,7 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
 	}
       query += ")";
     }
-  if (!indexed)
+  if (!indexed && !scan)
     {
       /* without an index the read scans the whole table at every compile */
       return NULL;
