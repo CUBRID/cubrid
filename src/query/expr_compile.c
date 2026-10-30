@@ -43,7 +43,6 @@
 #include "fetch.h"
 #include "fetch_arith_ops.h"
 #include "query_dump.h"		/* qdump_arith_opcode_name () for the listing */
-#include "domain_resolve.h"
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
@@ -128,19 +127,21 @@ struct expr_pred
   DB_VALUE **arg2p;
   DB_VALUE **arg3p;		/* LIKE escape, when present */
   REL_OP rel_op;
-  DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> tp_value_compare */
+  DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> the term's decided comparison */
+  /* comp leaves: the comparison the unpack decided for the term (COMP_EVAL_TERM.compare), which a leaf that is not a
+   * direct compare makes as eval_value_rel_cmp () does; NULL for a term left to its values and for a pinned literal
+   * (both sides are then of the left side's type) */
+  const DOMAIN_COMPARE *compare;
 
   /* scan-filter leaves (EXPR_PRED_COMP_FETCH): the operands are fetched per row through
    * the regular fetch path into the two holders below, which arg1p/arg2p were wired to
    * at build time so the resolved leaf above compares them unchanged.  fetch_src is the
-   * original term, evaluated verbatim for a row whose runtime types the leaf was not
-   * resolved for (a host variable bound to a different type). */
+   * original term, which the interpreted kinds evaluate verbatim. */
   REGU_VARIABLE *fetch_lhs;
   REGU_VARIABLE *fetch_rhs;
   const void *fetch_src;
   DB_VALUE *fetched1;
   DB_VALUE *fetched2;
-  bool need_type_guard;		/* a side can drift from its plan type: verify runtime types per row */
 
   /* scan-filter leaves with COMPILED operands (EXPR_PRED_COMP_FETCH): an arithmetic side is
    * compiled into a step range of the tree's program instead of being fetched through
@@ -150,9 +151,8 @@ struct expr_pred
   bool lhs_compiled, rhs_compiled;
   int lhs_start, lhs_n;
   int rhs_start, rhs_n;
-  /* a literal right side of another type than the left: eval_value_rel_cmp () coerces such
-   * a FETCH_ALL_CONST operand to the left side's type before comparing (once, in place);
-   * the leaf carries that coerced value, so the row compares same-typed values directly */
+  /* a literal right side of another type than the left, coerced once to the left side's type
+   * (expr_scan_pred_build ()); the row compares same-typed values directly */
   bool rhs_pinned;
   DB_VALUE pinned_rhs;
   EXPR_PROG *prog;		/* the tree's root only: the operand program it owns */
@@ -163,15 +163,6 @@ struct expr_pred
    * evaluated (see expr_scan_pred_build ()), with the slot the node publishes into */
   struct expr_share *share;
   int n_share;
-
-  /* the tree's root only: the host-variable type signature the leaves and operand steps were
-   * resolved for, verified once per execution (expr_scan_pred_signature_ok ()) -- same
-   * contract as EXPR_PROG.hv_types, kept here because a tree without compiled operand
-   * steps has no program to carry it */
-  DB_TYPE *sig_types;
-  int sig_n;
-  unsigned long long sig_stamp;
-  bool sig_stamp_valid;
 };
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
@@ -298,21 +289,37 @@ struct expr_build_ctx
  * result slot was made NULL when the step cleared it).
  ******************************************************************************/
 
-/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c) */
+/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583) for a
+ * value of the planned type, which the step compiler copied; a step without one coerces by the value's type */
 int
-expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
+expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
   TP_DOMAIN_STATUS dom_status;
 
-  if (domain_p != NULL)
+  if (domain_p == NULL)
     {
+      return NO_ERROR;
+    }
+  if (DB_IS_NULL (result_p))
+    {
+      /* tp_value_coerce's: a NULL comes out bare */
+      db_make_null (result_p);
+      return NO_ERROR;
+    }
+  if (conv != NULL && DB_VALUE_DOMAIN_TYPE (result_p) == planned)
+    {
+      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+    }
+  else
+    {
+      /* no converter, or a value of another type than planned: coerce by the value's type */
       dom_status = tp_value_coerce (result_p, result_p, domain_p);
-      if (unlikely (dom_status != DOMAIN_COMPATIBLE))
-	{
-	  int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
-	  assert_release (error != NO_ERROR);
-	  return error;
-	}
+    }
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
+    {
+      int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
+      assert_release (error != NO_ERROR);
+      return error;
     }
   return NO_ERROR;
 }
@@ -344,46 +351,18 @@ expr_coerce_dbval_to_numeric (const DB_VALUE * dbval_p, DB_VALUE * result_p)
       return NO_ERROR; \
     }
 
-/* A typed kernel is bound because both operands were of its type at compile time, and for
- * almost every source that holds for the whole execution.  A recursive CTE breaks it: the
- * column domain carries the anchor branch's type (INTEGER for "SELECT 1"), while the
- * recursive branch refills the same slot with whatever it produces (BIGINT for count ()),
- * so the operand type changes between iterations of one query.  The interpreted path never
- * notices because qdata_add_dbval () re-reads the actual types per row.
- *
- * Trusting the domain here is not merely a debug-build assert in db_get_int (): in a
- * release build db_get_int () on a BIGINT returns the low half of the value, which is a
- * silently wrong answer -- worse than the crash.  So verify, and hand the row to the
- * interpreter when the types are not what the kernel was specialized for. */
+/* A typed kernel is bound because both operands were of its type at compile time, and that holds for the whole
+ * execution: a list column has the unified domain of every branch that fills it (a recursive CTE's anchor and recursive
+ * parts included) and a bind has the type of its signature, so no row brings a value of another type. */
 #define EXPR_ARITH_REQUIRE_TYPE(a, b, t) \
-  if (unlikely (DB_VALUE_DOMAIN_TYPE (a) != (t) || DB_VALUE_DOMAIN_TYPE (b) != (t))) \
-    { \
-      return expr_arith_row_interp (step, ctx); \
-    }
-
-/* Evaluate this node's whole subtree the interpreted way and take the result into the
- * kernel's own slot, so the rest of the program sees the cell it expects. */
-static int
-expr_arith_row_interp (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  DB_VALUE *peek = NULL;
-
-  if (step->regu == NULL)
-    {
-      return ER_FAILED;
-    }
-  if (fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  pr_clear_value (step->out);
-  return pr_clone_value (peek, step->out);
-}
+  assert (DB_VALUE_DOMAIN_TYPE (a) == (t) && DB_VALUE_DOMAIN_TYPE (b) == (t))
 
 /* A result domain the kernel's own type already satisfies is dropped at compile time
  * (step->domain == NULL), so only the parameterized NUMERIC case reaches the coercion. */
 #define EXPR_ARITH_EPILOGUE() \
-  return (step->domain == NULL) ? NO_ERROR : expr_coerce_result_to_domain (step->out, step->domain)
+  return (step->domain == NULL) ? NO_ERROR \
+    : expr_coerce_result_to_domain (step->out, step->domain, arith_result_type (step->regu->value.arithptr), \
+				    step->result_conv)
 
 /* ---- INTEGER ---- */
 
@@ -674,8 +653,9 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
    * interpreted path coerces both with tp_value_cast_force () -- it allows conversions the
    * plain (non-forced) cast rejects, such as a character string to BIT -- except a
    * STRICT_TYPE_CAST-flagged T_CAST_WRAP, which takes tp_value_cast () (expr_k_cast_strict,
-   * the same choice fetch_cast_operand () makes). */
-  dom_status = tp_value_cast_force (src, step->out, step->domain, false);
+   * the same choice fetch_cast_operand () makes), each with the converter the node found at unpack. */
+  dom_status = arith_cast_value (step->regu->value.arithptr, 1, src, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_FORCE);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
@@ -691,7 +671,8 @@ expr_k_cast_strict (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   TP_DOMAIN_STATUS dom_status;
 
   pr_clear_value (step->out);
-  dom_status = tp_value_cast (src, step->out, step->domain, false);
+  dom_status = arith_cast_value (step->regu->value.arithptr, 1, src, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_PLAIN);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
@@ -711,12 +692,8 @@ expr_k_cast_strict (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       PRIM_SET_NULL (step->out); \
       return NO_ERROR; \
     } \
-  /* the operand type was fixed at compile time; a value of another type (see \
-   * EXPR_ARITH_REQUIRE_TYPE) goes to the interpreter instead of a raw db_get_* read */ \
-  if (unlikely (DB_VALUE_DOMAIN_TYPE (src) != (t))) \
-    { \
-      return expr_arith_row_interp (step, ctx); \
-    }
+  /* the operand type was fixed at compile time (see EXPR_ARITH_REQUIRE_TYPE) */ \
+  assert (DB_VALUE_DOMAIN_TYPE (src) == (t))
 
 /* mirror of the T_EXTRACT path (db_string_extract_dbval () DB_TYPE_DATE case) */
 static int
@@ -801,9 +778,9 @@ expr_k_extract_timestamp_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
-/* T_NULLIF: NULL when the two sides compare equal, else the left value cast to the
- * regu domain -- mirror of the fetch_peek_arith () T_NULLIF case.  The compiler only
- * accepts a fixed regu->domain, so the interpreted domain-infer arm cannot arise. */
+/* T_NULLIF: NULL when the two sides compare equal (the comparison the unpack decided for the node, as
+ * fetch_op_nullif () makes it), else the left value cast to the regu domain -- mirror of the fetch_peek_arith ()
+ * T_NULLIF case.  The compiler only accepts a fixed regu->domain, so the interpreted domain-infer arm cannot arise. */
 static int
 expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
@@ -821,7 +798,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     }
   v2 = *step->arg2p;
 
-  cmp_res = tp_value_compare_with_error (v1, v2, 1, 0, &can_compare);
+  cmp_res = eval_compare_values_resolved (ctx->thread_p, arith_decided_compares (step->regu->value.arithptr), ctx->vd,
+					  v1, v2, 0, &can_compare);
   if (cmp_res == DB_EQ)
     {
       return NO_ERROR;		/* the cleared slot IS the NULL result */
@@ -830,7 +808,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return ER_FAILED;		/* er_set done by the comparison */
     }
-  dom_status = tp_value_cast (v1, step->out, step->domain, false);
+  dom_status = arith_cast_value (step->regu->value.arithptr, 0, v1, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_PLAIN);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, v1, step->domain);
@@ -844,7 +823,7 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * predicate is compiled, so the per-row work is one indirect call to a leaf that knows
  * both -- no switch on the type and no switch on the operator inside the row loop.  The
  * leaves below are the (type x operator) cross product for the direct-compare types; every
- * other type resolves to the generic leaf that calls tp_value_compare_with_error (). */
+ * other type resolves to the generic leaf, which makes the term's decided comparison (expr_pred_compare ()). */
 
 /* mirror of eval_pred () T_COMP_EVAL_TERM: a NULL side is V_UNKNOWN before any comparison
  * (rel_ops needing different NULL handling are rejected at compile time) */
@@ -861,10 +840,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       return V_UNKNOWN; \
     }
 
-/* A leaf reads both values with the db_get_* of the type it was resolved for.  Whether the
- * values can drift from that type (the recursive-CTE case EXPR_ARITH_REQUIRE_TYPE guards
- * against) is known when the predicate is compiled, so the type check is not paid here but
- * by the caller, and only for operands that can drift -- see pred->need_type_guard. */
+/* A leaf reads both values with the db_get_* of the type it was resolved for: no row brings a value of another type
+ * (see EXPR_ARITH_REQUIRE_TYPE). */
 #define EXPR_PRED_CMP_LEAF(name, get, op) \
 static DB_LOGICAL \
 name (const EXPR_PRED * pred) \
@@ -929,9 +906,20 @@ expr_pred_map_cmp (int result, REL_OP rel_op)
     }
 }
 
-/* the type is not one of the direct-compare kinds: same call the interpreted path makes
- * (the constant-side pre-coercion in eval_value_rel_cmp () only fires when the value types
- * differ, which the compiler already excluded) */
+/* the comparison of a leaf's two values: the term's decided one, as eval_value_rel_cmp () makes it, and for a pinned
+ * literal the cmpval of its type, which both sides have (the leaf checks the left's per row); exception to deciding
+ * before the rows: a term left to its values (no comparison, or the VALUES method) compares the values */
+static DB_VALUE_COMPARE_RESULT
+expr_pred_compare (const EXPR_PRED * pred, const DB_VALUE * v1, const DB_VALUE * v2, int total_order, bool * comparable)
+{
+  if (pred->rhs_pinned)
+    {
+      return domain_compare_in_domain (pred->compare->target[1], v1, v2, 1, total_order);
+    }
+  return eval_compare_values_resolved (NULL, pred->compare, NULL, v1, v2, total_order, comparable);
+}
+
+/* the type is not one of the direct-compare kinds: the term's decided comparison */
 static DB_LOGICAL
 expr_pred_generic_cmp (const EXPR_PRED * pred)
 {
@@ -940,13 +928,18 @@ expr_pred_generic_cmp (const EXPR_PRED * pred)
 
   EXPR_PRED_CMP_PROLOGUE (v1, v2);
 
-  result = tp_value_compare_with_error (v1, v2, 1, 0, &comparable);
+  result = expr_pred_compare (pred, v1, v2, 0, &comparable);
   if (!comparable)
     {
       return V_ERROR;
     }
   return expr_pred_map_cmp (result, pred->rel_op);
 }
+
+/* the values of a direct-compare leaf are of the type it was resolved for (see EXPR_ARITH_REQUIRE_TYPE) */
+#define EXPR_PRED_ASSERT_TYPES(pred, v1, v2) \
+  assert ((pred)->fast_type == DB_TYPE_UNKNOWN || DB_IS_NULL (v1) || DB_IS_NULL (v2) \
+	  || (DB_VALUE_DOMAIN_TYPE (v1) == (pred)->fast_type && DB_VALUE_DOMAIN_TYPE (v2) == (pred)->fast_type))
 
 /* resolve the (type, operator) pair to its leaf once, at compile time */
 static EXPR_PRED_EVAL_FN
@@ -1027,20 +1020,7 @@ expr_pred_eval (const EXPR_PRED * pred)
   switch (pred->kind)
     {
     case EXPR_PRED_COMP:
-      if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN)
-	{
-	  /* an operand that can drift from its compile-time type (a recursive CTE refills an
-	   * INTEGER-domain slot with a BIGINT): db_get_int () on a BIGINT would compare the low
-	   * half -- a silently wrong answer -- so such a row takes the generic comparison, which
-	   * coerces the sides the way eval_value_rel_cmp () does */
-	  DB_VALUE *v1 = *pred->arg1p, *v2 = *pred->arg2p;
-
-	  if (!DB_IS_NULL (v1) && !DB_IS_NULL (v2)
-	      && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
-	    {
-	      return expr_pred_generic_cmp (pred);
-	    }
-	}
+      EXPR_PRED_ASSERT_TYPES (pred, *pred->arg1p, *pred->arg2p);
       return pred->eval (pred);
 
     case EXPR_PRED_COMP_TORDER:
@@ -1058,38 +1038,25 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    return (DB_IS_NULL (v1) && DB_IS_NULL (v2)) ? V_TRUE : V_FALSE;
 	  }
 
-	/* the direct reads are only valid while both values are of the resolved type (see the
-	 * EXPR_PRED_COMP case above); otherwise the total-order comparison with coercion */
-	if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN
-	    && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
+	EXPR_PRED_ASSERT_TYPES (pred, v1, v2);
+	switch (pred->fast_type)
 	  {
-	    result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
+	  case DB_TYPE_INTEGER:
+	    result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  case DB_TYPE_BIGINT:
+	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  case DB_TYPE_DOUBLE:
+	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  default:
+	    result = expr_pred_compare (pred, v1, v2, 1, &comparable);
 	    if (!comparable)
 	      {
 		return V_ERROR;
 	      }
-	  }
-	else
-	  {
-	    switch (pred->fast_type)
-	      {
-	      case DB_TYPE_INTEGER:
-		result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
-		break;
-	      case DB_TYPE_BIGINT:
-		result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
-		break;
-	      case DB_TYPE_DOUBLE:
-		result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
-		break;
-	      default:
-		result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
-		if (!comparable)
-		  {
-		    return V_ERROR;
-		  }
-		break;
-	      }
+	    break;
 	  }
 	if (result == DB_UNK)
 	  {
@@ -1337,7 +1304,9 @@ expr_k_case_pub_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 
   /* the result domain can be a string type, so the slot may own heap memory */
   pr_clear_value (step->out);
-  dom_status = tp_value_auto_cast (sel, step->out, step->domain);
+  /* aux: the branch's operand (0 the THEN, 1 the ELSE) */
+  dom_status = arith_cast_value (step->regu->value.arithptr, step->aux, sel, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_AUTO);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, sel, step->domain);
@@ -1378,7 +1347,8 @@ expr_k_predicate_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   pr_clear_value (step->out);
   EXPR_PREDICATE_VALUE ();
 
-  dom_status = tp_value_auto_cast (step->out, step->out, step->domain);
+  dom_status = arith_cast_value (step->regu->value.arithptr, 0, step->out, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_AUTO);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, step->out, step->domain);
@@ -1413,12 +1383,29 @@ expr_k_leaf_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* The domain a host variable leaf's value is of: its compiled domain, which the XASL fixes for every execution (a
+ * value without a converter is of its type, expr_k_hostvar asserts it). The one place where a position the plan leaves
+ * to its value's type would be excepted. */
+static const TP_DOMAIN *
+expr_hostvar_domain (const REGU_VARIABLE * regu)
+{
+  assert (regu->type == TYPE_POS_VALUE);
+  return regu->domain;
+}
+
 /* publish the address of a host variable; rebinding per evaluation keeps the program
  * valid when a new request supplies a different value array */
 static int
 expr_k_hostvar (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  *step->out_cell = ctx->vd->dbval_ptr + step->aux;
+  /* the consumers read the bound value (val_descr.dbval_ptr is const) */
+  *step->out_cell = (DB_VALUE *) ctx->vd->dbval_ptr + step->aux;
+#if !defined (NDEBUG)
+  /* the kernels were chosen for that domain */
+  const TP_DOMAIN *domain = expr_hostvar_domain (step->regu);
+  assert (domain != NULL
+	  && (DB_IS_NULL (*step->out_cell) || DB_VALUE_DOMAIN_TYPE (*step->out_cell) == TP_DOMAIN_TYPE (domain)));
+#endif
   return NO_ERROR;
 }
 
@@ -1468,7 +1455,7 @@ expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 static int
 expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  const TP_DOMAIN *collate = qexec_get_node_domain (ctx->vd, step->regu->domain, step->regu->plan_item);
+  const TP_DOMAIN *collate = regu_produced_domain (step->regu);
 
   pr_clear_value (step->out);
   if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
@@ -1483,28 +1470,6 @@ expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       assert (TP_DOMAIN_TYPE (collate) == DB_TYPE_ENUMERATION);
       db_enum_put_cs_and_collation (step->out, collate->codeset, collate->collation_id);
-    }
-  return NO_ERROR;
-}
-
-/* A constant expression resolve_domains evaluates once per execution (plan_item->ref): when it did, the gate's value
- * is the node's and the node's own steps are jumped over; when it did not (the evaluation is deferred to the rows),
- * the node computes as usual -- and its slot address goes back into the cell, which an earlier execution may have
- * pointed at the gate's value (a slot-owning step publishes its slot once, at materialization). */
-static int
-expr_k_resolved_value (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  const ARITH_TYPE *arith = step->regu->value.arithptr;
-
-  if (fetch_arith_constant_evaluated (ctx->vd, arith->plan_item))
-    {
-      *step->out_cell = ctx->vd->dbval_ptr + arith->plan_item->ref;
-      ctx->jump = step->jump_to;
-      return EXPR_JUMPED;
-    }
-  if (step->out != NULL)
-    {
-      *step->out_cell = step->out;	/* the node's slot (alias_of) */
     }
   return NO_ERROR;
 }
@@ -1530,9 +1495,8 @@ expr_k_nested_prog (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 /* ---- the generic step: an operator the kernel table does not cover ----
  *
  * The step runs the opcode's body (fetch_arith_ops.c) on the operand cells its emitter wired, inside the node protocol
- * the interpreter runs around the same body (fetch_arith_node_resolve / fetch_arith_node_end): the node's domains of
- * this execution, its slot cleared, a variable domain resolved; after the body the no-value check and the collation
- * relabel.  The result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
+ * the interpreter runs around the same body (fetch_arith_node_resolve): the node's domains, its slot cleared.  The
+ * result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
  * writes there and the interpreter's consumers read there, so nothing is copied.  T_INCR/T_DECR publish their left
  * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does. */
 static int
@@ -1581,11 +1545,6 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   if (rc != NO_ERROR)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
-    }
-  rc = fetch_arith_node_end (ctx->vd, &a);
-  if (rc != NO_ERROR)
-    {
-      return rc;
     }
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
@@ -2314,8 +2273,7 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int no
  *
  * One cell per (operator, result type, operand mix): the kernel a binary arithmetic node
  * runs, or NULL where no kernel exists and the node stays interpreted.  The table is the
- * whole policy -- a reviewer reads a cell, not a switch -- and the slot a program leaves
- * open for a variable node is filled from it once the gate has resolved the node's types
+ * whole policy -- a reviewer reads a cell, not a switch
  * (database-reference 참고: the compiler's operator/type tables).
  *
  *   mix SAME         both operands already have the result type: the typed operator
@@ -2412,19 +2370,14 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 }
 
 /******************************************************************************
- * domains in this execution (PR#8022, CBRD-27510)
+ * domains (PR#8022, CBRD-27510, CBRD-27583)
  *
- * The compiler leaves a node whose type a value decides as DB_TYPE_VARIABLE; resolve_domains
- * resolves every such node once per execution, before the main block, into XASL_STATE
- * (domain_plan.h).  A program is compiled after that gate -- lazily, on the first row that
- * needs it -- so it reads the resolutions the interpreted path reads (fetch_arith_resolved_
- * domain (), REGU_RESOLVED_VALUE ()) and never waits for a row to resolve a type.  A node
- * the gate did not resolve, or resolved to no value (every row NULL), is declined.
+ * The compiler fixes a node's domain; a node it leaves DB_TYPE_VARIABLE leaves its type to its values, which the
+ * interpreted path computes with (an exception to deciding before the rows).  A program declines such a node.
  ******************************************************************************/
 
-/* The value a TYPE_POS_VALUE publishes in this execution: resolve_domains' converted copy
- * when the plan converts the bind (REGU_RESOLVED_VALUE), else the bound value itself.
- * The index is into vd->dbval_ptr; -1 when the descriptor holds no such value. */
+/* The value a TYPE_POS_VALUE publishes: the bound value itself.  The index is into vd->dbval_ptr; -1 when the
+ * descriptor holds no such value. */
 static int
 expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
@@ -2434,142 +2387,46 @@ expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     {
       return -1;
     }
-  if (regu->plan_item != NULL && regu->plan_item->ref >= 0 && vd->xasl_state != NULL
-      && vd->xasl_state->resolved_domain.readable && regu->plan_item->ref < vd->xasl_state->resolved_domain.n_vals)
-    {
-      return regu->plan_item->ref;
-    }
   return (regu->value.val_pos >= 0 && regu->value.val_pos < vd->dbval_cnt) ? regu->value.val_pos : -1;
 }
 
-/* resolve_domains' resolution of a late-binding node, or NULL: the node has none, the
- * descriptor carries no resolved-domain state (a stream's), or the resolution is one a
- * program kept across executions must not bake in (a session variable's type, a source a
- * fetch never caches: plan->resolved_non_cacheable). */
-static const RESOLVED_DOMAIN *
-expr_item_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_LATE_BIND))
-    {
-      return NULL;
-    }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
-  if (!qexec_owns_resolved_index (resolved, item) || resolved.plan->resolved_non_cacheable[item->resolved_index])
-    {
-      return NULL;
-    }
-  return qexec_late_bind_domain (vd, item);
-}
-
-/* The domain an arithmetic node has in this execution, as fetch_peek_arith () reads it: its
- * compiled domain, or for a node the compiler left variable the resolution the gate made.
- * NULL: the node takes no value (a CAST into a variable target, a resolution of type NULL)
- * or has no resolution the program may use -- the node is declined. */
+/* The domain an arithmetic node computes in, as fetch_peek_arith () reads it: its compiled domain.  NULL: the node
+ * leaves its type to its values -- the node is declined. */
 static TP_DOMAIN *
 expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {
-  TP_DOMAIN *domain = regu->domain;
-  const ARITH_TYPE *arith = regu->value.arithptr;
+  TP_DOMAIN *domain = regu_produced_domain (regu);
 
-  if (domain == NULL || arith == NULL)
+  if (domain == NULL || regu->value.arithptr == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
       return NULL;
-    }
-  if (TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
-    {
-      return domain;
-    }
-  if (arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP || arith->opcode == T_CAST_NOFAIL)
-    {
-      /* a target the compiler left variable casts no value */
-      return NULL;
-    }
-  const RESOLVED_DOMAIN *resolved = expr_item_resolution (vd, arith->plan_item);
-  if (resolved == NULL || resolved->domain == NULL || TP_DOMAIN_TYPE (resolved->domain) == DB_TYPE_NULL
-      || TP_DOMAIN_TYPE (resolved->domain) == DB_TYPE_VARIABLE)
-    {
-      return NULL;
-    }
-  return (TP_DOMAIN *) resolved->domain;
-}
-
-/*
- * expr_regu_exec_domain () - the domain a compiled arithmetic node has in this execution, taken as the
- *			      node's execution domain the way fetch_peek_arith () takes it on the node's
- *			      first computation (qexec_set_node_domain) -- a program-served node never
- *			      reaches that fetch, so its consumer takes it here
- *   return: the domain, or NULL when the node takes no value in this execution (every row NULL)
- */
-TP_DOMAIN *
-expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu)
-{
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, regu->domain, regu->plan_item);
-
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
-    {
-      return domain;
-    }
-  if (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
-    {
-      return NULL;
-    }
-  domain = expr_arith_exec_domain (vd, regu);
-  if (domain != NULL && vd != NULL && vd->xasl_state != NULL)
-    {
-      ARITH_TYPE *arith = regu->value.arithptr;
-      qexec_set_node_domain (vd, regu->plan_item, regu->domain, domain);
-      if (arith->plan_item != regu->plan_item)
-	{
-	  qexec_set_node_domain (vd, arith->plan_item, arith->domain, domain);
-	}
     }
   return domain;
 }
 
-/* The plan of a binary arithmetic node the kernels can take: an operand coercion that
- * converts neither operand (fetch_arith_binary's direct typed-operator path) and names a
- * number -- the kernels are that typed number operator, computing in the plan's type
- * (arith.type, what qdata_number_operator reads both operands as).  NULL for any other
- * node, which stays interpreted: a plan that converts an operand on the row (plan->conv[i])
- * until a kernel mirrors the planned converter, an unresolved plan (the fetch's
- * unresolved-domain error), a date, string or collection plan (another operator's). */
-static const RESOLVED_DOMAIN *
-expr_arith_number_plan (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE * arith)
+/* What a binary arithmetic node the kernels can take makes of its operands (ARITH_TYPE.decided.arith, found at
+ * unpack, which converts no operand: generation converts it at its regu): one that names a number --
+ * the kernels are that typed number operator, computing in its type (arith.type, what
+ * qdata_number_operator reads both operands as).  NULL for any other node, which stays interpreted:
+ * a date, string or collection one (another operator's). */
+static const DOMAIN_ARITH *
+expr_arith_number_plan (const ARITH_TYPE * arith)
 {
-  const DOMAIN_PLAN_ITEM *item = arith->plan_item;
-  const RESOLVED_DOMAIN *plan;
-
-  if (item == NULL)
+  if (!arith_decides_arith (arith) || arith_decided_arith (arith)->kind != DOMAIN_ARITH_NUMBER)
     {
       return NULL;
     }
-  if ((item->flags & DOMAIN_PLAN_LATE_BIND) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
-    {
-      plan = expr_item_resolution (bctx->vd, item);
-    }
-  else
-    {
-      plan = &item->fixed;
-    }
-  if (plan == NULL || plan->conv[0] != NULL || plan->conv[1] != NULL || plan->arith.kind != DOMAIN_ARITH_NUMBER)
-    {
-      return NULL;
-    }
-  return plan;
+  return arith_decided_arith (arith);
 }
 
-/* the DB_TYPE a leaf will produce, as known at compile time */
+/* the DB_TYPE a leaf will produce, as known at compile time: its compiled domain's */
 static DB_TYPE
 expr_leaf_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   if (regu->type == TYPE_POS_VALUE)
     {
-      /* the value this execution binds (or the gate's converted copy of it) */
-      const int vidx = expr_pos_value_index (bctx, regu);
-      if (vidx >= 0)
-	{
-	  return DB_VALUE_DOMAIN_TYPE (&bctx->vd->dbval_ptr[vidx]);
-	}
+      const TP_DOMAIN *domain = expr_hostvar_domain (regu);
+      return domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->domain != NULL)
     {
@@ -2589,16 +2446,6 @@ expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   return expr_leaf_type (bctx, regu);
-}
-
-/* can the value published for this node have a DB_TYPE other than the node's compile-time
- * type?  Only the leaves that read a slot filled by someone else per row (a list-file slot of
- * a recursive CTE, a host variable) can; heap attributes, inline literals and the compiled
- * kernels' own results cannot. */
-static bool
-expr_regu_may_drift (const REGU_VARIABLE * regu)
-{
-  return regu != NULL && (regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION || regu->type == TYPE_POS_VALUE);
 }
 
 /* generic tp_value_compare () is only used for same-type pairs the interpreted path
@@ -2654,16 +2501,8 @@ expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     }
   if (regu->type == TYPE_POS_VALUE)
     {
-      /* A host variable's regu stays DB_TYPE_VARIABLE in the plan: its type is the bound
-       * value's (or the gate's converted copy's) -- the same source expr_leaf_type () uses --
-       * and the tree records it in its signature, so an execution that binds another type
-       * recompiles (expr_scan_pred_signature_ok ()).  Within one execution a drifting
-       * operand is still caught per row by the leaf's type guard. */
-      const int vidx = expr_pos_value_index (bctx, regu);
-      if (vidx >= 0)
-	{
-	  return DB_VALUE_DOMAIN_TYPE (&bctx->vd->dbval_ptr[vidx]);
-	}
+      const TP_DOMAIN *domain = expr_hostvar_domain (regu);
+      return domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
@@ -2927,23 +2766,17 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN && et->rhs->type == TYPE_DBVAL
 	    && !DB_IS_NULL (&et->rhs->value.dbval))
 	  {
-	    /* mirror of the constant-side coercion of eval_value_rel_cmp (): a literal right
-	     * operand is coerced to the left side's type when that type is the more general
-	     * numeric one ("n * m > 1") or a date/time type compared with a string
-	     * ("dt >= '2024-01-01'").  The interpreter does it on the first row, in place; the
-	     * leaf does it here, into its own value, and then compares same-typed sides. */
-	    TP_DOMAIN *dom = NULL;
-
-	    if (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2) && tp_more_general_type (t1, t2) > 0)
-	      {
-		dom = tp_domain_resolve_default (t1);
-	      }
-	    else if (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2))
-	      {
-		dom = tp_domain_resolve_default (t1);
-	      }
-	    if (dom != NULL && tp_value_coerce (&et->rhs->value.dbval, &pinned, dom) == DOMAIN_COMPATIBLE
-		&& DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
+	    /* a literal right operand the term's comparison converts into the left side's type (CBRD-27583, the
+	     * compiler's decision) - a number into the more general number ("n * m > 1"), a string into the
+	     * date/time it is compared with ("dt >= '2024-01-01'") - is converted once, by that comparison's converter,
+	     * into the leaf's own value; the leaf then compares same-typed sides. */
+	    const DOMAIN_COMPARE *compare = et->compare;
+	    const bool pins = compare != NULL && compare->conv[0] == NULL && compare->conv[1] != NULL
+	      && TP_DOMAIN_TYPE (compare->target[1]) == t1
+	      && ((TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2))
+		  || (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2)));
+	    if (pins && tp_value_convert (compare->conv[1], compare->target[1], &et->rhs->value.dbval, &pinned)
+		== DOMAIN_COMPATIBLE && DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
 	      {
 		pin_rhs = true;
 		t2 = t1;
@@ -2957,8 +2790,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
 		 || expr_pred_generic_cmp_type (t1)))
 	  {
-	    /* differing sides would hit the constant-side coercion in
-	     * eval_value_rel_cmp (); the plain term evaluator applies it as before */
+	    /* differing sides: the plain term evaluator compares them */
 	    pr_clear_value (&pinned);
 	    return expr_scan_pred_interp_leaf (pr, true);
 	  }
@@ -2987,45 +2819,14 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	  }
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
+	pred->compare = et->compare;
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
-	/* A heap attribute decodes to its domain type and an inline literal (TYPE_DBVAL) is
-	 * the value baked into the plan, so a leaf over those two alone never meets another
-	 * type at run time.  Every other operand is read from a slot somebody else fills per
-	 * row -- a host variable (TYPE_POS_VALUE), a list-file column (TYPE_POSITION), a
-	 * value-list entry (TYPE_CONSTANT: a correlated outer column or a subquery result,
-	 * which a recursive CTE refills with the BIGINT of count () in an INTEGER-domain slot)
-	 * or a computed operand -- and can drift from the type the leaf was resolved for, so
-	 * the leaf verifies the runtime types per row and hands a drifted row to
-	 * eval_pred_comp0 (), which compares it exactly as the interpreter does: the
-	 * cross-type tp_value_compare_with_error (), after eval_value_rel_cmp ()'s coercion of
-	 * a FETCH_ALL_CONST right side (a TYPE_CONSTANT is FETCH_NOT_CONST and is not coerced).
-	 * This is the same rule expr_compile_pred () applies through expr_regu_may_drift ().
-	 * The literal stays pinned because that constant-side coercion, its only writer, is
-	 * reached only from the guarded path, never for a leaf whose sides are both pinned.
-	 *
-	 * The attribute half of that claim holds across old-representation records too:
-	 * ALTER changes that keep the schema-only path (SM_ATTR_CHG_ONLY_SCHEMA,
-	 * execute_schema.c) are asserted to leave the DB_TYPE unchanged (precision
-	 * increases and set-compat only), and every change of the DB_TYPE itself goes
-	 * through SM_ATTR_CHG_WITH_ROW_UPDATE / BEST_EFFORT, which rewrite the rows. */
-	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_DBVAL)
-				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_DBVAL));
-	/* an arithmetic side is compiled into a region of the tree's program (see
-	 * expr_scan_side_compile ()); a compiled kernel always produces the type it was
-	 * compiled for, so such a side needs no drift guard */
 	/* the operands compile under this leaf's own eval_pred () frame: the predicate depth so
 	 * far plus one, the way the interpreter's counter stands when it fetches them */
 	bctx->depth = depth + 1;
 	expr_scan_side_compile (bctx, pred, et->lhs, false, shareable);
 	expr_scan_side_compile (bctx, pred, et->rhs, true, shareable);
 	bctx->depth = 0;
-	if (pred->lhs_compiled || pred->rhs_compiled)
-	  {
-	    bool lhs_drift = !pred->lhs_compiled && et->lhs->type != TYPE_ATTR_ID && et->lhs->type != TYPE_DBVAL;
-	    bool rhs_drift = !pred->rhs_compiled && et->rhs->type != TYPE_ATTR_ID && et->rhs->type != TYPE_DBVAL;
-
-	    pred->need_type_guard = lhs_drift || rhs_drift;
-	  }
 	return pred;
       }
 
@@ -3137,24 +2938,6 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
 	}
       expr_scan_pred_share_build (bctx, pred);
     }
-  /* the bound types the leaves and operand steps were resolved for (see sig_types) */
-  if (vd != NULL && vd->dbval_cnt > 0)
-    {
-      int i;
-
-      pred->sig_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * vd->dbval_cnt);
-      if (pred->sig_types == NULL)
-	{
-	  expr_scan_pred_free (pred);
-	  free_and_init (bctx);
-	  return NULL;
-	}
-      pred->sig_n = vd->dbval_cnt;
-      for (i = 0; i < pred->sig_n; i++)
-	{
-	  pred->sig_types[i] = DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]);
-	}
-    }
   free_and_init (bctx);
   return pred;
 }
@@ -3189,15 +2972,6 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 
       if (!bctx->node_cells[i].shareable)
 	{
-	  continue;
-	}
-      if (bctx->node_cells[i].regu->value.arithptr->plan_item != NULL
-	  && bctx->node_cells[i].regu->value.arithptr->plan_item->ref >= 0)
-	{
-	  /* a constant expression the gate evaluates per execution (plan_item->ref): on such an execution the
-	   * node's steps are jumped over (expr_k_resolved_value) and its slot is never written, so a consumer wired
-	   * to the slot would read NULL ("p - CAST (10 AS NUMERIC (10, 2))" shared from "WHERE p > CAST (10 AS
-	   * NUMERIC (10, 2))", review 2026-10-15).  A constant is not worth sharing anyway. */
 	  continue;
 	}
       /* the build-time steps still carry their encoded out cell and owned-slot marker */
@@ -3252,8 +3026,6 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx)
     {
     case EXPR_PRED_COMP_FETCH:
       {
-	DB_TYPE rt1, rt2;
-
 	if (expr_scan_side_value (pred, false, ctx) != NO_ERROR)
 	  {
 	    return V_ERROR;
@@ -3266,19 +3038,8 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx)
 	  {
 	    return V_ERROR;
 	  }
-	if (likely (!pred->need_type_guard))
-	  {
-	    return pred->eval (pred);
-	  }
-	rt1 = DB_VALUE_DOMAIN_TYPE (*pred->arg1p);
-	rt2 = DB_VALUE_DOMAIN_TYPE (*pred->arg2p);
-	if (rt1 == rt2 && (pred->fast_type == DB_TYPE_UNKNOWN || rt1 == pred->fast_type))
-	  {
-	    return pred->eval (pred);
-	  }
-	/* runtime types the leaf was not resolved for (a host variable bound to another
-	 * type): the interpreted term evaluator applies its coercion exactly as before */
-	return eval_pred_comp0 (ctx->thread_p, (const PRED_EXPR *) pred->fetch_src, ctx->vd, ctx->obj_oid);
+	EXPR_PRED_ASSERT_TYPES (pred, *pred->arg1p, *pred->arg2p);
+	return pred->eval (pred);
       }
 
     case EXPR_PRED_INTERP_COMP0:
@@ -3382,10 +3143,6 @@ expr_scan_pred_free (void *compiled)
     {
       free_and_init (root->share);
     }
-  if (root->sig_types != NULL)
-    {
-      free_and_init (root->sig_types);
-    }
   expr_pred_free (root);
 }
 
@@ -3396,49 +3153,11 @@ expr_scan_pred_reset (void *compiled)
 
   if (root != NULL)
     {
-      root->sig_stamp_valid = false;
       if (root->prog != NULL)
 	{
 	  expr_prog_reset (root->prog);
 	}
     }
-}
-
-bool
-expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, unsigned long long exec_stamp)
-{
-  EXPR_PRED *root = (EXPR_PRED *) compiled;
-  int i;
-
-  if (root == NULL)
-    {
-      return true;
-    }
-  if (exec_stamp != 0 && root->sig_stamp_valid && root->sig_stamp == exec_stamp)
-    {
-      return true;
-    }
-  if (root->sig_n > 0)
-    {
-      if (vd == NULL || vd->dbval_cnt != root->sig_n)
-	{
-	  return false;
-	}
-      for (i = 0; i < root->sig_n; i++)
-	{
-	  if (DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]) != root->sig_types[i])
-	    {
-	      return false;
-	    }
-	}
-    }
-  if (root->prog != NULL && !expr_prog_refill_open (root->prog, vd))
-    {
-      return false;
-    }
-  root->sig_stamp = exec_stamp;
-  root->sig_stamp_valid = (exec_stamp != 0);
-  return true;
 }
 
 void
@@ -3657,8 +3376,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	t2 = expr_node_type (bctx, et->rhs);
 	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
 	  {
-	    /* differing sides would hit the constant-side coercion in
-	     * eval_value_rel_cmp (); left interpreted */
+	    /* differing sides compare by the values in eval_value_rel_cmp (); left interpreted */
 	    return NULL;
 	  }
 	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)
@@ -3667,7 +3385,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	  }
 	else if (expr_pred_generic_cmp_type (t1))
 	  {
-	    fast_type = DB_TYPE_UNKNOWN;	/* tp_value_compare_with_error */
+	    fast_type = DB_TYPE_UNKNOWN;	/* the term's decided comparison (expr_pred_compare) */
 	  }
 	else
 	  {
@@ -3704,10 +3422,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	pred->arg2p = EXPR_ARG_ENCODE (c2);
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
-	/* a heap attribute, an inline literal and a compiled arithmetic node always carry the
-	 * type they were compiled for; a list slot (TYPE_CONSTANT/TYPE_POSITION -- a recursive
-	 * CTE refills it with another type) or a host variable can drift and is verified per row */
-	pred->need_type_guard = expr_regu_may_drift (et->lhs) || expr_regu_may_drift (et->rhs);
+	pred->compare = et->compare;
 	/* bind the (type, operator) leaf now so the row loop makes one indirect call
 	 * instead of testing the type and then the operator */
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
@@ -3739,7 +3454,9 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       return expr_compile_node_impl (bctx, regu, compiled_something);
     }
 
+#if !defined (NDEBUG)
   const int first_step = bctx->n_steps;
+#endif
   EXPR_BUILD_MARK mark;
 
   /* the depth is the interpreter's frame count at this node (expr_step.level); a node too deep is not declined
@@ -3771,68 +3488,19 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       cell = expr_compile_nested (bctx, regu, compiled_something);
     }
   bctx->depth--;
+#if !defined (NDEBUG)
   if (cell >= 0 && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
     {
-      /* a node the compiler left variable: its steps took their domain and kernel type from the gate's
-       * resolution of this execution -- mark them open so every later execution re-reads it */
-      const TP_DOMAIN *exec_domain = expr_arith_exec_domain (bctx->vd, regu);
-      int j;
-
-      for (j = first_step; j < bctx->n_steps; j++)
+      /* a node the compiler left variable is declined (expr_arith_exec_domain ()): no typed kernel of its own */
+      for (int j = first_step; j < bctx->n_steps; j++)
 	{
-	  if (bctx->steps[j].regu == regu && bctx->steps[j].kernel != expr_k_generic
-	      && bctx->steps[j].kernel != expr_k_nested_prog)
-	    {
-	      bctx->steps[j].open = true;
-	      bctx->steps[j].open_type = exec_domain != NULL ? TP_DOMAIN_TYPE (exec_domain) : DB_TYPE_UNKNOWN;
-	    }
+	  assert (bctx->steps[j].regu != regu || bctx->steps[j].kernel == expr_k_generic
+		  || bctx->steps[j].kernel == expr_k_nested_prog);
 	}
     }
+#endif
   return cell;
 }
-
-/*
- * expr_prog_refill_open () - give every open step the gate's resolution of this execution
- *   return: true when every open node kept its type (the kernels still fit; the domains are
- *	     refreshed), false when one changed -- the consumer recompiles
- *
- * The gate resolves a variable node anew for each execution.  A program kept with the clone
- * was compiled against one execution's resolution, so before its steps run again each open
- * step reads the current one: the same type keeps the kernel the table gave the step and
- * takes the domain (a NUMERIC's precision and scale, a string's collation) as the row would
- * read it through fetch_peek_arith ().  No step is rebuilt here.
- */
-bool
-expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
-{
-  int i;
-
-  for (i = 0; i < prog->n_steps; i++)
-    {
-      EXPR_STEP *step = &prog->steps[i];
-      TP_DOMAIN *domain;
-
-      if (step->kernel == expr_k_nested_prog && !expr_prog_refill_open ((EXPR_PROG *) step->fn, vd))
-	{
-	  return false;
-	}
-      if (!step->open)
-	{
-	  continue;
-	}
-      domain = expr_arith_exec_domain (vd, step->regu);
-      if (domain == NULL || TP_DOMAIN_TYPE (domain) != step->open_type)
-	{
-	  return false;
-	}
-      if (step->domain != NULL)
-	{
-	  step->domain = domain;
-	}
-    }
-  return true;
-}
-
 
 /* a leaf the fetch path evaluates (expr_k_fetch): the step, or -1 when the program is full */
 static int
@@ -4149,7 +3817,7 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
 /* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
  * one generic step running the opcode's body (expr_k_generic).  -1 when an operand declines or the program is full:
  * the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND, SYS_*) or have a side
- * effect (INCR, DEFINE_VARIABLE), and the gate already evaluates a constant expression once (plan_item->ref).
+ * effect (INCR, DEFINE_VARIABLE).
  *
  * A '?' rule always gets its check step, fallible right side or not (unlike the arithmetic kernels' lazy region):
  * the body sees the operands the interpreter fetched and no other -- INCR/DECR read the right operand only, and a
@@ -4374,6 +4042,12 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
   const int first_step = bctx->n_steps;
   int cell;
 
+  if (regu->value.arithptr->fails != NO_ERROR)
+    {
+      /* CBRD-27583: a node that raises its rule's error (operand types the operator rejects) has no kernel; the
+       * interpreter raises it */
+      return -1;
+    }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
     {
       bctx->side_effect = true;
@@ -4398,44 +4072,6 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
     }
 
   cell = expr_compile_node_impl (bctx, regu, compiled_something);
-  if (cell >= 0 && regu->value.arithptr->plan_item != NULL && regu->value.arithptr->plan_item->ref >= 0
-      && bctx->n_steps > first_step)
-    {
-      /* a constant expression the gate evaluates once per execution: the check before the node's steps publishes
-       * the gate's value and skips them when it did (a CSE hit emits no step and needs none: the twin's value is the
-       * same constant) */
-      int node_idx = -1, j;
-      EXPR_STEP *check;
-
-      for (j = first_step; j < bctx->n_steps; j++)
-	{
-	  if ((int) (intptr_t) bctx->steps[j].out_cell == cell)
-	    {
-	      node_idx = j;	/* the last step publishing the cell is the producer */
-	    }
-	}
-      if (node_idx >= 0 && (bctx->step_prologue[node_idx] || bctx->step_exec_prologue[node_idx]))
-	{
-	  /* The producer was hoisted into a prologue: it computes the constant once per program (literals only) or
-	   * once per execution (a host variable), exactly as often as the gate does, so the check would save nothing
-	   * -- and it would break the program.  The check is a row step; a consumer hoisted with the producer (the
-	   * coercion of "? + 1" to NUMERIC) runs in the next execution's prologue BEFORE it, and reads the cell the
-	   * previous execution's check left pointing at the previous value array ("EXECUTE st USING 10" returned the
-	   * values of "USING 1", review 2026-10-15).  The node's own steps serve the constant. */
-	  node_idx = -1;
-	}
-      check = (node_idx >= 0) ? expr_build_insert_step (bctx, first_step, expr_k_resolved_value, cell) : NULL;
-      if (node_idx >= 0 && check == NULL)
-	{
-	  return -1;
-	}
-      if (check != NULL)
-	{
-	  check->regu = regu;
-	  check->alias_of = node_idx + 1;	/* the producer moved by one */
-	  check->jump_to = bctx->n_steps;
-	}
-    }
   if (cell >= 0 && REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
     {
       /* the COLLATE modifier: the node's value re-labeled with the node's domain, in a slot of its own */
@@ -4475,15 +4111,12 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       return -1;
     }
 
-  /* A variable domain must not be baked into a program.  A host variable leaf takes its
-   * type from the value this execution binds, and an arithmetic node the compiler left
-   * variable takes the domain resolve_domains resolved before the main block
-   * (expr_arith_exec_domain ()).  Any other node still variable here has nothing the
-   * program may read: decline it and let the interpreter run it. */
-  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_POS_VALUE
-      && regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
+  /* A variable domain must not be baked into a program.  An arithmetic node the compiler left variable is declined
+   * (expr_arith_exec_domain ()).  Any other node still variable here leaves its type to its value: the fetch path
+   * reads it. */
+  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_INARITH
+      && regu->type != TYPE_OUTARITH)
     {
-      /* a leaf still variable here: the fetch path reads its resolution (fetch_read_plan_domain) */
       return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
@@ -4493,6 +4126,12 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
   if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION) && regu->type != TYPE_INARITH
       && regu->type != TYPE_OUTARITH)
     {
+      return expr_emit_fetch (bctx, regu, compiled_something);
+    }
+
+  if (regu->conv != NULL)
+    {
+      /* CBRD-27583: the fetch path converts a regu's value into the domain its consumer wants, in the regu's holder */
       return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
@@ -4549,7 +4188,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * through a tiny step instead of wiring the address */
 	EXPR_STEP *step;
 
-	/* the value this execution binds, or the gate's converted copy (REGU_RESOLVED_VALUE) */
+	/* the value this execution binds */
 	const int vidx = expr_pos_value_index (bctx, regu);
 
 	if (vidx < 0)
@@ -4613,7 +4252,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	DB_TYPE rtype;
 	int c1, c2;
 
-	/* the node's domain in this execution: compiled, or the gate's resolution of a variable one */
+	/* the node's compiled domain; NULL where it leaves its type to the values */
 	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->vd, regu);
 
 	if (arith == NULL)
@@ -4625,12 +4264,10 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  {
 	    return -1;
 	  }
-	if (exec_domain == NULL
-	    || (arith->plan_item != NULL && (arith->plan_item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION)))
+	if (exec_domain == NULL || TP_DOMAIN_COLLATION_FLAG (exec_domain) != TP_DOMAIN_COLL_NORMAL)
 	  {
-	    /* a node that takes no value in this execution (or has no resolution a program may bake in), or one
-	     * whose collation the values give: no kernel, the generic step's node protocol reads the node's domains
-	     * on the row as the interpreter does */
+	    /* a node whose type or collation the values give: no kernel, the generic step's node protocol computes
+	     * it on the row as the interpreter does */
 	    return expr_compile_generic (bctx, regu, NULL, compiled_something);
 	  }
 
@@ -4764,6 +4401,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      pub_f->arg1p = EXPR_ARG_ENCODE (c2b);
 	      pub_f->domain = pub_domain;
 	      pub_f->regu = regu;
+	      pub_f->aux = 1;	/* the ELSE operand's converter (expr_k_case_pub_cast) */
 	      if (pub_owns_slot)
 		{
 		  pub_f->alias_of = pub_t_idx;	/* writes the THEN publisher's slot */
@@ -5026,14 +4664,13 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    return cell;
 	  }
 
-	/* The operand coercion the plan (or the gate) chose for this node: the kernels below are
-	 * the direct number operator, so a node whose plan converts an operand on the row stays
-	 * interpreted.  The NUMERIC mix is no exception: the ARITH rule converts neither of two
-	 * numbers (domain_arith_rule), and the number operator coerces the integer side itself
-	 * (qdata_number_numeric) -- which is what expr_k_coerce_numeric mirrors below.  A pair the
-	 * rule does convert (a division of two integers under oracle_compat_number_behavior) is the
-	 * planned converters' and stays interpreted. */
-	const RESOLVED_DOMAIN *const plan = expr_arith_number_plan (bctx, arith);
+	/* The operand coercion the node found at unpack: the kernels below are the direct number
+	 * operator.  A pair the rule converts (a division of two integers under
+	 * oracle_compat_number_behavior) has its operands converted at their regus by generation;
+	 * the ARITH rule converts neither of two numbers of a NUMERIC mix (domain_arith_rule), and the
+	 * number operator coerces the integer side itself (qdata_number_numeric) -- which is what
+	 * expr_k_coerce_numeric mirrors below. */
+	const DOMAIN_ARITH *const plan = expr_arith_number_plan (arith);
 
 	if (plan == NULL)
 	  {
@@ -5047,12 +4684,12 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * whenever the domain is not what the kernel already produces -- a NUMERIC's precision and
 	 * scale, or a domain wider than the operation's type.  Today the parser gives a fixed node
 	 * the operation's own type (a wider consumer gets a T_CAST_WRAP around the node, compiled
-	 * above) and the gate resolves a variable node to the number type it computes in
-	 * (domain_resolve_arith), so the second case is the mirror kept for a plan that names a
+	 * above) and a variable node is declined (expr_arith_exec_domain), so the second case is
+	 * the mirror kept for a plan that names a
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
 	 * (they skip the per-row clear), which a coercion into a string domain would break. */
-	const DB_TYPE ktype = plan->arith.type;
+	const DB_TYPE ktype = plan->type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
 
@@ -5189,6 +4826,14 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	   * skip the call; a wider domain and the parameterized NUMERIC (precision/scale) keep it */
 	  step->domain = result_domain;
 	  step->regu = regu;
+	  /* CBRD-27583: the node's converter of its value into its domain, for the domain the step coerces into */
+	  step->result_conv = NULL;
+	  if (result_domain != NULL)
+	    {
+	      /* CBRD-27583: a step coerces into its node's domain type */
+	      assert (TP_DOMAIN_TYPE (result_domain) == TP_DOMAIN_TYPE (arith->domain));
+	      step->result_conv = arith->result_conv;
+	    }
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;
 	  if (!lazy)
@@ -5337,7 +4982,7 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
 
 /* Turn the build context into a program: allocate the arrays, lay the steps out as
  * [literal prologue][host-variable prologue][row steps], resolve every cell index and
- * owned-slot marker into an address, and record the host-variable signature.  root_cells
+ * owned-slot marker into an address.  root_cells
  * lists the cell of each list element (n_roots may be 0 for a program that only serves
  * regions, e.g. a scan filter's operands); extra_pred is a caller-owned predicate tree
  * (NULL when none) whose cells and regions are resolved against this program as well.
@@ -5482,7 +5127,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	    && step->kernel != expr_k_jump && step->kernel != expr_k_jump_null_arith
 	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl
 	    && step->kernel != expr_k_jump_skip_generic && step->kernel != expr_k_try_operand
-	    && step->kernel != expr_k_fetch && step->kernel != expr_k_resolved_value)
+	    && step->kernel != expr_k_fetch)
 	  {
 	    prog->n_compute++;
 	  }
@@ -5541,22 +5186,6 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
   /* a predicate tree the caller owns (a compiled scan filter) resolves its cells and
    * operand regions against the same program */
   expr_pred_materialize (extra_pred, prog, remap);
-
-  /* record the host-variable type signature this program was specialized for */
-  if (vd != NULL && vd->dbval_cnt > 0)
-    {
-      prog->n_hv = vd->dbval_cnt;
-      prog->hv_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * prog->n_hv);
-      if (prog->hv_types == NULL)
-	{
-	  expr_prog_free (prog);
-	  return NULL;
-	}
-      for (i = 0; i < prog->n_hv; i++)
-	{
-	  prog->hv_types[i] = DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]);
-	}
-    }
 
   return prog;
 }
@@ -5724,29 +5353,6 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 {
   return expr_prog_compile_roots_ex (thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
 				     only_compute_roots, root_idx_out, share_spec, 0);
-}
-
-bool
-expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd)
-{
-  int i;
-
-  if (prog->n_hv == 0)
-    {
-      return true;
-    }
-  if (vd == NULL || vd->dbval_cnt != prog->n_hv)
-    {
-      return false;
-    }
-  for (i = 0; i < prog->n_hv; i++)
-    {
-      if (DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]) != prog->hv_types[i])
-	{
-	  return false;
-	}
-    }
-  return true;
 }
 
 /* Cold half of expr_prog_eval (): decide which prologue steps this row must still run and
@@ -5954,8 +5560,6 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_relabel, "relabel"},
     {
-    expr_k_resolved_value, "resolved_value"},
-    {
   expr_k_nested_prog, "nested_prog"},};
   size_t i;
 
@@ -6042,9 +5646,9 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     }
 
   fprintf (fp,
-	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d",
+	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d",
 	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_exec_prologue, prog->n_compute, prog->n_cells,
-	   prog->n_slots, prog->n_roots, prog->n_hv);
+	   prog->n_slots, prog->n_roots);
   if (prog->n_shared > 0)
     {
       fprintf (fp, ", shared from data filter: %d", prog->n_shared);
@@ -6112,10 +5716,6 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	      fprintf (fp, "(%d,%d)", step->domain->precision, step->domain->scale);
 	    }
 	}
-      if (step->open)
-	{
-	  fprintf (fp, " open:%s", pr_type_name (step->open_type));
-	}
       if (step->alias_of >= 0)
 	{
 	  fprintf (fp, " (slot of [%d])", step->alias_of);
@@ -6180,7 +5780,6 @@ expr_prog_reset (EXPR_PROG * prog)
     }
   prog->prologue_done = false;
   prog->exec_stamp_valid = false;
-  prog->sig_stamp_valid = false;
 }
 
 bool
@@ -6232,10 +5831,6 @@ expr_prog_free (EXPR_PROG * prog)
   if (prog->root_cells != NULL)
     {
       free_and_init (prog->root_cells);
-    }
-  if (prog->hv_types != NULL)
-    {
-      free_and_init (prog->hv_types);
     }
   free_and_init (prog);
 }

@@ -38,6 +38,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_regu_alloc.hpp"
+#include "domain_rules.h"
 #include "db.h"
 #include "environment_variable.h"
 #include "parser.h"
@@ -241,6 +242,7 @@ static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_co
 					const DB_TYPE result_type, const PT_NODE * node);
 
 static REGU_VARIABLE *pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_convert_sp_string (PARSER_CONTEXT * parser, PT_NODE * node, REGU_VARIABLE * regu);
 static REGU_VARIABLE *pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function);
 static REGU_VARIABLE *pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX unbox,
 					     const PT_NODE * node);
@@ -399,6 +401,15 @@ static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIM
 			    KEY_INFO * key_infop, bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+static const TP_DOMAIN *pt_key_element_domain (const REGU_VARIABLE * regu);
+static bool pt_convert_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column);
+static int pt_decide_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column,
+				  bool midxkey, const TP_DOMAIN ** written, bool * kept);
+static int pt_decide_key_bound (PARSER_CONTEXT * parser, INDX_INFO * indx_infop, REGU_VARIABLE * bound,
+				TP_DOMAIN ** written_domain);
+static int pt_decide_index_keys (PARSER_CONTEXT * parser, INDX_INFO * indx_infop);
+static int pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, DOMAIN_COMPARE * decided);
+static int pt_decide_key_compares (INDX_INFO * indx_infop);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
@@ -564,7 +575,7 @@ static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METH
 						   REGU_VARIABLE_LIST attr_list_rest,
 						   REGU_VARIABLE_LIST attr_list_build,
 						   REGU_VARIABLE_LIST attr_list_probe);
-static void pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec);
+static void pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec);
 
 static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type,
 						       REGU_VARIABLE_LIST arg_list);
@@ -952,7 +963,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	{
 	  xasl->spec_list->s.list_node.hash_list_scan_yn = 0;
 	}
-      pt_set_hq_probe_numeric_domain (xasl->spec_list);
+      pt_decide_hash_list_keys (xasl->spec_list);
     }
 
   /* sepparate after CONNECT BY predicate regu list */
@@ -1239,8 +1250,11 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       if (level >= 0x100 && plan)
 	{
+	  const unsigned save_source = parser->flag.print_host_var_source;
+	  parser->flag.print_host_var_source = 1;
 	  fputs ("\nPlan for single table hierarchical iterations:\n", db_query_get_plan_dump_fp ());
 	  qo_plan_dump (plan, db_query_get_plan_dump_fp ());
+	  parser->flag.print_host_var_source = save_source;
 	}
     }
 
@@ -1334,11 +1348,61 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
-	  et_comp->domain_compare = NULL;	/* the server's load derives it */
+	  et_comp->prune_side = -1;
+	  et_comp->prune_domain = NULL;
+	  et_comp->prune = NULL;
 	}
     }
 
   return pred;
+}
+
+/*
+ * pt_bind_list_domain () - CBRD-27583: the domain of an ALL/SOME right side that a collection function builds from
+ *   binds: its elements are the operands' values as the client bound them (a bind is never cast), so the element
+ *   domains are the operands' compiled domains - the bind type signature's - not the common type that type checking
+ *   gave the list node (pt_coerce_range_expr_arguments), which converts only constant elements. Partition pruning
+ *   (pt_list_element_domain) reads it.
+ */
+static void
+pt_bind_list_domain (REGU_VARIABLE * set)
+{
+  if (set == NULL || set->type != TYPE_FUNC || set->domain == NULL || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (set->domain)))
+    {
+      return;
+    }
+  bool bind = false;
+  for (REGU_VARIABLE_LIST operand = set->value.funcp->operand; operand != NULL; operand = operand->next)
+    {
+      if (operand->value.domain == NULL)
+	{
+	  return;
+	}
+      bind = bind || operand->value.type == TYPE_POS_VALUE;
+    }
+  if (!bind)
+    {
+      return;
+    }
+  TP_DOMAIN *elements = NULL;
+  for (REGU_VARIABLE_LIST operand = set->value.funcp->operand; operand != NULL; operand = operand->next)
+    {
+      bool seen = false;
+      for (TP_DOMAIN * element = elements; element != NULL && !seen; element = element->next)
+	{
+	  seen = tp_domain_match (element, operand->value.domain, TP_EXACT_MATCH) != 0;
+	}
+      TP_DOMAIN *copy = seen ? NULL : domain_copy_one (operand->value.domain);
+      if (copy != NULL)
+	{
+	  (void) tp_domain_add (&elements, copy);
+	}
+    }
+  TP_DOMAIN *domain = tp_domain_construct (TP_DOMAIN_TYPE (set->domain), NULL, 0, 0, elements);
+  if (domain != NULL)
+    {
+      set->domain = tp_domain_cache (domain);
+    }
 }
 
 /*
@@ -1369,10 +1433,13 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  pred->pe.m_eval_term.et_type = T_ALSM_EVAL_TERM;
 	  et_alsm->elem = (REGU_VARIABLE *) arg1;
 	  et_alsm->elemset = (REGU_VARIABLE *) arg2;
+	  pt_bind_list_domain (et_alsm->elemset);
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
-	  et_alsm->domain_compare = NULL;	/* the server's load derives it */
+	  et_alsm->prune_domain = NULL;
+	  et_alsm->prune_element = NULL;
+	  et_alsm->prune = NULL;
 	}
     }
 
@@ -4036,6 +4103,21 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		{
 		  return NULL;
 		}
+
+	      /* CBRD-27583: a stored function's string argument comes in the declared type, which the list column cast
+	       * used to give a grouped aggregate's */
+	      REGU_VARIABLE_LIST r = regu_constant_list, s = scan_regu_constant_list;
+	      for (PT_NODE * sp_arg = tree->info.function.arg_list; sp_arg != NULL && r != NULL && s != NULL;
+		   sp_arg = sp_arg->next, r = r->next, s = s->next)
+		{
+		  if (!pt_convert_sp_string (parser, sp_arg, &r->value)
+		      || !pt_convert_sp_string (parser, sp_arg, &s->value))
+		    {
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
+		    }
+		}
 	    }
 	  else
 	    {
@@ -4070,6 +4152,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
+		      /* the regu lists above were made before: the separator is no column of the scan (a scan regu
+		       * left for it shifts every scan value of the aggregate one slot down the value list) */
+		      regu_constant_list->next = NULL;
+		      scan_regu_constant_list->next = NULL;
 		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
@@ -4336,6 +4422,18 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
 	      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, to_add);
+
+	      /* a scan-time aggregation reads the percentile from the scan, as the PT_NAME case below does */
+	      REGU_VARIABLE_LIST scan_percentile = NULL;
+	      regu_alloc (scan_percentile);
+	      if (scan_percentile == NULL)
+		{
+		  PT_ERROR (parser, percentile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+	      scan_percentile->value = *regu;
+	      pt_aggregate_info_update_scan_regu_list (info, scan_percentile);
 	    }
 	  else
 	    {
@@ -4715,6 +4813,16 @@ pt_index_value (const VAL_LIST * value, int index)
     }
 
   return dbval;
+}
+
+/* CBRD-27583: the domain value list slot index describes, the domain its writer fills it with (NULL: no slot) */
+static TP_DOMAIN *
+pt_index_value_domain (const VAL_LIST * value, int index)
+{
+  QPROC_DB_VALUE_LIST slot = value != NULL && index >= 0 ? value->valp : NULL;
+  for (; slot != NULL && index > 0; slot = slot->next, index--)
+    ;
+  return slot != NULL ? slot->dom : NULL;
 }
 
 /*
@@ -5423,42 +5531,6 @@ pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * in
     }
 
   return spec;
-}
-
-/*
- * pt_set_hq_probe_numeric_domain () - give the hash probe key of a hierarchical join the precision and scale of the
- *                                     first fixed NUMERIC list column
- *   spec(in/out): the CONNECT BY list scan spec
- *
- * The key is typed float NUMERIC when a join or an expression widened it. Its values are cast to the key domain
- * before hashing, so a float NUMERIC key would hash integer values unscaled, unlike the fixed NUMERIC build column.
- * qexec_execute_connect_by copies the list column's precision and scale into a float NUMERIC key domain at every
- * execution; the compiled key domain carries them instead, so that condition no longer holds.
- */
-static void
-pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec)
-{
-  REGU_VARIABLE *probe = spec->s.list_node.list_regu_list_probe == NULL ? NULL
-    : &spec->s.list_node.list_regu_list_probe->value;
-  if (probe == NULL || probe->domain == NULL || TP_DOMAIN_TYPE (probe->domain) != DB_TYPE_NUMERIC
-      || probe->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      return;
-    }
-  for (REGU_VARIABLE_LIST rest = spec->s.list_node.list_regu_list_rest; rest != NULL; rest = rest->next)
-    {
-      const TP_DOMAIN *column = rest->value.domain;
-      if (column != NULL && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
-	  && column->precision != DB_DEFAULT_NUMERIC_PRECISION)
-	{
-	  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, column->precision, column->scale, NULL, 0);
-	  if (domain != NULL)
-	    {
-	      probe->domain = domain;
-	    }
-	  return;
-	}
-    }
 }
 
 /*
@@ -6404,6 +6476,37 @@ failure:
 
 
 /*
+ * pt_decide_position_collation () - CBRD-27583: the domain of a string position whose collation type checking left
+ *   to the value (LEAVE) or enforced over the value the client sends as it is (ENFORCE), as the server receives the
+ *   value: an auto-parameter's literal, cast here, has its own domain (its session collation); the client casts a user
+ *   or derived position's value into the position's domain - a string takes the position's type in the enforced
+ *   collation (LEAVE: the value's), any other value passes an ENFORCE cast as it is; a NULL value has no type
+ */
+static TP_DOMAIN *
+pt_decide_position_collation (PARSER_CONTEXT * parser, int index, TP_DOMAIN * compiled)
+{
+  if (index >= parser->host_var_count && !pt_is_derived_host_var (parser, index))
+    {
+      return pt_host_var_value_domain (parser, index);
+    }
+  const int user = index < parser->host_var_count ? index : parser->host_var_derived_from[index];
+  const TP_DOMAIN *value = pt_host_var_value_domain (parser, user);
+  if (value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL)
+    {
+      return &tp_Null_domain;
+    }
+  const DOMAIN_OPERAND source = {
+    value, TP_DOMAIN_TYPE (value), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)) ? value->collation_id : -1, false
+  };
+  RESOLVED_DOMAIN result;
+  if (domain_resolve_character (T_CAST, &source, 1, compiled, &result) != NO_ERROR || result.domain == NULL)
+    {
+      return compiled;
+    }
+  return (TP_DOMAIN *) result.domain;
+}
+
+/*
  * pt_make_regu_hostvar () - takes a pt_node of host variable and make
  *                           a regu_variable of host variable reference
  *   return:
@@ -6430,43 +6533,27 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  parser->dbval_cnt = node->info.host_var.index + 1;
 	}
 
-      /* determine the domain of this host var */
-      regu->domain = NULL;
-
-      if (node->info.host_var.index < parser->host_var_count)
+      /* determine the domain of this host var: a user host variable's is the domain the client casts the bound value
+       * into (host_var_expected_domains), so value type == plan domain holds by construction; when the client does
+       * not cast - no expected domain, an ENUM domain (never cast, CUBRIDSUS-9007; `enum_col op ?` compares the bound
+       * value), the collation axis's ENFORCE on `str_col + ?` (a compile-only domain), an untyped copy (the LIMIT
+       * operand) - the domain the plan was compiled for (CBRD-27583: a value-typed position of a typed plan), or below
+       * its value's; a derived position's is the one the client converts the user's value into */
+      regu->domain = pt_host_var_position_domain (parser, node->info.host_var.index);
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && node->data_type)
 	{
-	  /* A user host variable: the plan states the domain the client casts the bound value into
-	   * (host_var_expected_domains), so value type == plan domain holds by construction. It
-	   * is left to resolve_domains when the client does not cast: no expected domain, an ENUM domain (never cast,
-	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value), or an untyped copy (the LIMIT
-	   * operand). A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
-	   * on `str_col + ?` / `enum_col + ?` -- is not a plan domain. */
-	  TP_DOMAIN *cast_domain = NULL;
-	  if (parser->host_var_expected_domains != NULL)
-	    {
-	      cast_domain = parser->host_var_expected_domains[node->info.host_var.index];
-	    }
-	  if (cast_domain != NULL && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_UNKNOWN
-	      && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_ENUMERATION
-	      && cast_domain->collation_flag != TP_DOMAIN_COLL_ENFORCE)
-	    {
-	      /* an ENFORCE domain (the collation axis's sibling collation) casts nothing: the client gives a
-	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
-	       * so the variable POS's type is the value's -- a variable POS whose value already carries the enforced
-	       * collation */
-	      regu->domain = cast_domain;
-	    }
-	}
-      else if (node->data_type)
-	{
-	  /* an auto-parameter: try to get domain info from its data_type */
+	  /* an auto-parameter: its value is its literal, which keeps the literal domain */
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
 	}
 
-      /* A user host variable never takes its domain from the bound value, so the plan does
-       * not depend on the values; the client casts the value to its expected
-       * domain. An auto-parameter's value is its literal, so it keeps the literal
-       * domain. */
+      if (regu->domain == NULL && node->info.host_var.index < parser->host_var_count
+	  && parser->host_var_compiled_domains == NULL && parser->flag.set_host_var == 1)
+	{
+	  /* CBRD-27583: a value-typed position compiled with its value but no bind type signature - a statement no
+	   * cache keeps compiles at each execution (do_statement): the value's own domain, the NULL type for a NULL */
+	  regu->domain = pt_host_var_value_domain (parser, node->info.host_var.index);
+	}
+
       if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && typ != DB_TYPE_NULL)
 	{
 	  TP_DOMAIN *domain;
@@ -6511,8 +6598,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
       if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
 	{
-	  /* no sibling fixes this variable POS; resolve_domains takes the
-	   * bound value's own domain, once per execution. */
+	  /* no sibling fixes this variable POS: the bound value keeps its own type */
 	  regu->domain = &tp_Variable_domain;
 	}
 
@@ -6544,6 +6630,11 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      regu = NULL;
 	    }
 	}
+      if (regu != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+	  && regu->domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
+	{
+	  regu->domain = pt_decide_position_collation (parser, node->info.host_var.index, regu->domain);
+	}
     }
   else
     {
@@ -6557,19 +6648,273 @@ error_exit:
 }
 
 /*
- * pt_late_bind_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable (a variable POS) leaves its domain to
- *   resolve_domains: auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
- *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so no
- *   compiled domain describes every execution.
+ * pt_spec_list_producer () - CBRD-27583: the XASL node whose list a derived table's or a CTE's spec reads; NULL for
+ *   another spec or a producer generated later (a select-list subquery is generated before the FROM list)
  */
-static REGU_VARIABLE *
-pt_late_bind_limit_regu (REGU_VARIABLE * regu)
+static const XASL_NODE *
+pt_spec_list_producer (const PT_NODE * spec)
 {
-  if (regu != NULL && regu->type == TYPE_POS_VALUE)
+  if (spec == NULL || spec->node_type != PT_SPEC)
     {
-      regu->domain = &tp_Variable_domain;
+      return NULL;
     }
-  return regu;
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      return spec->info.spec.derived_table_type == PT_IS_SUBQUERY
+	? (const XASL_NODE *) spec->info.spec.derived_table->info.query.xasl : NULL;
+    }
+  if (!PT_SPEC_IS_CTE (spec))
+    {
+      return NULL;
+    }
+  const PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
+  if (cte->info.cte.xasl != NULL)
+    {
+      return (const XASL_NODE *) cte->info.cte.xasl;
+    }
+  /* only the recursive part being generated reads its CTE before the CTE's XASL is made (the WITH clause makes its
+   * CTEs one at a time, pt_generate_ctes_and_derived_tables): it reads the non-recursive part's rows first, so they
+   * are its producer */
+  assert (cte->info.cte.recursive_part != NULL && cte->info.cte.recursive_part->info.query.xasl == NULL);
+  return cte->info.cte.non_recursive_part != NULL
+    ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
+}
+
+/*
+ * CBRD-27583: a regu a recursive CTE's recursive part reads its own column with, where the non-recursive part
+ *   writes the column NULL-typed: generated with the column's NULL type, or with the self-reference's type from type
+ *   checking, it takes the column's unified domain once pt_plan_cte decided it - the type of the values it
+ *   reads, which unpack plans its conversions and comparisons from; the nodes over it keep what generation decided
+ */
+typedef struct pt_cte_null_reader PT_CTE_NULL_READER;
+struct pt_cte_null_reader
+{
+  const PT_NODE *cte;
+  int pos;
+  REGU_VARIABLE *regu;
+  QPROC_DB_VALUE_LIST slot;	/* a position's value list slot, NULL for none */
+  PT_CTE_NULL_READER *next;
+};
+
+/* the readers noted while parser_generate_xasl generates a statement */
+static PT_CTE_NULL_READER *pt_Cte_null_readers = NULL;
+
+/* note regu (and its value list slot) when it reads column pos of a CTE the recursive part is generating, a column
+ * the non-recursive part writes NULL-typed (pt_type_cte_null_readers types it later) */
+static void
+pt_note_cte_null_reader (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, REGU_VARIABLE * regu,
+			 QPROC_DB_VALUE_LIST slot)
+{
+  if (regu == NULL || !PT_SPEC_IS_CTE (spec) || spec->info.spec.cte_pointer->info.pointer.node->info.cte.xasl != NULL)
+    {
+      return;
+    }
+  const TP_DOMAIN *column = domain_list_column_of (pt_spec_list_producer (spec), pos);
+  if (column == NULL || TP_DOMAIN_TYPE (column) != DB_TYPE_NULL)
+    {
+      return;
+    }
+  PT_CTE_NULL_READER *reader = (PT_CTE_NULL_READER *) parser_alloc (parser, sizeof (PT_CTE_NULL_READER));
+  if (reader == NULL)
+    {
+      /* the reader stays NULL-typed: its values look their conversions up at the row */
+      return;
+    }
+  reader->cte = spec->info.spec.cte_pointer->info.pointer.node;
+  reader->pos = pos;
+  reader->regu = regu;
+  reader->slot = slot;
+  reader->next = pt_Cte_null_readers;
+  pt_Cte_null_readers = reader;
+}
+
+/* CBRD-27583: a string domain whose collation type checking left to the values (LEAVE), in the collation decided
+ * (collation); NULL for a domain that has its collation, or a decided one without */
+static TP_DOMAIN *
+pt_domain_in_collation (TP_DOMAIN * domain, const TP_DOMAIN * collation)
+{
+  if (TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain))
+      || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (collation)) || TP_DOMAIN_COLLATION_FLAG (collation) != TP_DOMAIN_COLL_NORMAL)
+    {
+      return NULL;
+    }
+  TP_DOMAIN *copy = tp_domain_copy (domain, false);
+  if (copy == NULL)
+    {
+      return NULL;
+    }
+  copy->codeset = collation->codeset;
+  copy->collation_id = collation->collation_id;
+  copy->collation_flag = TP_DOMAIN_COLL_NORMAL;
+  return tp_domain_cache (copy);
+}
+
+/* CBRD-27583: the domain of a reader of another block's value, which is its producer's: a variable parse tree domain
+ * takes the producer's; a fixed one is the producer's type already, but for a recursive CTE's self-reference, which
+ * type checking typed before the cast of the non-recursive part; a string type whose collation type checking left
+ * to the values takes the producer's collation */
+static TP_DOMAIN *
+pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
+{
+  if (parse_tree == NULL || producer == NULL)
+    {
+      return parse_tree;
+    }
+  /* a NULL producer column (a derived table whose query is false) types nothing */
+  if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+      || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
+	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
+    {
+      return producer;
+    }
+  TP_DOMAIN *collated = pt_domain_in_collation (parse_tree, producer);
+  return collated != NULL ? collated : parse_tree;
+}
+
+/* CBRD-27583: the domain of a regu reading column pos of the list a derived table's or a CTE's spec reads */
+static TP_DOMAIN *
+pt_list_reader_domain (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, const PT_NODE * attr)
+{
+  return pt_reader_domain (pt_xasl_node_to_domain (parser, attr),
+			   domain_list_column_of (pt_spec_list_producer (spec), pos));
+}
+
+/* CBRD-27583: the slot of values that holds value, NULL for none */
+static QPROC_DB_VALUE_LIST
+pt_value_list_slot (const VAL_LIST * values, const DB_VALUE * value)
+{
+  QPROC_DB_VALUE_LIST slot = values != NULL ? values->valp : NULL;
+  for (; slot != NULL && slot->val != value; slot = slot->next)
+    ;
+  return slot;
+}
+
+/*
+ * pt_set_list_position_domains () - CBRD-27583: list positions read with the domains of the columns their producer
+ *   writes (pt_reader_domain): the list of the XASL node producer, or of the output list output (a block's
+ *   intermediate list, which its GROUP BY pass reads); the value list slots they fill (values) describe the same
+ *   values, as a CONNECT BY block copies their domains
+ */
+void
+pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, const XASL_NODE * producer,
+			      const OUTPTR_LIST * output)
+{
+  for (; positions != NULL; positions = positions->next)
+    {
+      REGU_VARIABLE *position = &positions->value;
+      const int pos = position->value.pos_descr.pos_no;
+      TP_DOMAIN *column = output != NULL ? domain_output_column (output, pos) : domain_list_column_of (producer, pos);
+      TP_DOMAIN *domain = pt_reader_domain (position->domain, column);
+      QPROC_DB_VALUE_LIST slot = pt_value_list_slot (values, position->vfetch_to);
+      /* a slot made from a parse tree VARIABLE takes the type its position already had */
+      if (slot != NULL && (domain != position->domain || TP_DOMAIN_TYPE (slot->dom) == DB_TYPE_VARIABLE))
+	{
+	  slot->dom = domain;
+	}
+      position->domain = domain;
+      position->value.pos_descr.dom = domain;
+    }
+}
+
+/*
+ * pt_set_sort_list_domains () - CBRD-27583: a sort key sorts in the decided domain of the list column it sorts,
+ *   which can differ from its parse tree domain (VARIABLE, a collation its values give, or a recursive CTE column
+ *   the branches unify to BIGINT): the column of the output list output (a block's intermediate list), or of the list
+ *   of the XASL node producer; a column left open keeps a decided key, and so does an object column: a view object
+ *   (VOBJ) sorts in its object key's OID order
+ */
+void
+pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OUTPTR_LIST * output)
+{
+  for (; keys != NULL; keys = keys->next)
+    {
+      const int pos = keys->pos_descr.pos_no;
+      TP_DOMAIN *column = output != NULL ? domain_output_column (output, pos) : domain_list_column_of (producer, pos);
+      if (column == NULL)
+	{
+	  continue;
+	}
+      const DB_TYPE type = TP_DOMAIN_TYPE (column);
+      const bool keeps_key = domain_is_variable (column) || type == DB_TYPE_OBJECT || type == DB_TYPE_OID
+	|| type == DB_TYPE_VOBJ;
+      if (!keeps_key || keys->pos_descr.dom == NULL || domain_is_variable (keys->pos_descr.dom))
+	{
+	  keys->pos_descr.dom = column;
+	}
+    }
+}
+
+/*
+ * pt_type_null_list_column () - CBRD-27583: column pos of the list xasl makes takes the unified domain of a set
+ *   operation or a recursive CTE where a branch writes it as DB_TYPE_NULL (only NULLs), with the sort keys on it, so
+ *   every list of the operation opens with that domain (qfile_unify_types checks it)
+ */
+static void
+pt_type_null_list_column (XASL_NODE * xasl, int pos, TP_DOMAIN * unified, bool null_cast)
+{
+  if (xasl == NULL)
+    {
+      return;
+    }
+  XASL_NODE *branch[2];
+  REGU_VARIABLE *column = domain_list_column_source (xasl, &pos, branch);
+  /* a regu converting its value keeps the domain its conversion makes */
+  if (column != NULL && (TP_DOMAIN_TYPE (column->domain) == DB_TYPE_NULL || null_cast)
+      && column->original_domain == NULL)
+    {
+      column->domain = unified;
+      /* a cast whose target the compile left open (a union cast over a bind), or the semantic check's cast of an
+       * untyped NULL (CBRD-27668), casts into it, its converter found at unpack (stx_arith_cast_target) */
+      if ((column->type == TYPE_INARITH || column->type == TYPE_OUTARITH)
+	  && (column->value.arithptr->opcode == T_CAST || column->value.arithptr->opcode == T_CAST_WRAP
+	      || column->value.arithptr->opcode == T_CAST_NOFAIL) && column->value.arithptr->domain != NULL
+	  && (TP_DOMAIN_TYPE (column->value.arithptr->domain) == DB_TYPE_NULL || null_cast))
+	{
+	  column->value.arithptr->domain = unified;
+	}
+    }
+  /* the first branch's leftmost list is the one the item describes (pt_get_select_list) */
+  pt_type_null_list_column (branch[0], pos, unified, null_cast);
+  pt_type_null_list_column (branch[1], pos, unified, false);
+  pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
+}
+
+/*
+ * pt_check_list_branches () - CBRD-27583: the columns of a set operation's or a recursive CTE's two branches unify
+ *   (domain_unify_list_column); a mismatch is the statement's semantic error at XASL generation, in pt_union_compatible's
+ *   words; a branch column of NULLs takes the unified domain (pt_type_null_list_column)
+ *   return: NO_ERROR or ER_QPROC_INCOMPATIBLE_TYPES (the parser holds the error)
+ */
+static int
+pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE * second_query, XASL_NODE * first,
+			XASL_NODE * second)
+{
+  const int n_columns = pt_length_of_select_list (pt_get_select_list (parser, first_query), EXCLUDE_HIDDEN_COLUMNS);
+  PT_NODE *item[2] = { pt_get_select_list (parser, first_query), pt_get_select_list (parser, second_query) };
+  for (int pos = 0; pos < n_columns && item[0] != NULL && item[1] != NULL;
+       pos++, item[0] = item[0]->next, item[1] = item[1]->next)
+    {
+      /* the semantic check's cast of an untyped NULL (CBRD-27668) fixed the type it knew then; the column unifies as
+       * the NULL it is and the cast takes the unified domain (a recursive CTE's self reference names type after the
+       * check) */
+      const bool null_cast[2] = { PT_IS_CAST_OF_UNTYPED_NULL (item[0]), PT_IS_CAST_OF_UNTYPED_NULL (item[1]) };
+      const TP_DOMAIN *unified;
+      const int error = domain_unify_list_column (null_cast[0] ? &tp_Null_domain : domain_list_column_of (first, pos),
+						  null_cast[1] ? &tp_Null_domain : domain_list_column_of (second, pos),
+						  &unified);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORmf2 (parser, item[0], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+		       pt_short_print (parser, item[0]), pt_short_print (parser, item[1]));
+	  return error;
+	}
+      if (unified != NULL && TP_DOMAIN_TYPE (unified) != DB_TYPE_NULL)
+	{
+	  pt_type_null_list_column (first, pos, (TP_DOMAIN *) unified, null_cast[0]);
+	  pt_type_null_list_column (second, pos, (TP_DOMAIN *) unified, null_cast[1]);
+	}
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -6622,6 +6967,33 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	  list_node->value = pt_to_regu_variable (parser, temp, unbox);
 	  if (list_node->value == NULL)
 	    {
+	      return NULL;
+	    }
+	  /* CBRD-27583: each row's column unifies with the first row's at compilation, as a set operation's */
+	  const TP_DOMAIN *unified;
+	  if (domain_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified) !=
+	      NO_ERROR)
+	    {
+	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
+	      return NULL;
+	    }
+	  const TP_DOMAIN *head = regu_list->regu_list->value->domain;
+	  const TP_DOMAIN *row = list_node->value->domain;
+	  if (head != NULL && row != NULL && TP_DOMAIN_TYPE (head) == DB_TYPE_NULL
+	      && TP_DOMAIN_TYPE (row) != DB_TYPE_NULL)
+	    {
+	      /* a NULL first row types the column NULL, which would drop this row's value: the column has no type */
+	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
+	      return NULL;
+	    }
+	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
+	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row) && TP_DOMAIN_CODESET (head) != TP_DOMAIN_CODESET (row))
+	    {
+	      /* a row's string in another codeset than the first row's: the row check gave -1150 (fetch.c); another
+	       * collation of the codeset (a literal's COLLATE) takes the first row's, as the list column holds it */
+	      PT_ERRORmf (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR, "VALUES");
 	      return NULL;
 	    }
 	  regu_list->count += 1;
@@ -6743,6 +7115,1391 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 }
 
 
+/* CBRD-27583: whether a domain fixes the type of its values and their collation */
+static bool
+pt_regu_domain_is_fixed_domain (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    /* LEAVE takes the value's collation, ENFORCE leaves a non-string value as it is */
+    && domain->collation_flag == TP_DOMAIN_COLL_NORMAL;
+}
+
+/* CBRD-27583: whether the compiler knows the type of a regu's values and their collation */
+static bool
+pt_regu_domain_is_fixed (const REGU_VARIABLE * regu)
+{
+  return regu != NULL && pt_regu_domain_is_fixed_domain (regu->domain)
+    && (regu->type != TYPE_POSITION || (regu->value.pos_descr.dom != NULL
+					&& TP_DOMAIN_TYPE (regu->value.pos_descr.dom) != DB_TYPE_VARIABLE));
+}
+
+/*
+ * pt_set_operand_conversion () - CBRD-27583: the domain a consumer wants an operand's values in: the operand converts
+ *   them on its fetch, into a holder of its own (vfetch_to); original_domain keeps the domain it reads them in
+ */
+static void
+pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, unsigned char conv_mode)
+{
+  /* a regu has one consumer: a second one that wants another domain has a regu of its own */
+  assert (operand->original_domain == NULL && operand->vfetch_to == NULL);
+  regu_alloc (operand->vfetch_to);
+  if (operand->vfetch_to == NULL)
+    {
+      return;
+    }
+  operand->original_domain = operand->domain;
+  operand->domain = (TP_DOMAIN *) target;
+  operand->conv_mode = conv_mode;
+}
+
+/*
+ * pt_hash_key_domain () - CBRD-27583: the domain a hash list scan hashes a build and a probe key's values in,
+ *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
+ *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
+ *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
+ *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
+ *
+ * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
+ * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE, an exact NUMERIC hash costing too much
+ * per key: a floating NUMERIC hashes a value normalized and a fixed one its scaled digits, and a floating key can
+ * hold fixed values (a CONNECT BY PRIOR column). Equal values hash alike only up to 15 digits: past 2^53 a value
+ * written in two scales can round to two DOUBLEs and the scan misses the pair (CBRD-27798). Two fixed NUMERICs
+ * whose common domain is floating have none.
+ */
+static bool
+pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
+{
+  *common = NULL;
+  if (!pt_regu_domain_is_fixed (build) || !pt_regu_domain_is_fixed (probe))
+    {
+      return false;
+    }
+  const TP_DOMAIN *domain[2] = { build->domain, probe->domain };
+  const DB_TYPE type[2] = { TP_DOMAIN_TYPE (domain[0]), TP_DOMAIN_TYPE (domain[1]) };
+  if (TP_IS_CHAR_TYPE (type[0]) && TP_IS_CHAR_TYPE (type[1]))
+    {
+      return domain[0]->collation_id == domain[1]->collation_id;
+    }
+  if (type[0] == type[1] && type[0] != DB_TYPE_NUMERIC)
+    {
+      /* an ENUM hashes its index: two ENUM types' equal strings would not */
+      return type[0] != DB_TYPE_NULL && type[0] != DB_TYPE_VOBJ
+	&& (type[0] != DB_TYPE_ENUMERATION || tp_domain_match (domain[0], domain[1], TP_EXACT_MATCH));
+    }
+  if (!TP_IS_NUMERIC_TYPE (type[0]) || !TP_IS_NUMERIC_TYPE (type[1]))
+    {
+      return false;
+    }
+  const bool floating = domain[0]->precision == DB_DEFAULT_NUMERIC_PRECISION
+    || domain[1]->precision == DB_DEFAULT_NUMERIC_PRECISION;
+  if (type[0] == type[1] && domain[0]->scale == domain[1]->scale && !floating)
+    {
+      return true;
+    }
+  if (domain_resolve_hash_key (domain[0], domain[1], common) != NO_ERROR)
+    {
+      er_clear ();
+      return false;
+    }
+  if (TP_DOMAIN_TYPE (*common) == DB_TYPE_NUMERIC && (floating || (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION))
+    {
+      if (!floating)
+	{
+	  /* two fixed NUMERICs beyond 38 digits together: a DOUBLE rounds a value twice (the coefficient, then
+	   * 10^scale), so equal values of the two scales could hash apart */
+	  *common = NULL;
+	  return false;
+	}
+      *common = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+  return true;
+}
+
+/*
+ * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it
+ *   hashes in (pt_hash_key_domain), on the key regus' fetch; a pair without one turns the scan's hash off
+ *   spec(in/out): a list scan spec
+ */
+static void
+pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
+{
+  if (spec == NULL || spec->s.list_node.hash_list_scan_yn == 0)
+    {
+      return;
+    }
+  REGU_VARIABLE_LIST build, probe;
+  const TP_DOMAIN *common;
+  /* every pair decides before any converts: a scan whose hash goes off keeps its keys as generated */
+  for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
+       build != NULL && probe != NULL; build = build->next, probe = probe->next)
+    {
+      if (!pt_hash_key_domain (&build->value, &probe->value, &common)
+	  || (common != NULL && (build->value.original_domain != NULL || build->value.vfetch_to != NULL
+				 || probe->value.original_domain != NULL || probe->value.vfetch_to != NULL)))
+	{
+	  spec->s.list_node.hash_list_scan_yn = 0;
+	  return;
+	}
+    }
+  for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
+       build != NULL && probe != NULL; build = build->next, probe = probe->next)
+    {
+      (void) pt_hash_key_domain (&build->value, &probe->value, &common);
+      REGU_VARIABLE *const key[2] = { &build->value, &probe->value };
+      for (int side = 0; side < 2; side++)
+	{
+	  if (common != NULL && key[side]->domain != common)
+	    {
+	      pt_set_operand_conversion (key[side], common, DOMAIN_CONVERT_IMPLICIT);
+	    }
+	}
+    }
+}
+
+/*
+ * pt_decide_operand_coercion () - CBRD-27583: the operand coercion of an addition, subtraction, multiplication or
+ *   division, by the type rule module over its operands' domains; an operand of a type the compiler does not know
+ *   leaves the node without one: its values decide at the row
+ */
+static void
+pt_decide_operand_coercion (ARITH_TYPE * arith)
+{
+  REGU_VARIABLE *operand[2] = { arith->leftptr, arith->rightptr };
+  DOMAIN_OPERAND operands[2];
+  for (int i = 0; i < 2; i++)
+    {
+      if (!pt_regu_domain_is_fixed (operand[i]))
+	{
+	  return;
+	}
+      const TP_DOMAIN *domain = operand[i]->domain;
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+	{
+	  /* a NULL operand makes the result NULL before the kernel reads the other one, which never converts */
+	  return;
+	}
+      operands[i] = DOMAIN_OPERAND
+      {
+      domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (arith->opcode, operands, &coercion);
+  for (int i = 0; i < 2; i++)
+    {
+      if (coercion.conv[i] != NULL)
+	{
+	  /* tp_value_auto_cast's conversion (ASSIGN), and an ENUM added to a string reaches DOUBLE through its name */
+	  const unsigned char selection =
+	    coercion.conv[i] == domain_enumeration_name_converter ()? REGU_CONV_ENUM_NAME : DOMAIN_CONVERT_ASSIGN;
+	  pt_set_operand_conversion (operand[i], coercion.operand_domain[i],
+				     selection | REGU_CONV_NULL_ON_FUNCTION_ERRORS);
+	}
+    }
+}
+
+/*
+ * pt_decide_function_operands () - CBRD-27583: an operand whose type an operator's body converted to compute
+ *   in converts on its fetch instead, so that the server body never takes that branch (the client fold calls the body
+ *   as it was). A string type checking could not type reaches here (a session variable's read; it casts a column):
+ *   FLOOR, CEIL, ABS, a unary minus and MOD read it as DOUBLE (tp_value_str_auto_cast_to_number: tp_value_auto_cast's
+ *   conversion, NULL under return_null_on_function_errors), ROUND and TRUNC coerce it to DOUBLE (tp_value_coerce:
+ *   ER_QPROC_INVALID_DATATYPE or NULL); ROUND coerces a NUMERIC, FLOAT or MONETARY format of a number to INTEGER alike;
+ *   BIT_COUNT reads a NUMERIC as DOUBLE (it cannot fail).
+ */
+static void
+pt_decide_function_operands (ARITH_TYPE * arith)
+{
+  REGU_VARIABLE *left = arith->leftptr, *right = arith->rightptr;
+  /* an operand that converts for another consumer keeps that; the body converts its value as it did */
+  const bool left_fixed = left != NULL && pt_regu_domain_is_fixed (left) && left->original_domain == NULL
+    && left->vfetch_to == NULL;
+  const bool right_fixed = right != NULL && pt_regu_domain_is_fixed (right) && right->original_domain == NULL
+    && right->vfetch_to == NULL;
+  const DB_TYPE left_type = left_fixed ? TP_DOMAIN_TYPE (left->domain) : DB_TYPE_NULL;
+  const DB_TYPE right_type = right_fixed ? TP_DOMAIN_TYPE (right->domain) : DB_TYPE_NULL;
+  const TP_DOMAIN *double_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+  const unsigned char read_number = DOMAIN_CONVERT_ASSIGN | REGU_CONV_NULL_ON_FUNCTION_ERRORS;
+  const unsigned char coerce = DOMAIN_CONVERT_IMPLICIT | REGU_CONV_INVALID_DATATYPE;
+
+  if ((left_fixed && TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NULL)
+      || (right_fixed && TP_DOMAIN_TYPE (right->domain) == DB_TYPE_NULL))
+    {
+      /* a NULL operand makes the result NULL before the body reads the other one, which never converts */
+      return;
+    }
+
+  switch (arith->opcode)
+    {
+    case T_FLOOR:
+    case T_CEIL:
+    case T_ABS:
+    case T_UNMINUS:
+      if (left == NULL && TP_IS_CHAR_TYPE (right_type))
+	{
+	  pt_set_operand_conversion (right, double_domain, read_number);
+	}
+      break;
+    case T_BIT_COUNT:
+      if (left == NULL && right_type == DB_TYPE_NUMERIC)
+	{
+	  pt_set_operand_conversion (right, double_domain, DOMAIN_CONVERT_ASSIGN);
+	}
+      break;
+    case T_MOD:
+      if (TP_IS_CHAR_TYPE (left_type))
+	{
+	  pt_set_operand_conversion (left, double_domain, read_number);
+	}
+      if (TP_IS_CHAR_TYPE (right_type))
+	{
+	  pt_set_operand_conversion (right, double_domain, read_number);
+	}
+      break;
+    case T_ROUND:
+      if ((TP_IS_NUMERIC_TYPE (left_type) || TP_IS_CHAR_TYPE (left_type))
+	  && (right_type == DB_TYPE_NUMERIC || right_type == DB_TYPE_FLOAT || right_type == DB_TYPE_MONETARY))
+	{
+	  pt_set_operand_conversion (right, tp_domain_resolve_default (DB_TYPE_INTEGER), coerce);
+	}
+      [[fallthrough]];
+    case T_TRUNC:
+      /* CBRD-27583 exception, the data carries the type (2-7): TRUNC's format, a string's content the function parses
+       * ('default' first, else into BIGINT failing as ER_QSTR_INVALID_FORMAT); the body converts it */
+      if (TP_IS_CHAR_TYPE (left_type))
+	{
+	  pt_set_operand_conversion (left, double_domain, coerce);
+	}
+      break;
+    default:
+      break;
+    }
+}
+
+/* CBRD-27583: the cast type checking wraps around an operand it could not type, into a string of the collation
+ * the other operand enforces */
+static bool
+pt_is_enforced_collation_cast (const PT_NODE * arg)
+{
+  return arg->node_type == PT_EXPR && arg->info.expr.op == PT_CAST && arg->info.expr.cast_type != NULL
+    && arg->info.expr.cast_type->info.data_type.collation_flag == TP_DOMAIN_COLL_ENFORCE;
+}
+
+/*
+ * pt_operand_retyped () - CBRD-27583: whether an operand regu of an operator node holds another type than
+ *   type checking gave its argument: a recursive CTE's self-reference reads its producer's type, not the one before
+ *   the non-recursive part's cast. The operands pair with the arguments in order; other shapes are not retyped.
+ */
+static bool
+pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const PT_NODE * node)
+{
+  const PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  const PT_NODE *args[3];
+  const REGU_VARIABLE *operands[3];
+  int n_args = 0, n = 0;
+  for (int i = 0; i < 3; i++)
+    {
+      if (arg[i] != NULL)
+	{
+	  args[n_args++] = arg[i];
+	}
+      if (i < n_operands && operand[i] != NULL)
+	{
+	  operands[n++] = operand[i];
+	}
+    }
+  if (n != n_args)
+    {
+      return false;
+    }
+  for (int i = 0; i < n; i++)
+    {
+      const PT_TYPE_ENUM type = args[i]->type_enum;
+      if (pt_is_enforced_collation_cast (args[i]))
+	{
+	  /* the cast keeps a value of another type as it is: the node computes over it as typed, it is not retyped */
+	  continue;
+	}
+      if (type != PT_TYPE_MAYBE && type != PT_TYPE_NONE && type != PT_TYPE_NULL && operands[i]->domain != NULL
+	  && TP_DOMAIN_TYPE (operands[i]->domain) != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_TYPE (operands[i]->domain) != pt_type_enum_to_db (type))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* CBRD-27583: the name a session variable read or assignment carries in its first argument */
+static const char *
+pt_session_variable_name (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  DB_VALUE *name = expr->info.expr.arg1 != NULL ? pt_value_to_db (parser, expr->info.expr.arg1) : NULL;
+  return name != NULL && DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR ? db_get_string (name) : NULL;
+}
+
+/* CBRD-27583: a session variable's slot in the type table of the statement, -1 for none */
+static int
+pt_session_variable_index (const PARSER_CONTEXT * parser, const char *name)
+{
+  for (int i = 0; name != NULL && i < parser->session_variable_count; i++)
+    {
+      if (intl_identifier_casecmp (parser->session_variable_names[i], name) == 0)
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+/*
+ * pt_session_expr_domain () - CBRD-27583: the domain of an expression a statement assigns a session variable,
+ *   with the variables' reads in the types the table gives them so far: the type checking's type, or for an operator
+ *   it left to a read or a bind the type rule over its operands' domains; NULL where neither gives one
+ */
+static const TP_DOMAIN *
+pt_session_expr_domain (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return NULL;
+    }
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_EVALUATE_VARIABLE)
+    {
+      const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, node));
+      return v >= 0
+	&& parser->session_variable_domains[v] != NULL ? parser->session_variable_domains[v] : &tp_Null_domain;
+    }
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_DEFINE_VARIABLE)
+    {
+      return pt_session_expr_domain (parser, node->info.expr.arg2);
+    }
+  if (node->node_type == PT_HOST_VAR)
+    {
+      const int index = node->info.host_var.index;
+      if (index < parser->host_var_count && parser->host_var_compiled_domains != NULL
+	  && parser->host_var_compiled_domains[index] != NULL)
+	{
+	  return parser->host_var_compiled_domains[index];
+	}
+      return pt_host_var_value_domain (parser, index);
+    }
+  if (node->type_enum != PT_TYPE_MAYBE && node->type_enum != PT_TYPE_NONE)
+    {
+      return pt_xasl_node_to_domain (parser, node);
+    }
+  if (node->node_type != PT_EXPR)
+    {
+      return NULL;
+    }
+  OPERATOR_TYPE opcode;
+  switch (node->info.expr.op)
+    {
+    case PT_PLUS:
+      opcode = T_ADD;
+      break;
+    case PT_MINUS:
+      opcode = T_SUB;
+      break;
+    case PT_TIMES:
+      opcode = T_MUL;
+      break;
+    case PT_DIVIDE:
+      opcode = T_DIV;
+      break;
+    case PT_MODULUS:
+      opcode = T_MOD;
+      break;
+    case PT_UNARY_MINUS:
+      opcode = T_UNMINUS;
+      break;
+    case PT_STRCAT:
+      opcode = T_STRCAT;
+      break;
+    case PT_IFNULL:
+      opcode = T_IFNULL;
+      break;
+    case PT_NVL:
+      opcode = T_NVL;
+      break;
+    case PT_COALESCE:
+      opcode = T_COALESCE;
+      break;
+    case PT_NVL2:
+      opcode = T_NVL2;
+      break;
+    default:
+      return NULL;
+    }
+  PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  DOMAIN_OPERAND operands[3];
+  int n = 0;
+  for (int i = 0; i < 3; i++)
+    {
+      if (arg[i] == NULL)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *domain = pt_session_expr_domain (parser, arg[i]);
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	{
+	  return NULL;
+	}
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  if (n == 0
+      || domain_resolve (domain_late_bind_context (opcode), opcode, operands, n, NULL, &result, &needs_late_bind)
+      != NO_ERROR || needs_late_bind || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return NULL;
+    }
+  return result.domain;
+}
+
+/*
+ * pt_session_stored_domain () - CBRD-27583: the type a session variable takes from a value of a domain, as the
+ *   server stores it (db_value_alloc_and_copy): a number its own, a string the variable-length string of its codeset
+ *   and collation, a bit string its own, any other value a VARCHAR; NULL for a value that gives no type
+ */
+static TP_DOMAIN *
+pt_session_stored_domain (const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  if (type == DB_TYPE_NULL || type == DB_TYPE_VARIABLE || TP_IS_SET_TYPE (type))
+    {
+      return NULL;
+    }
+  if (TP_IS_NUMERIC_TYPE (type) || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT)
+    {
+      return (TP_DOMAIN *) domain;
+    }
+  return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL,
+			    TP_IS_CHAR_TYPE (type) ? TP_DOMAIN_COLLATION (domain) : LANG_SYS_COLLATION);
+}
+
+/* CBRD-27583: the session's type of a session variable - its stored value's domain, a NULL of a variable that
+ * had a value carrying its type - asked once by the name a read or an assignment carries (the value SET and the row
+ * send); NULL for a variable without one or not defined */
+static TP_DOMAIN *
+pt_session_start_domain (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  DB_VALUE value;
+  TP_DOMAIN *domain = NULL;
+  db_make_null (&value);
+  er_stack_push ();
+  if (db_get_variable (pt_value_to_db (parser, expr->info.expr.arg1), &value) == NO_ERROR)
+    {
+      const TP_DOMAIN *start = domain_value_domain (&value);
+      domain = start != NULL && TP_DOMAIN_TYPE (start) != DB_TYPE_NULL ? (TP_DOMAIN *) start : NULL;
+    }
+  er_stack_pop ();
+  pr_clear_value (&value);
+  return domain;
+}
+
+/* walker of pt_type_session_variables: names each session variable once in the statement's type table and collects
+ * the assignments in the NULL-terminated array arg */
+static PT_NODE *
+pt_collect_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **defines = (PT_NODE **) arg;
+  if (node->node_type != PT_EXPR
+      || (node->info.expr.op != PT_EVALUATE_VARIABLE && node->info.expr.op != PT_DEFINE_VARIABLE))
+    {
+      return node;
+    }
+  const char *name = pt_session_variable_name (parser, node);
+  if (name != NULL && pt_session_variable_index (parser, name) < 0)
+    {
+      parser->session_variable_names[parser->session_variable_count] = pt_append_string (parser, NULL, name);
+      parser->session_variable_domains[parser->session_variable_count] = pt_session_start_domain (parser, node);
+      parser->session_variable_count++;
+    }
+  if (node->info.expr.op == PT_DEFINE_VARIABLE && defines != NULL)
+    {
+      for (int d = 0;; d++)
+	{
+	  if (defines[d] == NULL)
+	    {
+	      defines[d] = node;
+	      break;
+	    }
+	}
+    }
+  return node;
+}
+
+/* walker of pt_type_session_variables: counts the session variable reads and assignments into *(int *) arg */
+static PT_NODE *
+pt_count_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR
+      && (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE))
+    {
+      (*(int *) arg)++;
+    }
+  return node;
+}
+
+/* CBRD-27583: one session variable type: the DB type, for a string its codeset (fetch_session_read_value) */
+static bool
+pt_session_same_type (const TP_DOMAIN * type, const TP_DOMAIN * other)
+{
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (type)) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (other)))
+    {
+      return TP_DOMAIN_CODESET (type) == TP_DOMAIN_CODESET (other);
+    }
+  return TP_DOMAIN_TYPE (type) == TP_DOMAIN_TYPE (other);
+}
+
+/* CBRD-27583: an assignment that gives a session variable another type than the statement's other assignments */
+static int
+pt_session_variable_type_conflict (PARSER_CONTEXT * parser, PT_NODE * define, const TP_DOMAIN * type,
+				   const TP_DOMAIN * other)
+{
+  (void) domain_session_variable_type_error (pt_session_variable_name (parser, define), TP_DOMAIN_TYPE (type),
+					     TP_DOMAIN_CODESET (type), TP_DOMAIN_TYPE (other),
+					     TP_DOMAIN_CODESET (other));
+  PT_ERRORc (parser, define, er_msg ());
+  return ER_FAILED;
+}
+
+/*
+ * pt_type_session_variables () - CBRD-27583: the type each session variable a statement compiled at every
+ *   execution reads or assigns has for the statement, which the reads take (T_EVALUATE_VARIABLE): the type the
+ *   statement's assignments give it, its reads in the types found so far (@a := @a + 0.5 over an INTEGER @a makes it
+ *   NUMERIC), else the session's - the domain of the variable's value (the last SET VARIABLE's or assignment's type; a
+ *   NULL keeps the type), asked once per variable - else none (the NULL type). A string variable the statement
+ *   assigns takes its variable-length string (a fixed-length value or another collation converts at the read).
+ *   return: NO_ERROR, or an error where two assignments of the statement give a variable two types
+ */
+int
+pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int n_nodes = 0;
+  parser->session_variable_count = 0;
+  (void) parser_walk_tree (parser, statement, pt_count_session_variables, &n_nodes, NULL, NULL);
+  if (n_nodes == 0)
+    {
+      return NO_ERROR;
+    }
+  parser->session_variable_names = (const char **) parser_alloc (parser, n_nodes * sizeof (const char *));
+  parser->session_variable_domains = (TP_DOMAIN **) parser_alloc (parser, n_nodes * sizeof (TP_DOMAIN *));
+  parser->session_variable_assigned = (bool *) parser_alloc (parser, n_nodes * sizeof (bool));
+  parser->session_variable_read = (bool *) parser_alloc (parser, n_nodes * sizeof (bool));
+  PT_NODE **defines = (PT_NODE **) parser_alloc (parser, (n_nodes + 1) * sizeof (PT_NODE *));
+  TP_DOMAIN **assigned = (TP_DOMAIN **) parser_alloc (parser, n_nodes * sizeof (TP_DOMAIN *));
+  if (parser->session_variable_names == NULL || parser->session_variable_domains == NULL
+      || parser->session_variable_assigned == NULL || parser->session_variable_read == NULL || defines == NULL
+      || assigned == NULL)
+    {
+      parser->session_variable_count = 0;
+      return NO_ERROR;
+    }
+  (void) parser_walk_tree (parser, statement, pt_collect_session_variables, defines, NULL, NULL);
+  /* the first assignment that gives a type types its variable: passes until no type changes, the last of them over
+   * the final types, where another assignment of another type is the error */
+  bool changed = true;
+  PT_NODE *conflict = NULL;
+  TP_DOMAIN *conflict_type = NULL;
+  for (int pass = 0; changed && pass <= parser->session_variable_count; pass++)
+    {
+      changed = false;
+      conflict = NULL;
+      for (int v = 0; v < parser->session_variable_count; v++)
+	{
+	  assigned[v] = NULL;
+	}
+      for (int d = 0; defines[d] != NULL; d++)
+	{
+	  const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, defines[d]));
+	  const TP_DOMAIN *domain = v >= 0 ? pt_session_expr_domain (parser, defines[d]->info.expr.arg2) : NULL;
+	  TP_DOMAIN *type = domain != NULL ? pt_session_stored_domain (domain) : NULL;
+	  if (type == NULL)
+	    {
+	      continue;
+	    }
+	  if (assigned[v] == NULL)
+	    {
+	      assigned[v] = type;
+	    }
+	  else if (conflict == NULL && !pt_session_same_type (assigned[v], type))
+	    {
+	      conflict = defines[d];
+	      conflict_type = type;
+	    }
+	}
+      for (int v = 0; v < parser->session_variable_count; v++)
+	{
+	  TP_DOMAIN *type = parser->session_variable_domains[v];
+	  const bool same = assigned[v] != NULL && type != NULL && pt_session_same_type (type, assigned[v]);
+	  if (assigned[v] != NULL && (!same || !parser->session_variable_assigned[v]))
+	    {
+	      changed = changed || !same;
+	      parser->session_variable_domains[v] = assigned[v];
+	      parser->session_variable_assigned[v] = true;
+	    }
+	}
+    }
+  if (conflict != NULL)
+    {
+      const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, conflict));
+      return pt_session_variable_type_conflict (parser, conflict, parser->session_variable_domains[v], conflict_type);
+    }
+  for (int d = 0; defines[d] != NULL; d++)
+    {
+      const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, defines[d]));
+      TP_DOMAIN *domain = v >= 0 ? parser->session_variable_domains[v] : NULL;
+      if (domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
+	{
+	  /* the statement may store any string of the codeset, longer or of the other kind */
+	  parser->session_variable_domains[v] = pt_session_stored_domain (domain);
+	}
+    }
+  return NO_ERROR;
+}
+
+/* CBRD-27583: an assignment the parse tree gave no type (pt_session_expr_domain) gives its variable the type of
+ * its generated value unless another assignment of the statement gave it one or a read generated before took the
+ * variable's type: a value of another type than that one is the error */
+static int
+pt_type_session_variable_by_assignment (PARSER_CONTEXT * parser, PT_NODE * define, const REGU_VARIABLE * value)
+{
+  const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, define));
+  const TP_DOMAIN *typed = v >= 0 ? pt_session_expr_domain (parser, define->info.expr.arg2) : NULL;
+  if (v < 0 || !pt_regu_domain_is_fixed (value) || (typed != NULL && pt_session_stored_domain (typed) != NULL))
+    {
+      /* an assignment pt_type_session_variables typed gave the table its type */
+      return NO_ERROR;
+    }
+  TP_DOMAIN *type = pt_session_stored_domain (value->domain);
+  if (type == NULL)
+    {
+      return NO_ERROR;
+    }
+  TP_DOMAIN *current = parser->session_variable_domains[v];
+  if (current != NULL && pt_session_same_type (current, type))
+    {
+      /* the type is now an assignment's: a later one of another type conflicts with it */
+      parser->session_variable_assigned[v] = true;
+      return NO_ERROR;
+    }
+  if (parser->session_variable_assigned[v] || parser->session_variable_read[v])
+    {
+      return pt_session_variable_type_conflict (parser, define, current != NULL ? current : &tp_Null_domain, type);
+    }
+  parser->session_variable_domains[v] = type;
+  parser->session_variable_assigned[v] = true;
+  return NO_ERROR;
+}
+
+/*
+ * pt_session_variable_domain () - CBRD-27583: the domain of a session variable read: its type in the statement's
+ *   table (pt_type_session_variables) - a read of a statement no table was made for asks the session - the NULL type
+ *   for a variable without one
+ */
+static TP_DOMAIN *
+pt_session_variable_domain (PARSER_CONTEXT * parser, PT_NODE * read)
+{
+  const char *name = pt_session_variable_name (parser, read);
+  const int v = pt_session_variable_index (parser, name);
+  TP_DOMAIN *domain =
+    v >= 0 ? parser->session_variable_domains[v] : name != NULL ? pt_session_start_domain (parser, read) : NULL;
+  if (v >= 0)
+    {
+      parser->session_variable_read[v] = true;
+    }
+  return domain != NULL ? domain : &tp_Null_domain;
+}
+
+/*
+ * pt_incompatible_collation_domain () - CBRD-27583: the domain of a string node or function over operands whose
+ *   collations do not merge: the row raises the error where it computes it, so no value has this domain - the type
+ *   checking's string type in the first string operand's collation
+ */
+static const TP_DOMAIN *
+pt_incompatible_collation_domain (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operands, int n_operands)
+{
+  for (int i = 0; i < n_operands; i++)
+    {
+      if (operands[i].domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operands[i].domain)))
+	{
+	  return tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, 0, NULL,
+				    operands[i].domain->collation_id);
+	}
+    }
+  return NULL;
+}
+
+/*
+ * pt_merge_branch_collations () - CBRD-27583: the domain of a node whose value is one of its string branches, of
+ *   different domains (CASE, DECODE, IF; ELT over a computed index): the branches' merged collation, into which each
+ *   branch converts; false for collations that do not merge (the execution
+ *   rejects them) or a branch that converts for another consumer
+ */
+static bool
+pt_merge_branch_collations (REGU_VARIABLE * const *branch, int n_branches, const DOMAIN_OPERAND * operands,
+			    int n_operands, RESOLVED_DOMAIN * result)
+{
+  if (domain_resolve_branch_merge (operands, n_operands, result) != NO_ERROR || result->domain == NULL)
+    {
+      return false;
+    }
+  for (int i = 0; i < n_branches; i++)
+    {
+      if (branch[i] != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (branch[i]->domain))
+	  && (branch[i]->vfetch_to != NULL || branch[i]->original_domain != NULL))
+	{
+	  return false;
+	}
+    }
+  for (int i = 0; i < n_branches; i++)
+    {
+      if (branch[i] != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (branch[i]->domain))
+	  && branch[i]->domain != result->domain)
+	{
+	  pt_set_operand_conversion (branch[i], result->domain, DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+  return true;
+}
+
+/*
+ * pt_session_read_value_type () - CBRD-27583: the type the rule takes an operand as: a session variable read at a
+ *   value-dependent argument (domain_argument_type_depends_on_value) takes the class of the value the session holds
+ *   for the statement compiled at its execution; a NULL or no value, and
+ *   any other operand, its type
+ */
+static DB_TYPE
+pt_session_read_value_type (const REGU_VARIABLE * operand, DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
+{
+  const ARITH_TYPE *read = operand->type == TYPE_INARITH ? operand->value.arithptr : NULL;
+  if (read == NULL || read->opcode != T_EVALUATE_VARIABLE || read->rightptr == NULL
+      || read->rightptr->type != TYPE_DBVAL
+      || !domain_argument_type_depends_on_value (context, opcode, arg_index, type))
+    {
+      return type;
+    }
+  DB_VALUE value;
+  db_make_null (&value);
+  er_stack_push ();
+  const DB_TYPE value_type =
+    db_get_variable ((DB_VALUE *) & read->rightptr->value.dbval, &value) == NO_ERROR && !DB_IS_NULL (&value)
+    ? domain_classify_value (context, opcode, arg_index, &value) : type;
+  er_stack_pop ();
+  pr_clear_value (&value);
+  return value_type;
+}
+
+/*
+ * pt_decide_node_domain () - CBRD-27583: the domain of an operator node type checking left to its operands' values
+ *   (a value-typed bind) or typed over an argument its operand regu retypes, resolved with the type rule module
+ *   from its operands' domains as the bind type signature fixes them, and the collation of a string type checking
+ *   left to the values (LEAVE) or enforced over an operand it could not type (ENFORCE); a node whose operands'
+ *   types the rule rejects gives no value and raises the rule's error where a row computes it; a node over an
+ *   operand of a type the compiler does not know, or one the rule does not resolve, is left VARIABLE: its values decide
+ *   at the row
+ */
+static void
+pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
+{
+  ARITH_TYPE *arith = regu->value.arithptr;
+  /* CONNECT_BY_ROOT and QPRIOR carry their block in the third operand */
+  const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
+  REGU_VARIABLE *operand[3] = { arith->leftptr, arith->rightptr, arith->thirdptr };
+  const bool collation_variable = arith->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (arith->domain))
+    && TP_DOMAIN_COLLATION_FLAG (arith->domain) != TP_DOMAIN_COLL_NORMAL;
+  if (arith->domain == NULL || (arith->pred != NULL && !collation_variable)
+      || (TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE && !collation_variable
+	  && !pt_operand_retyped (operand, n_value_operands, node)))
+    {
+      return;
+    }
+  const DOMAIN_CTX context = domain_late_bind_context (arith->opcode);
+  DOMAIN_OPERAND operands[3];
+  int n = 0;
+  for (int i = 0; i < n_value_operands; i++)
+    {
+      if (operand[i] == NULL)
+	{
+	  continue;
+	}
+      if (!pt_regu_domain_is_fixed (operand[i]))
+	{
+	  return;
+	}
+      const TP_DOMAIN *domain = operand[i]->domain;
+      const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+      operands[n] = DOMAIN_OPERAND
+      {
+      domain, pt_session_read_value_type (operand[i], context, arith->opcode, n, type),
+	  TP_IS_CHAR_TYPE (type) ? domain->collation_id : -1, false};
+      n++;
+    }
+  if (n == 0)
+    {
+      return;
+    }
+  /* a rule that gives no value (a NULL operand) types the node NULL: every row gives NULL */
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  int error = collation_variable
+    ? domain_resolve_character (arith->opcode, operands, n, arith->domain, &result)
+    : domain_resolve (context, arith->opcode, operands, n, arith->domain, &result, &needs_late_bind);
+  if (collation_variable && error == ER_QPROC_DOMAIN_UNRESOLVED
+      && (arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_IF))
+    {
+      REGU_VARIABLE *branch[2] = { arith->leftptr, arith->rightptr };
+      error = pt_merge_branch_collations (branch, 2, operands, n, &result) ? NO_ERROR : error;
+    }
+  else if (collation_variable && error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
+    {
+      result = RESOLVED_DOMAIN ();
+      result.domain = pt_incompatible_collation_domain (arith->domain, operands, n);
+      error = result.domain != NULL ? NO_ERROR : error;
+    }
+  if (!needs_late_bind && (error == ER_QPROC_INVALID_DATATYPE || error == ER_QSTR_INVALID_DATA_TYPE
+			   || error == ER_QSTR_INCOMPATIBLE_CODE_SETS || error == ER_QSTR_INCOMPATIBLE_COLLATIONS))
+    {
+      /* the operator rejects its operands' types: no value, and a row that computes it over values raises the error */
+      arith->fails = error;
+      result = RESOLVED_DOMAIN ();
+      result.domain = &tp_Null_domain;
+      error = NO_ERROR;
+    }
+  if (error != NO_ERROR || needs_late_bind || result.domain == NULL
+      || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return;
+    }
+  arith->domain = (TP_DOMAIN *) result.domain;
+  regu->domain = arith->domain;
+  regu_dbval_type_init (arith->value, TP_DOMAIN_TYPE (arith->domain));
+  if (n_value_operands == 2 && arith->thirdptr != NULL)
+    {
+      /* the block carrier holds no value: it types as its node, as one type checking typed does */
+      arith->thirdptr->domain = arith->domain;
+    }
+}
+
+/*
+ * pt_nvl_node_domain () - CBRD-27583: the domain an NVL, IFNULL, COALESCE or NVL2 node resolves to by the rule
+ *   pt_decide_node_domain resolves it with, its operand at slot j of domain at_j and the others as the plan reads them
+ *   (a user or derived position's domain, any other operand's type); NULL when an operand's domain is not fixed
+ */
+const TP_DOMAIN *
+pt_nvl_node_domain (PARSER_CONTEXT * parser, const PT_NODE * node, int j, const TP_DOMAIN * at_j)
+{
+  OPERATOR_TYPE opcode;
+  switch (node->info.expr.op)
+    {
+    case PT_NVL:
+      opcode = T_NVL;
+      break;
+    case PT_IFNULL:
+      opcode = T_IFNULL;
+      break;
+    case PT_COALESCE:
+      opcode = T_COALESCE;
+      break;
+    case PT_NVL2:
+      opcode = T_NVL2;
+      break;
+    default:
+      return NULL;
+    }
+  const PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  DOMAIN_OPERAND operands[3];
+  int n = 0;
+  for (int k = 0; k < 3; k++)
+    {
+      if (arg[k] == NULL)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *domain = k == j ? at_j : NULL;
+      if (k != j && arg[k]->node_type == PT_HOST_VAR)
+	{
+	  domain = pt_host_var_position_domain (parser, arg[k]->info.host_var.index);
+	}
+      if (k != j && domain == NULL)
+	{
+	  domain = arg[k]->type_enum == PT_TYPE_NULL ? &tp_Null_domain
+	    : arg[k]->type_enum != PT_TYPE_MAYBE && arg[k]->type_enum != PT_TYPE_NONE
+	    ? pt_xasl_node_to_domain (parser, arg[k]) : NULL;
+	}
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	{
+	  return NULL;
+	}
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  if (n == 0
+      || domain_resolve (domain_late_bind_context (opcode), opcode, operands, n, NULL, &result, &needs_late_bind)
+      != NO_ERROR || needs_late_bind || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return NULL;
+    }
+  return result.domain;
+}
+
+/*
+ * pt_check_nvl_null_domain () - CBRD-27583: an NVL family node whose operand position a NULL takes the plan of
+ *   (PT_HOST_VAR_NULL_MATCHES) has the domain pt_check_null_takes_plan judged that by
+ */
+static void
+pt_check_nvl_null_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, const PT_NODE * node)
+{
+#if !defined (NDEBUG)
+  const PT_OP_TYPE op = node->info.expr.op;
+  /* a compilation that consumes values (set_host_var) plans that execution only: no NULL takes it by signature */
+  if ((op != PT_NVL && op != PT_IFNULL && op != PT_COALESCE && op != PT_NVL2) || parser->flag.set_host_var)
+    {
+      return;
+    }
+  const PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  for (int j = 0; j < 3 && parser->host_var_format_classes != NULL; j++)
+    {
+      if (arg[j] == NULL || arg[j]->node_type != PT_HOST_VAR || arg[j]->info.host_var.var_type != PT_HOST_IN)
+	{
+	  continue;
+	}
+      const int index = arg[j]->info.host_var.index;
+      const int user = index < parser->host_var_count ? index
+	: pt_is_derived_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+      if (user < 0 || PT_HOST_VAR_CLASS (parser->host_var_format_classes[user]) != PT_HOST_VAR_CLASS_NVL_ARG
+	  || !(parser->host_var_format_classes[user] & PT_HOST_VAR_NULL_MATCHES))
+	{
+	  continue;
+	}
+      const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_position_domain (parser, index));
+      /* a string node's precision and collation are the type checker's inference over the whole expression (a system
+       * cast of an ENUM argument, CBRD-27482; pt_check_recursive_expr_collation), which the bind's expected domain does
+       * not carry: a string compares by type and codeset */
+      const bool string = with != NULL && regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+	&& TP_DOMAIN_TYPE (regu->domain) == TP_DOMAIN_TYPE (with) && regu->domain->codeset == with->codeset;
+      assert (with != NULL && regu->domain != NULL && (string || tp_domain_match (regu->domain, with, TP_EXACT_MATCH)));
+    }
+#endif
+}
+
+/*
+ * pt_check_cast_wrap_domain () - CBRD-27583: a CAST_WRAP node's decided domain is of the type class type
+ *   checking declared the node with (a string for a string), or its source's type where the cast passes the value as
+ *   it is (a collation-enforcing cast over a value that is no string and no ENUM)
+ */
+static void
+pt_check_cast_wrap_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, const PT_NODE * node)
+{
+#if !defined (NDEBUG)
+  const ARITH_TYPE *arith = regu->value.arithptr;
+  if (arith->opcode != T_CAST_WRAP || arith->domain == NULL || node->node_type != PT_EXPR
+      || node->info.expr.op != PT_CAST)
+    {
+      return;
+    }
+  const DB_TYPE decided = TP_DOMAIN_TYPE (arith->domain);
+  const DB_TYPE declared = pt_type_enum_to_db (node->type_enum);
+  if (decided == DB_TYPE_VARIABLE || decided == DB_TYPE_NULL || declared == DB_TYPE_VARIABLE
+      || declared == DB_TYPE_NULL)
+    {
+      return;
+    }
+  const DB_TYPE source = arith->rightptr != NULL && arith->rightptr->domain != NULL
+    ? TP_DOMAIN_TYPE (arith->rightptr->domain) : DB_TYPE_NULL;
+  assert ((TP_IS_CHAR_TYPE (declared) ? TP_IS_CHAR_TYPE (decided) : decided == declared)
+	  || (decided == source && decided != DB_TYPE_ENUMERATION));
+#endif
+}
+
+/*
+ * pt_function_reader_domain () - CBRD-27583: the domain a reader of an aggregate's or an analytic function's
+ *   value takes: the decided one where type checking left the result type to the argument's value, the parse tree's
+ *   string type in the decided collation where it left only the collation (GROUP_CONCAT over a bind), the parse
+ *   tree's otherwise - an AVG over an INTEGER bind decides INTEGER and yields a DOUBLE
+ */
+static TP_DOMAIN *
+pt_function_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * decided)
+{
+  if (decided == NULL || TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE)
+    {
+      return decided != NULL ? decided : parse_tree;
+    }
+  TP_DOMAIN *collated = pt_domain_in_collation (parse_tree, decided);
+  return collated != NULL ? collated : parse_tree;
+}
+
+/* CBRD-27583: a MIN / MAX over an operand its regu retyped, whose values the function keeps as they are */
+static bool
+pt_extreme_operand_retyped (FUNC_CODE function, const TP_DOMAIN * compiled, const REGU_VARIABLE * operand)
+{
+  return (function == PT_MIN || function == PT_MAX) && operand->domain != NULL
+    && TP_DOMAIN_TYPE (operand->domain) != DB_TYPE_NULL
+    && TP_DOMAIN_TYPE (operand->domain) != TP_DOMAIN_TYPE (compiled);
+}
+
+/*
+ * pt_decide_function_domain () - CBRD-27583: the domain of an aggregate or an analytic function that type
+ *   checking left to its argument's value - a variable domain or operand type, or a collation the values give - by
+ *   the rule its first value used to type it with at execution, over its operand's domain
+ *   return: the decided domain; NULL keeps the compiled one (a fixed function over a retyped operand keeps it too: only
+ *	     its accumulator follows the operand; but not a MIN / MAX, whose accumulator is its domain)
+ */
+static TP_DOMAIN *
+pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * compiled, DB_TYPE opr_dbtype,
+			   const REGU_VARIABLE * operand)
+{
+  if (compiled == NULL || !pt_regu_domain_is_fixed (operand)
+      || (TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE && opr_dbtype != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL
+	  && !pt_extreme_operand_retyped (function, compiled, operand)))
+    {
+      return NULL;
+    }
+  const TP_DOMAIN *domain = operand->domain;
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  const DOMAIN_OPERAND operand_rule = { domain, type, TP_IS_CHAR_TYPE (type) ? domain->collation_id : -1,
+    opr_dbtype == DB_TYPE_VARIABLE
+  };
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  /* a retyped MIN / MAX is typed by its operand, as the rule types one its value types */
+  const TP_DOMAIN *consumer = pt_extreme_operand_retyped (function, compiled, operand) ? NULL : compiled;
+  switch (domain_resolve (context, function, &operand_rule, 1, consumer, &result, &needs_late_bind))
+    {
+    case NO_ERROR:
+      return needs_late_bind ? NULL : (TP_DOMAIN *) result.domain;
+    case ER_QPROC_INVALID_DATATYPE:
+      /* a SUM / AVG over a date or time: rejected before, as type checking rejects the literal */
+      assert (false);
+      return NULL;
+    case ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN:
+      /* a MEDIAN / PERCENTILE over a type none of DOUBLE, DATETIME, TIME takes: the row's cast of a value raises it */
+      return &tp_Double_domain;
+    default:
+      return NULL;
+    }
+}
+
+/* CBRD-27583: the aggregate or analytic function of the parse tree that holds a value (PT_FUNCTION.etc);
+ * arg: { the value, the function found } */
+static PT_NODE *
+pt_find_function_of_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  void **search = (void **) arg;
+  if (tree->node_type == PT_FUNCTION && tree->etc == search[0])
+    {
+      search[1] = tree;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return tree;
+}
+
+/*
+ * pt_reject_unaddable_operand () - CBRD-27583: a SUM or AVG over an operand of a date or time type - a
+ *   value-typed position, which type checking saw MAYBE (nvl (?, d) over a NULL bind) - is type checking's error for
+ *   the literal: its type arrives at XASL generation
+ *   return: NO_ERROR, or ER_FAILED with the error set on the function's argument
+ *   statement(in): the parse tree that holds the function: the block, or the analytic functions' list
+ */
+static int
+pt_reject_unaddable_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_CODE function,
+			     const REGU_VARIABLE * operand, DB_VALUE * value)
+{
+  if ((function != PT_SUM && function != PT_AVG) || !pt_regu_domain_is_fixed (operand)
+      || !TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (operand->domain)))
+    {
+      return NO_ERROR;
+    }
+  void *search[2] = { value, NULL };
+  parser_walk_tree (parser, statement, pt_find_function_of_value, search, NULL, NULL);
+  PT_NODE *function_node = (PT_NODE *) search[1];
+  if (function_node == NULL || function_node->info.function.arg_list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "a SUM or AVG over a date or time");
+      return ER_FAILED;
+    }
+  PT_NODE *arg = function_node->info.function.arg_list;
+  PT_ERRORmf2 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, pt_short_print (parser, arg),
+	       pt_show_type_enum (PT_TYPE_DOUBLE));
+  return ER_FAILED;
+}
+
+/*
+ * pt_cast_regu () - CBRD-27583: operand read through a T_CAST into domain (tp_value_cast_force's coercion)
+ *   return: false out of memory
+ */
+static bool
+pt_cast_regu (REGU_VARIABLE * operand, TP_DOMAIN * domain)
+{
+  REGU_VARIABLE *value;
+  regu_alloc (value);
+  REGU_VARIABLE *cast = value != NULL ? pt_make_regu_arith (NULL, value, NULL, T_CAST, domain) : NULL;
+  if (cast == NULL)
+    {
+      return false;
+    }
+  *value = *operand;
+  cast->domain = domain;
+  *operand = *cast;
+  return true;
+}
+
+/*
+ * pt_cast_unnumbered_operand () - CBRD-27583: a SUM or AVG over an operand of no number type - a session
+ *   variable read or a bind, which type checking saw MAYBE - reads it through a cast to DOUBLE, as type checking casts
+ *   a typed argument; a collection under SUM, NULL and a type the compiler does not know keep theirs
+ *   return: NO_ERROR, or ER_FAILED out of memory
+ */
+static int
+pt_cast_unnumbered_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_CODE function, REGU_VARIABLE * operand)
+{
+  if ((function != PT_SUM && function != PT_AVG) || !pt_regu_domain_is_fixed (operand))
+    {
+      return NO_ERROR;
+    }
+  const DB_TYPE type = TP_DOMAIN_TYPE (operand->domain);
+  if (TP_IS_NUMERIC_TYPE (type) || type == DB_TYPE_NULL || TP_IS_SET_TYPE (type))
+    {
+      return NO_ERROR;
+    }
+  if (!pt_cast_regu (operand, &tp_Double_domain))
+    {
+      PT_ERROR (parser, statement, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_set_interpolation_list_domain () - CBRD-27583: the domain a MEDIAN / PERCENTILE list holds and its key
+ *   sorts: the argument's where it is of the function's type (a NUMERIC column keeps its precision and scale), the
+ *   function's otherwise - every value converts to the function's type before it goes into the list
+ */
+static void
+pt_set_interpolation_list_domain (AGGREGATE_TYPE * agg)
+{
+  if (!QPROC_IS_INTERPOLATION_FUNC (agg) || agg->sort_list == NULL || !pt_regu_domain_is_fixed_domain (agg->domain)
+      || TP_DOMAIN_TYPE (agg->domain) == DB_TYPE_NULL)
+    {
+      return;
+    }
+  const TP_DOMAIN *argument = agg->operands->value.domain;
+  agg->sort_list->pos_descr.dom = argument != NULL && TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (agg->domain)
+    ? (TP_DOMAIN *) argument : agg->domain;
+}
+
+/*
+ * pt_decide_aggregate_domains () - CBRD-27583: a block's aggregates over their operands' domains: an operand
+ *   reading a slot of values takes the domain its writer fills it with, and a function type checking left to its
+ *   argument's value takes its domain and operand type from it, before any reader of its value is generated
+ *   return: NO_ERROR, or ER_FAILED for a SUM or AVG over a date or time (pt_reject_unaddable_operand) or out of memory
+ */
+static int
+pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGREGATE_TYPE * aggregates,
+			     const VAL_LIST * values)
+{
+  for (AGGREGATE_TYPE * agg = aggregates; agg != NULL; agg = agg->next)
+    {
+      REGU_VARIABLE *operand = agg->operands != NULL ? &agg->operands->value : NULL;
+      /* CUME_DIST and PERCENT_RANK read a list of their arguments and ORDER BY keys and yield a fixed DOUBLE */
+      if (operand == NULL || agg->function == PT_CUME_DIST || agg->function == PT_PERCENT_RANK)
+	{
+	  continue;
+	}
+      for (REGU_VARIABLE_LIST each = agg->operands; each != NULL; each = each->next)
+	{
+	  QPROC_DB_VALUE_LIST slot = each->value.type == TYPE_CONSTANT
+	    ? pt_value_list_slot (values, each->value.value.dbvalptr) : NULL;
+	  if (slot != NULL)
+	    {
+	      each->value.domain = pt_reader_domain (each->value.domain, slot->dom);
+	    }
+	}
+      if (pt_reject_unaddable_operand (parser, statement, agg->function, operand, agg->accumulator.value) != NO_ERROR
+	  || pt_cast_unnumbered_operand (parser, statement, agg->function, operand) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      for (SORT_LIST * key = QPROC_IS_INTERPOLATION_FUNC (agg) ? NULL : agg->sort_list; key != NULL; key = key->next)
+	{
+	  /* a GROUP_CONCAT key sorts the list of its operand's values (qdata_aggregate_list_domain) */
+	  if (!domain_is_variable (operand->domain) || domain_is_variable (key->pos_descr.dom))
+	    {
+	      key->pos_descr.dom = operand->domain;
+	    }
+	}
+      TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_AGG, agg->function, agg->domain, agg->opr_dbtype,
+						     operand);
+      if (domain == NULL)
+	{
+	  pt_set_interpolation_list_domain (agg);
+	  continue;
+	}
+      if (agg->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg->domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  /* a MEDIAN / PERCENTILE converts each value of its own type to the function's (the operand type) */
+	  agg->opr_dbtype = TP_DOMAIN_TYPE (QPROC_IS_INTERPOLATION_FUNC (agg) ? operand->domain : domain);
+	}
+      if (TP_DOMAIN_TYPE (agg->domain) == DB_TYPE_VARIABLE)
+	{
+	  /* the accumulator starts in the decided type, which its first value gave at execution before */
+	  regu_dbval_type_init (agg->accumulator.value, TP_DOMAIN_TYPE (domain));
+	}
+      agg->domain = domain;
+      /* a function value reads an ENUM by its elements */
+      assert (TP_DOMAIN_TYPE (domain) != DB_TYPE_ENUMERATION || DOM_GET_ENUM_ELEMS_COUNT (domain) > 0);
+      pt_set_interpolation_list_domain (agg);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_decide_analytic_domains () - CBRD-27583: the analytic functions over their operands' domains, as
+ *   pt_decide_aggregate_domains; the readers of a function's value generated before (the initial outlist's column,
+ *   the scan's load into the value list: readers) take the domain the rule gave a variable result type
+ */
+static int
+pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYTIC_TYPE * functions,
+			    const VAL_LIST * values, REGU_VARIABLE_LIST readers[2])
+{
+  for (ANALYTIC_TYPE * func = functions; func != NULL; func = func->next)
+    {
+      REGU_VARIABLE *operand = &func->operand;
+      QPROC_DB_VALUE_LIST slot = operand->type == TYPE_CONSTANT ? pt_value_list_slot (values, operand->value.dbvalptr)
+	: NULL;
+      if (slot != NULL)
+	{
+	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
+	}
+      if (pt_reject_unaddable_operand (parser, statement, func->function, operand, func->value) != NO_ERROR
+	  || pt_cast_unnumbered_operand (parser, statement, func->function, operand) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      const bool retyped = pt_extreme_operand_retyped (func->function, func->domain, operand);
+      TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_ANALYTIC, func->function, func->domain,
+						     func->opr_dbtype, operand);
+      if (domain == NULL)
+	{
+	  continue;
+	}
+      if (func->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func->domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  func->opr_dbtype = TP_DOMAIN_TYPE (domain);
+	}
+      if (TP_DOMAIN_TYPE (func->domain) == DB_TYPE_VARIABLE || retyped)
+	{
+	  /* the value starts in the decided type, which its first binding gave at execution before; a MIN / MAX
+	   * copies its operand's values into it by its type (qdata_evaluate_analytic_func) */
+	  regu_dbval_type_init (func->value, TP_DOMAIN_TYPE (domain));
+	}
+      func->domain = domain;
+      for (int i = 0; readers != NULL && i < 2; i++)
+	{
+	  for (REGU_VARIABLE_LIST reader = readers[i]; reader != NULL; reader = reader->next)
+	    {
+	      if (reader->value.type == TYPE_CONSTANT && reader->value.value.dbvalptr == func->value)
+		{
+		  reader->value.domain = retyped ? domain : pt_function_reader_domain (reader->value.domain, domain);
+		}
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/* CBRD-27583: the aggregate of the block being generated whose value value is, NULL for none */
+static const AGGREGATE_TYPE *
+pt_block_aggregate (const PARSER_CONTEXT * parser, const DB_VALUE * value)
+{
+  const XASL_NODE *xasl = parser->parent_proc_xasl;
+  const AGGREGATE_TYPE *agg = xasl == NULL ? NULL : xasl->type == BUILDVALUE_PROC ? xasl->proc.buildvalue.agg_list
+    : xasl->type == BUILDLIST_PROC ? xasl->proc.buildlist.g_agg_list : NULL;
+  for (; agg != NULL && agg->accumulator.value != value; agg = agg->next)
+    ;
+  return agg;
+}
+
+/*
+ * pt_decide_branch_casts () - CBRD-27583: NVL, IFNULL and COALESCE cast the operand a row picks, NVL2 its second or
+ *   third, into the node's domain: each such operand converts on its fetch, as an assignment that fails with an error
+ *   (fetch_cast_operand); the node fetches only the operand it picks
+ */
+static void
+pt_decide_branch_casts (ARITH_TYPE * arith)
+{
+  if (!pt_regu_domain_is_fixed_domain (arith->domain))
+    {
+      return;
+    }
+  REGU_VARIABLE *branch[2];
+  switch (arith->opcode)
+    {
+    case T_NVL:
+    case T_IFNULL:
+    case T_COALESCE:
+      branch[0] = arith->leftptr;
+      branch[1] = arith->rightptr;
+      break;
+    case T_NVL2:
+      branch[0] = arith->rightptr;
+      branch[1] = arith->thirdptr;
+      break;
+    default:
+      return;
+    }
+  for (int i = 0; i < 2; i++)
+    {
+      if (!pt_regu_domain_is_fixed (branch[i]) || branch[i]->domain == arith->domain
+	  || TP_DOMAIN_TYPE (branch[i]->domain) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (tp_value_find_converter (TP_DOMAIN_TYPE (branch[i]->domain), arith->domain, DOMAIN_CONVERT_ASSIGN) != NULL)
+	{
+	  pt_set_operand_conversion (branch[i], arith->domain, DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+}
+
+/*
+ * pt_make_regu_arith_over_copies () - CBRD-27583: a subtraction plan generation makes over regus another
+ *   consumer reads as they are (a ROWNUM bound, the comparison's bind): the node reads second regus of its own, which
+ *   convert for its operand coercion
+ */
+static REGU_VARIABLE *
+pt_make_regu_arith_over_copies (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const OPERATOR_TYPE op,
+				const TP_DOMAIN * domain)
+{
+  const REGU_VARIABLE *arg[2] = { arg1, arg2 };
+  REGU_VARIABLE *copy[2];
+  for (int i = 0; i < 2; i++)
+    {
+      regu_alloc (copy[i]);
+      if (copy[i] == NULL)
+	{
+	  return NULL;
+	}
+      *copy[i] = *arg[i];
+    }
+  REGU_VARIABLE *regu = pt_make_regu_arith (copy[0], copy[1], NULL, op, domain);
+  if (regu != NULL)
+    {
+      regu->domain = (TP_DOMAIN *) domain;
+      pt_decide_operand_coercion (regu->value.arithptr);
+    }
+  return regu;
+}
+
 /*
  * pt_make_key_limit_arith () - build a key limit node (rownum < N is N - 1, a range is upper - lower,
  *                              a merge with a user KEYLIMIT is LEAST/GREATEST) and mark it as such,
@@ -6760,7 +8517,9 @@ pt_make_key_limit_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
 
   assert (op == T_SUB || op == T_LEAST || op == T_GREATEST);
 
-  regu = pt_make_regu_arith (arg1, arg2, NULL, op, domain);
+  /* CBRD-27583: a subtraction reads copies that convert for its operand coercion (pt_make_regu_arith_over_copies) */
+  regu = (op == T_SUB ? pt_make_regu_arith_over_copies (arg1, arg2, op, domain)
+	  : pt_make_regu_arith (arg1, arg2, NULL, op, domain));
   if (regu != NULL)
     {
       REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_KEY_LIMIT_ARITH);
@@ -7092,7 +8851,42 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
       regu->domain->scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
+  /* CBRD-27583: the PL server's reply unpacks a string of either declared type as a VARCHAR of its codeset's binary
+   * collation (dbvalue_java::unpack); an operand reads that, and the readers that the list column cast used to give
+   * the declared type convert into it (pt_convert_sp_string) */
+  if (regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain)))
+    {
+      regu->domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL,
+					LANG_GET_BINARY_COLLATION (TP_DOMAIN_CODESET (regu->domain)));
+    }
+
   return regu;
+}
+
+/*
+ * pt_convert_sp_string () - CBRD-27583: a stored function's string converted into the function's declared type,
+ *   for a reader the list column cast used to give that type: an output column, an aggregate's argument
+ *   return: false out of memory
+ *   node(in): the stored function's call
+ *   regu(in/out): the reader's regu of the call
+ */
+static bool
+pt_convert_sp_string (PARSER_CONTEXT * parser, PT_NODE * node, REGU_VARIABLE * regu)
+{
+  if (regu->type != TYPE_SP || regu->original_domain != NULL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain)))
+    {
+      return true;
+    }
+  TP_DOMAIN *declared = pt_xasl_node_to_domain (parser, node);
+  if (declared == NULL)
+    {
+      return false;
+    }
+  if (declared != regu->domain)
+    {
+      pt_set_operand_conversion (regu, declared, DOMAIN_CONVERT_ASSIGN);
+    }
+  return regu->domain == declared;
 }
 
 /*
@@ -7104,6 +8898,139 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
  * Note :
  * currently only aggregate functions are known and handled
  */
+/* CBRD-27583: ELT's index under the cast to BIGINT the compiler may wrap it in */
+static const REGU_VARIABLE *
+pt_elt_index_source (const REGU_VARIABLE * index)
+{
+  if ((index->type == TYPE_INARITH || index->type == TYPE_OUTARITH) && index->value.arithptr != NULL
+      && index->value.arithptr->rightptr != NULL
+      && (index->value.arithptr->opcode == T_CAST || index->value.arithptr->opcode == T_CAST_WRAP
+	  || index->value.arithptr->opcode == T_CAST_NOFAIL))
+    {
+      return index->value.arithptr->rightptr;
+    }
+  return index;
+}
+
+/* CBRD-27583: whether ELT's index is a bind or a literal: its value picks the branch for every row of an
+ * execution */
+static bool
+pt_elt_index_is_value (const REGU_VARIABLE * index)
+{
+  index = pt_elt_index_source (index);
+  return index->type == TYPE_DBVAL || index->type == TYPE_POS_VALUE;
+}
+
+/* CBRD-27583: the value of ELT's index the plan is compiled for: a literal's, or a user position's, which the
+ * bind type signature carries (PT_HOST_VAR_ELT_POSITION); PT_HOST_VAR_ELT_UNKNOWN for another position */
+static DB_BIGINT
+pt_elt_index_value (PARSER_CONTEXT * parser, const REGU_VARIABLE * index)
+{
+  index = pt_elt_index_source (index);
+  if (index->type == TYPE_DBVAL)
+    {
+      return pt_value_elt_index (&index->value.dbval);
+    }
+  const int position = index->value.val_pos;
+  if (index->type == TYPE_POS_VALUE && position < parser->host_var_count && parser->host_var_elt_indexes != NULL
+      && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[position] & PT_HOST_VAR_ELT_POSITION))
+    {
+      return parser->host_var_elt_indexes[position];
+    }
+  return PT_HOST_VAR_ELT_UNKNOWN;
+}
+
+/*
+ * pt_decide_function_collation () - CBRD-27583: a string function result whose collation type checking left to its
+ *   string operands (LEAVE, ENFORCE) takes it from their domains; ELT's
+ *   branches of different domains are merged where a row computes the index, and the one a bind or a literal picks
+ *   types the result where the plan is compiled for that index value
+ *   return: ER_QSTR_INCOMPATIBLE_COLLATIONS for ELT branches a row picks among whose collations do not merge (raised
+ *	     before any row), else NO_ERROR
+ */
+static int
+pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
+{
+  if (regu->type != TYPE_FUNC || regu->domain == NULL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+      || regu->domain->collation_flag == TP_DOMAIN_COLL_NORMAL || regu->value.funcp == NULL
+      || regu->value.funcp->operand == NULL)
+    {
+      return NO_ERROR;
+    }
+  const bool elt = regu->value.funcp->ftype == F_ELT;
+  DOMAIN_OPERAND operands[16];
+  int n = 0;
+  for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+    {
+      if (!pt_regu_domain_is_fixed (&op->value) || n == (int) (sizeof (operands) / sizeof (operands[0])))
+	{
+	  return NO_ERROR;
+	}
+      const TP_DOMAIN *domain = op->value.domain;
+      if (elt ? op == regu->value.funcp->operand : !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+	{
+	  continue;
+	}
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  if (n == 0)
+    {
+      const TP_DOMAIN *domain = regu->value.funcp->operand->value.domain;
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  RESOLVED_DOMAIN result;
+  int error = domain_resolve_character (regu->value.funcp->ftype, operands, n, regu->domain, &result);
+  const REGU_VARIABLE *index = &regu->value.funcp->operand->value;
+  if (error == ER_QPROC_DOMAIN_UNRESOLVED && elt && pt_elt_index_is_value (index))
+    {
+      /* the index value the plan is compiled for picks the branch; a NULL or one out of the branches gives NULL */
+      const DB_BIGINT pick = pt_elt_index_value (parser, index);
+      if (pick != PT_HOST_VAR_ELT_UNKNOWN)
+	{
+	  DOMAIN_OPERAND picked[17];
+	  picked[0] = DOMAIN_OPERAND ();
+	  for (int i = 0; i < n; i++)
+	    {
+	      picked[i + 1] = operands[i];
+	    }
+	  error = domain_resolve_branch_pick (picked, n + 1, pick >= 1 && pick <= n ? (int) pick : 0, &result);
+	}
+    }
+  else if (error == ER_QPROC_DOMAIN_UNRESOLVED && elt)
+    {
+      /* the index a row computes picks its branch: the branches' merged collation */
+      REGU_VARIABLE *branch[16];
+      int n_branches = 0;
+      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand->next; op != NULL; op = op->next)
+	{
+	  branch[n_branches++] = &op->value;
+	}
+      error = pt_merge_branch_collations (branch, n_branches, operands, n, &result) ? NO_ERROR : error;
+      if (error != NO_ERROR && domain_resolve_branch_merge (operands, n, &result) == ER_QSTR_INCOMPATIBLE_COLLATIONS)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	}
+    }
+  else if (error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
+    {
+      result = RESOLVED_DOMAIN ();
+      result.domain = pt_incompatible_collation_domain (regu->domain, operands, n);
+      error = result.domain != NULL ? NO_ERROR : error;
+    }
+  if (error != NO_ERROR || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return NO_ERROR;
+    }
+  regu->domain = (TP_DOMAIN *) result.domain;
+  return NO_ERROR;
+}
+
 static REGU_VARIABLE *
 pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 {
@@ -7128,6 +9055,18 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->domain = pt_xasl_node_to_domain (parser, function);
+	      /* CBRD-27583: a result type checking left to the argument's value takes the node's decision */
+	      const AGGREGATE_TYPE *agg = is_aggregate ? pt_block_aggregate (parser, dbval) : NULL;
+	      if (agg != NULL && (agg->function == PT_MIN || agg->function == PT_MAX)
+		  && TP_DOMAIN_TYPE (agg->domain) != TP_DOMAIN_TYPE (regu->domain))
+		{
+		  /* a MIN / MAX over a retyped operand yields its operand's values (pt_decide_function_domain) */
+		  regu->domain = agg->domain;
+		}
+	      else if (agg != NULL && !pt_regu_domain_is_fixed_domain (regu->domain))
+		{
+		  regu->domain = pt_function_reader_domain (regu->domain, agg->domain);
+		}
 	      regu->value.dbvalptr = dbval;
 	    }
 	  else
@@ -7228,6 +9167,10 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
       if (args)
 	{
 	  regu = pt_make_function (parser, function->info.function.function_type, args, result_type, function);
+	  if (regu != NULL && pt_decide_function_collation (parser, regu) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
 	  if (DB_TYPE_VOBJ == pt_node_to_db_type (function) && function->info.function.function_type != F_VID)
 	    {
 	      regu = pt_make_vid (parser, function->data_type, regu);
@@ -7271,6 +9214,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
       xasl->is_single_tuple = (unbox != UNBOX_AS_TABLE);
       if (xasl->is_single_tuple)
 	{
+	  /* CBRD-27583: the value is the subquery's first column */
+	  regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	  if (!xasl->single_tuple)
 	    {
 	      xasl->single_tuple = pt_make_val_list (parser, (PT_NODE *) node);
@@ -7297,6 +9242,11 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	}
       else
 	{
+	  /* CBRD-27583: a list a type checking left variable reads as its first column, as a single tuple does */
+	  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	    {
+	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
+	    }
 	  regu_alloc (srlist_id);
 	  if (srlist_id)
 	    {
@@ -7785,6 +9735,23 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	  domain = tp_domain_resolve_value ((DB_VALUE *) node->etc, NULL);
 	}
 
+      /* CBRD-27583: a reference into the analytic or the GROUP BY pass's values reads the domain their writer
+       * fills them with */
+      const XASL_NODE *block = parser->parent_proc_xasl;
+      QPROC_DB_VALUE_LIST slot = NULL;
+      if (block != NULL && block->type == BUILDLIST_PROC)
+	{
+	  slot = pt_value_list_slot (block->proc.buildlist.a_val_list, (DB_VALUE *) node->etc);
+	  if (slot == NULL)
+	    {
+	      slot = pt_value_list_slot (block->proc.buildlist.g_val_list, (DB_VALUE *) node->etc);
+	    }
+	}
+      if (slot != NULL && pt_regu_domain_is_fixed_domain (slot->dom))
+	{
+	  domain = slot->dom;
+	}
+
       /* set up regu var */
       regu_alloc (regu);
       regu->type = TYPE_CONSTANT;
@@ -8133,7 +10100,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			      && (node->info.expr.op == PT_QPRIOR || node->info.expr.op == PT_CONNECT_BY_ROOT))
 			    {
 			      /* PRIOR / CONNECT_BY_ROOT over a host variable, or a derived column one types, passes
-			       * its operand's value through: a late-binding node resolve_domains types from the operand
+			       * its operand's value through: a VARIABLE node whose operand's value carries the type
 			       * (a user host variable has no expected domain to give it) */
 			      domain = &tp_Variable_domain;
 			    }
@@ -8523,11 +10490,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_EVALUATE_VARIABLE:
+		  /* CBRD-27583: the variable's type for the statement, not its value's at each row */
+		  domain = pt_session_variable_domain (parser, node);
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_EVALUATE_VARIABLE, domain);
 		  break;
 
 		case PT_DEFINE_VARIABLE:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_DEFINE_VARIABLE, domain);
+		  regu = pt_type_session_variable_by_assignment (parser, node, r2) != NO_ERROR ? NULL
+		    : pt_make_regu_arith (r1, r2, NULL, T_DEFINE_VARIABLE, domain);
 		  break;
 
 		case PT_YEARF:
@@ -9716,6 +11686,25 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		  regu->domain = domain;
 		}
+	      if (regu != NULL && regu->type == TYPE_INARITH)
+		{
+		  pt_decide_node_domain (regu, node);
+		  pt_check_nvl_null_domain (parser, regu, node);
+		  pt_check_cast_wrap_domain (parser, regu, node);
+		  pt_decide_branch_casts (regu->value.arithptr);
+		}
+	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL
+		  && regu->value.arithptr->rightptr != NULL && regu->value.arithptr->fails == NO_ERROR
+		  && (regu->value.arithptr->opcode == T_ADD || regu->value.arithptr->opcode == T_SUB
+		      || regu->value.arithptr->opcode == T_MUL || regu->value.arithptr->opcode == T_DIV))
+		{
+		  /* CBRD-27583: the operands were made for this node alone */
+		  pt_decide_operand_coercion (regu->value.arithptr);
+		}
+	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->fails == NO_ERROR)
+		{
+		  pt_decide_function_operands (regu->value.arithptr);
+		}
 	      break;
 
 	    case PT_HOST_VAR:
@@ -10310,7 +12299,11 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		  regu_alloc (regu);
 		  if (regu)
 		    {
-		      regu->domain = pt_xasl_node_to_domain (parser, attr);
+		      /* CBRD-27583: the value is what the slot's writer put there: an INSERT's or an
+		       * UPDATE's constraint reads the selected value, not the target column's */
+		      TP_DOMAIN *slot = pt_index_value_domain (symbols->listfile_value_list, list_index);
+		      regu->domain = slot != NULL && TP_DOMAIN_TYPE (slot) != DB_TYPE_VARIABLE
+			? slot : pt_xasl_node_to_domain (parser, attr);
 		      regu->type = TYPE_CONSTANT;
 		      dbval = pt_index_value (symbols->listfile_value_list, list_index);
 
@@ -10339,11 +12332,11 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	      regu_alloc (regu);
 	      if (regu)
 		{
+		  const int index = pt_find_attribute (parser, attr, table_info->attribute_list);
 		  regu->type = TYPE_CONSTANT;
-		  regu->domain = pt_xasl_node_to_domain (parser, attr);
-		  dbval =
-		    pt_index_value (table_info->value_list,
-				    pt_find_attribute (parser, attr, table_info->attribute_list));
+		  regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
+		  pt_note_cte_null_reader (parser, table_info->class_spec, index, regu, NULL);
+		  dbval = pt_index_value (table_info->value_list, index);
 		  if (dbval)
 		    {
 		      regu->value.dbvalptr = dbval;
@@ -10394,11 +12387,12 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 
 		  if (table_info)
 		    {
+		      const int index = pt_find_attribute (parser, attr, table_info->attribute_list);
 		      regu->type = TYPE_CONSTANT;
-		      regu->domain = pt_xasl_node_to_domain (parser, attr);
-		      dbval =
-			pt_index_value (table_info->value_list,
-					pt_find_attribute (parser, attr, table_info->attribute_list));
+		      /* CBRD-27583: the enclosing block made its derived tables before this subquery */
+		      regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
+		      pt_note_cte_null_reader (parser, table_info->class_spec, index, regu, NULL);
+		      dbval = pt_index_value (table_info->value_list, index);
 		      if (dbval)
 			{
 			  regu->value.dbvalptr = dbval;
@@ -11860,8 +13854,6 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 	    {
 	      goto exit_on_error;
 	    }
-
-	  limit_infop->upper->domain = dom_bigint;
 	}
 
       /* we must also delete the instnum predicate, because we don't want two sets of lower limits for the same data */
@@ -12116,6 +14108,575 @@ error:
   if (new_term)
     {
       parser_free_tree (parser, new_term);
+    }
+  return error;
+}
+
+/*
+ * pt_key_element_domain () - CBRD-27583: the domain a search key element's values have on the server: a
+ *   literal's value's own, which its regu's may widen, unless the fetch converts it or a COLLATE modifier gives it the
+ *   regu's collation at the fetch; an OBJECT's are OIDs
+ */
+static const TP_DOMAIN *
+pt_key_element_domain (const REGU_VARIABLE * regu)
+{
+  if (regu->type == TYPE_DBVAL && !DB_IS_NULL (&regu->value.dbval) && regu->original_domain == NULL
+      && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
+    {
+      return domain_key_value_domain (domain_value_domain (&regu->value.dbval));
+    }
+  return domain_key_value_domain (regu->domain);
+}
+
+/*
+ * pt_convert_key_element () - CBRD-27583: a search key element converted into its index column's domain, or
+ *   into the domain its comparison with the index keys converts it into: a literal here, any other element by
+ *   its regu at each fetch
+ *   return: false where the element keeps its value - a list column read into its slot, or a regu that converts already
+ */
+static bool
+pt_convert_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column)
+{
+  if (regu->type == TYPE_DBVAL)
+    {
+      DB_VALUE converted;
+      db_make_null (&converted);
+      if (tp_value_coerce (&regu->value.dbval, &converted, column) == DOMAIN_COMPATIBLE)
+	{
+	  /* the old value is a parser orphan (pt_make_regu_constant registered a copy of it), freed with the
+	   * statement; the converted one is registered the same way */
+	  regu->value.dbval = converted;
+	  pt_register_orphan_db_value (parser, &regu->value.dbval);
+	  regu->domain = (TP_DOMAIN *) column;
+	  return true;
+	}
+      /* only a string fails: its fetch converts it, and the scan fails at its open */
+      assert (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval)));
+      pr_clear_value (&converted);
+      regu->domain = (TP_DOMAIN *) domain_value_domain (&regu->value.dbval);
+    }
+  else if (regu->type == TYPE_POSITION)
+    {
+      return false;
+    }
+  /* a bind arrives in the domain its comparison's rule cast gave it, the column's: no second conversion */
+  assert (regu->original_domain == NULL && regu->vfetch_to == NULL);
+  if (regu->original_domain != NULL || regu->vfetch_to != NULL)
+    {
+      return false;
+    }
+  pt_set_operand_conversion (regu, column, DOMAIN_CONVERT_ASSIGN);
+  return regu->vfetch_to != NULL;
+}
+
+/*
+ * pt_decide_key_element () - CBRD-27583: how one column of a search key bound takes its element's values
+ *   (domain_key_rule from the element's domain and the column's)
+ *   written(out): the domain the column is written with in a key that has a kept column
+ *   kept(out): the column keeps its value's own domain
+ */
+static int
+pt_decide_key_element (PARSER_CONTEXT * parser, REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
+		       const TP_DOMAIN ** written, bool * kept)
+{
+  *written = column;
+  *kept = false;
+  const TP_DOMAIN *element = pt_key_element_domain (regu);
+  if (element == NULL || domain_is_variable (element))
+    {
+      /* every element has its domain before the scan */
+      assert (false);
+      return ER_FAILED;
+    }
+  if (TP_DOMAIN_TYPE (element) == DB_TYPE_NULL)
+    {
+      /* only NULLs, which end the key */
+      return NO_ERROR;
+    }
+  DOMAIN_KEY_RULE rule = domain_key_rule (element, column, midxkey);
+  if (rule == DOMAIN_KEY_KEEP)
+    {
+      /* a kept value that each comparison with the index keys would convert converts once, into the domain the
+       * comparison converts it into, and is a value of that domain from here: by the comparison's converter (no
+       * conversion implicit coercion refuses), into a value that compares as the comparison compares (its collation,
+       * no ENUM codeset), unless the index key converts first (its failure names the value's own type) */
+      DOMAIN_COMPARE compare, converted;
+      int error = pt_decide_key_compare (element, column, &compare);
+      if (error == NO_ERROR && compare.conv[0] != NULL && (compare.first == 0 || compare.conv[1] == NULL)
+	  && compare.conv[0] == tp_value_find_converter (TP_DOMAIN_TYPE (element), compare.target[0],
+							 DOMAIN_CONVERT_ASSIGN))
+	{
+	  error = pt_decide_key_compare (compare.target[0], column, &converted);
+	  if (error == NO_ERROR && converted.conv[0] == NULL && converted.collation == compare.collation
+	      && compare.codeset_side < 0 && converted.codeset_side < 0
+	      && pt_convert_key_element (parser, regu, compare.target[0]))
+	    {
+	      element = compare.target[0];
+	      rule =
+		domain_key_rule (element, column, midxkey) == DOMAIN_KEY_INDEX ? DOMAIN_KEY_INDEX : DOMAIN_KEY_KEEP;
+	    }
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  if (rule == DOMAIN_KEY_CONVERT)
+    {
+      /* into the column's domain alone: a multi-column key's column links the next column's, which a coercion would
+       * select from and a regu domain would carry into the stream */
+      TP_DOMAIN *one = domain_copy_one (column);
+      if (one == NULL)
+	{
+	  return ER_FAILED;
+	}
+      one->is_desc = 0;
+      const TP_DOMAIN *target = tp_domain_cache (one);
+      if (target == NULL)
+	{
+	  return ER_FAILED;
+	}
+      if (pt_convert_key_element (parser, regu, target))
+	{
+	  return NO_ERROR;
+	}
+      rule = DOMAIN_KEY_KEEP;
+    }
+  *written = domain_in_key_direction (element, column);
+  *kept = rule == DOMAIN_KEY_KEEP;
+  return *written != NULL ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * pt_decide_key_bound () - CBRD-27583: each column of a search key bound; a multi-column bound with a kept
+ *   column gets the domain it is written with: each column's in its index column's direction - a kept or as-is
+ *   column's value domain, the index's for a converted column, the skip value and every column after the elements
+ *   written_domain(out): that domain; NULL for a key written with the index's
+ */
+static int
+pt_decide_key_bound (PARSER_CONTEXT * parser, INDX_INFO * indx_infop, REGU_VARIABLE * bound,
+		     TP_DOMAIN ** written_domain)
+{
+  const TP_DOMAIN *key_type = indx_infop->key_type;
+  const TP_DOMAIN *written;
+  bool kept;
+
+  *written_domain = NULL;
+  if (bound == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
+    {
+      /* a single-column key takes its value as it is or converted, under no key domain of its own */
+      return pt_decide_key_element (parser, bound, key_type, false, &written, &kept);
+    }
+
+  assert (bound->type == TYPE_FUNC && bound->value.funcp->ftype == F_MIDXKEY);
+  REGU_VARIABLE_LIST first = bound->value.funcp->operand, operand = first;
+  TP_DOMAIN *columns = NULL, *last = NULL;
+  bool mixed = false;
+  int error = NO_ERROR;
+  for (const TP_DOMAIN * column = key_type->setdomain; column != NULL; column = column->next)
+    {
+      written = column;
+      if (operand != NULL)
+	{
+	  /* an index skip scan's first column is the skip value, read from the index */
+	  if (!(indx_infop->use_iss && operand == first))
+	    {
+	      error = pt_decide_key_element (parser, &operand->value, column, true, &written, &kept);
+	      mixed = mixed || kept;
+	    }
+	  operand = operand->next;
+	}
+      TP_DOMAIN *copy = error == NO_ERROR ? domain_copy_one (written) : NULL;
+      if (copy == NULL)
+	{
+	  error = ER_FAILED;
+	  break;
+	}
+      copy->is_desc = column->is_desc;
+      if (last == NULL)
+	{
+	  columns = copy;
+	}
+      else
+	{
+	  last->next = copy;
+	}
+      last = copy;
+    }
+  assert (operand == NULL || error != NO_ERROR);
+
+  if (error == NO_ERROR && mixed)
+    {
+      TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, key_type->precision, key_type->scale, columns);
+      if (domain != NULL)
+	{
+	  *written_domain = tp_domain_cache (domain);
+	  return *written_domain != NULL ? NO_ERROR : ER_FAILED;
+	}
+      error = ER_FAILED;
+    }
+  while (columns != NULL)
+    {
+      TP_DOMAIN *next = columns->next;
+      tp_domain_free (columns);
+      columns = next;
+    }
+  return error;
+}
+
+/*
+ * pt_decide_index_keys () - CBRD-27583: how every search key bound of an index scan takes its values; the index
+ *   skip scan's fetch range is the skip value alone, written with the index's domain
+ */
+static int
+pt_decide_index_keys (PARSER_CONTEXT * parser, INDX_INFO * indx_infop)
+{
+  KEY_INFO *key_infop = &indx_infop->key_info;
+  for (int i = 0; i < key_infop->key_cnt; i++)
+    {
+      KEY_RANGE *range = &key_infop->key_ranges[i];
+      if (pt_decide_key_bound (parser, indx_infop, range->key1, &range->key1_domain) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (range->key2 == range->key1)
+	{
+	  range->key2_domain = range->key1_domain;
+	}
+      else if (pt_decide_key_bound (parser, indx_infop, range->key2, &range->key2_domain) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return pt_decide_key_compares (indx_infop);
+}
+
+/* CBRD-27583: whether a domain fixes the type of its values and their collation */
+static bool
+pt_key_domain_is_fixed (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    /* LEAVE takes the value's collation, ENFORCE leaves a non-string value as it is */
+    && domain->collation_flag == TP_DOMAIN_COLL_NORMAL;
+}
+
+/*
+ * pt_decide_key_compare () - CBRD-27583: the comparison of a value of each of two domains, as the type rule
+ *   module decides it: comparison method VALUES for a side whose domain leaves its values' type or collation to the
+ *   data; OBJECT keys (OIDs) by their own cmpval, as the B-tree compares them
+ *   return: NO_ERROR, or the error of the type rule module
+ */
+static int
+pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, DOMAIN_COMPARE * decided)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  if (!pt_key_domain_is_fixed (lhs) || !pt_key_domain_is_fixed (rhs))
+    {
+      memset (decided, 0, sizeof (*decided));
+      decided->method = DOMAIN_COMPARE_VALUES;
+      decided->codeset_side = -1;
+      return NO_ERROR;
+    }
+  domain_compare_key_of (lhs, &key[0]);
+  domain_compare_key_of (rhs, &key[1]);
+  const int error = domain_resolve_comparison (&key[0], &key[1], decided);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (decided->method == DOMAIN_COMPARE_OBJECT)
+    {
+      decided->method = DOMAIN_COMPARE_DIRECT;
+      decided->cmp = pr_type_from_id ((DB_TYPE) decided->source[0]);
+    }
+  if (decided->conv[0] == NULL && decided->conv[1] == NULL)
+    {
+      /* nothing converted: the first value's type, as a comparison of keys that differ has it */
+      decided->first = 0;
+      decided->converted_first = decided->source[0];
+    }
+  return NO_ERROR;
+}
+
+#if !defined (NDEBUG)
+/* CBRD-27583: two decided comparisons are the same comparison */
+static bool
+pt_key_compares_equal (const DOMAIN_COMPARE * lhs, const DOMAIN_COMPARE * rhs)
+{
+  return lhs->method == rhs->method && lhs->coercion == rhs->coercion && lhs->first == rhs->first
+    && lhs->source[0] == rhs->source[0] && lhs->source[1] == rhs->source[1]
+    && lhs->converted_first == rhs->converted_first && lhs->rank == rhs->rank
+    && lhs->codeset_side == rhs->codeset_side && lhs->collation == rhs->collation && lhs->cmp == rhs->cmp
+    && lhs->conv[0] == rhs->conv[0] && lhs->conv[1] == rhs->conv[1] && lhs->target[0] == rhs->target[0]
+    && lhs->target[1] == rhs->target[1];
+}
+#endif
+
+/* CBRD-27583: whether values of two fixed domains compare alike with any other: the type rule module decides a
+ * comparison from the domains' type, codeset and collation alone */
+static bool
+pt_key_domains_alike (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
+{
+  if (lhs == rhs)
+    {
+      return true;
+    }
+  const bool fixed = pt_key_domain_is_fixed (lhs);
+  if (fixed != pt_key_domain_is_fixed (rhs) || !fixed)
+    {
+      return fixed == pt_key_domain_is_fixed (rhs);
+    }
+  DOMAIN_COMPARE_KEY key[2];
+  domain_compare_key_of (lhs, &key[0]);
+  domain_compare_key_of (rhs, &key[1]);
+  return key[0].type == key[1].type && key[0].codeset == key[1].codeset && key[0].collation == key[1].collation;
+}
+
+/*
+ * pt_decide_key_compares () - CBRD-27583: how an index scan's search key bounds compare, decided from the
+ *   domains their columns' values have (a multi-column bound's, those of the domain its key is written with; a
+ *   single-column bound's, its element's) and the index's key domain: the comparison a predicate makes of the two
+ *   return: NO_ERROR or an error code
+ *
+ * A key column's bound domains fall into classes of domains the type rule module compares alike. A bound's
+ * comparisons with the index keys (INDX_INFO.key_bounds, which KEY_RANGE.key1_bound / key2_bound point to) are shared
+ * by the bounds of the same classes; the scan's comparisons of two bounds (INDX_INFO.key_ranges_compares) are, per key
+ * column, one for each ordered pair of its classes. The stream carries them; unpack decides nothing.
+ */
+static int
+pt_decide_key_compares (INDX_INFO * indx_infop)
+{
+  const TP_DOMAIN *key_type = indx_infop->key_type;
+  const int n_columns = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY ? key_type->precision : 1;
+  const int n_ranges = indx_infop->key_info.key_ranges != NULL ? indx_infop->key_info.key_cnt : 0;
+  /* bound b is key1 (b even) or key2 of range b / 2, the index skip scan's fetch range after the key ranges */
+  const int n_bounds = 2 * n_ranges + (indx_infop->use_iss ? 2 : 0);
+  /* per column, the classes' first domains (n_bounds each); per bound, its columns' classes */
+  const TP_DOMAIN **classes = NULL;
+  unsigned char *bound_classes = NULL;
+  int *n_classes = NULL;
+  DOMAIN_KEY_BOUND *decided = NULL;
+  int n_decided = 0;
+  DOMAIN_KEY_RANGES *ranges = NULL;
+  int error = NO_ERROR;
+
+  indx_infop->key_bounds = NULL;
+  indx_infop->n_key_bounds = 0;
+  indx_infop->key_ranges_compares = NULL;
+  if (n_bounds == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* *INDENT-OFF* */
+  auto range_of = [&] (int b) -> KEY_RANGE *
+  {
+    return b / 2 < n_ranges ? &indx_infop->key_info.key_ranges[b / 2] : &indx_infop->iss_range;
+  };
+  auto regu_of = [&] (int b) -> const REGU_VARIABLE *
+  {
+    return b % 2 == 0 ? range_of (b)->key1 : range_of (b)->key2;
+  };
+  auto column_domain = [&] (int b, int c) -> const TP_DOMAIN *
+  {
+    if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
+      {
+	return pt_key_element_domain (regu_of (b));
+      }
+    const TP_DOMAIN *written = b % 2 == 0 ? range_of (b)->key1_domain : range_of (b)->key2_domain;
+    return domain_key_column (written != NULL ? written : key_type, c);
+  };
+  /* *INDENT-ON* */
+
+  classes = (const TP_DOMAIN **) db_private_alloc (NULL, n_columns * n_bounds * sizeof (*classes));
+  bound_classes = (unsigned char *) db_private_alloc (NULL, n_bounds * n_columns);
+  n_classes = (int *) db_private_alloc (NULL, n_columns * sizeof (*n_classes));
+  decided = (DOMAIN_KEY_BOUND *) pt_alloc_packing_buf (n_bounds * (int) sizeof (DOMAIN_KEY_BOUND));
+  if (classes == NULL || bound_classes == NULL || n_classes == NULL || decided == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  for (int c = 0; c < n_columns; c++)
+    {
+      n_classes[c] = 0;
+    }
+
+  /* each column's classes, and each bound's */
+  for (int b = 0; b < n_bounds; b++)
+    {
+      if (regu_of (b) == NULL)
+	{
+	  continue;
+	}
+      for (int c = 0; c < n_columns; c++)
+	{
+	  const TP_DOMAIN *domain = column_domain (b, c);
+	  const TP_DOMAIN **column_classes = &classes[c * n_bounds];
+	  int k = 0;
+	  while (k < n_classes[c] && !pt_key_domains_alike (column_classes[k], domain))
+	    {
+	      k++;
+	    }
+	  if (k == n_classes[c])
+	    {
+	      if (k > UCHAR_MAX)
+		{
+		  assert (false);
+		  error = ER_FAILED;
+		  goto end;
+		}
+	      column_classes[n_classes[c]++] = domain;
+	    }
+	  bound_classes[b * n_columns + c] = (unsigned char) k;
+	}
+    }
+
+  /* the comparisons of two bounds */
+  if (n_classes[0] > 0)
+    {
+      ranges = (DOMAIN_KEY_RANGES *) pt_alloc_packing_buf ((int) sizeof (DOMAIN_KEY_RANGES));
+      const DOMAIN_COMPARE **tables =
+	(const DOMAIN_COMPARE **) pt_alloc_packing_buf (n_columns * (int) sizeof (DOMAIN_COMPARE *));
+      unsigned char *ranges_n_classes = (unsigned char *) pt_alloc_packing_buf (n_columns);
+      if (ranges == NULL || tables == NULL || ranges_n_classes == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+      for (int c = 0; c < n_columns; c++)
+	{
+	  const int n = n_classes[c];
+	  DOMAIN_COMPARE *table = (DOMAIN_COMPARE *) pt_alloc_packing_buf (n * n * (int) sizeof (DOMAIN_COMPARE));
+	  if (table == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
+	    }
+	  for (int i = 0; i < n * n && error == NO_ERROR; i++)
+	    {
+	      error = pt_decide_key_compare (classes[c * n_bounds + i / n], classes[c * n_bounds + i % n], &table[i]);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  tables[c] = table;
+	  ranges_n_classes[c] = (unsigned char) n;
+	}
+      ranges->tables = tables;
+      ranges->n_classes = ranges_n_classes;
+      ranges->n_columns = n_columns;
+    }
+
+  /* each bound's comparisons with the index keys, shared by the bounds of the same classes */
+  for (int b = 0; b < n_bounds; b++)
+    {
+      if (regu_of (b) == NULL)
+	{
+	  continue;
+	}
+      const unsigned char *own = &bound_classes[b * n_columns];
+      DOMAIN_KEY_BOUND *bound = NULL;
+      for (int m = 0; m < n_decided && bound == NULL; m++)
+	{
+	  bound = memcmp (decided[m].classes, own, n_columns) == 0 ? &decided[m] : NULL;
+	}
+      if (bound == NULL)
+	{
+	  bound = &decided[n_decided];
+	  DOMAIN_COMPARE *compares =
+	    (DOMAIN_COMPARE *) pt_alloc_packing_buf (n_columns * (int) sizeof (DOMAIN_COMPARE));
+	  unsigned char *bound_own = (unsigned char *) pt_alloc_packing_buf (n_columns);
+	  if (compares == NULL || bound_own == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
+	    }
+	  memcpy (bound_own, own, n_columns);
+	  bound->compares = compares;
+	  bound->reversed = NULL;
+	  bound->nonleaf_compares = compares;
+	  bound->classes = bound_own;
+	  bound->n_columns = n_columns;
+	  bound->merges = false;
+	  for (int c = 0; c < n_columns && error == NO_ERROR; c++)
+	    {
+	      const TP_DOMAIN *column = domain_key_column (key_type, c);
+	      error = pt_decide_key_compare (classes[c * n_bounds + own[c]], column, &compares[c]);
+#if !defined (NDEBUG)
+	      if (error == NO_ERROR)
+		{
+		  /* the class's decision is the bound's own, and the mirror the B-tree takes for an index key first
+		   * (domain_compare_mirror) is the decision for the exchanged pair */
+		  DOMAIN_COMPARE own_decision, reversed, mirrored;
+		  assert (pt_decide_key_compare (column_domain (b, c), column, &own_decision) == NO_ERROR
+			  && pt_key_compares_equal (&own_decision, &compares[c]));
+		  domain_compare_mirror (&compares[c], &mirrored);
+		  assert (pt_decide_key_compare (column, classes[c * n_bounds + own[c]], &reversed) == NO_ERROR
+			  && pt_key_compares_equal (&reversed, &mirrored));
+		}
+	      /* CBRD-27583: a kept bound converts once, here, not at each comparison - unless the comparison converts
+	       * the index key first (pt_decide_key_element keeps the value so that a key's failure names its type) */
+	      assert (error != NO_ERROR || compares[c].conv[0] == NULL
+		      || (compares[c].first != 0 && compares[c].conv[1] != NULL));
+#endif
+	      bound->merges = bound->merges || domain_key_compare_merges (&compares[c], column);
+	    }
+	  if (error == NO_ERROR && TP_DOMAIN_TYPE (key_type) == DB_TYPE_BIT)
+	    {
+	      /* a non-leaf key of a BIT index is its VARBIT counterpart (btree_generate_prefix_domain) */
+	      DOMAIN_COMPARE *nonleaf = (DOMAIN_COMPARE *) pt_alloc_packing_buf ((int) sizeof (DOMAIN_COMPARE));
+	      const TP_DOMAIN *varbit = tp_domain_resolve (DB_TYPE_VARBIT, key_type->class_mop, key_type->precision,
+							   key_type->scale, key_type->setdomain,
+							   key_type->collation_id);
+	      error = nonleaf == NULL || varbit == NULL ? ER_OUT_OF_VIRTUAL_MEMORY
+		: pt_decide_key_compare (classes[own[0]], varbit, nonleaf);
+	      bound->nonleaf_compares = nonleaf;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  n_decided++;
+	}
+      if (b % 2 == 0)
+	{
+	  range_of (b)->key1_bound = bound;
+	}
+      else
+	{
+	  range_of (b)->key2_bound = bound;
+	}
+    }
+
+  /* a bound without a key (an infinite one, an equality's key2) is the range's other */
+  for (int b = 0; b < n_bounds; b += 2)
+    {
+      KEY_RANGE *range = range_of (b);
+      range->key1_bound = range->key1_bound != NULL ? range->key1_bound : range->key2_bound;
+      range->key2_bound = range->key2_bound != NULL ? range->key2_bound : range->key1_bound;
+    }
+  indx_infop->key_bounds = decided;
+  indx_infop->n_key_bounds = n_decided;
+  indx_infop->key_ranges_compares = ranges;
+
+end:
+  if (classes != NULL)
+    {
+      db_private_free (NULL, classes);
+    }
+  if (bound_classes != NULL)
+    {
+      db_private_free (NULL, bound_classes);
+    }
+  if (n_classes != NULL)
+    {
+      db_private_free (NULL, n_classes);
     }
   return error;
 }
@@ -12377,8 +14938,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       return NULL;
     }
 
-  /* the B-tree's key domain, from which the server derives its key plan: the bytes of its root header
-   * the index statistics carry, or else the domain the index was allocated with */
+  /* the B-tree's key domain, against which the search keys are decided (pt_decide_index_keys): the bytes of its root
+   * header the index statistics carry, or else the domain the index was allocated with */
   indx_infop->key_type = index_entryp->key_type;
   if (indx_infop->key_type == NULL || TP_DOMAIN_TYPE (indx_infop->key_type) == DB_TYPE_NULL)
     {
@@ -12498,6 +15059,11 @@ end:
 	  return NULL;
 	}
     }
+  if (pt_decide_index_keys (parser, indx_infop) != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - search key domains");
+      return NULL;
+    }
   return indx_infop;
 }
 
@@ -12568,6 +15134,157 @@ pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, P
   free_and_init (range_rest_offsets);
 
   return NO_ERROR;
+}
+
+/*
+ * pt_regu_is_pruning_value () - CBRD-27583: a regu partition pruning reads as a value before the scan, as
+ *   partition_is_reguvar_const takes it: a constant, a bind, or an expression or a function of those
+ */
+static bool
+pt_regu_is_pruning_value (const REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return false;
+    }
+  switch (regu->type)
+    {
+    case TYPE_DBVAL:
+    case TYPE_POS_VALUE:
+    case TYPE_REGUVAL_LIST:
+      return true;
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      {
+	const ARITH_TYPE *arith = regu->value.arithptr;
+	return (arith->leftptr == NULL || pt_regu_is_pruning_value (arith->leftptr))
+	  && (arith->rightptr == NULL || pt_regu_is_pruning_value (arith->rightptr))
+	  && (arith->thirdptr == NULL || pt_regu_is_pruning_value (arith->thirdptr));
+      }
+    case TYPE_FUNC:
+      for (REGU_VARIABLE_LIST operand = regu->value.funcp->operand; operand != NULL; operand = operand->next)
+	{
+	  if (!pt_regu_is_pruning_value (&operand->value))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* CBRD-27583: a domain a pruning conversion goes from or into: one of a type */
+static bool
+pt_domain_takes_pruning_conversion (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
+}
+
+/*
+ * pt_list_element_domain () - CBRD-27583: the one domain of a list's elements, its NULLs aside (a NULL is equal
+ *   to no key), alone (a set domain's element domains link each other)
+ *   return: the domain; NULL: none, or several
+ */
+static TP_DOMAIN *
+pt_list_element_domain (const TP_DOMAIN * set)
+{
+  TP_DOMAIN *element = NULL;
+  for (TP_DOMAIN * domain = set->setdomain; domain != NULL; domain = domain->next)
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (element != NULL)
+	{
+	  return NULL;
+	}
+      element = domain;
+    }
+  if (element == NULL || element->next == NULL)
+    {
+      return element;
+    }
+  TP_DOMAIN *one = domain_copy_one (element);
+  return one != NULL ? tp_domain_cache (one) : NULL;
+}
+
+/*
+ * pt_comparison_keeps_key () - CBRD-27583: whether a list's elements compare with a partition key as values of
+ *   the key's type - the comparison the type rule module decides for the two domains converts the element alone, into
+ *   the key's type. Pruning converts the elements into the key's domain; where the comparison converts the key (a
+ *   BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element), the converted element
+ *   would leave out a partition whose key the comparison finds equal
+ */
+static bool
+pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
+{
+  const TP_DOMAIN *const domain[2] = { key, element };
+  DOMAIN_COMPARE decided;
+  bool by_type;
+
+  if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR || !by_type)
+    {
+      return false;
+    }
+  return decided.conv[0] == NULL && (decided.conv[1] == NULL
+				     || TP_DOMAIN_TYPE (decided.target[1]) == TP_DOMAIN_TYPE (key));
+}
+
+/*
+ * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's
+ *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, not at the scan
+ *   (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
+ *   elements have one domain, its NULLs aside, that compares with the key in the key's type (pt_comparison_keeps_key)
+ */
+static void
+pt_set_prune_domains (PRED_EXPR * pred)
+{
+  while (pred != NULL)
+    {
+      if (pred->type == T_PRED)
+	{
+	  pt_set_prune_domains (pred->pe.m_pred.lhs);
+	  pred = pred->pe.m_pred.rhs;
+	  continue;
+	}
+      if (pred->type == T_EVAL_TERM && pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+	  const bool values[2] = { pt_regu_is_pruning_value (term->lhs), pt_regu_is_pruning_value (term->rhs) };
+	  if (term->lhs != NULL && term->rhs != NULL && values[0] != values[1])
+	    {
+	      const REGU_VARIABLE *value = values[0] ? term->lhs : term->rhs;
+	      TP_DOMAIN *other = values[0] ? term->rhs->domain : term->lhs->domain;
+	      /* the domain the value is read in: the unpack finds the converter from it */
+	      const TP_DOMAIN *from = value->original_domain != NULL ? value->original_domain : value->domain;
+	      if (pt_domain_takes_pruning_conversion (from) && pt_domain_takes_pruning_conversion (other))
+		{
+		  term->prune_side = values[0] ? 0 : 1;
+		  term->prune_domain = other;
+		}
+	    }
+	}
+      else if (pred->type == T_EVAL_TERM && pred->pe.m_eval_term.et_type == T_ALSM_EVAL_TERM)
+	{
+	  ALSM_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_alsm;
+	  const TP_DOMAIN *set = term->elemset != NULL ? term->elemset->domain : NULL;
+	  if (term->elem != NULL && !pt_regu_is_pruning_value (term->elem) && pt_regu_is_pruning_value (term->elemset)
+	      && set != NULL && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (set))
+	      && pt_domain_takes_pruning_conversion (term->elem->domain))
+	    {
+	      TP_DOMAIN *element = pt_list_element_domain (set);
+	      if (pt_domain_takes_pruning_conversion (element) && pt_comparison_keeps_key (term->elem->domain, element))
+		{
+		  term->prune_domain = term->elem->domain;
+		  term->prune_element = element;
+		}
+	    }
+	}
+      return;
+    }
 }
 
 /*
@@ -12970,6 +15687,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	  if (access)
 	    {
+	      if (access->pruning_type == DB_PARTITIONED_CLASS)
+		{
+		  pt_set_prune_domains (access->where_pred);
+		  pt_set_prune_domains (access->where_key);
+		  pt_set_prune_domains (access->where_range);
+		}
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
@@ -13153,6 +15876,8 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
    * which describes a type and index into a list file. */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
+  pt_set_list_position_domains (regu_attributes_pred, tbl_info->value_list, subquery_proc, NULL);
+  pt_set_list_position_domains (regu_attributes_rest, tbl_info->value_list, subquery_proc, NULL);
 
   parser_free_tree (parser, pred_attrs);
   parser_free_tree (parser, rest_attrs);
@@ -13184,6 +15909,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   access =
     pt_make_list_access_spec (subquery_proc, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes_pred,
 			      regu_attributes_rest, regu_attributes_build, regu_attributes_probe);
+  pt_decide_hash_list_keys (access);
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {
@@ -13540,6 +16266,17 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
    */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
+  pt_set_list_position_domains (regu_attributes_pred, tbl_info->value_list, pt_spec_list_producer (spec), NULL);
+  pt_set_list_position_domains (regu_attributes_rest, tbl_info->value_list, pt_spec_list_producer (spec), NULL);
+  REGU_VARIABLE_LIST position_lists[2] = { regu_attributes_pred, regu_attributes_rest };
+  for (int i = 0; i < 2; i++)
+    {
+      for (REGU_VARIABLE_LIST list = position_lists[i]; list != NULL; list = list->next)
+	{
+	  pt_note_cte_null_reader (parser, spec, list->value.value.pos_descr.pos_no, &list->value,
+				   pt_value_list_slot (tbl_info->value_list, list->value.vfetch_to));
+	}
+    }
 
   parser_free_tree (parser, pred_attrs);
   parser_free_tree (parser, rest_attrs);
@@ -14538,7 +17275,9 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		  if (xasl->is_single_tuple)
 		    {
 		      regu->type = TYPE_CONSTANT;
-		      regu->domain = pt_xasl_node_to_domain (parser, col);
+		      /* CBRD-27583: the value is the subquery's column; hidden columns come last */
+		      regu->domain =
+			pt_reader_domain (pt_xasl_node_to_domain (parser, col), domain_list_column_of (xasl, i));
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
@@ -14589,6 +17328,51 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      /* append to outlist */
 	      (*regulist)->value = *regu;
 
+	      /* CBRD-27583: a stored function's string column comes in the declared type, as the column cast used to
+	       * give it */
+	      if (!pt_convert_sp_string (parser, col, &(*regulist)->value))
+		{
+		  goto exit_on_error;
+		}
+
+	      /* CBRD-27583: a constant column's value in its domain, converted here as the column's cast did at
+	       * the row - a folded ADDTIME of a zoned string is a DATETIMETZ its VARCHAR node takes */
+	      if (regu->type == TYPE_DBVAL && regu->domain != NULL && !DB_IS_NULL (&regu->value.dbval)
+		  && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_NULL && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE
+		  && (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval) != TP_DOMAIN_TYPE (regu->domain)
+		      || (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval) == DB_TYPE_NUMERIC
+			  && (db_value_precision (&regu->value.dbval) != regu->domain->precision
+			      || db_value_scale (&regu->value.dbval) != regu->domain->scale))))
+		{
+		  DB_VALUE converted;
+		  db_make_null (&converted);
+		  /* shortcut: a cast that fails keeps the value (unreachable for a folded ADDTIME; the optdebug column check
+		   * reports another kind), raise it at the row if a constant kind that can fail appears */
+		  if (tp_value_auto_cast (&regu->value.dbval, &converted, regu->domain) == DOMAIN_COMPATIBLE)
+		    {
+		      (*regulist)->value.value.dbval = converted;
+		    }
+		}
+
+	      /* CBRD-27583: INDEX_PREFIX gives its CHAR first argument's type (a B-tree key's unique prefix): its
+	       * column takes the prefix's bytes into the node's VARCHAR, as the column cast used to; an operand takes
+	       * the CHAR. shortcut: a host variable first argument is MAYBE when PREPARE plans it (the optdebug column
+	       * check reports a CHAR prefix that reaches the column), plan it at execution if CHAR binds appear */
+	      if (regu->type == TYPE_INARITH && col->node_type == PT_EXPR && col->info.expr.op == PT_INDEX_PREFIX
+		  && col->info.expr.arg1->type_enum == PT_TYPE_CHAR && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARCHAR
+		  && (*regulist)->value.original_domain == NULL)
+		{
+		  (*regulist)->value.domain = pt_xasl_node_to_domain (parser, col->info.expr.arg1);
+		  if ((*regulist)->value.domain == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+		  pt_set_operand_conversion (&(*regulist)->value, regu->domain, REGU_CONV_CHAR_PREFIX);
+		}
+	      /* a list column reads an ENUM by its elements */
+	      assert ((*regulist)->value.domain == NULL
+		      || TP_DOMAIN_TYPE ((*regulist)->value.domain) != DB_TYPE_ENUMERATION
+		      || DOM_GET_ENUM_ELEMS_COUNT ((*regulist)->value.domain) > 0);
 	      /* in case of increment expr, find a target class to do the expr, and link the regulist to a node which
 	       * contains update info for the target class */
 	      if (selupd_list_ptr != NULL && col->node_type == PT_EXPR
@@ -15061,6 +17845,7 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
 	    }
 	}
       free_and_init (attr_offsets);
+      pt_set_list_position_domains (regu_attributes, xasl->val_list, listfile, NULL);
 
       xasl->spec_list =
 	pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, pred_expr, regu_attributes, NULL, NULL,
@@ -16736,10 +19521,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -16870,6 +19655,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->g_hk_scan_regu_list =
 	    pt_to_regu_variable_list (parser, group_out_list, UNBOX_AS_VALUE, buildlist->g_val_list, attr_offsets);
 
+	  /* CBRD-27583: a stored function's string key hashes in its list column's type, converted into its
+	   * slot as the column's value is (pt_convert_sp_string) */
+	  REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list, column = xasl->outptr_list->valptrp;
+	  for (; key != NULL && column != NULL; key = key->next, column = column->next)
+	    {
+	      if (key->value.type == TYPE_SP && column->value.type == TYPE_SP && column->value.original_domain != NULL)
+		{
+		  assert (key->value.original_domain == NULL && key->value.vfetch_to == column->value.vfetch_to
+			  && key->value.domain == column->value.original_domain);
+		  key->value.original_domain = key->value.domain;
+		  key->value.domain = column->value.domain;
+		  key->value.conv_mode = column->value.conv_mode;
+		}
+	    }
+
 	  /* regulist for hash key during sort operation */
 	  buildlist->g_hk_sort_regu_list =
 	    pt_to_position_regu_variable_list (parser, group_out_list, buildlist->g_val_list, attr_offsets);
@@ -16903,6 +19703,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       aggregate =
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val, qo_plan);
+      /* CBRD-27583: the GROUP BY pass reads the list the scan's output wrote, aggregate operands included */
+      pt_set_list_position_domains (buildlist->g_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
+      pt_set_list_position_domains (buildlist->g_hk_sort_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
+      if (pt_decide_aggregate_domains (parser, select_node, aggregate, buildlist->g_val_list) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      /* the readers of the aggregates below find their domains here (pt_block_aggregate) */
+      buildlist->g_agg_list = aggregate;
 
       /* compute function count */
       buildlist->g_func_count = 0;
@@ -17017,8 +19826,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	{
 	  parser_free_tree (parser, group_out_list);
 	}
-
-      buildlist->g_agg_list = aggregate;
 
       buildlist->g_with_rollup = select_node->info.query.q.select.group_by->flag.with_rollup;
     }
@@ -17193,6 +20000,30 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
+	  /* generate initial outlist (for data fetching) */
+	  buildlist->a_outptr_list_ex = pt_to_outlist (parser, select_list_ex, &xasl->selected_upd_list, unbox);
+
+	  if (buildlist->a_outptr_list_ex == NULL)
+	    {
+	      goto analytic_exit_on_error;
+	    }
+	  /* CBRD-27583: the regu list reads the list the initial outlist writes, before the window list copies the
+	   * value list's domains; the functions over the operands it reads then type their own columns */
+	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
+					buildlist->a_outptr_list_ex);
+	  {
+	    REGU_VARIABLE_LIST readers[2] = { buildlist->a_outptr_list_ex->valptrp, buildlist->a_scan_regu_list };
+	    if (pt_decide_analytic_domains
+		(parser, select_list_ex, analytic_info.head_list, buildlist->a_val_list, readers) != NO_ERROR
+		|| pt_decide_analytic_domains (parser, select_list_ex, analytic_info_clone.head_list,
+					       buildlist->a_val_list, NULL) != NO_ERROR)
+	      {
+		goto analytic_exit_on_error;
+	      }
+	  }
+	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
+					buildlist->a_outptr_list_ex);
+
 	  /* generate intermediate output list (identity writing) */
 	  buildlist->a_outptr_list_interm = pt_make_outlist_from_vallist (parser, buildlist->a_val_list);
 
@@ -17209,14 +20040,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 	  assert (i == buildlist->a_outptr_list_interm->valptr_cnt);
 	  assert (regu_var_p == NULL);
-
-	  /* generate initial outlist (for data fetching) */
-	  buildlist->a_outptr_list_ex = pt_to_outlist (parser, select_list_ex, &xasl->selected_upd_list, unbox);
-
-	  if (buildlist->a_regu_list == NULL)
-	    {
-	      goto analytic_exit_on_error;
-	    }
 
 	  /* generate final outlist */
 	  buildlist->a_outptr_list = pt_to_outlist (parser, select_list_final, NULL, unbox);
@@ -17295,6 +20118,25 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	       *
 	       * For example, index (c1, c2, c3) can satisfy sort_list (c1), (c1, c2), (c1, c2, c3), but not (c1, c3). */
 	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
+
+	      /* CBRD-27583: the scan list is the intermediate file, whose column of an AVG's value the end
+	       * overwrites from the function's lists (qexec_analytic_update_group_result): a NULL of the column's domain,
+	       * as a sorted evaluation writes it, not the sum in the argument's type the scan fills.
+	       * shortcut: AVG only - the end of a skipped sort reads the column as the result of RANK, DENSE_RANK,
+	       * FIRST_VALUE and ROW_NUMBER (qexec_analytic_sort_key_header_load); widen it if another function's column
+	       * fails the optdebug output column check (qdata_check_output_column) */
+	      for (ANALYTIC_TYPE * func = xasl->proc.buildlist.a_eval_list->head; func != NULL; func = func->next)
+		{
+		  for (REGU_VARIABLE_LIST out = buildlist->a_outptr_list_ex->valptrp;
+		       out != NULL && func->function == PT_AVG; out = out->next)
+		    {
+		      if (out->value.type == TYPE_CONSTANT && out->value.value.dbvalptr == func->value)
+			{
+			  out->value.type = TYPE_DBVAL;
+			  db_make_null (&out->value.value.dbval);
+			}
+		    }
+		}
 	    }
 
 	  /* substitute references of analytic arguments */
@@ -17647,8 +20489,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->g_with_rollup = 0;
 	}
 
-      /* set index scan order */
-      xasl->iscan_oid_order = ((orderby_skip) ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
+      /* set index scan order: a skipped ORDER BY or GROUP BY reads the rows in index order (the index decides a
+       * skipped GROUP BY: groupby_skip above is false when a sort plan tops the scan) */
+      xasl->iscan_oid_order = ((orderby_skip || (xasl->spec_list != NULL && xasl->spec_list->indexptr != NULL
+						 && xasl->spec_list->indexptr->groupby_skip))
+			       ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
 
       /* save single tuple info */
       if (select_node->info.query.flag.single_tuple == 1)
@@ -17662,6 +20507,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       goto exit_on_error;
     }
+
+  /* CBRD-27583: the sort keys over the block's lists, whose columns are decided by now */
+  pt_set_sort_list_domains (buildlist->groupby_list, NULL, xasl->outptr_list);
+  for (ANALYTIC_EVAL_TYPE * eval = buildlist->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      pt_set_sort_list_domains (eval->sort_list, NULL, buildlist->a_outptr_list_ex);
+    }
+  pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
 
   /* set CONNECT BY xasl */
   xasl = pt_set_connect_by_xasl (parser, select_node, xasl);
@@ -17790,6 +20643,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val, qo_plan);
+  /* CBRD-27583: decided before the output list reads them (pt_block_aggregate) */
+  if (pt_decide_aggregate_domains (parser, select_node, aggregate, NULL) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  buildvalue->agg_list = aggregate;
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
    * used by subsequent calls, and must be done first, before calculating subquery lists, etc. */
@@ -18024,7 +20883,9 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
   /* orderby can legitimately be null */
   orderby = pt_to_orderby (parser, node->info.query.order_by, node);
 
-  if (left && right && (orderby || !node->info.query.order_by))
+  if (left && right && (orderby || !node->info.query.order_by)
+      && pt_check_list_branches (parser, node->info.query.q.union_.arg1, node->info.query.q.union_.arg2, left,
+				 right) == NO_ERROR)
     {
       /* don't allocate till everything looks ok. */
       xasl = regu_xasl_node_alloc (type);
@@ -18039,6 +20900,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
       xasl->option = (node->info.query.all_distinct == PT_ALL) ? Q_ALL : Q_DISTINCT;
 
       xasl->orderby_list = orderby;
+      pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
 
       /* clear flag */
       XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
@@ -18088,10 +20950,10 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
     }				/* end xasl */
   else
@@ -18120,6 +20982,34 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   xasl = pt_to_union_proc (parser, node, proc_type);
 
   return xasl;
+}
+
+/*
+ * pt_type_cte_null_readers () - CBRD-27583: the recursive part's readers of a column the non-recursive part
+ *   writes NULL-typed (pt_note_cte_null_reader) take the column's unified domain. An operator or a scan reads the regu
+ *   it was given; an output list holds a copy of its regus (pt_to_outlist), so the recursive part's columns, and the
+ *   unification pt_check_list_branches made of them, do not change
+ */
+static void
+pt_type_cte_null_readers (const PT_NODE * cte, const XASL_NODE * non_recursive_xasl)
+{
+  for (PT_CTE_NULL_READER * reader = pt_Cte_null_readers; reader != NULL; reader = reader->next)
+    {
+      TP_DOMAIN *column = reader->cte == cte ? domain_list_column_of (non_recursive_xasl, reader->pos) : NULL;
+      if (column == NULL || TP_DOMAIN_TYPE (column) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      reader->regu->domain = column;
+      if (reader->regu->type == TYPE_POSITION)
+	{
+	  reader->regu->value.pos_descr.dom = column;
+	}
+      if (reader->slot != NULL)
+	{
+	  reader->slot->dom = column;
+	}
+    }
 }
 
 /*
@@ -18164,6 +21054,16 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   if (recursive_part)
     {
       recursive_part_xasl = (XASL_NODE *) recursive_part->info.query.xasl;
+      if (recursive_part_xasl != NULL
+	  && pt_check_list_branches (parser, non_recursive_part, recursive_part, non_recursive_part_xasl,
+				     recursive_part_xasl) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      if (recursive_part_xasl != NULL && non_recursive_part_xasl != NULL)
+	{
+	  pt_type_cte_null_readers (node, non_recursive_part_xasl);
+	}
     }
 
   xasl = regu_xasl_node_alloc (proc_type);
@@ -18192,10 +21092,10 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
     }
 
@@ -18237,11 +21137,14 @@ pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  unsigned int save_custom;
 	  save_custom = parser->custom_print;
+	  const unsigned save_source = parser->flag.print_host_var_source;
 	  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+	  parser->flag.print_host_var_source = 1;
 	  fprintf (db_query_get_plan_dump_fp (), "\nQuery stmt:%s\n\n%s\n\n", "",
 		   parser_print_tree (parser, select_node));
 
 	  parser->custom_print = save_custom;
+	  parser->flag.print_host_var_source = save_source;
 	}
     }
 
@@ -18598,8 +21501,11 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   if (plan != NULL && dump_plan == true)
     {
       FILE *dump_fp = db_query_get_plan_dump_fp ();
+      const unsigned save_source = parser->flag.print_host_var_source;
+      parser->flag.print_host_var_source = 1;
       fputs ("\nQuery plan:\n", dump_fp);
       qo_plan_dump (plan, dump_fp);
+      parser->flag.print_host_var_source = save_source;
     }
   else if (dump_plan == true)
     {
@@ -18619,12 +21525,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       if (DETAILED_DUMP (level))
 	{
 	  save_custom = parser->custom_print;
+	  const unsigned save_source = parser->flag.print_host_var_source;
 	  parser->custom_print |= PT_CONVERT_RANGE;
 	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	  parser->custom_print |= PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+	  parser->flag.print_host_var_source = 1;
 	  fprintf (dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
+	  parser->flag.print_host_var_source = save_source;
 	}
 
       if (select_node->info.query.order_by && xasl && xasl->spec_list && xasl->spec_list->indexptr
@@ -19478,6 +22387,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 		    {
 		      free_and_init (attr_offsets);
 		    }
+		  pt_set_list_position_domains (regu_attributes, xasl->val_list, aptr, NULL);
 
 		  if (regu_attributes != NULL)
 		    {
@@ -19967,6 +22877,93 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
   insert->remote_odku_exprs = exprs;
   insert->remote_num_odku = n;
   return true;
+}
+
+/*
+ * pt_assigned_attribute_domain () - CBRD-27583: the domain of an attribute an INSERT, UPDATE or MERGE assigns,
+ *   found as sm_att_id finds the attribute; the XASL streams it with the assignment
+ *   return: the domain, NULL with the error set
+ */
+static TP_DOMAIN *
+pt_assigned_attribute_domain (DB_OBJECT * class_obj, const char *name)
+{
+  int id, shared;
+  TP_DOMAIN *domain = NULL;
+  if (sm_att_info (class_obj, name, &id, &domain, &shared, 0) != NO_ERROR || domain == NULL)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
+	}
+      return NULL;
+    }
+  return domain;
+}
+
+/*
+ * pt_default_value_type () - CBRD-27583: the type an omitted attribute's default is made in before the INSERT
+ *   casts it into the attribute's domain (qexec_execute_insert, qexec_generate_row_default_expr): a date or time
+ *   function's, UNIX_TIMESTAMP's INTEGER, USER's and SYS_GUID's VARCHAR, UUID's BIT; under TO_CHAR a VARCHAR, or a
+ *   string attribute's type for the string it coerces; a default value's, the attribute's
+ *   return: the type, DB_TYPE_NULL with the error set
+ */
+static DB_TYPE
+pt_default_value_type (DB_OBJECT * class_obj, const char *name, const TP_DOMAIN * domain)
+{
+  SM_CLASS *cls;
+  if (au_fetch_class_force (class_obj, &cls, AU_FETCH_READ) != NO_ERROR)
+    {
+      return DB_TYPE_NULL;
+    }
+  const SM_ATTRIBUTE *att = classobj_find_attribute (cls, name, 0);
+  if (att == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
+      return DB_TYPE_NULL;
+    }
+  const DB_DEFAULT_EXPR *expr = &att->default_value.default_expr;
+  const DB_TYPE attr_type = TP_DOMAIN_TYPE (domain);
+  DB_TYPE type;
+  switch (expr->default_expr_type)
+    {
+    case DB_DEFAULT_SYSTIME:
+    case DB_DEFAULT_CURRENTTIME:
+      type = DB_TYPE_TIME;
+      break;
+    case DB_DEFAULT_SYSDATE:
+    case DB_DEFAULT_CURRENTDATE:
+      type = DB_TYPE_DATE;
+      break;
+    case DB_DEFAULT_SYSDATETIME:
+    case DB_DEFAULT_CURRENTDATETIME:
+      type = DB_TYPE_DATETIME;
+      break;
+    case DB_DEFAULT_SYSTIMESTAMP:
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      type = DB_TYPE_TIMESTAMP;
+      break;
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      type = DB_TYPE_INTEGER;
+      break;
+    case DB_DEFAULT_USER:
+    case DB_DEFAULT_CURR_USER:
+    case DB_DEFAULT_SYSGUID:
+      type = DB_TYPE_VARCHAR;
+      break;
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      type = DB_TYPE_BIT;
+      break;
+    default:
+      /* a default value is kept in the attribute's domain */
+      return attr_type;
+    }
+  if (expr->default_expr_op == T_TO_CHAR)
+    {
+      /* db_to_char writes a date or a number as a VARCHAR and coerces a string into a string attribute's domain */
+      return TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (attr_type) ? attr_type : DB_TYPE_VARCHAR;
+    }
+  return type;
 }
 
 /*
@@ -20715,8 +23712,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       db_query_plan_dump_fp_open ();
 
+      /* the walk keeps the readers of the statement it is called from, as parser_generate_xasl does */
+      PT_CTE_NULL_READER *save_cte_null_readers = pt_Cte_null_readers;
+      pt_Cte_null_readers = NULL;
       value_clauses = parser_walk_tree (parser, value_clauses, parser_generate_xasl_pre, NULL,
 					parser_generate_xasl_post, &xasl_Supp_info);
+      pt_Cte_null_readers = save_cte_null_readers;
 
       db_query_plan_dump_fp_close ();
 
@@ -20829,7 +23830,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (error >= NO_ERROR && (num_vals + num_default_expr > 0))
 	{
 	  insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
-	  if (insert->att_id)
+	  regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
+	  insert->default_types = num_default_expr > 0 ? regu_int_array_alloc (num_default_expr) : NULL;
+	  if (insert->att_id && insert->att_domains && (num_default_expr == 0 || insert->default_types != NULL))
 	    {
 	      /* the identifiers of the attributes that have a default expression are placed first */
 	      int save_au;
@@ -20839,7 +23842,11 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      for (attr = default_expr_attrs, a = 0; error >= NO_ERROR && a < num_default_expr; attr = attr->next, ++a)
 		{
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0)
+		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL
+		      || (insert->default_types[a] =
+			  pt_default_value_type (class_obj, attr->info.name.original,
+						 insert->att_domains[a])) == DB_TYPE_NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -20849,7 +23856,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   attr = attr->next, ++a)
 		{
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0)
+		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -21220,6 +24228,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
       odku->attr_ids[i] = attr->id;
       odku->assignments[i].att_idx = i;
       odku->assignments[i].cls_idx = -1;
+      odku->assignments[i].domain = db_attribute_domain (attr);
       if (assignments_helper.is_rhs_const)
 	{
 	  val = pt_value_to_db (parser, assignments_helper.rhs);
@@ -21285,6 +24294,18 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 		}
 	    }
 
+	  if (assignments_helper.rhs->node_type == PT_EXPR && assignments_helper.rhs->type_enum == PT_TYPE_NONE)
+	    {
+	      /* CBRD-27583: an ON UPDATE default appended after type checking
+	       * (pt_append_omitted_on_update_expr_assignments) takes its type, not folded: the row evaluates it */
+	      assignments_helper.rhs->flag.do_not_fold = true;
+	      assignments_helper.rhs = pt_semantic_type (parser, assignments_helper.rhs, NULL);
+	      if (assignments_helper.rhs == NULL)
+		{
+		  goto exit_on_error;
+		}
+	      assignments_helper.assignment->info.expr.arg2 = assignments_helper.rhs;
+	    }
 	  odku->assignments[i].regu_var = pt_to_regu_variable (parser, assignments_helper.rhs, UNBOX_AS_VALUE);
 	  if (odku->assignments[i].regu_var == NULL)
 	    {
@@ -22920,10 +25941,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
     }
   if (aptr_statement)
     {
@@ -23608,8 +26629,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 		  assign->att_idx = a;
 		  upd_cls->att_id[cl * upd_cls->num_attrs + a] =
 		    sm_att_id (class_obj, att_name_node->info.name.original);
+		  if (assign->domain == NULL)
+		    {
+		      /* a subclass inherits the attribute's domain */
+		      assign->domain = pt_assigned_attribute_domain (class_obj, att_name_node->info.name.original);
+		    }
 
-		  if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
+		  if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0 || assign->domain == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
@@ -23870,10 +26896,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
     }
 
 cleanup:
@@ -24116,6 +27142,40 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 }
 
 /*
+ * pt_generate_ctes_and_derived_tables () - CBRD-27583: the XASL of the subqueries of a SELECT's FROM list, made
+ *   before its select list, whose correlated subqueries read their columns' domains, after the CTEs
+ *   of its WITH clause, which they may read; the walk then skips the WITH clause and their specs
+ *   (parser_generate_xasl_pre)
+ */
+static void
+pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *with = query->info.query.with;
+  for (PT_NODE * cte = with != NULL ? with->info.with_clause.cte_definition_list : NULL;
+       cte != NULL && !pt_has_error (parser); cte = cte->next)
+    {
+      /* one at a time: a CTE reading an earlier one finds the earlier one's XASL made (pt_spec_list_producer) */
+      PT_NODE *next = cte->next;
+      cte->next = NULL;
+      (void) parser_walk_tree (parser, cte, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+      cte->next = next;
+    }
+  if (query->node_type != PT_SELECT)
+    {
+      return;
+    }
+  for (PT_NODE * spec = query->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
+    {
+      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
+	{
+	  spec->info.spec.derived_table =
+	    parser_walk_tree (parser, spec->info.spec.derived_table, parser_generate_xasl_pre, NULL,
+			      parser_generate_xasl_post, &xasl_Supp_info);
+	}
+    }
+}
+
+/*
  * parser_generate_xasl_pre () - builds xasl for query nodes,
  *                     and remembers uncorrelated queries
  *   return:
@@ -24152,6 +27212,21 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 
       (void) pt_query_set_reference (parser, node);
       pt_push_symbol_info (parser, node);
+      pt_generate_ctes_and_derived_tables (parser, node);
+      break;
+
+    case PT_WITH_CLAUSE:
+      /* CBRD-27583: made by its query's pre (pt_generate_ctes_and_derived_tables) */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_SPEC:
+      if (node->info.spec.derived_table_type == PT_IS_SUBQUERY && node->info.spec.derived_table != NULL
+	  && node->info.spec.derived_table->info.query.xasl != NULL)
+	{
+	  /* CBRD-27583: made by its SELECT's pre (pt_generate_ctes_and_derived_tables) */
+	  *continue_walk = PT_LIST_WALK;
+	}
       break;
 
     default:
@@ -24322,8 +27397,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  db_query_plan_dump_fp_open ();
 
+	  /* a nested call keeps the readers of the statement it is called from */
+	  PT_CTE_NULL_READER *save_cte_null_readers = pt_Cte_null_readers;
+	  pt_Cte_null_readers = NULL;
 	  node =
 	    parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+	  pt_Cte_null_readers = save_cte_null_readers;
 
 	  /* close file handle for query plan if this function open it */
 	  db_query_plan_dump_fp_close ();
@@ -28456,8 +31535,13 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	      assign->cls_idx = 0;
 	      assign->att_idx = a;
 	      upd_cls->att_id[cl * upd_cls->num_attrs + a] = sm_att_id (class_obj, att_name_node->info.name.original);
+	      if (assign->domain == NULL)
+		{
+		  /* a subclass inherits the attribute's domain */
+		  assign->domain = pt_assigned_attribute_domain (class_obj, att_name_node->info.name.original);
+		}
 
-	      if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
+	      if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0 || assign->domain == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
@@ -28830,12 +31914,19 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   if (num_vals + num_default_expr > 0)
     {
       insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
-      if (insert->att_id)
+      regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
+      insert->default_types = num_default_expr > 0 ? regu_int_array_alloc (num_default_expr) : NULL;
+      if (insert->att_id && insert->att_domains && (num_default_expr == 0 || insert->default_types != NULL))
 	{
 	  /* the identifiers of the attributes that have a default expression are placed first */
 	  for (attr = default_expr_attrs, a = 0; error >= 0 && a < num_default_expr; attr = attr->next, ++a)
 	    {
-	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
+	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0
+		  || (insert->att_domains[a] =
+		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL
+		  || (insert->default_types[a] =
+		      pt_default_value_type (class_obj, attr->info.name.original,
+					     insert->att_domains[a])) == DB_TYPE_NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
@@ -28844,7 +31935,9 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  for (attr = attrs, a = num_default_expr; error >= 0 && a < num_default_expr + num_vals;
 	       attr = attr->next, ++a)
 	    {
-	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
+	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0
+		  || (insert->att_domains[a] =
+		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
@@ -29282,6 +32375,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
     }
 
   regu->type = TYPE_REGU_VAR_LIST;
+  /* CBRD-27583: a container of values, not a value: no domain of its own */
   regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
   /* for cume_dist and percent_rank, regu_variable should be hidden */
   REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
@@ -29306,6 +32400,29 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
 
   /* order by items have been attached, now the arguments */
   regu_var->next = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+
+  /* CBRD-27583: each hypothetical value compares in its ORDER BY item's domain, which a cast gives it (the
+   * coercion the aggregate made at the group's first row) */
+  for (REGU_VARIABLE_LIST item = regu_var_list, value = regu_var->next; item != regu_var->next && value != NULL;
+       item = item->next, value = value->next)
+    {
+      TP_DOMAIN *domain = item->value.domain;
+      if (value->value.type == TYPE_DBVAL && !DB_IS_NULL (&value->value.value.dbval))
+	{
+	  /* CBRD-27583: the literal holds the value semantic check coerced into the ORDER BY attribute's domain
+	   * (pt_check_cume_dist_percent_rank_order_by); its node keeps the literal's type (an INTEGER node
+	   * holding a CHAR value), and this is the one place that makes that node a regu */
+	  value->value.domain = tp_domain_resolve_value (&value->value.value.dbval, NULL);
+	}
+      if (domain == value->value.domain || !pt_regu_domain_is_fixed_domain (domain))
+	{
+	  continue;
+	}
+      if (!pt_cast_regu (&value->value, domain))
+	{
+	  return NULL;
+	}
+    }
 
   /* finally setup regu: */
   regu->value.regu_var_list = regu_var_list;
@@ -29949,9 +33066,11 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
 
   sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
   sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
+  sq_key_struct->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_elements * sizeof (TP_DOMAIN *));
   for (i = 0; i < n_elements; i++)
     {
       sq_key_struct->dbv_array[i] = dbv_list->val;
+      sq_key_struct->domains[i] = dbv_list->dom;
       dbv_list = dbv_list->next;
     }
   sq_key_struct->n_elements = n_elements;
@@ -30224,7 +33343,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    {
 	      break;
 	    }
-	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src, SQ_TYPE_DBVAL);
 	  if (ret == ER_FAILED)
 	    {
 	      return ER_FAILED;
@@ -30353,6 +33472,8 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	}
       break;
     case SQ_TYPE_DBVAL:
+      /* a correlated constant regu: its value and its domain key the cache; the value is held as read, in the
+       * domain it is read in (the unpack finds its conversion, regu_produced_domain) */
       if (key_struct)
 	{
 	  QPROC_DB_VALUE_LIST new_dbv, list_p;
@@ -30365,12 +33486,16 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 		}
 	      regu_alloc (new_dbv);
 	      new_dbv->next = NULL;
-	      new_dbv->val = (DB_VALUE *) p;
+	      new_dbv->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
+	      new_dbv->dom = ((REGU_VARIABLE *) p)->original_domain != NULL
+		? ((REGU_VARIABLE *) p)->original_domain : ((REGU_VARIABLE *) p)->domain;
 	      list_p->next = new_dbv;
 	    }
 	  else
 	    {
-	      key_struct->val = (DB_VALUE *) p;
+	      key_struct->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
+	      key_struct->dom = ((REGU_VARIABLE *) p)->original_domain != NULL
+		? ((REGU_VARIABLE *) p)->original_domain : ((REGU_VARIABLE *) p)->domain;
 	    }
 	}
       cnt++;

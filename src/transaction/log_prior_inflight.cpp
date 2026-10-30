@@ -102,15 +102,57 @@ class log_prior_inflight_holder : public lockfree::tran::reclaimable_node
     {
     }
 
-    void reclaim () override
+    /* Not virtual: reclaimable_node carries no vtable, so the window's tran::reclaimable_owner below
+     * dispatches once per reclaimed run and calls this over it. */
+    void reclaim ()
     {
       logpb_free_prior_node (m_node);
       delete this;
     }
 
+    /* The base's retire link, which the owner walks the run with. */
+    log_prior_inflight_holder *get_retired_next () const
+    {
+      return static_cast<log_prior_inflight_holder *> (m_retired_next);
+    }
+
   private:
     LOG_PRIOR_NODE *m_node;
 };
+
+namespace
+{
+  /* The window's tran::reclaimable_owner - the one vtable behind reclamation, held once for the window
+   * rather than on every holder, as lockfree::freelist holds the one for its nodes. Splicing a run is
+   * sound because a descriptor's retired list only ever holds nodes of one table, and this table is built
+   * here and handed to nobody else. */
+  class log_prior_inflight_reclaimer : public lockfree::tran::reclaimable_owner
+  {
+    public:
+      void reclaim_run (lockfree::tran::reclaimable_node *head, lockfree::tran::reclaimable_node *tail,
+			size_t count) final override;
+  };
+
+  log_prior_inflight_reclaimer log_Inflight_reclaimer;
+
+  void
+  log_prior_inflight_reclaimer::reclaim_run (lockfree::tran::reclaimable_node *head,
+      lockfree::tran::reclaimable_node *tail, size_t count)
+  {
+    /* head through tail inclusive; whatever follows tail is still retained, so the walk stops at tail and
+     * not at NULL. count is the run length, which a freelist credits to its available list - the window
+     * keeps no such list, since each holder frees its node and then itself. */
+    log_prior_inflight_holder *run_tail = static_cast<log_prior_inflight_holder *> (tail);
+    log_prior_inflight_holder *next = NULL;
+
+    for (log_prior_inflight_holder *holder = static_cast<log_prior_inflight_holder *> (head); holder != NULL;
+	 holder = next)
+      {
+	next = (holder == run_tail) ? NULL : holder->get_retired_next ();
+	holder->reclaim ();
+      }
+  }
+}
 
 void
 log_prior_inflight_initialize ()
@@ -127,7 +169,7 @@ log_prior_inflight_initialize ()
 
   try
     {
-      table = new lockfree::tran::table (cubthread::get_thread_entry_lftransys ());
+      table = new lockfree::tran::table (cubthread::get_thread_entry_lftransys (), log_Inflight_reclaimer);
     }
   catch (const std::bad_alloc &)
     {
