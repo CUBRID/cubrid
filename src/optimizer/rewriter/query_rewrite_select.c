@@ -49,6 +49,9 @@ static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NOD
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
+static PT_NODE *qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static const char *qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * col);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
 static bool qo_is_semi_join_on_after (PT_NODE * spec, int location);
@@ -1477,6 +1480,195 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
 }
 
 /*
+ * qo_check_unmatchable_pre () - find a node that keeps an expression from being matched by its printed text
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   arg(out): bool, set to true when such a node is found
+ *   continue_walk(in/out): walk control
+ */
+static PT_NODE *
+qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      *found = true;
+    }
+  /* a money value prints rounded to two decimals, so different amounts can print the same */
+  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_MONETARY)
+    {
+      *found = true;
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_UUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_LEVEL:
+	case PT_PRIOR:
+	case PT_CONNECT_BY_ROOT:
+	case PT_SYS_CONNECT_BY_PATH:
+	case PT_CONNECT_BY_ISLEAF:
+	case PT_CONNECT_BY_ISCYCLE:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (*found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_print_without_paren () - print a node ignoring the parentheses of its top-level expression
+ *   return: printed string
+ *   parser(in): parser context
+ *   node(in): node to print
+ *
+ * Note: view/derived translation copies a select list expression with paren_type set, which only
+ *   affects printing, so it must not make otherwise equal expressions differ.
+ */
+static const char *
+qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  const char *str;
+  int paren_type;
+
+  if (node->node_type != PT_EXPR)
+    {
+      return parser_print_tree (parser, node);
+    }
+
+  paren_type = node->info.expr.paren_type;
+  node->info.expr.paren_type = 0;
+  str = parser_print_tree (parser, node);
+  node->info.expr.paren_type = paren_type;
+
+  return str;
+}
+
+/*
+ * qo_is_constant_order_expr () - is the ORDER BY expression fixed to a constant by a WHERE term?
+ *   return: true if a top-level WHERE conjunct 'col = const' (or 'col range (const =)') exists
+ *   parser(in): parser context
+ *   where(in): WHERE clause of the query
+ *   col(in): select list node an ORDER BY item refers to
+ *
+ * Note: a plain column is handled by qo_reduce_equality_terms () through PT_NAME_INFO_CONSTANT;
+ *   'expr = const' is left in place there to keep function index usage, so it is matched here.
+ */
+static bool
+qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * col)
+{
+  PT_NODE *term, *arg1, *arg2, *other, *val, *col_next;
+  const char *col_str, *other_str;
+  bool unmatchable = false;
+
+  if (where == NULL || (col->node_type != PT_EXPR && col->node_type != PT_FUNCTION))
+    {
+      return false;
+    }
+
+  col_next = col->next;
+  col->next = NULL;
+  (void) parser_walk_tree (parser, col, qo_check_unmatchable_pre, &unmatchable, NULL, NULL);
+  col->next = col_next;
+  if (unmatchable)
+    {
+      return false;
+    }
+
+  col_str = qo_print_without_paren (parser, col);
+  if (col_str == NULL)
+    {
+      return false;
+    }
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      /* a term with location > 0 is an outer join ON condition and does not filter the rows */
+      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0
+	  || PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_ANTI_JOIN_ON))
+	{
+	  continue;
+	}
+
+      arg1 = term->info.expr.arg1;
+      arg2 = term->info.expr.arg2;
+      if (arg1 == NULL || arg2 == NULL)
+	{
+	  continue;
+	}
+
+      if (term->info.expr.op == PT_EQ)
+	{
+	  if (qo_is_reduceable_const (arg2))
+	    {
+	      other = arg1;
+	      val = arg2;
+	    }
+	  else if (qo_is_reduceable_const (arg1))
+	    {
+	      other = arg2;
+	      val = arg1;
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+      else if (term->info.expr.op == PT_RANGE)
+	{
+	  if (arg2->node_type != PT_EXPR || arg2->or_next != NULL || arg2->info.expr.op != PT_BETWEEN_EQ_NA
+	      || !qo_is_reduceable_const (arg2->info.expr.arg1))
+	    {
+	      continue;
+	    }
+	  other = arg1;
+	  val = arg2->info.expr.arg1;
+	}
+      else
+	{
+	  continue;
+	}
+
+      if (!qo_is_exact_compare_const (other, val))
+	{
+	  continue;
+	}
+
+      /* case sensitive and without stripping CAST: a collation cast on the WHERE side must not match */
+      other_str = qo_print_without_paren (parser, other);
+      if (other_str != NULL && strcmp (col_str, other_str) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_reduce_order_by () -
  *   return: NO_ERROR, if successful, otherwise returns error number
  *   parser(in): parser global context info for reentrancy
@@ -1496,6 +1688,8 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   int const_order_count, order_move_count;
   bool need_merge_check;
   bool has_orderbynum_with_groupby;
+  bool is_const_col;
+  bool with_rollup;
 
   /* do not reduce order by siblings */
   if (node->node_type != PT_SELECT || node->info.query.q.select.connect_by)
@@ -1559,6 +1753,9 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  /* a super-aggregate row of ROLLUP outputs NULL for the grouped expression, so it is not constant */
+  with_rollup = node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup;
+
   order_prev = NULL;
   for (order = node->info.query.order_by; order; order = order_next)
     {
@@ -1591,27 +1788,40 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       col = pt_get_end_path_node (col);
+      if (with_rollup)
+	{
+	  is_const_col = false;
+	}
+      else if (col->node_type == PT_NAME)
+	{
+	  is_const_col = PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT);
+	}
+      else
+	{
+	  is_const_col = qo_is_constant_order_expr (parser, node->info.query.q.select.where, col);
+	}
+
+      if (is_const_col)
+	{
+	  /* remove constant order node */
+	  if (order_prev == NULL)
+	    {			/* the first */
+	      node->info.query.order_by = order->next;	/* re-link */
+	    }
+	  else
+	    {
+	      order_prev->next = order->next;	/* re-link */
+	    }
+	  order->next = NULL;	/* cut-off */
+	  parser_free_tree (parser, order);
+
+	  const_order_count++;	/* increase const entry remove count */
+
+	  continue;		/* go ahead */
+	}
+
       if (col->node_type == PT_NAME)
 	{
-	  if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
-	    {
-	      /* remove constant order node */
-	      if (order_prev == NULL)
-		{		/* the first */
-		  node->info.query.order_by = order->next;	/* re-link */
-		}
-	      else
-		{
-		  order_prev->next = order->next;	/* re-link */
-		}
-	      order->next = NULL;	/* cut-off */
-	      parser_free_tree (parser, order);
-
-	      const_order_count++;	/* increase const entry remove count */
-
-	      continue;		/* go ahead */
-	    }
-
 	  /* for non-constant order, change order position to the same left-most col's position */
 	  col2 = node->info.query.q.select.list;
 	  for (j = 1; j < i; j++)

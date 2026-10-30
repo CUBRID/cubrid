@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <float.h>
 #include "query_rewrite.h"
 
 static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where);
@@ -489,6 +490,42 @@ qo_is_reduceable_const (PT_NODE * expr)
 }
 
 /*
+ * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
+ *   return: false if the comparison may be done in an approximate numeric type
+ *   expr(in): expression compared with the constant
+ *   val(in): constant side of the comparison
+ *
+ * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
+ *   A host variable is not typed until it is bound, so it is not taken as exact either.
+ *   NUMERIC of precision DBL_DIG or less is exact anyway: DOUBLE keeps its distinct values distinct.
+ */
+bool
+qo_is_exact_compare_const (PT_NODE * expr, PT_NODE * val)
+{
+  if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
+    {
+      return true;
+    }
+
+  if (expr->type_enum == PT_TYPE_NUMERIC && expr->data_type != NULL
+      && expr->data_type->info.data_type.precision <= DBL_DIG)
+    {
+      return true;
+    }
+
+  switch (val->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_bind_copy_user_position () - CBRD-27583: the user position a bind's copies read: a user host variable's own,
  *   or that of a bind copy a translation already positioned (a later translation, or a copy copied again); -1 for an
  *   auto-parameterized literal or another derived position, whose copies share its value as a literal's do
@@ -685,8 +722,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	      if (qo_is_reduceable_const (arg2))
 		{
-		  found_equality_term = true;
-		  break;	/* immediately break */
+		  if (qo_is_exact_compare_const (arg1, arg2))
+		    {
+		      found_equality_term = true;
+		      break;	/* immediately break */
+		    }
+		  continue;
 		}
 	      else if (pt_is_attr (arg2))
 		{
