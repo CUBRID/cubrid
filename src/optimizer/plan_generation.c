@@ -6928,14 +6928,6 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
       return false;
     }
 
-  /* an outer or anti join writes a row without the tuple of one side, which the expression would read */
-  if (has_expr
-      && (plan->plan_un.join.join_type != JOIN_INNER
-	  || qo_plan_semi_anti_join_type (plan->plan_un.join.inner) != PT_JOIN_NONE))
-    {
-      return false;
-    }
-
   /* parallel workers run only a PARALLEL_ENABLE SP, as in the join predicates (qo_check_hjoin_for_parallel_opt ()) */
   if (has_expr)
     {

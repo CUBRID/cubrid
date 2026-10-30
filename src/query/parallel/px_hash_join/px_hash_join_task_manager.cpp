@@ -1056,16 +1056,9 @@ cleanup:
 			}
 		    }			/* if (m_context->after_join_pred != nullptr) */
 
-		  if (m_context->outptr_list != nullptr)
-		    {
-		      error = hjoin_build_tuple_to_list_id (&thread_ref, m_context, list_id, &overflow_record);
-		    }
-		  else
-		    {
-		      error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							    &outer->tuple_record, &inner->tuple_record,
-							    m_manager->merge_info, &overflow_record);
-		    }
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      &outer->tuple_record, &inner->tuple_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
@@ -1289,17 +1282,20 @@ cleanup:
 		{
 		  need_skip_next = false;	/* init */
 
-		  if (m_context->after_join_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr || m_context->outptr_list != nullptr)
 		    {
-		      DB_LOGICAL ev_res;
-
-		      /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+		      /* No build match: null-pad the build side for the after-join predicate and the out list. */
 		      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 			   regu_var_p = regu_var_p->next)
 			{
 			  pr_clear_value (regu_var_p->value.vfetch_to);
 			}
 		      build->is_ready = true;
+		    }
+
+		  if (m_context->after_join_pred != nullptr)
+		    {
+		      DB_LOGICAL ev_res;
 
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
 		      if (ev_res == V_ERROR)
@@ -1318,9 +1314,9 @@ cleanup:
 		    }	/* if (m_context->after_join_pred != nullptr) */
 
 		  /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							outer->fill_record, inner->fill_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      outer->fill_record, inner->fill_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
@@ -1427,9 +1423,9 @@ cleanup:
 			}
 		    }			/* if (m_context->after_join_pred != nullptr) */
 
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							&outer->tuple_record, &inner->tuple_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      &outer->tuple_record, &inner->tuple_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
@@ -1452,17 +1448,20 @@ cleanup:
 
 	      if (!any_key_matched)
 		{
-		  if (m_context->after_join_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr || m_context->outptr_list != nullptr)
 		    {
-		      DB_LOGICAL ev_res;
-
-		      /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+		      /* No build match: null-pad the build side for the after-join predicate and the out list. */
 		      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 			   regu_var_p = regu_var_p->next)
 			{
 			  pr_clear_value (regu_var_p->value.vfetch_to);
 			}
 		      build->is_ready = true;
+		    }
+
+		  if (m_context->after_join_pred != nullptr)
+		    {
+		      DB_LOGICAL ev_res;
 
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
 		      if (ev_res == V_ERROR)
@@ -1481,9 +1480,9 @@ cleanup:
 		    }	/* if (m_context->after_join_pred != nullptr) */
 
 		  /* no match — emit fill_record (null on null-supplying side) */
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							outer->fill_record, inner->fill_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      outer->fill_record, inner->fill_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);

@@ -123,6 +123,10 @@ static int hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 static int hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 			      QFILE_LIST_ID * list_id);
 
+/* Merge QFILE_LIST_ID */
+static int hjoin_build_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context,
+					 QFILE_LIST_ID * list_id, QFILE_TUPLE_RECORD * tuple_record);
+
 /*
  * Function Definitions
  */
@@ -506,9 +510,9 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       stats->build.qualified_rows = build->list_id->tuple_cnt;
     }
 
-  if (context->after_join_pred != NULL)
+  if (context->after_join_pred != NULL || context->outptr_list != NULL)
     {
-      /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+      /* No build match: null-pad the build side for the after-join predicate and the out list. */
       for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL; regu_var_p = regu_var_p->next)
 	{
 	  pr_clear_value (regu_var_p->value.vfetch_to);
@@ -518,10 +522,10 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
   while ((scan_code = qfile_scan_list_next (thread_p, &probe->list_scan_id, &probe->tuple_record, PEEK)) == S_SUCCESS)
     {
+      probe->is_ready = false;
+
       if (context->after_join_pred != NULL)
 	{
-	  probe->is_ready = false;
-
 	  DB_LOGICAL ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
 	  if (ev_res == V_ERROR)
 	    {
@@ -538,8 +542,8 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
       /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
       error =
-	hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record, manager->merge_info,
-				      &overflow_record);
+	hjoin_add_tuple_to_list_id (thread_p, context, list_id, outer->fill_record, inner->fill_record,
+				    manager->merge_info, &overflow_record);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -800,8 +804,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   if (manager->outptr_list != NULL)
     {
-      /* the planner gives an out list to an inner join only: every result row has both input tuples */
-      assert (manager->join_type == JOIN_INNER);
       /* the planner keeps merge_info's columns only for a parallel fallback (qo_init_merge_info ()) */
       assert (merge_info->ls_pos_cnt == 0 || manager->has_ineligible);
 
@@ -3538,16 +3540,9 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	    }			/* if (context->after_join_pred != NULL) */
 
-	  if (context->outptr_list != NULL)
-	    {
-	      error = hjoin_build_tuple_to_list_id (thread_p, context, list_id, &overflow_record);
-	    }
-	  else
-	    {
-	      error =
-		hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
-					      manager->merge_info, &overflow_record);
-	    }
+	  error =
+	    hjoin_add_tuple_to_list_id (thread_p, context, list_id, &outer->tuple_record, &inner->tuple_record,
+					manager->merge_info, &overflow_record);
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
@@ -3687,17 +3682,20 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      need_skip_next = false;	/* init */
 
-	      if (context->after_join_pred != NULL)
+	      if (context->after_join_pred != NULL || context->outptr_list != NULL)
 		{
-		  DB_LOGICAL ev_res;
-
-		  /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+		  /* No build match: null-pad the build side for the after-join predicate and the out list. */
 		  for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 		       regu_var_p = regu_var_p->next)
 		    {
 		      pr_clear_value (regu_var_p->value.vfetch_to);
 		    }
 		  build->is_ready = true;
+		}
+
+	      if (context->after_join_pred != NULL)
+		{
+		  DB_LOGICAL ev_res;
 
 		  ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
 		  if (ev_res == V_ERROR)
@@ -3716,8 +3714,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	      /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
 	      error =
-		hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
-					      manager->merge_info, &overflow_record);
+		hjoin_add_tuple_to_list_id (thread_p, context, list_id, outer->fill_record, inner->fill_record,
+					    manager->merge_info, &overflow_record);
 	      if (error != NO_ERROR)
 		{
 		  break;	/* error_exit */
@@ -3850,8 +3848,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }			/* if (context->after_join_pred != NULL) */
 
 	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
-					  manager->merge_info, &overflow_record);
+	    hjoin_add_tuple_to_list_id (thread_p, context, list_id, &outer->tuple_record, &inner->tuple_record,
+					manager->merge_info, &overflow_record);
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
@@ -3866,17 +3864,20 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
       if (!any_key_matched)
 	{
-	  if (context->after_join_pred != NULL)
+	  if (context->after_join_pred != NULL || context->outptr_list != NULL)
 	    {
-	      DB_LOGICAL ev_res;
-
-	      /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+	      /* No build match: null-pad the build side for the after-join predicate and the out list. */
 	      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 		   regu_var_p = regu_var_p->next)
 		{
 		  pr_clear_value (regu_var_p->value.vfetch_to);
 		}
 	      build->is_ready = true;
+	    }
+
+	  if (context->after_join_pred != NULL)
+	    {
+	      DB_LOGICAL ev_res;
 
 	      ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
 	      if (ev_res == V_ERROR)
@@ -3895,8 +3896,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  /* no match — emit fill_record (null on null-supplying side) */
 	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
-					  manager->merge_info, &overflow_record);
+	    hjoin_add_tuple_to_list_id (thread_p, context, list_id, outer->fill_record, inner->fill_record,
+					manager->merge_info, &overflow_record);
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
@@ -4152,7 +4153,7 @@ error_exit:
  * Writes the tuple through qexec_insert_tuple_into_list (), which evaluates outptr_list with its compiled program
  * as qexec_end_one_iteration () does for the wrapper.
  */
-int
+static int
 hjoin_build_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
 			      QFILE_TUPLE_RECORD * tuple_record)
 {
@@ -4182,6 +4183,40 @@ hjoin_build_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * contex
 error_exit:
   assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
+}
+
+/*
+ * hjoin_add_tuple_to_list_id() - add the result tuple of the current input tuples
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   context(in): Hash join context holding the out list, both inputs and the value descriptor.
+ *   list_id(in/out): List identifier the tuple is added to.
+ *   outer_record(in): Outer tuple to merge. (can be NULL).
+ *   inner_record(in): Inner tuple to merge. (can be NULL).
+ *   merge_info(in): Information used to merge the joined result.
+ *   overflow_record(in/out): Space for a tuple that does not fit on a single page or the tuple descriptor path.
+ *
+ * A join with an out list evaluates it over the input values (hjoin_build_tuple_to_list_id ());
+ * any other join merges the given records (hjoin_merge_tuple_to_list_id ()).
+ */
+int
+hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+			    QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
+			    QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record)
+{
+  assert (thread_p != NULL);
+  assert (context != NULL);
+  assert (list_id != NULL);
+  assert (outer_record != NULL || inner_record != NULL);
+  assert (merge_info != NULL);
+  assert (overflow_record != NULL);
+
+  if (context->outptr_list != NULL)
+    {
+      return hjoin_build_tuple_to_list_id (thread_p, context, list_id, overflow_record);
+    }
+
+  return hjoin_merge_tuple_to_list_id (thread_p, list_id, outer_record, inner_record, merge_info, overflow_record);
 }
 
 /*

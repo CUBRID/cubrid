@@ -397,8 +397,9 @@ DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe
 int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
 				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
-int hjoin_build_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
-				  QFILE_TUPLE_RECORD * tuple_record);
+int hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+				QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
+				QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
 void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
