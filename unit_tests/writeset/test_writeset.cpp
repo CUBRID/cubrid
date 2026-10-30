@@ -560,6 +560,112 @@ TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
   }
 }
 
+/* Set ignore_trailing_space for one test and restore the previous value when the test ends. */
+struct ws_trailing_space_guard
+{
+  bool saved;
+
+  explicit ws_trailing_space_guard (bool value)
+  {
+    saved = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+    prm_set_bool_value (PRM_ID_IGNORE_TRAILING_SPACE, value);
+  }
+
+  ~ws_trailing_space_guard ()
+  {
+    prm_set_bool_value (PRM_ID_IGNORE_TRAILING_SPACE, saved);
+  }
+};
+
+/* Hash of a single-column string WRITE key of the given type, size bytes of text (so it may hold a NUL). */
+static UINT64
+string_key_hash (const OID *class_oid, DB_TYPE type, const char *text, int size = -1)
+{
+  DB_VALUE value;
+  UINT64 hash;
+
+  if (size < 0)
+    {
+      size = (int) strlen (text);
+    }
+
+  if (type == DB_TYPE_CHAR)
+    {
+      REQUIRE (db_make_char (&value, 10, text, size, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY) == NO_ERROR);
+    }
+  else
+    {
+      REQUIRE (db_make_varchar (&value, 10, text, size, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY) == NO_ERROR);
+    }
+  hash = write_key_hash (class_oid, &value);
+  pr_clear_value (&value);
+
+  return hash;
+}
+
+/* Hash of a (VARCHAR, int) composite WRITE key. */
+static UINT64
+string_int_key_hash (const OID *class_oid, const char *text)
+{
+  TP_DOMAIN *domain;
+  DB_VALUE key;
+  UINT64 hash;
+
+  make_string_int_key (&key, &domain, LANG_COLL_UTF8_BINARY, 10, text, 1);
+  hash = write_key_hash (class_oid, &key);
+  pr_clear_value (&key);
+
+  return hash;
+}
+
+TEST_CASE ("trailing spaces split a string key only where the index compares them", "[writeset]")
+{
+  /* The index ignores trailing spaces when it compares CHAR values, and VARCHAR values too when
+   * ignore_trailing_space is set; leading spaces always count. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 205, 1);
+
+  SECTION ("VARCHAR with ignore_trailing_space off: 'a' and 'a ' are two keys")
+  {
+    ws_trailing_space_guard trailing_space (false);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a") != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a "));
+    REQUIRE (string_int_key_hash (&class_oid, "a") != string_int_key_hash (&class_oid, "a "));
+  }
+
+  SECTION ("VARCHAR with ignore_trailing_space on: 'a' and 'a  ' are one key, ' a' is another")
+  {
+    ws_trailing_space_guard trailing_space (true);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a  "));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a") != string_key_hash (&class_oid, DB_TYPE_VARCHAR, " a"));
+    REQUIRE (string_int_key_hash (&class_oid, "a") == string_int_key_hash (&class_oid, "a  "));
+    REQUIRE (string_int_key_hash (&class_oid, "a") != string_int_key_hash (&class_oid, " a"));
+  }
+
+  SECTION ("CHAR with ignore_trailing_space off: 'a' and 'a ' are one key, ' a' is another")
+  {
+    ws_trailing_space_guard trailing_space (false);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a") == string_key_hash (&class_oid, DB_TYPE_CHAR, "a "));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a") != string_key_hash (&class_oid, DB_TYPE_CHAR, " a"));
+    /* a CHAR read back from storage is padded to its precision, a cast literal is not */
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_CHAR, "a")
+	     == string_key_hash (&class_oid, DB_TYPE_CHAR, "a         "));
+  }
+
+  SECTION ("a trailing NUL is ignored as the compares ignore it")
+  {
+    ws_trailing_space_guard trailing_space (false);
+
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+	     == string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a", 2));
+    REQUIRE (string_key_hash (&class_oid, DB_TYPE_VARCHAR, "a")
+	     != string_key_hash (&class_oid, DB_TYPE_VARCHAR, "b", 2));
+  }
+}
+
 TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
 {
   ws_history_guard history;

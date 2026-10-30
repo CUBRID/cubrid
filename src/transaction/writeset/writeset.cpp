@@ -69,8 +69,8 @@ static int wset_Trace_level = 0;
 static bool wset_History_initialized = false;
 
 static UINT64 wset_fnv1a (const VFID *index_vfid, const char *packed, int len);
-static void wset_string_pseudo_bytes (const LANG_COLLATION *lc, const unsigned char *s, int size,
-				      unsigned char pbytes[5]);
+static void wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned char *s, int size,
+				  unsigned char pbytes[5]);
 static UINT64 wset_string_hash (const VFID *index_vfid, DB_VALUE *v);
 static DB_VALUE *wset_value_without_zone (DB_VALUE *v, DB_VALUE *scratch);
 static DB_VALUE *wset_value_without_negative_zero (DB_VALUE *v, DB_VALUE *scratch);
@@ -248,15 +248,17 @@ wset_string_hash (const VFID *index_vfid, DB_VALUE *v)
   assert (lc != NULL);
   assert (s != NULL);
 
-  wset_string_pseudo_bytes (lc, s, db_get_string_size (v), pbytes);
+  wset_pack_string_key (lc, DB_VALUE_DOMAIN_TYPE (v), s, db_get_string_size (v), pbytes);
 
   return wset_fnv1a (index_vfid, (const char *) pbytes, 5);
 }
 
 /*
- * wset_string_pseudo_bytes - reduce a character string to the 5 bytes hashed for it
+ * wset_pack_string_key - pack a character string into the bytes hashed for it, equal for strings its collation
+ *                        treats as equal
  *
  *   lc(in): collation of the index column the string belongs to
+ *   type(in): DB_TYPE_CHAR or DB_TYPE_VARCHAR, the type of the index column
  *   s(in): string bytes
  *   size(in): string size in bytes
  *   pbytes(out): 0xC5 tag followed by the 4-byte collation pseudo key
@@ -264,11 +266,27 @@ wset_string_hash (const VFID *index_vfid, DB_VALUE *v)
  * Note: The collation pseudo key is hashed instead of the raw string bytes, so strings the collation
  *       treats as equal share a writeset hash without unconditional case folding. The 0xC5 tag keeps a
  *       string pseudo key from colliding with a numeric key that might pack to the same four bytes.
+ *       The index ignores trailing spaces when it compares CHAR values, and VARCHAR values too when
+ *       ignore_trailing_space is set (mr_data_cmpdisk_char, mr_data_cmpdisk_string), so 'a' and 'a ' are one key
+ *       there. The pseudo key covers every byte, so those trailing spaces are cut off before it is computed,
+ *       and a trailing NUL too, which the compares ignore the same way.
+ *       For example, with ignore_trailing_space set, T1 deletes k = 'a' and T2 inserts k = 'a '. With the space
+ *       the hashes differ, T2 gets no dependency, and the slave can insert first and fail on the unique key.
  */
 static void
-wset_string_pseudo_bytes (const LANG_COLLATION *lc, const unsigned char *s, int size, unsigned char pbytes[5])
+wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned char *s, int size,
+		      unsigned char pbytes[5])
 {
+  bool strip_space = (type == DB_TYPE_CHAR || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE));
   unsigned int pseudo;
+
+  /* cut the trailing spaces the index ignores (strip_space: CHAR, or VARCHAR with ignore_trailing_space), and
+   * trailing NULs always: a NUL has zero weight wherever trailing characters are ignored, and the binary and
+   * EUC-KR compares ignore it always; cutting it off only merges keys, which is safe */
+  while (size > 0 && (s[size - 1] == '\0' || (strip_space && s[size - 1] == ' ')))
+    {
+      size--;
+    }
 
   pseudo = lc->mht2str (lc, s, size);
 
@@ -445,8 +463,9 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out)
 
 	      if (pass == 1)
 		{
-		  wset_string_pseudo_bytes (lc, (const unsigned char *) db_get_string (&element),
-					    db_get_string_size (&element), (unsigned char *) buf + buf_len);
+		  wset_pack_string_key (lc, TP_DOMAIN_TYPE (element_domain),
+					(const unsigned char *) db_get_string (&element),
+					db_get_string_size (&element), (unsigned char *) buf + buf_len);
 		}
 	      buf_len += 5;
 	    }
