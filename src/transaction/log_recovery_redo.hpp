@@ -19,6 +19,7 @@
 #ifndef _LOC_RECOVERY_REDO_HPP_
 #define _LOC_RECOVERY_REDO_HPP_
 
+#include "disk_manager.h"
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
@@ -604,6 +605,18 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
     {
       /* nothing else needs to be done, see explanation in function */
       assert (rcv.pgptr == nullptr);
+      if (log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+	{
+	  /* the sector table is current, but recovery must still learn which sectors were freed */
+	  rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
+	  rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
+	  if (log_rv_get_log_rec_redo_data<T> (thread_p, redo_context, record_info, rcv) != NO_ERROR)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
+	      return;
+	    }
+	  disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, &record_info.m_start_lsa);
+	}
       return;
     }
   // at this point, pgptr can be null or not
@@ -630,6 +643,11 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
       // rcv pgptr will be automatically unfixed
       return;
+    }
+
+  if (log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+    {
+      disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, &record_info.m_start_lsa);
     }
 
   rvfun::fun_t redofunc = log_rv_get_fun<T> (record_info.m_logrec, log_data.rcvindex);
