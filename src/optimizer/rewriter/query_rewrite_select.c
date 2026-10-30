@@ -3772,9 +3772,12 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
- * qo_is_semi_join_on_after () - is the location that of the ON of a SEMI JOIN after the spec? That ON drops
- *      the outer rows it rejects as a WHERE term does, while an ANTI JOIN keeps them.  A SEMI JOIN on a unique
- *      key is still one here: qo_rewrite_unique_semi_inner () turns it INNER only after qo_rewrite_outerjoin ()
+ * qo_is_semi_join_on_after () - is the location that of the ON of a SEMI JOIN after the spec, with no RIGHT OUTER
+ *      JOIN connected behind that SEMI JOIN? That ON drops the outer rows it rejects as a WHERE term does, while an
+ *      ANTI JOIN keeps them.  A RIGHT OUTER JOIN behind the SEMI JOIN NULL-fills the spec after that ON ran: the
+ *      rewrite would turn it INNER and move the ON terms to WHERE, dropping the rows it preserves (CBRD-27783).  A
+ *      SEMI JOIN on a unique key is still one here: qo_rewrite_unique_semi_inner () turns it INNER only after
+ *      qo_rewrite_outerjoin ()
  *   return: bool
  *   spec(in): the outer joined spec
  *   location(in): location of a WHERE term
@@ -3788,11 +3791,25 @@ qo_is_semi_join_on_after (PT_NODE * spec, int location)
     {
       if (ns->info.spec.location == location)
 	{
-	  return ns->info.spec.join_type == PT_JOIN_SEMI;
+	  break;
 	}
     }
 
-  return false;
+  if (ns == NULL || ns->info.spec.join_type != PT_JOIN_SEMI)
+    {
+      return false;
+    }
+
+  /* traverse the specs connected behind the semi join */
+  for (ns = ns->next; ns && ns->info.spec.join_type != PT_JOIN_NONE; ns = ns->next)
+    {
+      if (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
