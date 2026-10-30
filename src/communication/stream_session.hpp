@@ -61,7 +61,7 @@ enum STREAM_KIND
  * signature to say it. */
 struct stream_result
 {
-  std::int64_t count;		/* rows for COPY, bytes for a value stream */
+  std::int64_t count;		/* rows for COPY and LOB DML, a token for a LOB upload */
 };
 
 class stream_session
