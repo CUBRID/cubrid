@@ -1792,7 +1792,12 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_LAST_ERROR                               -1390
+#define ER_HA_REPLICATION_KEY_REQUIRED              -1390
+#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED -1391
+#define ER_HA_FK_CONSTRAINT_VIOLATION               -1392
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION      -1393
+
+#define ER_LAST_ERROR                               -1394
 
 
 /*

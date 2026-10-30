@@ -11994,6 +11994,49 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
 }
 
 /*
+ * heap_get_class_repl_on () - Check whether a class has replication turned on.
+ *   return: error code
+ *   thread_p (in):
+ *   class_oid (in):
+ *   repl_on (out): true if the class has replication on, false otherwise
+ *
+ * Note: the class-record fetch may fail with a real error (e.g. ER_INTERRUPTED);
+ *       return it to the caller rather than asserting.
+ */
+int
+heap_get_class_repl_on (THREAD_ENTRY * thread_p, const OID * class_oid, bool * repl_on)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int error_code = NO_ERROR;
+
+  assert (class_oid != NULL);
+  assert (repl_on != NULL);
+
+  *repl_on = false;
+
+  if (OID_ISNULL (class_oid))
+    {
+      return NO_ERROR;
+    }
+
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      heap_scancache_end (thread_p, &scan_cache);
+      return error_code;
+    }
+
+  *repl_on = or_class_is_replication_on (&recdes);
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return NO_ERROR;
+}
+
+/*
  * heap_class_get_partition_info () - Get partition information for the class
  *				      identified by class_oid
  * return : error code or NO_ERROR
