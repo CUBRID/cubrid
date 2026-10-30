@@ -20251,12 +20251,16 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
+
+	      /* its tuples are copied into the final results */
+	      qfile_destroy_list (thread_p, non_recursive_part->list_id);
 	    }
 
+	  /* a pass-through wrapper leaves the hash join partitions it took over as dependents of its list file */
 	  qfile_clear_list_id (non_recursive_part->list_id);
 	  if (recursive_part->list_id->tuple_cnt > 0
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
-				     QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+				     QFILE_MOVE_DEPENDENT) != NO_ERROR)
 	    {
 	      /* the list id is part of the XASL tree, and the failed copy left it empty */
 	      GOTO_EXIT_ON_ERROR;

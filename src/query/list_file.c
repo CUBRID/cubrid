@@ -3015,6 +3015,13 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
       qfile_close_list (thread_p, list_id);
     }
 
+  if (list_id->dependent_list_id != NULL)
+    {
+      /* the truncated list no longer links to the pages of its dependent lists */
+      qfile_destroy_list (thread_p, list_id->dependent_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id->dependent_list_id);
+    }
+
   list_id->tuple_cnt = 0;
   list_id->page_cnt = 0;
 #if !defined(NDEBUG)
