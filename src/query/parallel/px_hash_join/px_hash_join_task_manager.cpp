@@ -493,6 +493,7 @@ namespace parallel_query
       task_execution_guard guard (thread_ref, m_task_manager);
 
       spawn_manager *spawn_manager = nullptr;
+      HASHJOIN_CONTEXT *single_context = &m_manager->single_context;
       HASHJOIN_CONTEXT *context = nullptr;
       int error = NO_ERROR;
 
@@ -538,10 +539,10 @@ namespace parallel_query
 	    }
 
 	  /* reuse TLS variables if already set */
-	  context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
-	  context->outptr_list = spawn_manager->get_outptr_list (m_manager->outptr_list);
-	  context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
-	  context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
+	  context->val_descr = spawn_manager->get_val_descr (single_context->val_descr);
+	  context->outptr_list = spawn_manager->get_outptr_list (single_context->outptr_list);
+	  context->during_join_pred = spawn_manager->get_during_join_pred (single_context->during_join_pred);
+	  context->after_join_pred = spawn_manager->get_after_join_pred (single_context->after_join_pred);
 	  context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
 	  context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
 
@@ -675,7 +676,7 @@ namespace parallel_query
       task_execution_guard guard (thread_ref, m_task_manager);
 
       spawn_manager *spawn_manager = nullptr;
-      HASHJOIN_CONTEXT *single_context;
+      HASHJOIN_CONTEXT *single_context = &m_manager->single_context;
       int error = NO_ERROR;
 
       TSCTIMEVAL total_probe_time = { 0, 0 };
@@ -704,10 +705,10 @@ namespace parallel_query
 	}
 
       /* reuse TLS variables if already set */
-      m_context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
-      m_context->outptr_list = spawn_manager->get_outptr_list (m_manager->outptr_list);
-      m_context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
-      m_context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
+      m_context->val_descr = spawn_manager->get_val_descr (single_context->val_descr);
+      m_context->outptr_list = spawn_manager->get_outptr_list (single_context->outptr_list);
+      m_context->during_join_pred = spawn_manager->get_during_join_pred (single_context->during_join_pred);
+      m_context->after_join_pred = spawn_manager->get_after_join_pred (single_context->after_join_pred);
       m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
       m_context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
 
@@ -735,7 +736,6 @@ namespace parallel_query
 	  goto cleanup;		/* error_exit */
 	}
 
-      single_context = &m_manager->single_context;
       switch (single_context->hash_scan.hash_list_scan_type)
 	{
 	case HASH_METH_IN_MEM:

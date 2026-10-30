@@ -332,15 +332,11 @@ typedef struct hashjoin_manager
   /* Copy of a member of HASHJOIN_PROC_NODE. */
   bool has_ineligible;
 
-  /* Pointers to members of XASL_NODE. */
-  OUTPTR_LIST *outptr_list;
-  PRED_EXPR *during_join_pred;
-  PRED_EXPR *after_join_pred;
+  /* Copy of a member of XASL_NODE. */
   int num_parallel_threads;
 
-  /* Pointer to a member of XASL_STATE. */
+  /* Copy of a member of XASL_STATE. */
   QUERY_ID query_id;
-  VAL_DESCR *val_descr;
 
   /* max_hash_list_scan_size, read once per join */
   UINT64 mem_limit;
@@ -394,9 +390,6 @@ DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe
 			    PRED_EXPR * pred, VAL_DESCR * val_descr);
 
 /* Merge QFILE_LIST_ID */
-int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
-				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
-				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 int hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
 				QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
 				QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);

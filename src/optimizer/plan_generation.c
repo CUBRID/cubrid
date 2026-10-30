@@ -3096,9 +3096,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   assert (xasl != NULL);
   assert (xasl->selected_upd_list == NULL);
 
-  /* a caller that requests a pass-through gives no per-row scans or fetches, which the wrapper would have to run */
-  assert (wrapper_out_list == NULL || (inner_scans == NULL && fetches == NULL));
-
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
   assert (outer_plan != NULL);
@@ -3190,10 +3187,8 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  /* not wrapper_out_list alone: it stays set with has_ineligible */
   if (pass_through_info.wrapper_out_list != NULL && !pass_through_info.has_ineligible)
     {
-      /* reused in serial and in parallel */
       xasl =
 	ptqo_to_pass_through_wrapper (QO_ENV_PARSER (env), xasl, hashjoin_xasl, pass_through_info.wrapper_out_list);
     }
@@ -6766,12 +6761,6 @@ qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
       return false;
     }
 
-  /* after the scan: the click counter in the select list updates the row the node read */
-  if (xasl->selected_upd_list != NULL)
-    {
-      return false;
-    }
-
   /* post processing: aggregates, analytic functions, ORDER BY and DISTINCT */
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_HAS_AGG | PT_SELECT_INFO_HAS_ANALYTIC))
     {
@@ -6783,9 +6772,6 @@ qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
     {
       return false;
     }
-
-  /* the flags above rule out aggregates and analytic functions */
-  assert (xasl->proc.buildlist.g_agg_list == NULL && xasl->proc.buildlist.a_eval_list == NULL);
 
   /* with no aggregate or analytic function, pt_to_outlist () makes one column per select list item */
   assert (xasl->outptr_list->valptr_cnt == pt_length_of_list (select_list));
@@ -6872,7 +6858,6 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
 
   for (node = wrapper_out_list; node != NULL; node = node->next)
     {
-      /* node == wrapper_out_list: the first entry, the only place the hash key placeholder can be */
       if (node == wrapper_out_list && node->node_type == PT_VALUE)
 	{
 	  continue;
@@ -6976,8 +6961,8 @@ qo_check_pass_through_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  *   return: true for such an expression
  *   node(in): a PT_EXPR
  *
- * The list started from the operator list of pt_is_shareable_groupby_ref_pre (),
- * but it guards evaluating the expression in the hash join, possibly on a parallel worker, not sharing one evaluation.
+ * It guards evaluating the expression in the hash join, possibly on a parallel worker,
+ * not sharing one evaluation as pt_is_shareable_groupby_ref_pre () does.
  */
 static bool
 qo_is_unshareable_expr (PT_NODE * node)
@@ -6988,22 +6973,8 @@ qo_is_unshareable_expr (PT_NODE * node)
 
   op = node->info.expr.op;
 
-  if (PT_IS_NUMBERING_AFTER_EXECUTION (op))
-    {
-      return true;
-    }
-
-  if (PT_REQUIRES_HIERARCHICAL_QUERY (op))
-    {
-      return true;
-    }
-
-  if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node))
-    {
-      return true;
-    }
-
-  if (PT_IS_SERIAL (op))
+  if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node) || PT_IS_SERIAL (op) || PT_IS_NUMBERING_AFTER_EXECUTION (op)
+      || PT_REQUIRES_HIERARCHICAL_QUERY (op))
     {
       return true;
     }
@@ -7017,15 +6988,16 @@ qo_is_unshareable_expr (PT_NODE * node)
     case PT_EXEC_STATS:
     case PT_TRACE_STATS:
 
-      /* writes: the row the node reads (click counter) or a session variable */
-    case PT_INCR:
-    case PT_DECR:
+      /* writes: a session variable */
     case PT_DEFINE_VARIABLE:
 
       /* waits */
     case PT_SLEEP:
       return true;
 
+    case PT_INCR:
+    case PT_DECR:
+      /* a click counter, whose statement gets no hash join (qo_examine_hash_join ()) */
     default:
       return false;
     }
@@ -7036,8 +7008,8 @@ qo_is_unshareable_expr (PT_NODE * node)
  *   return: true for such a function
  *   node(in): a PT_FUNCTION
  *
- * The list started from the PT_FUNCTION list of pt_is_shareable_groupby_ref_pre (),
- * but it guards evaluating the function in the hash join, possibly on a parallel worker, not sharing one evaluation.
+ * It guards evaluating the function in the hash join, possibly on a parallel worker,
+ * not sharing one evaluation as pt_is_shareable_groupby_ref_pre () does.
  * The aggregate and analytic functions are left to the statement's flags (qo_check_pass_through_wrapper ()).
  */
 static bool

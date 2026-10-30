@@ -31297,8 +31297,7 @@ qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
   assert (xasl->spec_list->next == NULL);
 
   /* the producer: the planner appends it after any uncorrelated subquery, so it runs after the ones it reads.
-   * This holds for a hash join producer, which gen_hashjoin () appends last with add_uncorrelated ();
-   * extending pass-through to another producer needs this rule checked again. */
+   * This holds for a hash join producer, which gen_hashjoin () appends last with add_uncorrelated (). */
   for (last_aptr = xasl->aptr_list; last_aptr != NULL && last_aptr->next != NULL; last_aptr = last_aptr->next)
     {
       ;
