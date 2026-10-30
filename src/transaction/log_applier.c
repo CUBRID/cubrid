@@ -1630,16 +1630,22 @@ la_coordinator_commit_apply_info (void)
     {
       LA_STAT_APPLIER applier;
 
+      /* before the marker delete, which must be the last statement before the commit (see below) */
+      la_stat_describe_applier (&applier);
+      la_stat_store (&applier, la_update_query_execute_with_values);
+
       /* the commits at or below committed_lsa are skipped by their position, so their markers go in the same
-       * transaction; a failure leaves them for the next store */
+       * transaction; a failure leaves them for the next store.
+       * The delete is the last statement before the commit: deleting many markers can escalate to a table lock
+       * held until the commit, and a worker inserting its marker waits for that lock holding la_sql_compile_mutex.
+       * Taking the mutex again before the commit (to store the statistics, for example) would wait for that worker
+       * forever. */
       if (la_delete_applied_tx_markers (&la_Info.committed_lsa) < 0)
 	{
 	  er_log_debug (ARG_FILE_LINE, "cannot delete applied-tx markers up to %lld|%d\n",
 			(long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	}
 
-      la_stat_describe_applier (&applier);
-      la_stat_store (&applier, la_update_query_execute_with_values);
       return db_commit_transaction ();
     }
 
