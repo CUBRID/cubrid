@@ -1758,7 +1758,7 @@ namespace cubstorage
 
     vpid = m_scan_cursor;
 
-    wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+    wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
     for (visited = 0; visited < REDISCOVER_BATCH_SIZE; visited++)
       {
 	if (VPID_ISNULL (&vpid))
@@ -1843,7 +1843,7 @@ namespace cubstorage
 	  }
 	vpid = next_vpid;
       }
-    (void) xlogtb_reset_wait_msecs (thread_p, wait_msecs);
+    (void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
 
     m_scan_cursor = vpid;
 
