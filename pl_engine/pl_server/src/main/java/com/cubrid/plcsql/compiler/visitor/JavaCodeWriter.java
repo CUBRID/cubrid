@@ -249,7 +249,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplPkgInit =
             new String[] {
-                "static {", "  %'+BODY'%", "}",
+                "static {",
+                "  Long[] sql_rowcount = new Long[] { null };",
+                "  %'+BODY'%",
+                "}"
             };
 
     private static final String[] tmplPkgUnit =
