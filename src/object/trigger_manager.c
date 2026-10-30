@@ -2045,6 +2045,40 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 }
 
 /*
+ * check_current_user_trigger() - Checks whether the object is a user trigger owned by the current user
+ *    return: error code
+ *    object(in): trigger object
+ *    is_current_user_trigger(out): true if it is
+ */
+static int
+check_current_user_trigger (DB_OBJECT * object, bool * is_current_user_trigger)
+{
+  DB_VALUE value;
+  int error;
+
+  *is_current_user_trigger = false;
+
+  error = obj_get (object, TR_ATT_EVENT, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if ((DB_VALUE_TYPE (&value) != DB_TYPE_INTEGER) || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&value)))
+    {
+      return NO_ERROR;
+    }
+
+  error = obj_get (object, TR_ATT_OWNER, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  *is_current_user_trigger = ws_is_same_object (db_get_object (&value), Au_user);
+  return NO_ERROR;
+}
+
+/*
  * get_user_trigger_objects() - This is used to build and return a list of the user triggers owned by the current user
  *    return: error code
  *    event(in): event type
@@ -2058,7 +2092,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   int error = NO_ERROR;
   DB_SET *table;
   DB_VALUE value;
-  DB_VALUE event_value;
+  bool is_current_user_trigger;
   DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
   int max, i;
@@ -2101,13 +2135,12 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
 		{
 		  /* deleted objects should have been filtered by now */
-		  error = obj_get (db_get_object (&value), TR_ATT_EVENT, &event_value);
+		  error = check_current_user_trigger (db_get_object (&value), &is_current_user_trigger);
 		  if (error != NO_ERROR)
 		    {
 		      break;
 		    }
-		  if (DB_VALUE_TYPE (&event_value) != DB_TYPE_INTEGER
-		      || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&event_value)))
+		  if (!is_current_user_trigger)
 		    {
 		      continue;
 		    }
@@ -2117,7 +2150,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
-		  else if (trigger->class_mop == NULL && ws_is_same_object (trigger->owner, Au_user))
+		  else
 		    {
 		      if (!active_filter || trigger->status == TR_STATUS_ACTIVE)
 			{
@@ -2171,7 +2204,7 @@ tr_update_user_cache (void)
   int error = NO_ERROR;
   DB_SET *table;
   DB_VALUE value;
-  DB_VALUE event_value;
+  bool is_current_user_trigger;
   TR_TRIGGER *trigger;
   int max, i;
   int save;
@@ -2209,13 +2242,12 @@ tr_update_user_cache (void)
 		      && db_get_object (&value) != NULL)
 		    {
 		      /* deleted objects will have been filtered by now */
-		      error = obj_get (db_get_object (&value), TR_ATT_EVENT, &event_value);
+		      error = check_current_user_trigger (db_get_object (&value), &is_current_user_trigger);
 		      if (error != NO_ERROR)
 			{
 			  break;
 			}
-		      if (DB_VALUE_TYPE (&event_value) != DB_TYPE_INTEGER
-			  || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&event_value)))
+		      if (!is_current_user_trigger)
 			{
 			  continue;
 			}
@@ -2226,7 +2258,7 @@ tr_update_user_cache (void)
 			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
-		      else if (trigger->class_mop == NULL && ws_is_same_object (trigger->owner, Au_user))
+		      else
 			{
 			  error = insert_trigger_list (&tr_User_triggers, trigger);
 			}
