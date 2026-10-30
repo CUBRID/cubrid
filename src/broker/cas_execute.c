@@ -825,9 +825,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       PT_NODE_TYPE ntype = (session->statements && session->statements[0])
 	? (PT_NODE_TYPE) session->statements[0]->node_type : PT_NODE_NONE;
 
+      /* defer to execute time only a statement that compiles once the bound values are given
+       * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); report the error of any other now */
       if (stmt_id == ER_PT_SEMANTIC
 	  && (ntype == PT_INSERT || ntype == PT_UPDATE || ntype == PT_DELETE
-	      || ntype == PT_MERGE || ntype == PT_METHOD_CALL || ntype == PT_EVALUATE))
+	      || ntype == PT_MERGE || ntype == PT_METHOD_CALL || ntype == PT_EVALUATE)
+	  && db_statement_needs_bound_values (session))
 	{
 	  db_close_session (session);
 	  session = NULL;

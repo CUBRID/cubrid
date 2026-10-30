@@ -646,6 +646,7 @@ extern "C"
   extern int db_get_start_line (DB_SESSION * session, int stmt);
 
   extern int db_get_statement_type (DB_SESSION * session, int stmt);
+  extern bool db_statement_needs_bound_values (DB_SESSION * session);
 
   extern void db_include_oid (DB_SESSION * session, int include_oid);
 

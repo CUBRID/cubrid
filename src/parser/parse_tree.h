@@ -4167,6 +4167,8 @@ struct parser_context
 					 * only place one is made: only then can type checking mark a STR_TO_DATE
 					 * format or ELT index position, and pt_set_host_var_format_classes computes
 					 * the values' format classes and ELT indexes */
+    unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
+					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
   } flag;
 };
 
