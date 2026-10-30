@@ -108,8 +108,9 @@ static void hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * con
 
 /* Hash Join Processing */
 static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
-static int hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
-				 VAL_DESCR * val_descr);
+STATIC_INLINE int hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe,
+					HASHJOIN_FETCH_INFO * build, VAL_DESCR * val_descr)
+  __attribute__ ((ALWAYS_INLINE));
 
 /* Build Phase */
 static int hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -2855,7 +2856,7 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
  *   build(in/out): Build side; is_ready keeps a fetched tuple from being fetched again.
  *   val_descr(in): Value descriptor for query evaluation.
  */
-static int
+STATIC_INLINE int
 hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
 		      VAL_DESCR * val_descr)
 {

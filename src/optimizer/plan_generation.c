@@ -3135,11 +3135,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   final_info = &projection_info.final;
 
   pass_through_info.wrapper_out_list = wrapper_out_list;
-  pass_through_info.has_expr = false;
-  pass_through_info.has_ineligible = false;
-
-  if (pass_through_info.wrapper_out_list != NULL
-      && !qo_check_pass_through_hashjoin (env, plan, pred_set, subqueries, &projection_info, &pass_through_info))
+  if (!qo_check_pass_through_hashjoin (env, plan, pred_set, subqueries, &projection_info, &pass_through_info))
     {
       pass_through_info.wrapper_out_list = NULL;
     }
@@ -3200,9 +3196,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 
   if (xasl != NULL && pass_through_info.wrapper_out_list != NULL)
     {
-      /* the join may read the uncorrelated subqueries ahead of it: add_uncorrelated () appended it last */
-      assert (hashjoin_xasl->next == NULL);
-
       XASL_SET_FLAG (xasl, XASL_PASS_THROUGH_WRAPPER);
     }
 
@@ -6747,10 +6740,10 @@ qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
     }
 
   /* each row: a name is copied by the plan, and qo_check_pass_through_hashjoin () checks an expression.
-   * A constant at the front would read as the hash key placeholder. */
+   * A constant at the front would read as the hash key placeholder, and VALUES has one PT_NODE_LIST per row. */
   select_list = query->info.query.q.select.list;
 
-  if (select_list->node_type == PT_VALUE)
+  if (select_list->node_type == PT_VALUE || select_list->node_type == PT_NODE_LIST)
     {
       return false;
     }
@@ -6787,7 +6780,7 @@ qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
  *   pred_set(in): terms left for the wrapper to evaluate
  *   subqueries(in): subqueries the wrapper would get: correlated ones run per row, uncorrelated ones follow the join
  *   projection_info(in): column lists of this join's two inputs
- *   pass_through_info(in/out): the out list the wrapper was built with;
+ *   pass_through_info(in/out): the out list the wrapper was built with, NULL for none;
  *			       has_expr is set when the join evaluates expressions in it
  *
  * Subqueries and predicates left to the wrapper are known only from the plan, and an input wrapper has no statement,
@@ -6799,7 +6792,6 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
 {
   PARSER_CONTEXT *parser;
   PT_NODE *node, *name, *save_next;
-  int name_count;
 
   PT_NODE *wrapper_out_list;
   bool has_expr, has_ineligible;
@@ -6819,14 +6811,18 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
   assert (subqueries != NULL);
   assert (projection_info != NULL);
   assert (pass_through_info != NULL);
-  assert (pass_through_info->wrapper_out_list != NULL);
-  assert (!pass_through_info->has_expr);
-  assert (!pass_through_info->has_ineligible);
+
+  pass_through_info->has_expr = false;
+  pass_through_info->has_ineligible = false;
 
   parser = QO_ENV_PARSER (env);
   assert (parser != NULL);
 
   wrapper_out_list = pass_through_info->wrapper_out_list;
+  if (wrapper_out_list == NULL)
+    {
+      return false;
+    }
 
   outer_info = &projection_info->outer;
   inner_info = &projection_info->inner;
@@ -6851,7 +6847,6 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
   /* the output columns: the input lists wrap their names and expressions in pointer nodes.
    * Their only bare PT_VALUE is hash_key = pt_make_integer_value (parser, -1),
    * which qo_init_projection_info () puts at the front. */
-  name_count = 0;
   has_expr = false;
   has_ineligible = false;
   can_evaluate = true;
@@ -6876,7 +6871,6 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
 	      break;
 	    }
 
-	  name_count++;
 	  continue;
 	}
 
@@ -6903,7 +6897,6 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
 	}
 
       has_expr = true;
-      name_count++;
     }
 
   bitset_delset (&expr_segs);
@@ -6923,8 +6916,7 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
   pass_through_info->has_expr = has_expr;
   pass_through_info->has_ineligible = has_ineligible;
 
-  /* the hash key placeholder alone names no input column, so it is not a join result */
-  return name_count > 0;
+  return true;
 }
 
 /*
