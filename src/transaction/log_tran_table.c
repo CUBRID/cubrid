@@ -6202,7 +6202,7 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool int
       return ER_KILL_TR_NOT_ALLOWED;
     }
 
-  /* CBRD-27447: always checked on the server, never skipped on the client's word */
+  /* always checked on the server, never skipped on the client's word */
   error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
   if (error != NO_ERROR)
     {
