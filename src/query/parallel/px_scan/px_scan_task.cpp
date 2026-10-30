@@ -955,7 +955,8 @@ namespace parallel_scan
 	    index_page = nullptr;
 	    index_slot_hint = NULL_SLOTID;
 	    index_range_idx = -1;
-	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page, &index_slot_hint,
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, m_slot_iterator.held_leaf (),
+			index_page, &index_slot_hint,
 			&index_range_idx);
 	  }
 	else

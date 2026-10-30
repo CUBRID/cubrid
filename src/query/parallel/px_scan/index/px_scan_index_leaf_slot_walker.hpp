@@ -65,9 +65,18 @@ namespace parallel_index_scan
       /* Reset page/key cursor; unfix m_page if still held. */
       void cleanup_on_reset (THREAD_ENTRY *thread_p);
 
+      /* unfixes m_page through the dispatcher, which must know when the frontier leaf goes away. */
+      void release_leaf (THREAD_ENTRY *thread_p);
+
       bool has_page () const
       {
 	return m_page != nullptr;
+      }
+
+      /* the leaf this worker holds until its next leaf is fixed; get_next_page_with_fix may release it. */
+      PAGE_PTR &held_leaf ()
+      {
+	return m_page;
       }
 
       /* Sole resetter of m_current_range_idx — called by slot_iterator only on fetch's descent branch (range_idx >= 0). */

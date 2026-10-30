@@ -555,6 +555,7 @@ extern void ws_reset_authorization_cache (void);
 extern void ws_clear_hints (MOP obj, bool leave_pinned);
 extern void ws_clear_all_hints (bool retain_lock);
 extern void ws_abort_mops (bool only_unpinned);
+extern void ws_set_defer_free (bool defer);
 extern void ws_decache_allxlockmops_but_norealclasses (void);
 
 /* Debugging functions */
