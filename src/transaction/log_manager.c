@@ -3998,8 +3998,15 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
 
+      /* While an operation that flush-marks its replication records (serial update, INCR/DECR, checksumdb) holds its
+       * mark open (repl_start_flush_mark), a system operation ending inside it (a page allocation during the INCR's
+       * heap update, for example) must not write the marked records: an update record gets its log position only
+       * after the heap update, so it would be written without one, and the marking operation may still abort, which
+       * drops the unwritten records but cannot take back written ones. The marking operation ends the mark
+       * (repl_end_flush_mark) before its own SYSOP_END, which writes them. fl_mark_repl_recidx is -1 exactly when no
+       * mark is open. */
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
-	  && log_does_allow_replication () == true)
+	  && log_does_allow_replication () == true && tdes->fl_mark_repl_recidx == -1)
 	{
 	  repl_start_index = tdes->append_repl_recidx < 0 ? 0 : tdes->append_repl_recidx;
 	  for (int item_index = repl_start_index; item_index < tdes->cur_repl_record; item_index++)
@@ -4044,14 +4051,16 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  || (LOG_TDES_LAST_SYSOP (tdes)->repl_flushed && !LOG_CHECK_LOG_APPLIER (thread_p)
 	      && tdes->is_active_worker_transaction () && log_does_allow_replication () == true))
 	{
-	  /* Commit order: label the operation with the latest coordinate published so far. The slave
-	   * applies it as its own task once everything before it is applied, and the history floor
-	   * raised below makes every later transaction wait for it. No key is published.
+	  /* Commit order: the writeset label (LOG_DUMMY_WSET_LABEL, written right before this SYSOP_END) holds the
+	   * log position of the latest commit (or labeled SYSOP_END) written before this operation, so the slave
+	   * applies it as its own task only after everything before it. The history floor is raised to this
+	   * SYSOP_END below, so no later transaction gets a lower label and every later transaction waits for it.
+	   * The keys this operation changed are not registered in the history: it is ordered by the label alone.
 	   * Every system operation whose replication records reached the log while it was the innermost one
 	   * is labeled, whatever its end type: checksumdb appends its statement before log_sysop_commit, and
-	   * an INCR whose heap update allocates a page has the records appended at the SYSOP_END of the
-	   * file allocation (a logical undo). An unlabeled SYSOP_END leaves the records to the outer
-	   * transaction on the slave, which applies them at the outer commit or drops them on its abort.
+	   * records an INCR attached to its transaction left unwritten reach the log at the SYSOP_END of a later
+	   * operation of any type. An unlabeled SYSOP_END leaves the records to the outer transaction on the
+	   * slave, which applies them at the outer commit or drops them on its abort.
 	   *
 	   * TODO: Such an operation could instead probe and publish the keys it collected on its own
 	   * SYSOP_END coordinate, so that only a later change to the same serial waits for it. That is
