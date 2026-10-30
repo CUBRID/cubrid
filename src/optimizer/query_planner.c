@@ -15475,10 +15475,6 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
       goto cleanup;
     }
 
-  if (statement->info.query.q.select.connect_by)
-    {
-      goto cleanup;
-    }
   for (t = 0; t < (signed) plan->info->planner->T; t++)
     {
       if (QO_TERM_CLASS (&plan->info->planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
