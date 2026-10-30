@@ -6174,6 +6174,16 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " comment = ");
       q = pt_append_varchar (parser, q, r1);
       break;
+    case PT_CHANGE_REPLICATION:
+      {
+	const PT_NODE *replication_node = p->info.alter.alter_clause.replication.tbl_replication;
+	assert (replication_node != NULL);
+	assert (replication_node->node_type == PT_VALUE);
+	assert (replication_node->type_enum == PT_TYPE_INTEGER);
+	q = pt_append_nulstring (parser, q, " replication = ");
+	q = pt_append_nulstring (parser, q, replication_node->info.value.data_value.i ? "on" : "off");
+      }
+      break;
     case PT_CHANGE_COLLATION:
       if (p->info.alter.alter_clause.collation.charset != -1)
 	{
