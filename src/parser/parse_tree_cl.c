@@ -19393,7 +19393,7 @@ pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_p
     {
     case PT_TYPE_SMALLINT:
     case PT_TYPE_INTEGER:
-      if (to_type == PT_TYPE_DOUBLE)
+      if (to_type == PT_TYPE_DOUBLE || (from_type == PT_TYPE_SMALLINT && to_type == PT_TYPE_FLOAT))
 	{
 	  return true;
 	}
@@ -19409,6 +19409,12 @@ pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_p
 		  && to->data_type->info.data_type.dec_precision >= from->data_type->info.data_type.dec_precision);
 	}
       return PT_IS_CHAR_STRING_TYPE (to_type);
+
+    case PT_TYPE_FLOAT:
+      return (to_type == PT_TYPE_FLOAT || to_type == PT_TYPE_DOUBLE);
+
+    case PT_TYPE_DATE:
+      return (to_type == PT_TYPE_DATE || to_type == PT_TYPE_DATETIME);
 
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:

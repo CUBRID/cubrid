@@ -30,10 +30,10 @@
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
 static PT_NODE *qo_check_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_TYPE_ENUM qo_get_host_var_bound_type (PARSER_CONTEXT * parser, const PT_NODE * host_var);
 static bool qo_eq_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * col_side, const PT_NODE * other_side);
+static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
 static PT_NODE *qo_reduce_outer_joined_tbls (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
 static void qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query);
 static bool qo_is_exclude_spec (PT_NODE * exclude_spec_point_list, PT_NODE * spec);
