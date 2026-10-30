@@ -11311,6 +11311,13 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
 	  db_make_null (&value->dbvalue);
 	}
+      else if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue) && !DB_IS_NULL (attr_val))
+	{
+	  /* the NOT NULL constraint is checked before the coercion, but a non-NULL value can be NULL after it,
+	   * as '' to NUMERIC with numeric_empty_string_as_null */
+	  ret = ER_NULL_CONSTRAINT_VIOLATION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+	}
     }
 
   if (ret != NO_ERROR)
@@ -17300,7 +17307,10 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
       if (!DB_IS_NULL (&orig_value))
 	{
-	  assert (!DB_IS_NULL (&(value->dbvalue)));
+	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null */
+	  assert (!DB_IS_NULL (&(value->dbvalue))
+		  || (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
+		      && QSTR_IS_ANY_CHAR (src_type)));
 	}
 
       if (log_warning)
