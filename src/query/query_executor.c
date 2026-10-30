@@ -877,7 +877,7 @@ static UPDDEL_MVCC_COND_REEVAL *qexec_mvcc_cond_reev_set_scan_order (XASL_NODE *
 static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * classes, int count);
 static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
-static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p);
+static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p, LOG_LSA * savept_lsa_at_start);
 static LOCATOR_LOCK_POLICY qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info);
 static LOCATOR_LOCK_POLICY qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy,
 							     bool statement_ends_locks,
@@ -11384,6 +11384,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* whether the select phase or the force phase locks the rows */
+  LOG_LSA savept_lsa_at_start;	/* savepoints declared after this one are not the client's to vouch for */
   bool statement_ends_locks;
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* base_lock_policy, for the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
@@ -11396,7 +11397,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     }
 
   /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
-  statement_ends_locks = qexec_start_statement_lock_scope (thread_p);
+  statement_ends_locks = qexec_start_statement_lock_scope (thread_p, &savept_lsa_at_start);
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -11999,9 +12000,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	}
     }
 
-  /* Later writers wait on our MVCCID self-lock, so the row locks can end here -- except under a savepoint, whose
-   * partial rollback would undo a change a writer is waiting on. */
-  lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
+  /* Later writers wait on our MVCCID self-lock, so the row locks can end here -- except under a savepoint that can
+   * still be rolled back to, whose partial rollback would undo a change a writer is waiting on. */
+  lock_transient_scope_end (thread_p, !logtb_has_reachable_savepoint (thread_p, &savept_lsa_at_start));
 
   qexec_close_scan (thread_p, specp);
 
@@ -12268,6 +12269,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* whether the select phase or the force phase locks the rows */
+  LOG_LSA savept_lsa_at_start;	/* savepoints declared after this one are not the client's to vouch for */
   bool statement_ends_locks;
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* base_lock_policy, for the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
@@ -12281,7 +12283,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
 
   /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
-  statement_ends_locks = qexec_start_statement_lock_scope (thread_p);
+  statement_ends_locks = qexec_start_statement_lock_scope (thread_p, &savept_lsa_at_start);
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -12646,9 +12648,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
-  /* As in qexec_execute_update (); the prepare record carries our MVCCID self-lock across 2PC.
-   * logtb_has_active_savepoint () also counts system savepoints, which keeps the locks more often than needed. */
-  lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
+  /* As in qexec_execute_update (); the prepare record carries our MVCCID self-lock across 2PC.  A system
+   * savepoint whose statement is over does not count (logtb_has_reachable_savepoint ()). */
+  lock_transient_scope_end (thread_p, !logtb_has_reachable_savepoint (thread_p, &savept_lsa_at_start));
 
   qexec_close_scan (thread_p, specp);
 
@@ -29274,16 +29276,19 @@ qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INF
  * qexec_start_statement_lock_scope () - Open the transient lock scope of a DELETE or UPDATE
  *   return: whether the statement's row locks end with it
  *   thread_p(in): thread entry
+ *   savept_lsa_at_start(out): the transaction's savepoint LSA as the statement starts; a savepoint declared
+ *			       after it is not the client's to vouch for
  *
  * Note: the scope opens either way to keep the nesting balanced; every exit closes it with lock_transient_scope_end ().
  *	 qexec_open_scan () decides the select phase on the same two conditions (outermost, READ COMMITTED), so both
  *	 phases agree.
  */
 static bool
-qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
+qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p, LOG_LSA * savept_lsa_at_start)
 {
   bool outermost = lock_transient_scope_start (thread_p);
 
+  logtb_get_savepoint_lsa (thread_p, savept_lsa_at_start);
   return outermost && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED;
 }
 

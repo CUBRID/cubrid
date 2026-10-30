@@ -109,6 +109,13 @@ static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
  */
 static CUB_THREAD_LOCAL DB_NAMELIST *user_savepoint_list = NULL;
 
+/* A system savepoint gives one client statement its atomicity, and only that statement rolls back to it.  The
+ * server is told nothing when the statement succeeds, so the client remembers here that one may still be in use:
+ * set when a system savepoint is declared, cleared when the top-level statement that declared it is over.  One
+ * declared outside any statement (db_put through the API, for one) stays set to the end of the transaction:
+ * nothing marks where the operation that declared it ends. */
+static bool system_savepoint_is_live = false;
+
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
 
@@ -1036,6 +1043,45 @@ tran_free_savepoint_list (void)
 {
   nlist_free (user_savepoint_list);
   user_savepoint_list = NULL;
+  system_savepoint_is_live = false;
+}
+
+/*
+ * tran_has_reachable_savepoint - Can a partial rollback still undo what this transaction does next?
+ *
+ * return: true if a user savepoint is declared, or a system savepoint may still be in use
+ *
+ * NOTE: What the server holds is the savepoint chain, which keeps every savepoint the transaction ever declared
+ *       and cannot tell either kind from the other.  This is the client's answer, sent with each query; see
+ *       NO_REACHABLE_SAVEPOINT.  A user who rolls back to a system savepoint by its generated name is not
+ *       accounted for: nothing refuses that today, and it is not a documented use.
+ */
+bool
+tran_has_reachable_savepoint (void)
+{
+  return user_savepoint_list != NULL || system_savepoint_is_live;
+}
+
+/*
+ * tran_has_live_system_savepoint - May a system savepoint still be rolled back to?
+ *
+ * return: true if one was declared and not given up since
+ */
+bool
+tran_has_live_system_savepoint (void)
+{
+  return system_savepoint_is_live;
+}
+
+/*
+ * tran_end_system_savepoints - The top-level statement is over; nothing rolls back to its system savepoints now
+ *
+ * return:
+ */
+void
+tran_end_system_savepoints (void)
+{
+  system_savepoint_is_live = false;
 }
 
 /*
@@ -1144,14 +1190,8 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	}
     }
 
-  if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  /* add savepoint to local list */
+  /* add savepoint to local list before the server holds it: a user savepoint the list does not know of would let
+   * NO_REACHABLE_SAVEPOINT go out under it */
   if (savepoint_type == USER_SAVEPOINT)
     {
       error_code = tran_add_savepoint (savept_name);
@@ -1159,6 +1199,26 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	{
 	  return error_code;
 	}
+    }
+
+  if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
+    {
+      if (savepoint_type == USER_SAVEPOINT)
+	{
+	  DB_NAMELIST *sp = user_savepoint_list;
+
+	  user_savepoint_list = sp->next;
+	  db_ws_free ((char *) sp->name);
+	  db_ws_free (sp);
+	}
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  if (savepoint_type != USER_SAVEPOINT)
+    {
+      system_savepoint_is_live = true;
     }
 
   return error_code;
