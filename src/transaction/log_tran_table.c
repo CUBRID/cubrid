@@ -790,7 +790,7 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
  * logtb_am_i_dba_group_client () - is the caller DBA, or a member of the DBA
  *   group, according to the catalog?
  *
- * CBRD-27447: replaces the flag kill_or_interrupt took from the client.
+ * Replaces the flag kill_or_interrupt took from the client.
  */
 static bool
 logtb_am_i_dba_group_client (THREAD_ENTRY * thread_p)
