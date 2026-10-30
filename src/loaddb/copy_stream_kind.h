@@ -32,4 +32,7 @@
 
 #define STREAM_KIND_COPY 0
 
+/* The first int of COPY's config blob. A server accepts every version up to its own. */
+#define COPY_CONFIG_VERSION 1
+
 #endif /* _COPY_STREAM_KIND_H_ */

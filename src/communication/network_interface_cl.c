@@ -12181,10 +12181,11 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
   char *config = NULL;
   char *ptr;
 
-  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk
+  /* COPY config blob: version + string + ncols + format + delimiter + quote + header + bulk
    * + ncols * col_type + ncols * attribute id. The attribute ids carry the user's
    * column list, which the column types alone cannot express. */
-  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE * 2);
+  config_size = OR_INT_SIZE + or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6)
+    + (ncols * OR_INT_SIZE * 2);
 
   config = (char *) malloc (config_size);
   if (config == NULL)
@@ -12193,7 +12194,8 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  ptr = or_pack_string (config, table_name);
+  ptr = or_pack_int (config, COPY_CONFIG_VERSION);
+  ptr = or_pack_string (ptr, table_name);
   ptr = or_pack_int (ptr, ncols);
   ptr = or_pack_int (ptr, format);
   ptr = or_pack_int (ptr, delimiter);

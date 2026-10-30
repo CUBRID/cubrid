@@ -610,8 +610,8 @@ copy_session::abort (THREAD_ENTRY *thread_p)
  *   error_code(out): NO_ERROR or the failure code
  *   return: opened copy_session on success, NULL on error
  *
- * COPY config encoding: table_name (string), num_cols (int), format (int),
- * delimiter (int), quote (int), header (int), bulk (int),
+ * COPY config encoding: version (int), table_name (string), num_cols (int),
+ * format (int), delimiter (int), quote (int), header (int), bulk (int),
  * col_types (int[num_cols]), attr_ids (int[num_cols]).
  */
 static stream_session *
@@ -628,6 +628,7 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
   int quote = 0;
   int header = 0;
   int bulk = 0;
+  int version = 0;
   DB_TYPE *col_types = NULL;
   int *attr_ids = NULL;
   copy_session *session = NULL;
@@ -636,7 +637,24 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
 
   /* The blob comes straight off the wire, so bound every read by config_len
    * before trusting a length taken from it. */
-  if (config_len < OR_INT_SIZE)
+  if (config_len < 2 * OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
+  /* a newer client says so by its version, and is told which one to resend in */
+  ptr = or_unpack_int (ptr, &version);
+  if (version > COPY_CONFIG_VERSION)
+    {
+      char msg[96];
+
+      snprintf (msg, sizeof (msg), "COPY configuration version %d is newer than %d, the highest this server accepts",
+		version, COPY_CONFIG_VERSION);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, msg);
+      *error_code = ER_STREAM_SESSION_ERROR;
+      goto exit;
+    }
+  if (version < 1)
     {
       goto invalid_config;
     }
