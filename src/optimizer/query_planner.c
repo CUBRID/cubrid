@@ -385,11 +385,14 @@ static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
+static void qo_set_groupby_skip (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
 static int qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
+static bool qo_plan_is_groupby_skip_candidate (QO_PLAN * plan);
+static bool qo_check_join_for_groupby_skip (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
@@ -612,6 +615,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
+  plan->skip_groupby = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
@@ -1170,6 +1174,40 @@ qo_set_use_desc (QO_PLAN * plan)
 }
 
 /*
+ * qo_set_groupby_skip () - sets the groupby_skip index flag of the outermost
+ *			    index scan
+ *
+ * return: nothing
+ * plan(in):
+ *
+ * note: unlike qo_set_use_desc (), it does not go through a sort plan
+ */
+static void
+qo_set_groupby_skip (QO_PLAN * plan)
+{
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      if (plan->plan_un.scan.index)
+	{
+	  plan->plan_un.scan.index->head->groupby_skip = true;
+	}
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      qo_set_groupby_skip (plan->plan_un.join.outer);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      qo_set_groupby_skip (plan->plan_un.follow.head);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
  * qo_unset_multi_range_optimization () - set all multi_range_opt flags
  *					  on all indexes to false
  *
@@ -1390,6 +1428,12 @@ qo_top_plan_new (QO_PLAN * plan)
 	      parser_free_node (parser, group_sort_list);
 	    }
 
+	  if (groupby_skip && plan->plan_type != QO_PLANTYPE_SCAN && !qo_check_join_for_groupby_skip (plan))
+	    {
+	      /* the plans above the outermost index scan do not keep its order */
+	      groupby_skip = false;
+	    }
+
 	  if (groupby_skip)
 	    {
 	      /* if the plan is index_groupby, we validate the plan */
@@ -1406,6 +1450,12 @@ qo_top_plan_new (QO_PLAN * plan)
 	      if (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index)
 		{
 		  plan->plan_un.scan.index->head->groupby_skip = true;
+		}
+	      else if (plan->plan_type == QO_PLANTYPE_JOIN)
+		{
+		  /* the index flag is shared by every candidate plan using the index; keep the verdict on the plan
+		   * and let qo_search_planner () raise the flag once the plan is chosen */
+		  plan->skip_groupby = true;
 		}
 	    }
 	  else
@@ -7224,8 +7274,11 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
       return 0;
     }
 
-  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
-  if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
+  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan.
+   * The flag of a plan that is not top-rooted yet is still down, so judge it as a candidate, as the ORDER BY branch
+   * above does. */
+  if (qo_is_iscan_from_groupby (plan)
+      && !(plan->top_rooted ? plan->plan_un.scan.index->head->groupby_skip : qo_plan_is_groupby_skip_candidate (plan)))
     {
       qo_plan_release (plan);
       return 0;
@@ -10866,7 +10919,7 @@ qo_search_planner (QO_PLANNER * planner)
 {
   int i, j, nsegs;
   bool broken;
-  QO_PLAN *plan;
+  QO_PLAN *plan, *groupby_plan;
   QO_NODE *node;
   QO_INFO *info;
   BITSET_ITERATOR si;
@@ -11243,6 +11296,21 @@ qo_search_planner (QO_PLANNER * planner)
   if (plan == NULL)
     {
       goto end;
+    }
+
+  /* raise the groupby_skip flag of the chosen join plan (see qo_top_plan_new ()) under the ORDER BY / DISTINCT
+   * sorts, before qo_set_use_desc () reads it */
+  groupby_plan = plan;
+  while (groupby_plan->plan_type == QO_PLANTYPE_SORT
+	 && (groupby_plan->plan_un.sort.sort_type == SORT_ORDERBY
+	     || groupby_plan->plan_un.sort.sort_type == SORT_DISTINCT))
+    {
+      groupby_plan = groupby_plan->plan_un.sort.subplan;
+    }
+
+  if (groupby_plan->skip_groupby)
+    {
+      qo_set_groupby_skip (groupby_plan);
     }
 
   if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
@@ -15371,6 +15439,142 @@ cleanup:
     }
 
   return is_orderby_skip;
+}
+
+/*
+ * qo_plan_is_groupby_skip_candidate () - verify if a plan is a candidate for
+ *					  groupby skip
+ * return : true/false
+ * plan (in) : plan to verify
+ */
+static bool
+qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *group_by, *statement, *entity;
+  PT_NODE *group_sort_list = NULL;
+  QO_ENV *env;
+  bool is_prefix = false, is_groupby_skip = false;
+  int t;
+
+  if (plan == NULL || plan->info == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  env = plan->info->env;
+
+  parser = QO_ENV_PARSER (env);
+  statement = QO_ENV_PT_TREE (env);
+  group_by = statement->info.query.q.select.group_by;
+
+  /* if we have rollup, we do not skip the group by */
+  if (group_by == NULL || group_by->flag.with_rollup)
+    {
+      goto cleanup;
+    }
+
+  for (t = 0; t < (signed) plan->info->planner->T; t++)
+    {
+      if (QO_TERM_CLASS (&plan->info->planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  goto cleanup;
+	}
+    }
+
+  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_prefix, false);
+  if (group_sort_list == NULL || is_prefix)
+    {
+      goto cleanup;
+    }
+
+  /* no descending retry: qo_top_plan_new () does not retry it on a join plan */
+  is_groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, group_by, statement);
+
+  /*
+   * In RIGHT OUTER JOIN, all leading tables are used as null-supplying,
+   * so skip GROUP BY cannot be applied.
+   */
+  if (qo_is_iscan_from_groupby (plan))
+    {
+      entity = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)->next;
+      for (; entity != NULL; entity = entity->next)
+	{
+	  if (entity->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	    {
+	      is_groupby_skip = false;
+	    }
+	}
+    }
+
+cleanup:
+  if (group_sort_list != NULL)
+    {
+      parser_free_tree (parser, group_sort_list);
+    }
+
+  return is_groupby_skip;
+}
+
+/*
+ * qo_check_join_for_groupby_skip () - check if join plan hands the order of its
+ *				       outermost index scan on to its output
+ * return : true/false
+ * plan (in) : join plan judged by qo_top_plan_new (), before the final sorts
+ *
+ * note: qo_plan_compute_iscan_sort_list () takes the order from the outermost
+ *	 index scan whatever lies above it, and qexec_groupby_index () trusts its
+ *	 input to be grouped. So every plan above the scan must keep its order:
+ *	 - a hash or merge join does not (need_final_sort)
+ *	 - a right / full outer join does not keep the outer rows in place
+ *	 - a sort plan re-orders the rows
+ *	 - a partitioned table or class hierarchy inner is read one scan block at
+ *	   a time, and the executor runs the outer again for every block
+ *	   (qexec_next_scan_block_iterations ())
+ */
+static bool
+qo_check_join_for_groupby_skip (QO_PLAN * plan)
+{
+  QO_PLAN *inner;
+
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN || plan->need_final_sort)
+    {
+      return false;
+    }
+
+  /* find the outermost scan plan */
+  while (plan && plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  break;
+
+	case QO_PLANTYPE_JOIN:
+	  if (plan->plan_un.join.join_type != NO_JOIN && plan->plan_un.join.join_type != JOIN_INNER
+	      && plan->plan_un.join.join_type != JOIN_LEFT)
+	    {
+	      return false;
+	    }
+	  inner = plan->plan_un.join.inner;
+	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node))
+	    {
+	      /* the outer rows repeat for every scan block of such an inner; a sort inner is one list file */
+	      return false;
+	    }
+	  plan = plan->plan_un.join.outer;
+	  break;
+
+	default:
+	  /* a sort plan re-orders the rows */
+	  plan = NULL;
+	  break;
+	}
+    }
+
+  return qo_is_interesting_order_scan (plan);
 }
 
 /*
