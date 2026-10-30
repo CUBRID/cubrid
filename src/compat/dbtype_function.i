@@ -1656,12 +1656,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
 
-      if (byte_size == DB_NUMERIC_BUF_SIZE)
-	{
-	  /* reached via call paths other than mr_data_*val_numeric() or mr_data_*mem_numeric(). */
-	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
-	}
-      else if (!numeric_repr_read_disk (value->data.num.d.buf, num, byte_size))
+      if (!numeric_repr_read_disk (value->data.num.d.buf, num, byte_size))
 	{
 	  /* unreachable: byte_size is DB_NUMERIC_BUF_SIZE or the size of a disk value */
 	  assert_release_error (false);
