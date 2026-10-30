@@ -32,6 +32,7 @@
 #include "locator_sr.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "partition_sr.h"
 #include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
@@ -46,6 +47,9 @@
 
 namespace cubload
 {
+
+  static int get_class_pruning_type (cubthread::entry *thread_ref, const OID &class_oid, int &pruning_type,
+				     OID &root_oid);
 
   server_class_installer::server_class_installer (session &session, error_handler &error_handler)
     : m_session (session)
@@ -77,8 +81,15 @@ namespace cubload
     to_lowercase_identifier (class_name, eb);
 
     const char *lower_case_class_name = eb.get_read_ptr ();
+    LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    if (locate_class_for_load (lower_case_class_name, class_oid, found) != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    if (found != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
@@ -115,8 +126,96 @@ namespace cubload
     register_class_with_attributes (class_name->val, cmd_spec);
   }
 
+  //
+  // locate_class_for_load () - find the class named by a %id or %class line and lock it with BU_LOCK
+  //
+  // return     : NO_ERROR or error code; found tells whether the class exists
+  // class_name : lowercase class name
+  // class_oid  : OID of the class
+  // found      : result of the class name lookup
+  //
+  // A partition is locked only after SCH_S on its partitioned class. DDL that changes a partitioned class (ALTER,
+  // CREATE INDEX) takes SCH_M on it before it takes SCH_M on its partitions, so locking the partitioned class first
+  // avoids a deadlock with such DDL. DROP of a partitioned table is an exception: it holds SCH_S on the partitioned
+  // class, takes SCH_M on its first partition and only then upgrades the partitioned class to SCH_M; if that overlaps
+  // the gap between the SCH_S grant and the BU request below on the same partition, the deadlock detector aborts one
+  // of the two transactions.
+  //
+  int
+  server_class_installer::locate_class_for_load (const char *class_name, OID &class_oid, LC_FIND_CLASSNAME &found)
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    int pruning_type = DB_NOT_PARTITIONED_CLASS;
+    int locked_pruning_type = DB_NOT_PARTITIONED_CLASS;
+    OID root_oid;
+    OID locked_root_oid;
+    OID unlocked_class_oid;
+    int error_code = NO_ERROR;
+
+    if (m_session.get_args ().syntax_check)
+      {
+	found = locate_class (class_name, class_oid);
+	return NO_ERROR;
+      }
+
+    // find the class without a lock, to know whether its partitioned class must be locked first
+    OID_SET_NULL (&root_oid);
+    OID_SET_NULL (&unlocked_class_oid);
+    found = locate_class (class_name, unlocked_class_oid, NULL_LOCK);
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	return error_code;
+      }
+    else if (found == LC_CLASSNAME_EXIST)
+      {
+	error_code = get_class_pruning_type (&thread_ref, unlocked_class_oid, pruning_type, root_oid);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+
+	if (pruning_type == DB_PARTITION_CLASS)
+	  {
+	    // The object loader checks the rows of a partition against a pruning context of the partitioned class that
+	    // it keeps for a whole batch, and that context points into the partition cache. Hold SCH_S on the
+	    // partitioned class until the session ends, so that no DDL can change, or remove from the cache, the
+	    // partition definition while batches are loading. Load workers do not lock, so take it here, in the
+	    // session transaction that also holds BU on the partition.
+	    if (lock_object (&thread_ref, &root_oid, oid_Root_class_oid, SCH_S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	      {
+		ASSERT_ERROR_AND_SET (error_code);
+		return error_code;
+	      }
+	  }
+      }
+
+    found = locate_class (class_name, class_oid);
+    if (found != LC_CLASSNAME_EXIST)
+      {
+	return NO_ERROR;
+      }
+
+    // the class was first found without a lock; make sure it did not change before the locks were granted
+    error_code = get_class_pruning_type (&thread_ref, class_oid, locked_pruning_type, locked_root_oid);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    if (locked_pruning_type != pruning_type
+	|| (pruning_type == DB_PARTITION_CLASS
+	    && (!OID_EQ (&class_oid, &unlocked_class_oid) || !OID_EQ (&locked_root_oid, &root_oid))))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+	return ER_PARTITION_WORK_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
   LC_FIND_CLASSNAME
-  server_class_installer::locate_class (const char *class_name, OID &class_oid)
+  server_class_installer::locate_class (const char *class_name, OID &class_oid, LOCK lock)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
@@ -124,7 +223,7 @@ namespace cubload
 
     if (strchr (class_name, '.'))
       {
-	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, lock);
 
 	/* maybe unloaded from version 11.2+ or later */
 	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
@@ -135,7 +234,7 @@ namespace cubload
       }
     else if (sm_check_system_class_by_name (class_name))
       {
-	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, lock);
       }
     else
       {
@@ -156,7 +255,7 @@ namespace cubload
 	assert (intl_identifier_lower_string_size (user_name) < DB_MAX_USER_LENGTH);
 	intl_identifier_lower (user_specified_name, realname);
 
-	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
+	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, lock);
 	if (found == LC_CLASSNAME_EXIST)
 	  {
 	    return found;
@@ -165,7 +264,7 @@ namespace cubload
 	/* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
 	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	  {
-	    found_again = locate_class_for_all_users (class_name, class_oid);
+	    found_again = locate_class_for_all_users (class_name, class_oid, lock);
 	    if (found_again == LC_CLASSNAME_EXIST)
 	      {
 		return found_again;
@@ -182,7 +281,7 @@ namespace cubload
   }
 
   LC_FIND_CLASSNAME
-  server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
+  server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid, LOCK lock)
   {
 #define CATCLS_USER_ATTR_IDX_NAME 10
     cubthread::entry &thread_ref = cubthread::get_entry ();
@@ -281,7 +380,7 @@ namespace cubload
 		intl_identifier_lower (user_name, downcase_user_name);
 		snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_only);
 
-		found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+		found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, lock);
 		if (found == LC_CLASSNAME_EXIST)
 		  {
 		    if (already_found)
@@ -360,7 +459,15 @@ namespace cubload
 	return;
       }
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
+    int error_code = locate_class_for_load (lower_case_class_name, class_oid, found);
+    if (error_code != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    if (found != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
 	  {
@@ -375,7 +482,7 @@ namespace cubload
 	return;
       }
 
-    int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
+    error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
     assert (attrinfo.num_values != -1);
     if (error_code != NO_ERROR)
       {
@@ -570,6 +677,70 @@ namespace cubload
     intl_identifier_lower (idname, eb.get_ptr ());
   }
 
+  //
+  // get_class_pruning_type () - decide which partition pruning type loaddb must use for the given target class
+  //
+  // return       : NO_ERROR or error code
+  // thread_ref   : thread entry
+  // class_oid    : OID of the class named by a %id or %class line
+  // pruning_type : DB_PARTITION_CLASS when class_oid is a partition of a partitioned class, so that the object
+  //                loader checks each record against the partition definition; DB_NOT_PARTITIONED_CLASS otherwise
+  // root_oid     : OID of the partitioned class when pruning_type is DB_PARTITION_CLASS
+  //
+  // Rows loaded into a partitioned class itself would need to be routed to the right partitions, which the loader
+  // does not do; that case keeps pruning disabled here.
+  //
+  static int
+  get_class_pruning_type (cubthread::entry *thread_ref, const OID &class_oid, int &pruning_type, OID &root_oid)
+  {
+    int error_code = NO_ERROR;
+    OR_PARTITION *partitions = NULL;
+    int parts_count = 0;
+
+    pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+    OID_SET_NULL (&root_oid);
+    error_code = partition_find_root_class_oid (thread_ref, &class_oid, &root_oid);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    if (OID_ISNULL (&root_oid) || OID_EQ (&root_oid, &class_oid))
+      {
+	// several superclasses, or not a subclass at all: class_oid cannot be a partition
+	return NO_ERROR;
+      }
+
+    error_code = heap_get_class_partitions (thread_ref, &root_oid, &partitions, &parts_count);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    if (partitions == NULL)
+      {
+	// plain inheritance: the superclass is not partitioned
+	return NO_ERROR;
+      }
+
+    // partitions[0] describes the partitioned class itself; the actual partitions follow
+    for (int i = 1; i < parts_count; i++)
+      {
+	if (OID_EQ (&partitions[i].class_oid, &class_oid))
+	  {
+	    pruning_type = DB_PARTITION_CLASS;
+	    break;
+	  }
+      }
+
+    heap_clear_partition_info (thread_ref, partitions, parts_count);
+
+    return NO_ERROR;
+  }
+
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
     : m_session (session)
     , m_error_handler (error_handler)
@@ -582,9 +753,11 @@ namespace cubload
     , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
+    , m_pcontext ()
+    , m_pcontext_loaded (false)
     , m_rows (0)
   {
-    //
+    partition_init_pruning_context (&m_pcontext);
   }
 
   void
@@ -595,12 +768,46 @@ namespace cubload
 
     assert (m_class_entry == NULL);
     m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
-    if (m_class_entry == NULL)
+    if (m_class_entry == NULL || m_class_entry->is_ignored ())
       {
 	return;
       }
 
     const OID &class_oid = m_class_entry->get_class_oid ();
+
+    if (!m_session.get_args ().syntax_check)
+      {
+	int pruning_type = DB_NOT_PARTITIONED_CLASS;
+	OID root_oid;
+
+	int error_code = get_class_pruning_type (m_thread_ref, class_oid, pruning_type, root_oid);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+
+	if (pruning_type == DB_PARTITION_CLASS)
+	  {
+	    // the session holds SCH_S on the partitioned class, which keeps the context below valid for the batch
+	    assert (lock_has_lock_on_object (&root_oid, oid_Root_class_oid, SCH_S_LOCK) == 1);
+
+	    error_code = partition_load_pruning_context (m_thread_ref, &class_oid, DB_PARTITION_CLASS, &m_pcontext);
+	    if (error_code == NO_ERROR && (m_pcontext.partitions == NULL || m_pcontext.selected_partition == NULL))
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+		error_code = ER_PARTITION_WORK_FAILED;
+	      }
+	    if (error_code != NO_ERROR)
+	      {
+		partition_clear_pruning_context (&m_pcontext);
+		partition_init_pruning_context (&m_pcontext);
+		m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+		return;
+	      }
+	    m_pcontext_loaded = true;
+	  }
+      }
 
     start_scancache (class_oid);
     start_attrinfo (class_oid);
@@ -616,6 +823,13 @@ namespace cubload
     stop_scancache ();
 
     m_recdes_collected.clear ();
+
+    if (m_pcontext_loaded)
+      {
+	partition_clear_pruning_context (&m_pcontext);
+	partition_init_pruning_context (&m_pcontext);
+	m_pcontext_loaded = false;
+      }
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -700,15 +914,34 @@ namespace cubload
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
+	bool is_record_valid = true;
+
 	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
 	    != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_pcontext_loaded && !m_error_handler.current_line_has_error ())
+	  {
+	    // A row loaded into a partition must belong to that partition.
+	    RECDES recdes = new_recdes.get_recdes ();
+	    const OID &class_oid = m_class_entry->get_class_oid ();
+	    if (partition_check_record_for_partition (&m_pcontext, &class_oid, &recdes) != NO_ERROR)
+	      {
+		m_error_handler.on_failure ();
+		is_record_valid = false;
+	      }
+	  }
+
+	if (m_session.is_failed ())
+	  {
 	    return;
 	  }
 
-	// Add the recdes to the collected array.
-	if (!m_error_handler.current_line_has_error ())
+	// Add the recdes to the collected array. A failure that is filtered by the error control file is not fatal; it
+	// marks the current line, and the mark must be cleared below so that the next line is not dropped as well.
+	if (is_record_valid && !m_error_handler.current_line_has_error ())
 	  {
 	    m_recdes_collected.push_back (std::move (new_recdes));
 	  }
