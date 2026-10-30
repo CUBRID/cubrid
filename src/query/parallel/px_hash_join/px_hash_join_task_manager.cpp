@@ -539,6 +539,7 @@ namespace parallel_query
 
 	  /* reuse TLS variables if already set */
 	  context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
+	  context->outptr_list = spawn_manager->get_outptr_list (m_manager->outptr_list);
 	  context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
 	  context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
 	  context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
@@ -560,6 +561,7 @@ namespace parallel_query
 
 	  /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
 	  context->val_descr = nullptr;
+	  context->outptr_list = nullptr;
 	  context->during_join_pred = nullptr;
 	  context->after_join_pred = nullptr;
 	  context->outer.regu_list_pred = nullptr;
@@ -703,6 +705,7 @@ namespace parallel_query
 
       /* reuse TLS variables if already set */
       m_context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
+      m_context->outptr_list = spawn_manager->get_outptr_list (m_manager->outptr_list);
       m_context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
       m_context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
       m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
@@ -825,6 +828,7 @@ cleanup:
 
       /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
       m_context->val_descr = nullptr;
+      m_context->outptr_list = nullptr;
       m_context->during_join_pred = nullptr;
       m_context->after_join_pred = nullptr;
       m_context->outer.regu_list_pred = nullptr;
@@ -1052,9 +1056,9 @@ cleanup:
 			}
 		    }			/* if (m_context->after_join_pred != nullptr) */
 
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							&outer->tuple_record, &inner->tuple_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      &outer->tuple_record, &inner->tuple_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
@@ -1278,17 +1282,20 @@ cleanup:
 		{
 		  need_skip_next = false;	/* init */
 
-		  if (m_context->after_join_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr || m_context->outptr_list != nullptr)
 		    {
-		      DB_LOGICAL ev_res;
-
-		      /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+		      /* No build match: null-pad the build side for the after-join predicate and the out list. */
 		      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 			   regu_var_p = regu_var_p->next)
 			{
 			  pr_clear_value (regu_var_p->value.vfetch_to);
 			}
 		      build->is_ready = true;
+		    }
+
+		  if (m_context->after_join_pred != nullptr)
+		    {
+		      DB_LOGICAL ev_res;
 
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
 		      if (ev_res == V_ERROR)
@@ -1307,9 +1314,9 @@ cleanup:
 		    }	/* if (m_context->after_join_pred != nullptr) */
 
 		  /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							outer->fill_record, inner->fill_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      outer->fill_record, inner->fill_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
@@ -1416,9 +1423,9 @@ cleanup:
 			}
 		    }			/* if (m_context->after_join_pred != nullptr) */
 
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							&outer->tuple_record, &inner->tuple_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      &outer->tuple_record, &inner->tuple_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
@@ -1441,17 +1448,20 @@ cleanup:
 
 	      if (!any_key_matched)
 		{
-		  if (m_context->after_join_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr || m_context->outptr_list != nullptr)
 		    {
-		      DB_LOGICAL ev_res;
-
-		      /* No build match: null-pad the build side, then evaluate the after-join predicate. */
+		      /* No build match: null-pad the build side for the after-join predicate and the out list. */
 		      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 			   regu_var_p = regu_var_p->next)
 			{
 			  pr_clear_value (regu_var_p->value.vfetch_to);
 			}
 		      build->is_ready = true;
+		    }
+
+		  if (m_context->after_join_pred != nullptr)
+		    {
+		      DB_LOGICAL ev_res;
 
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
 		      if (ev_res == V_ERROR)
@@ -1470,9 +1480,9 @@ cleanup:
 		    }	/* if (m_context->after_join_pred != nullptr) */
 
 		  /* no match — emit fill_record (null on null-supplying side) */
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							outer->fill_record, inner->fill_record,
-							m_manager->merge_info, &overflow_record);
+		  error = hjoin_add_tuple_to_list_id (&thread_ref, m_context, list_id,
+						      outer->fill_record, inner->fill_record,
+						      m_manager->merge_info, &overflow_record);
 		  if (error != NO_ERROR)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);

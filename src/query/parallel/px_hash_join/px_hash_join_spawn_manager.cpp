@@ -36,6 +36,7 @@ namespace parallel_query
       : m_thread_ref (thread_ref)
       , m_spawner (nullptr)
       , m_val_descr (nullptr)
+      , m_outptr_list (nullptr)
       , m_during_join_pred (nullptr)
       , m_after_join_pred (nullptr)
       , m_outer_regu_list_pred (nullptr)
@@ -103,6 +104,12 @@ namespace parallel_query
     spawn_manager::get_val_descr (VAL_DESCR *src)
     {
       return spawn (src, m_val_descr);
+    }
+
+    OUTPTR_LIST *
+    spawn_manager::get_outptr_list (OUTPTR_LIST *src)
+    {
+      return spawn (src, m_outptr_list);
     }
 
     PRED_EXPR *

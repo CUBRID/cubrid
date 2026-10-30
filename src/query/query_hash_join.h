@@ -305,6 +305,8 @@ typedef struct hashjoin_context
   HASHJOIN_FETCH_INFO *probe;
 
   HASH_LIST_SCAN hash_scan;
+
+  OUTPTR_LIST *outptr_list;
   PRED_EXPR *during_join_pred;
   PRED_EXPR *after_join_pred;
   VAL_DESCR *val_descr;
@@ -327,7 +329,11 @@ typedef struct hashjoin_manager
   JOIN_TYPE join_type;
   int key_cnt;
 
+  /* Copy of a member of HASHJOIN_PROC_NODE. */
+  bool has_ineligible;
+
   /* Pointers to members of XASL_NODE. */
+  OUTPTR_LIST *outptr_list;
   PRED_EXPR *during_join_pred;
   PRED_EXPR *after_join_pred;
   int num_parallel_threads;
@@ -391,6 +397,9 @@ DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe
 int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
 				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
+int hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+				QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
+				QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
 void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);

@@ -49,6 +49,7 @@ namespace parallel_query
 	/* get_val_descr must be called first,
 	 * because it creates a DB_VALUE reused by other spawned structures. */
 	VAL_DESCR *get_val_descr (VAL_DESCR *src);
+	OUTPTR_LIST *get_outptr_list (OUTPTR_LIST *src);
 	PRED_EXPR *get_during_join_pred (PRED_EXPR *src);
 	PRED_EXPR *get_after_join_pred (PRED_EXPR *src);
 	REGU_VARIABLE_LIST get_outer_regu_list_pred (REGU_VARIABLE_LIST src);
@@ -59,6 +60,7 @@ namespace parallel_query
 
 	cubxasl::spawner *m_spawner;
 	VAL_DESCR *m_val_descr;
+	OUTPTR_LIST *m_outptr_list;
 	PRED_EXPR *m_during_join_pred;
 	PRED_EXPR *m_after_join_pred;
 	REGU_VARIABLE_LIST m_outer_regu_list_pred;

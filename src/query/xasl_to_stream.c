@@ -3731,6 +3731,8 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
+  ptr = or_pack_int (ptr, node_p->has_ineligible ? 1 : 0);
+
   return xts_pack_hash_join_keys (ptr, node_p);
 }
 
@@ -6778,6 +6780,8 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       return ER_FAILED;
     }
   size += tmp_size;
+
+  size += OR_INT_SIZE;		/* has_ineligible */
 
   tmp_size = xts_sizeof_hash_join_keys (node_p);
   if (tmp_size == ER_FAILED)

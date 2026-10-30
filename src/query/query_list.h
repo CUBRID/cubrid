@@ -568,6 +568,8 @@ struct qfile_tuple_position
   int tplno;			/* Tuple number inside the page */
 };
 
+#define QFILE_RESERVED_HASH_KEY_POS  (-1)	/* first column only: INT -1, overwritten by a consuming hash join */
+
 #define QFILE_OUTER_LIST  0	/* outer list file indicator */
 #define QFILE_INNER_LIST  1	/* inner list file indicator */
 

@@ -1899,6 +1899,7 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
   QFILE_TUPLE_COL_SRC *src;
   QFILE_TUPLE_RECORD *rec;
   const char *body;
+  DB_VALUE hash_key;		/* src[] points to it until the tuple is written below the loop */
   int n = merge_info_p->ls_pos_cnt;
   int i, len, size;
   bool is_null;
@@ -1909,8 +1910,18 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
       return ER_FAILED;
     }
 
-  for (i = 0; i < n; i++)
+  i = 0;
+  if (n > 0 && merge_info_p->ls_pos_list[0] == QFILE_RESERVED_HASH_KEY_POS)
     {
+      db_make_int (&hash_key, -1);
+      qfile_col_src_set_value (&src[0], &hash_key);
+      i = 1;
+    }
+
+  for (; i < n; i++)
+    {
+      assert (merge_info_p->ls_pos_list[i] != QFILE_RESERVED_HASH_KEY_POS);
+
       rec = (merge_info_p->ls_outer_inner_list[i] == QFILE_OUTER_LIST) ? outer_rec : inner_rec;
       if (rec != NULL)
 	{

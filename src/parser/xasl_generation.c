@@ -448,8 +448,6 @@ static PT_NODE *pt_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 static XASL_NODE *pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id);
 static SELUPD_LIST *pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulist,
 						 SELUPD_LIST * selupd_list, DB_OBJECT * target_class);
-static OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr,
-				   UNBOX unbox);
 static void pt_to_fetch_proc_list_recurse (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static XASL_NODE *pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * root);
@@ -17100,7 +17098,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulis
  *   selupd_list_ptr(in):
  *   unbox(in):
  */
-static OUTPTR_LIST *
+OUTPTR_LIST *
 pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr, UNBOX unbox)
 {
   OUTPTR_LIST *outlist;
@@ -17864,6 +17862,61 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
   return xasl;
 }
 
+/*
+ * ptqo_to_pass_through_wrapper () - build the list scan of a pass-through wrapper over listfile
+ *   return: xasl, or NULL on error
+ *   parser(in): parser context
+ *   xasl(in/out): the node that reads listfile; its val_list, spec_list and outptr_list are replaced
+ *   listfile(in): the XASL node holding the list file to read
+ *   namelist(in): this node's result columns in list file order, one entry per column
+ *
+ * ptqo_to_list_scan_proc () binds each scanned column to the DB_VALUE, looked up by name, that outptr_list reads.
+ * namelist may lead with the hash key placeholder, a PT_VALUE with no such DB_VALUE,
+ * so this gives every entry its own DB_VALUE and rebuilds outptr_list from them.
+ */
+XASL_NODE *
+ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * listfile, PT_NODE * namelist)
+{
+  REGU_VARIABLE_LIST scan_regu_list;
+
+  assert (parser != NULL);
+  assert (xasl != NULL);
+  assert (listfile != NULL);
+  assert (namelist != NULL);
+
+  xasl->val_list = pt_make_val_list (parser, namelist);
+  if (xasl->val_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  /* no offsets: column i of the list file goes to value i */
+  scan_regu_list = pt_to_position_regu_variable_list (parser, namelist, xasl->val_list, NULL);
+  if (scan_regu_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+  pt_set_list_position_domains (scan_regu_list, xasl->val_list, listfile, NULL);
+
+  xasl->spec_list =
+    pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, scan_regu_list, NULL, NULL, NULL);
+  if (xasl->spec_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  xasl->outptr_list = pt_make_outlist_from_vallist (parser, xasl->val_list);
+  if (xasl->outptr_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  return xasl;
+}
 
 /*
  * ptqo_to_merge_list_proc () - Make a MERGELIST_PROC to merge an inner

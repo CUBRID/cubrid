@@ -181,6 +181,7 @@ namespace cubxasl
     dest->type = src->type;
     dest->compare = src->compare;
     dest->bound_coercion = src->bound_coercion;
+    dest->bound_conversion = src->bound_conversion;
     dest->prune_side = src->prune_side;
     dest->prune_domain = src->prune_domain;
     dest->prune = src->prune;
@@ -203,6 +204,7 @@ namespace cubxasl
     dest->item_type = src->item_type;
     dest->compare_row = src->compare_row;
     dest->compare = src->compare;
+    dest->compare_each = src->compare_each;
     dest->prune_domain = src->prune_domain;
     dest->prune_element = src->prune_element;
     dest->prune = src->prune;
@@ -807,7 +809,6 @@ namespace cubxasl
       }
 
     dest->sig = spawn (src->sig);
-
     dest->args = spawn (src->args);
     dest->value = spawn (src->value);
 
@@ -817,12 +818,40 @@ namespace cubxasl
   PL_SIGNATURE_TYPE *
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
-    /* No copy: the workers share the caller's signature. Every user reads it only
-     * (executor holds a const reference and invoke_java copies what it sends), the
-     * object is already shared across executions by the xcache clone, and only the
-     * owning thread's !for_parallel_aptr clear pass deletes it, after all spawned
-     * copies are gone. Not registered in the cache, so the spawner never frees it. */
+    /* No copy: the workers share the caller's signature.
+     * Every user reads it only (executor holds a const reference and invoke_java copies what it sends),
+     * the xcache clone already shares a non-disposable signature across executions,
+     * and only the owning thread's !for_parallel_aptr clear pass deletes it, after all spawned copies are gone.
+     * Not registered in the cache, so the spawner never frees it. */
     return const_cast<PL_SIGNATURE_TYPE *> (src);
+  }
+
+  OUTPTR_LIST *
+  spawner::spawn (const OUTPTR_LIST *src)
+  {
+    OUTPTR_LIST *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
+    if (dest == nullptr)
+      {
+	return nullptr;
+      }
+
+    /* ref: stx_restore_outptr_list; the compiled program is not copied, the copy compiles its own */
+    dest->valptrp = spawn (src->valptrp);
+    if (src->valptrp != nullptr && dest->valptrp == nullptr)
+      {
+	return nullptr;
+      }
+    dest->valptr_cnt = src->valptr_cnt;
+
+    return dest;
   }
 
   VAL_LIST *

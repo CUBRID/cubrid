@@ -42,12 +42,33 @@
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
+/*
+ * The out list a wrapper asks the hash join below it to build, and how the join builds it:
+ *
+ *   reused        wrapper_out_list  has_expr  has_ineligible  the join's result
+ *   ------------  ----------------  --------  --------------  --------------------------------------------------------
+ *   no            NULL              false     false           its own columns, which the wrapper reads and rewrites
+ *   yes           the out list      false     false           the wrapper's out list, its columns copied by merge_info
+ *   yes           the out list      true      false           the wrapper's out list, evaluated from xasl->outptr_list
+ *   serial: yes   the out list      true      true            as the row above
+ *   parallel: no  the out list      true      true            as the first row (hjoin_change_to_merge_type_list)
+ *
+ * has_ineligible: the out list calls a PL/CSQL or Java SP without PARALLEL_ENABLE, which a parallel worker may not run.
+ */
+typedef struct pass_through_info PASS_THROUGH_INFO;
+struct pass_through_info
+{
+  PT_NODE *wrapper_out_list;
+  bool has_expr;
+  bool has_ineligible;
+};
+
 static XASL_NODE *make_scan_proc (QO_ENV * env);
 static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list,
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
-				      PROJECTION_INFO * projection_info);
+				      PROJECTION_INFO * projection_info, PASS_THROUGH_INFO * pass_through_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist, int parallelism);
 
@@ -77,9 +98,10 @@ static PT_NODE *make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset, bool check_func_index_segs);
 
-static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *);
+static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *, PT_NODE *);
 static XASL_NODE *gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
-				XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl);
+				XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl,
+				PT_NODE * wrapper_out_list);
 static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *, XASL_NODE *, XASL_NODE *, int);
 static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl);
 
@@ -128,8 +150,16 @@ static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_
 static void qo_clear_projection_info (QO_ENV * env, PROJECTION_INFO * info);
 static void qo_clear_projection_part_info (PARSER_CONTEXT * parser, PROJECTION_PART_INFO * part_info);
 static void qo_clear_projection_final_info (PARSER_CONTEXT * parser, PROJECTION_FINAL_INFO * final_info);
+
+static bool qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl);
+static bool qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
+					    PROJECTION_INFO * projection_info, PASS_THROUGH_INFO * pass_through_info);
+static PT_NODE *qo_check_pass_through_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static bool qo_is_unshareable_expr (PT_NODE * node);
+static bool qo_is_unshareable_function (PT_NODE * node);
+
 static int qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_info,
-			       QFILE_LIST_MERGE_INFO * merge_info);
+			       PASS_THROUGH_INFO * pass_through_info, QFILE_LIST_MERGE_INFO * merge_info);
 
 /*
  * make_scan_proc () -
@@ -570,13 +600,16 @@ exit_on_error:
  *   outer_xasl(in): XASL node for outer input of the hash join.
  *   inner_xasl(in): XASL node for inner input of the hash join.
  *   projection_info(in): Projection information used in the hash join execution plan.
+ *   pass_through_info(in): The out list the wrapper was built with, for the join to build its result in.
  */
 static XASL_NODE *
 make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
-		    PROJECTION_INFO * projection_info)
+		    PROJECTION_INFO * projection_info, PASS_THROUGH_INFO * pass_through_info)
 {
   PARSER_CONTEXT *parser = NULL;
   PT_NODE *pred;
+  PT_NODE *outer_fetch_list, *inner_fetch_list;
+  int outer_fetch_count, inner_fetch_count;
 
   PROJECTION_PART_INFO *outer_info, *inner_info;
 
@@ -594,6 +627,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   assert (outer_xasl != NULL);
   assert (inner_xasl != NULL);
   assert (projection_info != NULL);
+  assert (pass_through_info != NULL);
 
   outer_info = &projection_info->outer;
   inner_info = &projection_info->inner;
@@ -606,6 +640,22 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto error_exit;
     }
 
+  /* an expression of the wrapper's out list may read any input column, a predicate only the columns it names */
+  if (pass_through_info->has_expr)
+    {
+      outer_fetch_list = outer_info->name_list;
+      outer_fetch_count = outer_info->name_count;
+      inner_fetch_list = inner_info->name_list;
+      inner_fetch_count = inner_info->name_count;
+    }
+  else
+    {
+      outer_fetch_list = outer_info->pred_list;
+      outer_fetch_count = outer_info->pred_count;
+      inner_fetch_list = inner_info->pred_list;
+      inner_fetch_count = inner_info->pred_count;
+    }
+
   xasl = pt_to_hashjoin_proc (parser, outer_xasl, inner_xasl);
   if (xasl == NULL)
     {
@@ -614,10 +664,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   proc = &xasl->proc.hashjoin;
 
-  /* The regu_list_pred and predicate binding below
-   * are needed only when residual (during/after-join) predicates exist. */
+  /* The regu_list_pred and the binding below are needed when residual (during/after-join) predicates exist,
+   * and when the join evaluates the wrapper's out list. */
   if (!bitset_is_empty (&plan->plan_un.join.during_join_terms)
-      || !bitset_is_empty (&projection_info->after_join_pred_set))
+      || !bitset_is_empty (&projection_info->after_join_pred_set) || pass_through_info->has_expr)
     {
       /* One buffer per name_list column, in name_list order.
        * The child XASL's val_list is not reusable: it follows the child subtree, not name_list. */
@@ -632,9 +682,9 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
 
       /* proc->outer.regu_list_pred */
-      if (outer_info->pred_count > 0)
+      if (outer_fetch_count > 0)
 	{
-	  pos_cnt = outer_info->pred_count;
+	  pos_cnt = outer_fetch_count;
 
 	  pos_list = (int *) malloc (pos_cnt * sizeof (int));
 	  if (pos_list == NULL)
@@ -644,7 +694,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	      goto error_exit;
 	    }
 
-	  pred = outer_info->pred_list;
+	  pred = outer_fetch_list;
 	  for (pos_index = 0; pos_index < pos_cnt; pos_index++)
 	    {
 	      found_index = pt_find_attribute_with_func_index_expr (parser, pred, outer_info->name_list, true);
@@ -659,7 +709,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    }
 
 	  proc->outer.regu_list_pred =
-	    pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_name_val_list, pos_list);
+	    pt_to_position_regu_variable_list (parser, outer_fetch_list, outer_name_val_list, pos_list);
 
 	  free_and_init (pos_list);
 
@@ -676,9 +726,9 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
 
       /* proc->inner.regu_list_pred */
-      if (inner_info->pred_count > 0)
+      if (inner_fetch_count > 0)
 	{
-	  pos_cnt = inner_info->pred_count;
+	  pos_cnt = inner_fetch_count;
 
 	  pos_list = (int *) malloc (pos_cnt * sizeof (int));
 	  if (pos_list == NULL)
@@ -688,7 +738,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	      goto error_exit;
 	    }
 
-	  pred = inner_info->pred_list;
+	  pred = inner_fetch_list;
 	  for (pos_index = 0; pos_index < pos_cnt; pos_index++)
 	    {
 	      found_index = pt_find_attribute_with_func_index_expr (parser, pred, inner_info->name_list, true);
@@ -703,7 +753,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    }
 
 	  proc->inner.regu_list_pred =
-	    pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_name_val_list, pos_list);
+	    pt_to_position_regu_variable_list (parser, inner_fetch_list, inner_name_val_list, pos_list);
 
 	  free_and_init (pos_list);
 
@@ -821,6 +871,19 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    }
 	}
 
+      /* the wrapper's out list, evaluated per result row over the buffers the predicates read */
+      if (!has_error)
+	{
+	  if (pass_through_info->has_expr)
+	    {
+	      xasl->outptr_list = pt_to_outlist (parser, pass_through_info->wrapper_out_list, NULL, UNBOX_AS_VALUE);
+	      if (xasl->outptr_list == NULL)
+		{
+		  has_error = true;
+		}
+	    }
+	}
+
       if (tail_name_list != NULL)
 	{
 	  tail_name_list->next = NULL;	/* cut-off */
@@ -835,11 +898,13 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     }
 
   /* merge_info */
-  error = qo_init_merge_info (env, plan, projection_info, &proc->merge_info);
+  error = qo_init_merge_info (env, plan, projection_info, pass_through_info, &proc->merge_info);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
+
+  proc->has_ineligible = pass_through_info->has_ineligible;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
@@ -2325,10 +2390,11 @@ mark_following_joins (XASL_NODE * sa_scan)
  *   fetches(in): A list of fetch procs that should be executed every time plan
  *		  produces a new row
  *   xasl(in): The xasl node that is receiving the various procs we generate
+ *   wrapper_out_list(in): The out list xasl was built with, for the plan to build its result in; NULL for none
  */
 static XASL_NODE *
 gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches,
-	   XASL_NODE * xasl)
+	   XASL_NODE * xasl, PT_NODE * wrapper_out_list)
 {
   PARSER_CONTEXT *parser;
   XASL_NODE *scan, *listfile, *merge, *fetch;
@@ -2434,7 +2500,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    {
 	      /* SORT-LIMIT plans should never be top rooted */
 	      assert (plan->plan_un.sort.sort_type != SORT_LIMIT);
-	      xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
+	      xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl, NULL);
 	      return xasl;
 	    }
 	}
@@ -2460,7 +2526,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  else
 	    {
 	      listfile = make_buildlist_proc (env, namelist, xasl->parallelism);
-	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
+	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile, NULL);
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 	      if (listfile != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
 		{
@@ -2482,7 +2548,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	}
       else
 	{
-	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
+	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl, NULL);
 	  xasl = add_sort_spec (env, xasl, plan, NULL, true /* add instnum pred */ );
 	  if (xasl != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
 	    {
@@ -2607,7 +2673,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);
-	  xasl = gen_outer (env, outer, &new_subqueries, scan, NULL, xasl);
+	  xasl = gen_outer (env, outer, &new_subqueries, scan, NULL, xasl, NULL);
 	  break;
 
 	case QO_JOINMETHOD_MERGE_JOIN:
@@ -2727,7 +2793,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
 	    left_xasl = make_buildlist_proc (env, left_list, xasl->parallelism);
-	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl);
+	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl, NULL);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
 	    /* build inner segs namelist */
@@ -2740,7 +2806,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
 	    rght_xasl = make_buildlist_proc (env, rght_list, xasl->parallelism);
-	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl);
+	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl, NULL);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
 	    merge =
@@ -2952,7 +3018,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   * and tack them on to the scan proc that eventually reads the result of the join.
 	   * The subplans for the two join components should start with clean slates.
 	   */
-	  xasl = gen_hashjoin (env, plan, &predset, &new_subqueries, inner_scans, fetches, xasl);
+	  xasl = gen_hashjoin (env, plan, &predset, &new_subqueries, inner_scans, fetches, xasl, wrapper_out_list);
 	  break;
 
 	default:
@@ -2975,7 +3041,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
       fetch = add_fetch_proc (env, fetch, fetches);
       fetch = add_subqueries (env, fetch, &new_subqueries);
       make_outer_instnum (env, plan->plan_un.follow.head, plan);
-      xasl = gen_outer (env, plan->plan_un.follow.head, &EMPTY_SET, inner_scans, fetch, xasl);
+      xasl = gen_outer (env, plan->plan_un.follow.head, &EMPTY_SET, inner_scans, fetch, xasl, NULL);
       break;
 
     case QO_PLANTYPE_WORST:
@@ -3001,16 +3067,19 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
  *   inner_scans(in): List of SCAN_PROC XASL nodes to append to the scan_ptr list.
  *   fetches(in): List of OBJFETCH_PROC XASL nodes to execute for each produced row.
  *   xasl(in): Top-level XASL node that will include the HASHJOIN_PROC node.
+ *   wrapper_out_list(in): The out list xasl was built with, for the join to build its result in; NULL for none.
  */
 static XASL_NODE *
 gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries, XASL_NODE * inner_scans,
-	      XASL_NODE * fetches, XASL_NODE * xasl)
+	      XASL_NODE * fetches, XASL_NODE * xasl, PT_NODE * wrapper_out_list)
 {
   QO_PLAN *outer_plan, *inner_plan;
 
   PROJECTION_INFO projection_info;
   PROJECTION_PART_INFO *outer_info, *inner_info;
   PROJECTION_FINAL_INFO *final_info;
+
+  PASS_THROUGH_INFO pass_through_info;
 
   XASL_NODE *hashjoin_xasl = NULL;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
@@ -3026,6 +3095,9 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   assert (pred_set != NULL);
   assert (xasl != NULL);
   assert (xasl->selected_upd_list == NULL);
+
+  /* a caller that requests a pass-through gives no per-row scans or fetches, which the wrapper would have to run */
+  assert (wrapper_out_list == NULL || (inner_scans == NULL && fetches == NULL));
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
@@ -3065,6 +3137,16 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   inner_info = &projection_info.inner;
   final_info = &projection_info.final;
 
+  pass_through_info.wrapper_out_list = wrapper_out_list;
+  pass_through_info.has_expr = false;
+  pass_through_info.has_ineligible = false;
+
+  if (pass_through_info.wrapper_out_list != NULL
+      && !qo_check_pass_through_hashjoin (env, plan, pred_set, subqueries, &projection_info, &pass_through_info))
+    {
+      pass_through_info.wrapper_out_list = NULL;
+    }
+
   /* outer_xasl */
   outer_xasl = make_buildlist_proc (env, outer_info->expr_name_list, parallelism);
   if (outer_xasl == NULL)
@@ -3072,7 +3154,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl);
+  outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl, outer_info->expr_name_list);
   if (outer_xasl == NULL)
     {
       goto error_exit;
@@ -3086,7 +3168,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl);
+  inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl, inner_info->expr_name_list);
   if (inner_xasl == NULL)
     {
       goto error_exit;
@@ -3094,7 +3176,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   inner_xasl->orderby_list = NULL;
 
   /* hashjoin_xasl */
-  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info);
+  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info, &pass_through_info);
   if (hashjoin_xasl == NULL)
     {
       goto error_exit;
@@ -3108,7 +3190,27 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  xasl = init_list_scan_proc (env, xasl, hashjoin_xasl, final_info->name_list, pred_set, NULL);
+  /* not wrapper_out_list alone: it stays set with has_ineligible */
+  if (pass_through_info.wrapper_out_list != NULL && !pass_through_info.has_ineligible)
+    {
+      /* reused in serial and in parallel */
+      xasl =
+	ptqo_to_pass_through_wrapper (QO_ENV_PARSER (env), xasl, hashjoin_xasl, pass_through_info.wrapper_out_list);
+    }
+  else
+    {
+      /* not reused, or reused in serial only: in parallel the scan reads the join's own columns */
+      xasl = init_list_scan_proc (env, xasl, hashjoin_xasl, final_info->name_list, pred_set, NULL);
+    }
+
+  if (xasl != NULL && pass_through_info.wrapper_out_list != NULL)
+    {
+      /* the join may read the uncorrelated subqueries ahead of it: add_uncorrelated () appended it last */
+      assert (hashjoin_xasl->next == NULL);
+
+      XASL_SET_FLAG (xasl, XASL_PASS_THROUGH_WRAPPER);
+    }
+
   xasl = add_scan_proc (env, xasl, inner_scans);
   xasl = add_fetch_proc (env, xasl, fetches);
   xasl = add_subqueries (env, xasl, subqueries);
@@ -3221,7 +3323,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist, parallelism);
-      listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile);
+      listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile, NULL);
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
       if (namelist)
@@ -3544,12 +3646,18 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
 {
   QO_ENV *env;
   XASL_NODE *lastxasl;
+  PT_NODE *wrapper_out_list = NULL;
 
   if (plan && xasl && (env = (plan->info)->env))
     {
       qo_apply_parallel_index_scan_threshold (plan);
 
-      xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl);
+      if (qo_check_pass_through_wrapper (env, xasl))
+	{
+	  wrapper_out_list = QO_ENV_PT_TREE (env)->info.query.q.select.list;
+	}
+
+      xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl, wrapper_out_list);
 
       lastxasl = xasl;
       while (lastxasl)
@@ -5908,7 +6016,7 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
   statement->info.query.order_by = new_order_by;
 
   listfile = make_buildlist_proc (env, node_list, xasl->parallelism);
-  listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
+  listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile, NULL);
   listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 
 cleanup:
@@ -6598,17 +6706,387 @@ qo_clear_projection_final_info (PARSER_CONTEXT * parser, PROJECTION_FINAL_INFO *
 }
 
 /*
+ * qo_check_pass_through_wrapper () - can xasl pass the result of the plan below it through?
+ *   return: true when the plan can do all xasl does per row, so the plan may build xasl's out list
+ *   env(in): optimization environment
+ *   xasl(in): the BUILDLIST_PROC that holds the statement's result
+ */
+static bool
+qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
+{
+  PT_NODE *query;
+  PT_NODE *select_list;
+
+  assert (env != NULL);
+  assert (xasl != NULL);
+
+  query = QO_ENV_PT_TREE (env);
+  assert (PT_IS_SELECT (query));
+
+  /* the node: only a BUILDLIST_PROC writes a list file it could take over */
+  if (xasl->type != BUILDLIST_PROC)
+    {
+      return false;
+    }
+
+  /* the statement: the SELECT of an UPDATE/DELETE and FOR UPDATE are left to their usual plan
+   * until pass-through is checked with them */
+  if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE))
+    {
+      return false;
+    }
+
+  /* the clauses: pt_to_buildlist_proc () calls this before it builds orderby_list, so the parse tree tells about them.
+   * A WHERE rownum is a term: qo_check_pass_through_hashjoin () checks it. */
+
+  /* before the scan: LIMIT */
+  if (query->info.query.limit != NULL)
+    {
+      return false;
+    }
+
+  /* each row: WITH CHECK OPTION checks it */
+  if (query->info.query.q.select.check_where != NULL)
+    {
+      return false;
+    }
+
+  /* each row: a name is copied by the plan, and qo_check_pass_through_hashjoin () checks an expression.
+   * A constant at the front would read as the hash key placeholder. */
+  select_list = query->info.query.q.select.list;
+
+  if (select_list->node_type == PT_VALUE)
+    {
+      return false;
+    }
+
+  /* after the scan: CONNECT BY */
+  if (query->info.query.q.select.connect_by != NULL)
+    {
+      return false;
+    }
+
+  /* after the scan: the click counter in the select list updates the row the node read */
+  if (xasl->selected_upd_list != NULL)
+    {
+      return false;
+    }
+
+  /* post processing: aggregates, analytic functions, ORDER BY and DISTINCT */
+  if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_HAS_AGG | PT_SELECT_INFO_HAS_ANALYTIC))
+    {
+      return false;
+    }
+
+  if (query->info.query.order_by != NULL || query->info.query.orderby_for != NULL
+      || query->info.query.all_distinct != PT_ALL)
+    {
+      return false;
+    }
+
+  /* the flags above rule out aggregates and analytic functions */
+  assert (xasl->proc.buildlist.g_agg_list == NULL && xasl->proc.buildlist.a_eval_list == NULL);
+
+  /* with no aggregate or analytic function, pt_to_outlist () makes one column per select list item */
+  assert (xasl->outptr_list->valptr_cnt == pt_length_of_list (select_list));
+
+  return true;
+}
+
+/*
+ * qo_check_pass_through_hashjoin () - can this hash join build the out list of the wrapper above it?
+ *   return: true when the wrapper has no work of its own and the join can build every column
+ *   env(in): optimization environment
+ *   plan(in): the hash join plan
+ *   pred_set(in): terms left for the wrapper to evaluate
+ *   subqueries(in): subqueries the wrapper would get: correlated ones run per row, uncorrelated ones follow the join
+ *   projection_info(in): column lists of this join's two inputs
+ *   pass_through_info(in/out): the out list the wrapper was built with;
+ *			       has_expr is set when the join evaluates expressions in it
+ *
+ * Subqueries and predicates left to the wrapper are known only from the plan, and an input wrapper has no statement,
+ * so they are checked here rather than in qo_check_pass_through_wrapper ().
+ */
+static bool
+qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
+				PROJECTION_INFO * projection_info, PASS_THROUGH_INFO * pass_through_info)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *node, *name, *save_next;
+  int name_count;
+
+  PT_NODE *wrapper_out_list;
+  bool has_expr, has_ineligible;
+  bool can_evaluate;
+
+  PROJECTION_PART_INFO *outer_info, *inner_info;
+
+  BITSET expr_segs;
+  BITSET_ITERATOR term_iter;
+  int term_index;
+
+  assert (env != NULL);
+  assert (plan != NULL);
+  assert (plan->plan_type == QO_PLANTYPE_JOIN);
+  assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
+  assert (pred_set != NULL);
+  assert (subqueries != NULL);
+  assert (projection_info != NULL);
+  assert (pass_through_info != NULL);
+  assert (pass_through_info->wrapper_out_list != NULL);
+  assert (!pass_through_info->has_expr);
+  assert (!pass_through_info->has_ineligible);
+
+  parser = QO_ENV_PARSER (env);
+  assert (parser != NULL);
+
+  wrapper_out_list = pass_through_info->wrapper_out_list;
+
+  outer_info = &projection_info->outer;
+  inner_info = &projection_info->inner;
+
+  if (!bitset_is_empty (subqueries))
+    {
+      return false;
+    }
+
+  /* the predicates: make_pred_from_bitset () drops fabricated terms; any other term is one the wrapper evaluates */
+  for (term_index = bitset_iterate (pred_set, &term_iter); term_index != -1;
+       term_index = bitset_next_member (&term_iter))
+    {
+      if (!QO_IS_FAKE_TERM (QO_ENV_TERM (env, term_index)))
+	{
+	  return false;
+	}
+    }
+
+  bitset_init (&expr_segs, env);
+
+  /* the output columns: the input lists wrap their names and expressions in pointer nodes.
+   * Their only bare PT_VALUE is hash_key = pt_make_integer_value (parser, -1),
+   * which qo_init_projection_info () puts at the front. */
+  name_count = 0;
+  has_expr = false;
+  has_ineligible = false;
+  can_evaluate = true;
+
+  for (node = wrapper_out_list; node != NULL; node = node->next)
+    {
+      /* node == wrapper_out_list: the first entry, the only place the hash key placeholder can be */
+      if (node == wrapper_out_list && node->node_type == PT_VALUE)
+	{
+	  continue;
+	}
+
+      name = node;
+      CAST_POINTER_TO_NODE (name);
+
+      if (name->node_type == PT_NAME)
+	{
+	  /* the join copies a column from the input that has it, and has no value for a name neither input has */
+	  if (pt_find_attribute_with_func_index_expr (parser, node, outer_info->expr_name_list, true) == -1
+	      && pt_find_attribute_with_func_index_expr (parser, node, inner_info->expr_name_list, true) == -1)
+	    {
+	      can_evaluate = false;
+	      break;
+	    }
+
+	  name_count++;
+	  continue;
+	}
+
+      /* the expression: a select list item, or a key expression of the hash join an input wrapper feeds.
+       * Walk it alone: next chains the other items. */
+      save_next = name->next;
+      name->next = NULL;
+      (void) parser_walk_tree (parser, name, qo_check_pass_through_expr_pre, &can_evaluate, NULL, NULL);
+      name->next = save_next;
+
+      if (!can_evaluate)
+	{
+	  break;
+	}
+
+      /* the probe loop binds the expression's columns through the input name lists, as it binds an after-join
+       * predicate (qo_init_projection_info ()), so the join must project every segment the expression reads */
+      BITSET_CLEAR (expr_segs);
+      qo_expr_segs (env, name, &expr_segs);
+      if (!bitset_subset (&plan->info->projected_segs, &expr_segs))
+	{
+	  can_evaluate = false;
+	  break;
+	}
+
+      has_expr = true;
+      name_count++;
+    }
+
+  bitset_delset (&expr_segs);
+
+  if (!can_evaluate)
+    {
+      return false;
+    }
+
+  /* parallel workers run only a PARALLEL_ENABLE SP, as in the join predicates (qo_check_hjoin_for_parallel_opt ()) */
+  if (has_expr)
+    {
+      (void) parser_walk_tree (parser, wrapper_out_list, qo_check_method_call_parallel_eligibility,
+			       &has_ineligible, NULL, NULL);
+    }
+
+  pass_through_info->has_expr = has_expr;
+  pass_through_info->has_ineligible = has_ineligible;
+
+  /* the hash key placeholder alone names no input column, so it is not a join result */
+  return name_count > 0;
+}
+
+/*
+ * qo_check_pass_through_expr_pre () - stop at a node the plan must not evaluate in place of the wrapper
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): the node the walk visits
+ *   arg(in/out): a bool cleared at such a node
+ *   continue_walk(in/out): PT_STOP_WALK at such a node
+ */
+static PT_NODE *
+qo_check_pass_through_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *can_evaluate;
+
+  assert (node != NULL);
+
+  can_evaluate = (bool *) arg;
+  assert (can_evaluate != NULL);
+
+  if (PT_IS_QUERY (node) || PT_IS_METHOD (node)
+      || (PT_IS_EXPR_NODE (node) && qo_is_unshareable_expr (node))
+      || (PT_IS_FUNCTION (node) && qo_is_unshareable_function (node)))
+    {
+      *can_evaluate = false;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_is_unshareable_expr () - does the expression depend on more than its arguments, or have a side effect?
+ *   return: true for such an expression
+ *   node(in): a PT_EXPR
+ *
+ * The list started from the operator list of pt_is_shareable_groupby_ref_pre (),
+ * but it guards evaluating the expression in the hash join, possibly on a parallel worker, not sharing one evaluation.
+ */
+static bool
+qo_is_unshareable_expr (PT_NODE * node)
+{
+  PT_OP_TYPE op;
+
+  assert (PT_IS_EXPR_NODE (node));
+
+  op = node->info.expr.op;
+
+  if (PT_IS_NUMBERING_AFTER_EXECUTION (op))
+    {
+      return true;
+    }
+
+  if (PT_REQUIRES_HIERARCHICAL_QUERY (op))
+    {
+      return true;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node))
+    {
+      return true;
+    }
+
+  if (PT_IS_SERIAL (op))
+    {
+      return true;
+    }
+
+  switch (op)
+    {
+      /* reads: session state the statement's own execution changes */
+    case PT_EVALUATE_VARIABLE:
+    case PT_ROW_COUNT:
+    case PT_LAST_INSERT_ID:
+    case PT_EXEC_STATS:
+    case PT_TRACE_STATS:
+
+      /* writes: the row the node reads (click counter) or a session variable */
+    case PT_INCR:
+    case PT_DECR:
+    case PT_DEFINE_VARIABLE:
+
+      /* waits */
+    case PT_SLEEP:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_is_unshareable_function () - does the function depend on more than its arguments, or have a side effect?
+ *   return: true for such a function
+ *   node(in): a PT_FUNCTION
+ *
+ * The list started from the PT_FUNCTION list of pt_is_shareable_groupby_ref_pre (),
+ * but it guards evaluating the function in the hash join, possibly on a parallel worker, not sharing one evaluation.
+ * The aggregate and analytic functions are left to the statement's flags (qo_check_pass_through_wrapper ()).
+ */
+static bool
+qo_is_unshareable_function (PT_NODE * node)
+{
+  assert (PT_IS_FUNCTION (node));
+
+  if (node->info.function.is_order_dependent)
+    {
+      return true;
+    }
+
+  switch (node->info.function.function_type)
+    {
+      /* reads the wrapper's counter */
+    case PT_GROUPBY_NUM:
+
+      /* runs code the planner cannot see */
+    case PT_GENERIC:
+    case F_GENERIC:
+
+      /* reads the object behind its argument */
+    case F_VID:
+    case F_CLASS_OF:
+
+      /* spends time on purpose */
+    case F_BENCHMARK:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_init_merge_info() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   env(in): Optimization environment.
  *   plan(in): Execution plan for hash join.
  *   projection_info(in/out): Projection information used in the hash join execution plan.
+ *   pass_through_info(in): The out list the wrapper was built with, for the join to build its result in.
  *   merge_info(in/out): Information used to merge the joined result.
  */
 static int
-qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_info, QFILE_LIST_MERGE_INFO * merge_info)
+qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_info,
+		    PASS_THROUGH_INFO * pass_through_info, QFILE_LIST_MERGE_INFO * merge_info)
 {
   PARSER_CONTEXT *parser = NULL;
+  PT_NODE *wrapper_out_list;
   PT_NODE *outer_part, *inner_part;
   PT_NODE *outer_expr, *inner_expr;
   PT_NODE *name_node;
@@ -6633,10 +7111,18 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
   assert (env != NULL);
   assert (plan != NULL);
   assert (projection_info != NULL);
+  assert (pass_through_info != NULL);
   assert (merge_info != NULL);
 
   parser = QO_ENV_PARSER (env);
   assert (parser != NULL);
+
+  wrapper_out_list = pass_through_info->wrapper_out_list;
+  if (pass_through_info->has_ineligible)
+    {
+      /* reused in serial only: merge_info writes the join's own columns in parallel */
+      wrapper_out_list = NULL;
+    }
 
   bitset_init (&term_segs_set, env);
 
@@ -6796,6 +7282,12 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 
   assert (value_index == value_cnt);
 
+  if (pass_through_info->has_expr && !pass_through_info->has_ineligible)
+    {
+      /* the join writes its result from xasl->outptr_list (make_hashjoin_proc ()), so ls_pos_cnt stays 0 */
+      goto cleanup;
+    }
+
   /* ls_pos_cnt */
   pos_cnt = outer_info->name_count + inner_info->name_count;
   assert (pos_cnt > 0);
@@ -6815,7 +7307,13 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
    *     b.c1 from probe_input a, build_input b where a.c1 = b.c1;
    */
   need_update_pos = false;
-  if (final_info->name_count != 0 && final_info->name_count < pos_cnt)
+
+  if (wrapper_out_list != NULL)
+    {
+      pos_cnt = pt_length_of_list (wrapper_out_list);
+      need_update_pos = true;
+    }
+  else if (final_info->name_count != 0 && final_info->name_count < pos_cnt)
     {
       pos_cnt = final_info->name_count;
       need_update_pos = true;
@@ -6837,14 +7335,21 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 
   if (need_update_pos)
     {
-      name_node = final_info->name_list;
+      name_node = (wrapper_out_list != NULL) ? wrapper_out_list : final_info->name_list;
 
       for (pos_index = 0; pos_index < pos_cnt; pos_index++)
 	{
 	  assert (name_node != NULL);
 
-	  if ((found_index =
-	       pt_find_attribute_with_func_index_expr (parser, name_node, outer_info->expr_name_list, true)) != -1)
+	  /* name_node == wrapper_out_list: the first entry, the only place the hash key placeholder can be
+	   * (see qo_check_pass_through_hashjoin ()) */
+	  if (name_node == wrapper_out_list && name_node->node_type == PT_VALUE)
+	    {
+	      found_index = QFILE_RESERVED_HASH_KEY_POS;
+	    }
+	  else
+	    if ((found_index =
+		 pt_find_attribute_with_func_index_expr (parser, name_node, outer_info->expr_name_list, true)) != -1)
 	    {
 	      merge_info->ls_outer_inner_list[pos_index] = QFILE_OUTER_LIST;
 	    }
