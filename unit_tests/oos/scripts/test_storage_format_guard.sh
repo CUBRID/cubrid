@@ -18,7 +18,6 @@
 
 # Boot must refuse a database whose first volume carries another storage format stamp before it reads anything
 # else, and deletedb must still remove such a database. Databases of 11.5 builds before the stamp hold 0 there.
-# The database belongs to this test (setup_isolated_db.sh) and no server runs on it, so volume 0 is patched in place.
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
