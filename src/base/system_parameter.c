@@ -787,6 +787,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_INDEX_BUILD_PARALLELISM "index_build_parallelism"
 #define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
 #define PRM_NAME_PARALLEL_MERGE_JOIN "parallel_merge_join"
+#define PRM_NAME_INDEX_SORT_METHOD "index_sort_method"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
@@ -2119,9 +2120,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-27583: in the plan key, since a bind type signature's plan holds the PLUS concat-or-add choice */
   {PRM_ID_PLUS_AS_CONCAT,
    PRM_NAME_PLUS_AS_CONCAT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -4569,7 +4571,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
+   {false, {.b = true}},
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
@@ -5260,6 +5262,22 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_INDEX_SORT_METHOD,
+   PRM_NAME_INDEX_SORT_METHOD,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_KEYWORD,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if !defined(NDEBUG)
+   {false, {.i = INDEX_SORT_METHOD_AUTO}},
+   {false, {.i = INDEX_SORT_METHOD_AUTO}},
+#else
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}},
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}},
+#endif
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}}, {false, {.i = INDEX_SORT_METHOD_AUTO}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_TCP_KEEPALIVE_IDLE,
    PRM_NAME_TCP_KEEPALIVE_IDLE,
    (PRM_FOR_SERVER),
@@ -5844,6 +5862,12 @@ static const KEYVAL pgbuf_debug_page_validation_level_words[] = {
 static const KEYVAL null_words[] = {
   {"null", 0},
   {"0", 0}
+};
+
+static const KEYVAL index_sort_method_words[] = {
+  {"auto", INDEX_SORT_METHOD_AUTO},
+  {"radix", INDEX_SORT_METHOD_RADIX},
+  {"compare", INDEX_SORT_METHOD_COMPARE}
 };
 
 static const KEYVAL ha_mode_words[] = {
@@ -7908,6 +7932,9 @@ prm_get_keyval (const SYSPRM_PARAM * prm, int value, const char *name)
 
     case PRM_ID_COMPAT_MODE:
       return prm_keyword (value, name, compat_words, DIM (compat_words));
+
+    case PRM_ID_INDEX_SORT_METHOD:
+      return prm_keyword (value, name, index_sort_method_words, DIM (index_sort_method_words));
 
     case PRM_ID_CHECK_PEER_ALIVE:
       return prm_keyword (value, name, check_peer_alive_words, DIM (check_peer_alive_words));

@@ -1087,10 +1087,6 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.connect_order = db_Connect_order;
       client_credential.client_ip_addr = db_Client_ip_addr;
 
-      /* a restart without db_shutdown () (e.g., after a server failure) finalizes the workspace the kept trees
-       * point into */
-      db_free_kept_prepared_trees ();
-
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
 	{
@@ -1285,8 +1281,9 @@ db_shutdown (void)
 #endif
 
   (void) db_end_session ();
-  /* also when the session is kept for a reconnection (CAS): the trees point into the workspace */
-  db_free_kept_prepared_trees ();
+  /* CBRD-27583: release the kept compilations of SQL-level prepared statements; they are keyed by the server session
+   * id, which db_end_session does not clear */
+  db_prepared_tree_free_all ();
 
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
@@ -1313,7 +1310,6 @@ db_shutdown_without_request_to_server (void)
     }
 #endif
 
-  db_free_kept_prepared_trees ();
   boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 
@@ -1349,7 +1345,6 @@ db_shutdown_sub ()
     }
 
   (void) db_end_session ();
-  db_free_kept_prepared_trees ();
   db_Disable_modifications = 0;
 
   (void) boot_shutdown_client_sub ();
@@ -1441,8 +1436,6 @@ db_end_session (void)
   if (retval != ER_FAILED && !db_get_keep_session ())
     {
       db_set_session_id (DB_EMPTY_SESSION);
-      /* the prepared names of the session are gone */
-      db_free_kept_prepared_trees ();
     }
 
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
@@ -3456,6 +3449,11 @@ db_get_session_id (void)
 void
 db_set_session_id (const SESSION_ID session_id)
 {
+  if (session_id != db_Session_id)
+    {
+      /* CBRD-27583: the kept compilations of prepared statements belong to the previous server session's names */
+      db_prepared_tree_free_all ();
+    }
   db_Session_id = session_id;
 }
 
