@@ -1812,8 +1812,72 @@ expr_step_hoist (EXPR_BUILD_CTX * bctx, EXPR_STEP * step, int cell, int c1, int 
   bctx->cell_fixed[cell] = (signed char) cls;
 }
 
+/* The kernels by id.  A step names its kernel by id (EXPR_STEP.kernel_id): that is what the compiler decides
+ * and what a program carried apart from this process can hold.  The row loop calls the function the id maps to
+ * (expr_Kernels, set into EXPR_STEP.kernel); 0 is no kernel. */
+#define EXPR_KERNEL_LIST(X) \
+  X (add_int) \
+  X (sub_int) \
+  X (mul_int) \
+  X (div_int) \
+  X (add_bigint) \
+  X (sub_bigint) \
+  X (mul_bigint) \
+  X (div_bigint) \
+  X (add_double) \
+  X (sub_double) \
+  X (mul_double) \
+  X (add_numeric_float) \
+  X (sub_numeric_float) \
+  X (mul_numeric) \
+  X (div_numeric_float) \
+  X (coerce_numeric) \
+  X (nvl) \
+  X (cast) \
+  X (cast_strict) \
+  X (extract_date) \
+  X (extract_time) \
+  X (extract_datetime) \
+  X (extract_timestamp_date) \
+  X (extract_timestamp_time) \
+  X (nullif) \
+  X (jump_null_arith) \
+  X (jump_null_nullif) \
+  X (jump_notnull_nvl) \
+  X (jump) \
+  X (case_branch) \
+  X (case_pub_select) \
+  X (case_pub_cast) \
+  X (predicate) \
+  X (predicate_cast) \
+  X (leaf_fetch) \
+  X (hostvar) \
+  X (fallback) \
+  X (fetch) \
+  X (relabel) \
+  X (nested_prog) \
+  X (generic) \
+  X (jump_skip_generic) \
+  X (try_operand)
+
+enum expr_kernel_id
+{
+  EXPR_KID_NONE = 0,
+#define EXPR_KID_ENUM(name) EXPR_KID_ ## name,
+  EXPR_KERNEL_LIST (EXPR_KID_ENUM)
+#undef EXPR_KID_ENUM
+  EXPR_KID_COUNT
+};
+
+static const EXPR_KERNEL_FN expr_Kernels[EXPR_KID_COUNT] = {
+  NULL,
+#define EXPR_KID_FN(name) expr_k_ ## name,
+  EXPR_KERNEL_LIST (EXPR_KID_FN)
+#undef EXPR_KID_FN
+};
+
 static EXPR_STEP *
-expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
+expr_new_step (EXPR_BUILD_CTX * bctx, int kernel, int out_cell)
 {
   EXPR_STEP *step;
 
@@ -1824,7 +1888,8 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
     }
   step = &bctx->steps[bctx->n_steps++];
   memset (step, 0, sizeof (*step));
-  step->kernel = kernel;
+  step->kernel_id = (unsigned char) kernel;
+  step->kernel = expr_Kernels[kernel];
   step->out_cell = (DB_VALUE **) (intptr_t) out_cell;	/* index; fixed up in materialize */
   step->jump_to = -1;
   step->alias_of = -1;
@@ -1837,7 +1902,7 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
  * must run first.  Every build-order step reference that points at or past pos moves with
  * the steps.  NULL when the program is full. */
 static EXPR_STEP *
-expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, EXPR_KERNEL_FN kernel, int out_cell)
+expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, int kernel, int out_cell)
 {
   EXPR_STEP *step;
   int j;
@@ -1871,7 +1936,8 @@ expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, EXPR_KERNEL_FN kernel, i
     }
   step = &bctx->steps[pos];
   memset (step, 0, sizeof (*step));
-  step->kernel = kernel;
+  step->kernel_id = (unsigned char) kernel;
+  step->kernel = expr_Kernels[kernel];
   step->out_cell = (DB_VALUE **) (intptr_t) out_cell;
   step->jump_to = -1;
   step->alias_of = -1;
@@ -1887,7 +1953,7 @@ expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, EXPR_KERNEL_FN kernel, i
  * cells[-1] and the kernel dereferenced NULL on the first row.  Neither is emitted unless
  * both fit, so a rejected node leaves nothing behind. */
 static EXPR_STEP *
-expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int *cell_out)
+expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, int kernel, int *cell_out)
 {
   EXPR_STEP *step;
   int cell;
@@ -1939,7 +2005,7 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
     {
       expr_pred_free ((EXPR_PRED *) bctx->steps[j].pred);
       bctx->steps[j].pred = NULL;
-      if (bctx->steps[j].kernel == expr_k_nested_prog)
+      if (bctx->steps[j].kernel_id == EXPR_KID_nested_prog)
 	{
 	  expr_prog_free ((EXPR_PROG *) bctx->steps[j].fn);
 	  bctx->steps[j].fn = NULL;
@@ -1974,13 +2040,14 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
 static bool
 expr_step_is_fallible (const EXPR_STEP * step)
 {
-  return !(step->kernel == expr_k_hostvar || step->kernel == expr_k_leaf_fetch || step->kernel == expr_k_coerce_numeric
-	   || step->kernel == expr_k_nvl || step->kernel == expr_k_extract_date || step->kernel == expr_k_extract_time
-	   || step->kernel == expr_k_extract_datetime || step->kernel == expr_k_extract_timestamp_date
-	   || step->kernel == expr_k_extract_timestamp_time || step->kernel == expr_k_jump_null_arith
-	   || step->kernel == expr_k_jump_null_nullif || step->kernel == expr_k_jump_notnull_nvl
-	   || step->kernel == expr_k_jump || step->kernel == expr_k_case_pub_select
-	   || step->kernel == expr_k_jump_skip_generic);
+  return !(step->kernel_id == EXPR_KID_hostvar || step->kernel_id == EXPR_KID_leaf_fetch
+	   || step->kernel_id == EXPR_KID_coerce_numeric || step->kernel_id == EXPR_KID_nvl
+	   || step->kernel_id == EXPR_KID_extract_date || step->kernel_id == EXPR_KID_extract_time
+	   || step->kernel_id == EXPR_KID_extract_datetime || step->kernel_id == EXPR_KID_extract_timestamp_date
+	   || step->kernel_id == EXPR_KID_extract_timestamp_time || step->kernel_id == EXPR_KID_jump_null_arith
+	   || step->kernel_id == EXPR_KID_jump_null_nullif || step->kernel_id == EXPR_KID_jump_notnull_nvl
+	   || step->kernel_id == EXPR_KID_jump || step->kernel_id == EXPR_KID_case_pub_select
+	   || step->kernel_id == EXPR_KID_jump_skip_generic);
 }
 
 static bool
@@ -2273,7 +2340,7 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int no
  * the arithmetic kernel table
  *
  * One cell per (operator, result type, operand mix): the kernel a binary arithmetic node
- * runs, or NULL where no kernel exists and the node stays interpreted.  The table is the
+ * runs, or EXPR_KID_NONE where no kernel exists and the node stays interpreted.  The table is the
  * whole policy -- a reviewer reads a cell, not a switch.
  *
  *   mix SAME         both operands already have the result type: the typed operator
@@ -2285,35 +2352,35 @@ enum expr_arith_op
 enum expr_arith_type
 { EXPR_AT_INTEGER = 0, EXPR_AT_BIGINT, EXPR_AT_DOUBLE, EXPR_AT_NUMERIC, EXPR_AT_COUNT };
 /* row = operator, column = result type */
-static const EXPR_KERNEL_FN expr_Arith_kernels[EXPR_OP_COUNT][EXPR_AT_COUNT] = {
+static const int expr_Arith_kernels[EXPR_OP_COUNT][EXPR_AT_COUNT] = {
   /* T_ADD */
   {
-   /* INTEGER */ expr_k_add_int,
-   /* BIGINT  */ expr_k_add_bigint,
-   /* DOUBLE  */ expr_k_add_double,
-   /* NUMERIC */ expr_k_add_numeric_float,
+   /* INTEGER */ EXPR_KID_add_int,
+   /* BIGINT  */ EXPR_KID_add_bigint,
+   /* DOUBLE  */ EXPR_KID_add_double,
+   /* NUMERIC */ EXPR_KID_add_numeric_float,
    },
   /* T_SUB */
   {
-   /* INTEGER */ expr_k_sub_int,
-   /* BIGINT  */ expr_k_sub_bigint,
-   /* DOUBLE  */ expr_k_sub_double,
-   /* NUMERIC */ expr_k_sub_numeric_float,
+   /* INTEGER */ EXPR_KID_sub_int,
+   /* BIGINT  */ EXPR_KID_sub_bigint,
+   /* DOUBLE  */ EXPR_KID_sub_double,
+   /* NUMERIC */ EXPR_KID_sub_numeric_float,
    },
   /* T_MUL */
   {
-   /* INTEGER */ expr_k_mul_int,
-   /* BIGINT  */ expr_k_mul_bigint,
-   /* DOUBLE  */ expr_k_mul_double,
-   /* NUMERIC */ expr_k_mul_numeric,
+   /* INTEGER */ EXPR_KID_mul_int,
+   /* BIGINT  */ EXPR_KID_mul_bigint,
+   /* DOUBLE  */ EXPR_KID_mul_double,
+   /* NUMERIC */ EXPR_KID_mul_numeric,
    },
   /* T_DIV */
   {
-   /* INTEGER */ expr_k_div_int,
-   /* BIGINT  */ expr_k_div_bigint,
+   /* INTEGER */ EXPR_KID_div_int,
+   /* BIGINT  */ EXPR_KID_div_bigint,
    /* DOUBLE: no kernel -- the overflow-check gating of a double division differs, keep interpreted */
-   NULL,
-   /* NUMERIC */ expr_k_div_numeric_float,
+   EXPR_KID_NONE,
+   /* NUMERIC */ EXPR_KID_div_numeric_float,
    },
 };
 
@@ -2356,7 +2423,7 @@ expr_arith_type_index (DB_TYPE type)
 }
 
 /* the arithmetic kernel for (opcode, result type) -- a table cell; NULL when unsupported */
-static EXPR_KERNEL_FN
+static int
 expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 {
   const int op = expr_arith_op_index (opcode);
@@ -2364,7 +2431,7 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 
   if (op < 0 || at < 0)
     {
-      return NULL;
+      return EXPR_KID_NONE;
     }
   return expr_Arith_kernels[op][at];
 }
@@ -4479,8 +4546,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       /* a node the compiler left variable is declined (expr_arith_exec_domain ()): no typed kernel of its own */
       for (int j = first_step; j < bctx->n_steps; j++)
 	{
-	  assert (bctx->steps[j].regu != regu || bctx->steps[j].kernel == expr_k_generic
-		  || bctx->steps[j].kernel == expr_k_nested_prog);
+	  assert (bctx->steps[j].regu != regu || bctx->steps[j].kernel_id == EXPR_KID_generic
+		  || bctx->steps[j].kernel_id == EXPR_KID_nested_prog);
 	}
     }
 #endif
@@ -4494,7 +4561,7 @@ expr_emit_fetch (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_so
   EXPR_STEP *step;
   int cell;
 
-  step = expr_new_step_with_cell (bctx, expr_k_fetch, &cell);
+  step = expr_new_step_with_cell (bctx, EXPR_KID_fetch, &cell);
   if (step == NULL)
     {
       return -1;
@@ -4890,7 +4957,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 	}
       if (try_idx >= 0)
 	{
-	  EXPR_STEP *try_step = expr_build_insert_step (bctx, try_idx, expr_k_try_operand, cells[which]);
+	  EXPR_STEP *try_step = expr_build_insert_step (bctx, try_idx, EXPR_KID_try_operand, cells[which]);
 
 	  if (try_step == NULL)
 	    {
@@ -4909,7 +4976,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
     {
       expr_rhs_end (bctx, saved_guard, guard, cse_mark, node_mark, lazy_mask != 0);
     }
-  step = expr_new_step_with_cell (bctx, expr_k_generic, &cell);
+  step = expr_new_step_with_cell (bctx, EXPR_KID_generic, &cell);
   if (step == NULL)
     {
       return -1;
@@ -4928,7 +4995,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
       /* a NULL left operand skips the right (and third) operand's steps: the check marks them unfetched on the
        * generic step and lands on it */
       const int node_idx = (int) (step - bctx->steps);
-      EXPR_STEP *check = expr_build_insert_step (bctx, lazy_start, expr_k_jump_skip_generic, cell);
+      EXPR_STEP *check = expr_build_insert_step (bctx, lazy_start, EXPR_KID_jump_skip_generic, cell);
 
       if (check == NULL)
 	{
@@ -4955,7 +5022,7 @@ expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compile
     {
       return -1;
     }
-  step = expr_new_step_with_cell (bctx, expr_k_nested_prog, &cell);
+  step = expr_new_step_with_cell (bctx, EXPR_KID_nested_prog, &cell);
   if (step == NULL)
     {
       expr_prog_free (sub);
@@ -5063,7 +5130,7 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
       EXPR_STEP *step;
       int relabel_cell;
 
-      step = expr_new_step_with_cell (bctx, expr_k_relabel, &relabel_cell);
+      step = expr_new_step_with_cell (bctx, EXPR_KID_relabel, &relabel_cell);
       if (step == NULL)
 	{
 	  return -1;
@@ -5185,7 +5252,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  {
 	    return cell;
 	  }
-	step = expr_new_step_with_cell (bctx, expr_k_hostvar, &cell);
+	step = expr_new_step_with_cell (bctx, EXPR_KID_hostvar, &cell);
 	if (step == NULL)
 	  {
 	    return -1;
@@ -5217,7 +5284,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  {
 	    return cell;
 	  }
-	step = expr_new_step_with_cell (bctx, expr_k_leaf_fetch, &cell);
+	step = expr_new_step_with_cell (bctx, EXPR_KID_leaf_fetch, &cell);
 	if (step == NULL)
 	  {
 	    return -1;
@@ -5233,7 +5300,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       {
 	ARITH_TYPE *arith = regu->value.arithptr;
 	EXPR_STEP *step;
-	EXPR_KERNEL_FN kernel;
+	int kernel;
 	DB_TYPE rtype;
 	int c1, c2;
 
@@ -5282,7 +5349,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		  }
 		/* an INTEGER result needs no trailing auto-cast (verified no-op) */
 		step =
-		  expr_new_step_with_cell (bctx, (rtype == DB_TYPE_INTEGER) ? expr_k_predicate : expr_k_predicate_cast,
+		  expr_new_step_with_cell (bctx,
+					   (rtype == DB_TYPE_INTEGER) ? EXPR_KID_predicate : EXPR_KID_predicate_cast,
 					   &cell);
 		if (step == NULL)
 		  {
@@ -5308,7 +5376,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    {
 	      DB_TYPE t1, t2;
 	      EXPR_STEP *test, *pub_t, *jmp, *pub_f;
-	      EXPR_KERNEL_FN pub_kernel;
+	      int pub_kernel;
 	      TP_DOMAIN *pub_domain;
 	      bool pub_owns_slot;
 	      int c1b, c2b, cse_mark, pub_t_idx;
@@ -5331,19 +5399,19 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		{
 		  /* pure pointer select; the interpreted tp_value_auto_cast () is a
 		   * verified no-op for a same-type non-parameterized domain */
-		  pub_kernel = expr_k_case_pub_select;
+		  pub_kernel = EXPR_KID_case_pub_select;
 		  pub_domain = NULL;
 		  pub_owns_slot = false;
 		}
 	      else
 		{
-		  pub_kernel = expr_k_case_pub_cast;
+		  pub_kernel = EXPR_KID_case_pub_cast;
 		  pub_domain = exec_domain;
 		  pub_owns_slot = true;
 		}
 
 	      /* the branch test owns the predicate; on a failure below the root rewind frees it */
-	      test = expr_new_step_with_cell (bctx, expr_k_case_branch, &cell);
+	      test = expr_new_step_with_cell (bctx, EXPR_KID_case_branch, &cell);
 	      if (test == NULL)
 		{
 		  expr_pred_free (cpred);
@@ -5357,7 +5425,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      cse_mark = bctx->n_cse;
 	      c1b = expr_compile_node (bctx, arith->leftptr, compiled_something);
 	      pub_t = (c1b >= 0) ? expr_new_step (bctx, pub_kernel, cell) : NULL;
-	      jmp = (pub_t != NULL) ? expr_new_step (bctx, expr_k_jump, cell) : NULL;
+	      jmp = (pub_t != NULL) ? expr_new_step (bctx, EXPR_KID_jump, cell) : NULL;
 	      bctx->n_cse = cse_mark;
 	      if (jmp == NULL)
 		{
@@ -5386,7 +5454,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      pub_f->arg1p = EXPR_ARG_ENCODE (c2b);
 	      pub_f->domain = pub_domain;
 	      pub_f->regu = regu;
-	      pub_f->aux = 1;	/* the ELSE operand's converter (expr_k_case_pub_cast) */
+	      pub_f->aux = 1;	/* the ELSE operand's converter (EXPR_KID_case_pub_cast) */
 	      if (pub_owns_slot)
 		{
 		  pub_f->alias_of = pub_t_idx;	/* writes the THEN publisher's slot */
@@ -5446,7 +5514,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return cell;
 	      }
-	    step = expr_new_step_with_cell (bctx, expr_k_nvl, &cell);
+	    step = expr_new_step_with_cell (bctx, EXPR_KID_nvl, &cell);
 	    if (step == NULL)
 	      {
 		return -1;
@@ -5458,7 +5526,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		/* a non-NULL left operand IS the result: publish it and jump past the node */
 		int node_idx = (int) (step - bctx->steps);
-		EXPR_STEP *check = expr_build_insert_step (bctx, r_start, expr_k_jump_notnull_nvl, cell);
+		EXPR_STEP *check = expr_build_insert_step (bctx, r_start, EXPR_KID_jump_notnull_nvl, cell);
 
 		if (check == NULL)
 		  {
@@ -5477,7 +5545,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    /* fixed-type operand with a compile-time field and an INTEGER result;
 	     * kernel is picked by the operand type.  TZ/LTZ variants and string
 	     * operands keep the interpreted path (tz conversion + parse errors). */
-	    EXPR_KERNEL_FN extract_kernel = NULL;
+	    int extract_kernel = EXPR_KID_NONE;
 	    DB_TYPE opnd_type;
 	    MISC_OPERAND f = arith->misc_operand;
 	    bool date_field = (f == YEAR || f == MONTH || f == DAY);
@@ -5491,23 +5559,24 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    switch (opnd_type)
 	      {
 	      case DB_TYPE_DATE:
-		extract_kernel = date_field ? expr_k_extract_date : NULL;
+		extract_kernel = date_field ? EXPR_KID_extract_date : EXPR_KID_NONE;
 		break;
 	      case DB_TYPE_TIME:
-		extract_kernel = time_field ? expr_k_extract_time : NULL;
+		extract_kernel = time_field ? EXPR_KID_extract_time : EXPR_KID_NONE;
 		break;
 	      case DB_TYPE_DATETIME:
-		extract_kernel = (date_field || time_field || f == MILLISECOND) ? expr_k_extract_datetime : NULL;
+		extract_kernel = (date_field || time_field
+				  || f == MILLISECOND) ? EXPR_KID_extract_datetime : EXPR_KID_NONE;
 		break;
 	      case DB_TYPE_TIMESTAMP:
 		/* which half of the session decode the field comes from is fixed here */
-		extract_kernel = date_field ? expr_k_extract_timestamp_date
-		  : time_field ? expr_k_extract_timestamp_time : NULL;
+		extract_kernel = date_field ? EXPR_KID_extract_timestamp_date
+		  : time_field ? EXPR_KID_extract_timestamp_time : EXPR_KID_NONE;
 		break;
 	      default:
 		break;
 	      }
-	    if (extract_kernel == NULL)
+	    if (extract_kernel == EXPR_KID_NONE)
 	      {
 		return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	      }
@@ -5579,7 +5648,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return cell;
 	      }
-	    step = expr_new_step_with_cell (bctx, expr_k_nullif, &cell);
+	    step = expr_new_step_with_cell (bctx, EXPR_KID_nullif, &cell);
 	    if (step == NULL)
 	      {
 		return -1;
@@ -5595,7 +5664,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		/* a NULL left operand makes the node NULL: the check clears the node's slot
 		 * (alias_of) and jumps past the node */
 		int node_idx = (int) (step - bctx->steps);
-		EXPR_STEP *check = expr_build_insert_step (bctx, r_start, expr_k_jump_null_nullif, cell);
+		EXPR_STEP *check = expr_build_insert_step (bctx, r_start, EXPR_KID_jump_null_nullif, cell);
 
 		if (check == NULL)
 		  {
@@ -5633,7 +5702,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return cell;
 	      }
-	    step = expr_new_step_with_cell (bctx, force ? expr_k_cast : expr_k_cast_strict, &cell);
+	    step = expr_new_step_with_cell (bctx, force ? EXPR_KID_cast : EXPR_KID_cast_strict, &cell);
 	    if (step == NULL)
 	      {
 		return -1;
@@ -5684,7 +5753,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  }
 
 	/* reject an unsupported (opcode, kernel type) pair before compiling the operands */
-	if (expr_arith_kernel (arith->opcode, ktype) == NULL)
+	if (expr_arith_kernel (arith->opcode, ktype) == EXPR_KID_NONE)
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
@@ -5731,7 +5800,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    }
 	  if (ktype == DB_TYPE_NUMERIC && t1 != DB_TYPE_NUMERIC)
 	    {
-	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
+	      step = expr_new_step_with_cell (bctx, EXPR_KID_coerce_numeric, &cell);
 	      if (step == NULL)
 		{
 		  return -1;
@@ -5759,7 +5828,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
 	  if (c2 >= 0 && ktype == DB_TYPE_NUMERIC && t2 != DB_TYPE_NUMERIC)
 	    {
-	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
+	      step = expr_new_step_with_cell (bctx, EXPR_KID_coerce_numeric, &cell);
 	      if (step == NULL)
 		{
 		  c2 = -1;
@@ -5834,7 +5903,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	       * check before the right operand's steps makes the node NULL (through the node's
 	       * slot, alias_of) and jumps past it when the left one is NULL */
 	      int node_idx = (int) (step - bctx->steps);
-	      EXPR_STEP *check = expr_build_insert_step (bctx, r_start, expr_k_jump_null_arith, cell);
+	      EXPR_STEP *check = expr_build_insert_step (bctx, r_start, EXPR_KID_jump_null_arith, cell);
 
 	      if (check == NULL)
 		{
@@ -5938,7 +6007,7 @@ expr_emit_fallback (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
   EXPR_STEP *step;
   int cell;
 
-  step = expr_new_step_with_cell (bctx, expr_k_fallback, &cell);
+  step = expr_new_step_with_cell (bctx, EXPR_KID_fallback, &cell);
   if (step == NULL)
     {
       return -1;
@@ -6108,11 +6177,11 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	  {
 	    step->alias_of = remap[step->alias_of];
 	  }
-	if (step->kernel != expr_k_leaf_fetch && step->kernel != expr_k_hostvar && step->kernel != expr_k_fallback
-	    && step->kernel != expr_k_jump && step->kernel != expr_k_jump_null_arith
-	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl
-	    && step->kernel != expr_k_jump_skip_generic && step->kernel != expr_k_try_operand
-	    && step->kernel != expr_k_fetch)
+	if (step->kernel_id != EXPR_KID_leaf_fetch && step->kernel_id != EXPR_KID_hostvar
+	    && step->kernel_id != EXPR_KID_fallback && step->kernel_id != EXPR_KID_jump
+	    && step->kernel_id != EXPR_KID_jump_null_arith && step->kernel_id != EXPR_KID_jump_null_nullif
+	    && step->kernel_id != EXPR_KID_jump_notnull_nvl && step->kernel_id != EXPR_KID_jump_skip_generic
+	    && step->kernel_id != EXPR_KID_try_operand && step->kernel_id != EXPR_KID_fetch)
 	  {
 	    prog->n_compute++;
 	  }
@@ -6219,8 +6288,8 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 
 	  for (j = 0; j < bctx->n_steps; j++)
 	    {
-	      if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].kernel != expr_k_leaf_fetch
-		  && bctx->steps[j].kernel != expr_k_hostvar)
+	      if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].kernel_id != EXPR_KID_leaf_fetch
+		  && bctx->steps[j].kernel_id != EXPR_KID_hostvar)
 		{
 		  has_compute = true;
 		  break;
@@ -6445,7 +6514,7 @@ void
 expr_prog_step_info (const EXPR_PROG * prog, int step_idx, EXPR_STEP_INFO * out)
 {
   const EXPR_STEP *step = &prog->steps[step_idx];
-  EXPR_KERNEL_FN k = step->kernel;
+  int k = step->kernel_id;
 
   memset (out, 0, sizeof (*out));
   out->cls = EXPR_STEP_OTHER;
@@ -6459,43 +6528,46 @@ expr_prog_step_info (const EXPR_PROG * prog, int step_idx, EXPR_STEP_INFO * out)
   out->coerces = (step->domain != NULL);
   out->domain = step->domain;
 
-  if (k == expr_k_leaf_fetch)
+  if (k == EXPR_KID_leaf_fetch)
     {
       out->cls = EXPR_STEP_LEAF_FETCH;
     }
-  else if (k == expr_k_hostvar)
+  else if (k == EXPR_KID_hostvar)
     {
       out->cls = EXPR_STEP_HOSTVAR;
     }
-  else if (k == expr_k_jump_null_arith)
+  else if (k == EXPR_KID_jump_null_arith)
     {
       out->cls = EXPR_STEP_JUMP_NULL_ARITH;
     }
-  else if (k == expr_k_cast || k == expr_k_cast_strict)
+  else if (k == EXPR_KID_cast || k == EXPR_KID_cast_strict)
     {
       out->cls = EXPR_STEP_CAST;
     }
-  else if (k == expr_k_add_int || k == expr_k_sub_int || k == expr_k_mul_int)
+  else if (k == EXPR_KID_add_int || k == EXPR_KID_sub_int || k == EXPR_KID_mul_int)
     {
-      out->cls = (k == expr_k_add_int) ? EXPR_STEP_ADD : (k == expr_k_sub_int) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->cls = (k == EXPR_KID_add_int) ? EXPR_STEP_ADD : (k == EXPR_KID_sub_int) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
       out->type = DB_TYPE_INTEGER;
     }
-  else if (k == expr_k_add_bigint || k == expr_k_sub_bigint || k == expr_k_mul_bigint)
+  else if (k == EXPR_KID_add_bigint || k == EXPR_KID_sub_bigint || k == EXPR_KID_mul_bigint)
     {
-      out->cls = (k == expr_k_add_bigint) ? EXPR_STEP_ADD : (k == expr_k_sub_bigint) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->cls =
+	(k == EXPR_KID_add_bigint) ? EXPR_STEP_ADD : (k == EXPR_KID_sub_bigint) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
       out->type = DB_TYPE_BIGINT;
     }
-  else if (k == expr_k_add_double || k == expr_k_sub_double || k == expr_k_mul_double)
+  else if (k == EXPR_KID_add_double || k == EXPR_KID_sub_double || k == EXPR_KID_mul_double)
     {
-      out->cls = (k == expr_k_add_double) ? EXPR_STEP_ADD : (k == expr_k_sub_double) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->cls =
+	(k == EXPR_KID_add_double) ? EXPR_STEP_ADD : (k == EXPR_KID_sub_double) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
       out->type = DB_TYPE_DOUBLE;
     }
-  else if (k == expr_k_add_numeric_float || k == expr_k_sub_numeric_float || k == expr_k_mul_numeric)
+  else if (k == EXPR_KID_add_numeric_float || k == EXPR_KID_sub_numeric_float || k == EXPR_KID_mul_numeric)
     {
       /* the float family only: the plain family (a coerced integer side) rounds differently */
       out->cls =
-	(k == expr_k_add_numeric_float) ? EXPR_STEP_ADD : (k ==
-							   expr_k_sub_numeric_float) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+	(k == EXPR_KID_add_numeric_float) ? EXPR_STEP_ADD : (k ==
+							     EXPR_KID_sub_numeric_float) ? EXPR_STEP_SUB :
+	EXPR_STEP_MUL;
       out->type = DB_TYPE_NUMERIC;
       out->numeric_pure = true;
     }
@@ -6557,100 +6629,100 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
 
 /* the kernel's display name for program listings */
 static const char *
-expr_kernel_name (EXPR_KERNEL_FN kernel)
+expr_kernel_name (int kernel)
 {
   static const struct
   {
-    EXPR_KERNEL_FN fn;
+    int fn;
     const char *name;
   } names[] =
   {
     {
-    expr_k_add_int, "add_int"},
+    EXPR_KID_add_int, "add_int"},
     {
-    expr_k_sub_int, "sub_int"},
+    EXPR_KID_sub_int, "sub_int"},
     {
-    expr_k_mul_int, "mul_int"},
+    EXPR_KID_mul_int, "mul_int"},
     {
-    expr_k_div_int, "div_int"},
+    EXPR_KID_div_int, "div_int"},
     {
-    expr_k_add_bigint, "add_bigint"},
+    EXPR_KID_add_bigint, "add_bigint"},
     {
-    expr_k_sub_bigint, "sub_bigint"},
+    EXPR_KID_sub_bigint, "sub_bigint"},
     {
-    expr_k_mul_bigint, "mul_bigint"},
+    EXPR_KID_mul_bigint, "mul_bigint"},
     {
-    expr_k_div_bigint, "div_bigint"},
+    EXPR_KID_div_bigint, "div_bigint"},
     {
-    expr_k_add_double, "add_double"},
+    EXPR_KID_add_double, "add_double"},
     {
-    expr_k_sub_double, "sub_double"},
+    EXPR_KID_sub_double, "sub_double"},
     {
-    expr_k_mul_double, "mul_double"},
+    EXPR_KID_mul_double, "mul_double"},
     {
-    expr_k_add_numeric_float, "add_numeric"},
+    EXPR_KID_add_numeric_float, "add_numeric"},
     {
-    expr_k_sub_numeric_float, "sub_numeric"},
+    EXPR_KID_sub_numeric_float, "sub_numeric"},
     {
-    expr_k_mul_numeric, "mul_numeric"},
+    EXPR_KID_mul_numeric, "mul_numeric"},
     {
-    expr_k_jump_null_arith, "jump_null"},
+    EXPR_KID_jump_null_arith, "jump_null"},
     {
-    expr_k_jump_null_nullif, "jump_null_nullif"},
+    EXPR_KID_jump_null_nullif, "jump_null_nullif"},
     {
-    expr_k_jump_notnull_nvl, "jump_notnull"},
+    EXPR_KID_jump_notnull_nvl, "jump_notnull"},
     {
-    expr_k_div_numeric_float, "div_numeric"},
+    EXPR_KID_div_numeric_float, "div_numeric"},
     {
-    expr_k_coerce_numeric, "coerce_numeric"},
+    EXPR_KID_coerce_numeric, "coerce_numeric"},
     {
-    expr_k_nvl, "nvl_select"},
+    EXPR_KID_nvl, "nvl_select"},
     {
-    expr_k_nullif, "nullif"},
+    EXPR_KID_nullif, "nullif"},
     {
-    expr_k_cast, "cast"},
+    EXPR_KID_cast, "cast"},
     {
-    expr_k_cast_strict, "cast_strict"},
+    EXPR_KID_cast_strict, "cast_strict"},
     {
-    expr_k_case_branch, "case_branch"},
+    EXPR_KID_case_branch, "case_branch"},
     {
-    expr_k_case_pub_cast, "case_pub_cast"},
+    EXPR_KID_case_pub_cast, "case_pub_cast"},
     {
-    expr_k_case_pub_select, "case_pub"},
+    EXPR_KID_case_pub_select, "case_pub"},
     {
-    expr_k_jump, "jump"},
+    EXPR_KID_jump, "jump"},
     {
-    expr_k_predicate, "predicate"},
+    EXPR_KID_predicate, "predicate"},
     {
-    expr_k_predicate_cast, "predicate_cast"},
+    EXPR_KID_predicate_cast, "predicate_cast"},
     {
-    expr_k_leaf_fetch, "leaf_fetch"},
+    EXPR_KID_leaf_fetch, "leaf_fetch"},
     {
-    expr_k_extract_date, "extract_date"},
+    EXPR_KID_extract_date, "extract_date"},
     {
-    expr_k_extract_time, "extract_time"},
+    EXPR_KID_extract_time, "extract_time"},
     {
-    expr_k_extract_datetime, "extract_datetime"},
+    EXPR_KID_extract_datetime, "extract_datetime"},
     {
-    expr_k_extract_timestamp_date, "extract_timestamp"},
+    EXPR_KID_extract_timestamp_date, "extract_timestamp"},
     {
-    expr_k_extract_timestamp_time, "extract_timestamp"},
+    EXPR_KID_extract_timestamp_time, "extract_timestamp"},
     {
-    expr_k_hostvar, "hostvar"},
+    EXPR_KID_hostvar, "hostvar"},
     {
-    expr_k_fallback, "fallback"},
+    EXPR_KID_fallback, "fallback"},
     {
-    expr_k_generic, "generic"},
+    EXPR_KID_generic, "generic"},
     {
-    expr_k_jump_skip_generic, "jump_skip"},
+    EXPR_KID_jump_skip_generic, "jump_skip"},
     {
-    expr_k_try_operand, "try_operand"},
+    EXPR_KID_try_operand, "try_operand"},
     {
-    expr_k_fetch, "fetch"},
+    EXPR_KID_fetch, "fetch"},
     {
-    expr_k_relabel, "relabel"},
+    EXPR_KID_relabel, "relabel"},
     {
-  expr_k_nested_prog, "nested_prog"},};
+  EXPR_KID_nested_prog, "nested_prog"},};
   size_t i;
 
   for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)
@@ -6751,7 +6823,7 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 
       fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ',
 	       (i < prog->n_prologue) ? 'P' : (i < prog->n_prologue + prog->n_exec_prologue) ? 'E' : ' ', i,
-	       expr_kernel_name (step->kernel));
+	       expr_kernel_name (step->kernel_id));
       {
 	/* the operand cells in order; a generic step's unfetched operand (a rule's missing optional one) is "-" */
 	DB_VALUE **const args[4] = { step->arg1p, step->arg2p, step->arg3p, step->arg4p };
@@ -6773,15 +6845,15 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	      }
 	  }
       }
-      if (step->kernel == expr_k_generic)
+      if (step->kernel_id == EXPR_KID_generic)
 	{
 	  fprintf (fp, " op=%s", qdump_arith_opcode_name (step->regu->value.arithptr->opcode));
 	}
-      if (step->kernel == expr_k_jump_skip_generic)
+      if (step->kernel_id == EXPR_KID_jump_skip_generic)
 	{
 	  fprintf (fp, " skip=%d", step->aux);
 	}
-      if (step->kernel == expr_k_try_operand)
+      if (step->kernel_id == EXPR_KID_try_operand)
 	{
 	  fprintf (fp, " err=%d", step->aux);
 	}
@@ -6789,7 +6861,7 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	{
 	  fprintf (fp, " L%d", step->level);
 	}
-      if (step->kernel == expr_k_hostvar)
+      if (step->kernel_id == EXPR_KID_hostvar)
 	{
 	  fprintf (fp, " vd[%d]", step->aux);
 	}
@@ -6812,26 +6884,26 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	}
       if (step->jump_to >= 0)
 	{
-	  fprintf (fp, " %s[%d]", (step->kernel == expr_k_jump) ? "-> " : "else -> ", step->jump_to);
+	  fprintf (fp, " %s[%d]", (step->kernel_id == EXPR_KID_jump) ? "-> " : "else -> ", step->jump_to);
 	}
-      if (step->kernel == expr_k_case_branch)
+      if (step->kernel_id == EXPR_KID_case_branch)
 	{
 	  fprintf (fp, " pred=");
 	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
 	}
-      else if (step->kernel == expr_k_predicate || step->kernel == expr_k_predicate_cast)
+      else if (step->kernel_id == EXPR_KID_predicate || step->kernel_id == EXPR_KID_predicate_cast)
 	{
 	  fprintf (fp, " pred=");
 	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
 	}
-      else if (step->kernel == expr_k_add_numeric_float || step->kernel == expr_k_sub_numeric_float
-	       || step->kernel == expr_k_mul_numeric || step->kernel == expr_k_div_numeric_float)
+      else if (step->kernel_id == EXPR_KID_add_numeric_float || step->kernel_id == EXPR_KID_sub_numeric_float
+	       || step->kernel_id == EXPR_KID_mul_numeric || step->kernel_id == EXPR_KID_div_numeric_float)
 	{
 	  /* the float family: both operands were already NUMERIC (no coercion step) */
 	  fprintf (fp, " pure");
 	}
       fprintf (fp, "\n");
-      if (step->kernel == expr_k_nested_prog)
+      if (step->kernel_id == EXPR_KID_nested_prog)
 	{
 	  expr_prog_dump (fp, (const EXPR_PROG *) step->fn, indent + 4);
 	}
@@ -6863,7 +6935,7 @@ expr_prog_reset (EXPR_PROG * prog)
     }
   for (i = 0; i < prog->n_steps; i++)
     {
-      if (prog->steps[i].kernel == expr_k_nested_prog)
+      if (prog->steps[i].kernel_id == EXPR_KID_nested_prog)
 	{
 	  expr_prog_reset ((EXPR_PROG *) prog->steps[i].fn);
 	}
@@ -6907,7 +6979,7 @@ expr_prog_free (EXPR_PROG * prog)
       for (i = 0; i < prog->n_steps; i++)
 	{
 	  expr_pred_free ((EXPR_PRED *) prog->steps[i].pred);
-	  if (prog->steps[i].kernel == expr_k_nested_prog)
+	  if (prog->steps[i].kernel_id == EXPR_KID_nested_prog)
 	    {
 	      expr_prog_free ((EXPR_PROG *) prog->steps[i].fn);
 	    }

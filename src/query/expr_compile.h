@@ -93,6 +93,8 @@ typedef int (*EXPR_KERNEL_FN) (EXPR_STEP * step, EXPR_EVAL_CTX * ctx);
 struct expr_step
 {
   EXPR_KERNEL_FN kernel;
+  unsigned char kernel_id;	/* the kernel by id (expr_compile.c, EXPR_KERNEL_LIST): what the compiler decides; kernel is
+				 * its function */
 
   /* argument cells: dereferenced at evaluation time; wired at compile time either to a
    * stable value (constant, host variable) or to a producer step's cell */
