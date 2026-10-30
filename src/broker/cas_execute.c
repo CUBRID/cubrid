@@ -10893,20 +10893,31 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 /*
  * ux_stream_settle_release () - Pay the auto-commit a download deferred, if its release was the last tie
+ *   err_code(in): the error the request ended with, or 0
  *
- * Always as a commit, a failed read included: a read writes nothing, and what the commit carries is the work of
+ * As a commit, a failed read included: a read writes nothing, and what the commit carries is the work of
  * statements the client was told had finished. Not while an upload is open: its debt stays for END, or for the
- * next commit the connection makes.
+ * next commit the connection makes. A transaction the server already rolled back owes nothing, and the rollback
+ * is what brings this connection in line with it.
  */
 static void
-ux_stream_settle_release (bool auto_commit, T_REQ_INFO * req_info)
+ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
 {
-  if (!auto_commit || stream_from_holds_download () || stream_from_is_open () || hm_has_result_tied_to_tran ())
+  if (!auto_commit)
     {
       return;
     }
 
-  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code) || ER_IS_SERVER_DOWN_ERROR (err_code))
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+      return;
+    }
+
+  if (!stream_from_holds_download () && !stream_from_is_open () && !hm_has_result_tied_to_tran ())
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
 }
 
 /* what a read request asked of the core, and what the core's reply means to the driver */
@@ -10970,7 +10981,7 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
     {
       FREE_MEM (buffer);
       /* the open may have started the transaction it failed in */
-      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, req_info);
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, err_code, req_info);
       return ux_stream_error (err_code, net_buf);
     }
 
@@ -10990,7 +11001,7 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
   /* a value read in one call left no handle, so nothing ties the transaction it was read in */
   if (reply_flags & STREAM_FLAG_RELEASED)
     {
-      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, req_info);
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, 0, req_info);
     }
 
   return 0;
@@ -11026,9 +11037,9 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
     }
 
   err_code = stream_from_read (handle, buffer, max, ux_stream_server_read_flags (flags), &nread, &reply_flags);
-  if (reply_flags & STREAM_FLAG_RELEASED)
+  if ((reply_flags & STREAM_FLAG_RELEASED) || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code))
     {
-      ux_stream_settle_release (auto_commit, req_info);
+      ux_stream_settle_release (auto_commit, err_code, req_info);
     }
   if (err_code < 0)
     {
@@ -11062,7 +11073,7 @@ ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_IN
   if (stream_from_holds_handle (handle))
     {
       err_code = stream_from_release (handle);
-      ux_stream_settle_release (auto_commit, req_info);
+      ux_stream_settle_release (auto_commit, err_code, req_info);
     }
 
   if (err_code < 0)
