@@ -38,10 +38,12 @@
 #include "cas_log.h"
 #include "dbtype.h"
 #include "cas_common_execute.h"
+#include "network_interface_cl.h"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
 
 static void srv_handle_content_free (T_SRV_HANDLE * srv_handle);
+static void srv_handle_release_internal_lob_uploads (int h_id, T_SRV_HANDLE * srv_handle);
 static void col_update_info_free (T_QUERY_RESULT * q_result);
 static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 extern bool tran_is_in_libcas (void);
@@ -161,6 +163,7 @@ hm_srv_handle_free (int h_id)
       return;
     }
 
+  srv_handle_release_internal_lob_uploads (h_id, srv_handle);
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
 
@@ -198,6 +201,8 @@ hm_srv_handle_free_all (bool free_holdable)
 	  continue;
 	}
 
+      /* no release here: the driver may re-prepare and run the statement again with the same uploads */
+      FREE_MEM (srv_handle->internal_lob_upload_tokens);
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
 
@@ -275,6 +280,36 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  hm_qresult_end (srv_handle, FALSE);
 	}
     }
+}
+
+/* true if a commit would end a result set still open (not holdable) or drop the locks it updates under */
+bool
+hm_has_result_tied_to_tran (void)
+{
+  /* [리뷰] holdable이고 updatable이 아닌 결과만 커밋에 살아남으므로 건너뛴다.
+   * holdable+updatable 결과는 갱신 락을 지켜야 해서 커밋을 막는다. */
+  T_SRV_HANDLE *srv_handle;
+  int i, j;
+
+  for (i = 0; i < max_handle_id; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle == NULL || srv_handle->q_result == NULL
+	  || (srv_handle->is_holdable && srv_handle->is_updatable != TRUE))
+	{
+	  continue;
+	}
+
+      for (j = 0; j < srv_handle->num_q_result; j++)
+	{
+	  if (srv_handle->q_result[j].result != NULL)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -580,4 +615,88 @@ void
 hm_set_cgw_free_stmt_func (cgw_free_stmt_func_t func)
 {
   cgw_free_stmt_func = func;
+}
+
+/* Is the token bound by an open statement other than h_id? */
+static bool
+srv_handle_internal_lob_upload_shared (int h_id, INT64 token)
+{
+  int j, k;
+
+  for (j = 0; j < max_handle_id; j++)
+    {
+      T_SRV_HANDLE *other = srv_handle_table[j];
+
+      if (other == NULL || j + 1 == h_id)
+	{
+	  continue;
+	}
+      for (k = 0; k < other->internal_lob_upload_token_count; k++)
+	{
+	  if (other->internal_lob_upload_tokens[k] == token)
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
+/* The statement now binds these uploads: one it bound before and no longer does is released (unless another open
+ * statement binds it); one it still binds stays for a re-execution. */
+int
+hm_srv_handle_set_internal_lob_uploads (T_SRV_HANDLE * srv_handle, const INT64 * tokens, int count)
+{
+  INT64 *kept = NULL;
+  int i, j;
+
+  if (count > 0)
+    {
+      kept = (INT64 *) MALLOC (sizeof (INT64) * count);
+      if (kept == NULL)
+	{
+	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	}
+      memcpy (kept, tokens, sizeof (INT64) * count);
+    }
+
+  for (i = 0; i < srv_handle->internal_lob_upload_token_count; i++)
+    {
+      INT64 token = srv_handle->internal_lob_upload_tokens[i];
+
+      for (j = 0; j < count && kept[j] != token; j++)
+	{
+	  ;
+	}
+      if (j == count && !srv_handle_internal_lob_upload_shared (srv_handle->id, token))
+	{
+	  (void) internal_lob_upload_release_from_server (token);
+	}
+    }
+  FREE_MEM (srv_handle->internal_lob_upload_tokens);
+  srv_handle->internal_lob_upload_tokens = kept;
+  srv_handle->internal_lob_upload_token_count = count;
+  return 0;
+}
+
+/* A token can be bound by more than one open statement (one Clob object bound twice): the last one releases it. */
+static void
+srv_handle_release_internal_lob_uploads (int h_id, T_SRV_HANDLE * srv_handle)
+{
+  int i;
+
+  for (i = 0; i < srv_handle->internal_lob_upload_token_count; i++)
+    {
+      INT64 token = srv_handle->internal_lob_upload_tokens[i];
+      bool shared = srv_handle_internal_lob_upload_shared (h_id, token);
+
+      /* [리뷰] 문장 핸들 close 때 바로 해제한다. 다른 핸들도 쓰면 마지막 핸들이 해제한다.
+       * hm_srv_handle_free_all은 해제 요청 없이 배열만 비운다. */
+      if (!shared)
+	{
+	  (void) internal_lob_upload_release_from_server (token);
+	}
+    }
+  FREE_MEM (srv_handle->internal_lob_upload_tokens);
+  srv_handle->internal_lob_upload_token_count = 0;
 }

@@ -136,7 +136,14 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_not_supported,		/* CAS_FC_STREAM_END */
+  fn_not_supported,		/* CAS_FC_STREAM_INIT */
+  fn_not_supported,		/* CAS_FC_STREAM_ABORT */
+  fn_not_supported,		/* CAS_FC_LOB_STREAM_OPEN */
+  fn_not_supported,		/* CAS_FC_LOB_STREAM_READ */
+  fn_not_supported		/* CAS_FC_LOB_STREAM_CLOSE */
 };
 
 static const char *server_func_name[] = {
@@ -183,8 +190,21 @@ static const char *server_func_name[] = {
   "prepare_and_execute",
   "cursor_close",
   "get_shard_info",
-  "set_cas_change_mode"
+  "set_cas_change_mode",
+  "stream_send_data",
+  "stream_end",
+  "stream_init",
+  "stream_abort",
+  "lob_stream_open",
+  "lob_stream_read",
+  "lob_stream_close"
 };
+
+/* process_request () indexes both tables by func_code - 1 after checking func_code < CAS_FC_MAX */
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
 
 static int cgw_cas_main (void);
 static int cgw_cas_init (void);
@@ -830,6 +850,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
     {
 
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+      /* CGW has no stream transport; say so rather than leaving the default 1 */
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_STREAM_OPEN;
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 

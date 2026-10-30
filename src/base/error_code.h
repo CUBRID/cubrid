@@ -1783,7 +1783,17 @@
 
 #define ER_HEAP_OOS_INVALID_ARGUMENT                -1383
 
-#define ER_LAST_ERROR                               -1384
+/* [리뷰] -1384·-1385·-1387은 옛 COPY 오류 자리로, 제거 때 당기지 않았다.
+ * er_set 인자 수는 서식과 맞춘다(1386은 1개, 1388은 2개). */
+#define ER_STREAM_SESSION_ERROR                     -1386
+#define ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH         -1388
+#define ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED       -1389
+#define ER_LDR_INTERNAL_LOB_SIDECAR                  -1390
+/* [리뷰] 로케이터가 가리키는 값이 삭제·vacuum으로 사라졌거나 바뀐 경우다.
+ * 읽기 커서 open이 generic 오류 대신 이 코드를 내 재조회를 안내한다. */
+#define ER_INTERNAL_LOB_VALUE_GONE                   -1391
+
+#define ER_LAST_ERROR                               -1392
 
 
 

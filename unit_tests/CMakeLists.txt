@@ -41,6 +41,7 @@ option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_OOS "Unit testing: oos")
+option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 
 message("  unit_tests/...")
 
@@ -122,6 +123,11 @@ if (UNIT_TESTS OR UNIT_TEST_OOS)
   message("    oos")
   add_subdirectory(oos)
 endif(UNIT_TESTS OR UNIT_TEST_OOS)
+
+if (UNIT_TESTS OR UNIT_TEST_STREAM_SESSION)
+  message("    stream_session")
+  add_subdirectory(stream_session)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM_SESSION)
 
 #[[
 TODO compilation fails
