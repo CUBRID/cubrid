@@ -93,7 +93,7 @@ class stream_handle_object
  * with more to report does not change every other one's signature to say it. */
 struct stream_result
 {
-  std::int64_t count;		/* rows for COPY, bytes for a value stream */
+  std::int64_t count;		/* rows for COPY and LOB DML; a result_is_handle kind's staged bytes */
   stream_handle_object *staged;	/* result_is_handle kinds: what END issues the client a handle for */
 };
 
@@ -106,8 +106,9 @@ class stream_session
      * payload needs is the implementation's concern. */
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
-    /* Flush pending work and report the binding's result: rows_loaded for COPY,
-     * bytes written for internal-LOB. The count is 64-bit so a 4GB LOB value fits. */
+    /* Flush pending work and report the binding's result: a row count for COPY
+     * and LOB DML, or, for a result_is_handle kind, the object it staged and its
+     * size, for which the core issues the handle END returns. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
     /* Discard in-flight state so no partial result survives an error. */

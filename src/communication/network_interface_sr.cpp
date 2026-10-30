@@ -12866,7 +12866,7 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 /*
  * sstream_end () - End the stream and report the session's result
  *   request format: the last chunk (raw, may be empty) -- what a FINAL SEND_DATA carries on the driver wire
- *   reply format: error_code (int), padding (int), count (int64) -- rows for COPY, bytes for a value stream, or
+ *   reply format: error_code (int), padding (int), count (int64) -- rows for COPY and LOB DML, or
  *                 the handle of a result_is_handle kind; the binding interprets it
  *
  * The last chunk rides here rather than as a flag on SEND_DATA so that every

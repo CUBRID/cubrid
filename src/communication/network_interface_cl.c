@@ -12453,8 +12453,8 @@ stream_from_send_data (const char *data, int data_len)
 /*
  * stream_from_end () - End the stream and retrieve the session's result
  *   return: error code
- *   count(out): the binding's count -- rows for COPY, bytes for a value stream, or the
- *               handle a result_is_handle kind issued
+ *   count(out): the binding's count -- rows for COPY and LOB DML -- or the handle
+ *               issued for what a result_is_handle kind staged
  *   data(in), data_len(in): a last chunk to consume before ending, or none
  */
 int

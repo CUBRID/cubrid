@@ -10852,7 +10852,7 @@ ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_i
     }
 
   /* first field is the result code, as every other CAS reply has it; the
-   * binding's count follows, 64-bit so a value stream's byte count fits */
+   * binding's count or the issued handle follows, 64-bit */
   net_buf_cp_int (net_buf, NO_ERROR, NULL);
   net_buf_cp_bigint (net_buf, count, NULL);
   return 0;
