@@ -343,11 +343,11 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
  * qdata_valptr_prog_compile () - lazily settle a value pointer list's expressions into
  *				  one program (expr_compile.h)
  *
- * The program XASL generation compiled for the list, or compiled here when the stream carries
- * none (expr_valptr_prog_settle ()): its columns but the hidden ones and those whose fetch
- * semantics depend on runtime regu flags, which keep their per-column interpreted fetch as does
- * every column the expression compiler cannot cover purely.  A program that would only repeat
- * leaf fetches (no computing step) is dropped.
+ * The program XASL generation compiled for the list (expr_valptr_prog_settle ()); the server
+ * compiles none itself: its columns but the hidden ones and those whose fetch semantics depend
+ * on runtime regu flags, which keep their per-column interpreted fetch as does every column the
+ * expression compiler cannot cover purely.  A program that would only repeat leaf fetches (no
+ * computing step) is not written.
  */
 static void
 qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)

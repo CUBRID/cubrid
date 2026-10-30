@@ -322,13 +322,6 @@ struct expr_build_ctx
   EXPR_COMPILE_ENV env;		/* who compiles, and the plan's host variables */
 };
 
-#if !defined (NDEBUG)
-/* debug: a compiled program or scan filter goes through its image and back (see "program images") */
-static void expr_image_check_prog (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roots, const int *root_idx,
-				   const void *share_spec);
-static void expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr);
-#endif
-
 static void
 expr_pred_free (EXPR_PRED * pred)
 {
@@ -3137,14 +3130,6 @@ expr_scan_pred_compile_env (const EXPR_COMPILE_ENV * env, const PRED_EXPR * pr)
     }
   expr_pred_bind (pred);
   free_and_init (bctx);
-#if !defined (NDEBUG)
-  if (!env->at_generation)
-    {
-      /* at generation the tree's domains are not yet what the stream makes of them (a VARCHAR's floating precision
-       * is unpacked as the maximum): the server binds the image against its own compile (expr_scan_pred_settle ()) */
-      expr_image_check_scan_pred (pred, pr);
-    }
-#endif
   return pred;
 }
 
@@ -6718,13 +6703,9 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 			 const void *share_spec)
 {
   const EXPR_COMPILE_ENV env = expr_server_env (thread_p, vd);
-  EXPR_PROG *prog = expr_prog_compile_roots_ex (&env, roots, in_roots, allow_fallback_roots, allow_wired_only,
-						only_compute_roots, root_idx_out, share_spec, 0);
 
-#if !defined (NDEBUG)
-  expr_image_check_prog (prog, roots, in_roots, root_idx_out, share_spec);
-#endif
-  return prog;
+  return expr_prog_compile_roots_ex (&env, roots, in_roots, allow_fallback_roots, allow_wired_only,
+				     only_compute_roots, root_idx_out, share_spec, 0);
 }
 
 /* The roots of a value pointer list's projection program, one per column (CBRD-27361: the server and XASL generation
@@ -7844,7 +7825,10 @@ expr_prog_free (EXPR_PROG * prog)
  * indexes, a kernel by its id, a domain and a pinned literal as the stream packs them.  expr_prog_image_pack ()
  * writes a program, expr_prog_image_unpack () lays its image out over the roots of the tree it is read with and
  * binds it as a program compiled there is bound (expr_prog_materialize ()); a compiled scan filter likewise.
- * A debug build round-trips every program it compiles and compares the copy with the original.
+ * XASL generation writes the images (XASL_TO_STREAM), the server binds them; a debug server compiles each program as
+ * well and asserts the image is that program (expr_*_settle ()).  A domain is packed as the stream packs the XASL's
+ * own, so the image's unpacks to the domain the server's tree holds: packing a domain the stream already unpacked
+ * need not give it back (an ENUMERATION's codeset and collation move), so the server does not repack its own.
  ******************************************************************************/
 
 #define EXPR_IMAGE_VERSION 1
@@ -8864,8 +8848,9 @@ expr_scan_pred_image_unpack (const char *image, int size, const PRED_EXPR * pr)
 }
 
 #if !defined (NDEBUG)
-/* debug: the copy an image makes of a program is the program -- the same steps, cells, slots and predicates, the
- * same nodes and process addresses where a program holds one (kernels, literals, value slots, a filter's slots) */
+/* debug: the program an image binds is the program this server compiles -- the same steps, cells, slots and
+ * predicates, the same nodes and process addresses where a program holds one (kernels, literals, value slots, a
+ * filter's slots) */
 static bool
 expr_image_same_cellp (const EXPR_PROG * a, DB_VALUE * const *pa, const EXPR_PROG * b, DB_VALUE * const *pb)
 {
@@ -9010,38 +8995,9 @@ expr_image_same_prog (const EXPR_PROG * a, const EXPR_PROG * b)
   return true;
 }
 
-/* debug: every program compiled here goes through its image and back (expr_prog_compile_roots ()) */
-static void
-expr_image_check_prog (const EXPR_PROG * prog, REGU_VARIABLE ** roots, int n_roots, const int *root_idx,
-		       const void *share_spec)
-{
-  int idx_copy[EXPR_MAX_STEPS];
-  EXPR_PROG *copy;
-  char *image;
-  int size, i;
+#endif /* !NDEBUG */
 
-  if (prog == NULL || n_roots > EXPR_MAX_STEPS)
-    {
-      return;
-    }
-  image = expr_prog_image_pack (prog, roots, n_roots, root_idx, &size);
-  /* -1: the program reads a node the walk of its roots does not reach */
-  assert (image != NULL || size != -1);
-  if (image == NULL)
-    {
-      return;
-    }
-  copy = expr_prog_image_unpack (image, size, roots, n_roots, root_idx != NULL ? idx_copy : NULL, share_spec);
-  assert (copy != NULL);
-  assert (expr_image_same_prog (prog, copy));
-  for (i = 0; root_idx != NULL && copy != NULL && i < n_roots; i++)
-    {
-      assert (idx_copy[i] == root_idx[i]);
-    }
-  expr_prog_free (copy);
-  free_and_init (image);
-}
-
+#if !defined (NDEBUG)
 /* two compiled scan filters over one tree are one: the tree, its operand program and its share registry */
 static bool
 expr_image_same_scan_pred (const EXPR_PRED * a, const EXPR_PRED * b)
@@ -9067,45 +9023,19 @@ expr_image_same_scan_pred (const EXPR_PRED * a, const EXPR_PRED * b)
     }
   return true;
 }
-
-/* debug: likewise a compiled scan filter (expr_scan_pred_compile ()) */
-static void
-expr_image_check_scan_pred (const EXPR_PRED * root, const PRED_EXPR * pr)
-{
-  EXPR_PRED *copy;
-  char *image;
-  int size;
-
-  image = expr_scan_pred_image_pack (root, pr, &size);
-  assert (image != NULL || size != -1);
-  if (image == NULL)
-    {
-      return;
-    }
-  copy = (EXPR_PRED *) expr_scan_pred_image_unpack (image, size, pr);
-  assert (copy != NULL);
-  assert (expr_image_same_scan_pred (root, copy));
-  expr_scan_pred_free (copy);
-  free_and_init (image);
-}
 #endif /* !NDEBUG */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* CBRD-27361: a data filter's compiled form on its first evaluation: bound from the image XASL generation wrote
- * (PRED_EXPR.scan_prog_image), or compiled here when the stream carries none.  NULL: the filter stays interpreted --
- * the client declined it (an image of size 0), or no image was written and the compiler here declines it.  A debug
- * build compiles here as well and asserts the client compiled the same program. */
+ * (PRED_EXPR.scan_prog_image).  NULL: the filter stays interpreted -- the client declined it (an image of size 0), or
+ * the stream carries none.  The server compiles no filter itself; a debug build compiles here to assert the client
+ * compiled the program this server would have, and wrote one wherever this server would compile one. */
 void *
 expr_scan_pred_settle (cubthread::entry * thread_p, const PRED_EXPR * pr, val_descr * vd)
 {
-  void *compiled;
+  void *compiled = NULL;
 
-  if (pr->scan_prog_image == NULL)
-    {
-      return expr_scan_pred_compile (thread_p, pr, vd);
-    }
-  compiled = NULL;
-  if (pr->scan_prog_image_size > 0)
+  if (pr->scan_prog_image != NULL && pr->scan_prog_image_size > 0)
     {
       compiled = expr_scan_pred_image_unpack (pr->scan_prog_image, pr->scan_prog_image_size, pr);
     }
@@ -9113,27 +9043,25 @@ expr_scan_pred_settle (cubthread::entry * thread_p, const PRED_EXPR * pr, val_de
   {
     EXPR_PRED *here = (EXPR_PRED *) expr_scan_pred_compile (thread_p, pr, vd);
 
-    /* an image binds over the tree it was written for, and both sides decide alike */
+    /* an image binds over the tree it was written for, both sides decide alike, and no filter the server would
+     * compile goes without one */
     assert (pr->scan_prog_image_size == 0 || compiled != NULL);
+    assert (pr->scan_prog_image != NULL || here == NULL);
     assert (expr_image_same_scan_pred ((const EXPR_PRED *) compiled, here));
     expr_scan_pred_free (here);
   }
 #endif
-  if (compiled == NULL && pr->scan_prog_image_size > 0)
-    {
-      /* an image this tree does not take: compile it here */
-      compiled = expr_scan_pred_compile (thread_p, pr, vd);
-    }
   return compiled;
 }
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* CBRD-27361: a value pointer list's projection program on its first evaluation (qdata_valptr_prog_compile ()):
- * bound from the image XASL generation wrote (valptr_list_node.eval_prog_image), or compiled here when the stream
- * carries none.  NULL: the list keeps its interpreted fetch.  idx (valptr_cnt entries) receives each column's program
- * root, or -1 for a column the program does not cover.  A debug build compiles here as well and asserts the client
- * compiled the same program. */
+ * bound from the image XASL generation wrote (valptr_list_node.eval_prog_image).  NULL: the list keeps its
+ * interpreted fetch -- the client declined it, or the stream carries none.  idx (valptr_cnt entries) receives each
+ * column's program root, or -1 for a column the program does not cover.  The server compiles no list itself; a debug
+ * build compiles here to assert the client compiled the program this server would have, and wrote one wherever this
+ * server would compile one. */
 EXPR_PROG *
 expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, val_descr * vd, int *idx)
 {
@@ -9145,12 +9073,7 @@ expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, v
     {
       return NULL;
     }
-  if (list->eval_prog_image == NULL)
-    {
-      return expr_valptr_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, false, true, idx,
-							     list->eval_prog_share_spec), idx, n);
-    }
-  if (list->eval_prog_image_size > 0)
+  if (list->eval_prog_image != NULL && list->eval_prog_image_size > 0)
     {
       prog = expr_prog_image_unpack (list->eval_prog_image, list->eval_prog_image_size, roots, n, idx,
 				     list->eval_prog_share_spec);
@@ -9163,9 +9086,10 @@ expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, v
     int k;
 
     here = expr_valptr_prog_keep (here, idx_here, n);
-
-    /* an image binds over the tree it was written for, and both sides decide alike */
+    /* an image binds over the tree it was written for, both sides decide alike, and no list the server would
+     * compile goes without one */
     assert (list->eval_prog_image_size == 0 || prog != NULL);
+    assert (list->eval_prog_image != NULL || here == NULL);
     assert (expr_image_same_prog (prog, here));
     for (k = 0; prog != NULL && here != NULL && k < n; k++)
       {
@@ -9174,24 +9098,19 @@ expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, v
     expr_prog_free (here);
   }
 #endif
-  if (prog == NULL && list->eval_prog_image_size > 0)
-    {
-      /* an image this tree does not take: compile the list here */
-      prog = expr_valptr_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, false, true, idx,
-							     list->eval_prog_share_spec), idx, n);
-    }
   return prog;
 }
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* CBRD-27361: an aggregate list's operand program on its first evaluation (qdata_agg_operand_prog_compile ()): bound
- * from the image XASL generation wrote (the list head's operand_prog_image), or compiled here when the stream carries
- * none -- wired-only programs are wanted: even when every operand is a plain TYPE_CONSTANT cell (buildlist
- * aggregates -- the expressions were moved into the scan), the accumulate kernels still skip the per-row operand
- * vector, its deep copy and the accumulate dispatch.  NULL: the operands keep their interpreted fetch.  *idx_out
- * (malloc'd) receives each root's program root, bases[k] the k-th aggregate's first root or -1.  A debug build
- * compiles here as well and asserts the client compiled the same program. */
+ * from the image XASL generation wrote (the list head's operand_prog_image).  NULL: the operands keep their
+ * interpreted fetch -- the client declined the list, or the stream carries no image.  *idx_out (malloc'd) receives
+ * each root's program root, bases[k] the k-th aggregate's first root or -1.  The server compiles no list itself; a
+ * debug build compiles here -- wired-only programs are wanted: even when every operand is a plain TYPE_CONSTANT cell
+ * (buildlist aggregates, the expressions moved into the scan), the accumulate kernels still skip the per-row operand
+ * vector, its deep copy and the accumulate dispatch -- to assert the client compiled the program this server would
+ * have, and wrote one wherever this server would compile one. */
 EXPR_PROG *
 expr_agg_prog_settle (cubthread::entry * thread_p, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 		      int **idx_out, int *bases)
@@ -9223,6 +9142,7 @@ expr_agg_prog_settle (cubthread::entry * thread_p, cubxasl::aggregate_list_node 
 #endif
   if (n <= 0)
     {
+      assert (agg_list->operand_prog_image == NULL || agg_list->operand_prog_image_size == 0);
       return NULL;
     }
   idx = (int *) malloc (sizeof (int) * n);
@@ -9230,44 +9150,31 @@ expr_agg_prog_settle (cubthread::entry * thread_p, cubxasl::aggregate_list_node 
     {
       return NULL;
     }
-  if (agg_list->operand_prog_image == NULL)
+  if (agg_list->operand_prog_image != NULL && agg_list->operand_prog_image_size > 0)
     {
-      prog = expr_agg_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx,
-							  agg_list->operand_prog_share_spec), idx, n);
+      prog = expr_prog_image_unpack (agg_list->operand_prog_image, agg_list->operand_prog_image_size, roots, n, idx,
+				     agg_list->operand_prog_share_spec);
     }
-  else
-    {
-      if (agg_list->operand_prog_image_size > 0)
-	{
-	  prog = expr_prog_image_unpack (agg_list->operand_prog_image, agg_list->operand_prog_image_size, roots, n, idx,
-					 agg_list->operand_prog_share_spec);
-	}
 #if !defined (NDEBUG)
+  {
+    int idx_here[EXPR_MAX_STEPS];
+    EXPR_PROG *here = expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx_here,
+					       agg_list->operand_prog_share_spec);
+    int k;
+
+    here = expr_agg_prog_keep (here, idx_here, n);
+    /* an image binds over the tree it was written for, both sides decide alike, and no list the server would
+     * compile goes without one */
+    assert (agg_list->operand_prog_image_size == 0 || prog != NULL);
+    assert (agg_list->operand_prog_image != NULL || here == NULL);
+    assert (expr_image_same_prog (prog, here));
+    for (k = 0; prog != NULL && here != NULL && k < n; k++)
       {
-	int idx_here[EXPR_MAX_STEPS];
-	EXPR_PROG *here = expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx_here,
-						   agg_list->operand_prog_share_spec);
-	int k;
-
-	here = expr_agg_prog_keep (here, idx_here, n);
-
-	/* an image binds over the tree it was written for, and both sides decide alike */
-	assert (agg_list->operand_prog_image_size == 0 || prog != NULL);
-	assert (expr_image_same_prog (prog, here));
-	for (k = 0; prog != NULL && here != NULL && k < n; k++)
-	  {
-	    assert (idx[k] == idx_here[k]);
-	  }
-	expr_prog_free (here);
+	assert (idx[k] == idx_here[k]);
       }
+    expr_prog_free (here);
+  }
 #endif
-      if (prog == NULL && agg_list->operand_prog_image_size > 0)
-	{
-	  /* an image this tree does not take: compile the list here */
-	  prog = expr_agg_prog_keep (expr_prog_compile_roots (thread_p, roots, n, vd, false, true, false, idx,
-							      agg_list->operand_prog_share_spec), idx, n);
-	}
-    }
   if (prog == NULL)
     {
       free_and_init (idx);

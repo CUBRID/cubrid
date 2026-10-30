@@ -252,8 +252,8 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
 					   bool only_compute_roots, int *root_idx_out, const void *share_spec);
 
 /* CBRD-27361: a value pointer list's projection program on its first evaluation: bound from the image XASL generation
- * wrote (valptr_list_node.eval_prog_image), or compiled here when the stream carries none; NULL when the list keeps
- * its interpreted fetch.  idx (valptr_cnt entries) receives each column's program root or -1. */
+ * wrote (valptr_list_node.eval_prog_image); NULL when the list keeps its interpreted fetch (the server compiles none
+ * itself).  idx (valptr_cnt entries) receives each column's program root or -1. */
 extern EXPR_PROG *expr_valptr_prog_settle (cubthread::entry * thread_p, valptr_list_node * list, val_descr * vd,
 					   int *idx);
 /* CBRD-27361: at XASL generation, the image of that program (1), or 0 when the list keeps its interpreted fetch, -1
@@ -321,7 +321,7 @@ extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain
  * in the tree is not covered -- the caller keeps the interpreted pr_eval_fnc. */
 extern void *expr_scan_pred_compile (cubthread::entry * thread_p, const cubxasl::pred_expr * pr, val_descr * vd);
 /* CBRD-27361: the data filter's compiled form on its first evaluation: bound from the image XASL generation wrote
- * (pred_expr.scan_prog_image), or compiled here when the stream carries none (expr_compile.c) */
+ * (pred_expr.scan_prog_image); NULL when the filter stays interpreted (expr_compile.c) */
 extern void *expr_scan_pred_settle (cubthread::entry * thread_p, const cubxasl::pred_expr * pr, val_descr * vd);
 /* CBRD-27361: at XASL generation, the data filter compiled over the client's tree, for its image */
 extern void *expr_scan_pred_compile_at_generation (const cubxasl::pred_expr * pr);

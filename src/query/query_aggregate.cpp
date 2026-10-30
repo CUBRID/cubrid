@@ -1259,8 +1259,8 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
  * qdata_agg_operand_prog_compile () - lazily settle the operand expressions of a whole
  *				       aggregate list into one program (expr_compile.h)
  *
- * The program XASL generation compiled for the list, or one compiled here when the stream
- * carries none (expr_agg_prog_settle ()).  Only plain accumulating functions participate
+ * The program XASL generation compiled for the list (expr_agg_prog_settle ()); the server
+ * compiles none itself.  Only plain accumulating functions participate
  * (expr_agg_roots ()): the operands of any aggregate the per-row loop may skip are left out
  * so the unconditional per-row program evaluation cannot change behavior.  Roots the
  * expression compiler cannot cover purely are excluded the same way (the compiler is
@@ -1305,7 +1305,7 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
       bases[k] = -1;
     }
 
-  /* the roots, and the program XASL generation compiled for them or one compiled here */
+  /* the roots, and the program XASL generation compiled for them */
   prog = expr_agg_prog_settle (thread_p, agg_list_p, val_desc_p, &idx, bases);
   for (agg_p = agg_list_p, k = 0; agg_p != NULL; agg_p = agg_p->next, k++)
     {

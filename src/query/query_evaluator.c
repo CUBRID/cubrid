@@ -3306,7 +3306,7 @@ eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filterp)
   pred_root = scan_predp->pred_expr;
   if (pred_root->scan_prog_state == 0)
     {
-      /* on the first row: the form XASL generation compiled, or compiled here (expr_compile.c) */
+      /* on the first row: the form XASL generation compiled (expr_compile.c) */
       pred_root->scan_prog = expr_scan_pred_settle (thread_p, pred_root, filterp->val_descr);
       pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
       pred_root->scan_prog_gen++;
