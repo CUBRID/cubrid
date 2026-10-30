@@ -6191,6 +6191,14 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
     {
       ASSERT_ERROR ();
       db_make_error (return_val, error);
+      return;
+    }
+
+  error = locator_flush_instance (trigger_mop);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_make_error (return_val, error);
     }
 }
 
