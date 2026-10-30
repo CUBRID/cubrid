@@ -116,13 +116,6 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM
       return false;
     }
 
-  /* a query-wide plan hint (NO_COVERING_IDX, USE_DESC_IDX, ...) lifted out would apply to every outer table
-   * too; keep the subquery unless the outer SELECT holds the same hint */
-  if (subq->info.query.q.select.hint & ~outer_hint & QO_UNNEST_QUERY_WIDE_HINTS)
-    {
-      return false;
-    }
-
   if (require_where && subq->info.query.q.select.where == NULL)
     {
       return false;
@@ -185,19 +178,28 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM
 	  return false;
 	}
 
-      /* USING INDEX travels to the enclosing SELECT. Every named form keeps applying to the spec moving up, but
-       * USING INDEX NONE names no table and no index, applies to every table in scope, and lifted out would
-       * silence the outer tables too; reject that one and KEYLIMIT.  A derived table keeps its hints. */
-      for (hint = subq->info.query.q.select.using_index; hint != NULL; hint = hint->next)
+      /* a query-wide plan hint (NO_COVERING_IDX, USE_DESC_IDX, ...) lifted out would apply to every outer table
+       * too; keep the subquery unless the outer SELECT holds the same hint.  A derived table keeps its hints */
+      if (subq->info.query.q.select.hint & ~outer_hint & QO_UNNEST_QUERY_WIDE_HINTS)
 	{
-	  if (hint->info.name.original == NULL && hint->info.name.resolved == NULL)
-	    {
-	      return false;
-	    }
-	  if (hint->info.name.indx_key_limit != NULL)
-	    {
-	      return false;
-	    }
+	  return false;
+	}
+    }
+
+  /* USING INDEX travels to the enclosing SELECT when one table moves up. Every named form keeps applying to the spec
+   * moving up, but USING INDEX NONE names no table and no index, applies to every table in scope, and lifted out
+   * would silence the outer tables too; reject that one.  A derived table keeps it.  KEYLIMIT is rejected on both
+   * paths: nested, its index scan restarts with each outer row; unnested, the planner may read that index first
+   * and cut its keys once for every outer row */
+  for (hint = subq->info.query.q.select.using_index; hint != NULL; hint = hint->next)
+    {
+      if (inner_spec->next == NULL && hint->info.name.original == NULL && hint->info.name.resolved == NULL)
+	{
+	  return false;
+	}
+      if (hint->info.name.indx_key_limit != NULL)
+	{
+	  return false;
 	}
     }
 
