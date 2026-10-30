@@ -1352,6 +1352,9 @@ db_shutdown_sub ()
     }
 
   (void) db_end_session ();
+  /* the kept trees of this sub-client's thread: db_end_session () changes the session id, which releases them, only
+   * when it succeeds and the session is not kept */
+  db_prepared_tree_free_all ();
   db_Disable_modifications = 0;
 
   (void) boot_shutdown_client_sub ();

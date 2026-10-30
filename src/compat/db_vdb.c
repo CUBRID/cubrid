@@ -774,13 +774,15 @@ int g_open_buffer_control_flags = 0;
  * (another CAS sharing the server session may have prepared it again). A change of server
  * session (db_set_session_id), db_shutdown, a restart and a shutdown without the server
  * release every entry; DROP PREPARE, re-PREPARE of the same name and a stale kept tree
- * release its own.
+ * release its own -- except while the tree is checked out (below): then the next lookup
+ * finds the text changed and releases it.
  *
  * A tree being executed is off the list (db_prepared_tree_take): SQL nested in that execution
  * -- a stored procedure or a method running DEALLOCATE PREPARE or PREPARE on the same name --
- * would otherwise free the tree under the execution. The list is per thread, as the server
- * session id it is matched by (db_Session_id), so it takes no lock and a sub-client of a
- * multi-connection client sees only its own entries.
+ * would otherwise free the tree under the execution. The list has the scope of the server
+ * session id it is matched by (db_Session_id, CUB_THREAD_LOCAL): one per process, or one per
+ * sub-client thread of a multi-connection client, so it takes no lock and a sub-client sees
+ * only its own entries.
  */
 static CUB_THREAD_LOCAL DB_SESSION *db_Kept_trees = NULL;
 
@@ -851,9 +853,13 @@ db_prepared_tree_take (const char *name, const char *text)
  * kept (in) : subsession obtained from db_prepared_tree_take ()
  *
  * Note: if SQL nested in the execution kept the name anew (its own EXECUTE compiled and
- *       registered a tree), the newer tree wins: a name has at most one entry. A name the
- *       nested SQL deallocated comes back too; the next EXECUTE of it fails on the server
- *       before any lookup, and the next PREPARE of it removes the entry.
+ *       registered a tree), the newer tree wins: a name has at most one entry. A tree whose
+ *       name the nested SQL deallocated or prepared again comes back too, since the nested
+ *       DEALLOCATE / PREPARE found nothing to remove: an EXECUTE of a deallocated name fails
+ *       on the server before any lookup and a later PREPARE removes the entry, and an
+ *       EXECUTE of a new text makes db_prepared_tree_take () find the text changed and
+ *       close it (prepared again with the same text, the tree is the one that text compiles
+ *       to and stays).
  */
 static void
 db_prepared_tree_put_back (DB_SESSION * kept)
