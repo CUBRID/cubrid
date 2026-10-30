@@ -118,6 +118,7 @@ namespace cubpl
 //////////////////////////////////////////////////
   executor::executor (pl_signature &sig)
     : m_sig (sig)
+    , m_rights_pushed (false)
   {
     session *sess = get_session ();
     if (sess)
@@ -280,7 +281,6 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
-    bool rights_pushed = false;
 
     if (m_stack == NULL)
       {
@@ -298,14 +298,8 @@ namespace cubpl
 	return er_errid ();
       }
 
-    // execution rights
+    // execution rights: switched on the first callback to the client (see send_callback_recv ())
     assert (m_sig.auth != NULL);
-    error = change_exec_rights (m_sig.auth);
-    if (error != NO_ERROR)
-      {
-	goto exit;
-      }
-    rights_pushed = true;
 
     error = request_invoke_command ();
     if (error != NO_ERROR)
@@ -325,9 +319,9 @@ exit:
 	m_stack->reset_query_handlers ();
       }
 
-    // restore execution rights. Not when the switch above failed: there is nothing of ours to pop, and a pop
-    // would take off a user pushed by an outer caller instead.
-    if (rights_pushed && change_exec_rights (NULL) != NO_ERROR)
+    // restore execution rights. Not when they were not switched, or the switch failed: there is nothing of ours to
+    // pop, and a pop would take off a user pushed by an outer caller instead.
+    if (m_rights_pushed && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
       }
@@ -735,7 +729,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (true, get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
+    error = send_callback_recv (get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
     return error;
   }
 
@@ -793,7 +787,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client_recv (true, get_execute_info, code, request);
+    error = send_callback_recv (get_execute_info, code, request);
     request.clear ();
 
     return error;
@@ -899,7 +893,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
+    error = send_callback_recv (java_lambda, code, request);
     return error;
   }
 
@@ -918,7 +912,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
+    error = send_callback_recv (java_lambda, code, request);
     return error;
   }
 
@@ -936,7 +930,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command, oid);
+    error = send_callback_recv (java_lambda, code, command, oid);
     return error;
   }
 
@@ -957,7 +951,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, request);
+    error = send_callback_recv (java_lambda, code, request);
     return error;
   }
 
@@ -1001,7 +995,7 @@ exit:
 	}
     };
 
-    error = m_stack->send_data_to_client_recv (true, get_make_outresult_info, code, query_id);
+    error = send_callback_recv (get_make_outresult_info, code, query_id);
 
     return error;
   }
@@ -1019,7 +1013,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, handler_id);
+    error = send_callback_recv (java_lambda, code, handler_id);
     return error;
   }
 
@@ -1037,7 +1031,7 @@ exit:
       return m_stack->send_data_to_java (b);
     };
 
-    error = m_stack->send_data_to_client_recv (true, java_lambda, code, command);
+    error = send_callback_recv (java_lambda, code, command);
     return error;
   }
 

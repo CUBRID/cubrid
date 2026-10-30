@@ -88,6 +88,7 @@ namespace cubpl
     private:
       execution_stack *m_stack;
       pl_signature &m_sig;
+      bool m_rights_pushed;
 
       std::vector <std::reference_wrapper <DB_VALUE>> m_args;
       std::vector <DB_VALUE> m_out_args;
@@ -97,6 +98,9 @@ namespace cubpl
       bool is_supported_dbtype (const DB_VALUE &val);
 
       int change_exec_rights (const char *auth_name);
+
+      template <typename ... Args>
+      int send_callback_recv (const xs_callback_func &func, Args &&... args);
 
       void handle_type_resultset (DB_VALUE &returnval);
 
@@ -121,6 +125,26 @@ namespace cubpl
       int callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker);
   };
+
+  // send a callback to the client and receive its reply. The execution rights are switched on the first callback
+  // to the client, not when the routine starts: a routine that sends no callback to the client needs no switch,
+  // and the switch and its restore cost a round trip each.
+  template <typename ... Args>
+  int
+  executor::send_callback_recv (const xs_callback_func &func, Args &&... args)
+  {
+    if (!m_rights_pushed)
+      {
+	int error = change_exec_rights (m_sig.auth);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	m_rights_pushed = true;
+      }
+
+    return m_stack->send_data_to_client_recv (true, func, std::forward<Args> (args)...);
+  }
 }
 
 #endif
