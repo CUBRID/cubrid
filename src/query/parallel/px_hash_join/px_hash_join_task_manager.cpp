@@ -1284,7 +1284,7 @@ cleanup:
 
 		  if (m_context->after_join_pred != nullptr || m_context->outptr_list != nullptr)
 		    {
-		      /* No build match: null-pad the build side for the after-join predicate and the out list. */
+		      /* no build match: null-pad the build side for the after-join predicate and the out list */
 		      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 			   regu_var_p = regu_var_p->next)
 			{
@@ -1450,7 +1450,7 @@ cleanup:
 		{
 		  if (m_context->after_join_pred != nullptr || m_context->outptr_list != nullptr)
 		    {
-		      /* No build match: null-pad the build side for the after-join predicate and the out list. */
+		      /* no build match: null-pad the build side for the after-join predicate and the out list */
 		      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 			   regu_var_p = regu_var_p->next)
 			{

@@ -818,11 +818,10 @@ namespace cubxasl
   PL_SIGNATURE_TYPE *
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
-    /* No copy: the workers share the caller's signature.
-     * Every user reads it only (executor holds a const reference and invoke_java copies what it sends),
-     * the xcache clone already shares a non-disposable signature across executions,
-     * and only the owning thread's !for_parallel_aptr clear pass deletes it, after all spawned copies are gone.
-     * Not registered in the cache, so the spawner never frees it. */
+    /* No copy: the workers share the caller's signature. Every user only reads it (executor holds a const reference and
+     * invoke_java copies what it sends), the xcache clone already shares a non-disposable signature across executions,
+     * and only the owning thread's !for_parallel_aptr clear pass deletes it, after all spawned copies are gone. It is
+     * not registered in the cache, so the spawner never frees it. */
     return const_cast<PL_SIGNATURE_TYPE *> (src);
   }
 

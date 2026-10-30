@@ -16363,31 +16363,28 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
   if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
-      /* MERGE queries cannot use parallel execution because they use xtran_server_start_topop ()
-       * to ensure statement atomicity, as each row may require both UPDATE and INSERT operations
-       * to be performed atomically.
+      /* MERGE queries cannot use parallel execution because they use xtran_server_start_topop () to ensure statement
+       * atomicity, as each row may require both UPDATE and INSERT operations to be performed atomically.
        *
-       * xtran_server_start_topop () internally calls log_sysop_start ().
-       * log_sysop_start () uses a transaction-level mutex (rmutex_topop) that does not support concurrent access
-       * from multiple worker threads sharing the same transaction.
+       * xtran_server_start_topop () internally calls log_sysop_start (). log_sysop_start () uses a transaction-level
+       * mutex (rmutex_topop) that does not support concurrent access from multiple worker threads sharing the same
+       * transaction.
        */
       return PLAN_PARALLEL_OPT_CANNOT_USE;
     }
 
-  /* during/after join terms become the join predicates the parallel hash join workers evaluate per row,
-   * so the terms in both sets may call only parallel-eligible methods.
+  /* during/after join terms become the join predicates the parallel hash join workers evaluate per row, so the terms in
+   * both sets may call only parallel-eligible methods.
    *
-   * The plan's sarged_terms must be checked as well: for an inner join the residual (non-equi) join terms
-   * are never classified as during/after join terms but stay in sarged_terms, and qo_init_projection_info ()
-   * moves any of them whose columns both children project into the hash join proc's after_join_pred,
-   * which the workers evaluate.
+   * The plan's sarged_terms must be checked as well: for an inner join the residual (non-equi) join terms are never
+   * classified as during/after join terms but stay in sarged_terms, and qo_init_projection_info () moves any of them
+   * whose columns both children project into the hash join proc's after_join_pred, which the workers evaluate.
    *
-   * hash_terms are excluded on purpose: the key expressions are materialized into the child buildlist outputs
-   * and the workers read them by tuple position, so an SP in them never executes on a worker
-   * (its evaluation is governed by the scan-path judge). A child hash join can compute them
-   * in its own probe loop instead (pass-through),
-   * but hjoin_change_to_merge_type_list () leaves them to the child buildlist
-   * when the join runs in parallel and an SP in them is not PARALLEL_ENABLE.
+   * hash_terms are excluded on purpose: the key expressions are materialized into the child buildlist outputs and the
+   * workers read them by tuple position, so an SP in them never executes on a worker (its evaluation is governed by the
+   * scan-path judge). A child hash join can compute them in its own probe loop instead (pass-through), but
+   * hjoin_change_to_merge_type_list () leaves them to the child buildlist when the child join runs in parallel and an
+   * SP in them is not PARALLEL_ENABLE.
    */
   term_sets[0] = &plan->plan_un.join.during_join_terms;
   term_sets[1] = &plan->plan_un.join.after_join_terms;

@@ -1132,8 +1132,7 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    /* nested sort/hash join serial too: an iteration's result reaches qexec_execute_cte () with dependents
-	     * only through a pass-through wrapper */
+	    /* the nested sorts and hash joins run serially too (parallelism 1), not only the scans */
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }

@@ -272,7 +272,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
     }
 
 cleanup:
-  /* the join wrote the out list the plan gave it unless hjoin_change_to_merge_type_list () dropped it */
+  /* once the join opens its list file, it wrote the out list the plan gave it unless hjoin_change_to_merge_type_list ()
+   * dropped it */
   xasl->proc.hashjoin.has_pass_through = (single_context->outptr_list == xasl->outptr_list);
 
   if (thread_is_on_trace (thread_p) && manager.stats_group != NULL)
@@ -509,7 +510,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
   if (context->after_join_pred != NULL || context->outptr_list != NULL)
     {
-      /* No build match: null-pad the build side for the after-join predicate and the out list. */
+      /* no build match: null-pad the build side for the after-join predicate and the out list */
       for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL; regu_var_p = regu_var_p->next)
 	{
 	  pr_clear_value (regu_var_p->value.vfetch_to);
@@ -716,13 +717,18 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   proc = &xasl->proc.hashjoin;
   assert (xasl->spec_list == NULL);
 
-  merge_info = &proc->merge_info;
-  manager->merge_info = merge_info;
-
   manager->outer = &proc->outer;
   manager->inner = &proc->inner;
   assert (manager->outer->xasl != NULL);
   assert (manager->inner->xasl != NULL);
+
+  merge_info = &proc->merge_info;
+  manager->merge_info = merge_info;
+
+  manager->has_ineligible = proc->has_ineligible;
+  /* merge_info's columns besides the out list are kept only in case the join runs in parallel
+   * (qo_init_merge_info ()) */
+  assert (manager->has_ineligible == (xasl->outptr_list != NULL && merge_info->ls_pos_cnt > 0));
 
   outer_list_id = manager->outer->xasl->list_id;
   inner_list_id = manager->inner->xasl->list_id;
@@ -743,10 +749,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   manager->join_type = merge_info->join_type;
   manager->key_cnt = merge_info->ls_column_cnt;
-
-  manager->has_ineligible = proc->has_ineligible;
-  /* merge_info's columns besides the out list are kept only for a parallel fallback (qo_init_merge_info ()) */
-  assert (manager->has_ineligible == (xasl->outptr_list != NULL && merge_info->ls_pos_cnt > 0));
 
   manager->num_parallel_threads = xasl->parallelism;
 
@@ -920,7 +922,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   type_list(out): Type list of the columns merge_info takes from the input lists.
+ *   type_list(out): Type list of the columns merge_info writes: input columns and a reserved hash key, if any.
  */
 static int
 hjoin_init_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
@@ -979,10 +981,11 @@ hjoin_init_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *
- * A join that runs in parallel writes its own columns (merge_info) instead of an out list with an SP
- * a parallel worker may not run (has_ineligible), and the wrapper reads them (qexec_execute_mainblock_internal).
- * It drops outptr_list as well: the workers write each row through merge_info, and has_pass_through turns false.
- * The partitions hjoin_prepare_partition () made drop it too, so a later fallback to serial partitions writes the rows
+ * A join that runs in parallel writes its own columns (merge_info) instead of an out list with an SP that a parallel
+ * worker may not run (has_ineligible), and the wrapper reads them (qexec_execute_mainblock_internal ()).
+ *
+ * It drops outptr_list as well: the workers write each row through merge_info, and has_pass_through turns false. The
+ * partitions that hjoin_prepare_partition () made drop it too, so a later fallback to serial partitions writes the rows
  * the merge type list describes.
  */
 static int
@@ -3680,7 +3683,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	      if (context->after_join_pred != NULL || context->outptr_list != NULL)
 		{
-		  /* No build match: null-pad the build side for the after-join predicate and the out list. */
+		  /* no build match: null-pad the build side for the after-join predicate and the out list */
 		  for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 		       regu_var_p = regu_var_p->next)
 		    {
@@ -3862,7 +3865,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  if (context->after_join_pred != NULL || context->outptr_list != NULL)
 	    {
-	      /* No build match: null-pad the build side for the after-join predicate and the out list. */
+	      /* no build match: null-pad the build side for the after-join predicate and the out list */
 	      for (REGU_VARIABLE_LIST regu_var_p = build->regu_list_pred; regu_var_p != NULL;
 		   regu_var_p = regu_var_p->next)
 		{
@@ -4108,7 +4111,8 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
  *   outer_record(in): Outer tuple to merge. (can be NULL).
  *   inner_record(in): Inner tuple to merge. (can be NULL).
  *   merge_info(in): Information used to merge the joined result.
- *   overflow_record(in/out): Space for a tuple that does not fit on a single page or the tuple descriptor path.
+ *   overflow_record(in/out): Space for a tuple that does not fit on a single page or cannot take the tuple descriptor
+ *     path (a set column).
  */
 int
 hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
@@ -4126,7 +4130,7 @@ hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context,
 
   if (context->outptr_list != NULL)
     {
-      /* the out list, evaluated with its compiled program as qexec_end_one_iteration () does for the wrapper */
+      /* the out list: evaluated with its compiled program as qexec_end_one_iteration () does for the wrapper */
       error = hjoin_fetch_val_list (thread_p, context->probe, context->build, context->val_descr);
       if (error == NO_ERROR)
 	{
@@ -4136,7 +4140,7 @@ hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context,
     }
   else
     {
-      /* merge path: one deform per input, exact size, page or private buffer */
+      /* merge_info: one deform per input, exact size, page or private buffer */
       error = qfile_merge_tuple_add_list (thread_p, list_id, outer_record, inner_record, merge_info, overflow_record);
     }
   if (error != NO_ERROR)

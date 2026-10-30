@@ -320,19 +320,18 @@ typedef struct hashjoin_context
 /* HASHJOIN_MANAGER*/
 typedef struct hashjoin_manager
 {
-  /* Pointer to a member of HASHJOIN_PROC_NODE. */
+  /* Reference to members of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT *outer;
   HASHJOIN_INPUT *inner;
   QFILE_LIST_MERGE_INFO *merge_info;
+  bool has_ineligible;
 
   /* Copy of a member of QFILE_LIST_MERGE_INFO. */
   JOIN_TYPE join_type;
   int key_cnt;
 
-  /* Copy of a member of HASHJOIN_PROC_NODE. */
-  bool has_ineligible;
-
-  /* Copy of a member of XASL_NODE. */
+  /* Copy of a member of XASL_NODE (parallelism) as the requested degree, then the workers reserved, or 0 when
+   * hjoin_try_parallel () or hjoin_try_parallel_probe () decides on a serial join. */
   int num_parallel_threads;
 
   /* Copy of a member of XASL_STATE. */

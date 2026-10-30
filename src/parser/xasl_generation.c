@@ -17871,8 +17871,8 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
  *   namelist(in): this node's result columns in list file order, one entry per column
  *
  * ptqo_to_list_scan_proc () binds each scanned column to the DB_VALUE, looked up by name, that outptr_list reads.
- * namelist may lead with the hash key placeholder, a PT_VALUE with no such DB_VALUE,
- * so this gives every entry its own DB_VALUE and rebuilds outptr_list from them.
+ * namelist may lead with the hash key placeholder, a PT_VALUE with no such DB_VALUE, so this gives every entry its own
+ * DB_VALUE and rebuilds outptr_list from them.
  */
 XASL_NODE *
 ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * listfile, PT_NODE * namelist)

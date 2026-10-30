@@ -17426,8 +17426,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (XASL_IS_FLAGED (xasl, XASL_PASS_THROUGH_WRAPPER) && XASL_LIST_BACKWARD_FLAG (xasl) != 0)
 	{
-	  /* the list this node's scan would read becomes its result and must scroll like the list it would write.
-	   * Set before the aptrs below open it. */
+	  /* the list file this node's scan would read becomes its result and must scroll like the list file it would
+	   * write. Set before the aptrs below open it. */
 	  XASL_SET_FLAG (xasl->spec_list->s.list_node.xasl_node, XASL_LIST_BACKWARD);
 	}
 
@@ -17637,8 +17637,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  qexec_verify_pass_through_wrapper (xasl);
 #endif /* !NDEBUG */
 
-	  /* a join stopped on an empty input never opens its list file, and a join without has_pass_through
-	   * wrote its own columns: leave the result to the scan below */
+	  /* a join that left no list file, as on an empty input, and a join without has_pass_through, which wrote its
+	   * own columns: leave the result to the scan below */
 	  if (producer->list_id->type_list.type_cnt > 0 && producer->proc.hashjoin.has_pass_through)
 	    {
 	      qfile_destroy_list (thread_p, xasl->list_id);
@@ -17656,8 +17656,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
 
-	      /* skip the main block iterations and their post processing (GROUP BY, analytic, ORDER BY, DISTINCT)
-	       * and leave switch (xasl->type) for if (xasl->is_single_tuple) and the cleanup */
+	      /* skip the main block iterations and their post processing and leave switch (xasl->type) for
+	       * if (xasl->is_single_tuple) and the cleanup */
 	      break;
 	    }
 	}
@@ -20252,11 +20252,13 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		}
 	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
-	      /* its tuples are copied into the final results */
+	      /* destroyed rather than cleared: the hash join partitions moved in as its dependent lists would otherwise
+	       * stay until the end of the query */
 	      qfile_destroy_list (thread_p, non_recursive_part->list_id);
 	    }
 
-	  /* a pass-through wrapper leaves the hash join partitions it took over as dependents of its list file */
+	  /* a pass-through wrapper leaves the hash join partitions it took over as dependent lists of its list file,
+	   * which the copy below moves */
 	  qfile_clear_list_id (non_recursive_part->list_id);
 	  if (recursive_part->list_id->tuple_cnt > 0
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
@@ -31300,25 +31302,25 @@ qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
   assert (xasl->spec_list != NULL);
   assert (xasl->spec_list->next == NULL);
 
-  /* the producer: the planner appends it after any uncorrelated subquery, so it runs after the ones it reads.
-   * This holds for a hash join producer, which gen_hashjoin () appends last with add_uncorrelated (). */
+  /* the producer: gen_hashjoin () appends it last with add_uncorrelated (), so it runs after the uncorrelated
+   * subqueries it reads */
   for (last_aptr = xasl->aptr_list; last_aptr != NULL && last_aptr->next != NULL; last_aptr = last_aptr->next)
     {
       ;
     }
   assert (last_aptr == xasl->spec_list->s.list_node.xasl_node);
 
-  /* a producer kept for the next execution (XASL_ZERO_CORR_LEVEL, skipped by qexec_clear_head_lists ())
-   * needs a node that does not run again either:
-   * a later execution would read the list file this one took over */
+  /* a producer kept for the next execution (XASL_ZERO_CORR_LEVEL, skipped by qexec_clear_head_lists ()) needs a wrapper
+   * that does not run again either, since a later execution would read the list file this execution took over */
   assert (!XASL_IS_FLAGED (last_aptr, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL));
 
-  /* its list file: no index scan order to record as the list's sort order */
+  /* the list file it takes over: no index scan order to record as the list's sort order */
   assert (xasl->after_iscan_list == NULL);
 
   /* The steps it skips, in execution order. */
 
-  /* before the scan: LIMIT (qexec_check_limit_clause ()) */
+  /* before the scan: LIMIT. qexec_check_limit_clause () still runs, but the scan_immediately_stop it sets is read
+   * only by the scan the takeover skips */
   assert (xasl->limit_offset == NULL);
   assert (xasl->limit_row_count == NULL);
 
@@ -31328,8 +31330,8 @@ qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
   assert (xasl->spec_list->where_range == NULL);
   assert (xasl->during_join_pred == NULL);
 
-  /* each row, in qexec_intprt_fnc () order: object fetches, correlated subqueries, predicates, path fetches,
-   * nested scans and ROWNUM */
+  /* each row, in qexec_intprt_fnc () order: object fetches, correlated subqueries, predicates, path fetches, nested
+   * scans and ROWNUM */
   assert (xasl->bptr_list == NULL);
   assert (xasl->dptr_list == NULL);
   assert (xasl->after_join_pred == NULL);
