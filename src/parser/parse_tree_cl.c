@@ -8354,6 +8354,12 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r1 = pt_append_bytes (parser, r1, tde_algo_name, strlen (tde_algo_name));
 	    }
 	}
+      else if (p->info.table_option.option == PT_TABLE_OPTION_REPLICATION)
+	{
+	  assert (p->info.table_option.val->node_type == PT_VALUE);
+	  assert (p->info.table_option.val->type_enum == PT_TYPE_INTEGER);
+	  r1 = pt_append_nulstring (parser, r1, p->info.table_option.val->info.value.data_value.i ? "on" : "off");
+	}
       else
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.table_option.val);
