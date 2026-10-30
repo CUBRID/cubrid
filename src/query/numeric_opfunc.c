@@ -905,8 +905,6 @@ static int numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *
 static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					 bool is_float, bool * is_value_negative);
-static int numeric_internal_decimal_to_num (uint64_t significand, int exponent, int max_digits, int dst_scale,
-					    DB_C_NUMERIC num, int *prec, int *scale);
 static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 				   char *int_digits, int *int_len, char *frac_digits, int *frac_len,
 				   int *frac_first_sig_digit, int *frac_last_sig_digit, bool * is_zero);
@@ -5746,7 +5744,7 @@ numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, in
 }
 
 /*
- * The shortest decimal that reads back as a given double or float.
+ * The shortest decimal that reads back as a given double.
  *
  * For a positive finite x the result is significand * 10^exponent, the significand without a trailing zero: of the
  * decimals that round to x, one with the fewest digits, the closest to x among those, the even significand on a tie.
@@ -5793,22 +5791,11 @@ numeric_shortest_scale_double (uint64_t scaled, const uint64_t * g)
   return 2 * whole + fraction;
 }
 
-/* scaled * gp / 2^shift as twice its floor, plus one when the fraction is at least 2^-32 */
-static inline uint64_t
-numeric_shortest_scale_float (uint64_t scaled, uint64_t gp, int shift)
-{
-  const uint128_t product = (uint128_t) scaled * gp;
-  const uint64_t whole = (uint64_t) (product >> shift);
-  const uint64_t fraction = (product & (((uint128_t) 1 << shift) - 1)) >= ((uint128_t) 1 << (shift - 32));
-
-  return 2 * whole + fraction;
-}
-
 /*
  * numeric_shortest_pick () - the decimal significand to keep, possibly with trailing zeros
  *   return: the significand at the scaling's exponent
  *   v(in), low(in), high(in): the value and the ends of its rounding interval scaled by 10^-k, times 4, as
- *                             numeric_shortest_scale_double () or numeric_shortest_scale_float () returns them
+ *                             numeric_shortest_scale_double () returns them
  *   c(in): the binary significand
  */
 static inline uint64_t
@@ -5897,211 +5884,6 @@ numeric_shortest_decimal_of_double (double x, uint64_t * significand, int *expon
 				  numeric_shortest_scale_double ((4 * c - (irregular ? 1 : 2)) << h, g),
 				  numeric_shortest_scale_double ((4 * c + 2) << h, g), c);
   numeric_shortest_strip (digits, k, significand, exponent);
-}
-
-/*
- * numeric_shortest_decimal_of_float () - the shortest decimal that reads back as the float x (not as x widened to a
- *                                        double)
- *   x(in): positive and finite
- *   significand(out): at most 9 digits, no trailing zero
- *   exponent(out): x reads back from significand * 10^exponent
- */
-static void
-numeric_shortest_decimal_of_float (float x, uint64_t * significand, int *exponent)
-{
-  uint32_t bits, fraction;
-  uint64_t c, gp, digits;
-  int biased, q, k, shift;
-  bool irregular;
-  const uint64_t *g;
-
-  assert (x > 0 && x <= FLT_MAX);
-  memcpy (&bits, &x, sizeof (bits));
-  fraction = bits & ((UINT32_C (1) << 23) - 1);
-  biased = (int) (bits >> 23);
-  if (biased != 0)
-    {
-      c = fraction | (UINT32_C (1) << 23);
-      q = biased - 150;
-    }
-  else
-    {
-      c = fraction;
-      q = -149;
-    }
-
-  irregular = fraction == 0 && biased > 1;
-  k = irregular ? numeric_shortest_floor_log10_three_quarters_pow2 (q) : numeric_shortest_floor_log10_pow2 (q);
-  g = _gv_shortest_decimal_pow10[k - NUMERIC_SHORTEST_K_MIN];
-
-  /* the table's 64 high bits, rounded up, are precise enough for a float */
-  gp = ((g[0] << 1) | (g[1] >> 63)) + 1;
-  shift = 63 - q - numeric_shortest_floor_log2_pow10 (-k);
-
-  digits = numeric_shortest_pick (numeric_shortest_scale_float (4 * c, gp, shift),
-				  numeric_shortest_scale_float (4 * c - (irregular ? 1 : 2), gp, shift),
-				  numeric_shortest_scale_float (4 * c + 2, gp, shift), c);
-  numeric_shortest_strip (digits, k, significand, exponent);
-}
-
-/*
- * numeric_compare_value_to_num () - the NUMERIC of a comparison value significand * 10^exponent, not cut
- *   return: NUMERIC_COMPARE_VALUE_NUM, or NUMERIC_COMPARE_VALUE_UNREPRESENTABLE when its scale would exceed
- *	     DB_MAX_NUMERIC_SCALE
- *   significand(in): without trailing zeros
- */
-static NUMERIC_COMPARE_VALUE
-numeric_compare_value_to_num (uint64_t significand, int exponent, DB_C_NUMERIC num, int *prec, int *scale)
-{
-  if (numeric_internal_decimal_to_num (significand, exponent, 18, 0, num, prec, scale) != NO_ERROR
-      || *scale > DB_MAX_NUMERIC_SCALE)
-    {
-      return NUMERIC_COMPARE_VALUE_UNREPRESENTABLE;
-    }
-  return NUMERIC_COMPARE_VALUE_NUM;
-}
-
-/*
- * numeric_compare_value_of_integer () - the NUMERIC of the integer c * 2^q, its trailing decimal zeros as a negative
- *					 scale
- *   return: NUMERIC_COMPARE_VALUE_NUM, or NUMERIC_COMPARE_VALUE_UNREPRESENTABLE when more than
- *	     DB_MAX_NUMERIC_PRECISION digits remain
- *   c(in): nonzero, below 2^53
- *   q(in): positive
- */
-static NUMERIC_COMPARE_VALUE
-numeric_compare_value_of_integer (uint64_t c, int q, DB_C_NUMERIC num, int *prec, int *scale)
-{
-  uint64_t words[NUMERIC_AS_WORDS];
-  uint64_t power[NUMERIC_AS_WORDS] = { 0, 0, 10 };
-  int zeros = 0, shift;
-
-  /* one factor ten is a factor five of c and a factor two of 2^q or of c; 5^23 is above 2^53 */
-  while (c % 5 == 0 && (q > 0 || c % 2 == 0))
-    {
-      c /= 5;
-      if (q > 0)
-	{
-	  q--;
-	}
-      else
-	{
-	  c /= 2;
-	}
-      zeros++;
-    }
-
-  /* 2^133 is above 10^40 */
-  if (q >= 133)
-    {
-      return NUMERIC_COMPARE_VALUE_UNREPRESENTABLE;
-    }
-  words[0] = 0;
-  words[1] = 0;
-  words[2] = c;
-  for (; q > 0; q -= shift)
-    {
-      shift = MIN (q, 63);
-      (void) float_numeric_mul_pow10 (words, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, UINT64_C (1) << shift);
-    }
-  if (float_numeric_operation_compare (words, _gv_numeric_sum_acc_pow10_max_prec, NUMERIC_AS_WORDS) >= 0)
-    {
-      return NUMERIC_COMPARE_VALUE_UNREPRESENTABLE;
-    }
-
-  for (*prec = 1; float_numeric_operation_compare (words, power, NUMERIC_AS_WORDS) >= 0; (*prec)++)
-    {
-      (void) float_numeric_mul_pow10 (power, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, 10);
-    }
-  *scale = -zeros;
-  numeric_words_to_bytes (words, NUMERIC_AS_WORDS, num);
-  return NUMERIC_COMPARE_VALUE_NUM;
-}
-
-/*
- * numeric_double_to_compare_num () - the value a DOUBLE compares as against an integer or a NUMERIC, as a NUMERIC:
- *				      below 2^53 in magnitude its shortest round-trip decimal (not cut to
- *				      TP_DOUBLE_MANTISA_DECIMAL_PRECISION digits as a cast is), from 2^53, where every
- *				      double is an integer, its exact value
- *   return: NUMERIC_COMPARE_VALUE_NUM when num holds it; NUMERIC_COMPARE_VALUE_UNREPRESENTABLE for a finite value
- *	     that no NUMERIC value equals (more than DB_MAX_NUMERIC_PRECISION significant digits, or a scale above
- *	     DB_MAX_NUMERIC_SCALE), which still has an order against every NUMERIC; NUMERIC_COMPARE_VALUE_INFINITE or
- *	     NUMERIC_COMPARE_VALUE_NAN
- *   d(in)
- *   num(out): the magnitude
- *   prec(out), scale(out)
- *   is_value_negative(out): the sign, false for -0.0 and a NaN
- */
-NUMERIC_COMPARE_VALUE
-numeric_double_to_compare_num (double d, DB_C_NUMERIC num, int *prec, int *scale, bool * is_value_negative)
-{
-  const double x = NUMERIC_ABS (d);
-  uint64_t bits, significand;
-  int exponent;
-
-  *is_value_negative = d < 0;
-  if (d != d)
-    {
-      return NUMERIC_COMPARE_VALUE_NAN;
-    }
-  if (x > DBL_MAX)
-    {
-      return NUMERIC_COMPARE_VALUE_INFINITE;
-    }
-  if (x == 0)
-    {
-      numeric_zero (num, DB_NUMERIC_BUF_SIZE);
-      *prec = 1;
-      *scale = 0;
-      return NUMERIC_COMPARE_VALUE_NUM;
-    }
-  if (x >= 9007199254740992.0)
-    {
-      memcpy (&bits, &x, sizeof (bits));
-      return numeric_compare_value_of_integer ((bits & ((UINT64_C (1) << 52) - 1)) | (UINT64_C (1) << 52),
-					       (int) (bits >> 52) - 1075, num, prec, scale);
-    }
-  numeric_shortest_decimal_of_double (x, &significand, &exponent);
-  return numeric_compare_value_to_num (significand, exponent, num, prec, scale);
-}
-
-/*
- * numeric_float_to_compare_num () - numeric_double_to_compare_num () of a FLOAT: below 2^24 in magnitude the shortest
- *				     decimal that reads back as the float (not as the float widened to a double), from
- *				     2^24, where every float is an integer, its exact value
- */
-NUMERIC_COMPARE_VALUE
-numeric_float_to_compare_num (float f, DB_C_NUMERIC num, int *prec, int *scale, bool * is_value_negative)
-{
-  const float x = NUMERIC_ABS (f);
-  uint32_t bits;
-  uint64_t significand;
-  int exponent;
-
-  *is_value_negative = f < 0;
-  if (f != f)
-    {
-      return NUMERIC_COMPARE_VALUE_NAN;
-    }
-  if (x > FLT_MAX)
-    {
-      return NUMERIC_COMPARE_VALUE_INFINITE;
-    }
-  if (x == 0)
-    {
-      numeric_zero (num, DB_NUMERIC_BUF_SIZE);
-      *prec = 1;
-      *scale = 0;
-      return NUMERIC_COMPARE_VALUE_NUM;
-    }
-  if (x >= 16777216.0f)
-    {
-      memcpy (&bits, &x, sizeof (bits));
-      return numeric_compare_value_of_integer ((bits & ((UINT32_C (1) << 23) - 1)) | (UINT32_C (1) << 23),
-					       (int) (bits >> 23) - 150, num, prec, scale);
-    }
-  numeric_shortest_decimal_of_float (x, &significand, &exponent);
-  return numeric_compare_value_to_num (significand, exponent, num, prec, scale);
 }
 
 /*
