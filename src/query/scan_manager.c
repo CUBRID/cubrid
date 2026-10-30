@@ -1631,6 +1631,13 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  else
 	    {
 	      has_coerced_values[i] = true;
+
+	      /* a non-NULL value can be NULL after the coercion, as '' to NUMERIC with numeric_empty_string_as_null.
+	       * a NULL key matches no row, the same as a NULL value above */
+	      if (DB_IS_NULL (&coerced_values[i]) && !(is_iss && i == 0))
+		{
+		  goto end;
+		}
 	    }
 	}
       else if (idx_type_id == DB_TYPE_NUMERIC || idx_type_id == DB_TYPE_CHAR || idx_type_id == DB_TYPE_BIT
