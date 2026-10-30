@@ -271,6 +271,8 @@ session_state_alloc (void)
   if (state != NULL)
     {
       pthread_mutex_init (&state->mutex, NULL);
+      /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
+      state->stream_handles_p = new stream_handle_table ();
     }
   return (void *) state;
 }
@@ -286,6 +288,7 @@ session_state_free (void *st)
   if (st != NULL)
     {
       pthread_mutex_destroy (&((SESSION_STATE *) st)->mutex);
+      delete ((SESSION_STATE *) st)->stream_handles_p;
       free (st);
       return NO_ERROR;
     }
@@ -331,7 +334,6 @@ session_state_init (void *st)
   session_p->pl_session_p = NULL;
   session_p->stream_session_p = NULL;
   session_p->stream_session_kind = -1;
-  session_p->stream_handles_p = new stream_handle_table ();
 
   return NO_ERROR;
 }
@@ -361,9 +363,6 @@ session_state_uninit (void *st)
 #endif /* SESSION_DEBUG */
 
   session_stop_attached_threads (thread_p, session);
-
-  delete session->stream_handles_p;
-  session->stream_handles_p = NULL;
 
   if (session->pl_session_p)
     {
