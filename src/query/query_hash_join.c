@@ -985,8 +985,8 @@ hjoin_init_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
  * worker may not run (has_ineligible), and the wrapper reads them (qexec_execute_mainblock_internal ()).
  *
  * It drops outptr_list as well: the workers write each row through merge_info, and has_pass_through turns false. The
- * partitions that hjoin_prepare_partition () made drop it too, so a later fallback to serial partitions writes the rows
- * the merge type list describes.
+ * partition contexts that hjoin_prepare_partition () made drop it too, so a later fallback that runs them in serial
+ * writes the rows the merge type list describes.
  */
 static int
 hjoin_change_to_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
@@ -1002,7 +1002,7 @@ hjoin_change_to_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
 
   single_context = &manager->single_context;
 
-  /* a single context that falls back from parallel partitions has dropped it already */
+  /* a single context that falls back from parallel partition contexts has dropped it already */
   if (!manager->has_ineligible || single_context->outptr_list == NULL)
     {
       return NO_ERROR;

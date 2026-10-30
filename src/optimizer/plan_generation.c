@@ -6801,8 +6801,8 @@ qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
  *   pass_through_info(in/out): the out list the wrapper was built with, NULL for none;
  *			       has_expr and has_ineligible are set as PASS_THROUGH_INFO describes
  *
- * Subqueries and predicates left to the wrapper are known only from the plan, and an input wrapper has no statement, so
- * they are checked here rather than in qo_check_pass_through_wrapper ().
+ * Subqueries and predicates left to the wrapper are known only from the plan, and an input wrapper (the BUILDLIST that
+ * feeds a parent hash join) has no statement, so they are checked here rather than in qo_check_pass_through_wrapper ().
  *
  * STEP 1: the wrapper's own work: no subquery and no predicate may be left to it
  * STEP 2: the output columns: the join copies each name and evaluates each expression

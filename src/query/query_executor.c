@@ -20252,13 +20252,13 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		}
 	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
-	      /* destroyed rather than cleared: the hash join partitions moved in as its dependent lists would otherwise
-	       * stay until the end of the query */
+	      /* destroyed rather than cleared: the partition result lists of the hash join, moved in as its dependent
+	       * lists, would otherwise stay until the end of the query */
 	      qfile_destroy_list (thread_p, non_recursive_part->list_id);
 	    }
 
-	  /* a pass-through wrapper leaves the hash join partitions it took over as dependent lists of its list file,
-	   * which the copy below moves */
+	  /* a pass-through wrapper that took over the list file of a hash join keeps the partition result lists of the
+	   * join as dependent lists of that list file, which the copy below moves */
 	  qfile_clear_list_id (non_recursive_part->list_id);
 	  if (recursive_part->list_id->tuple_cnt > 0
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
