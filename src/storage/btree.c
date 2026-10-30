@@ -609,13 +609,14 @@ struct btree_find_fk_object
   BTREE_FK_SEARCH search;
   MVCCID writer_before;		/* BTREE_FK_FIND_WRITER reports only a writer whose MVCCID precedes this */
   bool stop_at_child;		/* BTREE_FK_FIND_WRITER also stops at a committed child */
+  BTREE_FK_CHILDREN *children;	/* BTREE_FK_FIND_WRITER collects the committed children it passes here, if not NULL */
   MVCCID writer_mvccid;		/* BTREE_FK_FIND_WRITER's answer */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL, false, MVCCID_NULL }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, BTREE_FK_FIND_CHILD, MVCCID_NULL, false, NULL, MVCCID_NULL }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -6353,11 +6354,12 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
  * class_oid (in)  : Child class OID.
  * before (in)	   : Report only a transaction whose MVCCID precedes this.
  * stop_at_child (in) : Report none behind a committed child.
+ * children (in/out) : If not NULL, the committed children passed without stopping are added to it.
  * writer (out)	   : That transaction's MVCCID, or MVCCID_NULL.
  */
 int
 btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, MVCCID before,
-			       bool stop_at_child, MVCCID * writer)
+			       bool stop_at_child, BTREE_FK_CHILDREN * children, MVCCID * writer)
 {
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
   int error_code;
@@ -6367,6 +6369,7 @@ btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
   find_fk_object.search = BTREE_FK_FIND_WRITER;
   find_fk_object.writer_before = before;
   find_fk_object.stop_at_child = stop_at_child;
+  find_fk_object.children = children;
   error_code = btree_find_foreign_key_internal (thread_p, btid, key, class_oid, &find_fk_object);
   *writer = find_fk_object.writer_mvccid;
 #else /* !SERVER_MODE */
@@ -6374,6 +6377,68 @@ btree_find_foreign_key_writer (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 #endif /* !SERVER_MODE */
   return error_code;
 }
+
+/*
+ * btree_fk_children_clear () - Free what btree_find_foreign_key_writer () collected.
+ *
+ * thread_p (in)     : Thread entry.
+ * children (in/out) : Collected children; emptied.
+ */
+void
+btree_fk_children_clear (THREAD_ENTRY * thread_p, BTREE_FK_CHILDREN * children)
+{
+  if (children->oids != NULL)
+    {
+      db_private_free_and_init (thread_p, children->oids);
+    }
+  if (children->class_oids != NULL)
+    {
+      db_private_free_and_init (thread_p, children->class_oids);
+    }
+  children->count = 0;
+  children->capacity = 0;
+}
+
+#if defined (SERVER_MODE)
+/*
+ * btree_fk_children_add () - Add a committed child to what btree_find_foreign_key_writer () collects.
+ *
+ * return	     : Error code.
+ * thread_p (in)     : Thread entry.
+ * children (in/out) : Collected children.
+ * oid (in)	     : Child OID.
+ * class_oid (in)    : Child class OID.
+ */
+static int
+btree_fk_children_add (THREAD_ENTRY * thread_p, BTREE_FK_CHILDREN * children, const OID * oid, const OID * class_oid)
+{
+  if (children->count == children->capacity)
+    {
+      int capacity = (children->capacity == 0) ? 16 : 2 * children->capacity;
+      OID *oids = (OID *) db_private_realloc (thread_p, children->oids, capacity * sizeof (OID));
+      OID *class_oids;
+
+      if (oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      children->oids = oids;
+      class_oids = (OID *) db_private_realloc (thread_p, children->class_oids, capacity * sizeof (OID));
+      if (class_oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      children->class_oids = class_oids;
+      children->capacity = capacity;
+    }
+  COPY_OID (&children->oids[children->count], oid);
+  COPY_OID (&children->class_oids[children->count], class_oid);
+  children->count++;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
 
 static int
 btree_find_foreign_key_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
@@ -30599,6 +30664,11 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
 		}
+	    }
+	  if (!bts->end_scan && find_fk_obj->children != NULL)
+	    {
+	      /* an updater of the child leaves no trace here: the caller reads the child itself */
+	      return btree_fk_children_add (thread_p, find_fk_obj->children, oid, class_oid);
 	    }
 	  return NO_ERROR;
 	}
