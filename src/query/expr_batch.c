@@ -2731,6 +2731,14 @@ eb_build_program (EB_BUILD * b)
 	      {
 		return rc;
 	      }
+	    if (to->precision < DB_DEFAULT_NUMERIC_PRECISION)
+	      {
+		/* the value packs with the cast's domain, as the other NUMERIC producers do (EB_OP_NUM_CAST): an
+		 * output column of NUMERIC (p, 0) holds a value of that precision, not of its own digits */
+		plan->vsrc[out].precision = (short) to->precision;
+		plan->vsrc[out].scale = (short) to->scale;
+		plan->vsrc[out].packed_domain = 1;
+	      }
 	    b->cell_vec[info.out_cell] = out;
 	    break;
 	  }
