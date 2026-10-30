@@ -935,6 +935,10 @@ exit:
     return err;
   }
 
+  // The server sends an empty request (no question) as a barrier after CHANGE_RIGHTS, to wait for the client to
+  // finish the execution rights switch (see executor::change_exec_rights ()). It works with the clients (CAS) of any
+  // 11.4.x release, as a CAS and a cub_server of different 11.4.x releases may work together. Keep replying to an
+  // empty request at once with METHOD_RESPONSE_SUCCESS and with no access to the server.
   int
   callback_handler::get_global_semantics (packing_unpacker &unpacker)
   {
