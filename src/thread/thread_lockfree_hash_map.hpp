@@ -39,13 +39,13 @@ namespace cubthread
 
       class iterator;
 
-      void init (lf_tran_system &transys, int entry_idx, int hash_size, int freelist_block_size,
-		 int freelist_block_count, lf_entry_descriptor &edesc);
+      int init (lf_tran_system &transys, int entry_idx, int hash_size, int freelist_block_size,
+		int freelist_block_count, lf_entry_descriptor &edesc);
 
-      void init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
-			lf_entry_descriptor &edesc, int entry_idx);
-      void init_as_new (lockfree::tran::system &transys, size_t hash_size, size_t freelist_block_size,
-			size_t freelist_block_count, lf_entry_descriptor &edesc);
+      int init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
+		       lf_entry_descriptor &edesc, int entry_idx);
+      int init_as_new (lockfree::tran::system &transys, size_t hash_size, size_t freelist_block_size,
+		       size_t freelist_block_count, lf_entry_descriptor &edesc);
       void destroy ();
 
       T *find (cubthread::entry *thread_p, Key &key);
@@ -125,38 +125,38 @@ namespace cubthread
   }
 
   template <class Key, class T>
-  void
+  int
   lockfree_hashmap<Key, T>::init (lf_tran_system &transys, int entry_idx, int hash_size, int freelist_block_size,
 				  int freelist_block_count, lf_entry_descriptor &edesc)
   {
     if (prm_get_bool_value (PRM_ID_ENABLE_NEW_LFHASH))
       {
-	init_as_new (get_thread_entry_lftransys (), (size_t) hash_size, (size_t) freelist_block_size,
-		     (size_t) freelist_block_count, edesc);
+	return init_as_new (get_thread_entry_lftransys (), (size_t) hash_size, (size_t) freelist_block_size,
+			    (size_t) freelist_block_count, edesc);
       }
     else
       {
-	init_as_old (transys, hash_size, freelist_block_count, freelist_block_size, edesc, entry_idx);
+	return init_as_old (transys, hash_size, freelist_block_count, freelist_block_size, edesc, entry_idx);
       }
   }
 
   template <class Key, class T>
-  void
+  int
   lockfree_hashmap<Key, T>::init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count,
 					 int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     m_type = OLD;
-    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, edesc);
     m_entry_idx = entry_idx;
+    return m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, edesc);
   }
 
   template <class Key, class T>
-  void
+  int
   lockfree_hashmap<Key, T>::init_as_new (lockfree::tran::system &transys, size_t hash_size, size_t freelist_block_size,
 					 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
     m_type = NEW;
-    m_new_hash.init (transys, hash_size, freelist_block_size, freelist_block_count, edesc);
+    return m_new_hash.init (transys, hash_size, freelist_block_size, freelist_block_count, edesc);
   }
 
 #define lockfree_hashmap_forward_func(f_, tp_, ...) \

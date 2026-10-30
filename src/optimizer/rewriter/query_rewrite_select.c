@@ -30,6 +30,9 @@
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_check_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_TYPE_ENUM qo_get_host_var_bound_type (PARSER_CONTEXT * parser, const PT_NODE * host_var);
+static bool qo_eq_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * col_side, const PT_NODE * other_side);
 static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
 static PT_NODE *qo_reduce_outer_joined_tbls (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
 static void qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1965,6 +1968,111 @@ qo_get_name_cnt_by_spec_no_on (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 }
 
 /*
+ * qo_check_keeps_distinct () - checks if each expression keeps distinct values distinct
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in):
+ *   arg(in/out): bool, set to false when an expression can merge distinct values
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *keeps_distinct = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && !pt_expr_keeps_distinct_values (node))
+    {
+      *keeps_distinct = false;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_get_host_var_bound_type () - gets the type a host variable is compared as
+ *   return: PT_TYPE_NONE if unknown
+ *   parser(in): parser environment
+ *   host_var(in):
+ */
+static PT_TYPE_ENUM
+qo_get_host_var_bound_type (PARSER_CONTEXT * parser, const PT_NODE * host_var)
+{
+  int index = host_var->info.host_var.index;
+
+  /* the value is converted to the expected domain before it is sent */
+  if (host_var->expected_domain != NULL)
+    {
+      return pt_db_to_type_enum (TP_DOMAIN_TYPE (host_var->expected_domain));
+    }
+
+  /* a value-typed position is compiled for the type of its value, and a value of another type gets another plan.
+   * without a value no plan is made */
+  if (host_var->info.host_var.var_type == PT_HOST_IN && parser->host_variables != NULL && index >= 0
+      && index < parser->host_var_count && !DB_IS_NULL (&parser->host_variables[index]))
+    {
+      return pt_db_to_type_enum (DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]));
+    }
+
+  return PT_TYPE_NONE;
+}
+
+/*
+ * qo_eq_keeps_distinct () - checks if the equality keeps distinct values of the column side distinct
+ *   return: bool
+ *   parser(in): parser environment
+ *   col_side(in): operand with the column of the outer joined spec
+ *   other_side(in): the other operand
+ *
+ * Note: a comparison coerces both operands to a common type without an explicit cast,
+ *       e.g. BIGINT = DOUBLE compares as DOUBLE and merges BIGINT values above 2^53.
+ */
+static bool
+qo_eq_keeps_distinct (PARSER_CONTEXT * parser, PT_NODE * col_side, const PT_NODE * other_side)
+{
+  PT_TYPE_ENUM col_type = col_side->type_enum;
+  PT_TYPE_ENUM other_type = other_side->type_enum;
+  bool keeps_distinct = true;
+
+  /* expressions between the column and the comparison */
+  parser_walk_tree (parser, col_side, qo_check_keeps_distinct, &keeps_distinct, NULL, NULL);
+  if (!keeps_distinct)
+    {
+      return false;
+    }
+
+  if (PT_IS_NULL_NODE (other_side))
+    {
+      return true;
+    }
+
+  if (other_side->node_type == PT_HOST_VAR && other_type == PT_TYPE_MAYBE)
+    {
+      other_type = qo_get_host_var_bound_type (parser, other_side);
+      if (PT_IS_CHAR_STRING_TYPE (col_type) && PT_IS_CHAR_STRING_TYPE (other_type))
+	{
+	  /* a string value takes the collation of the column */
+	  return true;
+	}
+      if ((PT_IS_DISCRETE_NUMBER_TYPE (col_type) || col_type == PT_TYPE_NUMERIC)
+	  && (PT_IS_DISCRETE_NUMBER_TYPE (other_type) || other_type == PT_TYPE_NUMERIC))
+	{
+	  return true;
+	}
+      return (col_type == other_type
+	      || ((col_type == PT_TYPE_SMALLINT || col_type == PT_TYPE_INTEGER) && other_type == PT_TYPE_DOUBLE));
+    }
+
+  /* exact numbers compare exactly whatever the precision and scale */
+  if ((PT_IS_DISCRETE_NUMBER_TYPE (col_type) || col_type == PT_TYPE_NUMERIC)
+      && (PT_IS_DISCRETE_NUMBER_TYPE (other_type) || other_type == PT_TYPE_NUMERIC))
+    {
+      return true;
+    }
+
+  return pt_keeps_distinct_values (col_side, other_side, false);
+}
+
+/*
  * qo_collect_name_with_eq_const () - collect name node with equal OP and constant value
  *   return: node_list
  *   parser(in):
@@ -2023,7 +2131,7 @@ qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NO
       if (info1.my_spec_cnt == 1 && info1.other_spec_cnt == 0)
 	{
 	  /* const */
-	  if (info2.my_spec_cnt == 0)
+	  if (info2.my_spec_cnt == 0 && qo_eq_keeps_distinct (parser, arg1, arg2))
 	    {
 	      point_list = parser_append_node (pt_point (parser, info1.my_spec_node), point_list);
 	    }
@@ -2032,7 +2140,7 @@ qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NO
       else if (info2.my_spec_cnt == 1 && info2.other_spec_cnt == 0)
 	{
 	  /* const */
-	  if (info1.my_spec_cnt == 0)
+	  if (info1.my_spec_cnt == 0 && qo_eq_keeps_distinct (parser, arg2, arg1))
 	    {
 	      point_list = parser_append_node (pt_point (parser, info2.my_spec_node), point_list);
 	    }
