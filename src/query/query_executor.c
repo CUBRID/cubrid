@@ -17637,8 +17637,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  qexec_verify_pass_through_wrapper (xasl);
 #endif /* !NDEBUG */
 
-	  /* a join stopped on an empty input never opens its list file: leave the result to the scan below */
-	  if (producer->list_id->type_list.type_cnt > 0)
+	  /* a join stopped on an empty input never opens its list file, and a join without has_pass_through
+	   * wrote its own columns: leave the result to the scan below */
+	  if (producer->list_id->type_list.type_cnt > 0 && producer->proc.hashjoin.has_pass_through)
 	    {
 	      qfile_destroy_list (thread_p, xasl->list_id);
 	      if (qfile_copy_list_id (xasl->list_id, producer->list_id, false, QFILE_MOVE_DEPENDENT) != NO_ERROR)
@@ -31290,7 +31291,7 @@ qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
 
   /* The shape the planner builds. */
 
-  /* the node: a BUILDLIST_PROC with the one list scan ptqo_to_pass_through_wrapper () built */
+  /* the node: a BUILDLIST_PROC with the one list scan gen_hashjoin () built */
   assert (xasl->type == BUILDLIST_PROC);
   assert (xasl->spec_list != NULL);
   assert (xasl->spec_list->next == NULL);
@@ -31303,6 +31304,11 @@ qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
       ;
     }
   assert (last_aptr == xasl->spec_list->s.list_node.xasl_node);
+
+  /* a producer kept for the next execution (XASL_ZERO_CORR_LEVEL, skipped by qexec_clear_head_lists ())
+   * needs a node that does not run again either:
+   * a later execution would read the list file this one took over */
+  assert (!XASL_IS_FLAGED (last_aptr, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL));
 
   /* its list file: no index scan order to record as the list's sort order */
   assert (xasl->after_iscan_list == NULL);

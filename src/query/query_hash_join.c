@@ -67,6 +67,11 @@ static int hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
 			       QUERY_ID query_id, VAL_DESCR * val_descr);
 static void hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
+/* Hash Join Type List */
+static int hjoin_init_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+				       QFILE_TUPLE_VALUE_TYPE_LIST * type_list);
+static int hjoin_change_to_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+
 /* Hash Join Domain Info */
 static int hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				   HASHJOIN_DOMAIN_INFO * domain_info);
@@ -266,6 +271,9 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
     }
 
 cleanup:
+  /* the join wrote the out list the plan gave it unless hjoin_change_to_merge_type_list () dropped it */
+  xasl->proc.hashjoin.has_pass_through = (manager.outptr_list == xasl->outptr_list);
+
   if (thread_is_on_trace (thread_p) && manager.stats_group != NULL)
     {
       manager.stats_group->status = single_context->status;
@@ -695,7 +703,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   HASHJOIN_CONTEXT *context;
 
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list = NULL;
-  int type_cnt, type_index;
 
   int error = NO_ERROR;
 
@@ -735,6 +742,8 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   manager->join_type = merge_info->join_type;
   manager->key_cnt = merge_info->ls_column_cnt;
+
+  manager->has_ineligible = proc->has_ineligible;
 
   manager->outptr_list = xasl->outptr_list;
   manager->during_join_pred = xasl->during_join_pred;
@@ -793,46 +802,19 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
     {
       /* the planner gives an out list to an inner join only: every result row has both input tuples */
       assert (manager->join_type == JOIN_INNER);
-      assert (merge_info->ls_pos_cnt == 0);
+      /* the planner keeps merge_info's columns only for a parallel fallback (qo_init_merge_info ()) */
+      assert (merge_info->ls_pos_cnt == 0 || manager->has_ineligible);
 
       error = qdata_get_valptr_type_list (thread_p, manager->outptr_list, type_list);
-      if (error != NO_ERROR)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
     }
   else
     {
-      assert (merge_info->ls_pos_cnt > 0);
-      assert (merge_info->ls_pos_list != NULL);
-
-      type_cnt = merge_info->ls_pos_cnt;
-
-      type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
-      if (type_list->domp == NULL)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-
-      type_list->type_cnt = type_cnt;
-
-      for (type_index = 0; type_index < type_cnt; type_index++)
-	{
-	  if (merge_info->ls_pos_list[type_index] == QFILE_RESERVED_HASH_KEY_POS)
-	    {
-	      type_list->domp[type_index] = tp_domain_resolve_default (DB_TYPE_INTEGER);
-	    }
-	  else if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
-	    {
-	      type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
-	    }
-	  else
-	    {
-	      type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
-	    }
-	}
+      error = hjoin_init_merge_type_list (thread_p, manager, type_list);
+    }
+  if (error != NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
     }
 
   manager->qlist_merge_method = HASHJOIN_MERGE_CONNECT;
@@ -940,6 +922,107 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   assert (manager->px_worker_stats == NULL);
   assert (thread_p->m_px_stats == NULL);
 #endif /* defined (SERVER_MODE) */
+}
+
+/*
+ * hjoin_init_merge_type_list() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   type_list(out): Type list of the columns merge_info takes from the input lists.
+ */
+static int
+hjoin_init_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+			    QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
+{
+  QFILE_LIST_MERGE_INFO *merge_info;
+  QFILE_LIST_ID *outer_list_id, *inner_list_id;
+  int type_cnt, type_index;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (type_list != NULL);
+  assert (type_list->domp == NULL);
+  assert (type_list->type_cnt == 0);
+
+  merge_info = manager->merge_info;
+  assert (merge_info->ls_pos_cnt > 0);
+  assert (merge_info->ls_pos_list != NULL);
+
+  outer_list_id = manager->outer->xasl->list_id;
+  inner_list_id = manager->inner->xasl->list_id;
+
+  type_cnt = merge_info->ls_pos_cnt;
+
+  type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
+  if (type_list->domp == NULL)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  type_list->type_cnt = type_cnt;
+
+  for (type_index = 0; type_index < type_cnt; type_index++)
+    {
+      if (merge_info->ls_pos_list[type_index] == QFILE_RESERVED_HASH_KEY_POS)
+	{
+	  type_list->domp[type_index] = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	}
+      else if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
+	{
+	  type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	}
+      else
+	{
+	  type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * hjoin_change_to_merge_type_list() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *
+ * A join that runs in parallel writes its own columns (merge_info) instead of an out list with an SP
+ * a parallel worker may not run (has_ineligible), and the wrapper reads them (qexec_execute_mainblock_internal).
+ * It drops outptr_list as well: the workers write each row through merge_info, and has_pass_through turns false.
+ */
+static int
+hjoin_change_to_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+{
+  QFILE_TUPLE_VALUE_TYPE_LIST merge_type_list = { NULL, 0 };
+
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+
+  /* a single context that falls back from parallel partitions has dropped it already */
+  if (!manager->has_ineligible || manager->outptr_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  error = hjoin_init_merge_type_list (thread_p, manager, &merge_type_list);
+  if (error != NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  assert (manager->type_list.domp != NULL);
+  db_private_free_and_init (thread_p, manager->type_list.domp);
+  manager->type_list = merge_type_list;
+
+  manager->outptr_list = NULL;
+  manager->single_context.outptr_list = NULL;
+
+  return NO_ERROR;
 }
 
 /*
@@ -1929,6 +2012,13 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   degree = px_worker_manager->get_reserved_workers ();
   manager->num_parallel_threads = degree;
 
+  /* the workers are reserved, so the join runs in parallel:
+   * with has_ineligible, the out list and its type list give way to merge_info's */
+  if (hjoin_change_to_merge_type_list (thread_p, manager) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   /* one statistics slice per worker whenever anyone reads them, trace or not; drained after each phase */
   if (perfmon_parallel_stats_needed (thread_p))
     {
@@ -2025,6 +2115,13 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   /* update to actual reserved workers */
   degree = px_worker_manager->get_reserved_workers ();
   manager->num_parallel_threads = degree;
+
+  /* the workers are reserved, so the join runs in parallel:
+   * with has_ineligible, the out list and its type list give way to merge_info's */
+  if (hjoin_change_to_merge_type_list (thread_p, manager) != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   /* one statistics slice per worker whenever anyone reads them, trace or not; drained after each phase */
   if (perfmon_parallel_stats_needed (thread_p))

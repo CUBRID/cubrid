@@ -3187,9 +3187,10 @@ domain_list_column_source (const XASL_NODE * xasl, int *pos, XASL_NODE * branch[
     case MERGELIST_PROC:
     case HASHJOIN_PROC:
       {
-	if (xasl->outptr_list != NULL)
+	if (xasl->outptr_list != NULL && xasl->proc.hashjoin.merge_info.ls_pos_cnt == 0)
 	  {
-	    /* a hash join that evaluates its wrapper's out list writes each column from outptr_list */
+	    /* a hash join that evaluates its wrapper's out list writes each column from outptr_list; one that keeps
+	     * its own columns as well is read by a scan only when it writes them (hjoin_change_to_merge_type_list) */
 	    assert (xasl->type == HASHJOIN_PROC);
 	    return domain_output_regu (xasl->outptr_list, *pos);
 	  }

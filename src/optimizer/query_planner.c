@@ -16385,8 +16385,9 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
    * hash_terms are excluded on purpose: the key expressions are materialized into the child buildlist outputs
    * and the workers read them by tuple position, so an SP in them never executes on a worker
    * (its evaluation is governed by the scan-path judge). A child hash join can compute them
-   * in its own probe loop instead (pass-through), but qo_check_pass_through_hashjoin () refuses that
-   * for an SP in them that is not PARALLEL_ENABLE.
+   * in its own probe loop instead (pass-through),
+   * but hjoin_change_to_merge_type_list () leaves them to the child buildlist
+   * when the join runs in parallel and an SP in them is not PARALLEL_ENABLE.
    */
   term_sets[0] = &plan->plan_un.join.during_join_terms;
   term_sets[1] = &plan->plan_un.join.after_join_terms;

@@ -17887,7 +17887,7 @@ ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NO
   xasl->val_list = pt_make_val_list (parser, namelist);
   if (xasl->val_list == NULL)
     {
-      PT_ERRORm (parser, namelist, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      assert_release (er_errid () != NO_ERROR);
       return NULL;
     }
 
@@ -17895,6 +17895,7 @@ ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NO
   scan_regu_list = pt_to_position_regu_variable_list (parser, namelist, xasl->val_list, NULL);
   if (scan_regu_list == NULL)
     {
+      assert_release (er_errid () != NO_ERROR);
       return NULL;
     }
   pt_set_list_position_domains (scan_regu_list, xasl->val_list, listfile, NULL);
@@ -17903,13 +17904,14 @@ ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NO
     pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, scan_regu_list, NULL, NULL, NULL);
   if (xasl->spec_list == NULL)
     {
+      assert_release (er_errid () != NO_ERROR);
       return NULL;
     }
 
   xasl->outptr_list = pt_make_outlist_from_vallist (parser, xasl->val_list);
   if (xasl->outptr_list == NULL)
     {
-      PT_ERRORm (parser, namelist, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      assert_release (er_errid () != NO_ERROR);
       return NULL;
     }
 

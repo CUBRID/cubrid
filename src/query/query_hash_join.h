@@ -329,6 +329,9 @@ typedef struct hashjoin_manager
   JOIN_TYPE join_type;
   int key_cnt;
 
+  /* Copy of a member of HASHJOIN_PROC_NODE. */
+  bool has_ineligible;
+
   /* Pointers to members of XASL_NODE. */
   OUTPTR_LIST *outptr_list;
   PRED_EXPR *during_join_pred;

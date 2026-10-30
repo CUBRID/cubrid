@@ -389,9 +389,11 @@ typedef struct hashjoin_proc_node
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
+  bool has_ineligible;		/* outptr_list calls a PL/CSQL or Java SP without PARALLEL_ENABLE */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
+  bool has_pass_through;	/* this execution wrote the wrapper's out list (qexec_hash_join) */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
