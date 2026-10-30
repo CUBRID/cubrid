@@ -1237,6 +1237,8 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
   /* tell the schema manager to flush any transaction caches */
   sm_transaction_boundary ();
 
+  tr_check_partial_rollback_triggers ();
+
   /*
    * We need to start all over since we do not know what set of objects are
    * going to be rolled back.. Thuis, we need to remove any kind of hints
