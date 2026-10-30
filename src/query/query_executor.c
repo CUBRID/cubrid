@@ -793,7 +793,8 @@ static void qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp, DB_VA
 static int qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
 static BTREE_SEARCH qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 					       SCAN_OPERATION_TYPE op_type, OID * class_oid, bool is_global_index,
-					       OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache);
+					       OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
+					       bool removes_key);
 static int qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						HEAP_CACHE_ATTRINFO * attr_info, HEAP_CACHE_ATTRINFO * index_attr_info,
 						const HEAP_IDX_ELEMENTS_INFO * idx_info, int op_type, int pruning_type,
@@ -803,7 +804,7 @@ static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCAN
 					      HEAP_CACHE_ATTRINFO * index_attr_info,
 					      const HEAP_IDX_ELEMENTS_INFO * idx_info, int needs_pruning,
 					      PRUNING_CONTEXT * pcontext, OID * unique_oid, RECDES * unique_recdes,
-					      int op_type);
+					      int op_type, bool removes_key);
 static int qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, HFID * hfid, VAL_DESCR * vd,
 					       int op_type, HEAP_SCANCACHE * scan_cache,
 					       HEAP_CACHE_ATTRINFO * attr_info, HEAP_CACHE_ATTRINFO * index_attr_info,
@@ -817,7 +818,8 @@ static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XA
 static int qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CLASS_INFO * query_classes,
 				  int query_classes_count, UPDDEL_CLASS_INFO_INTERNAL * internal_classes);
 static void qexec_set_referenced_key_updates (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
-					      UPDDEL_CLASS_INFO * query_classes, int query_classes_count);
+					      UPDDEL_CLASS_INFO * query_classes, int query_classes_count,
+					      bool has_delete);
 static int qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list);
 static int qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * classes_info, int count,
 					  UPDDEL_CLASS_INFO_INTERNAL ** classes);
@@ -11370,7 +11372,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       GOTO_EXIT_ON_ERROR;
     }
-  qexec_set_referenced_key_updates (thread_p, aptr, update->classes, update->num_classes);
+  qexec_set_referenced_key_updates (thread_p, aptr, update->classes, update->num_classes, has_delete);
 
   error =
     prepare_mvcc_reev_data (thread_p, aptr, xasl_state, mvcc_reev_class_cnt, update->mvcc_reev_classes,
@@ -12831,6 +12833,8 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
  *	     BTREE_ERROR_OCCURRED as the lookup reports it
  *   oid(in/out): the row the unlocked lookup found; on return, the row the key names
  *   recdes(out): the row's last version, or NULL if only the lock is needed
+ *   removes_key(in): the caller deletes the row or changes its primary key; see
+ *		      locator_lock_and_get_object_with_evaluation ()
  *
  * Note: the lookup takes no lock: one taken from the key entry cannot see the row's owner and would queue this
  *	 transaction behind a waiter parked on this transaction's stamp.  The owner can still move the row past our X,
@@ -12839,19 +12843,31 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
 static BTREE_SEARCH
 qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, SCAN_OPERATION_TYPE op_type,
 			   OID * class_oid, bool is_global_index, OID * oid, RECDES * recdes,
-			   HEAP_SCANCACHE * scan_cache)
+			   HEAP_SCANCACHE * scan_cache, bool removes_key)
 {
   OID settled_oid;
   SCAN_CODE scan;
   BTREE_SEARCH r;
+  RECDES local_recdes = RECDES_INITIALIZER;
 
   /* the lookup below can wait on the key's writer, so no heap page may stay fixed across it */
   assert (scan_cache == NULL || !scan_cache->cache_last_fix_page);
 
   do
     {
-      scan = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
-					  LOG_WARNING_IF_DELETED, false, true);
+      if (removes_key)
+	{
+	  /* a child's writer may touch this row again: give it back to that writer before holding it */
+	  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid,
+							      recdes != NULL ? recdes : &local_recdes, scan_cache, COPY,
+							      NULL_CHN, NULL, LOG_WARNING_IF_DELETED, false, true,
+							      true);
+	}
+      else
+	{
+	  scan = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
+					      LOG_WARNING_IF_DELETED, false, true);
+	}
       if (scan == S_DOESNT_EXIST)
 	{
 	  er_clear ();
@@ -13024,7 +13040,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
 	  r =
 	    qexec_settle_on_duplicate (thread_p, &btid, key_dbvalue, S_DELETE, &pruned_oid, is_global_index,
-				       &unique_oid, NULL, local_scan_cache);
+				       &unique_oid, NULL, local_scan_cache, true);
 	}
 
       if (r == BTREE_KEY_FOUND)
@@ -13140,7 +13156,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
 				   HEAP_CACHE_ATTRINFO * index_attr_info, const HEAP_IDX_ELEMENTS_INFO * idx_info,
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p,
-				   RECDES * unique_recdes_p, int op_type)
+				   RECDES * unique_recdes_p, int op_type, bool removes_key)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES recdes;
@@ -13272,7 +13288,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
 	  r =
 	    qexec_settle_on_duplicate (thread_p, &btid, key_dbvalue, S_UPDATE, &class_oid, is_global_index, &unique_oid,
-				       unique_recdes_p, *pruned_partition_scan_cache);
+				       unique_recdes_p, *pruned_partition_scan_cache, removes_key);
 	}
 
       if (r == BTREE_KEY_FOUND)
@@ -13377,7 +13393,9 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 
   error =
     qexec_oid_of_duplicate_key_update (thread_p, &local_scan_cache, scan_cache, attr_info, index_attr_info, idx_info,
-				       pruning_type, pcontext, &unique_oid, &rec_descriptor, op_type);
+				       pruning_type, pcontext, &unique_oid, &rec_descriptor, op_type,
+				       locator_assigns_referenced_pk (thread_p, &attr_info->class_oid, odku->attr_ids,
+								      odku->num_assigns));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -26752,19 +26770,21 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CL
 }
 
 /*
- * qexec_set_referenced_key_updates () - mark the UPDATE targets that assign a column of a referenced primary key
+ * qexec_set_referenced_key_updates () - mark the UPDATE targets that assign a column of a referenced primary key, or
+ *					 that a MERGE may delete
  *
  * thread_p (in)  :
  * aptr_list (in) : the UPDATE's select
  * query_classes (in) : classes the UPDATE changes
  * query_classes_count (in) :
+ * has_delete (in) : the UPDATE of a MERGE with a DELETE clause, which may delete the rows it matches
  *
  * Note: the select phase gives such a row back to a child's writer before it holds it, as for a DELETE; see
  *	 locator_lock_and_get_object_with_evaluation (). Set on every execution, the mark being runtime only.
  */
 static void
 qexec_set_referenced_key_updates (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CLASS_INFO * query_classes,
-				  int query_classes_count)
+				  int query_classes_count, bool has_delete)
 {
   XASL_NODE *aptr;
   ACCESS_SPEC_TYPE *specp;
@@ -26788,9 +26808,10 @@ qexec_set_referenced_key_updates (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list
 		  if (OID_EQ (&query_class->class_oid[j], &specp->s.cls_node.cls_oid))
 		    {
 		      specp->changes_referenced_key =
-			locator_assigns_referenced_pk (thread_p, &query_class->class_oid[j],
-						       &query_class->att_id[j * query_class->num_attrs],
-						       query_class->num_attrs);
+			(has_delete ? locator_class_has_referenced_pk (thread_p, &query_class->class_oid[j])
+			 : locator_assigns_referenced_pk (thread_p, &query_class->class_oid[j],
+							  &query_class->att_id[j * query_class->num_attrs],
+							  query_class->num_attrs));
 		      break;
 		    }
 		}
