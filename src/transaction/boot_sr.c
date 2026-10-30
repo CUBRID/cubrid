@@ -3269,7 +3269,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
 
 #if defined (SERVER_MODE)
-  /* CBRD-27445: the declared user is trusted only once this connection proved its
+  /* the declared user is trusted only once this connection proved its
    * password, so check it before a transaction index is given out */
   if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type)
       && !css_consume_auth_proof (thread_p->conn_entry, client_credential->get_db_user ()))

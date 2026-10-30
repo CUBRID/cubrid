@@ -303,7 +303,7 @@
   /* progress of UPDATE STATISTICS ON ALL CLASSES, written to the event log */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_LOG_STATS_PROGRESS) \
   \
-  /* password proof for a client login or user switch (CBRD-27445), appended likewise */ \
+  /* password proof for a client login or user switch, appended likewise */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_CHALLENGE) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_RESPONSE)
 
