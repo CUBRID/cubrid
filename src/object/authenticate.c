@@ -97,7 +97,8 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 /*
  * au_prove_password () - prove a password to the server by answering a one-time
  *   challenge (CBRD-27445). The password never leaves the client.
- *   return: NO_ERROR, or the error the server returned
+ *   return: NO_ERROR, ER_AU_REJECT_LOGIN for an unknown account or a wrong
+ *           password (as perform_login () reports them), or another error
  *   user_name (in)      : account to prove
  *   des/sha1/sha2 (in)  : the password in each form it may be stored in
  */
@@ -116,8 +117,15 @@ au_prove_password (const char *user_name, const char *des, const char *sha1, con
   INT64 issued_at = 0;
   int scheme, digest_len, error;
 
+  use_console_password = false;	/* as perform_login () starts */
   error = cau_challenge (user_name, &scheme, nonce, sizeof (nonce), &issued_at, tag, sizeof (tag), salt, sizeof (salt),
 			 stored_name, sizeof (stored_name));
+  if (error == ER_AU_INVALID_USER)
+    {
+      /* an unknown account looks the same as a wrong password, as in perform_login () */
+      error = ER_AU_REJECT_LOGIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
   if (error != NO_ERROR)
     {
       return error;
@@ -158,6 +166,14 @@ au_prove_password (const char *user_name, const char *des, const char *sha1, con
 
   error = cau_response (user_name, nonce, issued_at, tag, digest);
   db_private_free_and_init (NULL, digest);
+  if (error == ER_AU_INVALID_PASSWORD)
+    {
+      /* report it as perform_login () does, so csql and the utilities can still ask
+       * for the password when none was given */
+      use_console_password = (sha2[0] == '\0');
+      error = ER_AU_REJECT_LOGIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
 
   return error;
 #else
