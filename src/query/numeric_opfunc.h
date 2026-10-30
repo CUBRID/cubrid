@@ -97,15 +97,6 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
-/* what numeric_double_to_compare_num () and numeric_float_to_compare_num () found */
-typedef enum
-{
-  NUMERIC_COMPARE_VALUE_NUM,	/* the NUMERIC holds the comparison value */
-  NUMERIC_COMPARE_VALUE_UNREPRESENTABLE,	/* finite, but equal to no NUMERIC value */
-  NUMERIC_COMPARE_VALUE_INFINITE,
-  NUMERIC_COMPARE_VALUE_NAN
-} NUMERIC_COMPARE_VALUE;
-
 /*
  * NUMERIC_MAX_STRING_SIZE:
  * Defines the maximum internal working buffer size for NUMERIC values.
@@ -172,10 +163,6 @@ extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_N
 					   bool * is_value_negative);
 extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					  bool * is_value_negative);
-extern NUMERIC_COMPARE_VALUE numeric_double_to_compare_num (double d, DB_C_NUMERIC num, int *prec, int *scale,
-							    bool * is_value_negative);
-extern NUMERIC_COMPARE_VALUE numeric_float_to_compare_num (float f, DB_C_NUMERIC num, int *prec, int *scale,
-							   bool * is_value_negative);
 
 extern int numeric_coerce_string_to_num (const char *astring, int astring_len, INTL_CODESET codeset, DB_VALUE * num);
 
