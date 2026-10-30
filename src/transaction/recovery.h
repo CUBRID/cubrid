@@ -203,17 +203,13 @@ typedef enum
   RVOOS_DELETE = 137,
   RVREPL_OOS_INSERT = 138,
   RVREPL_OOS_DELETE = 139,
-  /* TODO: RVOOS_NOTIFY_VACUUM is currently unused (no emitter); it is kept as a reserved slot
-   * (no-op stub in RV_fun[]) so the OOS block stays contiguous. Either reuse it for a real
-   * OOS-vacuum-notify path or retire it before the final merge to develop. */
-  RVOOS_NOTIFY_VACUUM = 140,
-  RVREPL_DUMMY_OOS_RECORD = 141,	/* multi-chunk OOS replication marker */
+  RVREPL_DUMMY_OOS_RECORD = 140,	/* multi-chunk OOS replication marker */
   /* Tags the MVCC remove_old_forward forward REC_NEWHOME delete in heap_update_relocation
    * so vacuum's forward-walk can reclaim the old forward's OOS records from the delete's undo image.
    * Classified as an MVCC op (LOG_IS_MVCC_OPERATION) but NOT a heap op (LOG_IS_MVCC_HEAP_OPERATION):
    * its undo is logged as MVCC undo (chained for the forward-walk) yet vacuum must not "collect" the
    * already-deleted slot. Crash recovery replays the delete identically to RVHF_DELETE. */
-  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 142,
+  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 141,
   RV_LAST_LOGID = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
 
   RV_NOT_DEFINED = 999
@@ -295,8 +291,6 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_MARK_PAGES_IN_HEAP \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
 
-/* TODO: the RVOOS_NOTIFY_VACUUM clause below has no emitter today; it is kept as the reserved
- * slot in the OOS block (see the enum-side TODO above). Drop it together with the enum slot. */
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \
    || ((vpid)->pageid == NULL_PAGEID) \
@@ -309,7 +303,6 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
    || (idx) == RVPGBUF_DEALLOC \
    || (idx) == RVES_NOTIFY_VACUUM \
-   || (idx) == RVOOS_NOTIFY_VACUUM \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)
