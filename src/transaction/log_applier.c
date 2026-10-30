@@ -9094,6 +9094,9 @@ la_shutdown (void)
   /* only a retired fragment frees its slot, and the next run in this process would not see these */
   la_free_unretired_fragments ();
 
+  /* the remaining entries point at the repl_lists slots freed below */
+  la_inflight_clear ();
+
   /* parked tasks point at the apply slots freed below; see la_pending_clear */
   la_pending_clear ();
 
