@@ -118,6 +118,8 @@ struct expr_step
   TP_DOMAIN *domain;		/* result / cast target domain, fixed at compile time */
   REGU_VARIABLE *regu;		/* the subtree this step covers; used by leaf and fallback kernels */
   int aux;			/* kernel-specific small parameter (host variable index, side flags) */
+  bool node_conv;		/* an arithmetic step coercing into its node's domain: result_conv is the node's (bound from
+				 * regu with the program) */
 
   void *pred;			/* EXPR_PRED *, owned by the program (CASE branch test, T_PREDICATE) */
   union

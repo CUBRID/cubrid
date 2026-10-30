@@ -4991,7 +4991,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   step->arg4p = (cells[3] >= 0) ? EXPR_ARG_ENCODE (cells[3]) : NULL;
   step->regu = regu;
   step->domain = exec_domain;	/* for the listing: the step reads the node's domains of the row's execution itself */
-  step->fn = (void *) fn;
+  step->fn = NULL;		/* the opcode's body, bound with the program from step->regu */
   step->aux = width_bucket ? EXPR_GENERIC_WIDTH_BUCKET : 0;
   /* a row step: expr_step_hoist () is not called, so its cell keeps the per-row class */
   if (lazy_mask != 0)
@@ -5888,9 +5888,10 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  step->result_conv = NULL;
 	  if (result_domain != NULL)
 	    {
-	      /* CBRD-27583: a step coerces into its node's domain type */
+	      /* CBRD-27583: a step coerces into its node's domain type, by the node's converter (bound with the
+	       * program from step->regu) */
 	      assert (TP_DOMAIN_TYPE (result_domain) == TP_DOMAIN_TYPE (arith->domain));
-	      step->result_conv = arith->result_conv;
+	      step->node_conv = true;
 	    }
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;
@@ -6230,6 +6231,15 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 
       assert (step->kernel_id > EXPR_KID_NONE && step->kernel_id < EXPR_KID_COUNT);
       step->kernel = expr_Kernels[step->kernel_id];
+      if (step->kernel_id == EXPR_KID_generic)
+	{
+	  /* the opcode's body (fetch_arith_ops.c) */
+	  step->fn = (void *) fetch_arith_op (step->regu->value.arithptr->opcode);
+	}
+      else if (step->node_conv)
+	{
+	  step->result_conv = step->regu->value.arithptr->result_conv;
+	}
 
       /* argument cells were encoded 1-based (EXPR_ARG_ENCODE); NULL means unused */
       if (step->arg1p != NULL)
