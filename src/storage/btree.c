@@ -40730,6 +40730,7 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
     }
 
   pr_clone_value (&boundary_value, &dest_value);
+  btree_clear_key_value (&clear_boundary_value, &boundary_value);
 
   return NO_ERROR;
 }
