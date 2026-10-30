@@ -78,6 +78,8 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   const char *classname_only = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool has_savepoint = true;
+  bool need_free_old_name = false;
+  bool need_free_new_name = false;
   int save = 0, alloc_sz;
   int error = NO_ERROR;
 
@@ -167,6 +169,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
+  need_free_new_name = true;
   sprintf (class_new_name, "%s.%s", downcase_owner_name, classname_only);
 
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
@@ -177,6 +180,10 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
     }
 
   class_->header.ch_name = class_new_name;
+
+  /* The class owns the new name from here, and nothing refers to the old name any more. */
+  need_free_old_name = true;
+  need_free_new_name = false;
 
   if (class_->class_type == SM_CLASS_CT && class_->constraints != NULL)
     {
@@ -285,17 +292,15 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
       goto end;
     }
 
-  if (class_old_name)
+end:
+  AU_RESTORE (save);
+
+  if (need_free_old_name && class_old_name != NULL)
     {
       db_private_free_and_init (NULL, class_old_name);
     }
 
-  class_new_name = NULL;
-
-end:
-  AU_RESTORE (save);
-
-  if (class_new_name)
+  if (need_free_new_name && class_new_name != NULL)
     {
       db_private_free_and_init (NULL, class_new_name);
     }
