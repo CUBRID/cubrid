@@ -5328,9 +5328,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
        * from the select list */
       PT_NODE *arg2_list = NULL;
 
-      /* duplicates are not relevant; order by is not relevant; */
-      expr->info.expr.arg2->info.query.all_distinct = PT_DISTINCT;
-      pt_try_remove_order_by (parser, arg2);
+      /* only the set of values matters to a range predicate.
+       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (). */
+      (void) pt_try_set_subquery_distinct (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
       if (arg2_list == NULL)

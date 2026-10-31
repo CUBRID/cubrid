@@ -18657,8 +18657,9 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
  *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
  *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
  *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
- *       or removes duplicates outside the query.
- *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ *       or removes duplicates outside the query. A range predicate does not rely on it,
+ *       and its join rewrite in qo_rewrite_subqueries () removes the duplicates outside.
+ *       Called before pt_eval_type_pre () rewrites the LIMIT of a SELECT, it leaves that SELECT without DISTINCT.
  */
 bool
 pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
