@@ -440,4 +440,8 @@ extern int stream_from_read_open (int stream_kind, const char *config, int confi
 extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
 extern int stream_from_release (INT64 handle);
 
+/* COPY FROM STDIN binding over the stream transport */
+extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols,
+			   int format, int delimiter, int quote, int header, int bulk);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

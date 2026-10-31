@@ -78,6 +78,8 @@ extern int do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_copy (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 extern int get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, PT_NODE * owner_name,
 					  DB_VALUE * out_val);
 extern int get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_nm, PT_NODE * owner_nm,
