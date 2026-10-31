@@ -23,6 +23,7 @@
 #include "copy_csv_decoder.hpp"
 
 #include "copy_binary_decoder.hpp"	/* COPY_DECODE_NEED_MORE */
+#include "copy_column_types.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "error_code.h"
@@ -197,7 +198,20 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
       break;
     }
     default:
-      return csv_error (row, col, "unsupported column type");
+      if (!copy_type_is_text_cast (type))
+	{
+	  return csv_error (row, col, "unsupported column type");
+	}
+      switch (copy_text_to_column (s.data (), (int) s.size (), dom, val))
+	{
+	case COPY_CAST_OK:
+	  break;
+	case COPY_CAST_OUT_OF_RANGE:
+	  goto out_of_range;
+	default:
+	  goto bad_value;
+	}
+      break;
     }
 
   return NO_ERROR;

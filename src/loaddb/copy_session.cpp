@@ -166,12 +166,22 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 	  }
 	m_attr_ids[i] = attr_ids[i];
 
+	/* The client chose each column's decoder from the type it saw. A type
+	 * changed since then would decode the bytes as something else. */
+	if (attrs[j].type != col_types[i])
+	  {
+	    error = ER_COPY_NOT_SUPPORTED;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "a COPY target column changed its type");
+	    goto exit;
+	  }
+
 	/* The representation is released before the first row arrives, so copy
 	 * the domain out rather than keeping the pointer. */
 	TP_DOMAIN *dom = attrs[j].domain;
 	m_col_domains[i].precision = (dom != NULL) ? dom->precision : 0;
 	m_col_domains[i].codeset = (dom != NULL) ? (int) dom->codeset : (int) LANG_SYS_CODESET;
 	m_col_domains[i].collation_id = (dom != NULL) ? dom->collation_id : LANG_SYS_COLLATION;
+	m_col_domains[i].domain = dom;
 	m_col_notnull[i] = attrs[j].is_notnull ? 1 : 0;
       }
   }

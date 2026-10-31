@@ -24,11 +24,14 @@
 
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
+#include "copy_column_types.h"
 #include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "intl_support.h"
 #include "language_support.h"
+#include "object_domain.h"
+#include "object_primitive.h"
 #include "porting.h"
 
 #include <arpa/inet.h>
@@ -168,6 +171,49 @@ static int
 binary_error (std::int64_t row, int col, const char *reason)
 {
   return copy_format_error (ER_COPY_BINARY_FORMAT_ERROR, row, col, reason);
+}
+
+copy_cast_result
+copy_text_to_column (const char *text, int text_len, const COPY_COL_DOMAIN *dom, DB_VALUE *val)
+{
+  TP_DOMAIN *domain = (TP_DOMAIN *) dom->domain;
+  DB_VALUE src;
+  int codeset = LANG_SYS_CODESET;
+  int collation = LANG_SYS_COLLATION;
+
+  assert (domain != NULL);
+
+  /* The text is in the column's own codeset where the column has one (ENUM),
+   * and JSON text is UTF-8; the cast converts from whatever the source says. */
+  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+    {
+      codeset = dom->codeset;
+      collation = dom->collation_id;
+    }
+  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
+    {
+      codeset = INTL_CODESET_UTF8;
+      collation = LANG_COLL_UTF8_BINARY;
+    }
+
+  db_make_varchar (&src, DB_DEFAULT_PRECISION, text, text_len, codeset, collation);
+
+  /* Implicit coercion does not take a string to a bit string or to JSON at all,
+   * so those two are cast explicitly, as CAST would; a bit string that does not
+   * fit is still refused unless allow_truncated_string says otherwise. */
+  DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  bool implicit = ! (type == DB_TYPE_BIT || type == DB_TYPE_VARBIT || type == DB_TYPE_JSON);
+  TP_DOMAIN_STATUS status = tp_value_cast (&src, val, domain, implicit);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      return COPY_CAST_OK;
+    }
+
+  /* The cast may have raised its own error, which names neither the row nor the
+   * column; the caller raises one that does. */
+  er_clear ();
+  db_make_null (val);
+  return (status == DOMAIN_OVERFLOW) ? COPY_CAST_OUT_OF_RANGE : COPY_CAST_BAD_VALUE;
 }
 
 static int
@@ -340,7 +386,20 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       break;
 
     default:
-      return binary_error (row, col, "unsupported column type");
+      if (!copy_type_is_text_cast (type))
+	{
+	  return binary_error (row, col, "unsupported column type");
+	}
+      switch (copy_text_to_column (data, field_len, dom, val))
+	{
+	case COPY_CAST_OK:
+	  break;
+	case COPY_CAST_OUT_OF_RANGE:
+	  return binary_error (row, col, "value out of range for the column type");
+	default:
+	  return binary_error (row, col, "value parse error");
+	}
+      break;
     }
 
   *consumed += field_len;

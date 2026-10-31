@@ -35,6 +35,32 @@ extern "C"
 {
 #endif
 
+  /* Types both formats carry as text: the field is the value as an SQL string
+   * literal writes it, and the server casts it to the column's domain the way a
+   * bound INSERT casts a string. Their binary forms (scaled integers, bit
+   * lengths, enum indexes, zone ids) are internal and not worth asking a client
+   * to produce. */
+  inline bool
+  copy_type_is_text_cast (DB_TYPE type)
+  {
+    switch (type)
+      {
+      case DB_TYPE_NUMERIC:
+      case DB_TYPE_MONETARY:
+      case DB_TYPE_BIT:
+      case DB_TYPE_VARBIT:
+      case DB_TYPE_ENUMERATION:
+      case DB_TYPE_JSON:
+      case DB_TYPE_TIMESTAMPTZ:
+      case DB_TYPE_TIMESTAMPLTZ:
+      case DB_TYPE_DATETIMETZ:
+      case DB_TYPE_DATETIMELTZ:
+	return true;
+      default:
+	return false;
+      }
+  }
+
   inline bool
   copy_type_is_supported (DB_TYPE type)
   {
@@ -53,7 +79,7 @@ extern "C"
       case DB_TYPE_DATETIME:
 	return true;
       default:
-	return false;
+	return copy_type_is_text_cast (type);
       }
   }
 

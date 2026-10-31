@@ -46,6 +46,10 @@ struct copy_col_domain
   int precision;
   int codeset;
   int collation_id;
+  /* The attribute's domain itself, for the types cast from text. The
+   * representation hands out cached domains, which live as long as the server,
+   * so this pointer may outlive the representation it came from. */
+  const struct tp_domain *domain;
 };
 
 /*
@@ -70,6 +74,23 @@ extern bool copy_fit_char_precision (const char *str, int str_len, const COPY_CO
  *   return: error_code, which is ER_COPY_CSV_FORMAT_ERROR or ER_COPY_BINARY_FORMAT_ERROR
  */
 extern int copy_format_error (int error_code, std::int64_t row, int col, const char *reason);
+
+/*
+ * copy_text_to_column () - Cast the text of a field to its column's domain, for
+ *   the types copy_type_is_text_cast () names. The cast is the one INSERT
+ *   applies to a string, so a value that would have to be truncated, or that
+ *   is out of the column's range, is refused rather than stored.
+ *   return: COPY_CAST_OK, or why it failed. Nothing is raised: only the caller
+ *           knows the format, row and column the error has to name.
+ */
+enum copy_cast_result
+{
+  COPY_CAST_OK = 0,
+  COPY_CAST_BAD_VALUE,
+  COPY_CAST_OUT_OF_RANGE
+};
+extern copy_cast_result copy_text_to_column (const char *text, int text_len, const COPY_COL_DOMAIN *dom,
+    DB_VALUE *val);
 
 /*
  * decode_binary_row () - Decode one row from a binary buffer

@@ -57,6 +57,13 @@
  *                     0 .. 2147483647.
  *   DB_TYPE_DATETIME: 8 bytes, network byte order: the DATE julian day above,
  *                     then milliseconds since midnight, 0 .. 86399999.
+ *   NUMERIC, MONETARY, BIT, VARBIT, ENUM, JSON, TIMESTAMPTZ, TIMESTAMPLTZ,
+ *   DATETIMETZ, DATETIMELTZ:
+ *                     text, as in FORMAT CSV and as an SQL string literal
+ *                     writes the value ('12.50', 'FF0A' for bits, an ENUM
+ *                     label, a JSON document in UTF-8, '2026-11-01 10:00:00
+ *                     Asia/Seoul'). The server casts it to the column's domain
+ *                     the way a bound INSERT casts a string.
  *   NULL:             field_len = -1, no data bytes
  *
  * A date or time value outside its range is refused, so a stream carrying epoch
