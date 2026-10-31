@@ -50,6 +50,11 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <math.h>
+#if defined(CHECK_BUNDLED_SSL_KEY)
+#include <openssl/evp.h>
+#include <openssl/x509.h>
+#include <openssl/pem.h>
+#endif /* CHECK_BUNDLED_SSL_KEY */
 #endif /* WINDOWS */
 
 #if defined(LINUX)
@@ -59,6 +64,7 @@
 #include "porting.h"
 #include "tcp.h"
 #include "cas_common.h"
+#include "cas_ssl.h"
 #include "broker_shm.h"
 #include "shard_metadata.h"
 #include "shard_shm.h"
@@ -157,11 +163,17 @@ static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_in
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
 #endif
+static int admin_check_ssl_files (void);
+#if defined(CHECK_BUNDLED_SSL_KEY)
+static bool admin_has_bundled_ssl_key (const char *cert_file);
+#endif /* CHECK_BUNDLED_SSL_KEY */
 #endif /* !WINDOWS */
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
+/* set by a successful command that still needs the operator's attention */
+char admin_warn_msg[ADMIN_ERR_MSG_SIZE];
 
 #if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
@@ -256,6 +268,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
 
+  admin_warn_msg[0] = '\0';
+
   if (br_num <= 0)
     {
 #if defined(FOR_ODBC_GATEWAY)
@@ -265,6 +279,22 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 #endif
       return -1;
     }
+
+#if !defined(WINDOWS)
+  for (i = 0; i < br_num; i++)
+    {
+      if (br_info[i].service_flag == ON && br_info[i].use_SSL == ON)
+	{
+	  /* all brokers share one key and certificate file, so check them once, before any broker starts */
+	  if (admin_check_ssl_files () < 0)
+	    {
+	      return -1;
+	    }
+	  break;
+	}
+    }
+#endif /* !WINDOWS */
+
   chdir ("..");
   broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, BROKER_PATH_MAX));
@@ -945,6 +975,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
 
+  admin_warn_msg[0] = '\0';
+
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
@@ -986,6 +1018,14 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 	    }
 	  else
 	    {
+#if !defined(WINDOWS)
+	      if (shm_br->br_info[i].use_SSL == ON && admin_check_ssl_files () < 0)
+		{
+		  uw_shm_detach (shm_br);
+		  return -1;
+		}
+#endif /* !WINDOWS */
+
 	      if (shm_br->br_info[i].shard_flag == ON)
 		{
 		  shm_proxy_p = shard_shm_initialize_shm_proxy (&(shm_br->br_info[i]));
@@ -4288,3 +4328,162 @@ get_upper_str (char *upper_str, int size, const char *value)
 
   upper_str[i] = '\0';
 }
+
+#if !defined(WINDOWS)
+#if defined(CHECK_BUNDLED_SSL_KEY)
+/*
+ * SHA-256 of the public keys (DER SubjectPublicKeyInfo) of the private keys shipped as conf/cas_ssl_cert.key,
+ * which are public. A certificate reissued with one of these keys still matches. Same value as
+ *   openssl x509 -in cas_ssl_cert.crt -noout -pubkey | openssl pkey -pubin -outform DER | openssl dgst -sha256
+ */
+static const unsigned char bundled_ssl_key_spki_sha256[][32] = {
+  /* CBRD-23687 (2020) */
+  {0x59, 0x34, 0xB7, 0x5F, 0x89, 0xA7, 0xA8, 0xF7, 0xBA, 0x8A, 0x3A, 0xC8, 0x76, 0x58, 0x62, 0x1A,
+   0x6E, 0x42, 0xC8, 0xB5, 0xC6, 0x4F, 0x01, 0x6A, 0xF7, 0xDA, 0xE8, 0x46, 0x8F, 0xB1, 0x28, 0x8F},
+  /* CBRD-27091 (2026) */
+  {0xF9, 0x2B, 0x39, 0x42, 0x73, 0x47, 0x67, 0xCD, 0x8C, 0x9F, 0x8F, 0xF0, 0x7D, 0x9F, 0x5E, 0xAD,
+   0xF1, 0x1E, 0xD6, 0x5B, 0x41, 0xDC, 0xE0, 0xF8, 0xF2, 0x23, 0x09, 0xEC, 0xE2, 0xF6, 0x35, 0x17}
+};
+#endif /* CHECK_BUNDLED_SSL_KEY */
+
+/*
+ * admin_check_ssl_files () - check the SSL private key and certificate before a broker with SSL=ON starts
+ *   return: 0, or -1 with admin_err_msg set if the key is not a regular file or others may have read it
+ *
+ * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
+ * With CHECK_BUNDLED_SSL_KEY, which only the cubrid_broker utility that prints the warning builds with, so that the
+ * others do not link OpenSSL, sets admin_warn_msg if the certificate is for a private key shipped with CUBRID.
+ * A missing or unreadable file is left to the CAS, which reports it on SSL connection.
+ */
+static int
+admin_check_ssl_files (void)
+{
+  char key[BROKER_PATH_MAX];
+#if defined(CHECK_BUNDLED_SSL_KEY)
+  char cert[BROKER_PATH_MAX];
+#endif /* CHECK_BUNDLED_SSL_KEY */
+  struct stat sbuf;
+  unsigned int mode;
+
+  snprintf (key, sizeof (key), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_KEY_FILE);
+  if (stat (key, &sbuf) == 0)
+    {
+      /* PostgreSQL's rule (check_ssl_key_file_permissions): a regular file, owned by the broker user with 0600/0400,
+       * or by root with up to 0640 so that a group the broker user is in may read a key root manages */
+      if (!S_ISREG (sbuf.st_mode))
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key is not a regular file: %s. "
+		    "Provide the private key as a regular file, and restart the service.", key);
+	  return -1;
+	}
+
+      /* the owner can read and replace the key whatever its mode */
+      if (sbuf.st_uid != geteuid () && sbuf.st_uid != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key has an invalid owner, but it must be owned by the authorized service user "
+		    "or root: %s. "
+		    "The key may already have been copied by its owner. Generate a new private key and certificate "
+		    "as the authorized user or root, and restart the service.", key);
+	  return -1;
+	}
+
+      /* group or other access means the key may have been copied already, so the operator is told to replace it,
+       * not only to chmod it */
+      mode = (unsigned int) (sbuf.st_mode & 0777);
+      if (sbuf.st_uid == geteuid () && (mode & (S_IRWXG | S_IRWXO)) != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key permission is %04o, but it must be 0600 or 0400: %s. "
+		    "The key may already have been copied by another user. "
+		    "Generate a new private key and certificate, "
+		    "set the key file permission to 600 or 400, and restart the service.", mode, key);
+	  return -1;
+	}
+      if (sbuf.st_uid == 0 && (mode & (S_IWGRP | S_IXGRP | S_IRWXO)) != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key permission is %04o, but it must be 0640, 0600, 0440 or 0400 "
+		    "when owned by root: %s. "
+		    "The key may already have been copied by another user. "
+		    "Generate a new private key and certificate, "
+		    "set the key file permission to 640 or less, and restart the service.", mode, key);
+	  return -1;
+	}
+    }
+
+#if defined(CHECK_BUNDLED_SSL_KEY)
+  snprintf (cert, sizeof (cert), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
+  if (admin_has_bundled_ssl_key (cert))
+    {
+      snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
+		"WARNING: the system uses the SSL private key shipped with CUBRID, which is public: %s. "
+		"Anyone can impersonate this service. Generate a new private key and certificate.", key);
+    }
+#endif /* CHECK_BUNDLED_SSL_KEY */
+
+  return 0;
+}
+
+#if defined(CHECK_BUNDLED_SSL_KEY)
+/*
+ * admin_has_bundled_ssl_key () - whether the first certificate in the file is for a private key shipped with CUBRID
+ *   return: true if the SHA-256 of its public key is in bundled_ssl_key_spki_sha256
+ *   cert_file(in): PEM certificate file
+ *
+ * The public key is taken from the certificate, not from the private key file: the CAS refuses a key that does not
+ * match the certificate, and the private key is not opened here.
+ */
+static bool
+admin_has_bundled_ssl_key (const char *cert_file)
+{
+  FILE *fp;
+  X509 *cert;
+  EVP_PKEY *pkey;
+  unsigned char *spki = NULL;
+  int spki_len = -1;
+  unsigned char md[EVP_MAX_MD_SIZE];
+  unsigned int md_len = 0;
+  bool bundled = false;
+  size_t i;
+
+  fp = fopen (cert_file, "r");
+  if (fp == NULL)
+    {
+      return false;
+    }
+
+  cert = PEM_read_X509 (fp, NULL, NULL, NULL);
+  fclose (fp);
+  if (cert == NULL)
+    {
+      return false;
+    }
+
+  pkey = X509_get0_pubkey (cert);
+  if (pkey != NULL)
+    {
+      spki_len = i2d_PUBKEY (pkey, &spki);
+    }
+
+  if (spki_len > 0 && EVP_Digest (spki, spki_len, md, &md_len, EVP_sha256 (), NULL) == 1)
+    {
+      for (i = 0; i < sizeof (bundled_ssl_key_spki_sha256) / sizeof (bundled_ssl_key_spki_sha256[0]); i++)
+	{
+	  if (md_len == sizeof (bundled_ssl_key_spki_sha256[i])
+	      && memcmp (md, bundled_ssl_key_spki_sha256[i], md_len) == 0)
+	    {
+	      bundled = true;
+	      break;
+	    }
+	}
+    }
+
+  OPENSSL_free (spki);
+  X509_free (cert);
+
+  return bundled;
+}
+#endif /* CHECK_BUNDLED_SSL_KEY */
+#endif /* !WINDOWS */

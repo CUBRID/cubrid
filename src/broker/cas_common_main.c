@@ -216,8 +216,11 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	    err_code = cas_init_ssl (client_sock_fd);
 	    if (err_code < 0)
 	      {
-		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
-				 CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+		/* Closed without a CAS error: the driver has sent its ClientHello and reads only TLS from here, so a
+		 * plaintext error packet could not be read ("wrong version number"). The cause is in the CAS log.
+		 * cas_finish_session () closes the socket and frees any SSL state; finish_cas does not, and leaving it
+		 * open leaked the socket while the driver waited for a reply. */
+		cas_finish_session (client_sock_fd, ssl_client);
 		goto finish_cas;
 	      }
 	  }

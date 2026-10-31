@@ -73,6 +73,25 @@ admin_log_write (const char *log_file, const char *msg)
     }
 }
 
+static void
+admin_print_and_log_warn_msg (const char *log_file)
+{
+  const char *prefix = "WARNING: ";
+  const char *msg = admin_warn_msg;
+
+  if (admin_warn_msg[0] != '\0')
+    {
+      printf ("%s\n", admin_warn_msg);
+      /* cubrid_utility.log puts its own "WARNING: " before the message, and the caller ends the line */
+      if (strncmp (msg, prefix, strlen (prefix)) == 0)
+	{
+	  msg += strlen (prefix);
+	}
+      util_log_write_warnstr ("%s\n", msg);
+      admin_log_write (log_file, admin_warn_msg);
+    }
+}
+
 int
 main (int argc, char **argv)
 {
@@ -165,6 +184,7 @@ main (int argc, char **argv)
 	  else
 	    {
 	      admin_log_write (admin_log_file, "start");
+	      admin_print_and_log_warn_msg (admin_log_file);
 	    }
 	}
       else
@@ -256,6 +276,7 @@ main (int argc, char **argv)
 	{
 	  sprintf (msg_buf, "%s on", argv[2]);
 	  admin_log_write (admin_log_file, msg_buf);
+	  admin_print_and_log_warn_msg (admin_log_file);
 	}
     }
   else if (strcasecmp (argv[1], "off") == 0)
