@@ -566,6 +566,81 @@ eb_num_put (EB_VEC * vec, int r, const NUMERIC_AGG_EXPR_VAL * val)
   return true;
 }
 
+/* a NUMERIC element as a signed coefficient and its scale: eb_num_get () without splitting the sign off */
+static inline __int128
+eb_num_signed (const EB_VEC * vec, int i, int *scale)
+{
+  *scale = (vec->scales != NULL) ? vec->scales[i] : vec->scale;
+  return (vec->etype == EB_N64) ? (__int128) ((const int64_t *) vec->data)[i] : ((const __int128 *) vec->data)[i];
+}
+
+/* the signed coefficient eb_num_put () refuses (its magnitude needs the 128th bit) */
+#define EB_I128_MIN ((__int128) ((uint128_t) 1 << 127))
+
+/* 10^e as a signed coefficient, or 0 past 10^38: numeric_agg_expr_add () aligns no further
+ * (NUMERIC_AGG_EXPR_POW10_MAX_EXP in numeric_opfunc.c, twice the 19 digits a word always holds) */
+static __int128
+eb_pow10_i128 (int e)
+{
+  __int128 p = 1;
+
+  if (e > 38)
+    {
+      return 0;
+    }
+  while (e-- > 0)
+    {
+      p *= 10;
+    }
+  return p;
+}
+
+/* numeric_agg_expr_mul () and then eb_num_put () on signed coefficients, into *z at scale *zs: false where either
+ * refuses, and the chunk goes to the row path.  A zero operand gives the operator's (1 digit, scale 0) zero. */
+static inline bool
+eb_num_mul_signed (__int128 x, int xs, __int128 y, int ys, __int128 * z, int *zs)
+{
+  if (x == 0 || y == 0)
+    {
+      *z = 0;
+      *zs = 0;
+      return true;
+    }
+  *zs = xs + ys;
+  if (*zs > DB_MAX_NUMERIC_SCALE || *zs < DB_MIN_NUMERIC_SCALE || __builtin_mul_overflow (x, y, z))
+    {
+      return false;
+    }
+  return *z != EB_I128_MIN;
+}
+
+/* numeric_agg_expr_add () and then eb_num_put () on signed coefficients (y already negated for a subtraction), into *z
+ * at the wider scale *zs, the narrower operand raised by 10^*pow10_exp (*pow10, kept from the row before): false where
+ * either refuses, and the chunk goes to the row path.  The raised operand alone must fit a signed coefficient, which
+ * the calls do not ask when the other operand's opposite sign brings the sum back under 2^127: the row path computes
+ * such a row as they would. */
+static inline bool
+eb_num_add_signed (__int128 x, int xs, __int128 y, int ys, __int128 * z, int *zs, __int128 * pow10, int *pow10_exp)
+{
+  if (xs != ys)
+    {
+      __int128 *lo = (xs < ys) ? &x : &y;
+      const int d = (xs < ys) ? ys - xs : xs - ys;
+
+      if (d != *pow10_exp)
+	{
+	  *pow10 = eb_pow10_i128 (d);
+	  *pow10_exp = d;
+	}
+      if (*pow10 == 0 || __builtin_mul_overflow (*lo, *pow10, lo))
+	{
+	  return false;
+	}
+    }
+  *zs = (xs > ys) ? xs : ys;
+  return !__builtin_add_overflow (x, y, z) && *z != EB_I128_MIN;
+}
+
 /* where column c sits in row r's record: the locator of the row's representation */
 static inline const EB_LOC *
 eb_col_loc (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int c, int r)
@@ -670,6 +745,57 @@ eb_cell_num (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay
       return -1;
     }
   return 1;
+}
+
+/* eb_cell_num () as a signed coefficient at the column's scale, straight into *v: 1 a value, 0 NULL, -1 a cell it
+ * refuses.  A coefficient of at most 8 bytes is read here, the fields eb_num_from_disk () reads, without the
+ * NUMERIC_AGG_EXPR_VAL a caller reads back: its halves stored and then loaded as one 16-byte value stalled the
+ * filter leaf over a NUMERIC column for half its time. */
+static inline int
+eb_cell_num_signed (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, __int128 * v)
+{
+  const int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location, lay->offset_size);
+  const int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location + 1, lay->offset_size);
+  const int avail = next_off - this_off;
+  const unsigned char *disk = (const unsigned char *) lay->var_table + this_off;
+
+  if (avail == 0)
+    {
+      return 0;
+    }
+  if (avail >= NUMERIC_HEADER_SIZE)
+    {
+      const int size = disk[0] & 0x7F;
+      const int nbytes = size - NUMERIC_HEADER_SIZE;
+
+      if (nbytes >= 0 && nbytes <= (int) sizeof (uint64_t) && size <= avail)
+	{
+	  const int scale = (disk[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) ? -((int) disk[2]) : (int) disk[2];
+	  uint64_t c = 0;
+	  int i;
+
+	  if (scale != col->scale)
+	    {
+	      return -1;
+	    }
+	  for (i = 0; i < nbytes; i++)
+	    {
+	      c = (c << 8) | disk[NUMERIC_HEADER_SIZE + i];
+	    }
+	  *v = (c != 0 && (disk[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0) ? -(__int128) c : (__int128) c;
+	  return 1;
+	}
+    }
+  {
+    NUMERIC_AGG_EXPR_VAL num;
+    const int rc = eb_cell_num (col, loc, lay, &num);
+
+    if (rc > 0)
+      {
+	*v = num.is_negative ? -(__int128) num.coefficient : (__int128) num.coefficient;
+      }
+    return rc;
+  }
 }
 
 /* a NUMERIC operand of an arithmetic step: 1 a value, 0 NULL, -1 the chunk is for the row path */
@@ -4159,6 +4285,34 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	    }
 	  continue;
 	}
+      if (v->etype == EB_N64)
+	{
+	  /* the signed coefficient straight into the int64 element (eb_cell_num_signed ()) */
+	  int64_t *d = (int64_t *) v->data;
+
+	  for (j = 0; j < n; j++)
+	    {
+	      const int r = (rows != NULL) ? rows[j] : j;
+	      __int128 x = 0;
+
+	      rc = eb_cell_num_signed (col, &plan->reprs[batch->repr_ix[r]].cols[c], &batch->layout[r], &x);
+	      if (rc < 0)
+		{
+		  return eb_fallback (plan, "a NUMERIC cell beyond the word domain or of another scale");
+		}
+	      isnull[r] = (rc == 0);
+	      if (rc == 0)
+		{
+		  continue;
+		}
+	      if (x > INT64_MAX || x < -INT64_MAX)
+		{
+		  return eb_fallback (plan, "a NUMERIC wider than its column vector");
+		}
+	      d[r] = (int64_t) x;
+	    }
+	  continue;
+	}
       for (j = 0; j < n; j++)
 	{
 	  int r = (rows != NULL) ? rows[j] : j;
@@ -4223,6 +4377,17 @@ eb_leaf_side (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int vec, i
 }
 
 static int eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf);
+
+/* the outcomes of comparing a value with a constant that rel_op keeps, the column on the left (any other operator is
+ * ">=", as the leaves' switch decided it) */
+static inline void
+eb_rel_outcomes (int rel_op, int *lt, int *eq, int *gt)
+{
+  *lt = (rel_op == R_LT || rel_op == R_LE || rel_op == R_NE);
+  *eq = (rel_op != R_LT && rel_op != R_GT && rel_op != R_NE);
+  *gt = (rel_op == R_GT || rel_op == R_NE || (rel_op != R_EQ && rel_op != R_LT && rel_op != R_LE));
+}
+
 
 /* An OR leaf over the selection, eval_pred ()'s Kleene OR: TRUE when a disjunct is, else UNKNOWN when one is, else
  * FALSE.  Each disjunct runs as an AND chain on the rows no disjunct before it made TRUE; its leaves raise no errors
@@ -4404,6 +4569,10 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   const EB_VEC *v = &plan->vecs[leaf->vec];
   const EB_COL *col = &plan->cols[leaf->col];
   const bool pointed = (v->kind == EB_VK_PTR);
+  /* in locals: a store into sel[] or unk[] would reload the fields on every row */
+  int *const sel = batch->sel;
+  unsigned char *const unk = plan->unk;
+  const int n_in = batch->n_sel;
   int j, n = 0;
 
   if (leaf->vec2 >= 0)
@@ -4418,134 +4587,55 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
     {
       return eb_raw_kid_str (plan, batch, leaf);
     }
-
-  for (j = 0; j < batch->n_sel; j++)
+  if (leaf->k_null)
     {
-      int r = batch->sel[j];
-      int64_t ai = 0;
-      double ad = 0;
-      __int128 an = 0;
-      int got;
-      bool keep;
-
-      if (leaf->k_null)
+      /* a NULL constant: every row UNKNOWN, kept until the chain's end */
+      for (j = 0; j < n_in; j++)
 	{
-	  plan->unk[r] = 1;
-	  batch->sel[n++] = r;
-	  continue;
+	  unk[sel[j]] = 1;
 	}
-      if (pointed)
-	{
-	  if (leaf->etype == EB_NUM)
-	    {
-	      NUMERIC_AGG_EXPR_VAL nv;
+      return NO_ERROR;
+    }
 
-	      got = eb_cell_num (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &nv);
-	      if (got > 0)
+  /* A row's place in the selection is written whatever the test says and kept by its result (n += keep): a filter
+   * that keeps about half the rows mispredicts a branch on every other row.  NULL rows stay, marked UNKNOWN. */
+  if (leaf->etype != EB_NUM && leaf->etype != EB_I64)
+    {
+      const double k = leaf->k.d;
+
+      for (j = 0; j < n_in; j++)
+	{
+	  const int r = sel[j];
+	  int64_t ai = 0;
+	  double ad = 0;
+	  bool keep;
+
+	  if (pointed)
+	    {
+	      const int got = eb_cell_fixed (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &ai, &ad);
+
+	      if (got < 0)
 		{
-		  /* a NULL cell (got == 0) leaves nv untouched: read it only once the cell was decoded */
-		  an = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+		  return eb_fallback (plan, "a pointed cell the batch does not decode");
 		}
+	      if (got == 0)
+		{
+		  unk[r] = 1;
+		  sel[n++] = r;
+		  continue;
+		}
+	    }
+	  else if (v->isnull[r])
+	    {
+	      unk[r] = 1;
+	      sel[n++] = r;
+	      continue;
 	    }
 	  else
 	    {
-	      got = eb_cell_fixed (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &ai, &ad);
+	      ad = ((const double *) v->data)[r];
 	    }
-	  if (got < 0)
-	    {
-	      return eb_fallback (plan, "a pointed cell the batch does not decode");
-	    }
-	}
-      else
-	{
-	  got = !v->isnull[r];
-	  if (got)
-	    {
-	      if (leaf->etype == EB_NUM)
-		{
-		  an =
-		    (v->etype == EB_N64) ? (__int128) ((const int64_t *) v->data)[r] : ((const __int128 *) v->data)[r];
-		}
-	      else if (leaf->etype == EB_I64)
-		{
-		  ai = ((const int64_t *) v->data)[r];
-		}
-	      else
-		{
-		  ad = ((const double *) v->data)[r];
-		}
-	    }
-	}
-      if (!got)
-	{
-	  plan->unk[r] = 1;
-	  batch->sel[n++] = r;
-	  continue;
-	}
-      if (leaf->etype == EB_NUM)
-	{
-	  /* the column's elements and the constant are both at the column's scale */
-	  __int128 k = leaf->k.n;
-
-	  if (leaf->k_all != 0)
-	    {
-	      keep = (leaf->k_all == EB_ALL_TRUE);
-	    }
-	  else
-	    {
-	      switch (leaf->k_op)
-		{
-		case R_EQ:
-		  keep = (an == k);
-		  break;
-		case R_NE:
-		  keep = (an != k);
-		  break;
-		case R_LT:
-		  keep = (an < k);
-		  break;
-		case R_LE:
-		  keep = (an <= k);
-		  break;
-		case R_GT:
-		  keep = (an > k);
-		  break;
-		default:
-		  keep = (an >= k);
-		  break;
-		}
-	    }
-	}
-      else if (leaf->etype == EB_I64)
-	{
-	  int64_t k = leaf->k.i;
-
-	  switch (leaf->rel_op)
-	    {
-	    case R_EQ:
-	      keep = (ai == k);
-	      break;
-	    case R_NE:
-	      keep = (ai != k);
-	      break;
-	    case R_LT:
-	      keep = (ai < k);
-	      break;
-	    case R_LE:
-	      keep = (ai <= k);
-	      break;
-	    case R_GT:
-	      keep = (ai > k);
-	      break;
-	    default:
-	      keep = (ai >= k);
-	      break;
-	    }
-	}
-      else
-	{
-	  double k = leaf->k.d;
-
+	  /* a NaN is unequal to everything, so the operator's own comparison decides it */
 	  switch (leaf->rel_op)
 	    {
 	    case R_EQ:
@@ -4567,12 +4657,136 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	      keep = (ad >= k);
 	      break;
 	    }
+	  sel[n] = r;
+	  n += keep;
 	}
-      if (keep)
-	{
-	  batch->sel[n++] = r;
-	}
+      batch->n_sel = n;
+      return NO_ERROR;
     }
+
+  {
+    /* an integer or NUMERIC column against its constant (NUMERIC: both at the column's scale): the operator as
+     * the outcomes it keeps, decided once -- or, for k_all, every non-NULL row's result */
+    int lt, eq, gt;
+
+    eb_rel_outcomes ((leaf->etype == EB_NUM) ? leaf->k_op : leaf->rel_op, &lt, &eq, &gt);
+    if (leaf->etype == EB_NUM && leaf->k_all != 0)
+      {
+	lt = eq = gt = (leaf->k_all == EB_ALL_TRUE);
+      }
+#define EB_LEAF_KEEP(x, k) ((((x) < (k)) & lt) | (((x) == (k)) & eq) | (((x) > (k)) & gt))
+    if (leaf->etype == EB_NUM)
+      {
+	const __int128 k = leaf->k.n;
+
+	if (pointed)
+	  {
+	    for (j = 0; j < n_in; j++)
+	      {
+		const int r = sel[j];
+		__int128 x = 0;
+		const int got = eb_cell_num_signed (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &x);
+
+		if (got <= 0)
+		  {
+		    if (got < 0)
+		      {
+			return eb_fallback (plan, "a pointed cell the batch does not decode");
+		      }
+		    unk[r] = 1;
+		    sel[n++] = r;
+		    continue;
+		  }
+		sel[n] = r;
+		n += EB_LEAF_KEEP (x, k);
+	      }
+	  }
+	else if (v->etype == EB_N64)
+	  {
+	    const int64_t *d = (const int64_t *) v->data;
+
+	    for (j = 0; j < n_in; j++)
+	      {
+		const int r = sel[j];
+
+		if (v->isnull[r])
+		  {
+		    unk[r] = 1;
+		    sel[n++] = r;
+		    continue;
+		  }
+		sel[n] = r;
+		n += EB_LEAF_KEEP ((__int128) d[r], k);
+	      }
+	  }
+	else
+	  {
+	    const __int128 *d = (const __int128 *) v->data;
+
+	    for (j = 0; j < n_in; j++)
+	      {
+		const int r = sel[j];
+
+		if (v->isnull[r])
+		  {
+		    unk[r] = 1;
+		    sel[n++] = r;
+		    continue;
+		  }
+		sel[n] = r;
+		n += EB_LEAF_KEEP (d[r], k);
+	      }
+	  }
+      }
+    else
+      {
+	const int64_t k = leaf->k.i;
+
+	if (pointed)
+	  {
+	    for (j = 0; j < n_in; j++)
+	      {
+		const int r = sel[j];
+		int64_t x = 0;
+		double unused = 0;
+		const int got = eb_cell_fixed (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &x,
+					       &unused);
+
+		if (got <= 0)
+		  {
+		    if (got < 0)
+		      {
+			return eb_fallback (plan, "a pointed cell the batch does not decode");
+		      }
+		    unk[r] = 1;
+		    sel[n++] = r;
+		    continue;
+		  }
+		sel[n] = r;
+		n += EB_LEAF_KEEP (x, k);
+	      }
+	  }
+	else
+	  {
+	    const int64_t *d = (const int64_t *) v->data;
+
+	    for (j = 0; j < n_in; j++)
+	      {
+		const int r = sel[j];
+
+		if (v->isnull[r])
+		  {
+		    unk[r] = 1;
+		    sel[n++] = r;
+		    continue;
+		  }
+		sel[n] = r;
+		n += EB_LEAF_KEEP (d[r], k);
+	      }
+	  }
+      }
+#undef EB_LEAF_KEEP
+  }
   batch->n_sel = n;
   return NO_ERROR;
 }
@@ -5105,6 +5319,56 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		      return eb_fallback (plan, "a DOUBLE step overflows");
 		    }
 		}
+	    }
+	  else if (a->kind != EB_VK_PTR && c->kind != EB_VK_PTR && out->etype == EB_NUM && out->scales != NULL)
+	    {
+	      /* both operands in vectors: the operation on the signed coefficients (eb_num_mul_signed (),
+	       * eb_num_add_signed ()), without the sign-and-magnitude values numeric_agg_expr_mul () and
+	       * numeric_agg_expr_add () take and the call for each row */
+	      const int am = (a->kind == EB_VK_SCALAR) ? 0 : ~0, cm = (c->kind == EB_VK_SCALAR) ? 0 : ~0;
+	      const unsigned char *an = a->isnull, *cn = c->isnull;
+	      unsigned char *on = out->isnull;
+	      __int128 *od = (__int128 *) out->data;
+	      short *os = out->scales;
+
+	      assert (EB_IS_NUM (a->etype) && EB_IS_NUM (c->etype));
+#define EB_NUM_STEP_LOOP(operates) \
+  do \
+    { \
+      for (j = 0; j < n; j++) \
+	{ \
+	  int r = sel[j], xs, ys, zs; \
+	  __int128 x, y, z; \
+	  if ((mask != NULL && !mask[r]) || an[r & am] || cn[r & cm]) \
+	    { \
+	      on[r] = 1; \
+	      continue; \
+	    } \
+	  x = eb_num_signed (a, r & am, &xs); \
+	  y = eb_num_signed (c, r & cm, &ys); \
+	  if (!(operates)) \
+	    { \
+	      return eb_fallback (plan, "a NUMERIC step beyond the word domain"); \
+	    } \
+	  od[r] = z; \
+	  os[r] = (short) zs; \
+	  on[r] = 0; \
+	} \
+    } \
+  while (0)
+	      if (step->op == EB_OP_MUL)
+		{
+		  EB_NUM_STEP_LOOP (eb_num_mul_signed (x, xs, y, ys, &z, &zs));
+		}
+	      else
+		{
+		  const bool negate = (step->op == EB_OP_SUB);
+		  __int128 pow10 = 1;
+		  int pow10_exp = 0;
+
+		  EB_NUM_STEP_LOOP (eb_num_add_signed (x, xs, negate ? -y : y, ys, &z, &zs, &pow10, &pow10_exp));
+		}
+#undef EB_NUM_STEP_LOOP
 	    }
 	  else
 	    {
