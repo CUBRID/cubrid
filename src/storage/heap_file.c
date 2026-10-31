@@ -8195,6 +8195,21 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 }
 
 
+/* A page whose first chunk the batch collects, its lines asked for at once: heap_page_collect_visible () reads nearly
+ * every record of it -- the slot, then the record's header first, then its columns -- and a header's first load waited
+ * on memory for about a fifth of a filter scan's time (the hardware prefetchers stop at every 4 KB, four times in a
+ * page). */
+static inline void
+heap_page_prefetch (const char *pgptr)
+{
+  int offset;
+
+  for (offset = 0; offset < DB_PAGESIZE; offset += 64)
+    {
+      prefetch (pgptr + offset, PREFETCH_READ, PREFETCH_CACHE_L1);
+    }
+}
+
 /*
  * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
  *   return: S_SUCCESS (the chunk ends -- cap rows, or the record after its last row is one the page does not
@@ -8271,6 +8286,11 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	}
     }
   pgptr = scan_cache->page_watcher.pgptr;
+  if (*slot == 0)
+    {
+      /* the page's first chunk, whoever fixed the page (the scan's caller, usually) */
+      heap_page_prefetch (pgptr);
+    }
   if (heap_page_is_bestspace (thread_p, pgptr))
     {
       return S_END;
