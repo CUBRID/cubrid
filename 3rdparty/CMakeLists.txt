@@ -54,6 +54,28 @@ set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4c
 set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
 set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
+include (3rdparty_util)
+
+# CUBRID_DOWNLOAD_CACHE holds tarballs fetched ahead of the build.
+function(use_download_cache url_var hash)
+  if("$ENV{CUBRID_DOWNLOAD_CACHE}" STREQUAL "")
+    return()
+  endif()
+  get_filename_component(name "${${url_var}}" NAME)
+  set(dest "$ENV{CUBRID_DOWNLOAD_CACHE}/${url_var}/${name}")
+  fetch_verified("${${url_var}}" "${dest}" ${hash})
+  set(${url_var} "${dest}" PARENT_SCOPE)
+endfunction()
+
+use_download_cache(WITH_LIBEXPAT_URL ${WITH_LIBEXPAT_URL_HASH})
+use_download_cache(WITH_LIBEDIT_URL ${WITH_LIBEDIT_URL_HASH})
+use_download_cache(WITH_RAPIDJSON_URL ${WITH_RAPIDJSON_URL_HASH})
+use_download_cache(WITH_LIBOPENSSL_URL ${WITH_LIBOPENSSL_URL_HASH})
+use_download_cache(WITH_LIBUNIXODBC_URL ${WITH_LIBUNIXODBC_URL_HASH})
+use_download_cache(WITH_LIBTBB_URL ${WITH_LIBTBB_URL_HASH})
+use_download_cache(WITH_RE2_URL ${WITH_RE2_URL_HASH})
+use_download_cache(WITH_LZ4_URL ${WITH_LZ4_URL_HASH})
+
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
@@ -571,8 +593,6 @@ set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
 set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
-include (3rdparty_util)
-
 if(UNIX)
 expose_3rdparty_variable(LIBEDIT)
 expose_3rdparty_variable(LIBNCURSES)
