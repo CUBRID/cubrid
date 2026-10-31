@@ -1234,6 +1234,7 @@ struct dbdef_vol_ext_info
 };
 
 #define SERVER_SESSION_KEY_SIZE			8
+#define SESSION_SECRET_SIZE			8
 
 typedef enum
 {

@@ -132,6 +132,7 @@ void sigfpe_handler (int sig);
  * otherwise, there is no code that resets it to false except for the initialization */
 static bool db_Keep_session = false;
 CUB_THREAD_LOCAL SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+static CUB_THREAD_LOCAL char db_Session_secret[SESSION_SECRET_SIZE];
 static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
@@ -3431,6 +3432,18 @@ db_get_server_session_key (void)
   return boot_get_server_session_key ();
 }
 
+void
+db_set_session_secret (const char *secret)
+{
+  memcpy (db_Session_secret, secret, SESSION_SECRET_SIZE);
+}
+
+char *
+db_get_session_secret (void)
+{
+  return db_Session_secret;
+}
+
 /*
  * db_get_session_id () - get current session id
  * return : session id
@@ -3493,11 +3506,15 @@ db_find_or_create_session (const char *db_user, const char *program_name)
   SESSION_ID sess_id = db_get_session_id ();
   int row_count = DB_ROW_COUNT_NOT_SET;
   char *server_session_key;
+  char *session_secret;
   const char *host_name = boot_get_host_name ();
 
   server_session_key = db_get_server_session_key ();
-  /* server_session_key is in/out parameter, it is replaced new key */
-  err = csession_find_or_create_session (&sess_id, &row_count, server_session_key, db_user, host_name, program_name);
+  session_secret = db_get_session_secret ();
+  /* server_session_key and session_secret are in/out parameters, they are replaced with new ones */
+  err =
+    csession_find_or_create_session (&sess_id, &row_count, server_session_key, session_secret, db_user, host_name,
+				     program_name);
   if (err != NO_ERROR)
     {
       db_set_session_id (DB_EMPTY_SESSION);

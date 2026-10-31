@@ -1502,7 +1502,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
 1389 %1$s cannot be called by the main client thread.
 
-1390 Last Error
+1390 The secret of session %1$u does not match.
+1391 Cannot end or keep session %1$u because it is not attached to this connection.
+
+1392 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
