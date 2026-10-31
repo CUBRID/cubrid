@@ -4462,6 +4462,8 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
     }
 
   ptr = or_pack_int (ptr, insert_info->remote_num_odku);
+  ptr = or_pack_int (ptr, insert_info->remote_odku_val_start);
+  ptr = or_pack_int (ptr, insert_info->remote_num_odku_bound);
 
   /* Column and value go out as a pair, so the two arrays cannot drift apart across the stream. */
   for (i = 0; i < insert_info->remote_num_odku; i++)
@@ -6947,6 +6949,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* remote_num_attrs */
 	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
 	   + OR_INT_SIZE	/* remote_num_odku */
+	   + OR_INT_SIZE	/* remote_odku_val_start */
+	   + OR_INT_SIZE	/* remote_num_odku_bound */
 	   + (insert_info->remote_num_odku * 2 * PTR_SIZE)	/* remote_odku_cols + remote_odku_exprs */
 	   + PTR_SIZE		/* att_domains */
 	   + PTR_SIZE);		/* default_types */

@@ -459,8 +459,11 @@ struct insert_proc_node
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
-  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL, or NULL for a value bound per row
+				 * from the source row (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
+  int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
+  int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
   TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
   int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
 				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
