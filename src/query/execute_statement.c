@@ -6216,6 +6216,13 @@ get_savepoint_name_from_db_value (DB_VALUE * val)
   ((statement)->node_type == PT_TRIGGER_ACTION \
    && (statement)->info.trigger_action.action_type == PT_PRINT)
 
+#define IS_PLCSQL_BLOCK_ACTION_STATEMENT(statement) \
+  ((statement)->node_type == PT_TRIGGER_ACTION \
+   && (statement)->info.trigger_action.action_type == PT_PLCSQL_BLOCK)
+
+/* name prefix of the internal procedures made from PL/CSQL block actions */
+#define TRIGGER_BLOCK_SP_PREFIX "__trsp_"
+
 #define PT_NODE_TR_NAME(node) \
  ((node)->info.create_trigger.trigger_name->info.name.original)
 #define PT_NODE_TR_STATUS(node) \
@@ -6261,6 +6268,9 @@ static int check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, P
 static char **find_update_columns (int *count_ptr, PT_NODE * statement);
 static void get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char **source,
 			       PT_NODE * statement);
+static const char *skip_blanks_and_comments (const char *text);
+static int create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block,
+					   char *sp_name, int sp_name_size, const char **call_source);
 
 /*
  * merge_mop_list_extension() -
@@ -7267,6 +7277,173 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
 }
 
 /*
+ * skip_blanks_and_comments() - Skips the blanks and the comments of PL/CSQL at the start of a text.
+ *   return: the first token of the text, or its end
+ *   text(in): PL/CSQL text
+ */
+static const char *
+skip_blanks_and_comments (const char *text)
+{
+  const char *end;
+
+  while (true)
+    {
+      while (char_isspace (*text))
+	{
+	  text++;
+	}
+
+      if ((text[0] == '-' && text[1] == '-') || (text[0] == '/' && text[1] == '/'))
+	{
+	  end = strchr (text, '\n');
+	  text = (end != NULL) ? end : text + strlen (text);
+	}
+      else if (text[0] == '/' && text[1] == '*')
+	{
+	  end = strstr (text + 2, "*/");
+	  text = (end != NULL) ? end + 2 : text + strlen (text);
+	}
+      else
+	{
+	  return text;
+	}
+    }
+}
+
+/*
+ * create_trigger_block_procedure() - Makes the internal procedure that runs a PL/CSQL block action of a trigger.
+ *   return: Error code
+ *   parser(in): Parse context of the create trigger statement
+ *   trigger_name(in): name of the trigger being created
+ *   block(in): PL/CSQL block text
+ *   sp_name(out): unique name of the procedure
+ *   sp_name_size(in): size of sp_name
+ *   call_source(out): action source that calls the procedure
+ *
+ * Note:
+ *    The procedure belongs to the trigger owner and its name has a random part,
+ *    so it does not depend on the trigger name. The call names the owner because
+ *    it is compiled when the trigger is created, possibly by another user.
+ */
+static int
+create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block, char *sp_name,
+				int sp_name_size, const char **call_source)
+{
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char *user_name;
+  MOP owner;
+  DB_VALUE uuid;
+  char *quoted_name;
+  char *create_sql;
+  char *call;
+  char *compile_msg;
+  int i;
+  int error = NO_ERROR;
+
+  *call_source = NULL;
+
+  /* the owner is decided as tr_create_trigger does */
+  if (sm_qualifier_name (trigger_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      ERROR_SET_ERROR (error, ER_TR_CREATE_NOT_ALLOWED);
+      return error;
+    }
+
+  user_name = au_get_user_name (owner);
+  if (user_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  sm_downcase_name (user_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+  db_ws_free_and_init (user_name);
+
+  error = db_uuidv4 (&uuid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  snprintf (sp_name, sp_name_size, "%s.%s%s", downcase_owner_name, TRIGGER_BLOCK_SP_PREFIX, db_get_string (&uuid));
+  pr_clear_value (&uuid);
+
+  /* the random part is in upper case hex, and names are kept in lower case */
+  for (i = strlen (downcase_owner_name); sp_name[i] != '\0'; i++)
+    {
+      sp_name[i] = (char) tolower ((unsigned char) sp_name[i]);
+    }
+
+  /*
+   * The procedure takes the shape of its stored code: the header on the first line and the body,
+   * without a leading DECLARE and the blanks and comments after it, from the second line.
+   * The stored code is what is compiled again when the owner changes, and it starts the body at its first token,
+   * so both compilations report errors at the same lines.
+   */
+  if (strncasecmp (block, "declare", strlen ("declare")) == 0)
+    {
+      block = skip_blanks_and_comments (block + strlen ("declare"));
+    }
+
+  /* the owner name may need quoting, for example a reserved word */
+  quoted_name = pt_append_string (parser, NULL, "[");
+  quoted_name = pt_append_string (parser, quoted_name, downcase_owner_name);
+  quoted_name = pt_append_string (parser, quoted_name, "].[");
+  quoted_name = pt_append_string (parser, quoted_name, sp_name + strlen (downcase_owner_name) + 1);
+  quoted_name = pt_append_string (parser, quoted_name, "]");
+
+  create_sql = pt_append_string (parser, NULL, "CREATE PROCEDURE ");
+  create_sql = pt_append_string (parser, create_sql, quoted_name);
+  create_sql = pt_append_string (parser, create_sql, " AS\n");
+  create_sql = pt_append_string (parser, create_sql, block);
+
+  /* the call is made first, so nothing in this function fails after the procedure is made */
+  call = pt_append_string (parser, NULL, "CALL ");
+  call = pt_append_string (parser, call, quoted_name);
+  call = pt_append_string (parser, call, "()");
+  if (quoted_name == NULL || create_sql == NULL || call == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = jsp_create_system_generated_procedure (create_sql);
+  if (error == ER_SP_COMPILE_ERROR)
+    {
+      /* report it as a compile error of the action, as for an action that is a statement */
+      compile_msg = pt_append_string (parser, NULL, er_msg ());
+      if (compile_msg == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name, compile_msg);
+      return error;
+    }
+  else if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  *call_source = call;
+
+  return NO_ERROR;
+}
+
+/*
  * do_create_trigger() -
  *   return: Error code
  *   parser(in): Parse context
@@ -7288,6 +7465,8 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_TRIGGER_ACTION cond_type, action_type;
   DB_TRIGGER_TIME cond_time, action_time;
   const char *cond_source, *action_source;
+  const char *block_source = NULL;
+  char block_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *trigger;
   SM_CLASS *smclass = NULL;
   int error = NO_ERROR;
@@ -7361,16 +7540,43 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   action = PT_NODE_ACTION (statement);
   action_time = PT_NODE_ACTION_TIME (statement);
-  get_activity_info (parser, &action_type, &action_source, action);
+  if (action != NULL && IS_PLCSQL_BLOCK_ACTION_STATEMENT (action))
+    {
+      /* the trigger calls an internal procedure made from the block */
+      assert (action->info.trigger_action.plcsql_block != NULL);
+      block_source = (const char *) action->info.trigger_action.plcsql_block->info.value.data_value.str->bytes;
+
+      error =
+	create_trigger_block_procedure (parser, name, block_source, block_sp_name, sizeof (block_sp_name),
+					&action_source);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      action_type = TR_ACT_EXPRESSION;
+    }
+  else
+    {
+      get_activity_info (parser, &action_type, &action_source, action);
+    }
 
   trigger =
     tr_create_trigger (name, status, priority, event, class_, attribute, cond_time, cond_source, action_time,
-		       action_type, action_source, comment);
+		       action_type, action_source, comment, block_source != NULL ? block_sp_name : NULL, block_source);
 
   if (trigger == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      ASSERT_ERROR_AND_SET (error);
+
+      if (block_source != NULL)
+	{
+	  /* keep the error of the trigger, not of this cleanup */
+	  er_stack_push ();
+	  (void) jsp_drop_system_generated_procedure (block_sp_name);
+	  er_stack_pop ();
+	}
+
+      return error;
     }
 
   /* Save the new trigger object in the parse tree. Actually, we probably should also allow INTO variable sub-clause to

@@ -199,7 +199,9 @@ typedef enum
   PT_DETERMINISTIC,
 
   PT_LOGIN,			/* user login capability */
-  PT_NOLOGIN
+  PT_NOLOGIN,
+
+  PT_PLCSQL_BLOCK		/* trigger action written as a PL/CSQL block */
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 

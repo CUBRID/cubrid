@@ -1501,7 +1501,11 @@ $ LOADDB
 1388 main client가 연결되어 있지 않거나 재시작 중이므로 sub-client를 시작할 수 없습니다.
 1389 %1$s은(는) main client 스레드에서 호출할 수 없습니다.
 
-1390 마지막 에러
+1390 시스템 생성 stored procedure를 변경(alter)할 수 없습니다.
+
+1391 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
+
+1392 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

@@ -1792,7 +1792,10 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_LAST_ERROR                               -1390
+#define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1390
+#define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1391
+
+#define ER_LAST_ERROR                               -1392
 
 
 /*
