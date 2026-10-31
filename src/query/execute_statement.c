@@ -22783,6 +22783,37 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
+  /* The rows go straight into the heap on the server, where no trigger runs. A
+   * COPY into a table with an active INSERT trigger would load rows the trigger
+   * never saw, so it is refused; the user can deactivate the trigger first.
+   * Authorization is disabled as INSERT does here: the check must not need the
+   * SELECT privilege that the INSERT privilege alone does not give. */
+  {
+    int has_row_trigger = 0;
+    int has_stmt_trigger = 0;
+    int au_save;
+
+    AU_SAVE_AND_DISABLE (au_save);
+    error = sm_class_has_triggers (class_obj, &has_row_trigger, TR_EVENT_INSERT);
+    if (error == NO_ERROR)
+      {
+	error = sm_class_has_triggers (class_obj, &has_stmt_trigger, TR_EVENT_STATEMENT_INSERT);
+      }
+    AU_RESTORE (au_save);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    if (has_row_trigger || has_stmt_trigger)
+      {
+	char detail[DB_MAX_IDENTIFIER_LENGTH + 48];
+
+	snprintf (detail, sizeof (detail), "%s, which has an active INSERT trigger", table_name);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+	return ER_COPY_NOT_SUPPORTED;
+      }
+  }
+
   /* Count the target columns first: an explicit list as given, otherwise every
    * instance attribute in schema order. Shared attributes have no per-instance
    * slot in the heap record, so they are not COPY targets. */
