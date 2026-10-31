@@ -4136,6 +4136,14 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
       /* set result cache */
       prepare_info.do_cache = prepared_stmt->info.query.flag.do_cache;
+
+      /* set click counter */
+      prepare_info.is_click_counter = prepared_stmt->flag.is_click_counter;
+    }
+  else if (prepared_stmt->node_type == PT_METHOD_CALL)
+    {
+      /* set method call with a target */
+      prepare_info.is_method_on_target = (prepared_stmt->info.method_call.on_call_target != NULL);
     }
 
   err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
@@ -4271,6 +4279,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   statement->info.execute.recompile = prepare_info.recompile;
   statement->info.execute.do_cache = prepare_info.do_cache;
   statement->info.execute.oids_included = prepare_info.oids_included;
+  statement->info.execute.is_click_counter = prepare_info.is_click_counter;
+  statement->info.execute.is_method_on_target = prepare_info.is_method_on_target;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
   statement->info.execute.plan_at_execute = prepare_info.stmt_type == CUBRID_STMT_SELECT && XASL_ID_IS_NULL (&xasl_id);

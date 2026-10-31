@@ -381,6 +381,7 @@ set(OBJECT_HEADERS
 
 set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/sp_context_rules.cpp
   ${SP_DIR}/method_invoke_group.cpp
   ${SP_DIR}/pl_connection.cpp
   ${SP_DIR}/pl_compile_handler.cpp

@@ -79,6 +79,7 @@
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
+#include "sp_context_rules.hpp"
 #endif // SA_MODE
 
 #include "xasl.h"
@@ -7772,6 +7773,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
   bool error;
+  bool save_query_request;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -7780,9 +7782,12 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   if (!error)
     {
       /* call the server routine of query execute */
+      save_query_request = sp_Sa_query_request;
+      sp_Sa_query_request = true;
       list_id =
 	xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			     srv_cache_time, query_timeout, NULL);
+      sp_Sa_query_request = save_query_request;
     }
   qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
@@ -7896,14 +7901,17 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
+  bool save_query_request = sp_Sa_query_request;
 
   /* CBRD-27583: an object as its OID, as qmgr_execute_query sends it */
   DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbval_ptr, &error);
   if (!error)
     {
+      sp_Sa_query_request = true;
       regu_result =
 	xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt,
 					 server_db_values, &flag, query_timeout);
+      sp_Sa_query_request = save_query_request;
     }
   qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
@@ -11619,7 +11627,9 @@ error:
   packing_packer packer;
   cubmem::extensible_block eb;
   THREAD_ENTRY *thread_p = enter_server ();
+  bool save_query_request = sp_Sa_query_request;
 
+  sp_Sa_query_request = false;
   {
     DB_VALUE ret_value;
     cubpl::executor executor ((cubpl::pl_signature &) sig);
@@ -11658,6 +11668,7 @@ error:
 
     db_value_clear (&ret_value);
   }
+  sp_Sa_query_request = save_query_request;
 
   exit_server (*thread_p);
 
