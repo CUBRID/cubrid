@@ -8210,6 +8210,49 @@ heap_page_prefetch (const char *pgptr)
     }
 }
 
+/* or_mvcc_get_header () for a REC_HOME record of a page heap_page_collect_visible () collects, read inline: the same
+ * fields from the same bytes -- representation and flags, CHN, then the insert id, the delete id and the previous
+ * version's address where the flags say they are there -- without the OR_BUF and the five calls into
+ * object_representation_sr.c that every record of a filter scan paid for */
+static inline void
+heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
+{
+  const char *p = data;
+  const int repid_and_flag_bits = OR_GET_INT (p);
+
+  header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
+  header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  p += OR_INT_SIZE;
+  header->chn = OR_GET_INT (p);
+  p += OR_INT_SIZE;
+  if (header->mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
+    {
+      OR_GET_BIGINT (p, &header->mvcc_ins_id);
+      p += OR_MVCCID_SIZE;
+    }
+  else
+    {
+      header->mvcc_ins_id = MVCCID_ALL_VISIBLE;
+    }
+  if (header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+    {
+      OR_GET_BIGINT (p, &header->mvcc_del_id);
+      p += OR_MVCCID_SIZE;
+    }
+  else
+    {
+      header->mvcc_del_id = MVCCID_NULL;
+    }
+  if (header->mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION)
+    {
+      header->prev_version_lsa = *(const LOG_LSA *) p;
+    }
+  else
+    {
+      LSA_SET_NULL (&header->prev_version_lsa);
+    }
+}
+
 /*
  * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
  *   return: S_SUCCESS (the chunk ends -- cap rows, or the record after its last row is one the page does not
@@ -8331,11 +8374,19 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	}
       else
 	{
-	  if (or_mvcc_get_header (&rec, &mvcc_header) != NO_ERROR)
-	    {
-	      assert (false);
-	      return S_ERROR;
-	    }
+	  assert (rec.length >= OR_MVCC_REP_SIZE);
+	  heap_page_row_mvcc_header (rec.data, &mvcc_header);
+#if !defined (NDEBUG)
+	  {
+	    MVCC_REC_HEADER check = MVCC_REC_HEADER_INITIALIZER;
+	    const int rc = or_mvcc_get_header (&rec, &check);
+
+	    assert (rc == NO_ERROR && check.repid == mvcc_header.repid && check.mvcc_flag == mvcc_header.mvcc_flag
+		    && check.chn == mvcc_header.chn && check.mvcc_ins_id == mvcc_header.mvcc_ins_id
+		    && check.mvcc_del_id == mvcc_header.mvcc_del_id
+		    && LSA_EQ (&check.prev_version_lsa, &mvcc_header.prev_version_lsa));
+	  }
+#endif
 	  if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
 	    {
 	      MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
