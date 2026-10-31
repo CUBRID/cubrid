@@ -61,6 +61,17 @@ struct copy_col_domain
 extern bool copy_fit_char_precision (const char *str, int str_len, const COPY_COL_DOMAIN *dom, int *fitted_len);
 
 /*
+ * copy_format_error () - Raise a COPY format error that says where it happened.
+ *
+ * The reason alone ("BIGINT expects 8 bytes") does not say which of ten
+ * million rows to look at. Rows are numbered from the start of the stream (a
+ * skipped CSV HEADER line is not a row) and columns as the statement lists
+ * them, both 1-based. col < 0 names the row only.
+ *   return: error_code, which is ER_COPY_CSV_FORMAT_ERROR or ER_COPY_BINARY_FORMAT_ERROR
+ */
+extern int copy_format_error (int error_code, std::int64_t row, int col, const char *reason);
+
+/*
  * decode_binary_row () - Decode one row from a binary buffer
  *   return: NO_ERROR, COPY_DECODE_FOOTER, COPY_DECODE_NEED_MORE, or error code
  *   buf(in): pointer to start of row data

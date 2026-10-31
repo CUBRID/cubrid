@@ -370,11 +370,13 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	{
 	  /* Neither the heap nor the locator enforces NOT NULL -- it is the
 	   * inserter's job, as it is the executor's for INSERT. An unquoted empty
-	   * CSV field decodes to NULL, so this is one character away. */
+	   * CSV field decodes to NULL, so this is one character away. The error
+	   * names the row and column, as a decoder's does; INSERT's NOT NULL error
+	   * names neither. */
 	  if (m_col_notnull[i] && DB_IS_NULL (&vals[i]))
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
-	      error = ER_NULL_CONSTRAINT_VIOLATION;
+	      error = copy_format_error ((m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR
+					 : ER_COPY_BINARY_FORMAT_ERROR, m_row_number, i, "NULL in a NOT NULL column");
 	      goto cleanup;
 	    }
 

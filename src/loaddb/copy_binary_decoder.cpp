@@ -147,15 +147,8 @@ copy_fit_char_precision (const char *str, int str_len, const COPY_COL_DOMAIN *do
   return true;
 }
 
-/*
- * binary_error () - Raise a format error that says where it happened.
- *
- * The reason alone ("BIGINT expects 8 bytes") does not say which of ten
- * million rows to look at. Rows are numbered from the start of the stream and
- * columns as the statement lists them, both 1-based.
- */
-static int
-binary_error (std::int64_t row, int col, const char *reason)
+int
+copy_format_error (int error_code, std::int64_t row, int col, const char *reason)
 {
   char msg[256];
 
@@ -167,8 +160,14 @@ binary_error (std::int64_t row, int col, const char *reason)
     {
       snprintf (msg, sizeof (msg), "%s (row %lld)", reason, (long long) row);
     }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, msg);
-  return ER_COPY_BINARY_FORMAT_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, msg);
+  return error_code;
+}
+
+static int
+binary_error (std::int64_t row, int col, const char *reason)
+{
+  return copy_format_error (ER_COPY_BINARY_FORMAT_ERROR, row, col, reason);
 }
 
 static int

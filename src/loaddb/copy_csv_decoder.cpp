@@ -42,29 +42,10 @@
  * Type coercion of one textual field. The text lives in field_storage[*] which
  * outlives the row insert, so VARCHAR may point into it.
  */
-/*
- * csv_error () - Raise a format error that says where it happened.
- *
- * The reason alone ("value parse error") does not say which of ten million
- * rows to look at. Rows are numbered from the start of the stream (a skipped
- * HEADER line is not a row) and columns as the statement lists them, both
- * 1-based.
- */
 static int
 csv_error (std::int64_t row, int col, const char *reason)
 {
-  char msg[256];
-
-  if (col >= 0)
-    {
-      snprintf (msg, sizeof (msg), "%s (row %lld, column %d)", reason, (long long) row, col + 1);
-    }
-  else
-    {
-      snprintf (msg, sizeof (msg), "%s (row %lld)", reason, (long long) row);
-    }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, msg);
-  return ER_COPY_CSV_FORMAT_ERROR;
+  return copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, col, reason);
 }
 
 static int
