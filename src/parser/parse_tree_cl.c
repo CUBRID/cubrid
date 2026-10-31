@@ -14333,6 +14333,7 @@ static PT_NODE *
 pt_init_name (PT_NODE * p)
 {
   p->info.name.db_object_chn = NULL_CHN;
+  p->info.name.virt_object_chn = NULL_CHN;
   return p;
 }
 
