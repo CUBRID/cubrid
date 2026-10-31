@@ -208,6 +208,11 @@ namespace cubxasl
     void *scan_prog;
     int scan_prog_state;	/* 0 = not tried yet, 1 = active, 2 = keep the interpreted path */
     unsigned int scan_prog_gen;	/* bumped on every compile; consumers sharing its slots record it */
+    /* CBRD-27361: the compiled form XASL generation wrote for a scan's data filter (expr_scan_pred_image_pack ()),
+     * attached by the unpack of the access spec; the first evaluation binds it instead of compiling.  NULL: none
+     * was written; scan_prog_image_size 0: the client compiled and declined. */
+    const char *scan_prog_image;
+    int scan_prog_image_size;
 
     void clear_xasl ();
   };

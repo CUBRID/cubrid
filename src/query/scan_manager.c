@@ -33,6 +33,7 @@
 #include "json_builder.h"
 
 #include "error_manager.h"
+#include "expr_batch.h"
 #include "heap_file.h"
 #include "ftab_set.hpp"
 #include "fetch.h"
@@ -53,6 +54,7 @@
 #include "dbtype.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
+#include "query_hash_join.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
 #include "px_scan.hpp"
@@ -179,6 +181,22 @@ static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_O
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec,
+				     const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+				     const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok);
+static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static void scan_batch_release_page (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp);
+static int scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
+static void scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp);
+static void scan_batch_keep_drop (THREAD_ENTRY * thread_p, SCAN_BATCH_KEEP * keep);
+static SCAN_BATCH_KEEP *scan_batch_keep_for (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, SCAN_BATCH_KEEP * keep);
+static void scan_batch_keep_note (SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp, const EXPR_BATCH_INPUTS * in,
+				  bool for_consumer);
+static bool scan_batch_keep_matches (const SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp,
+				     const EXPR_BATCH_INPUTS * in, bool for_consumer);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -2708,6 +2726,23 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
+  hsidp->batch_plan = NULL;
+  hsidp->batch = NULL;
+  hsidp->batch_state = 0;
+  VPID_SET_NULL (&hsidp->batch_vpid);
+  hsidp->batch_started = false;
+  hsidp->batch_rowmode = false;
+  hsidp->batch_why_not = NULL;
+  hsidp->batch_iter = false;
+  hsidp->batch_page_more = false;
+  hsidp->batch_off_page = false;
+  hsidp->batch_pos = 0;
+  hsidp->batch_slot = 0;
+  hsidp->batch_last_slot = 0;
+  hsidp->batch_copy = NULL;
+  hsidp->batch_copy_cap = 0;
+  hsidp->batch_spec = NULL;
+
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
   return NO_ERROR;
@@ -4293,6 +4328,10 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  s_id->position = (s_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
 	  OID_SET_NULL (&s_id->s.hsid.curr_oid);
+	  if (s_id->s.hsid.batch_started)
+	    {
+	      scan_batch_rewind (thread_p, s_id);
+	    }
 	}
       break;
 
@@ -4632,11 +4671,23 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       else
 	{
+	  if (hsidp->batch_started)
+	    {
+	      scan_batch_release_page (thread_p, hsidp);
+	    }
 	  if (hsidp->scancache_inited)
 	    {
 	      (void) heap_scancache_end (thread_p, &hsidp->scan_cache);
 	    }
 	}
+      /* the plan, the chunk and the buffers go to the spec's keep for the scan's next open (SCAN_BATCH_KEEP) */
+      scan_batch_park (thread_p, hsidp);
+      hsidp->batch_state = 0;
+      hsidp->batch_started = false;
+      hsidp->batch_rowmode = false;
+      hsidp->batch_iter = false;
+      hsidp->batch_page_more = false;
+      hsidp->batch_pos = 0;
 
       /* switch scan direction for further iterations */
       if (scan_id->direction == S_FORWARD)
@@ -5215,6 +5266,13 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		scan_id->scan_stats.qualified_rows - old_scan_stats.qualified_rows;
 	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_hash_build, &old_scan_stats.elapsed_hash_build,
 				   &scan_id->scan_stats.elapsed_hash_build);
+	      /* the filter iterator's page batch (scan_batch_iter_next ()); the aggregate's pages are the stretch's
+	       * (qexec_batch_trace_end ()) */
+	      scan_id->partition_stats->batch_pages += scan_id->scan_stats.batch_pages - old_scan_stats.batch_pages;
+	      scan_id->partition_stats->batch_pages_rowpath +=
+		scan_id->scan_stats.batch_pages_rowpath - old_scan_stats.batch_pages_rowpath;
+	      scan_id->partition_stats->batch_pages_offpage +=
+		scan_id->scan_stats.batch_pages_offpage - old_scan_stats.batch_pages_offpage;
 	      break;
 
 	    case S_INDX_SCAN:
@@ -5263,6 +5321,36 @@ typedef enum
  */
 static SCAN_CODE
 scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  SCAN_CODE code;
+
+  for (;;)
+    {
+      if (!hsidp->batch_iter || hsidp->batch_rowmode)
+	{
+	  /* the row path's one call (a scan without the filter iterator, or a page the filter handed back): with one
+	   * call site it is inlined into scan_next_scan_local () as before the batch, not an extra call per row */
+	  code = scan_next_heap_scan_rows (thread_p, scan_id);
+	  if (!hsidp->batch_iter || code != S_END)
+	    {
+	      return code;
+	    }
+	  scan_batch_page_rowmode (scan_id, false, 0);
+	}
+      code = scan_batch_iter_next (thread_p, scan_id);
+      if (code != S_DOESNT_FIT)
+	{
+	  return code;
+	}
+    }
+}
+
+/*
+ * scan_next_heap_scan_rows () - the heap scan's next row, the row path: record by record, each through the filter
+ */
+static SCAN_CODE
+scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp;
   FILTER_INFO data_filter;
@@ -5325,9 +5413,39 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* move forward */
 	      if (scan_id->type == S_HEAP_SCAN)
 		{
-		  sp_scan =
-		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+		  if (hsidp->batch_rowmode)
+		    {
+		      /* a page the batch handed back (scan_batch_page_rowmode ()): its rows one by one,
+		       * the page held for the whole of it as the batch held it */
+		      int cache_last_fix_page_save = hsidp->scan_cache.cache_last_fix_page;
+		      bool release_after_row = false;
+
+		      /* held across its rows as the batch held it -- not when rows go out to joins under it (the
+		       * filter iterator lets the page go after each row, its record copied) nor for a scan that reads
+		       * through its local copy and must not keep the page after a row (heap_next_1page ()).  At the
+		       * page's end the page stays held, so that scan_batch_next_page () finds its successor from it,
+		       * as heap_next () does, instead of fixing again a page none of whose rows this snapshot saw (one
+		       * vacuum may be removing) */
+		      if (hsidp->scan_cache.read_mode != HEAP_SCAN_READ_LOCAL_CACHE)
+			{
+			  release_after_row = (hsidp->batch_iter && !cache_last_fix_page_save);
+			  hsidp->scan_cache.cache_last_fix_page = true;
+			}
+		      sp_scan =
+			heap_next_1page (thread_p, &hsidp->hfid, &hsidp->batch_vpid, &hsidp->cls_oid, &hsidp->curr_oid,
+					 &recdes, &hsidp->scan_cache, is_peeking);
+		      hsidp->scan_cache.cache_last_fix_page = cache_last_fix_page_save;
+		      if (release_after_row && sp_scan == S_SUCCESS && hsidp->scan_cache.page_watcher.pgptr != NULL)
+			{
+			  pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+			}
+		    }
+		  else
+		    {
+		      sp_scan =
+			heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+				   &hsidp->scan_cache, is_peeking);
+		    }
 		}
 	      else
 		{
@@ -7237,6 +7355,1051 @@ exit_on_error:
 }
 
 /*
+ * scan_batch_open () - open a page batch over a sequential heap scan
+ *   return: the batch state: 1 active, 2 declined (the row path serves the scan)
+ *   scan_id(in/out): the started heap scan
+ *   spec(in): its access spec (the regu lists that map value-list slots to attributes)
+ *   xasl(in): the consumer's block: a hash join's runtime filter on it (hjoin_rtf_build ()) is looked up by the
+ *	       plan itself, as its last filter term, since the rows the batch keeps never pass the row loop's check
+ *   agg_list(in): the aggregate list the consumer accumulates
+ *   vd(in): the execution's value descriptor
+ *   gby(in): a hash GROUP BY's mapping, or NULL
+ *   proj(in): a projecting block's output list, its program settled for this execution, or NULL
+ *
+ * The consumer calls it once the scan is started (its attribute caches are up); the plan it
+ * builds lives as long as the execution: scan_end_scan () parks it on the spec and the scan's
+ * next open takes it back when it is built from the same inputs (SCAN_BATCH_KEEP).  The
+ * compiled filter and the operand program are settled here, before any row, the way the row
+ * path settles them on its first row, so the batch reads the forms this execution would use.
+ */
+int
+scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, const XASL_NODE * xasl,
+		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby,
+		 const valptr_list_node * proj)
+{
+  return scan_batch_open_internal (thread_p, scan_id, spec, xasl, agg_list, vd, gby, proj, false);
+}
+
+/* The heap scan's data filter compiled as its first row compiles it (eval_data_filter ()).  The row path compiles
+ * the filter before the row reaches the block's programs (its projection, its aggregate operands), and they read
+ * the values the filter computed (expr_prog_share_current ()): a page batch settles those programs before any row,
+ * so it compiles the filter first, for the programs to be the ones the row path would run. */
+void
+scan_batch_settle_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp;
+  FILTER_INFO data_filter;
+
+  if (scan_id == NULL || scan_id->type != S_HEAP_SCAN || scan_id->s.hsid.scan_pred.pred_expr == NULL)
+    {
+      return;
+    }
+  hsidp = &scan_id->s.hsid;
+  data_filter =
+  {
+  &hsidp->scan_pred, &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL,
+      NULL, 0, -1};
+  eval_data_filter_ensure_prog (thread_p, &data_filter);
+}
+
+/* scan_batch_open (); cached_ok: the scan may read its pages through a local copy (the filter iterator fixes the
+ * page itself for each chunk).  xasl is NULL for the filter iterators (scan_batch_open_filter (), _rows ()): their
+ * rows go on to the row loop, which checks the runtime filter itself. */
+static int
+scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec,
+			  const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+			  const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  SCAN_BATCH_KEEP *keep = (spec != NULL) ? spec->batch_keep : NULL;
+  EXPR_BATCH_INPUTS in;
+  int err_before;
+
+  if (hsidp->batch_state != 0)
+    {
+      return hsidp->batch_state;
+    }
+  hsidp->batch_state = 2;
+  if (scan_id->type != S_HEAP_SCAN || scan_id->grouped || (scan_id->cached_scan && !cached_ok)
+      || scan_id->direction != S_FORWARD || hsidp->recordinfo_regu_list != NULL)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (grouped, cached, backward or record info)";
+      return hsidp->batch_state;
+    }
+  if (!hsidp->scancache_inited)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (not started)";
+      return hsidp->batch_state;
+    }
+  /* a class without MVCC has no snapshot to judge its rows by: heap_page_collect_visible () relies on this refusal */
+  if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
+      return hsidp->batch_state;
+    }
+  if (scan_id->single_fetch != QPROC_NO_SINGLE_INNER)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (single fetch)";
+      return hsidp->batch_state;
+    }
+  if (scan_id->qualification != QPROC_QUALIFIED)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (qualification)";
+      return hsidp->batch_state;
+    }
+  /* A consumer (an aggregate, a projection, a hash GROUP BY) reads the chunk's rows from the page the batch holds,
+   * and hands some of them to the row path while it is held, so its scan keeps its page fixed.  A block that decided
+   * otherwise (qexec_execute_mainblock_internal (): an index scan beside it, a correlated subquery, or compiled so)
+   * opened its driving scan as a cached one (qexec_is_cached_scan_eligible (): not fixed, not grouped), refused
+   * just above; a parallel worker's scan takes both flags from the leader's open.  Should a page still be let go and
+   * fixed again under a chunk, expr_batch_run () hands that chunk back.  The filter iterators (xasl == NULL) copy
+   * the rows they keep out of the page before any of that runs, so they are not held to it. */
+  assert (xasl == NULL || scan_id->fixed);
+
+  /* the filter's compiled form, now instead of on the first row */
+  scan_batch_settle_filter (thread_p, scan_id);
+
+  memset (&in, 0, sizeof (in));
+  in.pred_attr_cache = hsidp->pred_attrs.attr_cache;
+  in.rest_attr_cache = hsidp->rest_attrs.attr_cache;
+  in.pred_has_regu_list = (hsidp->pred_attrs.attr_cache != NULL && hsidp->scan_pred.regu_list != NULL);
+  in.spec = spec;
+  in.has_filter = (hsidp->scan_pred.pred_expr != NULL);
+  in.scan_pred_compiled = (in.has_filter && hsidp->scan_pred.pred_expr->scan_prog_state == 1)
+    ? hsidp->scan_pred.pred_expr->scan_prog : NULL;
+  in.agg_list = agg_list;
+  in.gby = gby;
+  in.proj = proj;
+  in.pred_expr = hsidp->scan_pred.pred_expr;
+  in.vd = vd;
+  in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
+  if (xasl != NULL && xasl->rtf != NULL)
+    {
+      /* the filter outlives the plan: it is released once the block's scans are closed (hjoin_rtf_release ()),
+       * the plan with the scan (scan_end_scan ()) */
+      in.rtf = xasl->rtf;
+      in.rtf_val = xasl->rtf_val;
+      in.rtf_is_date = hjoin_rtf_is_date (xasl->rtf);
+      in.rtf_contains = hjoin_rtf_contains_n;
+    }
+
+  if (keep != NULL && keep->plan != NULL)
+    {
+      /* The plan the scan's last open left on the spec (scan_batch_park ()).  Built from the same inputs, it is
+       * taken back with the chunk and the buffers, the runtime filter -- the execution's, not the clone's -- bound
+       * anew and the chunk pointed at this scan's page watcher; its per-scan state was cleared when it was parked,
+       * so the trace counts this scan alone.  Built from other inputs -- the next partition's class
+       * (qexec_init_next_partition () opens the same spec on another class), a filter iterator where a consumer
+       * was, a filter compiled since -- it is freed and this open builds its own. */
+      if (scan_batch_keep_matches (keep, hsidp, &in, xasl != NULL)
+	  && expr_batch_plan_rebind (keep->plan, in.rtf, in.rtf_is_date, in.rtf_contains))
+	{
+	  hsidp->batch_plan = keep->plan;
+	  hsidp->batch = keep->batch;
+	  hsidp->batch_copy = keep->copy;
+	  hsidp->batch_copy_cap = keep->copy_cap;
+	  keep->plan = NULL;
+	  keep->batch = NULL;
+	  keep->copy = NULL;
+	  keep->copy_cap = 0;
+	  hsidp->batch->page_watcher = &hsidp->scan_cache.page_watcher;
+	  hsidp->batch_spec = spec;
+	  VPID_SET_NULL (&hsidp->batch_vpid);
+	  hsidp->batch_started = false;
+	  hsidp->batch_rowmode = false;
+	  hsidp->batch_state = 1;
+	  return hsidp->batch_state;
+	}
+      scan_batch_keep_drop (thread_p, keep);
+    }
+  if (keep != NULL && keep->declined_why != NULL)
+    {
+      /* the build declined these same inputs at an earlier open (a correlated subquery's scan opens once per outer
+       * row): the same answer without building again */
+      if (scan_batch_keep_matches (keep, hsidp, &in, xasl != NULL))
+	{
+	  hsidp->batch_why_not = keep->declined_why;
+	  return hsidp->batch_state;
+	}
+      keep->declined_why = NULL;
+    }
+
+  /* a decline here is the row path, not a fault: an allocation that failed on the way leaves no error behind (a parallel
+   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before */
+  err_before = er_errid ();
+  hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
+  if (hsidp->batch_plan == NULL)
+    {
+      /* a decline of the inputs, not an allocation that failed on the way (an error, or "out of memory"), is kept for
+       * the next open of the spec from the same inputs */
+      if (spec != NULL && er_errid () == err_before && hsidp->batch_why_not != NULL
+	  && strstr (hsidp->batch_why_not, "memory") == NULL)
+	{
+	  keep = scan_batch_keep_for (thread_p, spec, keep);
+	  if (keep != NULL)
+	    {
+	      scan_batch_keep_note (keep, hsidp, &in, xasl != NULL);
+	      keep->declined_why = hsidp->batch_why_not;
+	    }
+	}
+      if (err_before == NO_ERROR)
+	{
+	  er_clear ();
+	}
+      return hsidp->batch_state;
+    }
+  hsidp->batch = (EXPR_BATCH *) db_private_alloc (thread_p, sizeof (EXPR_BATCH));
+  if (hsidp->batch == NULL)
+    {
+      expr_batch_plan_free (thread_p, hsidp->batch_plan);
+      hsidp->batch_plan = NULL;
+      hsidp->batch_why_not = "out of memory";
+      if (err_before == NO_ERROR)
+	{
+	  er_clear ();
+	}
+      return hsidp->batch_state;
+    }
+  if (expr_batch_init (hsidp->batch_plan, hsidp->batch) != NO_ERROR)
+    {
+      db_private_free_and_init (thread_p, hsidp->batch);
+      expr_batch_plan_free (thread_p, hsidp->batch_plan);
+      hsidp->batch_plan = NULL;
+      hsidp->batch_why_not = "out of memory";
+      if (err_before == NO_ERROR)
+	{
+	  er_clear ();
+	}
+      return hsidp->batch_state;
+    }
+  /* the chunks' rows point into the page this watcher holds (scan_batch_collect_chunk ()): a chunk under which the
+   * page was let go and fixed again is handed back by expr_batch_run () */
+  hsidp->batch->page_watcher = &hsidp->scan_cache.page_watcher;
+  VPID_SET_NULL (&hsidp->batch_vpid);
+  hsidp->batch_started = false;
+  hsidp->batch_rowmode = false;
+  hsidp->batch_state = 1;
+
+  /* the keep that will hold this plan between the scan's opens, with what it was built from; without one (no spec,
+   * or no memory for it: the batch runs all the same) scan_end_scan () frees the plan as it would without a keep */
+  if (spec != NULL)
+    {
+      keep = scan_batch_keep_for (thread_p, spec, keep);
+    }
+  if (keep != NULL)
+    {
+      scan_batch_keep_note (keep, hsidp, &in, xasl != NULL);
+      hsidp->batch_spec = spec;
+    }
+  return hsidp->batch_state;
+}
+
+/* the spec's keep, made when it has none (no memory for it: NULL, the batch runs all the same and scan_end_scan ()
+ * frees the plan as it would without a keep) */
+static SCAN_BATCH_KEEP *
+scan_batch_keep_for (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, SCAN_BATCH_KEEP * keep)
+{
+  if (keep == NULL)
+    {
+      keep = (SCAN_BATCH_KEEP *) db_private_alloc (thread_p, sizeof (SCAN_BATCH_KEEP));
+      if (keep == NULL)
+	{
+	  er_clear ();
+	  return NULL;
+	}
+      memset (keep, 0, sizeof (*keep));
+      spec->batch_keep = keep;
+    }
+  return keep;
+}
+
+/* what a plan, or a decline, was built from (scan_batch_keep_matches () compares the next open's with it) */
+static void
+scan_batch_keep_note (SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp, const EXPR_BATCH_INPUTS * in,
+		      bool for_consumer)
+{
+  COPY_OID (&keep->class_oid, &hsidp->cls_oid);
+  keep->scan_prog = in->scan_pred_compiled;
+  keep->pred_expr = hsidp->scan_pred.pred_expr;
+  keep->agg_list = in->agg_list;
+  keep->proj = in->proj;
+  keep->has_gby = (in->gby != NULL);
+  keep->gby_prog = (in->gby != NULL) ? in->gby->proj_prog : NULL;
+  keep->gby_n_aggs = (in->gby != NULL) ? in->gby->n_aggs : 0;
+  keep->gby_n_keys = (in->gby != NULL) ? in->gby->n_keys : 0;
+  keep->for_consumer = for_consumer;
+  keep->pred_attr_cache = in->pred_attr_cache;
+  keep->rest_attr_cache = in->rest_attr_cache;
+  keep->vd = in->vd;
+  keep->has_rtf = (in->rtf != NULL);
+  keep->rtf_is_date = in->rtf_is_date;
+  keep->rtf_val = in->rtf_val;
+  keep->declined_why = NULL;
+}
+
+/* The kept plan was built from this open's inputs.  Per clone, the same through the execution's non-final clears:
+ * the class scanned, the filter and its compiled form (a form compiled on a later open is another), the attribute
+ * caches, the consumer -- its aggregate list, its output list, a hash GROUP BY's program and shape (the map is
+ * made per open, so its address says nothing) -- and whether a consumer or a filter iterator opened it.  Per
+ * execution: the value descriptor, through which the leaves resolved their host variables (the keep is freed at
+ * the end of the execution, so it never differs), and the runtime filter's shape -- there is one on the same key
+ * cell, comparing the same way -- the filter itself being rebound (expr_batch_plan_rebind ()). */
+static bool
+scan_batch_keep_matches (const SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp, const EXPR_BATCH_INPUTS * in,
+			 bool for_consumer)
+{
+  return (OID_EQ (&keep->class_oid, &hsidp->cls_oid) && keep->scan_prog == in->scan_pred_compiled
+	  && keep->pred_expr == in->pred_expr && keep->agg_list == in->agg_list && keep->proj == in->proj
+	  && keep->has_gby == (in->gby != NULL)
+	  && (in->gby == NULL
+	      || (keep->gby_prog == in->gby->proj_prog && keep->gby_n_aggs == in->gby->n_aggs
+		  && keep->gby_n_keys == in->gby->n_keys)) && keep->for_consumer == for_consumer
+	  && keep->pred_attr_cache == in->pred_attr_cache && keep->rest_attr_cache == in->rest_attr_cache
+	  && keep->vd == in->vd && keep->has_rtf == (in->rtf != NULL)
+	  && (in->rtf == NULL || (keep->rtf_val == in->rtf_val && keep->rtf_is_date == in->rtf_is_date)));
+}
+
+/* the keep's objects, not the keep: the next open fills it again */
+static void
+scan_batch_keep_drop (THREAD_ENTRY * thread_p, SCAN_BATCH_KEEP * keep)
+{
+  if (keep->batch != NULL)
+    {
+      expr_batch_final (keep->batch);
+      db_private_free_and_init (thread_p, keep->batch);
+    }
+  db_private_free_and_init (thread_p, keep->copy);
+  keep->copy_cap = 0;
+  if (keep->plan != NULL)
+    {
+      expr_batch_plan_free (thread_p, keep->plan);
+      keep->plan = NULL;
+    }
+  keep->declined_why = NULL;
+}
+
+/* scan_end_scan (): the plan, the chunk and the buffers go to the spec's keep with their per-scan state cleared --
+ * the trace's counts were read before the scan ended (the parallel worker's expr_batch_dump (), the serial scan's
+ * own scan_stats) -- or, without a keep to go to, are freed */
+static void
+scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp)
+{
+  SCAN_BATCH_KEEP *keep = (hsidp->batch_spec != NULL) ? hsidp->batch_spec->batch_keep : NULL;
+
+  if (keep != NULL && hsidp->batch_plan != NULL)
+    {
+      assert (keep->plan == NULL);
+      expr_batch_plan_reset_scan (hsidp->batch_plan);
+      expr_batch_reset (hsidp->batch);
+      keep->plan = hsidp->batch_plan;
+      keep->batch = hsidp->batch;
+      keep->copy = hsidp->batch_copy;
+      keep->copy_cap = hsidp->batch_copy_cap;
+    }
+  else
+    {
+      if (hsidp->batch != NULL)
+	{
+	  expr_batch_final (hsidp->batch);
+	  db_private_free_and_init (thread_p, hsidp->batch);
+	}
+      db_private_free_and_init (thread_p, hsidp->batch_copy);
+      if (hsidp->batch_plan != NULL)
+	{
+	  expr_batch_plan_free (thread_p, hsidp->batch_plan);
+	}
+    }
+  hsidp->batch_plan = NULL;
+  hsidp->batch = NULL;
+  hsidp->batch_copy = NULL;
+  hsidp->batch_copy_cap = 0;
+  hsidp->batch_spec = NULL;
+}
+
+/*
+ * scan_batch_keep_free () - the spec's kept plan, and what its scan still holds of the batch, for good
+ *   spec(in/out): the access spec, at the end of the execution (qexec_clear_access_spec_list ())
+ *
+ * The scan ended before this (scan_end_scan () parked its plan), unless a teardown skipped it: what is still on
+ * the scan goes too, so nothing of the batch outlives the execution.  On the thread that executed the clone (the
+ * leader, a parallel worker for its own clone, the aptr task for its block): the plan's arrays are on its heap.
+ */
+void
+scan_batch_keep_free (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
+{
+  if (spec->s_id.type == S_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN_RECORD_INFO)
+    {
+      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
+
+      if (hsidp->batch_plan != NULL || hsidp->batch != NULL || hsidp->batch_copy != NULL)
+	{
+	  hsidp->batch_spec = NULL;
+	  scan_batch_park (thread_p, hsidp);
+	  hsidp->batch_state = 0;
+	}
+    }
+  if (spec->batch_keep != NULL)
+    {
+      scan_batch_keep_drop (thread_p, spec->batch_keep);
+      db_private_free_and_init (thread_p, spec->batch_keep);
+    }
+}
+
+/*
+ * scan_batch_collect_chunk () - the next rows of the page the scan cache holds, into the batch
+ *   return: S_SUCCESS (the batch holds a chunk -- full, or ended before a record the page does not answer for --
+ *           and the page may have more), S_END (the batch holds the page's last rows, maybe none),
+ *           S_DOESNT_FIT (nothing collected: the plan gave up, or the next record is one the page does not
+ *           answer for -- the page is the row path's from the chunk's first slot, as a chunk the batch handed
+ *           back), or S_ERROR
+ *   scan_id(in/out): the heap scan
+ *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here)
+ *   slot(in/out): the walk's position in the page, 0 before its first chunk
+ *
+ * heap_page_collect_visible (): the walk the row path makes over one page, slot by slot with
+ * the same visibility decision, made a chunk (EXPR_BATCH_CHUNK_BYTES) at a time with the page held
+ * throughout; the rows are peeked, so they are valid while the page stays fixed, which the
+ * caller guarantees.  A record whose visible version is elsewhere -- relocated, in overflow pages, or in the log
+ * for this snapshot -- or whose representation the plan does not decode ends the chunk before it, and the row
+ * path takes the page from that record, so the rows keep the heap's order and no record is fetched by its OID
+ * after the page was let go.  A representation the plan does not decode yet is learned where the walk met it
+ * (expr_batch_plan_learn_repr ()): when it reads as the plan's, the walk goes on through that record as a row.
+ */
+SCAN_CODE
+scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid, PGSLOTID * slot)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  EXPR_BATCH *batch = hsidp->batch;
+  SCAN_CODE code;
+  int rc;
+
+  batch->n_rows = 0;
+  batch->n_sel = 0;
+  hsidp->batch_vpid = *vpid;
+  hsidp->batch_off_page = false;
+  if (expr_batch_plan_gave_up (hsidp->batch_plan))
+    {
+      /* the row path kept taking this scan's pages (expr_batch_plan_note_page ()): this one goes to it untried, and
+       * the trace's last cause says so (the chunk loop sets it only for a chunk it ran) */
+      hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
+      return S_DOESNT_FIT;
+    }
+  for (;;)
+    {
+      REPR_ID unknown_repid = NULL_REPRID;
+      const REPR_ID *repids;
+      int n_repids = 0;
+
+      repids = expr_batch_plan_repids (hsidp->batch_plan, &n_repids);
+      code =
+	heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
+				   &batch->n_rows, repids, n_repids, &unknown_repid);
+      if (code == S_ERROR)
+	{
+	  batch->n_rows = 0;
+	  return S_ERROR;
+	}
+      if (unknown_repid == NULL_REPRID || code != S_DOESNT_FIT)
+	{
+	  /* with rows collected, their records are peeked from the page the scan holds, and learning reads the class
+	   * record (heap_classrepr_get ()), whose ordered fix may let that page go and fix it again: the chunk goes
+	   * out as it is, and the next call meets the record first, with nothing collected, and learns it then */
+	  if (code == S_DOESNT_FIT)
+	    {
+	      /* nothing collected: the walk stopped at a record whose visible version is not on the page -- the
+	       * heap's layout, not the plan's decline (scan_batch_note_page ()) */
+	      hsidp->batch_off_page = true;
+	      hsidp->batch_why_not = EXPR_BATCH_WHY_OFF_PAGE;
+	    }
+	  return code;
+	}
+      /* the walk stopped, nothing collected, at a record of a representation the plan has not met: learned now
+       * when its columns and keys read as the plan's do, else remembered as one the row path keeps (no error either
+       * way, but an interrupt the class record's fix met) */
+      rc = expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid);
+      if (rc == ER_INTERRUPTED)
+	{
+	  batch->n_rows = 0;
+	  return S_ERROR;
+	}
+      if (rc != NO_ERROR)
+	{
+	  hsidp->batch_why_not = "a record of a representation the batch does not decode";
+	  return code;
+	}
+      /* learned with nothing collected yet: the walk goes on from that record, now a row */
+    }
+}
+
+
+/*
+ * scan_batch_next_page () - the serial walk: step to the heap's next page
+ *   return: S_SUCCESS (the page is held: hsidp->batch_vpid; its rows come by
+ *           scan_batch_collect_chunk ()), S_END past the last page, S_ERROR
+ *   scan_id(in/out): the heap scan
+ *
+ * The pages in the order heap_next () takes them: the header page first, then the chain
+ * (heap_vpid_next ()), the next page fixed before the held one is released so that it cannot
+ * be deallocated in between (OLD_PAGE_PREVENT_DEALLOC, as heap_next_internal ()).  The page
+ * stays fixed until the next step or the scan's end, whatever the scan's own fix mode: the
+ * consumer that takes a batch runs nothing under it that could need the page released.
+ */
+SCAN_CODE
+scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
+  VPID vpid;
+  int rc;
+
+  if (!hsidp->batch_started)
+    {
+      vpid.volid = hsidp->hfid.vfid.volid;
+      vpid.pageid = hsidp->hfid.hpgid;
+      if (scan_cache->page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	}
+      rc = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, &scan_cache->page_watcher);
+      if (rc != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      hsidp->batch_started = true;
+      scan_id->position = S_ON;	/* as the row path's first row does */
+    }
+  else if (VPID_ISNULL (&hsidp->batch_vpid))
+    {
+      /* past the last page already: the scan block ended; a second ask is the same answer */
+      assert (scan_cache->page_watcher.pgptr == NULL);
+      scan_id->position = S_AFTER;
+      return S_END;
+    }
+  else
+    {
+      PGBUF_WATCHER old_page_watcher;
+
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  /* The page was let go: a previous-version walk released it (heap_get_visible_version_from_log ()), or
+	   * its last rows were copied out and it was unfixed (scan_batch_iter_next (), scan_batch_rows_consume ()
+	   * for a cached scan, or a cached scan's row path).  A row this snapshot sees was on it, so vacuum cannot
+	   * have deallocated it: it is fixed again only to find its successor, as the row path finds it from its
+	   * last OID. */
+	  rc = pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+				  &scan_cache->page_watcher);
+	  if (rc != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+      PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
+      if (heap_vpid_next (thread_p, &hsidp->hfid, scan_cache->page_watcher.pgptr, &vpid) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (VPID_ISNULL (&vpid))
+	{
+	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	  OID_SET_NULL (&hsidp->curr_oid);
+	  VPID_SET_NULL (&hsidp->batch_vpid);
+	  /* the invariant scan_handle_single_scan () keeps for the row path: S_END means the scan
+	   * is past its block, so qexec_next_scan_block_iterations () does not open it again */
+	  scan_id->position = S_AFTER;
+	  return S_END;
+	}
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
+      rc = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, &scan_cache->page_watcher);
+      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+      if (rc != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+  hsidp->batch_vpid = vpid;
+  return S_SUCCESS;
+}
+
+/*
+ * scan_batch_project_consume () - the projection node of a chunk chain (expr_batch.h)
+ *   return: NO_ERROR, or the error the row path raises at that row
+ *   node(in): its state is a SCAN_BATCH_PROJECT
+ *   plan(in), batch(in): the chunk, its filter run (the selection is the rows it kept)
+ *
+ * For each row kept, in row order, what scan_next_heap_scan () does once eval_data_filter ()
+ * accepted it: the predicate columns into the value list (eval_data_filter ()'s fetch after a
+ * TRUE row, their attribute cache armed for the row as the filter arms it), then the rest of
+ * the columns (heap_attrinfo_read_dbvalues () and fetch_val_list () over rest_regu_list); then
+ * the row goes to emit.  The records are peeked from the page the scan holds, as the row
+ * path's are, so the values are read while it stays fixed.
+ */
+int
+scan_batch_project_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  SCAN_BATCH_PROJECT *st = (SCAN_BATCH_PROJECT *) node->state;
+  HEAP_SCAN_ID *hsidp = &st->scan_id->s.hsid;
+  bool needs_values;
+  int j, rc;
+
+  if (!expr_batch_proj_active (plan) || st->outptr == NULL)
+    {
+      for (j = 0; j < batch->n_sel; j++)
+	{
+	  rc = scan_batch_project_row (thread_p, st, &batch->rows[batch->sel[j]]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+      return NO_ERROR;
+    }
+  /* the output columns the chunk computed as vectors: each row's elements packed into the values the list's
+   * evaluation reads, the record decoded into the value list only for a column the row path evaluates */
+  needs_values = expr_batch_proj_needs_values (plan);
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      EXPR_BATCH_ROW *row = &batch->rows[batch->sel[j]];
+
+      if (needs_values)
+	{
+	  rc = scan_batch_row_values (thread_p, st->scan_id, row);
+	}
+      else
+	{
+	  hsidp->curr_oid = row->oid;
+	  rc = NO_ERROR;
+	}
+      if (rc == NO_ERROR && !expr_batch_proj_row (plan, batch->sel[j], st->outptr, !needs_values) && !needs_values)
+	{
+	  /* the list's program is not the one the plan computes: the row as the row path reads it */
+	  rc = scan_batch_row_values (thread_p, st->scan_id, row);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = st->emit (thread_p, st->emit_arg);
+	}
+      st->outptr->eval_prog_row_external = false;
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * scan_batch_rows_consume () - the rows node (scan_manager.h): copies first, then the rows one by one
+ *   return: NO_ERROR, or the error a row raised
+ */
+int
+scan_batch_rows_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  SCAN_BATCH_PROJECT *st = (SCAN_BATCH_PROJECT *) node->state;
+  int j, rc;
+
+  if (batch->n_sel == 0)
+    {
+      return NO_ERROR;
+    }
+  rc = scan_batch_copy_kept (thread_p, st->scan_id);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if (st->scan_id->cached_scan && st->scan_id->s.hsid.scan_cache.page_watcher.pgptr != NULL)
+    {
+      /* a cached scan holds no page while its rows are out (heap_next_1page ()): the next chunk fixes it again */
+      pgbuf_ordered_unfix (thread_p, &st->scan_id->s.hsid.scan_cache.page_watcher);
+    }
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      rc = scan_batch_project_row (thread_p, st, &batch->rows[batch->sel[j]]);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * scan_batch_project_row () - one row through the projection's tail (scan_batch_project_consume ())
+ *   return: NO_ERROR, or the error the row path raises at the row
+ */
+int
+scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, EXPR_BATCH_ROW * row)
+{
+  if (scan_batch_row_values (thread_p, st->scan_id, row) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return st->emit (thread_p, st->emit_arg);
+}
+
+/*
+ * scan_batch_row_values () - what scan_next_heap_scan () leaves for a row the filter accepted: the row's OID, the
+ *			       predicate columns in the value list (eval_data_filter ()'s fetch after a TRUE row,
+ *			       their attribute cache armed for the row), then the rest of the columns
+ *   return: NO_ERROR, or the error the read raises
+ */
+static int
+scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  hsidp->curr_oid = row->oid;
+  if (hsidp->batch_plan != NULL)
+    {
+      /* the values the filter computed for the row and shares with the row path's programs, back into its slots */
+      expr_batch_row_restore_shared (hsidp->batch_plan, (int) (row - hsidp->batch->rows));
+    }
+  if (hsidp->scan_pred.regu_list != NULL && scan_id->val_list != NULL)
+    {
+      if (hsidp->pred_attrs.attr_cache != NULL
+	  && heap_attrinfo_read_dbvalues_lazy (thread_p, &row->oid, &row->recdes,
+					       hsidp->pred_attrs.attr_cache) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (fetch_val_list (thread_p, hsidp->scan_pred.regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL, PEEK)
+	  != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  if (hsidp->rest_regu_list != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, &row->oid, &row->recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (scan_id->val_list != NULL
+	  && fetch_val_list (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL,
+			     PEEK) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * scan_batch_open_filter () - the filter iterator over a heap scan whose rows go on one by one
+ *   return: true when scan_next_scan () runs the filter a chunk at a time from now on
+ *
+ * A block that does more per row than the page batch takes -- a join's inner scans, subqueries, row numbers --
+ * still reads its driving heap scan row by row, but the filter need not run so: scan_next_scan () collects a
+ * chunk of the page, runs the filter over it as arrays (expr_batch_run ()), copies the records of the rows it kept
+ * and lets the page go before it hands those rows out one per call, their values read from the copies as the row
+ * path reads them (scan_batch_row_values ()).  So no page is held while the caller works on a row -- what the row
+ * path itself does unless the block chose a fixed scan -- and the next chunk fixes the page again where the walk
+ * left it, as the row path fixes it again from its last OID.  A chunk the batch hands back sends the rest of its
+ * page to the row path (scan_batch_page_rowmode ()).
+ */
+bool
+scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, val_descr * vd)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  if (scan_id->type != S_HEAP_SCAN || hsidp->scan_pred.pred_expr == NULL)
+    {
+      return false;
+    }
+  if (scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, NULL, true) != 1)
+    {
+      return false;
+    }
+  hsidp->batch_iter = true;
+  hsidp->batch_page_more = false;
+  hsidp->batch_pos = 0;
+  hsidp->batch_slot = 0;
+  hsidp->batch_last_slot = 0;
+  hsidp->batch->n_sel = 0;
+  return true;
+}
+
+/* A consumer's open the batch declined (scan_batch_open () returned 2) leaves no plan: the scan may be opened again
+ * as a filter iterator, its rows going on one by one.  True when it may (its state back to untried); false when the
+ * scan is not a heap scan or holds a plan.  A scan the batch declines for itself (grouped, cached, backward) declines
+ * the iterator again on the same checks. */
+bool
+scan_batch_retry_as_filter (SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  if (scan_id->type != S_HEAP_SCAN || hsidp->batch_state != 2 || hsidp->batch_plan != NULL)
+    {
+      return false;
+    }
+  hsidp->batch_state = 0;
+  hsidp->batch_why_not = NULL;
+  return true;
+}
+
+bool
+scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, val_descr * vd)
+{
+  return (scan_id->type == S_HEAP_SCAN && scan_id->s.hsid.scan_pred.pred_expr != NULL
+	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, NULL, true) == 1);
+}
+
+/* the kept rows' records copied out of the page, the rows pointed at the copies.  Only each row's RECDES.data moves:
+ * the chunk's record layouts (batch->layout) and the pointed column vectors (EB_VK_PTR) still point into the page, so
+ * after the page is let go a row is read through its RECDES only -- the row path's fetch, which derives its own
+ * layout -- never through the chunk's vectors */
+static int
+scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  EXPR_BATCH *batch = hsidp->batch;
+  size_t need = 0, off = 0;
+  int j;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      need += DB_ALIGN (batch->rows[batch->sel[j]].recdes.length, MAX_ALIGNMENT);
+    }
+  if (need > hsidp->batch_copy_cap)
+    {
+      size_t cap = MAX (need, hsidp->batch_copy_cap * 2);
+      char *copy = (char *) db_private_realloc (thread_p, hsidp->batch_copy, cap);
+
+      if (copy == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      hsidp->batch_copy = copy;
+      hsidp->batch_copy_cap = cap;
+    }
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      RECDES *rec = &batch->rows[batch->sel[j]].recdes;
+
+      memcpy (hsidp->batch_copy + off, rec->data, rec->length);
+      rec->data = hsidp->batch_copy + off;
+      rec->area_size = rec->length;
+      off += DB_ALIGN (rec->length, MAX_ALIGNMENT);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * scan_batch_iter_next () - the filter iterator's next row (scan_batch_open_filter ())
+ *   return: S_SUCCESS (a kept row, its values read), S_END, S_ERROR, or S_DOESNT_FIT: the rest of the held page
+ *	     goes to the row path (scan_batch_page_rowmode () is on)
+ *
+ * A chunk's rows go out from their copies.  A record the page does not answer for ended the chunk before it
+ * (heap_page_collect_visible ()), and the next collection hands the page to the row path from that record
+ * (S_DOESNT_FIT), so the rows go out in the heap's order.
+ */
+static SCAN_CODE
+scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
+  EXPR_BATCH *batch = hsidp->batch;
+
+  for (;;)
+    {
+      PGSLOTID slot, chunk_start;
+      SCAN_CODE chunk;
+      int rc;
+
+      if (hsidp->batch_pos < batch->n_sel)
+	{
+	  EXPR_BATCH_ROW *row = &batch->rows[batch->sel[hsidp->batch_pos++]];
+
+	  hsidp->batch_last_slot = row->oid.slotid;
+	  if (scan_batch_row_values (thread_p, scan_id, row) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  return S_SUCCESS;
+	}
+
+      if (!hsidp->batch_page_more)
+	{
+	  SCAN_CODE page = scan_batch_next_page (thread_p, scan_id);
+
+	  if (page != S_SUCCESS)
+	    {
+	      return page;
+	    }
+	  hsidp->batch_slot = 0;
+	  hsidp->batch_page_more = true;
+	}
+      else if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  /* the page the walk is in, fixed again after the rows of its last chunk went out */
+	  if (pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+				 &scan_cache->page_watcher) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      slot = (PGSLOTID) hsidp->batch_slot;
+      chunk_start = slot;
+      chunk = scan_batch_collect_chunk (thread_p, scan_id, &hsidp->batch_vpid, &slot);
+      hsidp->batch_slot = slot;
+      batch->n_sel = 0;
+      hsidp->batch_pos = 0;
+      if (chunk == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      hsidp->batch_page_more = (chunk == S_SUCCESS);
+      if (batch->n_rows > 0)
+	{
+	  rc = expr_batch_run (hsidp->batch_plan, batch, thread_p, scan_id->vd);
+	  if (rc == NO_ERROR)
+	    {
+	      scan_id->scan_stats.read_rows += batch->n_rows;
+	      scan_id->scan_stats.qualified_rows += batch->n_sel;
+	    }
+	  else if (rc == EXPR_BATCH_FALLBACK)
+	    {
+	      hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
+	      batch->n_sel = 0;
+	      /* the row path walks the page from the chunk's first slot */
+	      chunk = S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      return S_ERROR;
+	    }
+	}
+      if (chunk == S_DOESNT_FIT)
+	{
+	  if (scan_cache->page_watcher.pgptr == NULL
+	      && pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+				    &scan_cache->page_watcher) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  scan_batch_note_page (scan_id, true);
+	  hsidp->batch_page_more = false;
+	  /* a local copy of the page the scan read earlier is not this walk's */
+	  VPID_SET_NULL (&scan_cache->local_cache_vpid);
+	  scan_batch_page_rowmode (scan_id, true, chunk_start);
+	  return S_DOESNT_FIT;
+	}
+      if (!hsidp->batch_page_more)
+	{
+	  scan_batch_note_page (scan_id, false);
+	}
+      if (batch->n_sel > 0)
+	{
+	  /* the rows go out with copies of their records, the page let go meanwhile */
+	  if (scan_batch_copy_kept (thread_p, scan_id) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (scan_cache->page_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	    }
+	}
+    }
+}
+
+/*
+ * scan_batch_release_page () - the page the batch holds (HEAP_SCAN_ID.batch_vpid): with cache_last_fix_page the
+ *				scan cache lets it go (heap_scancache_end ()); without it the batch must, here --
+ *				never both (the scan cache's end asserts a clean watcher)
+ */
+static void
+scan_batch_release_page (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp)
+{
+  if (hsidp->scan_cache.page_watcher.pgptr != NULL && !hsidp->scan_cache.cache_last_fix_page)
+    {
+      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+    }
+}
+
+/*
+ * scan_batch_rewind () - the batch walk starts over from the heap's first page
+ *   scan_id(in/out): the heap scan, reset for a new scan block (scan_reset_scan_block ())
+ *
+ * A join's outer scan is read again for each block combination of the scans after it, and the row path reads it
+ * again from a null OID; the walk (scan_batch_next_page ()) keeps its own place -- the page, the slot, the chunk
+ * still going out -- and, left there, would answer the new pass with its old end.
+ */
+static void
+scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  scan_batch_release_page (thread_p, hsidp);
+  hsidp->batch_started = false;
+  VPID_SET_NULL (&hsidp->batch_vpid);
+  hsidp->batch_rowmode = false;
+  hsidp->batch_page_more = false;
+  hsidp->batch_pos = 0;
+  hsidp->batch_slot = 0;
+  hsidp->batch_last_slot = 0;
+  if (hsidp->batch != NULL)
+    {
+      hsidp->batch->n_sel = 0;
+    }
+}
+
+/*
+ * scan_batch_page_rowmode () - walk the rest of the held page row by row through scan_next_scan ()
+ *   scan_id(in/out): the heap scan
+ *   on(in): true before the first row, false after the page's S_END
+ *   after_slot(in): on: the walk resumes after this slot (0: at the page's first slot)
+ *
+ * A chunk the batch hands back (expr_batch_run () declined it), or the record a chunk ended before
+ * because the page does not answer for it (heap_page_collect_visible ()), is served by the row path
+ * from there to the end of its page -- the chunks before it were accumulated -- every row going
+ * through the same filter, fetch and retry the row path always made.
+ */
+void
+scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  hsidp->batch_rowmode = on;
+  OID_SET_NULL (&hsidp->curr_oid);
+  if (on && after_slot > 0)
+    {
+      hsidp->curr_oid.volid = hsidp->batch_vpid.volid;
+      hsidp->curr_oid.pageid = hsidp->batch_vpid.pageid;
+      hsidp->curr_oid.slotid = after_slot;
+    }
+}
+
+/*
+ * scan_batch_note_page () - a page the walk is done with, for the trace and the plan's give-up
+ *   return: none
+ *   scan_id(in/out): the heap scan (the consumer's, the filter iterator's, a parallel worker's)
+ *   rowpath(in): the page went to the row path from a chunk's first slot -- the plan declined the chunk, it gave
+ *                up, or the walk stopped at a record of the page (scan_batch_collect_chunk ())
+ *
+ * The walk stopped, nothing collected, at a record whose visible version is not on the page (batch_off_page): the
+ * rows before it were taken, and the record is the heap's layout, not something the plan declined.  The trace
+ * counts such pages apart, and the plan leaves them out of its give-up (expr_batch_plan_note_page ()).
+ */
+void
+scan_batch_note_page (SCAN_ID * scan_id, bool rowpath)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  bool off_page = rowpath && hsidp->batch_off_page;
+
+  if (!rowpath)
+    {
+      scan_id->scan_stats.batch_pages++;
+    }
+  else
+    {
+      scan_id->scan_stats.batch_pages_rowpath++;
+      scan_id->scan_stats.batch_pages_offpage += off_page ? 1 : 0;
+    }
+  expr_batch_plan_note_page (hsidp->batch_plan, rowpath, off_page);
+}
+
+/*
  * scan_next_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -7977,6 +9140,36 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	    }
 	}
       fprintf (fp, ")");
+      if (thread_get_thread_entry_info ()->trace_plan_detail && scan_id->type == S_HEAP_SCAN
+	  && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
+	      || scan_id->s.hsid.batch_why_not != NULL))
+	{
+	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections, in a group
+	   * of its own after the scan's -- the scan's own figures end the line as they do without it.  A parallel
+	   * scan's workers show theirs in their own dump (px_scan_trace_handler: expr_batch_dump ()); the parent's
+	   * counters stay 0 */
+	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
+	    {
+	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */
+	      const char *why = scan_id->s.hsid.batch_why_not;
+
+	      fprintf (fp, " (batch pages: %llu (row path: %llu",
+		       (unsigned long long int) scan_id->scan_stats.batch_pages,
+		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath);
+	      if (scan_id->scan_stats.batch_pages_offpage > 0)
+		{
+		  /* of those, the pages handed over at a record whose visible version is not on the page */
+		  fprintf (fp, ", at records off the page: %llu",
+			   (unsigned long long int) scan_id->scan_stats.batch_pages_offpage);
+		}
+	      fprintf (fp, "%s%s))", (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
+		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? why : "");
+	    }
+	  else
+	    {
+	      fprintf (fp, " (batch: no (%s))", scan_id->s.hsid.batch_why_not);
+	    }
+	}
       break;
 
     case S_INDX_SCAN:

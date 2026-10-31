@@ -392,6 +392,14 @@ typedef struct hashjoin_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
+  struct hjoin_runtime_filter *rtf;	/* the runtime filter this join built for its other input, or NULL */
+  XASL_NODE *rtf_target;	/* the input it is on, until hjoin_rtf_release () */
+  INT64 rtf_keys;		/* trace: the filter's distinct keys, the rows it saw and dropped (-1: not built) */
+  INT64 rtf_rows;
+  INT64 rtf_dropped;
+  INT64 rtf_off;		/* trace: the rows checked when the filter left the target (hjoin_rtf_sample ()), 0 while on */
+  bool rtf_applied;		/* trace: a scan of the target consulted the filter */
+  HJOIN_PREHASH prehash;	/* the build input's key hashes, taken as its tuples are written */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
@@ -1126,14 +1134,36 @@ struct groupby_stat
   int rows;
   INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
+  int groupby_hash_merge_parts;	/* partitions of the hash merge of the leftovers (qexec_gby_hash_merge ()), or 0 */
+  int groupby_hash_merge_levels;	/* 2 when a partition of the merge was split once more, else 1 */
+  int groupby_hash_merge_sorted;	/* the partitions of the merge left to the sort as they were */
+  INT64 groupby_hash_groups;	/* the groups the hash merge estimated (its distinct-key sketch), or 0 */
+  int groupby_hash_merge_workers;	/* the workers that merged the partitions (qexec_gby_px_merge ()), or 0: printed
+					 * with the partition count; parallel_num counts the same workers then */
+  const char *groupby_hash_merge_why;	/* why no worker merged them, when they were to */
+  struct timeval groupby_hash_merge_finish_time;	/* the leader's finish of the groups the workers merged (HAVING,
+							 * the output list: qexec_gby_px_finish ()), after their rounds */
+  INT64 groupby_hash_merge_finish_groups;	/* those groups */
+  /* the page batch's hash GROUP BY node of the serial scan (qexec_batch_gby_consume ()), shown with the plan
+   * details: the rows it took, of which it handed some to the row path's table call (the rest it accumulated from
+   * its cache of groups), the groups the cache took in, its flushes and clears, and its own time -- the row path's
+   * calls are in groupby_time */
+  INT64 batch_rows;
+  INT64 batch_rows_rowpath;
+  INT64 batch_groups_cached;
+  INT64 batch_flushes;
+  INT64 batch_clears;
+  struct timeval batch_time;
   bool run_groupby;
   bool groupby_sort;
-  int parallel_num;
-  UINT64 px_min_groupby_time;
+  int parallel_num;		/* the workers of the stage that ran in parallel: the sort of the leftovers
+				 * (sort_end_parallelism ()) or their hash merge (qexec_gby_px_merge ()); below, the range
+				 * over those workers */
+  UINT64 px_min_groupby_time;	/* ms: the sort's run, or the merge's two rounds */
   UINT64 px_max_groupby_time;
-  UINT64 px_min_groupby_pages;
+  UINT64 px_min_groupby_pages;	/* sort data pages, or the temporary list pages a merge worker wrote */
   UINT64 px_max_groupby_pages;
-  UINT64 px_min_groupby_ioreads;
+  UINT64 px_min_groupby_ioreads;	/* sort I/O pages, or the pages a merge worker read from disk */
   UINT64 px_max_groupby_ioreads;
 };
 
@@ -1197,6 +1227,7 @@ struct partition_spec_node
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
   SCAN_STATS scan_stats;
+  const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -1218,6 +1249,7 @@ struct access_spec_node
   int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
+  SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
@@ -1368,6 +1400,18 @@ struct xasl_node
   int executed_parallelism;	/* parallelism of the query */
   memoize::storage *memoize_storage;
   // *INDENT-ON*
+  struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
+  DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
+  INT64 rtf_rows;		/* ... and the rows this node checked against it and dropped (trace): the thread that
+				 * runs the node adds to them; a worker's clone merges them into the leader's node once
+				 * (hjoin_rtf_unbind_clone ()) */
+  INT64 rtf_dropped;
+  INT64 rtf_off;		/* ... and the rows checked when the filter left this node (hjoin_rtf_sample ()): 0 while
+				 * it is on; merged into the leader's node like the counters */
+  bool rtf_applied;		/* ... and whether a scan of this node consulted it at all: set where the scan opens with the
+				 * filter on the node (the row loop, the page batch, a worker's clone), merged like them */
+  HJOIN_PREHASH *hj_prehash;	/* a hash join's build input hashes this node's written tuples append to (not owned;
+				 * hjoin_prehash_arm ()), or NULL */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

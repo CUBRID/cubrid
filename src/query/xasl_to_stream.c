@@ -34,6 +34,7 @@
 
 #include "domain_rules.h"
 #include "error_manager.h"
+#include "expr_compile.h"
 #include "server_interface.h"
 #include "class_object.h"
 #include "object_primitive.h"
@@ -80,6 +81,12 @@ static int xts_Xasl_errcode = NO_ERROR;
  * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
 static bool xts_Index_stream = false;
 
+/* CBRD-27361: while a node's outptr list is packed, the node's single heap scan whose data filter the list's program
+ * may read (qexec_set_expr_share_spec ()) */
+static const ACCESS_SPEC_TYPE *xts_Outptr_share_spec = NULL;
+/* CBRD-27361: likewise while a BUILDVALUE node's proc is packed, for its aggregate list's operand program */
+static const ACCESS_SPEC_TYPE *xts_Agg_share_spec = NULL;
+
 static int xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate);
 static int xts_save_function_type (const FUNCTION_TYPE * function);
 static int xts_save_analytic_type (const ANALYTIC_TYPE * analytic);
@@ -88,6 +95,10 @@ static int xts_save_sp_type (const SP_TYPE * sp);
 static int xts_save_srlist_id (const QFILE_SORTED_LIST_ID * sort_list_id);
 static int xts_save_list_id (const QFILE_LIST_ID * list_id);
 static int xts_save_arith_type (const ARITH_TYPE * arithmetic);
+static int xts_save_scan_pred_image (const PRED_EXPR * pred);
+static int xts_save_valptr_prog_image (const OUTPTR_LIST * outptr_list, const ACCESS_SPEC_TYPE * share_spec);
+static int xts_save_agg_prog_image (const AGGREGATE_TYPE * agg_list, bool buildvalue,
+				    const ACCESS_SPEC_TYPE * share_spec);
 static int xts_save_indx_info (const INDX_INFO * indx_info);
 static int xts_save_outptr_list (const OUTPTR_LIST * outptr_list);
 static int xts_save_selupd_list (const SELUPD_LIST * selupd_list);
@@ -2370,6 +2381,132 @@ xts_save_string (const char *string)
   return offset;
 }
 
+/*
+ * xts_save_scan_pred_image () - CBRD-27361: a scan's data filter compiled at XASL generation, as the image the server
+ *   binds on the filter's first evaluation instead of compiling it (expr_scan_pred_image_pack ())
+ *   return: the offset of [size][image] (size 0: the compiler declines the filter), 0 for no filter or no image
+ *   pred(in): an access spec's where_pred
+ */
+static int
+xts_save_scan_pred_image (const PRED_EXPR * pred)
+{
+  void *compiled;
+  char *image = NULL;
+  int size = 0, offset;
+
+  if (pred == NULL || xts_Index_stream)
+    {
+      return 0;
+    }
+  compiled = expr_scan_pred_compile_at_generation (pred);
+  if (compiled != NULL)
+    {
+      image = expr_scan_pred_image_pack (compiled, pred, &size);
+      expr_scan_pred_free (compiled);
+      if (image == NULL)
+	{
+	  /* a program the image cannot name, or no memory: the server compiles the filter itself */
+	  return 0;
+	}
+    }
+
+  offset = xts_reserve_location_in_stream (OR_INT_SIZE + size);
+  if (offset == ER_FAILED)
+    {
+      free_and_init (image);
+      return ER_FAILED;
+    }
+  (void) or_pack_int (&xts_Stream_buffer[offset], size);
+  if (size > 0)
+    {
+      memcpy (&xts_Stream_buffer[offset + OR_INT_SIZE], image, size);
+    }
+  free_and_init (image);
+
+  return offset;
+}
+
+/*
+ * xts_save_valptr_prog_image () - CBRD-27361: an outptr list's projection program compiled at XASL generation, as
+ *   the image the server binds on the list's first evaluation (expr_valptr_prog_image_at_generation ())
+ *   return: the offset of [size][image] (size 0: the list keeps its interpreted fetch), 0 for no image
+ *   outptr_list(in):
+ *   share_spec(in): the list's node's single heap scan whose data filter the program may read, or NULL
+ */
+static int
+xts_save_valptr_prog_image (const OUTPTR_LIST * outptr_list, const ACCESS_SPEC_TYPE * share_spec)
+{
+  char *image = NULL;
+  int size = 0, offset, rc;
+
+  if (xts_Index_stream)
+    {
+      return 0;
+    }
+  rc = expr_valptr_prog_image_at_generation (CONST_CAST (OUTPTR_LIST *, outptr_list), share_spec, &image, &size);
+  if (rc < 0)
+    {
+      /* a program the image cannot name, or no memory: the server compiles the list itself */
+      return 0;
+    }
+
+  offset = xts_reserve_location_in_stream (OR_INT_SIZE + size);
+  if (offset == ER_FAILED)
+    {
+      free_and_init (image);
+      return ER_FAILED;
+    }
+  (void) or_pack_int (&xts_Stream_buffer[offset], size);
+  if (size > 0)
+    {
+      memcpy (&xts_Stream_buffer[offset + OR_INT_SIZE], image, size);
+    }
+  free_and_init (image);
+
+  return offset;
+}
+
+/*
+ * xts_save_agg_prog_image () - CBRD-27361: an aggregate list's operand program compiled at XASL generation, as the
+ *   image the server binds on the list's first evaluation (expr_agg_prog_image_at_generation ())
+ *   return: the offset of [size][image] (size 0: the operands keep their interpreted fetch), 0 for no image
+ *   agg_list(in): the list (its head carries the program)
+ *   buildvalue(in): the list is a BUILDVALUE's
+ *   share_spec(in): the node's single heap scan whose data filter the program may read, or NULL
+ */
+static int
+xts_save_agg_prog_image (const AGGREGATE_TYPE * agg_list, bool buildvalue, const ACCESS_SPEC_TYPE * share_spec)
+{
+  char *image = NULL;
+  int size = 0, offset, rc;
+
+  if (agg_list == NULL || xts_Index_stream)
+    {
+      return 0;
+    }
+  rc = expr_agg_prog_image_at_generation (agg_list, buildvalue, share_spec, &image, &size);
+  if (rc < 0)
+    {
+      /* a program the image cannot name, or no memory: the server compiles the list itself */
+      return 0;
+    }
+
+  offset = xts_reserve_location_in_stream (OR_INT_SIZE + size);
+  if (offset == ER_FAILED)
+    {
+      free_and_init (image);
+      return ER_FAILED;
+    }
+  (void) or_pack_int (&xts_Stream_buffer[offset], size);
+  if (size > 0)
+    {
+      memcpy (&xts_Stream_buffer[offset + OR_INT_SIZE], image, size);
+    }
+  free_and_init (image);
+
+  return offset;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int
 xts_save_string_with_length (const char *string, int length)
@@ -2963,7 +3100,14 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->option);
 
+  /* the node's single heap scan, whose data filter the list's program may read (qexec_set_expr_share_spec ()) */
+  if (xasl->type == BUILDLIST_PROC && xasl->spec_list != NULL && xasl->spec_list->next == NULL
+      && xasl->scan_ptr == NULL && xasl->spec_list->type == TARGET_CLASS && xasl->spec_list->where_pred != NULL)
+    {
+      xts_Outptr_share_spec = xasl->spec_list;
+    }
   offset = xts_save_outptr_list (xasl->outptr_list);
+  xts_Outptr_share_spec = NULL;
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3185,7 +3329,14 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       break;
 
     case BUILDVALUE_PROC:
+      /* the node's single heap scan, whose data filter the operand program may read (qexec_set_expr_share_spec ()) */
+      if (xasl->spec_list != NULL && xasl->spec_list->next == NULL && xasl->scan_ptr == NULL
+	  && xasl->spec_list->type == TARGET_CLASS && xasl->spec_list->where_pred != NULL)
+	{
+	  xts_Agg_share_spec = xasl->spec_list;
+	}
       ptr = xts_process_buildvalue_proc (ptr, &xasl->proc.buildvalue);
+      xts_Agg_share_spec = NULL;
       break;
 
     case MERGELIST_PROC:
@@ -3518,6 +3669,13 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_agg_prog_image (build_list_proc->g_agg_list, false, NULL);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_analytic_eval_type (build_list_proc->a_eval_list);
   if (offset == ER_FAILED)
     {
@@ -3576,7 +3734,11 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
 static char *
 xts_process_buildvalue_proc (char *ptr, const BUILDVALUE_PROC_NODE * build_value_proc)
 {
+  /* the node's scan, if any; not a list a nested node packs below */
+  const ACCESS_SPEC_TYPE *share_spec = xts_Agg_share_spec;
   int offset;
+
+  xts_Agg_share_spec = NULL;
 
   offset = xts_save_pred_expr (build_value_proc->having_pred);
   if (offset == ER_FAILED)
@@ -3593,6 +3755,13 @@ xts_process_buildvalue_proc (char *ptr, const BUILDVALUE_PROC_NODE * build_value
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_aggregate_type (build_value_proc->agg_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_agg_prog_image (build_value_proc->agg_list, true, share_spec);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4525,11 +4694,22 @@ xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info)
 static char *
 xts_process_outptr_list (char *ptr, const OUTPTR_LIST * outptr_list)
 {
+  /* this list's node's scan, if any; not a list a nested node packs below */
+  const ACCESS_SPEC_TYPE *share_spec = xts_Outptr_share_spec;
   int offset;
+
+  xts_Outptr_share_spec = NULL;
 
   ptr = or_pack_int (ptr, outptr_list->valptr_cnt);
 
   offset = xts_save_regu_variable_list (outptr_list->valptrp);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_valptr_prog_image (outptr_list, share_spec);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4878,6 +5058,13 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_pred_expr (access_spec->where_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_scan_pred_image (access_spec->where_pred);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6646,6 +6833,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
+	   + PTR_SIZE		/* g_agg_list's compiled image */
 	   + PTR_SIZE		/* a_func_list */
 	   + PTR_SIZE		/* a_regu_list */
 	   + PTR_SIZE		/* a_scan_regu_list */
@@ -6671,6 +6859,7 @@ xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * build_value)
   size += (PTR_SIZE		/* having_pred */
 	   + PTR_SIZE		/* grbynum_val */
 	   + PTR_SIZE		/* agg_list */
+	   + PTR_SIZE		/* agg_list's compiled image */
 	   + PTR_SIZE		/* outarith_list */
 	   + OR_INT_SIZE);	/* is_always_false */
 
@@ -6999,7 +7188,8 @@ xts_sizeof_outptr_list (const OUTPTR_LIST * outptr_list)
   int size = 0;
 
   size += (OR_INT_SIZE		/* valptr_cnt */
-	   + PTR_SIZE);		/* valptrp */
+	   + PTR_SIZE		/* valptrp */
+	   + PTR_SIZE);		/* the list's compiled image */
 
   return size;
 }
@@ -7282,6 +7472,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
 	   + PTR_SIZE		/* index_ptr */
 	   + PTR_SIZE		/* where_key */
 	   + PTR_SIZE		/* where_pred */
+	   + PTR_SIZE		/* where_pred's compiled image */
 	   + PTR_SIZE);		/* where_range */
 
   switch (access_spec->type)

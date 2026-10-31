@@ -284,8 +284,12 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
  *   returns: hash value
  *   value(in): key value
  *   ht_size(in): hash table size (in buckets)
+ *
+ * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON value,
+ * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()), and a
+ * string of a collation with expansions, which hashes the weights its comparison skips (lang_mht2str_utf8_exp ()).
  */
-static unsigned int
+unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 {
   DB_VALUE zero;
@@ -328,6 +332,63 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 }
 
 /*
+ * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it
+ *   returns: the hash of the values so far
+ *   hash_val(in): the hash of the values before this one (0 before the first)
+ *   value(in): the key value
+ *   ht_size(in): hash table size (in buckets)
+ *
+ * The one step qdata_hash_scan_key () takes per value; qdata_hash_scan_key_step () is the same step for a caller
+ * that hashes the values one by one, so both give the same hash for the same values.
+ */
+static inline unsigned int
+qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
+{
+  unsigned int tmp_hash_val;
+
+  hash_val = ROTL32 (hash_val, 13);
+  tmp_hash_val = qdata_hash_scan_value (value, ht_size);
+  hash_val ^= tmp_hash_val;
+  if (hash_val == 0)
+    {
+      hash_val = tmp_hash_val;
+    }
+  return hash_val;
+}
+
+/*
+ * qdata_hash_scan_key_step () - qdata_hash_scan_key ()'s step for one key value, for a caller that has the values
+ *				 one at a time: folding them in key order from 0 and finishing with
+ *				 qdata_hash_scan_key_finish () gives qdata_hash_scan_key ()'s hash
+ *   returns: the hash of the values so far
+ *   hash_val(in): the hash of the values before this one (0 before the first)
+ *   value(in): the key value
+ *   ht_size(in): hash table size (in buckets)
+ */
+unsigned int
+qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
+{
+  return qdata_hash_scan_key_fold (hash_val, value, ht_size);
+}
+
+/*
+ * qdata_hash_scan_key_finish () - qdata_hash_scan_key ()'s last step: the file hash method's own hash over it
+ *   returns: hash value
+ *   hash_val(in): the hash of all the key values
+ *   hash_method(in): the hash table's method
+ */
+unsigned int
+qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method)
+{
+  if (hash_method == HASH_METH_HASH_FILE)
+    {
+      hash_val = fhs_hash (&hash_val);
+    }
+
+  return hash_val;
+}
+
+/*
  * qdata_hash_scan_key () - compute hash of aggregate key
  *   returns: hash value
  *   key(in): key
@@ -337,27 +398,16 @@ unsigned int
 qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method)
 {
   HASH_SCAN_KEY *ckey = (HASH_SCAN_KEY *) key;
-  unsigned int hash_val = 0, tmp_hash_val;
+  unsigned int hash_val = 0;
   int i;
 
   /* build hash value */
   for (i = 0; i < ckey->val_count; i++)
     {
-      hash_val = ROTL32 (hash_val, 13);
-      tmp_hash_val = qdata_hash_scan_value (ckey->values[i], ht_size);
-      hash_val ^= tmp_hash_val;
-      if (hash_val == 0)
-	{
-	  hash_val = tmp_hash_val;
-	}
+      hash_val = qdata_hash_scan_key_fold (hash_val, ckey->values[i], ht_size);
     }
 
-  if (hash_method == HASH_METH_HASH_FILE)
-    {
-      hash_val = fhs_hash (&hash_val);
-    }
-
-  return hash_val;
+  return qdata_hash_scan_key_finish (hash_val, hash_method);
 }
 
 /*

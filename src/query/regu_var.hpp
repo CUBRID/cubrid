@@ -140,10 +140,19 @@ struct valptr_list_node
    * use of the list so that copy does not evaluate the same row a second time (see
    * qdata_valptr_prog_ensure ()) */
   bool eval_prog_row_ready;
+  /* the program's cells already hold the current row: a page batch computed the list's columns as vectors
+   * and packed the row's values into the cells (expr_batch_proj_row ()), so the next evaluation of the list
+   * reads them without running the program; consumed by that evaluation, cleared by the batch after the row */
+  bool eval_prog_row_external;
   /* the scan this list projects (ACCESS_SPEC_TYPE *) when it is the node's only heap scan,
    * so the program may read values the scan's compiled data filter computes; NULL otherwise.
    * Set by qexec_set_expr_share_spec () before the first row; runtime only. */
   void *eval_prog_share_spec;
+  /* CBRD-27361: the program XASL generation compiled for the list (expr_valptr_prog_image_at_generation ()), set by
+   * the unpack; the first evaluation binds it instead of compiling.  NULL: none was written; size 0: the list keeps
+   * its interpreted fetch. */
+  const char *eval_prog_image;
+  int eval_prog_image_size;
 
   valptr_list_node () = default;
 };
@@ -321,6 +330,7 @@ inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
+inline bool is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
@@ -365,6 +375,24 @@ bool
 regu_is_variable_pos (const regu_variable_node *regu)
 {
   return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
+}
+
+/* whether a regu is a cast (T_CAST, T_CAST_WRAP): the operand whose fetch error a date/time function replaces with a
+ * conversion error (fetch.c), which the expression compiler mirrors on the server and at XASL generation */
+bool
+is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
+{
+  if (regu_var == NULL)
+    {
+      return false;
+    }
+
+  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+    {
+      return (regu_var->value.arithptr->opcode == T_CAST || regu_var->value.arithptr->opcode == T_CAST_WRAP);
+    }
+
+  return false;
 }
 
 /* CBRD-27583: the domain a regu's own evaluation produces its value in; domain is the one it delivers to its consumer,

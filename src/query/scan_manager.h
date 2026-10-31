@@ -103,6 +103,45 @@ struct dblink_scan_id
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
 };
 
+/* The page batch's objects between two opens of one scan (expr_batch.h).  A correlated subquery opens its scan once
+ * per outer row, and the plan -- built from the clone's compiled filter, its operand program and its attribute
+ * caches, which a non-final clear leaves settled -- would be built as many times.  scan_end_scan () parks the plan,
+ * the chunk and the scan's buffers here, on the scan's access spec, with their per-scan state cleared;
+ * scan_batch_open_internal () takes them back when the next open is built from the same inputs (the identity
+ * below: another class -- the next partition --, another filter form or consumer frees them and builds anew) and
+ * rebinds what is the execution's (the runtime filter); qexec_clear_xasl () frees them at the end of the execution
+ * with the spec's other values (scan_batch_keep_free ()).  Allocated, filled and freed on the thread that executes
+ * the clone, whose private heap holds the plan's arrays: a clone is run by one thread per execution, that thread's
+ * final clear releases it, and a parallel worker clears its own clone in its finalize. */
+struct access_spec_node;
+typedef struct scan_batch_keep SCAN_BATCH_KEEP;
+struct scan_batch_keep
+{
+  struct expr_batch_plan *plan;
+  struct expr_batch *batch;
+  char *copy;			/* the kept rows' copies (hsid.batch_copy) */
+  size_t copy_cap;
+  /* what the plan was built from */
+  OID class_oid;		/* the class scanned: another partition of the spec rebuilds */
+  const void *scan_prog;	/* the filter's compiled form (PRED_EXPR.scan_prog), or NULL */
+  const PRED_EXPR *pred_expr;
+  const void *agg_list;
+  const void *proj;
+  const void *gby_prog;		/* a hash GROUP BY's mapping: its program and counts (the map itself is made per open) */
+  int gby_n_aggs;
+  int gby_n_keys;
+  bool has_gby;
+  bool for_consumer;		/* opened by a consumer (scan_batch_open ()), not by a filter iterator */
+  HEAP_CACHE_ATTRINFO *pred_attr_cache;
+  HEAP_CACHE_ATTRINFO *rest_attr_cache;
+  const val_descr *vd;		/* the execution's: the constants the leaves resolved through it live as long as it */
+  bool has_rtf;			/* the plan has the runtime filter's term, on the key in rtf_val */
+  bool rtf_is_date;
+  const DB_VALUE *rtf_val;
+  const char *declined_why;	/* no plan: the build declined these inputs, and why -- the next open from the same
+				 * inputs goes to the row path without building again */
+};
+
 typedef struct heap_scan_id HEAP_SCAN_ID;
 struct heap_scan_id
 {
@@ -120,6 +159,32 @@ struct heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+
+  /* Page batch (expr_batch.h): the scan's rows are taken a page at a time and the consumer
+   * evaluates them as arrays; the scan holds the page while a batch is out.  Opened by the
+   * consumer that can take a batch (scan_batch_open ()), released with the scan. */
+  struct expr_batch_plan *batch_plan;
+  struct expr_batch *batch;
+  int batch_state;		/* 0 untried, 1 active, 2 declined (the row path) */
+  VPID batch_vpid;		/* the page the batch holds.  Who lets it go: with cache_last_fix_page the scan cache
+				 * (heap_scancache_end ()); without it the batch (scan_batch_release_page (), from
+				 * scan_end_scan () and the rewind) -- never both */
+  bool batch_started;		/* serial walk: the first page was fixed */
+  bool batch_rowmode;		/* scan_next_scan () walks the held page row by row (a page the batch handed back) */
+  const char *batch_why_not;	/* trace: why the batch declined */
+  /* the filter iterator (scan_batch_open_filter ()): scan_next_scan () itself runs the filter a chunk at a time and
+   * hands out the rows it kept one by one */
+  bool batch_iter;
+  bool batch_page_more;		/* the held page has rows past the chunk */
+  bool batch_off_page;		/* the walk stopped, nothing collected, at a record whose visible version is not on
+				 * the page (scan_batch_collect_chunk ()) */
+  int batch_pos;		/* the next kept row of the chunk to hand out */
+  int batch_slot;		/* the page walk's position (scan_batch_collect_chunk ()) */
+  int batch_last_slot;		/* the slot of the row handed out last */
+  char *batch_copy;		/* the kept rows' records, copied before the page is let go */
+  size_t batch_copy_cap;
+  struct access_spec_node *batch_spec;	/* the spec the batch was opened on: scan_end_scan () parks the plan in its
+					 * keep (SCAN_BATCH_KEEP); NULL frees it */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -145,6 +210,24 @@ struct parallel_heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+  /* the page batch fields of heap_scan_id, in the same place: the two layouts alias each other
+   * (a scan goes between S_HEAP_SCAN and S_PARALLEL_HEAP_SCAN) */
+  struct expr_batch_plan *batch_plan;
+  struct expr_batch *batch;
+  int batch_state;
+  VPID batch_vpid;
+  bool batch_started;
+  bool batch_rowmode;
+  const char *batch_why_not;
+  bool batch_iter;
+  bool batch_page_more;
+  bool batch_off_page;
+  int batch_pos;
+  int batch_slot;
+  int batch_last_slot;
+  char *batch_copy;
+  size_t batch_copy_cap;
+  struct access_spec_node *batch_spec;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -476,6 +559,9 @@ struct scan_stats
   /* for heap & list scan */
   UINT64 read_rows;		/* # of rows read */
   UINT64 qualified_rows;	/* # of rows qualified by data filter */
+  UINT64 batch_pages;		/* heap scan: pages the page batch evaluated ... */
+  UINT64 batch_pages_rowpath;	/* ... and pages it handed back to the row path ... */
+  UINT64 batch_pages_offpage;	/* ... of which at a record whose visible version is not on the page */
 
   /* for btree scan */
   UINT64 read_keys;		/* # of keys read */
@@ -662,6 +748,65 @@ extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+/* page batch over a sequential heap scan (expr_batch.h): the consumer opens it with what it
+ * aggregates, steps to a page with scan_batch_next_page () (serial; a parallel worker's walker
+ * fixes its own), takes the page's rows a chunk at a time with scan_batch_collect_chunk () --
+ * a record the page alone does not answer for ends the chunk, and the row path takes the page
+ * from it -- and hands a chunk and the rest of its page back to the row path with
+ * scan_batch_page_rowmode () (serial) when the batch declines it */
+struct access_spec_node;
+struct xasl_node;
+namespace cubxasl
+{
+  struct aggregate_list_node;
+}
+struct valptr_list_node;
+/* a heap scan whose rows go on row by row (a join, a subquery, ...): its filter run a chunk at a time inside
+ * scan_next_scan (); true when it does */
+extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
+				    val_descr * vd);
+/* the same for a parallel worker's scan, whose rows go through the rows node (scan_batch_rows_consume ()) */
+extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
+				  val_descr * vd);
+extern bool scan_batch_retry_as_filter (SCAN_ID * scan_id);
+/* the heap scan's data filter compiled now, as its first row would compile it: before the block's programs are
+ * settled for a page batch, which share the filter's values */
+extern void scan_batch_settle_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+/* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term; proj is
+ * a projecting block's output list (its program settled), whose columns the plan computes as vectors.  The spec
+ * keeps the plan between the scan's opens (SCAN_BATCH_KEEP) */
+extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
+			    const struct xasl_node *xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+			    const struct expr_batch_gby_map *gby, const struct valptr_list_node *proj);
+/* the spec's kept plan and what the scan still holds of the batch, for good: the end of the execution
+ * (qexec_clear_xasl ()), on the thread that executed the clone */
+extern void scan_batch_keep_free (THREAD_ENTRY * thread_p, struct access_spec_node *spec);
+extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
+					   PGSLOTID * slot);
+extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot);
+/* a page the walk is done with: taken by the batch, or handed to the row path (the trace's counts and the plan's) */
+extern void scan_batch_note_page (SCAN_ID * scan_id, bool rowpath);
+/* the projection node: each row the chunk kept gets the row path's tail -- its predicate and
+ * rest columns fetched into the value list -- and is handed to emit (the serial block's
+ * qexec_end_one_iteration (), a parallel worker's result handler) */
+typedef struct scan_batch_project SCAN_BATCH_PROJECT;
+struct scan_batch_project
+{
+  SCAN_ID *scan_id;
+  int (*emit) (THREAD_ENTRY * thread_p, void *arg);
+  void *emit_arg;
+  struct valptr_list_node *outptr;	/* the list emit projects, when the plan computes its columns as vectors */
+};
+struct expr_chunk_node;
+extern int scan_batch_project_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
+				       struct expr_batch_plan *plan, struct expr_batch *batch);
+/* the rows node of a chunk chain: the kept rows' records copied out of the page, then each row's values read and
+ * the row emitted -- for a consumer whose per-row work may let the page go (a join's inner scans) */
+extern int scan_batch_rows_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
+				    struct expr_batch_plan *plan, struct expr_batch *batch);
+/* one row of a chunk through the projection's tail: its columns into the value list, then emit */
+extern int scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, struct heap_page_row *row);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);

@@ -3798,6 +3798,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
       for (curr_part = spec->parts; curr_part != NULL; curr_part = curr_part->next)
 	{
 	  memset (&curr_part->scan_stats, 0, sizeof (SCAN_STATS));
+	  curr_part->batch_why_not = NULL;
 	}
     }
 

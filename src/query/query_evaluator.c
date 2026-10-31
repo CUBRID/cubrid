@@ -3283,6 +3283,37 @@ eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
 }
 
 /*
+ * eval_data_filter_ensure_prog () - the data filter's compiled form
+ *   filterp(in): the filter; its predicate root carries the compiled form (scan_prog)
+ *
+ * Never fails: a compile the compiler declines (or cannot allocate) leaves the interpreted
+ * pr_eval_fnc in place (scan_prog_state 2).  Compile on first use; the XASL fixes the domains
+ * for every execution (a plan per bind-type signature), so the compiled form stays with the
+ * clone, and a declined compile stays declined.  The row path calls it before the row it
+ * evaluates; a page batch (scan_batch_open ()) calls it before its first page: the batch
+ * reads the compiled form, so it must be the one the row path would use.
+ */
+void
+eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filterp)
+{
+  SCAN_PRED *scan_predp = (filterp != NULL) ? filterp->scan_pred : NULL;
+  PRED_EXPR *pred_root;
+
+  if (scan_predp == NULL || scan_predp->pr_eval_fnc == NULL || scan_predp->pred_expr == NULL)
+    {
+      return;
+    }
+  pred_root = scan_predp->pred_expr;
+  if (pred_root->scan_prog_state == 0)
+    {
+      /* on the first row: the form XASL generation compiled (expr_compile.c) */
+      pred_root->scan_prog = expr_scan_pred_settle (thread_p, pred_root, filterp->val_descr);
+      pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
+      pred_root->scan_prog_gen++;
+    }
+}
+
+/*
  * eval_data_filter () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  * 	 oid(in): pointer to OID
@@ -3353,10 +3384,9 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
        * Anything not covered keeps pr_eval_fnc. */
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
-	  /* compile on the first row (expr_compile.c) */
-	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
-	  pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
-	  pred_root->scan_prog_gen++;
+	  /* compile on the first row (expr_compile.c); state 2 (the compiler declined) is fixed for the clone: it
+	   * stays on pr_eval_fnc without this call */
+	  eval_data_filter_ensure_prog (thread_p, filterp);
 	}
       if (pred_root->scan_prog_state == 1)
 	{
