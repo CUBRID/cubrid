@@ -28,7 +28,6 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "intl_support.h"
-#include "object_primitive.h"
 #include "language_support.h"
 #include "porting.h"
 
@@ -113,8 +112,8 @@ read_double (const char *buf)
   return d;
 }
 
-int
-copy_fit_char_precision (DB_TYPE type, const char *str, int str_len, const COPY_COL_DOMAIN *dom, int *fitted_len)
+bool
+copy_fit_char_precision (const char *str, int str_len, const COPY_COL_DOMAIN *dom, int *fitted_len)
 {
   int precision = dom->precision;
   INTL_CODESET codeset = (INTL_CODESET) dom->codeset;
@@ -127,13 +126,13 @@ copy_fit_char_precision (DB_TYPE type, const char *str, int str_len, const COPY_
   /* char_count <= byte_count in every codeset, so this covers the common case */
   if (precision <= 0 || str_len <= precision)
     {
-      return NO_ERROR;
+      return true;
     }
 
   intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
   if (char_count <= precision)
     {
-      return NO_ERROR;
+      return true;
     }
 
   /* Trailing blanks may be truncated away; anything else is an overflow. */
@@ -141,12 +140,11 @@ copy_fit_char_precision (DB_TYPE type, const char *str, int str_len, const COPY_
   p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
   if (p < &str[str_len])
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
-      return ER_IT_DATA_OVERFLOW;
+      return false;
     }
 
   *fitted_len = truncate_size;
-  return NO_ERROR;
+  return true;
 }
 
 /*
@@ -255,10 +253,9 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       /* Build against the column's own domain: the value then matches the
        * attribute exactly and heap_attrinfo_set stores it without coercing. */
       int fitted = field_len;
-      int rc = copy_fit_char_precision (type, data, field_len, dom, &fitted);
-      if (rc != NO_ERROR)
+      if (!copy_fit_char_precision (data, field_len, dom, &fitted))
 	{
-	  return rc;
+	  return binary_error (row, col, "value too long for the column type");
 	}
       if (db_value_domain_init (val, type, dom->precision, 0) != NO_ERROR
 	  || db_make_db_char (val, (INTL_CODESET) dom->codeset, dom->collation_id, data, fitted) != NO_ERROR)

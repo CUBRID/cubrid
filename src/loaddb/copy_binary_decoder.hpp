@@ -54,11 +54,11 @@ struct copy_col_domain
  *   as loaddb does. Building the value on the column's own domain means
  *   heap_attrinfo_set stores it without coercing - and therefore without
  *   checking precision itself - so the check belongs here.
- *   return: NO_ERROR or ER_IT_DATA_OVERFLOW
+ *   return: whether the value fits. Nothing is raised: only the caller knows
+ *           the row and column the error has to name.
  *   fitted_len(out): byte length to store (<= str_len)
  */
-extern int copy_fit_char_precision (DB_TYPE type, const char *str, int str_len, const COPY_COL_DOMAIN *dom,
-				    int *fitted_len);
+extern bool copy_fit_char_precision (const char *str, int str_len, const COPY_COL_DOMAIN *dom, int *fitted_len);
 
 /*
  * decode_binary_row () - Decode one row from a binary buffer

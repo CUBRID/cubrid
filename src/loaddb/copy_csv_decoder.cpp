@@ -164,10 +164,9 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     {
       /* Build against the column's own domain, as the binary decoder does. */
       int fitted = (int) s.size ();
-      int rc = copy_fit_char_precision (type, s.data (), (int) s.size (), dom, &fitted);
-      if (rc != NO_ERROR)
+      if (!copy_fit_char_precision (s.data (), (int) s.size (), dom, &fitted))
 	{
-	  return rc;
+	  return csv_error (row, col, "value too long for the column type");
 	}
       if (db_value_domain_init (val, type, dom->precision, 0) != NO_ERROR
 	  || db_make_db_char (val, (INTL_CODESET) dom->codeset, dom->collation_id, s.data (), fitted) != NO_ERROR)
