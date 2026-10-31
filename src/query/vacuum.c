@@ -714,6 +714,7 @@ static int vacuum_collect_heap_objects (THREAD_ENTRY * thread_p, VACUUM_WORKER *
 static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid);
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool * pages_released);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 			       VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out);
@@ -2012,6 +2013,9 @@ vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper
   VPID forward_vpid;		/* Forward page VPID. */
   int error_code = NO_ERROR;	/* Error code. */
   PGBUF_LATCH_CONDITION fwd_condition;	/* Condition to latch forward page for REC_RELOCATION. */
+  /* Set once the OOS file lookup released the heap pages to wait for the heap header. Its answer is then final, so a
+   * failure it absorbed does not release the pages again. */
+  bool oos_header_waited = false;
 
   /* Assert expected arguments. */
   assert (helper != NULL);
@@ -2137,11 +2141,17 @@ retry_prepare:
 	  return error_code;
 	}
 
-      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
-							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
-      if (error_code != NO_ERROR)
+      if (!oos_header_waited)
 	{
-	  return error_code;
+	  error_code = vacuum_heap_prepare_oos_vfid (thread_p, helper, &oos_header_waited);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (oos_header_waited)
+	    {
+	      goto retry_prepare;
+	    }
 	}
       return NO_ERROR;
 
@@ -2253,11 +2263,17 @@ retry_prepare:
 	  return ER_FAILED;
 	}
 
-      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
-							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
-      if (error_code != NO_ERROR)
+      if (!oos_header_waited)
 	{
-	  return error_code;
+	  error_code = vacuum_heap_prepare_oos_vfid (thread_p, helper, &oos_header_waited);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (oos_header_waited)
+	    {
+	      goto retry_prepare;
+	    }
 	}
       break;
 
@@ -2279,6 +2295,59 @@ retry_prepare:
   VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
   /* Success. */
+  return NO_ERROR;
+}
+
+/*
+ * vacuum_heap_prepare_oos_vfid () - Find the OOS file of the heap if the current record needs it.
+ *
+ * return		   : Error code.
+ * thread_p (in)	   : Thread entry.
+ * helper (in/out)	   : Vacuum heap helper. Its record is a copy and stays valid while pages are released.
+ * pages_released (out) : True if the heap pages were released and only the home page was fixed again. The caller
+ *			  restarts from the slot, because the record may have changed.
+ *
+ * heap_alloc_new_pages latches the heap header before a heap page, and page latches have no deadlock detection. So
+ * this function waits for the heap header only after it releases the heap pages.
+ */
+static int
+vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool * pages_released)
+{
+  int error_code = NO_ERROR;
+
+  *pages_released = false;
+
+  if (!VFID_ISNULL (&helper->oos_vfid) || !heap_recdes_contains_oos (&helper->record)
+      || heap_oos_find_vfid_nowait (thread_p, &helper->hfid, &helper->oos_vfid))
+    {
+      return NO_ERROR;
+    }
+
+  VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
+
+  if (helper->forward_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, helper->forward_page);
+    }
+  vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
+  *pages_released = true;
+
+  error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record, helper->crt_slotid,
+						     helper->record_type, &helper->oos_vfid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  helper->home_page = pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (helper->home_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      vacuum_check_shutdown_interruption (thread_p, error_code);
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&helper->home_vpid));
+      return error_code;
+    }
+
   return NO_ERROR;
 }
 
