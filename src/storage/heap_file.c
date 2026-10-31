@@ -13226,20 +13226,13 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 }
 
 /*
- * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
- *   return         : true on success, false on a genuine error (er is set)
- *   hfid (in)      : heap file identifier
- *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
- *                    file (only possible when docreate == false)
- *   docreate (in)  : if true and the OOS file does not exist, it is created and
- *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
- *
- * Note: A false return ALWAYS means a real error (and er_errid () is set); it
- *   never means "no OOS file". Callers using docreate == false must inspect
- *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ * heap_oos_find_vfid_internal () - heap_oos_find_vfid with a latch condition for the header page
+ *   latch_cond (in) : with PGBUF_CONDITIONAL_LATCH, false also means the header latch was busy, and er may not
+ *                     be set
  */
-bool
-heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
+static bool
+heap_oos_find_vfid_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate,
+			     PGBUF_LATCH_CONDITION latch_cond)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -13259,7 +13252,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   vpid.pageid = hfid->hpgid;
 
   mode = (docreate == true ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ);
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, PGBUF_UNCONDITIONAL_LATCH);
+  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, latch_cond);
   if (addr_hdr.pgptr == NULL)
     {
       goto exit_on_error;
@@ -13335,6 +13328,40 @@ end:
     }
 
   return success;
+}
+
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
+ *                    file (only possible when docreate == false)
+ *   docreate (in)  : if true and the OOS file does not exist, it is created and
+ *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it
+ *   never means "no OOS file". Callers using docreate == false must inspect
+ *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ */
+bool
+heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
+{
+  return heap_oos_find_vfid_internal (thread_p, hfid, oos_vfid, docreate, PGBUF_UNCONDITIONAL_LATCH);
+}
+
+/*
+ * heap_oos_find_vfid_nowait () - heap_oos_find_vfid (docreate == false) that never waits for the header latch
+ *   return         : true on success; false when the header latch is busy or on error (er may not be set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS file
+ *
+ * Note: A false return answers nothing. A caller that holds heap pages releases them and asks
+ *   heap_oos_find_vfid, which is authoritative.
+ */
+bool
+heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid)
+{
+  return heap_oos_find_vfid_internal (thread_p, hfid, oos_vfid, false, PGBUF_CONDITIONAL_LATCH);
 }
 
 static SCAN_CODE

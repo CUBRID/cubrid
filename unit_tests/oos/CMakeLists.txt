@@ -257,11 +257,11 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
-# Ten real-vacuum cases each allow up to 60 seconds for asynchronous reclamation.
-# Cover those deadlines plus setup, teardown, and Debug diagnostic overhead.
+# Ten real-vacuum cases each allow up to 60 seconds for asynchronous reclamation, and the heap header
+# latch case allows 60 seconds twice. Cover those deadlines plus setup, teardown, and Debug diagnostic overhead.
 set_tests_properties(
   test_oos_real_vacuum_server
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 720
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 840
 )
 
 # Note: add_test vs. gtest_discover_tests

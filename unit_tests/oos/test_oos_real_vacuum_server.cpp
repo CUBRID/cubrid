@@ -862,6 +862,122 @@ TEST_F (OosRealVacuum, ReVacuumAfterDrainIsIdempotent)
   expect_oos_gone (oos_oid, "drained OOS after re-vacuum");
 }
 
+static bool
+insert_id_vacuumed (const OID &oid)
+{
+  VPID vpid;
+  VPID_GET_FROM_OID (&vpid, &oid);
+  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+  RECDES rec {};
+  MVCC_REC_HEADER mvcc_header;
+  bool vacuumed = spage_get_record (thread_p, page, oid.slotid, &rec, PEEK) == S_SUCCESS
+		  && or_mvcc_get_header (&rec, &mvcc_header) == NO_ERROR
+		  && !MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
+  pgbuf_unfix_and_init (thread_p, page);
+  return vacuumed;
+}
+
+// ============================================================================
+// TC-R11: Vacuum waits for the heap header without holding the last heap page
+//
+// heap_alloc_new_pages holds the heap header and then latches the last heap page. Page latches have
+// no deadlock detection, so a vacuum worker that holds the last page while it waits for the header
+// stalls both sides until the latch timeout. The test thread plays the allocator: it holds the header
+// until the vacuum worker queues on it, then checks that the last page is free and that the real
+// allocator finishes.
+// ============================================================================
+TEST_F (OosRealVacuum, VacuumWaitsForHeapHeaderWithoutHoldingLastPage)
+{
+  RECDES oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), oos_rec),
+	     NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+  OID oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid), NO_ERROR);
+
+  RECDES heap_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oos_oid}, { (INT64) oos_rec.length}, heap_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  VPID last_vpid = VPID_INITIALIZER;
+  PGBUF_WATCHER last_watcher;
+  ASSERT_EQ (heap_alloc_new_pages (thread_p, &hfid, 1, &last_vpid, &last_watcher), NO_ERROR);
+  HEAP_OPERATION_CONTEXT insert_ctx;
+  heap_create_insert_context (&insert_ctx, &hfid, &class_oid, &heap_rec, &scan_cache);
+  ASSERT_EQ (heap_insert_logical (thread_p, &insert_ctx, &last_watcher), NO_ERROR);
+  const OID heap_oid = insert_ctx.res_oid;
+  ASSERT_EQ (heap_oid.pageid, last_vpid.pageid);
+  ASSERT_EQ (heap_oid.volid, last_vpid.volid);
+  VACUUM_LOG_BLOCKID insert_block = current_log_blockid ();
+  commit_current_tran ();
+
+  /* Take the header before the insert's log block closes, so vacuum cannot reach the row first. */
+  VPID header_vpid;
+  header_vpid.volid = hfid.vfid.volid;
+  header_vpid.pageid = hfid.hpgid;
+  PGBUF_WATCHER header_watcher;
+  PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, &hfid);
+  ASSERT_EQ (pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher), NO_ERROR);
+
+  /* Ending a transaction requires that it hold no pages, so close the insert's log block with OOS
+   * inserts, which are not MVCC operations, and with the log flush a commit would do. Vacuum skips
+   * blocks near the end of the flushed log. */
+  bool log_advanced = true;
+  for (int guard = 0; log_advanced && current_log_blockid () <= insert_block + 1; guard++)
+    {
+      OID filler_oid = OID_INITIALIZER;
+      log_advanced = guard < 20000
+		     && test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, filler_oid) == NO_ERROR;
+    }
+  if (log_advanced)
+    {
+      LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
+      logpb_flush_pages (thread_p, &flush_lsa);
+    }
+
+  const bool vacuum_waits_for_header = log_advanced
+				       && wait_for_vacuum ([&header_watcher] { return pgbuf_has_any_waiters (header_watcher.pgptr); }, 60);
+  bool last_page_free = false;
+  bool allocation_finished = false;
+  if (vacuum_waits_for_header)
+    {
+      PAGE_PTR last_page = pgbuf_fix (thread_p, &last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+      last_page_free = last_page != NULL;
+      if (last_page_free)
+	{
+	  pgbuf_unfix_and_init (thread_p, last_page);
+
+	  /* Only now is the allocator safe to run: with the last page held by vacuum it would block. */
+	  VPID next_vpid = VPID_INITIALIZER;
+	  PGBUF_WATCHER next_watcher;
+	  allocation_finished = heap_alloc_new_pages (thread_p, &hfid, 1, &next_vpid, &next_watcher) == NO_ERROR;
+	  if (allocation_finished)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &next_watcher);
+	    }
+	}
+      er_clear ();
+    }
+  pgbuf_ordered_unfix (thread_p, &header_watcher);
+  commit_current_tran ();
+
+  ASSERT_TRUE (log_advanced) << "OOS filler failed to close the insert's log block";
+  ASSERT_TRUE (vacuum_waits_for_header) << "vacuum never queued on the heap header";
+  EXPECT_TRUE (last_page_free)
+      << "vacuum held the last heap page while it waited for the heap header; an allocator holding the header "
+      "would wait for that page until the latch timeout";
+  EXPECT_TRUE (!last_page_free || allocation_finished) << "heap_alloc_new_pages failed while vacuum waited";
+
+  EXPECT_TRUE (wait_for_vacuum ([&heap_oid] { return insert_id_vacuumed (heap_oid); }, 60))
+      << "vacuum did not finish the row after the header was released";
+  EXPECT_FALSE (oos_unreadable (oos_oid)) << "vacuum of a live row lost its OOS value";
+}
+
 int
 main (int argc, char **argv)
 {
