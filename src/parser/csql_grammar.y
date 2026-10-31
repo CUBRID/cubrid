@@ -1669,6 +1669,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> ONLINE
+%token <cptr> ON_ERROR_
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
 %token <cptr> OVER
@@ -1706,6 +1707,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> REGEXP_REPLACE
 %token <cptr> REGEXP_SUBSTR
 %token <cptr> REJECT_
+%token <cptr> REJECT_LIMIT_
 %token <cptr> REMOVE
 %token <cptr> REORGANIZE
 %token <cptr> REPEATABLE
@@ -4494,6 +4496,8 @@ copy_stmt
 			    node->info.copy.fmt.csv.quote = 0;
 			    node->info.copy.fmt.csv.header = 0;
 			    node->info.copy.fmt.csv.null_str = CONTAINER_AT_4 (opt);
+			    node->info.copy.on_error = (int) TO_NUMBER (CONTAINER_AT_5 (opt));
+			    node->info.copy.reject_limit = CONTAINER_AT_6 (opt);
 			    node->info.copy.bulk = 0;
 			    if (bulk != NULL)
 			      {
@@ -4604,6 +4608,29 @@ copy_csv_option
 			container_10 ctn;
 			memset (&ctn, 0, sizeof (ctn));
 			ctn.c5 = $2;
+			$$ = ctn;
+		}}
+	| ON_ERROR_ IGNORE_
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c6 = FROM_NUMBER (PT_COPY_ON_ERROR_IGNORE);
+			$$ = ctn;
+		}}
+	| ON_ERROR_ identifier	/* STOP; any other word is refused by do_copy */
+		{{
+			container_10 ctn;
+			PT_NODE *word = $2;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c6 = FROM_NUMBER ((word != NULL && intl_identifier_casecmp (word->info.name.original, "STOP") == 0)
+					      ? PT_COPY_ON_ERROR_STOP : PT_COPY_ON_ERROR_INVALID);
+			$$ = ctn;
+		}}
+	| REJECT_LIMIT_ unsigned_integer
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c7 = $2;
 			$$ = ctn;
 		}}
 	;
@@ -21032,6 +21059,7 @@ identifier
 	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ON_ERROR_              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -21068,6 +21096,7 @@ identifier
 	| REGEXP_REPLACE         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REGEXP_SUBSTR          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REJECT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REJECT_LIMIT_          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -24382,6 +24411,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_ROW_COUNT:
     case PT_LAST_INSERT_ID:
     case PT_TRACE_STATS:
+    case PT_COPY_REJECTED_ROWS:
       if (c != 0)
 	{
 	  return NULL;

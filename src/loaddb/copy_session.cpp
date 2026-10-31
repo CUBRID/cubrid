@@ -39,6 +39,7 @@
 #include "object_domain.h"
 #include "object_representation_sr.h"
 #include "record_descriptor.hpp"
+#include "session.h"
 #include "xserver_interface.h"
 
 #include <cstring>
@@ -74,6 +75,9 @@ copy_session::copy_session ()
   , m_format (COPY_FORMAT_BINARY)
   , m_delimiter (',')
   , m_quote ('"')
+  , m_on_error_ignore (false)
+  , m_reject_limit (0)
+  , m_rows_rejected (0)
   , m_skip_header (false)
   , m_bulk (false)
   , m_footer_seen (false)
@@ -90,7 +94,8 @@ copy_session::~copy_session ()
 
 int
 copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
-		    int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str)
+		    int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str,
+		    int on_error_ignore, std::int64_t reject_limit)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -102,6 +107,13 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
   m_delimiter = (delimiter != 0) ? (char) delimiter : ',';
   m_quote = (quote != 0) ? (char) quote : '"';
   m_null_str = (null_str != NULL) ? null_str : "";
+  m_on_error_ignore = (on_error_ignore != 0);
+  m_reject_limit = reject_limit;
+  m_rows_rejected = 0;
+
+  /* COPY_REJECTED_ROWS () answers for the COPY that ran last, so a COPY that
+   * fails does not leave the count of an earlier one behind */
+  (void) session_set_copy_rejected_rows (thread_p, 0);
   m_skip_header = (header != 0);
   m_bulk = (bulk != 0);
   m_col_types.assign (col_types, col_types + num_cols);
@@ -368,29 +380,63 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  break;
 	}
 
+      /* A CSV decoder error comes after the decoder found the row's line
+       * terminator, so with ON_ERROR IGNORE the stream goes on after it. */
       if (error != NO_ERROR)
 	{
-	  goto cleanup;
+	  if (!m_on_error_ignore || bytes_consumed <= 0)
+	    {
+	      goto cleanup;
+	    }
+	  error = reject_row (vals, m_row_number + 1);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  pos += advance;
+	  m_row_number++;
+	  continue;
 	}
 
       pos += advance;
       m_row_number++;
 
+      /* Neither the heap nor the locator enforces NOT NULL -- it is the
+       * inserter's job, as it is the executor's for INSERT. An unquoted empty
+       * CSV field decodes to NULL, so this is one character away. The error
+       * names the row and column, as a decoder's does; INSERT's NOT NULL error
+       * names neither. Checked before any column is set, so that a row ON_ERROR
+       * IGNORE skips leaves nothing behind. */
+      {
+	int null_col = -1;
+
+	for (int i = 0; i < m_num_cols && null_col < 0; i++)
+	  {
+	    if (m_col_notnull[i] && DB_IS_NULL (&vals[i]))
+	      {
+		null_col = i;
+	      }
+	  }
+	if (null_col >= 0)
+	  {
+	    error = copy_format_error ((m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR
+				       : ER_COPY_BINARY_FORMAT_ERROR, m_row_number, null_col, "NULL in a NOT NULL column");
+	    if (!m_on_error_ignore)
+	      {
+		goto cleanup;
+	      }
+	    error = reject_row (vals, m_row_number);
+	    if (error != NO_ERROR)
+	      {
+		goto cleanup;
+	      }
+	    continue;
+	  }
+      }
+
       /* pack the row into a record_descriptor and queue it for batch insert */
       for (int i = 0; i < m_num_cols; i++)
 	{
-	  /* Neither the heap nor the locator enforces NOT NULL -- it is the
-	   * inserter's job, as it is the executor's for INSERT. An unquoted empty
-	   * CSV field decodes to NULL, so this is one character away. The error
-	   * names the row and column, as a decoder's does; INSERT's NOT NULL error
-	   * names neither. */
-	  if (m_col_notnull[i] && DB_IS_NULL (&vals[i]))
-	    {
-	      error = copy_format_error ((m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR
-					 : ER_COPY_BINARY_FORMAT_ERROR, m_row_number, i, "NULL in a NOT NULL column");
-	      goto cleanup;
-	    }
-
 	  error = heap_attrinfo_set (&m_class_oid, m_attr_ids[i], &vals[i], &attrinfo);
 	  if (error != NO_ERROR)
 	    {
@@ -445,6 +491,37 @@ cleanup:
     }
 
   return error;
+}
+
+/*
+ * reject_row () - Skip a row under ON_ERROR IGNORE, whose error is the current one.
+ *   return: NO_ERROR to go on with the next row, or the error that ends the COPY
+ *           once more rows than REJECT_LIMIT have been rejected
+ *   vals(in/out): the row's values, cleared for the next row
+ *   row(in): the row's position in the stream
+ *
+ * The row's error has already gone to the server's error log, which is where the
+ * reason for each skipped row can be found; the client is told only how many.
+ */
+int
+copy_session::reject_row (DB_VALUE *vals, std::int64_t row)
+{
+  m_rows_rejected++;
+  if (m_reject_limit > 0 && m_rows_rejected > m_reject_limit)
+    {
+      char reason[96];
+
+      snprintf (reason, sizeof (reason), "more than REJECT_LIMIT %lld rows rejected", (long long) m_reject_limit);
+      return copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, -1, reason);
+    }
+
+  er_clear ();
+  for (int i = 0; i < m_num_cols; i++)
+    {
+      db_value_clear (&vals[i]);
+      db_make_null (&vals[i]);
+    }
+  return NO_ERROR;
 }
 
 int
@@ -598,6 +675,7 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
     }
 
   result->count = m_rows_loaded;
+  (void) session_set_copy_rejected_rows (thread_p, m_rows_rejected);
   return NO_ERROR;
 }
 
@@ -625,7 +703,9 @@ copy_session::abort (THREAD_ENTRY *thread_p)
  *
  * COPY config encoding: version (int), table_name (string), num_cols (int),
  * format (int), delimiter (int), quote (int), header (int), bulk (int),
- * [version 2: null_str (string)], col_types (int[num_cols]), attr_ids (int[num_cols]).
+ * [version 2: null_str (string)], [version 3: on_error_ignore (int),
+ * reject_limit (int64 as high int, low int)], col_types (int[num_cols]),
+ * attr_ids (int[num_cols]).
  */
 static stream_session *
 copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len, int *error_code)
@@ -643,6 +723,8 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
   int bulk = 0;
   int version = 0;
   char *null_str = NULL;
+  int on_error_ignore = 0;
+  std::int64_t reject_limit = 0;
   DB_TYPE *col_types = NULL;
   int *attr_ids = NULL;
   copy_session *session = NULL;
@@ -718,6 +800,26 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
 	}
     }
 
+  if (version >= 3)
+    {
+      int hi, lo;
+
+      if (config_end - ptr < 3 * OR_INT_SIZE)
+	{
+	  goto invalid_config;
+	}
+      ptr = or_unpack_int (ptr, &on_error_ignore);
+      ptr = or_unpack_int (ptr, &hi);
+      ptr = or_unpack_int (ptr, &lo);
+      reject_limit = (std::int64_t) (((std::uint64_t) (unsigned int) hi << 32) | (unsigned int) lo);
+      /* do_copy refuses these; a client that sends them anyway is not trusted
+       * to skip BINARY rows whose boundary it cannot know */
+      if ((on_error_ignore != 0 && format != COPY_FORMAT_CSV) || reject_limit < 0)
+	{
+	  goto invalid_config;
+	}
+    }
+
   if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE / 2 < num_cols)
     {
       goto invalid_config;
@@ -765,7 +867,7 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
       }
 
     *error_code = session->init (thread_p, &class_oid, col_types, attr_ids, num_cols, format, delimiter, quote,
-				 header, bulk, null_str);
+				 header, bulk, null_str, on_error_ignore, reject_limit);
     if (*error_code != NO_ERROR)
       {
 	delete session;

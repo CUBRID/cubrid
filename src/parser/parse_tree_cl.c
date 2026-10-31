@@ -4448,6 +4448,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "width_bucket";
     case PT_TRACE_STATS:
       return "trace_stats";
+    case PT_COPY_REJECTED_ROWS:
+      return "copy_rejected_rows";
     case PT_INDEX_PREFIX:
       return "index_prefix ";
     case PT_SLEEP:
@@ -12804,6 +12806,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TRACE_STATS:
       q = pt_append_nulstring (parser, q, " trace_stats()");
       break;
+    case PT_COPY_REJECTED_ROWS:
+      q = pt_append_nulstring (parser, q, " copy_rejected_rows()");
+      break;
     case PT_LIKE_ESCAPE:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -20683,6 +20688,7 @@ pt_apply_copy (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.copy.table_name, arg);
   PT_APPLY_WALK (parser, p->info.copy.column_list, arg);
   PT_APPLY_WALK (parser, p->info.copy.fmt.csv.null_str, arg);
+  PT_APPLY_WALK (parser, p->info.copy.reject_limit, arg);
 
   return p;
 }
@@ -20755,6 +20761,20 @@ pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_nulstring (parser, q, ", NULL ");
       r = pt_print_bytes (parser, p->info.copy.fmt.csv.null_str);
+      q = pt_append_varchar (parser, q, r);
+    }
+  if (p->info.copy.on_error == PT_COPY_ON_ERROR_STOP)
+    {
+      q = pt_append_nulstring (parser, q, ", ON_ERROR STOP");
+    }
+  else if (p->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE)
+    {
+      q = pt_append_nulstring (parser, q, ", ON_ERROR IGNORE");
+    }
+  if (p->info.copy.reject_limit != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", REJECT_LIMIT ");
+      r = pt_print_bytes (parser, p->info.copy.reject_limit);
       q = pt_append_varchar (parser, q, r);
     }
   if (p->info.copy.bulk)

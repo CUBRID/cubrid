@@ -676,6 +676,8 @@ IDL       [a-zA-Z0-9_]
 [oO][fF][fF][sS][eE][tT]				                { csql_yylval.cptr = pt_makename(yytext);
 									  return OFFSET; }
 [oO][nN]								{ return ON_; }                                                                                
+[oO][nN]_[eE][rR][rR][oO][rR]					{ csql_yylval.cptr = pt_makename(yytext);
+									  return ON_ERROR_; }
 [oO][nN][lL][iI][nN][eE]						{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return ONLINE; }
 [oO][nN][lL][yY]							{ return ONLY; }
@@ -779,6 +781,8 @@ IDL       [a-zA-Z0-9_]
 									  return REGEXP_SUBSTR; }
 [rR][eE][jJ][eE][cC][tT]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return REJECT_; }
+[rR][eE][jJ][eE][cC][tT]_[lL][iI][mM][iI][tT]					{ csql_yylval.cptr = pt_makename(yytext);
+									  return REJECT_LIMIT_; }
 [rR][eE][lL][aA][tT][iI][vV][eE]					{ return RELATIVE_; }
 [rR][eE][mM][oO][vV][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return REMOVE; }

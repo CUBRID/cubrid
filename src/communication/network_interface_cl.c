@@ -12260,13 +12260,16 @@ stream_from_init (int stream_kind, const char *config, int config_len, int flags
  *   col_types(in): array of column DB_TYPE values
  *   ncols(in): number of columns
  *   null_str(in): CSV: the unquoted field that reads as NULL ("" for the empty field)
+ *   on_error_ignore(in): CSV: skip a row the decoder refuses instead of failing
+ *   reject_limit(in): with on_error_ignore, the most rows to skip; 0 for no limit
  *
  * Thin COPY binding over stream_from_init(): packs the COPY config blob (table
  * name + options + col_types) and opens with STREAM_KIND_COPY.
  */
 int
 copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols, int format,
-		int delimiter, int quote, int header, int bulk, const char *null_str)
+		int delimiter, int quote, int header, int bulk, const char *null_str, int on_error_ignore,
+		DB_BIGINT reject_limit)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -12275,10 +12278,11 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
   char *ptr;
 
   /* COPY config blob: version + string + ncols + format + delimiter + quote + header + bulk
-   * + null string (version 2) + ncols * col_type + ncols * attribute id. The attribute ids
-   * carry the user's column list, which the column types alone cannot express. */
+   * + null string (version 2) + on_error + reject limit (version 3) + ncols * col_type
+   * + ncols * attribute id. The attribute ids carry the user's column list, which the
+   * column types alone cannot express. */
   config_size = OR_INT_SIZE + or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6)
-    + or_packed_string_length (null_str, NULL) + (ncols * OR_INT_SIZE * 2);
+    + or_packed_string_length (null_str, NULL) + (OR_INT_SIZE * 3) + (ncols * OR_INT_SIZE * 2);
 
   config = (char *) malloc (config_size);
   if (config == NULL)
@@ -12296,6 +12300,11 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
   ptr = or_pack_int (ptr, header);
   ptr = or_pack_int (ptr, bulk);
   ptr = or_pack_string (ptr, null_str);
+  ptr = or_pack_int (ptr, on_error_ignore);
+  /* as two ints: or_pack_int64 () aligns to the address, which the receiving
+   * buffer does not share */
+  ptr = or_pack_int (ptr, (int) ((UINT64) reject_limit >> 32));
+  ptr = or_pack_int (ptr, (int) ((UINT64) reject_limit & 0xffffffffu));
   for (int i = 0; i < ncols; i++)
     {
       ptr = or_pack_int (ptr, (int) col_types[i]);

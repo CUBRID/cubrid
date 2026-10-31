@@ -868,6 +868,7 @@ typedef enum
   T_CURRENT_TIME,
   T_CONV_TZ,
   T_COLLECTION_TO_STRING,
+  T_COPY_REJECTED_ROWS,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/

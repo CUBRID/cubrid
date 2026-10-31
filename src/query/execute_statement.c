@@ -22724,6 +22724,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity;
   int is_partitioned = 0;
   const char *null_str = "";	/* CSV: the unquoted field that reads as NULL */
+  DB_BIGINT reject_limit = 0;	/* ON_ERROR IGNORE: the most rows it may reject, 0 for no limit */
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -22969,6 +22970,53 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  /* ON_ERROR IGNORE skips a row the decoder refuses and goes on after its line
+   * terminator. A BINARY row has no terminator: after a bad field length the
+   * next row's boundary is not known, so BINARY stops, as PostgreSQL's does. */
+  if (statement->info.copy.on_error == PT_COPY_ON_ERROR_INVALID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "ON_ERROR takes STOP or IGNORE");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+  if (statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE && statement->info.copy.format != 1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "ON_ERROR IGNORE is only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+  if (statement->info.copy.reject_limit != NULL)
+    {
+      PT_NODE *lv = statement->info.copy.reject_limit;
+
+      /* the grammar makes a number past BIGINT a NUMERIC, which is refused below */
+      if (lv->type_enum == PT_TYPE_BIGINT)
+	{
+	  reject_limit = lv->info.value.data_value.bigint;
+	}
+      else if (lv->type_enum == PT_TYPE_INTEGER)
+	{
+	  reject_limit = lv->info.value.data_value.i;
+	}
+      else
+	{
+	  reject_limit = -1;
+	}
+      if (statement->info.copy.on_error != PT_COPY_ON_ERROR_IGNORE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "REJECT_LIMIT needs ON_ERROR IGNORE");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+      if (reject_limit <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "REJECT_LIMIT must be a positive BIGINT");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+    }
+
   /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
   if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
     {
@@ -23028,7 +23076,8 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
-			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk, null_str);
+			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk, null_str,
+			  statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE, reject_limit);
 
 end:
   if (col_types != NULL)

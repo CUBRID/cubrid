@@ -33,7 +33,8 @@
 #define STREAM_KIND_COPY 0
 
 /* The first int of COPY's config blob. A server accepts every version up to its own.
- * 2: the CSV NULL string follows bulk. */
-#define COPY_CONFIG_VERSION 2
+ * 2: the CSV NULL string follows bulk.
+ * 3: ON_ERROR IGNORE (int) and REJECT_LIMIT (int64 as high, low int) follow the NULL string. */
+#define COPY_CONFIG_VERSION 3
 
 #endif /* _COPY_STREAM_KIND_H_ */

@@ -8184,7 +8184,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_ROW_COUNT || node->info.expr.op == PT_LIST_DBS
 		       || node->info.expr.op == PT_SYS_GUID || node->info.expr.op == PT_LAST_INSERT_ID
 		       || node->info.expr.op == PT_DBTIMEZONE || node->info.expr.op == PT_SESSIONTIMEZONE
-		       || node->info.expr.op == PT_UTC_TIMESTAMP)
+		       || node->info.expr.op == PT_UTC_TIMESTAMP || node->info.expr.op == PT_COPY_REJECTED_ROWS)
 		{
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
@@ -9105,6 +9105,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_ROW_COUNT:
 		  {
 		    regu = pt_make_regu_arith (NULL, r1, NULL, T_ROW_COUNT, domain);
+		    break;
+		  }
+
+		case PT_COPY_REJECTED_ROWS:
+		  {
+		    regu = pt_make_regu_arith (NULL, r1, NULL, T_COPY_REJECTED_ROWS, domain);
 		    break;
 		  }
 
@@ -30063,7 +30069,8 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	    || PT_IS_NUMBERING_AFTER_EXECUTION (op)	/* INST_NUM / ROWNUM / ORDERBY_NUM */
 	    || op == PT_INCR || op == PT_DECR
 	    || op == PT_DEFINE_VARIABLE || op == PT_EVALUATE_VARIABLE || op == PT_ROW_COUNT
-	    || op == PT_LAST_INSERT_ID || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_SLEEP)
+	    || op == PT_LAST_INSERT_ID || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_SLEEP
+	    || op == PT_COPY_REJECTED_ROWS)
 	  {
 	    *only_allowed = false;
 	    *continue_walk = PT_STOP_WALK;

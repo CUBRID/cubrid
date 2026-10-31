@@ -49,7 +49,8 @@ class copy_session : public stream_session
 
     /* binding-specific open (not part of the stream_session seam) */
     int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
-	      int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str);
+	      int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str,
+	      int on_error_ignore, std::int64_t reject_limit);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
@@ -58,6 +59,7 @@ class copy_session : public stream_session
 
   private:
     int flush_batch (THREAD_ENTRY *thread_p);	/* flush m_recdes_collected to the heap */
+    int reject_row (DB_VALUE *vals, std::int64_t row);	/* ON_ERROR IGNORE: skip the row in error */
 
     OID m_class_oid;
     HFID m_hfid;
@@ -75,6 +77,9 @@ class copy_session : public stream_session
     char m_delimiter;			/* CSV field delimiter (default ',') */
     char m_quote;			/* CSV quote char (default '"') */
     std::string m_null_str;		/* CSV: the unquoted field that reads as NULL (default empty) */
+    bool m_on_error_ignore;		/* CSV: skip a row in error instead of failing (ON_ERROR IGNORE) */
+    std::int64_t m_reject_limit;	/* the most rows ON_ERROR IGNORE may skip; 0 for no limit */
+    std::int64_t m_rows_rejected;	/* rows skipped so far; COPY_REJECTED_ROWS () reports it */
     bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
     bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
     bool m_footer_seen;			/* BINARY: the end-of-data marker has arrived */

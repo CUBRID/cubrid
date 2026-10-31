@@ -1250,6 +1250,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_LAST_INSERT_ID:
     case T_LIST_DBS:
     case T_TRACE_STATS:
+    case T_COPY_REJECTED_ROWS:
     case T_DBTIMEZONE:
     case T_SESSIONTIMEZONE:
     case T_SYS_GUID:
@@ -4303,6 +4304,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       break;
 
+    case T_COPY_REJECTED_ROWS:
+      /* session info is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (session_get_copy_rejected_rows (thread_p, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_WIDTH_BUCKET:
       if (db_width_bucket (arithptr->value, peek_left, peek_right, peek_third, peek_fourth) != NO_ERROR)
 	{
@@ -4569,6 +4580,7 @@ fetch_peek_arith_end:
     case T_DEFINE_VARIABLE:
     case T_EXEC_STATS:
     case T_TRACE_STATS:
+    case T_COPY_REJECTED_ROWS:
       /* random(), drandom() is not constant */
     case T_RAND:
     case T_RANDOM:
