@@ -90,7 +90,7 @@ copy_session::~copy_session ()
 
 int
 copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
-		    int num_cols, int format, int delimiter, int quote, int header, int bulk)
+		    int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -101,6 +101,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
   m_format = format;
   m_delimiter = (delimiter != 0) ? (char) delimiter : ',';
   m_quote = (quote != 0) ? (char) quote : '"';
+  m_null_str = (null_str != NULL) ? null_str : "";
   m_skip_header = (header != 0);
   m_bulk = (bulk != 0);
   m_col_types.assign (col_types, col_types + num_cols);
@@ -275,8 +276,8 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  /* skip a leading header line (HEADER option) before decoding data rows */
 	  bool skip_only = m_skip_header;
 	  error = decode_csv_row (row, row_len, m_col_types.data (), m_col_domains.data (), m_num_cols,
-				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, skip_only, &bytes_consumed,
-				  m_row_number + 1);
+				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, m_null_str, skip_only,
+				  &bytes_consumed, m_row_number + 1);
 	  skipped_header = (skip_only && error == NO_ERROR);
 	}
       else
@@ -624,7 +625,7 @@ copy_session::abort (THREAD_ENTRY *thread_p)
  *
  * COPY config encoding: version (int), table_name (string), num_cols (int),
  * format (int), delimiter (int), quote (int), header (int), bulk (int),
- * col_types (int[num_cols]), attr_ids (int[num_cols]).
+ * [version 2: null_str (string)], col_types (int[num_cols]), attr_ids (int[num_cols]).
  */
 static stream_session *
 copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len, int *error_code)
@@ -641,6 +642,7 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
   int header = 0;
   int bulk = 0;
   int version = 0;
+  char *null_str = NULL;
   DB_TYPE *col_types = NULL;
   int *attr_ids = NULL;
   copy_session *session = NULL;
@@ -696,6 +698,26 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
   ptr = or_unpack_int (ptr, &header);
   ptr = or_unpack_int (ptr, &bulk);
 
+  if (version >= 2)
+    {
+      int null_len;
+
+      if (config_end - ptr < OR_INT_SIZE)
+	{
+	  goto invalid_config;
+	}
+      null_len = OR_GET_INT (ptr);
+      if (null_len <= 0 || null_len > config_end - ptr - OR_INT_SIZE)
+	{
+	  goto invalid_config;
+	}
+      ptr = or_unpack_string_nocopy (ptr, &null_str);
+      if (null_str == NULL || null_str[null_len - 1] != '\0')
+	{
+	  goto invalid_config;
+	}
+    }
+
   if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE / 2 < num_cols)
     {
       goto invalid_config;
@@ -743,7 +765,7 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
       }
 
     *error_code = session->init (thread_p, &class_oid, col_types, attr_ids, num_cols, format, delimiter, quote,
-				 header, bulk);
+				 header, bulk, null_str);
     if (*error_code != NO_ERROR)
       {
 	delete session;

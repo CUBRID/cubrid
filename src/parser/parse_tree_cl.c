@@ -20682,6 +20682,7 @@ pt_apply_copy (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.copy.table_name, arg);
   PT_APPLY_WALK (parser, p->info.copy.column_list, arg);
+  PT_APPLY_WALK (parser, p->info.copy.fmt.csv.null_str, arg);
 
   return p;
 }
@@ -20715,7 +20716,52 @@ pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " FROM STDIN");
     }
 
-  q = pt_append_nulstring (parser, q, " WITH (FORMAT BINARY)");
+  /* The format and every option, so that the printout reads back as the same
+   * statement. A one-character literal that is itself a quote is doubled. */
+  q = pt_append_nulstring (parser, q, (p->info.copy.format == 1) ? " WITH (FORMAT CSV" : " WITH (FORMAT BINARY");
+  if (p->info.copy.fmt.csv.delimiter > 0)
+    {
+      char opt[32];
+
+      if (p->info.copy.fmt.csv.delimiter == '\'')
+	{
+	  snprintf (opt, sizeof (opt), ", DELIMITER ''''");
+	}
+      else
+	{
+	  snprintf (opt, sizeof (opt), ", DELIMITER '%c'", (char) p->info.copy.fmt.csv.delimiter);
+	}
+      q = pt_append_nulstring (parser, q, opt);
+    }
+  if (p->info.copy.fmt.csv.quote > 0)
+    {
+      char opt[32];
+
+      if (p->info.copy.fmt.csv.quote == '\'')
+	{
+	  snprintf (opt, sizeof (opt), ", QUOTE ''''");
+	}
+      else
+	{
+	  snprintf (opt, sizeof (opt), ", QUOTE '%c'", (char) p->info.copy.fmt.csv.quote);
+	}
+      q = pt_append_nulstring (parser, q, opt);
+    }
+  if (p->info.copy.fmt.csv.header)
+    {
+      q = pt_append_nulstring (parser, q, ", HEADER");
+    }
+  if (p->info.copy.fmt.csv.null_str != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", NULL ");
+      r = pt_print_bytes (parser, p->info.copy.fmt.csv.null_str);
+      q = pt_append_varchar (parser, q, r);
+    }
+  if (p->info.copy.bulk)
+    {
+      q = pt_append_nulstring (parser, q, ", BULK");
+    }
+  q = pt_append_nulstring (parser, q, ")");
 
   return q;
 }

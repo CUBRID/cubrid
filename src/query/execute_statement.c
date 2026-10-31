@@ -22723,6 +22723,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity_spec;
   PT_NODE *entity;
   int is_partitioned = 0;
+  const char *null_str = "";	/* CSV: the unquoted field that reads as NULL */
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -22961,6 +22962,13 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  if (statement->info.copy.format != 1 && statement->info.copy.fmt.csv.null_str != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "NULL is only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+
   /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
   if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
     {
@@ -22994,11 +23002,33 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = ER_COPY_INVALID_OPTION;
 	  goto end;
 	}
+
+      /* The NULL string is compared with an unquoted field, which holds no
+       * line terminator and no delimiter, and in which the quote character
+       * would open or close a quoted part. A NULL string the decoder can never
+       * see as one unquoted field would quietly make NULL impossible to write. */
+      if (statement->info.copy.fmt.csv.null_str != NULL)
+	{
+	  PT_NODE *nv = statement->info.copy.fmt.csv.null_str;
+
+	  if (nv->info.value.data_value.str != NULL)
+	    {
+	      null_str = (const char *) nv->info.value.data_value.str->bytes;
+	    }
+	  if (strchr (null_str, '\n') != NULL || strchr (null_str, '\r') != NULL
+	      || strchr (null_str, delim) != NULL || strchr (null_str, quote) != NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		      "NULL cannot contain a line terminator, the DELIMITER or the QUOTE character");
+	      error = ER_COPY_INVALID_OPTION;
+	      goto end;
+	    }
+	}
     }
 
   error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
-			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
+			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk, null_str);
 
 end:
   if (col_types != NULL)

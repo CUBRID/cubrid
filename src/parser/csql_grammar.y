@@ -984,9 +984,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> truncate_stmt
 %type <node> copy_stmt
 %type <number> copy_format
-%type <c4> opt_copy_csv_option_list
-%type <c4> copy_csv_option_list
-%type <c4> copy_csv_option
+%type <c10> opt_copy_csv_option_list
+%type <c10> copy_csv_option_list
+%type <c10> copy_csv_option
 %type <node> do_stmt
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
@@ -4480,7 +4480,7 @@ copy_stmt
 			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
 			if (node)
 			  {
-			    container_4 opt = $10;
+			    container_10 opt = $10;
 			    PT_NODE *delim = CONTAINER_AT_0 (opt);
 			    PT_NODE *quote = CONTAINER_AT_1 (opt);
 			    PT_NODE *bulk = CONTAINER_AT_2 (opt);
@@ -4493,6 +4493,7 @@ copy_stmt
 			    node->info.copy.fmt.csv.delimiter = 0;
 			    node->info.copy.fmt.csv.quote = 0;
 			    node->info.copy.fmt.csv.header = 0;
+			    node->info.copy.fmt.csv.null_str = CONTAINER_AT_4 (opt);
 			    node->info.copy.bulk = 0;
 			    if (bulk != NULL)
 			      {
@@ -4535,8 +4536,8 @@ copy_format
 opt_copy_csv_option_list
 	: /* empty */
 		{{
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, NULL);
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
 			$$ = ctn;
 		}}
 	| ',' copy_csv_option_list
@@ -4552,12 +4553,19 @@ copy_csv_option_list
 		}}
 	| copy_csv_option_list ',' copy_csv_option
 		{{
-			container_4 a = $1;
-			container_4 b = $3;
+			/* each option fills one slot; a later one of the same kind wins */
+			container_10 a = $1;
+			container_10 b = $3;
 			if (CONTAINER_AT_0 (b) != NULL) a.c1 = CONTAINER_AT_0 (b);
 			if (CONTAINER_AT_1 (b) != NULL) a.c2 = CONTAINER_AT_1 (b);
 			if (CONTAINER_AT_2 (b) != NULL) a.c3 = CONTAINER_AT_2 (b);
 			if (CONTAINER_AT_3 (b) != NULL) a.c4 = CONTAINER_AT_3 (b);
+			if (CONTAINER_AT_4 (b) != NULL) a.c5 = CONTAINER_AT_4 (b);
+			if (CONTAINER_AT_5 (b) != NULL) a.c6 = CONTAINER_AT_5 (b);
+			if (CONTAINER_AT_6 (b) != NULL) a.c7 = CONTAINER_AT_6 (b);
+			if (CONTAINER_AT_7 (b) != NULL) a.c8 = CONTAINER_AT_7 (b);
+			if (CONTAINER_AT_8 (b) != NULL) a.c9 = CONTAINER_AT_8 (b);
+			if (CONTAINER_AT_9 (b) != NULL) a.c10 = CONTAINER_AT_9 (b);
 			$$ = a;
 		}}
 	;
@@ -4565,26 +4573,37 @@ copy_csv_option_list
 copy_csv_option
 	: DELIMITER_ char_string_literal
 		{{
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, $2, NULL, NULL, NULL);
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c1 = $2;
 			$$ = ctn;
 		}}
 	| BULK_		/* applies to all formats (not CSV-specific) — enables bulk-load mode */
 		{{
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, NULL, FROM_NUMBER (1), NULL);
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c3 = FROM_NUMBER (1);
 			$$ = ctn;
 		}}
 	| QUOTE_ char_string_literal
 		{{
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, $2, NULL, NULL);
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c2 = $2;
 			$$ = ctn;
 		}}
 	| HEADER
 		{{
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, FROM_NUMBER (1));	/* flag */
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c4 = FROM_NUMBER (1);	/* flag */
+			$$ = ctn;
+		}}
+	| Null char_string_literal	/* the unquoted field that reads as NULL */
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c5 = $2;
 			$$ = ctn;
 		}}
 	;

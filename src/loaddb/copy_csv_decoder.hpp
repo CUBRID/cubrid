@@ -41,6 +41,7 @@
  *   types/ncols(in): expected column types
  *   domains(in): per-column target domain (precision / codeset / collation)
  *   out_vals(out): decoded DB_VALUE array (caller-allocated, size >= ncols)
+ *   null_str(in): the unquoted field that reads as NULL; a quoted one never does
  *   field_storage/quoted(in/out): caller-owned scratch reused per row, and its
  *     buffers are kept between rows rather than freed, so a row in steady state
  *     allocates nothing. VARCHAR out_vals point into field_storage, so it must
@@ -50,7 +51,7 @@
  */
 extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,
 			   int ncols, DB_VALUE *out_vals, std::vector<std::string> &field_storage,
-			   std::vector<char> &quoted, char delimiter, char quote, bool skip_only,
-			   int *bytes_consumed, std::int64_t row);
+			   std::vector<char> &quoted, char delimiter, char quote, const std::string &null_str,
+			   bool skip_only, int *bytes_consumed, std::int64_t row);
 
 #endif /* _COPY_CSV_DECODER_HPP_ */

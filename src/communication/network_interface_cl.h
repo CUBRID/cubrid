@@ -442,6 +442,6 @@ extern int stream_from_release (INT64 handle);
 
 /* COPY FROM STDIN binding over the stream transport */
 extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols,
-			   int format, int delimiter, int quote, int header, int bulk);
+			   int format, int delimiter, int quote, int header, int bulk, const char *null_str);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

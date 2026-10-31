@@ -229,8 +229,8 @@ bad_value:
 int
 decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains, int ncols,
 		DB_VALUE *out_vals, std::vector<std::string> &field_storage,
-		std::vector<char> &quoted, char delimiter, char quote, bool skip_only, int *bytes_consumed,
-		std::int64_t row)
+		std::vector<char> &quoted, char delimiter, char quote, const std::string &null_str, bool skip_only,
+		int *bytes_consumed, std::int64_t row)
 {
   /* 1. find the line terminator that is not inside a quoted field */
   bool in_quotes = false;
@@ -366,10 +366,12 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
       return csv_error (row, -1, "field count mismatch");
     }
 
-  /* 3. coerce each field to its column type (empty unquoted field = NULL) */
+  /* 3. coerce each field to its column type. An unquoted field equal to the NULL
+   * string is NULL -- by default the empty one -- so "" is an empty string and a
+   * quoted NULL string is that text. */
   for (int j = 0; j < ncols; j++)
     {
-      if (!quoted[j] && field_storage[j].empty ())
+      if (!quoted[j] && field_storage[j] == null_str)
 	{
 	  db_make_null (&out_vals[j]);
 	  continue;

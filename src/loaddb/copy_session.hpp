@@ -49,7 +49,7 @@ class copy_session : public stream_session
 
     /* binding-specific open (not part of the stream_session seam) */
     int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
-	      int num_cols, int format, int delimiter, int quote, int header, int bulk);
+	      int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
@@ -74,6 +74,7 @@ class copy_session : public stream_session
     int m_format;			/* COPY_FORMAT_BINARY | COPY_FORMAT_CSV */
     char m_delimiter;			/* CSV field delimiter (default ',') */
     char m_quote;			/* CSV quote char (default '"') */
+    std::string m_null_str;		/* CSV: the unquoted field that reads as NULL (default empty) */
     bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
     bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
     bool m_footer_seen;			/* BINARY: the end-of-data marker has arrived */

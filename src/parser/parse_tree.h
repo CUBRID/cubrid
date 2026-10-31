@@ -3592,6 +3592,7 @@ struct pt_copy_info
       int delimiter;		/* field delimiter char; 0 = default ',' */
       int quote;		/* quote char; 0 = default '"' */
       int header;		/* 1 = skip a leading header line */
+      PT_NODE *null_str;	/* PT_VALUE: the unquoted field that reads as NULL; NULL = the empty field */
     } csv;
   } fmt;
 };
