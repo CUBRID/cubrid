@@ -10153,7 +10153,8 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	  && derived_table->node_type == PT_SELECT && derived_table->info.query.q.select.list != NULL
 	  && derived_table->info.query.q.select.list->node_type != PT_NODE_LIST)
 	{
-	  as_attr_list = pt_pad_attr_list_for_static_sql (parser, as_attr_list, derived_table->info.query.q.select.list);
+	  as_attr_list =
+	    pt_pad_attr_list_for_static_sql (parser, as_attr_list, derived_table->info.query.q.select.list);
 	}
 
       save_custom = parser->custom_print;
