@@ -241,6 +241,22 @@ struct index_skip_scan
   key_range *skipped_range;	/* range used for iterating the distinct values on the first index column */
 };
 
+/* GROUP BY skip aggregated during the scan (CBRD-27664): the executor's state as the index scan sees it */
+typedef struct indx_gby_skip INDX_GBY_SKIP;
+struct indx_gby_skip
+{
+  /* S1 (covered): the B-tree hands each selected object to visit () instead of the covering list. key_start is true
+   * for the first object of a key record; stop (out) ends the scan. */
+  int (*visit) (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * stop);
+  void *visit_arg;
+  /* K: batch positions where a key record starts, ascending; the B-tree fills them, scan_next consumes them */
+  int *key_starts;
+  int key_start_cnt;
+  int key_start_cap;
+  int key_start_next;		/* the first mark the delivered rows have not reached */
+  bool key_start;		/* set when a delivered row passed a mark; the executor clears it */
+};
+
 /* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
@@ -293,6 +309,7 @@ struct indx_scan_id
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
    * the spec is not eligible for parallel index scan. Owned by the scan_id. */
   void *parallel_pending;
+  INDX_GBY_SKIP *gby_skip;	/* GROUP BY skip aggregated during the scan; NULL otherwise. Owned by the executor */
 };
 
 struct parallel_index_scan_id
@@ -342,6 +359,7 @@ struct parallel_index_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
+  INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   /* parallel-only fields (must follow all isid fields) */
   // *INDENT-OFF*
   #if !WINDOWS
@@ -368,6 +386,7 @@ static_assert (offsetof (INDX_SCAN_ID, multi_range_opt)  == offsetof (PARALLEL_I
 static_assert (offsetof (INDX_SCAN_ID, iss)              == offsetof (PARALLEL_INDEX_SCAN_ID, iss),              "pisid mirror: iss");
 static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order)  == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),  "pisid mirror: iscan_oid_order");
 static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending), "pisid mirror: parallel_pending");
+static_assert (offsetof (INDX_SCAN_ID, gby_skip)         == offsetof (PARALLEL_INDEX_SCAN_ID, gby_skip),         "pisid mirror: gby_skip");
 #if !WINDOWS
 static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
 	       "pisid parallel-only fields must follow all isid fields");
@@ -484,6 +503,9 @@ struct scan_id_struct
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
   bool mvcc_select_lock_needed;	/* true if lock at scanning needed in mvcc */
+  bool upddel_target_scan;	/* the row locks are the statement's: the outermost READ COMMITTED DELETE/UPDATE
+				 * target, not SELECT ... FOR UPDATE.  Kept across a partition switch. */
+  bool lock_ends_with_statement;	/* the same, narrowed by the class this scan is on now */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
@@ -532,7 +554,8 @@ struct scan_id_struct
 
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
-				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+				bool mvcc_select_lock_needed, bool upddel_target_scan,
+				SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 				QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				val_descr * vd,
 				/* fields of HEAP_SCAN_ID */
@@ -558,7 +581,8 @@ extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id
 				      ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest);
 extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 /* fields of SCAN_ID */
-				 bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+				 bool mvcc_select_lock_needed, bool upddel_target_scan,
+				 SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 				 QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				 val_descr * vd,
 				 /* fields of INDX_SCAN_ID */

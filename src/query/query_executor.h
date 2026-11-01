@@ -197,6 +197,13 @@ extern int qexec_execute_dptr_list (THREAD_ENTRY * thread_p, xasl_node * dptr_li
 extern void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, xasl_node * xasl_list);
 extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl,
 							XASL_STATE * xasl_state, bool not_use_membuf);
+/* GROUP BY skip in a parallel scan (CBRD-27664): a worker's partial aggregates, handed to the leader's merge */
+extern int qexec_gby_skip_open_worker (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state);
+extern int qexec_gby_skip_worker_row (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state);
+extern int qexec_gby_skip_end_worker (THREAD_ENTRY * thread_p, xasl_node * xasl, QFILE_LIST_ID *** runs, int *run_cnt,
+				      INT64 * rows);
+extern int qexec_gby_skip_adopt_runs (THREAD_ENTRY * thread_p, xasl_node * xasl, QFILE_LIST_ID ** runs, int run_cnt,
+				      INT64 rows);
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);

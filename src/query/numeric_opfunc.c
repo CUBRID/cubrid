@@ -4193,6 +4193,45 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 }
 
 /*
+ * float_numeric_normalize_for_sort() - Normalize a NUMERIC value for a sort key
+ *   return: the decimal exponent e of the value as 0.M x 10^e, offset by DB_MAX_NUMERIC_SCALE
+ *           so that it is 1 at the least, or 0 for a zero value
+ *   num(in)       : original numeric value
+ *   scale(in)     : scale of the input
+ *   mantissa(out) : M, the value made DB_MAX_NUMERIC_PRECISION digits long (size: DB_NUMERIC_BUF_SIZE)
+ *
+ * Note:
+ *   - Equivalent numeric values (e.g., 1.0 and 1.00) result in one exponent and mantissa.
+ *   - The exponent then the mantissa, compared as unsigned, order the values by magnitude.
+ */
+int
+float_numeric_normalize_for_sort (DB_C_NUMERIC num, int scale, uint8_t * mantissa)
+{
+  uint64_t word_buf[NUMERIC_AS_WORDS] = { 0 };
+  int digits;
+
+  numeric_bytes_to_words (num, DB_NUMERIC_BUF_SIZE, word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
+  if ((word_buf[0] | word_buf[1] | word_buf[2]) == 0)
+    {
+      memset (mantissa, 0, DB_NUMERIC_BUF_SIZE);
+      return 0;
+    }
+
+  digits = float_numeric_get_decimal_digit (word_buf, NUMERIC_AS_WORDS);
+
+  /* multiply by 10 up to DB_MAX_NUMERIC_PRECISION(40) digits, so 10^39 <= M < 10^40 */
+  if (digits < DB_MAX_NUMERIC_PRECISION)
+    {
+      (void) float_numeric_mul_normalize (word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
+					  DB_MAX_NUMERIC_PRECISION - digits);
+    }
+
+  numeric_words_to_bytes (word_buf, NUMERIC_AS_WORDS, mantissa);
+
+  return digits - scale + DB_MAX_NUMERIC_SCALE;
+}
+
+/*
  * numeric_sum_acc_load_dbv () - load a NUMERIC value and activate the accumulator
  *   acc(in/out) : accumulator; activated
  *   dbv(in)     : NUMERIC value to load
