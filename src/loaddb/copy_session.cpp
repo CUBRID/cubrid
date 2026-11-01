@@ -517,24 +517,29 @@ cleanup:
  *                         takes them
  *
  * The server's error log is where the reason for a skipped row can be found;
- * the client is told only how many. The first COPY_REJECTS_LOGGED are logged.
+ * the client is told only how many. The first COPY_REJECTS_LOGGED are logged,
+ * and the row past REJECT_LIMIT.
  */
 int
 copy_session::reject_row (DB_VALUE *vals, std::int64_t row, int col, const char *reason)
 {
   m_rows_rejected++;
-  if (m_reject_limit > 0 && m_rows_rejected > m_reject_limit)
+  const bool over_limit = (m_reject_limit > 0 && m_rows_rejected > m_reject_limit);
+
+  /* the row that ends the COPY is logged whatever its number: the limit error
+   * the client gets names the row, not why it was refused */
+  if (m_rows_rejected <= COPY_REJECTS_LOGGED || over_limit)
+    {
+      (void) copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, col, reason);
+    }
+
+  if (over_limit)
     {
       char limit_reason[96];
 
       snprintf (limit_reason, sizeof (limit_reason), "more than REJECT_LIMIT %lld rows rejected",
 		(long long) m_reject_limit);
       return copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, -1, limit_reason);
-    }
-
-  if (m_rows_rejected <= COPY_REJECTS_LOGGED)
-    {
-      (void) copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, col, reason);
     }
   er_clear ();
   for (int i = 0; i < m_num_cols; i++)
@@ -698,6 +703,8 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
   result->count = m_rows_loaded;
   (void) session_set_copy_rejected_rows (thread_p, m_rows_rejected);
 
+  /* Only a COPY that completes says how many reasons went unlogged. One that
+   * fails loads nothing, and its error is the last line logged. */
   if (m_rows_rejected > COPY_REJECTS_LOGGED)
     {
       char msg[128];
