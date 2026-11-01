@@ -478,6 +478,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_tran_table.c
   ${WRITESET_DIR}/writeset.cpp
   ${WRITESET_DIR}/writeset_stat.cpp
+  ${WRITESET_DIR}/writeset_key_hash.cpp
   ${WRITESET_DIR}/writeset_history_map.cpp
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
@@ -514,6 +515,7 @@ set(TRANSACTION_HEADERS
   ${WRITESET_DIR}/writeset_history.hpp
   ${WRITESET_DIR}/writeset_history_map.hpp
   ${WRITESET_DIR}/writeset_stat.hpp
+  ${WRITESET_DIR}/writeset_key_hash.hpp
   ${WRITESET_DIR}/writeset_types.hpp
   ${TRANSACTION_DIR}/mvcc.h
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
