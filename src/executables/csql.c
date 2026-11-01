@@ -1023,7 +1023,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
 
-	  if (!csql_Is_interactive && csql_edit_contents_get ()[0] != '\0')
+	  if (!csql_Is_interactive && csql_Edit_start_line_no > 0 && csql_edit_contents_get ()[0] != '\0')
 	    {
 	      /* a session command line is not put into the buffer, but the lexer has to count it */
 	      if (csql_edit_contents_append ("", true) != CSQL_SUCCESS)
@@ -1255,6 +1255,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
     case S_CMD_READ:		/* read a file */
       csql_read_file (argument);
+      /* the buffer lines no longer match the input lines */
+      csql_Edit_start_line_no = 0;
       break;
 
     case S_CMD_WRITE:		/* write to a file */
@@ -1285,6 +1287,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_EDIT:		/* invoke system editor */
+      /* the buffer lines no longer match the input lines */
+      csql_Edit_start_line_no = 0;
       if (csql_invoke_system_editor ((argument[0] == '\0') ? NULL : argument) != CSQL_SUCCESS)
 	{
 	  return DO_CMD_FAILURE;
@@ -2278,10 +2282,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     {
       csql_yyset_lineno (1);
     }
-  else if (type == EDITOR_INPUT && csql_Edit_start_line_no > 0)
+  else if (type == EDITOR_INPUT)
     {
-      /* includes the ;run and ;xrun session commands, which pass -1 as line_no */
-      csql_yyset_lineno (csql_Edit_start_line_no);
+      /* includes the ;run and ;xrun session commands, which pass -1 as line_no.
+       * a buffer loaded by ;read or ;edit is counted from its own first line. */
+      csql_yyset_lineno (csql_Edit_start_line_no > 0 ? csql_Edit_start_line_no : 1);
     }
 
   if (type == FILE_INPUT)
