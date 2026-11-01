@@ -28,15 +28,26 @@
 
 #include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
 #include "dbtype_def.h"
-#include <cstdint>
 
 #include <string>
 #include <vector>
 
 /*
+ * Where a CSV row failed and why. The decoder raises nothing: only its caller
+ * knows whether the row ends the COPY or ON_ERROR IGNORE skips it, and a
+ * skipped row is not always logged.
+ */
+struct copy_row_error
+{
+  int col;			/* 0-based column, or -1 for the row as a whole */
+  const char *reason;		/* a string literal */
+};
+
+/*
  * decode_csv_row () - Decode one CSV record from a text buffer.
  *   return: NO_ERROR, COPY_DECODE_NEED_MORE (no complete line yet), or
- *           ER_COPY_CSV_FORMAT_ERROR.
+ *           ER_COPY_CSV_FORMAT_ERROR, which is not raised: row_error says
+ *           where and why, for copy_format_error ().
  *   buf/buf_len(in): remaining text
  *   types/ncols(in): expected column types
  *   domains(in): per-column target domain (precision / codeset / collation)
@@ -46,12 +57,13 @@
  *     buffers are kept between rows rather than freed, so a row in steady state
  *     allocates nothing. VARCHAR out_vals point into field_storage, so it must
  *     outlive the row's insert. Only the first ncols entries are meaningful.
- *   bytes_consumed(out): bytes consumed (including the line terminator)
- *   row(in): this row's 1-based position in the stream, for the error message
+ *   bytes_consumed(out): bytes consumed (including the line terminator); set
+ *     whenever the line was found, so also for a row in error
+ *   row_error(out): set when ER_COPY_CSV_FORMAT_ERROR is returned
  */
 extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,
 			   int ncols, DB_VALUE *out_vals, std::vector<std::string> &field_storage,
 			   std::vector<char> &quoted, char delimiter, char quote, const std::string &null_str,
-			   bool skip_only, int *bytes_consumed, std::int64_t row);
+			   bool skip_only, int *bytes_consumed, copy_row_error *row_error);
 
 #endif /* _COPY_CSV_DECODER_HPP_ */

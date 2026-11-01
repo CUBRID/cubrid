@@ -61,6 +61,12 @@ static const std::size_t COPY_MAX_ROW_BYTES = 64 * 1024 * 1024;
  * copies instead of copying the whole chunk. */
 static const std::size_t COPY_CARRY_STEP = 4 * 1024;
 
+/* rejected rows whose reason ON_ERROR IGNORE writes to the server's error log.
+ * A stream whose every row fails -- one sent with the wrong DELIMITER -- would
+ * otherwise log a line per row, some 300 bytes each, and rotate the log past
+ * everything else in it; finish () notes how many went unlogged. */
+static const std::int64_t COPY_REJECTS_LOGGED = 100;
+
 /* savepoint taken when the session opens; the whole COPY is undone to it when the
  * stream fails, so a failed COPY leaves no rows behind */
 static const char COPY_SAVEPOINT_NAME[] = "cOPYfROMsTDIN";
@@ -276,6 +282,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
   while (pos < data_len || !m_leftover.empty ())
     {
       int bytes_consumed = 0;
+      copy_row_error row_error = { -1, NULL };
       bool skipped_header = false;
       /* a carried row is decoded from m_leftover; every other row in place */
       const bool from_carry = !m_leftover.empty ();
@@ -289,7 +296,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  bool skip_only = m_skip_header;
 	  error = decode_csv_row (row, row_len, m_col_types.data (), m_col_domains.data (), m_num_cols,
 				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, m_null_str, skip_only,
-				  &bytes_consumed, m_row_number + 1);
+				  &bytes_consumed, &row_error);
 	  skipped_header = (skip_only && error == NO_ERROR);
 	}
       else
@@ -380,15 +387,22 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  break;
 	}
 
-      /* A CSV decoder error comes after the decoder found the row's line
-       * terminator, so with ON_ERROR IGNORE the stream goes on after it. */
+      /* The CSV decoder leaves the error to be raised here, where it is known
+       * whether the row ends the COPY. Its errors come after it found the row's
+       * line terminator, so with ON_ERROR IGNORE the stream goes on after it. */
       if (error != NO_ERROR)
 	{
-	  if (!m_on_error_ignore || bytes_consumed <= 0)
+	  if (m_format != COPY_FORMAT_CSV)
 	    {
 	      goto cleanup;
 	    }
-	  error = reject_row (vals, m_row_number + 1);
+	  assert (error == ER_COPY_CSV_FORMAT_ERROR && row_error.reason != NULL);
+	  if (!m_on_error_ignore || bytes_consumed <= 0)
+	    {
+	      error = copy_format_error (ER_COPY_CSV_FORMAT_ERROR, m_row_number + 1, row_error.col, row_error.reason);
+	      goto cleanup;
+	    }
+	  error = reject_row (vals, m_row_number + 1, row_error.col, row_error.reason);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -419,13 +433,14 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  }
 	if (null_col >= 0)
 	  {
-	    error = copy_format_error ((m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR
-				       : ER_COPY_BINARY_FORMAT_ERROR, m_row_number, null_col, "NULL in a NOT NULL column");
 	    if (!m_on_error_ignore)
 	      {
+		error = copy_format_error ((m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR
+					   : ER_COPY_BINARY_FORMAT_ERROR, m_row_number, null_col,
+					   "NULL in a NOT NULL column");
 		goto cleanup;
 	      }
-	    error = reject_row (vals, m_row_number);
+	    error = reject_row (vals, m_row_number, null_col, "NULL in a NOT NULL column");
 	    if (error != NO_ERROR)
 	      {
 		goto cleanup;
@@ -494,27 +509,33 @@ cleanup:
 }
 
 /*
- * reject_row () - Skip a row under ON_ERROR IGNORE, whose error is the current one.
+ * reject_row () - Skip a row under ON_ERROR IGNORE.
  *   return: NO_ERROR to go on with the next row, or the error that ends the COPY
  *           once more rows than REJECT_LIMIT have been rejected
  *   vals(in/out): the row's values, cleared for the next row
- *   row(in): the row's position in the stream
+ *   row, col, reason(in): where the row failed and why, as copy_format_error ()
+ *                         takes them
  *
- * The row's error has already gone to the server's error log, which is where the
- * reason for each skipped row can be found; the client is told only how many.
+ * The server's error log is where the reason for a skipped row can be found;
+ * the client is told only how many. The first COPY_REJECTS_LOGGED are logged.
  */
 int
-copy_session::reject_row (DB_VALUE *vals, std::int64_t row)
+copy_session::reject_row (DB_VALUE *vals, std::int64_t row, int col, const char *reason)
 {
   m_rows_rejected++;
   if (m_reject_limit > 0 && m_rows_rejected > m_reject_limit)
     {
-      char reason[96];
+      char limit_reason[96];
 
-      snprintf (reason, sizeof (reason), "more than REJECT_LIMIT %lld rows rejected", (long long) m_reject_limit);
-      return copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, -1, reason);
+      snprintf (limit_reason, sizeof (limit_reason), "more than REJECT_LIMIT %lld rows rejected",
+		(long long) m_reject_limit);
+      return copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, -1, limit_reason);
     }
 
+  if (m_rows_rejected <= COPY_REJECTS_LOGGED)
+    {
+      (void) copy_format_error (ER_COPY_CSV_FORMAT_ERROR, row, col, reason);
+    }
   er_clear ();
   for (int i = 0; i < m_num_cols; i++)
     {
@@ -676,6 +697,16 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 
   result->count = m_rows_loaded;
   (void) session_set_copy_rejected_rows (thread_p, m_rows_rejected);
+
+  if (m_rows_rejected > COPY_REJECTS_LOGGED)
+    {
+      char msg[128];
+
+      snprintf (msg, sizeof (msg), "%lld rows rejected, the reasons of the first %lld logged",
+		(long long) m_rows_rejected, (long long) COPY_REJECTS_LOGGED);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, msg);
+      er_clear ();
+    }
   return NO_ERROR;
 }
 
