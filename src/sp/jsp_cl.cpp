@@ -3866,6 +3866,10 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  // a system class name is left unqualified (see pt_set_user_specified_name ()),
 	  // and no package can have it (see pt_check_create_package ())
 	  assert (sm_check_system_class_by_name (unique_name));
+	  if (statement->info.pkg.if_exists)
+	    {
+	      continue;
+	    }
 	  err = statement->info.pkg.for_body ? ER_PKG_BODY_NOT_EXIST : ER_PKG_NOT_EXIST;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
 	  goto error_exit;
@@ -3910,7 +3914,7 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  if (!statement->info.pkg.for_body)    // if it is dropping the spec
+	  if (!statement->info.pkg.for_body && !statement->info.pkg.if_exists)    // if it is dropping the spec
 	    {
 	      err = ER_PKG_NOT_EXIST;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
@@ -3933,16 +3937,31 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
       unique_name = downcased;
 
       owner_name[0] = '\0';
-      sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
+      if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	{
+	  assert (statement->info.pkg.if_exists);   // a system class name: see the validation above
+	  continue;
+	}
       owner_mop = db_find_user (owner_name);
 
       if (statement->info.pkg.for_body)
 	{
 	  err = jsp_drop_pkg_body (parser, unique_name, owner_name, owner_mop);
+	  if (err == ER_PKG_BODY_NOT_EXIST && statement->info.pkg.if_exists)
+	    {
+	      er_clear ();
+	      err = NO_ERROR;
+	      continue;
+	    }
 	}
       else
 	{
 	  pkg_mop = jsp_find_pkg (unique_name);
+	  if (pkg_mop == NULL)
+	    {
+	      assert (statement->info.pkg.if_exists);   // see the validation above
+	      continue;
+	    }
 	  err = jsp_drop_pkg (unique_name, pkg_mop, owner_mop);
 	}
 
