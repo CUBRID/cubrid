@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
 import com.cubrid.plcsql.compiler.ast.NodeList;
 import java.io.PrintStream;
 import java.util.HashMap;
@@ -143,16 +144,23 @@ public class Misc {
         assert ctx != null;
         int children = ctx.getChildCount();
 
-        if (children <= 1) {
-            return peelId(ctx.getText().toUpperCase(Locale.ROOT));
+        if (ctx instanceof TerminalNode) {
+
+            Token token = ((TerminalNode) ctx).getSymbol();
+            if (token.getType() == PlcLexer.CHAR_STRING) {
+                return ctx.getText();
+            } else {
+                return peelId(ctx.getText().toUpperCase(Locale.ROOT));
+            }
         } else {
+
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < children; i++) {
                 if (i > 0 && separate) {
                     sbuf.append(' ');
                 }
                 ParseTree child = ctx.getChild(i);
-                sbuf.append(getNormalizedText(child));
+                sbuf.append(getNormalizedText(child, separate));
             }
             return sbuf.toString();
         }

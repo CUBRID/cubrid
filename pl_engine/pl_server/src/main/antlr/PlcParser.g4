@@ -60,14 +60,16 @@ create_routine
     ;
 
 routine_decl
+    : routine_header
+      ((IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body)?
+      (COMMENT CHAR_STRING)? (SEMICOLON)?
+    ;
+
+routine_header
     : PROCEDURE uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN )
       (authid_spec | deterministic_spec | parallel_enable_spec)*
-      ((IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body)?
-      (COMMENT CHAR_STRING)? (SEMICOLON)?
     | FUNCTION uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) RETURN type_spec
       (authid_spec | deterministic_spec | parallel_enable_spec)*
-      ((IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body)?
-      (COMMENT CHAR_STRING)? (SEMICOLON)?
     ;
 
 uniq_name

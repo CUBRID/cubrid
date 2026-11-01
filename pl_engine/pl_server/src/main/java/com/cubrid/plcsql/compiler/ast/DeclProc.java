@@ -87,29 +87,11 @@ public class DeclProc extends DeclRoutine {
                 directive,
                 null,
                 null,
-                new Body());
+                null);
     }
 
     @Override
     public String kind() {
         return "procedure";
-    }
-
-    @Override
-    public boolean givesBodyOf(Decl d) {
-
-        if (d == null || d.getClass() != DeclProc.class) {
-            return false;
-        }
-
-        DeclProc other = (DeclProc) d;
-
-        // name and parameters must be the same
-        if (!this.name.equals(other.name) || !this.paramList.equals(other.paramList)) {
-            return false;
-        }
-
-        // this must have a body and the other may not
-        return (this.body != null && other.body == null);
     }
 }

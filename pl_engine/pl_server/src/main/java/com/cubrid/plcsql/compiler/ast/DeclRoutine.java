@@ -32,11 +32,15 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -45,6 +49,16 @@ public abstract class DeclRoutine extends Decl {
 
     public static final int DIRECTIVE_AUTHID_CALLER = 1;
     public static final int DIRECTIVE_DETERMINISTIC = (1 << 1);
+
+    public String getHeaderString() {
+
+        if (ctx == null) {
+            return null;
+        }
+
+        assert ctx instanceof PlcParser.Routine_declContext;
+        return Misc.getNormalizedText(((PlcParser.Routine_declContext) ctx).routine_header());
+    }
 
     // not contained in a loop but reachable from it including the case of (mutually) recursive
     // calls
@@ -275,5 +289,34 @@ public abstract class DeclRoutine extends Decl {
         } else {
             return retTypeSpec.type.dbType;
         }
+    }
+
+    private boolean hasBodyText() {
+        return ((PlcParser.Routine_declContext) ctx).body() != null;
+    }
+
+    @Override
+    public boolean givesBodyOf(Decl d) {
+
+        if (d == null || this.getClass() != d.getClass() || !this.name.equals(d.name)) {
+            return false;
+        }
+
+        DeclRoutine other = (DeclRoutine) d;
+
+        // this must have a body and the other may not
+        if (!this.hasBodyText() || other.hasBodyText()) {
+            return false;
+        }
+
+        if (!Objects.equals(this.getHeaderString(), other.getHeaderString())) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(this.ctx), // s114
+                    String.format(
+                            "the header of %s %s in the package body does not match that in the package specification",
+                            kind(), name));
+        }
+
+        return true;
     }
 }

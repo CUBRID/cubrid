@@ -382,7 +382,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (ctx.routine_decl().body() == null) {
             // syntax allows this for the routine forward decl in a package. but
             // it is an error in CREATE PROCEDURE/FUNCTION statements
-            String kind = ctx.routine_decl().PROCEDURE() != null ? "PROCEDURE" : "FUNCTION";
+            String kind =
+                    ctx.routine_decl().routine_header().PROCEDURE() != null
+                            ? "PROCEDURE"
+                            : "FUNCTION";
             throw new SemanticError( // s109
                     Misc.getLineColumnOf(ctx),
                     "CREATE " + kind + " must have a body of statements");
@@ -1680,8 +1683,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         routineDefNestLevel++;
         try {
-            String name = Misc.getNormalizedText(ctx.uniq_name().name);
-            boolean isFunction = (ctx.PROCEDURE() == null);
+            String name = Misc.getNormalizedText(ctx.routine_header().uniq_name().name);
+            boolean isFunction = (ctx.routine_header().PROCEDURE() == null);
 
             DeclRoutine ret =
                     isFunction ? symbolStack.getDeclFunc(name) : symbolStack.getDeclProc(name);
@@ -1702,7 +1705,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
             // put the parameters to the symbol table and visit their default values
-            NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+            NodeList<DeclParam> paramList =
+                    visitParameter_list(ctx.routine_header().parameter_list());
             for (int i = 0; i < paramList.nodes.size(); i++) {
                 DeclParam dp = paramList.nodes.get(i);
                 if (dp instanceof DeclParamIn) {
@@ -3472,58 +3476,71 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         previsiting = true;
         try {
 
-            String name = Misc.getNormalizedText(ctx.uniq_name().name);
+            String name = Misc.getNormalizedText(ctx.routine_header().uniq_name().name);
 
             boolean isPublic = false;
             if (scopeLevel > DECL_TOP_LEVEL) {
 
                 // local procedure/function
 
+                if (ctx.body() == null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s116
+                            "local procedures and functions must have a body");
+                }
                 if (ctx.LANGUAGE() != null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
                             "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
                 }
-                if (!ctx.authid_spec().isEmpty()) {
+                if (!ctx.routine_header().authid_spec().isEmpty()) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.authid_spec().get(0)), // s084
+                            Misc.getLineColumnOf(ctx.routine_header().authid_spec().get(0)), // s084
                             "illegal keyword AUTHID for a local procedure/function");
                 }
-                if (!ctx.parallel_enable_spec().isEmpty()) {
+                if (!ctx.routine_header().parallel_enable_spec().isEmpty()) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.parallel_enable_spec().get(0)), // s440
+                            Misc.getLineColumnOf(
+                                    ctx.routine_header().parallel_enable_spec().get(0)), // s440
                             "illegal keyword PARALLEL_ENABLE for a local procedure/function");
                 }
-                if (ctx.uniq_name().owner != null) {
+                if (ctx.routine_header().uniq_name().owner != null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.uniq_name().owner), // s085
+                            Misc.getLineColumnOf(ctx.routine_header().uniq_name().owner), // s085
                             "owner specification is not allowed for local procedures/functions");
                 }
                 if (ctx.COMMENT() != null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx), // s103
+                            Misc.getLineColumnOf(ctx.COMMENT()), // s103
                             "comment is not allowed for local procedures/functions");
                 }
             } else {
 
                 assert scopeLevel == DECL_TOP_LEVEL;
 
+                if (ctx.body() == null && topLevelStmt != CREATE_PKG_SPEC) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s117
+                            "procedures and functions not in a package specification must have a body");
+                }
+
                 // The option list accepts the specifications in any order and any number, so
                 // reject repetitions here. A local routine does not need these two checks: it
                 // rejects AUTHID and PARALLEL_ENABLE outright above.
-                if (ctx.authid_spec().size() > 1) {
+                if (ctx.routine_header().authid_spec().size() > 1) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.authid_spec().get(1)), // s441
+                            Misc.getLineColumnOf(ctx.routine_header().authid_spec().get(1)), // s441
                             "AUTHID is specified more than once");
                 }
-                if (ctx.parallel_enable_spec().size() > 1) {
+                if (ctx.routine_header().parallel_enable_spec().size() > 1) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.parallel_enable_spec().get(1)), // s443
+                            Misc.getLineColumnOf(
+                                    ctx.routine_header().parallel_enable_spec().get(1)), // s443
                             "PARALLEL_ENABLE is specified more than once");
                 }
 
-                if (ctx.uniq_name().owner != null) {
-                    String owner = Misc.getNormalizedText(ctx.uniq_name().owner);
+                if (ctx.routine_header().uniq_name().owner != null) {
+                    String owner = Misc.getNormalizedText(ctx.routine_header().uniq_name().owner);
                     assert owner.equals(unitOwner);
                 }
 
@@ -3533,34 +3550,37 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 isPublic = (topLevelStmt == CREATE_SP || topLevelStmt == CREATE_PKG_SPEC);
 
-                if (!ctx.parallel_enable_spec().isEmpty()) {
+                if (!ctx.routine_header().parallel_enable_spec().isEmpty()) {
                     parallelEnabled = true;
                 }
             }
 
             // DETERMINISTIC is allowed for a local routine as well, so check its repetition for
             // both
-            if (ctx.deterministic_spec().size() > 1) {
+            if (ctx.routine_header().deterministic_spec().size() > 1) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.deterministic_spec().get(1)), // s442
+                        Misc.getLineColumnOf(
+                                ctx.routine_header().deterministic_spec().get(1)), // s442
                         "DETERMINISTIC is specified more than once");
             }
 
             // push a temporary symbol table, in order not to corrupt the current symbol table with
             // the parameters
             symbolStack.pushSymbolTable("temp", null);
-            NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+            NodeList<DeclParam> paramList =
+                    visitParameter_list(ctx.routine_header().parameter_list());
             symbolStack.popSymbolTable();
 
             int directive = 0;
             {
                 // authid
-                if (!ctx.authid_spec().isEmpty() && ctx.authid_spec(0).authid_caller() != null) {
+                if (!ctx.routine_header().authid_spec().isEmpty()
+                        && ctx.routine_header().authid_spec(0).authid_caller() != null) {
                     directive |= DeclRoutine.DIRECTIVE_AUTHID_CALLER;
                 }
                 // deterministic or not
-                if (!ctx.deterministic_spec().isEmpty()
-                        && ctx.deterministic_spec(0).NOT() == null) {
+                if (!ctx.routine_header().deterministic_spec().isEmpty()
+                        && ctx.routine_header().deterministic_spec(0).NOT() == null) {
                     directive |= DeclRoutine.DIRECTIVE_DETERMINISTIC;
                 }
             }
@@ -3570,9 +3590,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 comment = Misc.peelCharString(ctx.CHAR_STRING().getText());
             }
 
-            if (ctx.PROCEDURE() == null) {
+            if (ctx.routine_header().PROCEDURE() == null) {
                 // function
-                if (ctx.RETURN() == null) {
+                if (ctx.routine_header().RETURN() == null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s050
                             "function " + name + " must specify its return type");
@@ -3581,7 +3601,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 TypeSpec retTypeSpec;
                 try {
                     typeVisitMode = TYPE_VISIT_RETURN;
-                    retTypeSpec = (TypeSpec) visit(ctx.type_spec());
+                    retTypeSpec = (TypeSpec) visit(ctx.routine_header().type_spec());
                 } finally {
                     typeVisitMode = TYPE_VISIT_NORMAL;
                 }
@@ -3600,7 +3620,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 symbolStack.putDecl(name, ret);
             } else {
                 // procedure
-                if (ctx.RETURN() != null) {
+                if (ctx.routine_header().RETURN() != null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s051
                             "procedure " + name + " may not specify a return type");
