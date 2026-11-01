@@ -70,6 +70,22 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    // What the direct calls in a single activation of a generated routine have looked up, in two
+    // slot spaces. See the comment above JavaCodeWriter.hasDirectCalls().
+    public static class DirectCallCache {
+        public final boolean[] authChecked;
+        public final String[] ownerName;
+        public final Class<?>[] targetClass;
+        public final Method[] method;
+
+        public DirectCallCache(int classSlots, int methodSlots) {
+            authChecked = new boolean[classSlots];
+            ownerName = new String[classSlots];
+            targetClass = new Class<?>[classSlots];
+            method = new Method[methodSlots];
+        }
+    }
+
     public static Method reflectMethod(
             Class<?> klass, String methodName, Class<?>... paramClasses) {
 

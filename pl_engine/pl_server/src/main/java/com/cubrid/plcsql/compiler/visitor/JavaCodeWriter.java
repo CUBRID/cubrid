@@ -89,7 +89,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     // Maps the generated Java class name of each directly-referenced PL/CSQL routine/package to a
-    // slot in this unit's static boolean[] authChecked. A call site sets its slot once its runtime
+    // slot in authChecked of a DirectCallCache. A call site sets its slot once its runtime
     // EXECUTE check has passed, so the check is performed only once per activation.
     private final Map<String, Integer> authCheckedIndex;
     private final Map<String, Integer> methodIndex;
@@ -105,7 +105,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         this.unitOwner = unitOwner;
     }
 
-    // Per-invocation caches of what a direct call needs, in two slot spaces.
+    // Per-activation cache of what a direct call needs (SpLib.DirectCallCache), in two slot spaces.
     //
     //   class slot (authCheckedIndex, one per directly-referenced class)
     //     authChecked - has the runtime EXECUTE check already passed? A false element means 'not
@@ -117,38 +117,73 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //     method      - the reflected method in targetClass. A package class holds several
     //                   routines, hence a slot space finer than the class one.
     //
-    // Both are emitted only when the unit has direct calls, and both live for a single activation
-    // (see getAuthCheckedClear).
-    private Object getAuthCheckedDecl() {
-        int n = authCheckedIndex.size();
-        if (n == 0) {
-            assert methodIndex.isEmpty();
+    // The cache is not a static member of the unit class, which the activations in the parallel
+    // workers of a session would share (they share the class loader). Instead,
+    //   - the SP's method and every public package member create one in a local variable dcc at
+    //     their entry, so the cache lives for a single activation: a grant change is picked up on
+    //     the next call,
+    //   - a private package member takes the caller's one as its first parameter dcc,
+    //   - local routines see the dcc of the enclosing method,
+    //   - the initial values of package variables/constants and the package initializer, which
+    //     run in the class initialization, use the static dccInit. The JVM initializes a class
+    //     only once, so no two activations share it.
+    // None of them is emitted when the unit has no direct calls.
+    private boolean hasDirectCalls() {
+        assert !authCheckedIndex.isEmpty() || methodIndex.isEmpty();
+        return !authCheckedIndex.isEmpty();
+    }
+
+    // name of the variable that holds the cache in the code being generated
+    private String dccVar = "dcc";
+
+    private String getDirectCallCacheAlloc() {
+        return "new DirectCallCache(" + authCheckedIndex.size() + ", " + methodIndex.size() + ")";
+    }
+
+    private Object getDirectCallCacheNew() {
+        if (!hasDirectCalls()) {
             return "";
         }
+        return "final DirectCallCache dcc = " + getDirectCallCacheAlloc() + ";";
+    }
 
-        javaTypesUsed.add("java.lang.reflect.Method");
+    private Object getDirectCallCacheInitDecl() {
+        if (!hasDirectCalls()) {
+            return "";
+        }
+        return "private static DirectCallCache dccInit = " + getDirectCallCacheAlloc() + ";";
+    }
+
+    // placed after all the static initialization code of a package
+    private Object getDirectCallCacheInitRelease() {
+        if (!hasDirectCalls()) {
+            return "";
+        }
         return new String[] {
-            "private static final boolean[] authChecked = new boolean[" + n + "];",
-            "private static final String[] ownerName = new String[" + n + "];",
-            "private static final Class<?>[] targetClass = new Class[" + n + "];",
-            "private static final Method[] method = new Method[" + methodIndex.size() + "];",
+            "static {",
+            "  dccInit = null; // not to keep the classes it refers to reachable",
+            "}"
         };
     }
 
-    // Clears the runtime EXECUTE-check cache. Emitted at the entry of each top-level static method
-    // (the SP's method and every package member), so the cache lives for a single activation of the
-    // routine: a grant change is picked up on the next call. Local routines do not clear it (their
-    // caller's activation still owns the cache). Empty when the unit has no direct calls.
-    private Object getAuthCheckedClear() {
-        if (authCheckedIndex.isEmpty()) {
+    private boolean takesDirectCallCache(DeclRoutine decl) {
+        return decl.isPkgItem && !decl.isPkgPublic && hasDirectCalls();
+    }
+
+    // the parameter dcc of a private package member
+    private String getDirectCallCacheParam(DeclRoutine decl) {
+        if (!takesDirectCallCache(decl)) {
             return "";
         }
-        return new String[] {
-            "java.util.Arrays.fill(authChecked, false);",
-            "java.util.Arrays.fill(ownerName, null);",
-            "java.util.Arrays.fill(targetClass, null);",
-            "java.util.Arrays.fill(method, null);",
-        };
+        return Misc.isEmpty(decl.paramList) ? "DirectCallCache dcc" : "DirectCallCache dcc,";
+    }
+
+    // the argument for the parameter dcc of a private package member
+    private String getDirectCallCacheArg(DeclRoutine decl, String args) {
+        if (!takesDirectCallCache(decl)) {
+            return args;
+        }
+        return Misc.isEmptyStr(args) ? dccVar : (dccVar + ", " + args);
     }
 
     // Statements guarding a direct call site: on first reach, perform the runtime EXECUTE check and
@@ -160,19 +195,23 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         Integer slot = authCheckedIndex.get(targetClass);
         assert slot != null;
         return new String[] {
-            "if (!authChecked[" + slot + "]) {",
+            "if (!" + dccVar + ".authChecked[" + slot + "]) {",
             // checkExecuteAuthorization() gives the name in the form the server stores it
             // especially, in uppercase. It also sets targetClass[slot].
-            "  ownerName["
+            "  "
+                    + dccVar
+                    + ".ownerName["
                     + slot
                     + "] = checkExecuteAuthorization(\""
                     + uniqueName
                     + "\", \""
                     + targetClass
-                    + "\", targetClass, "
+                    + "\", "
+                    + dccVar
+                    + ".targetClass, "
                     + slot
                     + ");",
-            "  authChecked[" + slot + "] = true;",
+            "  " + dccVar + ".authChecked[" + slot + "] = true;",
             "}"
         };
     }
@@ -266,9 +305,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
                 "  %'+GET-CONNECTION'%",
-                "  %'+AUTH-CHECKED-DECL'%",
+                "  %'+DCC-INIT-DECL'%",
                 "  %'+DECLARATIONS'%",
                 "  %'+OPT-INITIALIZER'%",
+                "  %'+DCC-INIT-RELEASE'%",
                 "  %'+RECORD-DEFS'%",
                 "  %'+RECORD-ASSIGN-FUNCS'%"
             };
@@ -316,6 +356,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         if (node.pkg.initializer == null) {
             pkgInitCode = "";
         } else {
+            dccVar = "dccInit"; // runs in the class initialization
             pkgInitCode =
                     new CodeTemplate(
                             "package initializer",
@@ -323,11 +364,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             tmplPkgInit,
                             "%'+BODY'%",
                             visitBody(node.pkg.initializer));
+            dccVar = "dcc";
         }
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
-
-        Object authCheckedDecl = getAuthCheckedDecl();
 
         // imports
         // CAUTION: importsArray must be made after visiting all the subnodes of this UnitPkg
@@ -348,12 +388,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.getClassName(),
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
-                "%'+AUTH-CHECKED-DECL'%",
-                authCheckedDecl,
+                "%'+DCC-INIT-DECL'%",
+                getDirectCallCacheInitDecl(),
                 "%'+DECLARATIONS'%",
                 pkgItemsCode,
                 "%'+OPT-INITIALIZER'%",
                 pkgInitCode,
+                "%'+DCC-INIT-RELEASE'%",
+                getDirectCallCacheInitRelease(),
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -380,11 +422,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
                 "  %'+GET-CONNECTION'%",
-                "  %'+AUTH-CHECKED-DECL'%",
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "      %'+PARAMETERS'%",
                 "    ) {",
-                "    %'+AUTH-CLEAR'%",
+                "    %'+DCC-NEW'%",
                 "    try {",
                 "      %'+MAIN-USER-CODE'%",
                 // exceptions that escaped from the exception handlers of the body
@@ -479,8 +520,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
 
-        Object authCheckedDecl = getAuthCheckedDecl();
-
         // imports
         // CAUTION: importsArray must be made after visiting all the subnodes of this UnitSp
         // because javaTypesUsed,
@@ -516,10 +555,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 objParamArr,
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
-                "%'+AUTH-CHECKED-DECL'%",
-                authCheckedDecl,
-                "%'+AUTH-CLEAR'%",
-                getAuthCheckedClear(),
+                "%'+DCC-NEW'%",
+                getDirectCallCacheNew(),
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -532,17 +569,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplDeclRoutine =
             new String[] {
-                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
+                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(%'DCC-PARAM'%",
                 "    %'+PARAMETERS'%",
                 "  ) {",
-                "  %'+AUTH-CLEAR'%",
+                "  %'+DCC-NEW'%",
                 "  %'+ROUTINE-USER-CODE'%",
                 "}"
             };
 
     private static final String[] tmplDeclRoutineWithoutBody =
             new String[] {
-                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
+                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(%'DCC-PARAM'%",
                 "    %'+PARAMETERS'%",
                 "  ) {",
                 "  throw new IMPL_NOT_GIVEN();",
@@ -563,6 +600,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         tmplDeclRoutineWithoutBody,
                         "%'MODIFIER'%",
                         getModifier(node),
+                        "%'DCC-PARAM'%",
+                        getDirectCallCacheParam(node),
                         "%'RETURN-TYPE'%",
                         node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
                         "%'+PARAMETERS'%",
@@ -627,8 +666,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     tmplDeclRoutine,
                     "%'MODIFIER'%",
                     getModifier(node),
-                    "%'+AUTH-CLEAR'%",
-                    node.isPkgPublic ? getAuthCheckedClear() : "",
+                    "%'DCC-PARAM'%",
+                    getDirectCallCacheParam(node),
+                    "%'+DCC-NEW'%",
+                    node.isPkgPublic ? getDirectCallCacheNew() : "",
                     "%'RETURN-TYPE'%",
                     node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
                     "%'+PARAMETERS'%",
@@ -714,7 +755,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'NAME'%",
                     node.name,
                     "%'+VAL'%",
-                    visit(node.val));
+                    visitInitialValue(node, node.val));
         }
     }
 
@@ -744,7 +785,19 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'NAME'%",
                 node.name,
                 "%'+VAL'%",
-                visit(node.val));
+                visitInitialValue(node, node.val));
+    }
+
+    // the initial value of a package variable/constant is evaluated in the class initialization
+    private CodeToResolve visitInitialValue(Decl decl, Expr val) {
+        if (decl.isPkgItem) {
+            dccVar = "dccInit";
+            CodeToResolve ret = visit(val);
+            dccVar = "dcc";
+            return ret;
+        } else {
+            return visit(val);
+        }
     }
 
     @Override
@@ -1117,15 +1170,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 // TODO: evaluate the direct access of the target class
                 // "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
                 "    %'RETURN-TYPE'% ret;",
-                "    if (method[%'METHOD-SLOT'%] == null) {",
-                "      method[%'METHOD-SLOT'%] = reflectMethod(targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
+                "    if (%'DCC'%.method[%'METHOD-SLOT'%] == null) {",
+                "      %'DCC'%.method[%'METHOD-SLOT'%] = reflectMethod(%'DCC'%.targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
                 "    }",
-                "    if (\"%'CURRENT-OWNER'%\".equals(ownerName[%'TARGET-CLASS-SLOT'%])) {",
-                "      ret = (%'RETURN-TYPE'%) invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "    if (\"%'CURRENT-OWNER'%\".equals(%'DCC'%.ownerName[%'TARGET-CLASS-SLOT'%])) {",
+                "      ret = (%'RETURN-TYPE'%) invokeMethod(%'DCC'%.method[%'METHOD-SLOT'%], %'ARGS'%);",
                 "    } else {",
-                "      pushExecRight(ownerName[%'TARGET-CLASS-SLOT'%]);",
+                "      pushExecRight(%'DCC'%.ownerName[%'TARGET-CLASS-SLOT'%]);",
                 "      try {",
-                "        ret = (%'RETURN-TYPE'%) invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "        ret = (%'RETURN-TYPE'%) invokeMethod(%'DCC'%.method[%'METHOD-SLOT'%], %'ARGS'%);",
                 "      } finally {",
                 "        popExecRight();",
                 "      }",
@@ -1194,6 +1247,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             node.name,
                             "%'+AUTH-CHECK'%",
                             getAuthCheckCode(node.targetClass, node.uniqueName),
+                            "%'DCC'%",
+                            dccVar,
                             // TODO: evaluate the direct access of the target class, which is not
                             // used now because
                             // it does not cope with recompilation of the callee as is.
@@ -1563,7 +1618,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+ALLOC-COERCED-OUT-ARGS'%",
                         code.allocCoercedOutArgs,
                         "%'ARGS'%",
-                        code.argsToLocal,
+                        getDirectCallCacheArg(node.decl, code.argsToLocal),
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
@@ -2811,15 +2866,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 // TODO: evaluate the direct access of the target class
                 // "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
-                "    if (method[%'METHOD-SLOT'%] == null) {",
-                "      method[%'METHOD-SLOT'%] = reflectMethod(targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
+                "    if (%'DCC'%.method[%'METHOD-SLOT'%] == null) {",
+                "      %'DCC'%.method[%'METHOD-SLOT'%] = reflectMethod(%'DCC'%.targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
                 "    }",
-                "    if (\"%'CURRENT-OWNER'%\".equals(ownerName[%'TARGET-CLASS-SLOT'%])) {",
-                "      invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "    if (\"%'CURRENT-OWNER'%\".equals(%'DCC'%.ownerName[%'TARGET-CLASS-SLOT'%])) {",
+                "      invokeMethod(%'DCC'%.method[%'METHOD-SLOT'%], %'ARGS'%);",
                 "    } else {",
-                "      pushExecRight(ownerName[%'TARGET-CLASS-SLOT'%]);",
+                "      pushExecRight(%'DCC'%.ownerName[%'TARGET-CLASS-SLOT'%]);",
                 "      try {",
-                "        invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "        invokeMethod(%'DCC'%.method[%'METHOD-SLOT'%], %'ARGS'%);",
                 "      } finally {",
                 "        popExecRight();",
                 "      }",
@@ -2856,6 +2911,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.name,
                     "%'+AUTH-CHECK'%",
                     getAuthCheckCode(node.targetClass, node.uniqueName),
+                    "%'DCC'%",
+                    dccVar,
                     // TODO: evaluate the direct access of the target class, which is not used now
                     // because
                     // it does not cope with recompilation of the callee as is.
@@ -2983,7 +3040,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
-                        "StmtLocalProcCall", Misc.UNKNOWN_LINE_COLUMN, block + node.name + "();")
+                        "StmtLocalProcCall",
+                        Misc.UNKNOWN_LINE_COLUMN,
+                        block + node.name + "(" + getDirectCallCacheArg(node.decl, "") + ");")
                 : new CodeTemplate(
                         "StmtLocalProcCall",
                         Misc.UNKNOWN_LINE_COLUMN,
@@ -2997,7 +3056,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+ALLOC-COERCED-OUT-ARGS'%",
                         code.allocCoercedOutArgs,
                         "%'ARGS'%",
-                        code.argsToLocal,
+                        getDirectCallCacheArg(node.decl, code.argsToLocal),
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
