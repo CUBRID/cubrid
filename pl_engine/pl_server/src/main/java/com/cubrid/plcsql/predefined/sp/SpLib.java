@@ -714,6 +714,11 @@ public class SpLib {
         }
     }
 
+    // called in place of a package spec item without its implementation
+    public static <T> T implNotGiven() {
+        throw new IMPL_NOT_GIVEN();
+    }
+
     public static class IMPL_NOT_GIVEN extends PlcsqlRuntimeError {
         public IMPL_NOT_GIVEN() {
             super(CODE_IMPL_NOT_GIVEN, MSG_IMPL_NOT_GIVEN);

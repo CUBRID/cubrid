@@ -119,10 +119,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
     // The cache is not a static member of the unit class, which the activations in the parallel
     // workers of a session would share (they share the class loader). Instead,
-    //   - the SP's method and every public package member create one in a local variable dcc at
-    //     their entry, so the cache lives for a single activation: a grant change is picked up on
-    //     the next call,
-    //   - a private package member takes the caller's one as its first parameter dcc,
+    //   - the SP and every public package member have two versions of method (see
+    //     tmplEntryMethod): the entry version, called from outside the unit, creates one, so the
+    //     cache lives for a single activation from outside: a grant change is picked up on the
+    //     next call. The internal version takes it as its first parameter dcc,
+    //   - a private package member takes it as its first parameter dcc,
+    //   - a call in the unit to the routines above passes the caller's one,
     //   - local routines see the dcc of the enclosing method,
     //   - the initial values of package variables/constants and the package initializer, which
     //     run in the class initialization, use the static dccInit. The JVM initializes a class
@@ -138,13 +140,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private String getDirectCallCacheAlloc() {
         return "new DirectCallCache(" + authCheckedIndex.size() + ", " + methodIndex.size() + ")";
-    }
-
-    private Object getDirectCallCacheNew() {
-        if (!hasDirectCalls()) {
-            return "";
-        }
-        return "final DirectCallCache dcc = " + getDirectCallCacheAlloc() + ";";
     }
 
     private Object getDirectCallCacheInitDecl() {
@@ -166,11 +161,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         };
     }
 
+    // whether a call to the routine in the unit passes the caller's cache: true for the static
+    // members of the unit class, that is, package members and the SP itself
     private boolean takesDirectCallCache(DeclRoutine decl) {
-        return decl.isPkgItem && !decl.isPkgPublic && hasDirectCalls();
+        return (decl.isPkgItem || decl.scope.level == SymbolStack.LEVEL_MAIN) && hasDirectCalls();
     }
 
-    // the parameter dcc of a private package member
+    // the parameter dcc of a private package member or of an internal version
     private String getDirectCallCacheParam(DeclRoutine decl) {
         if (!takesDirectCallCache(decl)) {
             return "";
@@ -178,8 +175,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return Misc.isEmpty(decl.paramList) ? "DirectCallCache dcc" : "DirectCallCache dcc,";
     }
 
-    // the argument for the parameter dcc of a private package member
-    private String getDirectCallCacheArg(DeclRoutine decl, String args) {
+    // the arguments of a call in the unit, with the one for the parameter dcc if any
+    private String getLocalCallArgs(DeclRoutine decl, String args) {
+        if (isImplNotGiven(decl)) {
+            return ""; // implNotGiven() (see getLocalCallee)
+        }
         if (!takesDirectCallCache(decl)) {
             return args;
         }
@@ -422,37 +422,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
                 "  %'+GET-CONNECTION'%",
-                "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
-                "      %'+PARAMETERS'%",
-                "    ) {",
-                "    %'+DCC-NEW'%",
-                "    try {",
-                "      %'+MAIN-USER-CODE'%",
-                // exceptions that escaped from the exception handlers of the body
-                "    } catch (PlcsqlRuntimeError e) {",
-                "      Throwable c = e.getCause();",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, c == null ? e : c, \"%'CLASS-NAME'%.java\");",
-                "      throw e.setPlcLineColumn(pos);",
-                // exceptions raised in an exception handler
-                "    } catch (OutOfMemoryError e) {",
-                "      Server.log(e);",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw new STORAGE_ERROR().setPlcLineColumn(pos);",
-                "    } catch (StackOverflowError e) {",
-                "      Server.log(e);",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw new PROGRAM_ERROR(\"stack overflow\").setPlcLineColumn(pos);",
-                "    } catch (ClassCastException e) {",
-                "      Server.log(e);",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw new PROGRAM_ERROR(\"type of a value does not match the one known at compile time"
-                        + " (hint: try recompiling this stored procedure)\").setPlcLineColumn(pos);",
-                "    } catch (Throwable e) {",
-                "      Server.log(e);",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw new PROGRAM_ERROR().setPlcLineColumn(pos);",
-                "    }",
-                "  }",
+                "  %'+METHODS'%",
                 "  %'+RECORD-DEFS'%",
                 "  %'+RECORD-ASSIGN-FUNCS'%"
             };
@@ -472,18 +442,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 node.routine.getDeclBlockName(),
                                 "%'+DECLARATIONS'%",
                                 visitNodeList(node.routine.decls));
-
-        // return type
-        String strRetType =
-                node.routine.retTypeSpec == null
-                        ? "void"
-                        : getJavaCodeOfType(node.routine.retTypeSpec);
-
-        // parameters
-        Object objParamArr =
-                Misc.isEmpty(node.routine.paramList)
-                        ? ""
-                        : visitNodeList(node.routine.paramList).setDelimiter(",");
 
         // nullify OUT parameters
         String[] strNullifyOutParam = getNullifyOutParamCode(node.routine.paramList);
@@ -517,6 +475,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             mainUserCode = wrapWithStmtDeclareAndClose(loopOptimizableSqlUses, mainUserCode);
         }
 
+        CodeToResolve methods = getEntryMethod("public static ", node.routine, mainUserCode);
+
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
 
@@ -527,36 +487,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // visiting the submodes
         String[] importsArray = getImportsArray();
 
-        // parameters - need to visit again to obtain another object instance though the contents
-        // are the same,
-        //   because two big holes cannot be resolved by a single CodeToResolve object
-        objParamArr =
-                Misc.isEmpty(node.routine.paramList)
-                        ? ""
-                        : visitNodeList(node.routine.paramList).setDelimiter(",");
-
         return new CodeTemplate(
                 "UnitSp",
                 new int[] {1, 1},
                 tmplSpUnit,
-                "%'+MAIN-USER-CODE'%",
-                mainUserCode,
+                "%'+METHODS'%",
+                methods,
                 "%'PACKAGE'%",
                 JAVA_PKG_OF_GENERATED,
                 "%'+IMPORTS'%",
                 importsArray,
                 "%'CLASS-NAME'%",
                 node.getClassName(),
-                "%'RETURN-TYPE'%",
-                strRetType,
-                "%'METHOD-NAME'%",
-                node.routine.name,
-                "%'+PARAMETERS'%",
-                objParamArr,
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
-                "%'+DCC-NEW'%",
-                getDirectCallCacheNew(),
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -572,19 +516,129 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(%'DCC-PARAM'%",
                 "    %'+PARAMETERS'%",
                 "  ) {",
-                "  %'+DCC-NEW'%",
                 "  %'+ROUTINE-USER-CODE'%",
                 "}"
             };
 
+    // A call in the unit does not call it but implNotGiven() (see getLocalCallee). Hence, no
+    // internal version.
     private static final String[] tmplDeclRoutineWithoutBody =
             new String[] {
-                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(%'DCC-PARAM'%",
+                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "    %'+PARAMETERS'%",
                 "  ) {",
                 "  throw new IMPL_NOT_GIVEN();",
                 "}"
             };
+
+    // The method of the SP or a public package member, which is called from outside the unit,
+    // that is, through the server or by a direct call from another unit. It puts the position in
+    // the PL/CSQL code into an exception thrown out of the routine.
+    // When the unit has direct calls, its user code is in the internal version, which takes the
+    // cache of the direct calls as its first parameter. Then, the entry version calls it with a
+    // new cache, and a call in the unit calls it with the caller's cache.
+    private static final String[] tmplEntryMethod =
+            new String[] {
+                "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
+                "    %'+PARAMETERS'%",
+                "  ) {",
+                "  try {",
+                "    %'+USER-CODE'%",
+                // exceptions that escaped from the exception handlers of the body
+                "  } catch (PlcsqlRuntimeError e) {",
+                "    Throwable c = e.getCause();",
+                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, c == null ? e : c, \"%'CLASS-NAME'%.java\");",
+                "    throw e.setPlcLineColumn(pos);",
+                // exceptions raised in an exception handler
+                "  } catch (OutOfMemoryError e) {",
+                "    Server.log(e);",
+                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
+                "    throw new STORAGE_ERROR().setPlcLineColumn(pos);",
+                "  } catch (StackOverflowError e) {",
+                "    Server.log(e);",
+                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
+                "    throw new PROGRAM_ERROR(\"stack overflow\").setPlcLineColumn(pos);",
+                "  } catch (ClassCastException e) {",
+                "    Server.log(e);",
+                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
+                "    throw new PROGRAM_ERROR(\"type of a value does not match the one known at compile time"
+                        + " (hint: try recompiling this stored procedure)\").setPlcLineColumn(pos);",
+                "  } catch (Throwable e) {",
+                "    Server.log(e);",
+                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
+                "    throw new PROGRAM_ERROR().setPlcLineColumn(pos);",
+                "  }",
+                "}",
+                "%'+INTERNAL-METHOD'%"
+            };
+
+    private Object getParamsCode(DeclRoutine routine) {
+        return Misc.isEmpty(routine.paramList)
+                ? ""
+                : visitNodeList(routine.paramList).setDelimiter(",");
+    }
+
+    private CodeToResolve getEntryMethod(
+            String modifier, DeclRoutine routine, CodeToResolve userCode) {
+
+        String retType =
+                routine.retTypeSpec == null ? "void" : getJavaCodeOfType(routine.retTypeSpec);
+
+        Object entryCode;
+        Object internalMethod;
+        if (hasDirectCalls()) {
+            String args =
+                    routine.paramList.nodes.stream()
+                            .map(p -> ", " + p.name)
+                            .collect(Collectors.joining());
+            entryCode =
+                    String.format(
+                            "%s%s(%s%s);",
+                            routine.retTypeSpec == null ? "" : "return ",
+                            routine.name,
+                            getDirectCallCacheAlloc(),
+                            args);
+            internalMethod =
+                    new CodeTemplate(
+                            "internal method",
+                            Misc.UNKNOWN_LINE_COLUMN,
+                            tmplDeclRoutine,
+                            "%'MODIFIER'%",
+                            "static ",
+                            "%'DCC-PARAM'%",
+                            getDirectCallCacheParam(routine),
+                            "%'RETURN-TYPE'%",
+                            retType,
+                            "%'+PARAMETERS'%",
+                            getParamsCode(routine),
+                            "%'+ROUTINE-USER-CODE'%",
+                            userCode,
+                            "%'METHOD-NAME'%",
+                            routine.name);
+        } else {
+            entryCode = userCode;
+            internalMethod = "";
+        }
+
+        return new CodeTemplate(
+                "entry method",
+                Misc.UNKNOWN_LINE_COLUMN,
+                tmplEntryMethod,
+                "%'MODIFIER'%",
+                modifier,
+                "%'RETURN-TYPE'%",
+                retType,
+                "%'METHOD-NAME'%",
+                routine.name,
+                "%'+PARAMETERS'%",
+                getParamsCode(routine),
+                "%'+USER-CODE'%",
+                entryCode,
+                "%'+INTERNAL-METHOD'%",
+                internalMethod,
+                "%'CLASS-NAME'%",
+                unitClassName);
+    }
 
     private CodeToResolve visitDeclRoutine(DeclRoutine node) {
 
@@ -600,8 +654,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         tmplDeclRoutineWithoutBody,
                         "%'MODIFIER'%",
                         getModifier(node),
-                        "%'DCC-PARAM'%",
-                        getDirectCallCacheParam(node),
                         "%'RETURN-TYPE'%",
                         node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
                         "%'+PARAMETERS'%",
@@ -660,6 +712,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 }
             }
 
+            if (node.isPkgPublic) {
+                return getEntryMethod(getModifier(node), node, routineUserCode);
+            }
+
             return new CodeTemplate(
                     "DeclRoutine",
                     Misc.UNKNOWN_LINE_COLUMN,
@@ -668,8 +724,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     getModifier(node),
                     "%'DCC-PARAM'%",
                     getDirectCallCacheParam(node),
-                    "%'+DCC-NEW'%",
-                    node.isPkgPublic ? getDirectCallCacheNew() : "",
                     "%'RETURN-TYPE'%",
                     node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
                     "%'+PARAMETERS'%",
@@ -1571,7 +1625,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "(new Object() { // local function call: %'FUNC-NAME'%",
                 "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
-                "    %'RETURN-TYPE'% ret = %'BLOCK'%%'FUNC-NAME'%(%'ARGS'%);",
+                "    %'RETURN-TYPE'% ret = %'CALLEE'%(%'ARGS'%);",
                 "    %'+UPDATE-OUT-ARGS'%",
                 "    return ret;",
                 "  }",
@@ -1579,6 +1633,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+ARGUMENTS'%",
                 "))"
             };
+
+    // A package spec item without its implementation is not called but implNotGiven(), which
+    // throws IMPL_NOT_GIVEN, so that the exception gets the position of the call: the position
+    // of a line in the routine itself would be that of the whole unit.
+    private static boolean isImplNotGiven(DeclRoutine decl) {
+        return decl.isPkgItem && decl.body == null && decl.bodyDecl == null;
+    }
+
+    private String getLocalCallee(DeclRoutine decl, boolean prefixDeclBlock) {
+        if (isImplNotGiven(decl)) {
+            return "implNotGiven";
+        } else {
+            return getLocalRoutinePrefix(decl, prefixDeclBlock) + decl.name;
+        }
+    }
 
     private String getLocalRoutinePrefix(DeclRoutine decl, boolean prefixDeclBlock) {
         if (decl.isPkgItem || decl.scope.level == SymbolStack.LEVEL_MAIN) {
@@ -1600,15 +1669,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
                 getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
-        String block = getLocalRoutinePrefix(node.decl, node.prefixDeclBlock);
+        String callee = getLocalCallee(node.decl, node.prefixDeclBlock);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprLocalFuncCall",
                         Misc.getLineColumnOf(node.ctx),
                         tmplExprLocalFuncCall,
-                        "%'BLOCK'%",
-                        block,
+                        "%'CALLEE'%",
+                        callee,
                         "%'FUNC-NAME'%",
                         node.name,
                         "%'RETURN-TYPE'%",
@@ -1618,7 +1687,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+ALLOC-COERCED-OUT-ARGS'%",
                         code.allocCoercedOutArgs,
                         "%'ARGS'%",
-                        getDirectCallCacheArg(node.decl, code.argsToLocal),
+                        getLocalCallArgs(node.decl, code.argsToLocal),
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
@@ -3019,7 +3088,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "new Object() { // local procedure call: %'PROC-NAME'%",
                 "  void invoke(%'PARAMETERS'%) {",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
-                "    %'BLOCK'%%'PROC-NAME'%(%'ARGS'%);",
+                "    %'CALLEE'%(%'ARGS'%);",
                 "    %'+UPDATE-OUT-ARGS'%",
                 "  }",
                 "}.invoke(",
@@ -3036,19 +3105,19 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
                 getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
-        String block = getLocalRoutinePrefix(node.decl, node.prefixDeclBlock);
+        String callee = getLocalCallee(node.decl, node.prefixDeclBlock);
 
         return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
                         "StmtLocalProcCall",
                         Misc.UNKNOWN_LINE_COLUMN,
-                        block + node.name + "(" + getDirectCallCacheArg(node.decl, "") + ");")
+                        callee + "(" + getLocalCallArgs(node.decl, "") + ");")
                 : new CodeTemplate(
                         "StmtLocalProcCall",
                         Misc.UNKNOWN_LINE_COLUMN,
                         tmplStmtLocalProcCall,
-                        "%'BLOCK'%",
-                        block,
+                        "%'CALLEE'%",
+                        callee,
                         "%'PROC-NAME'%",
                         node.name,
                         "%'PARAMETERS'%",
@@ -3056,7 +3125,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+ALLOC-COERCED-OUT-ARGS'%",
                         code.allocCoercedOutArgs,
                         "%'ARGS'%",
-                        getDirectCallCacheArg(node.decl, code.argsToLocal),
+                        getLocalCallArgs(node.decl, code.argsToLocal),
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
