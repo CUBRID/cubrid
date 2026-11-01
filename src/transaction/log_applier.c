@@ -1632,21 +1632,27 @@ la_coordinator_commit_apply_info (void)
 
       /* before the marker delete, which must be the last statement before the commit (see below) */
       la_stat_describe_applier (&applier);
-      la_stat_store (&applier, la_update_query_execute_with_values);
-
-      /* the commits at or below committed_lsa are skipped by their position, so their markers go in the same
-       * transaction; a failure leaves them for the next store.
-       * The delete is the last statement before the commit: deleting many markers can escalate to a table lock
-       * held until the commit, and a worker inserting its marker waits for that lock holding la_sql_compile_mutex.
-       * Taking the mutex again before the commit (to store the statistics, for example) would wait for that worker
-       * forever. */
-      if (la_delete_applied_tx_markers (&la_Info.committed_lsa) < 0)
+      res = la_stat_store (&applier, la_update_query_execute_with_values);
+      if (res == NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "cannot delete applied-tx markers up to %lld|%d\n",
-			(long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
+	  /* the commits at or below committed_lsa are skipped by their position, so their markers go in the same
+	   * transaction; a failure leaves them for the next store.
+	   * The delete is the last statement before the commit: deleting many markers can escalate to a table lock
+	   * held until the commit, and a worker inserting its marker waits for that lock holding
+	   * la_sql_compile_mutex. Taking the mutex again before the commit (to store the statistics, for example)
+	   * would wait for that worker forever. */
+	  if (la_delete_applied_tx_markers (&la_Info.committed_lsa) < 0)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "cannot delete applied-tx markers up to %lld|%d\n",
+			    (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
+	    }
+
+	  return db_commit_transaction ();
 	}
 
-      return db_commit_transaction ();
+      /* the transaction is gone with the apply info update, so the markers stay: a restart reads that range
+       * again from the stored position and needs them to skip the commits already applied */
+      (void) db_abort_transaction ();
     }
 
   la_Info.fail_counter++;

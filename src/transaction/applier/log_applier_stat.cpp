@@ -365,6 +365,7 @@ la_stat_init_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 
 /*
  * la_stat_store() - update the statistics rows without letting them hold back or undo the apply info
+ *   return: NO_ERROR, or the error of the rollback to the savepoint when even that failed
  *
  * Note:
  *   Called between the _db_ha_apply_info update and the commit of the same transaction. The statistics are an
@@ -375,8 +376,10 @@ la_stat_init_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
  *   - A failure rolls back to the savepoint taken after the apply info update, so the apply info is committed
  *     and the statistics keep their last stored values. They hold running totals, so the next store writes
  *     everything again; nothing is lost.
+ *   - When that rollback fails, the transaction is gone with the apply info update (a statistics statement
+ *     chosen as a deadlock victim aborts the whole transaction), and the error is returned.
  */
-void
+int
 la_stat_store (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 {
   int save_wait_msecs;
@@ -385,14 +388,14 @@ la_stat_store (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 
   if (!la_Apply_stat.enabled)
     {
-      return;
+      return NO_ERROR;
     }
 
   if (db_savepoint_transaction_internal (LA_STAT_SAVEPOINT_NAME) != NO_ERROR)
     {
       /* without the savepoint a failure could not be undone alone; skip the statistics this time */
       er_clear ();
-      return;
+      return NO_ERROR;
     }
 
   save_wait_msecs = TM_TRAN_WAIT_MSECS ();
@@ -402,16 +405,18 @@ la_stat_store (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 
   if (error == NO_ERROR)
     {
-      return;
+      return NO_ERROR;
     }
 
-  (void) db_abort_to_savepoint_internal (LA_STAT_SAVEPOINT_NAME);
+  error = db_abort_to_savepoint_internal (LA_STAT_SAVEPOINT_NAME);
 
   /* the worker rows written before the failure were rolled back too; write them all next time */
   for (w = 0; w < applier->worker_count; w++)
     {
       la_Apply_stat.workers[w].stored = false;
     }
+
+  return error;
 }
 
 /*

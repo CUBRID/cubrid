@@ -57,7 +57,7 @@ extern void la_stat_add_result (const LA_RESULT *result);
 extern void la_stat_note_error (LA_STATS *stats, int error);
 
 extern int la_stat_init_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute);
-extern void la_stat_store (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute);
+extern int la_stat_store (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute);
 
 extern void la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool verbose);
 
