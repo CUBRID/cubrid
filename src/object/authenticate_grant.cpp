@@ -52,6 +52,8 @@ static int au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop,
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 static int au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
 static int au_check_system_generated_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop, const char *op);
+static bool au_is_function (MOP sp_mop);
+static const char *au_get_glossary_of_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -337,12 +339,42 @@ au_check_system_generated_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop, con
     {
       char what[64];
       snprintf (what, sizeof (what), "%s on a system generated %s", op,
-		(obj_type == DB_OBJECT_PACKAGE) ? "package" : "procedure");
+		(obj_type == DB_OBJECT_PACKAGE) ? "package" : au_is_function (obj_mop) ? "function" : "procedure");
       error = ER_AU_DBA_ONLY;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, what);
     }
 
   return error;
+}
+
+/*
+ * au_is_function - check whether a stored procedure object is a function
+ *   return: true if it is a function
+ *   sp_mop(in): stored procedure object
+ */
+static bool
+au_is_function (MOP sp_mop)
+{
+  DB_VALUE sp_type;
+
+  return db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type) == NO_ERROR && db_get_int (&sp_type) == SP_TYPE_FUNCTION;
+}
+
+/*
+ * au_get_glossary_of_proc_or_pkg - get the word for a package, procedure or function in the messages
+ *   return: the word
+ *   obj_type(in): DB_OBJECT_PACKAGE or DB_OBJECT_PROCEDURE
+ *   obj_mop(in): package or procedure object
+ */
+static const char *
+au_get_glossary_of_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop)
+{
+  if (obj_type == DB_OBJECT_PACKAGE)
+    {
+      return MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE);
+    }
+
+  return MSGCAT_GET_GLOSSARY_MSG (au_is_function (obj_mop) ? MSGCAT_GLOSSARY_FUNCTION : MSGCAT_GLOSSARY_PROCEDURE);
 }
 
 static int
@@ -391,9 +423,7 @@ au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH ty
       if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
-		  (obj_type == DB_OBJECT_PACKAGE) ? MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE) :
-		  MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, au_get_glossary_of_proc_or_pkg (obj_type, obj_mop));
 	}
       else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, owner, NULL)) != NO_ERROR)
 	{
@@ -797,9 +827,7 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
       if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
-		  (obj_type == DB_OBJECT_PACKAGE) ? MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE) :
-		  MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, au_get_glossary_of_proc_or_pkg (obj_type, obj_mop));
 	  goto fail_end;
 	}
 

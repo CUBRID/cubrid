@@ -9757,13 +9757,18 @@ pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   DB_OBJECT *owner = NULL;
   PT_NODE *name = node->info.pkg.name;
-  const char *owner_name = pt_get_qualifier_name (parser, name);
+  const char *owner_name;
 
-  if (owner_name == NULL)
+  /* a system class name is left unqualified (see pt_set_user_specified_name ()) */
+  if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)))
     {
-      /* not qualified: the package is created in the current user's schema */
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PKG_INVALID_NAME,
+		   MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE), PT_NAME_ORIGINAL (name));
       return;
     }
+
+  owner_name = pt_get_qualifier_name (parser, name);
+  assert (owner_name != NULL);
 
   owner = db_find_user (owner_name);
   if (owner == NULL)
@@ -9828,7 +9833,18 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 
   DB_OBJECT *owner = NULL;
   PT_NODE *name = node->info.sp.name;
-  const char *owner_name = pt_get_qualifier_name (parser, name);
+  const char *owner_name;
+
+  /* a system class name is left unqualified (see pt_set_user_specified_name ()) */
+  if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)))
+    {
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PKG_INVALID_NAME,
+		   MSGCAT_GET_GLOSSARY_MSG (node->info.sp.type == PT_SP_FUNCTION ? MSGCAT_GLOSSARY_FUNCTION :
+					    MSGCAT_GLOSSARY_PROCEDURE), PT_NAME_ORIGINAL (name));
+      return;
+    }
+
+  owner_name = pt_get_qualifier_name (parser, name);
   if (owner_name)
     {
       owner = db_find_user (owner_name);

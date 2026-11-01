@@ -2035,6 +2035,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
 
 339 패키지 "%1$s"이(가) 존재하지 않습니다.
+345 잘못된 %1$s 이름 "%2$s".\n  시스템 클래스/뷰 이름은 %1$s 이름이 될 수 없습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2334,3 +2335,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 5 동의어
 6 프로시저
 7 패키지
+8 함수

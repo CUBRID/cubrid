@@ -2037,6 +2037,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 
 339 Package "%1$s" does not exist.
+345 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2336,3 +2337,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 5 synonym
 6 procedure
 7 package
+8 function
