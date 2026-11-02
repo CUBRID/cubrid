@@ -4790,6 +4790,12 @@ or_is_replication_candidate_key (const OR_INDEX * index)
       return false;
     }
 
+  /* An index being built online must not be used as a replication key. */
+  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      return false;
+    }
+
   if (index->type == BTREE_PRIMARY_KEY)
     {
       return true;
