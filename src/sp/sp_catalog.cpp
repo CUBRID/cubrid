@@ -72,6 +72,8 @@ static const std::vector<std::string> sp_code_entry_names
 
 static int sp_add_stored_procedure_internal (MOP *mop_p, SP_INFO &info, bool has_savepoint);
 static int sp_builtin_init ();
+static MOP sp_find_pkg_item (const char *class_name, const char *attr_pkg_of, const char *attr_name,
+			     const char *pkg_unique_name, const char *name);
 
 // TODO
 static int sp_builtin_init ()
@@ -1232,14 +1234,15 @@ sp_args_get_entry_name (int index)
   return sp_args_entry_names[index];
 }
 
-MOP
-sp_find_pkg_var (const char *pkg_unique_name, const char *name)
+static MOP
+sp_find_pkg_item (const char *class_name, const char *attr_pkg_of, const char *attr_name,
+		  const char *pkg_unique_name, const char *name)
 {
   MOP pkg_classobj, pkg_mop, classobj, mop = NULL;
   DB_VALUE pkg_name_value;
   DB_VALUE value[2];
   DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
-  const char *search_attrs[2] = { PKG_VAR_ATTR_PKG_OF, PKG_VAR_ATTR_NAME };
+  const char *search_attrs[2] = { attr_pkg_of, attr_name };
   int au_save;
 
   if (!pkg_unique_name || !name)
@@ -1248,7 +1251,7 @@ sp_find_pkg_var (const char *pkg_unique_name, const char *name)
     }
 
   pkg_classobj = db_find_class (CT_PACKAGE_NAME);
-  classobj = db_find_class (CT_PACKAGE_VAR_NAME);
+  classobj = db_find_class (class_name);
   if (pkg_classobj == NULL || classobj == NULL)
     {
       return NULL;
@@ -1256,7 +1259,7 @@ sp_find_pkg_var (const char *pkg_unique_name, const char *name)
 
   AU_SAVE_AND_DISABLE (au_save);
 
-  // _db_package_var keys its rows by the package object, so the package has to be found first
+  // _db_package_var and _db_package_cursor key their rows by the package object, so the package has to be found first
   db_make_string (&pkg_name_value, pkg_unique_name);
   pkg_mop = db_find_unique (pkg_classobj, PKG_ATTR_UNIQUE_NAME, &pkg_name_value);
   if (pkg_mop == NULL)
@@ -1279,48 +1282,14 @@ sp_find_pkg_var (const char *pkg_unique_name, const char *name)
 }
 
 MOP
+sp_find_pkg_var (const char *pkg_unique_name, const char *name)
+{
+  return sp_find_pkg_item (CT_PACKAGE_VAR_NAME, PKG_VAR_ATTR_PKG_OF, PKG_VAR_ATTR_NAME, pkg_unique_name, name);
+}
+
+MOP
 sp_find_pkg_cursor (const char *pkg_unique_name, const char *name)
 {
-  MOP pkg_classobj, pkg_mop, classobj, mop = NULL;
-  DB_VALUE pkg_name_value;
-  DB_VALUE value[2];
-  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
-  const char *search_attrs[2] = { PKG_CURSOR_ATTR_PKG_OF, PKG_CURSOR_ATTR_NAME };
-  int au_save;
-
-  if (!pkg_unique_name || !name)
-    {
-      return NULL;
-    }
-
-  pkg_classobj = db_find_class (CT_PACKAGE_NAME);
-  classobj = db_find_class (CT_PACKAGE_CURSOR_NAME);
-  if (pkg_classobj == NULL || classobj == NULL)
-    {
-      return NULL;
-    }
-
-  AU_SAVE_AND_DISABLE (au_save);
-
-  // _db_package_cursor keys its rows by the package object, so the package has to be found first
-  db_make_string (&pkg_name_value, pkg_unique_name);
-  pkg_mop = db_find_unique (pkg_classobj, PKG_ATTR_UNIQUE_NAME, &pkg_name_value);
-  if (pkg_mop == NULL)
-    {
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  er_clear ();
-	}
-    }
-  else
-    {
-      db_make_object (&value[0], pkg_mop);
-      db_make_string (&value[1], name);
-      mop = db_find_multi_unique (classobj, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
-    }
-
-  AU_RESTORE (au_save);
-
-  return mop;
+  return sp_find_pkg_item (CT_PACKAGE_CURSOR_NAME, PKG_CURSOR_ATTR_PKG_OF, PKG_CURSOR_ATTR_NAME, pkg_unique_name, name);
 }
 

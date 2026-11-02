@@ -36,12 +36,10 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class TypeSpecPercentId extends TypeSpec {
 
     public final String id;
-    public final TypeSpec idTypeSpec; // type spec of the id
 
     public TypeSpecPercentId(ParserRuleContext ctx, String id, TypeSpec idTypeSpec) {
         super(ctx, idTypeSpec.type);
         this.id = id;
-        this.idTypeSpec = idTypeSpec;
     }
 
     // the both must be <id>%TYPE of the same text

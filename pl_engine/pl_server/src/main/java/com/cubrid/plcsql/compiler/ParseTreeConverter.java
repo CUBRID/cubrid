@@ -639,14 +639,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         } else if (it.typeInfo.dbType == DBType.DB_PL_RECORD) {
             throw new SemanticError( // s440
                     Misc.getLineColumnOf(tsp.ctx),
-                    tsp.table + "." + tsp.column + " of a record type cannot be used with %TYPE");
+                    tsp.qualifier + "." + tsp.id + " of a record type cannot be used with %TYPE");
         }
 
         if (!DBTypeAdapter.isSupported(it.typeInfo.dbType)) {
             String sqlType = DBTypeAdapter.getSqlTypeName(it.typeInfo.dbType);
             throw new SemanticError( // s410
                     Misc.getLineColumnOf(tsp.ctx),
-                    tsp.table + "." + tsp.column + " has an unsupported type " + sqlType);
+                    tsp.qualifier + "." + tsp.id + " has an unsupported type " + sqlType);
         }
 
         if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
