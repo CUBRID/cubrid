@@ -46,6 +46,7 @@
 #endif /* defined (SA_MODE) */
 #include "lock_free.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
 
@@ -121,7 +122,6 @@ struct session_state
   pthread_mutex_t mutex;	/* state mutex */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
-  bool is_keep_session;
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
   bool auto_commit;
@@ -190,12 +190,14 @@ typedef struct active_sessions
   session_hashmap_type states_hashmap;
   SESSION_ID last_session_id;
   int num_holdable_cursors;
+  bool is_initialized;		/* finalize also runs on boot error paths that never initialized the table */
 
   // *INDENT-OFF*
   active_sessions ()
     : states_hashmap {}
     , last_session_id (0)
     , num_holdable_cursors (0)
+    , is_initialized (false)
   {
   }
   // *INDENT-ON*
@@ -308,7 +310,6 @@ session_state_init (void *st)
   /* initialize fields */
   db_make_null (&session_p->cur_insert_id);
   db_make_null (&session_p->last_insert_id);
-  session_p->is_keep_session = false;
   session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
@@ -602,13 +603,17 @@ session_control_daemon_destroy ()
 /*
  * session_states_init () - Initialize session states area
  *
+ *   return: NO_ERROR or error code
+ *
  * Note: Creates and initializes a main memory hash table that will be
  * used by session states operations. This routine should only be
  * called once during server boot.
  */
-void
+int
 session_states_init (THREAD_ENTRY * thread_p)
 {
+  int error_code;
+
   sessions.last_session_id = 0;
   sessions.num_holdable_cursors = 0;
 
@@ -616,11 +621,19 @@ session_states_init (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 #endif /* SESSION_DEBUG */
 
-  sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50, session_state_Descriptor);
+  error_code = sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50,
+					     session_state_Descriptor);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  sessions.is_initialized = true;
 
 #if defined (SERVER_MODE)
   session_control_daemon_init ();
 #endif /* SERVER_MODE */
+  return NO_ERROR;
 }
 
 /*
@@ -639,7 +652,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
   const char *env_value = envvar_get ("DUMP_SESSION");
-  if (env_value != NULL)
+  if (env_value != NULL && sessions.is_initialized)
     {
       session_states_dump (thread_p);
     }
@@ -650,6 +663,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 
   /* destroy hash and freelist */
   sessions.states_hashmap.destroy ();
+  sessions.is_initialized = false;
 }
 
 /*
@@ -795,7 +809,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
 
   if (is_keep_session == true)
     {
-      session_p->is_keep_session = true;
+      /* the client leaves the session for now (CAS restart, RESET, ...). session_state_timeout runs from here, not
+       * from when the client connected. */
+      session_p->active_time = time (NULL);
       pthread_mutex_unlock (&session_p->mutex);
       return NO_ERROR;
     }
@@ -970,22 +986,11 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 
 	  if (is_expired)
 	    {
-	      /* Now we can destroy this session */
+	      /* Destroy this session after the iteration. A kept session goes too, when its client did not come back
+	       * within session_state_timeout. */
 	      assert (state->ref_count == 0);
 
-	      if (state->is_keep_session == true)
-		{
-		  /* keep session */
-		  pthread_mutex_unlock (&state->mutex);
-		  continue;
-		}
-	      else
-		{
-		  expired_sid_buffer[n_expired_sids++] = state->id;
-
-		  /* Destroy the session related resources like session parameters */
-		  (void) session_state_uninit (state);
-		}
+	      expired_sid_buffer[n_expired_sids++] = state->id;
 
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
 		{
@@ -1004,9 +1009,37 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
       /* Remove expired sessions. */
       for (sid_index = 0; sid_index < n_expired_sids; sid_index++)
 	{
-	  if (!sessions.states_hashmap.erase (thread_p, expired_sid_buffer[sid_index]))
+	  state = sessions.states_hashmap.find (thread_p, expired_sid_buffer[sid_index]);
+	  if (state == NULL)
+	    {
+	      /* ended in the meantime */
+	      continue;
+	    }
+
+	  /* Its client may have come back since the iteration. Check again under the lock kept until the session is
+	   * erased, or the client would get a session that is being destroyed. */
+	  if (session_check_timeout (state, &active_sessions, &is_expired) != NO_ERROR)
+	    {
+	      pthread_mutex_unlock (&state->mutex);
+	      err = ER_FAILED;
+	      goto exit_on_end;
+	    }
+
+	  if (!is_expired)
+	    {
+	      pthread_mutex_unlock (&state->mutex);
+	      continue;
+	    }
+
+	  assert (state->ref_count == 0);
+
+	  /* Destroy the session related resources like session parameters */
+	  (void) session_state_uninit (state);
+
+	  if (!sessions.states_hashmap.erase_locked (thread_p, expired_sid_buffer[sid_index], state))
 	    {
 	      /* we don't have clear operations on this hash table, this shouldn't happen */
+	      pthread_mutex_unlock (&state->mutex);
 	      assert_release (false);
 	      err = ER_FAILED;
 	      goto exit_on_end;
@@ -1331,6 +1364,23 @@ db_value_alloc_and_copy (const DB_VALUE * src)
 static void
 update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
 {
+  DB_VALUE *value = db_value_alloc_and_copy (new_value);
+  const DB_TYPE type = var->value != NULL ? DB_VALUE_DOMAIN_TYPE (var->value) : DB_TYPE_NULL;
+  if (value != NULL && DB_IS_NULL (value) && type != DB_TYPE_NULL)
+    {
+      /* CBRD-27583: a session variable's type is its value's domain; assigning NULL keeps that type, as a NULL of it */
+      db_value_domain_init (value, type, db_value_precision (var->value), db_value_scale (var->value));
+      if (QSTR_IS_ANY_CHAR_OR_BIT (type))
+	{
+	  value->data.ch.medium.buf = NULL;
+	}
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  db_string_put_cs_and_collation (value, db_get_string_codeset (var->value),
+					  db_get_string_collation (var->value));
+	}
+    }
+
   if (var->value != NULL)
     {
       if (QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (var->value)))
@@ -1341,7 +1391,7 @@ update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
       free_and_init (var->value);
     }
 
-  var->value = db_value_alloc_and_copy (new_value);
+  var->value = value;
 }
 
 /*
@@ -1654,27 +1704,6 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 #endif
 
   state_p->row_count = row_count;
-
-  return NO_ERROR;
-}
-
-/*
- * session_set_is_keep_session () - set the is_keep_session flag for a session
- * return : NO_ERROR or error code
- * thread_p (in) : thread that identifies the session
- * is_keep_session (in) : whether to keep the session
- */
-int
-session_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session)
-{
-  SESSION_STATE *state_p = NULL;
-  state_p = session_get_session_state (thread_p);
-  if (state_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  state_p->is_keep_session = is_keep_session;
 
   return NO_ERROR;
 }

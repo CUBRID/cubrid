@@ -24,6 +24,7 @@
 #ifndef _QUERY_LIST_H_
 #define _QUERY_LIST_H_
 
+
 #ident "$Id$"
 
 #ifdef __cplusplus
@@ -42,10 +43,16 @@ typedef enum
   JOIN_LEFT,
   JOIN_RIGHT,
   JOIN_OUTER,
-  JOIN_CSELECT
+  JOIN_CSELECT,
+  JOIN_SEMI,
+  JOIN_ANTI
 } JOIN_TYPE;
 
-#define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+#define IS_OUTER_JOIN_TYPE(t) \
+  ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+
+#define IS_NULL_FILL_JOIN_TYPE(t) \
+  (IS_OUTER_JOIN_TYPE (t) || (t) == JOIN_ANTI)
 
 /* PAGE CONSTANTS */
 
@@ -372,7 +379,6 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
-  TP_DOMAIN *original_domain;	/* original domain */
   int pos_no;			/* value position number */
 };
 
@@ -507,7 +513,6 @@ struct qfile_list_id
   VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
-  bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
   QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
@@ -546,7 +551,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \
-      (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
       (list_id)->dependent_list_id = NULL; \
     } \
@@ -594,7 +598,7 @@ enum
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
-  QFILE_NOT_USE_MEMBUF = 0x0800,
+  QFILE_FLAG_NO_MEMBUF = 0x0800,
   QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
 				 * carry the 8-byte [len][prev_len] header (type_list.hdr_size) */
 };
@@ -678,6 +682,9 @@ class sector_page_iterator
 
     inline struct qmgr_temp_file *get_current_tfile () const { return m_current_tfile; }
     inline VPID get_current_vpid () const { return m_last_vpid; }
+    /* did get_next_page () return NULL because a page could not be fetched (the error is set on the thread), rather
+     * than because every page was handed out? */
+    inline bool failed () const { return m_failed; }
 
   private:
     int m_membuf_index;		/* -1 = initial, >=0 = CAS winner iterating membuf, -2 = not winner */
@@ -686,6 +693,7 @@ class sector_page_iterator
     VSID m_current_vsid;
     VPID m_last_vpid;		/* VPID of the last returned page */
     struct qmgr_temp_file *m_current_tfile;
+    bool m_failed;		/* a page fetch failed: get_next_page () returned NULL on an error */
 };
 // *INDENT-ON*
 #endif /* __cplusplus */
@@ -735,14 +743,24 @@ enum
   EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
   TRAN_AUTO_COMMIT = 0x1 << 16,
   LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
-  HV_PRED_PLAN_UNPEEKED = 0x1 << 18	/* plan built with unbound host-var predicate markers; the
+  HV_PRED_PLAN_UNPEEKED = 0x1 << 18,	/* plan built with unbound host-var predicate markers; the
 					 * first execution replans under the actual bind values */
+  XASL_TRACE_PLAN_DETAIL = 0x1 << 19,	/* the session shows its plans in detail (csql ;plan detail): the trace
+					 * carries the compiled expression programs' section too */
+  BIND_WATCH_CANDIDATE = 0x1 << 20	/* the statement passed target selection for bind-value plan
+					 * variants (joined nodes, a skewed host-var predicate not
+					 * pinned by a unique key): its executions choose among the
+					 * query's plans by fingerprint (bind_variant.h) */
 };
+
+/* the plan choices a LIMIT value decides (pt_recompile_for_limit_optimizations) */
+#define XASL_LIMIT_OPT_FLAGS (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED)
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
 #define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
 #define IS_XASL_TRACE_JSON(flag)    (((flag) & XASL_TRACE_JSON) != 0)
+#define IS_XASL_TRACE_PLAN_DETAIL(flag)    (((flag) & XASL_TRACE_PLAN_DETAIL) != 0)
 
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 

@@ -86,11 +86,14 @@ namespace cubregex
     re2_split_string_utf8 (src, position, prefix, target);
 
     result = 0;
-    re2::StringPiece piece (target);
-    while (RE2::FindAndConsume (&piece, GET_RE2_OBJ (reg)))
-      {
-	++result;
-      }
+    re2::StringPiece target_piece (target);
+    auto lambda = [&] (re2::StringPiece &match, char *prev_end_p)
+    {
+      ++result;
+    };
+
+    // occurrence 0 visits every match, advancing past empty matches
+    re2_on_match (GET_RE2_OBJ (reg), target_piece, 0, lambda);
     return NO_ERROR;
   }
 
@@ -109,7 +112,7 @@ namespace cubregex
     int match_idx = -1;
     re2::StringPiece target_piece (target);
 
-    auto lambda = [&] (re2::StringPiece &match, char *current_p)
+    auto lambda = [&] (re2::StringPiece &match, char *prev_end_p)
     {
       re2_distance_utf8 (match_idx, target.data(), match.data());
 
@@ -151,21 +154,21 @@ namespace cubregex
     int last_matched_size = 0;
 
     std::string mid;
-    auto lambda = [&] (re2::StringPiece &match, char *current_p)
+    auto lambda = [&] (re2::StringPiece &match, char *prev_end_p)
     {
-      if (last_matched_ptr == NULL && target.data() < current_p)
+      if (last_matched_ptr == NULL && target.data() < prev_end_p)
 	{
 	  // before the first match
-	  mid.append (target.data (), current_p - target.data());
+	  mid.append (target.data (), prev_end_p - target.data());
 	}
 
       last_matched_ptr = (char *) match.data ();
       last_matched_size = match.size ();
 
-      if (current_p < last_matched_ptr)
+      if (prev_end_p < last_matched_ptr)
 	{
 	  // the prefix of the matched
-	  mid.append (current_p, last_matched_ptr - current_p);
+	  mid.append (prev_end_p, last_matched_ptr - prev_end_p);
 	}
 
       // replace
@@ -212,7 +215,7 @@ namespace cubregex
     re2_split_string_utf8 (src, position, prefix, target);
 
     re2::StringPiece target_piece (target);
-    auto lambda = [&] (re2::StringPiece &match, char *current_p)
+    auto lambda = [&] (re2::StringPiece &match, char *prev_end_p)
     {
       result.assign (match.as_string());
     };
@@ -269,7 +272,8 @@ namespace cubregex
   {
     bool is_matched = false;
     int n = 1;
-    char *current_p = (char *) target.data();
+    char *current_p = (char *) target.data(); // where the next search starts
+    char *prev_end_p = current_p; // end of the previous match
     const char *end_p = current_p + target.size();
     re2::StringPiece match;
     while (current_p <= end_p)
@@ -284,7 +288,7 @@ namespace cubregex
 	if (n == occurrence || occurrence == 0)
 	  {
 	    is_matched = true;
-	    lambda (match, current_p); // do something on regex is matched
+	    lambda (match, prev_end_p); // do something on regex is matched
 	    if (n == occurrence)
 	      {
 		break;
@@ -296,7 +300,21 @@ namespace cubregex
 	  }
 
 	++n; // next occurence idx
-	current_p = (char *) match.data() + match.size (); // next pos to search a non-overapping regex match
+	prev_end_p = (char *) match.data() + match.size ();
+	if (match.empty ())
+	  {
+	    // an empty match does not consume the input, so step over one character to find the next match
+	    if (prev_end_p >= end_p)
+	      {
+		break;
+	      }
+	    int dummy;
+	    current_p = (char *) intl_nextchar_utf8 ((const unsigned char *) prev_end_p, &dummy);
+	  }
+	else
+	  {
+	    current_p = prev_end_p; // next pos to search a non-overapping regex match
+	  }
       }
     return is_matched;
   }

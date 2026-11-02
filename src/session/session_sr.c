@@ -71,18 +71,6 @@ xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_keep
 }
 
 /*
- * xsession_set_is_keep_session () - set the keep session flag for the session
- * return	        : error code
- * thread_p (in)        : worker thread
- * is_keep_session (in) : whether to keep the session
- */
-int
-xsession_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session)
-{
-  return session_set_is_keep_session (thread_p, is_keep_session);
-}
-
-/*
  *  xsession_set_row_count () - set the count of affected rows for the
  *				    session associated to thread_p
  *  return	  : error code

@@ -2496,6 +2496,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
+      /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+       * (as STR_TO_DATE does); its result type is fixed */
       db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value1, &cast_value, &type1);
       if (er_status != NO_ERROR
@@ -3406,6 +3408,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_TIMESTAMPTZ:
       break;
     default:			/* convert to double */
+      /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+       * (as STR_TO_DATE does); its result type is fixed */
       type1 = DB_TYPE_UNKNOWN;
 
       /* try type double */
@@ -4233,6 +4237,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
   float f;
   double d;
   DB_BIGINT bi;
+  UINT64 bits;
   DB_VALUE tmpval, *tmpval_p;
 
   if (value == NULL)
@@ -4253,25 +4258,34 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	{
 	case DB_TYPE_SHORT:
 	  s = db_get_short (value);
-	  for (c = 0; s; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (unsigned short) s; bits; c++)
 	    {
-	      s &= s - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
 	case DB_TYPE_INTEGER:
 	  i = db_get_int (value);
-	  for (c = 0; i; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (unsigned int) i; bits; c++)
 	    {
-	      i &= i - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
 	case DB_TYPE_BIGINT:
 	  bi = db_get_bigint (value);
-	  for (c = 0; bi; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (UINT64) bi; bits; c++)
 	    {
-	      bi &= bi - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4285,9 +4299,12 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	    {
 	      i = (int) (f + 0.5f);
 	    }
-	  for (c = 0; i; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (unsigned int) i; bits; c++)
 	    {
-	      i &= i - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4301,9 +4318,12 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	    {
 	      bi = (DB_BIGINT) (d + 0.5f);
 	    }
-	  for (c = 0; bi; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (UINT64) bi; bits; c++)
 	    {
-	      bi &= bi - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4325,9 +4345,12 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	    {
 	      bi = (DB_BIGINT) (d + 0.5f);
 	    }
-	  for (c = 0; bi; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (UINT64) bi; bits; c++)
 	    {
-	      bi &= bi - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4724,6 +4747,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
   d4 = (int) floor (d4);
 
+  /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+   * (as STR_TO_DATE does); its result type is fixed */
   /* find the common type of value1, value2 and value3 and cast them to the common type */
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)
@@ -6585,11 +6610,30 @@ db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int co
 int
 db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
 {
-  int error_code = NO_ERROR;
   bool can_compare = false;
   DB_VALUE_COMPARE_RESULT cmp_result = DB_UNK;
 
   cmp_result = tp_value_compare_with_error (arg1, arg2, 1, 0, &can_compare);
+
+  return db_least_or_greatest_by (arg1, arg2, cmp_result, can_compare, result, least);
+}
+
+/*
+ * db_least_or_greatest_by () - LEAST or GREATEST of two values, once they are compared
+ *   return: NO_ERROR, or ER_FAILED where they do not compare
+ *   cmp_result(in), can_compare(in): the comparison of arg1 with arg2 (the server's is resolved)
+ */
+int
+db_least_or_greatest_by (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE_COMPARE_RESULT cmp_result, bool can_compare,
+			 DB_VALUE * result, bool least)
+{
+  int error_code = NO_ERROR;
+
+  if (!can_compare && cmp_result != DB_UNK)
+    {
+      /* incomparable values ordered by their types: a pick, not an error, so the comparison's error goes */
+      er_clear ();
+    }
 
   if (cmp_result == DB_EQ)
     {
