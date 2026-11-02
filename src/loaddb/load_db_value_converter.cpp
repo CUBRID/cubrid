@@ -385,10 +385,16 @@ namespace cubload
    *    val(in/out): the element, converted to the literal's natural type
    * Note:
    *    The element converters build the literal's natural type and look at no target
-   *    domain, which is what a collection with no single element domain needs. When the
-   *    collection does have one, INSERT coerces the element into it - {B'1010'} goes into
-   *    a SET(VARCHAR) as {'a'} - so do the same here, or a bit string, a date, an amount
+   *    domain, which is what a collection with no element domain needs. When the
+   *    collection has one, INSERT coerces the element into it - {B'1010'} goes into a
+   *    SET(VARCHAR) as {'a'} - so do the same here, or a bit string, a date, an amount
    *    and a plain number would all be refused where INSERT takes them.
+   *
+   *    setdomain is a list, and a collection may name several element domains. The cast
+   *    takes the list whole: tp_value_cast () runs tp_domain_select () over it, which is
+   *    the same choice set_add_element () makes further down, so an element that already
+   *    matches one of them is not dragged into another. Walk the list here too, or an
+   *    element matching any domain but the first would be cast when it has nowhere to go.
    *
    *    A cast that does not work leaves the value alone on purpose: set_add_element ()
    *    then refuses it and reports what it refused, which is the message the loader has
@@ -399,9 +405,17 @@ namespace cubload
   {
     db_value cast_val;
 
-    if (setdomain == NULL || TP_DOMAIN_TYPE (setdomain) == db_value_type (val))
+    if (setdomain == NULL)
       {
 	return;
+      }
+
+    for (const tp_domain *d = setdomain; d != NULL; d = d->next)
+      {
+	if (TP_DOMAIN_TYPE (d) == db_value_type (val))
+	  {
+	    return;
+	  }
       }
 
     db_make_null (&cast_val);
