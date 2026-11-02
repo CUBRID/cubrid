@@ -29,7 +29,6 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "query_executor.h"
-#include "domain_plan.h"
 #include "stream_to_xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "memoize.hpp"
@@ -206,7 +205,7 @@ namespace parallel_scan
 		      }
 		  }
 		bool iscan_oid_order = m_scan_id->s.isid.iscan_oid_order;
-		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, S_SELECT,
+		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, false, S_SELECT,
 						 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 						 m_xasl->val_list, m_vd, spec->indexptr, &m_cls_oid, &m_hfid,
 						 cls->cls_regu_list_key, spec->where_key,
@@ -229,7 +228,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
-		scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
+		scan_open_heap_scan (&thread_ref, m_scan_id, false, false, S_SELECT,
 				     m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 				     m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
 				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
@@ -337,7 +336,7 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
-			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
+			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 							&scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
@@ -358,7 +357,7 @@ namespace parallel_scan
 			bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
 			specp->indexptr->btid = scan_info.btid;
 			err_code =
-				scan_open_index_scan (&thread_ref, &specp->s_id, false,
+				scan_open_index_scan (&thread_ref, &specp->s_id, false, false,
 						      S_SELECT, fixed_scan, specp->s_id.grouped,
 						      specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 						      specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
@@ -671,7 +670,7 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
-    /* the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
+    /* the agg-expr marking is the clone's unpack's (stx_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
     /* this worker's clone scans its own spec and projects/aggregates its own rows */
     qexec_set_expr_share_spec (m_xasl, m_xasl->spec_list);
@@ -687,21 +686,16 @@ namespace parallel_scan
 
     /* The worker's own copy on its own heap: it frees it in finalize. */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
-    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state, true);
+    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state);
     if (m_xasl_state == nullptr)
       {
-	/* the copy of the resolved domains sets its own error (the block size, a value's clone) */
+	/* the copy sets its own error (a value's clone) */
 	if (er_errid () == NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
 	  }
 	return ER_FAILED;
       }
-    /* the worker's own load numbers its items and resolved indexes as the leader's plan does: it reads the leader's
-     * resolutions with its own items (copied_from_leader) */
-    assert (m_xasl->domain_plan == nullptr || m_xasl_state->resolved_domain.plan == nullptr
-	    || (m_xasl->domain_plan->n_items == m_xasl_state->resolved_domain.plan->n_items
-		&& m_xasl->domain_plan->n_resolved == m_xasl_state->resolved_domain.plan->n_resolved));
     m_vd = &m_xasl_state->vd;
     return NO_ERROR;
   }
@@ -961,7 +955,8 @@ namespace parallel_scan
 	    index_page = nullptr;
 	    index_slot_hint = NULL_SLOTID;
 	    index_range_idx = -1;
-	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page, &index_slot_hint,
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, m_slot_iterator.held_leaf (),
+			index_page, &index_slot_hint,
 			&index_range_idx);
 	  }
 	else

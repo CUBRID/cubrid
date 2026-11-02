@@ -299,8 +299,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/domain_plan.c
-  ${QUERY_DIR}/domain_resolve.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -535,7 +533,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_lock.cpp
   ${STORAGE_DIR}/btree_sort.c
+  ${STORAGE_DIR}/btree_sort_merge.cpp
+  ${STORAGE_DIR}/btree_sort_radix.cpp
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
@@ -564,6 +565,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/bestspace.hpp
+  ${STORAGE_DIR}/btree_lock.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp

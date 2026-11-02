@@ -103,9 +103,6 @@ struct file_hash_scan_id
   char alignment;		/* alignment value used on slots of bucket pages */
 };
 
-/* How the build keys of one scan open enter the hash table, resolved before the first build row: query_hash_scan.c */
-typedef struct hash_scan_key_plan HASH_SCAN_KEY_PLAN;
-
 /* hash list scan */
 typedef struct hash_list_scan HASH_LIST_SCAN;
 struct hash_list_scan
@@ -130,9 +127,6 @@ struct hash_list_scan
   };
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
-  bool need_coerce_type;	/* may a key pair hash differently? after the plan: does a build key convert? */
-  HASH_SCAN_KEY_PLAN *key_plan;	/* each key pair's hash domain and each side's copy or conversion */
-  HASH_SCAN_KEY *probe_key;	/* the key a probe hashes: values pointing to temp_key's or temp_new_key's */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
@@ -141,19 +135,8 @@ MHT_HLS_ENTRY *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID h
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
 
-int qdata_hscan_key_eq (const void *key1, const void *key2);
-
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
-int qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
-			   REGU_VARIABLE_LIST producers);
-void qdata_free_hscan_key_plan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid);
-HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
-						   const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * new_key);
-int qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * converted,
-			   HASH_SCAN_KEY * probe_key);
-bool qdata_hscan_key_plan_probe_converts (const HASH_SCAN_KEY_PLAN * plan);
-bool qdata_hscan_key_probe_has_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args);

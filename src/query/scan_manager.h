@@ -58,12 +58,9 @@ struct regu_variable_list_node;
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
-struct domain_plan_index;
-struct RESOLVED_INDEX_KEYS;
-struct scan_key_state;
 
+struct DOMAIN_KEY_RANGES;
 // *INDENT-OFF*
-enum DOMAIN_SEARCH_KEYS : unsigned char;
 namespace cubxasl
 {
   struct pred_expr;
@@ -244,6 +241,22 @@ struct index_skip_scan
   key_range *skipped_range;	/* range used for iterating the distinct values on the first index column */
 };
 
+/* GROUP BY skip aggregated during the scan (CBRD-27664): the executor's state as the index scan sees it */
+typedef struct indx_gby_skip INDX_GBY_SKIP;
+struct indx_gby_skip
+{
+  /* S1 (covered): the B-tree hands each selected object to visit () instead of the covering list. key_start is true
+   * for the first object of a key record; stop (out) ends the scan. */
+  int (*visit) (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * stop);
+  void *visit_arg;
+  /* K: batch positions where a key record starts, ascending; the B-tree fills them, scan_next consumes them */
+  int *key_starts;
+  int key_start_cnt;
+  int key_start_cap;
+  int key_start_next;		/* the first mark the delivered rows have not reached */
+  bool key_start;		/* set when a delivered row passed a mark; the executor clears it */
+};
+
 /* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
@@ -291,15 +304,12 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  const domain_plan_index *key_plan;	/* the key plan the load derived, INDX_INFO.key_plan */
-  const RESOLVED_INDEX_KEYS *resolved_keys;	/* this execution's resolutions for it; NULL: the plan's alone */
-  scan_key_state *key_state;	/* the scan's key plan storage (mixed key domain caches, the search keys the B-tree
-				 * reads); NULL when the plan needs none */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
    * the spec is not eligible for parallel index scan. Owned by the scan_id. */
   void *parallel_pending;
+  INDX_GBY_SKIP *gby_skip;	/* GROUP BY skip aggregated during the scan; NULL otherwise. Owned by the executor */
 };
 
 struct parallel_index_scan_id
@@ -348,10 +358,8 @@ struct parallel_index_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  const domain_plan_index *key_plan;	/* mirror of INDX_SCAN_ID::key_plan */
-  const RESOLVED_INDEX_KEYS *resolved_keys;	/* mirror of INDX_SCAN_ID::resolved_keys */
-  scan_key_state *key_state;	/* mirror of INDX_SCAN_ID::key_state */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
+  INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   /* parallel-only fields (must follow all isid fields) */
   // *INDENT-OFF*
   #if !WINDOWS
@@ -377,10 +385,8 @@ static_assert (offsetof (INDX_SCAN_ID, indx_cov)         == offsetof (PARALLEL_I
 static_assert (offsetof (INDX_SCAN_ID, multi_range_opt)  == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),  "pisid mirror: multi_range_opt");
 static_assert (offsetof (INDX_SCAN_ID, iss)              == offsetof (PARALLEL_INDEX_SCAN_ID, iss),              "pisid mirror: iss");
 static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order)  == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),  "pisid mirror: iscan_oid_order");
-static_assert (offsetof (INDX_SCAN_ID, key_plan)         == offsetof (PARALLEL_INDEX_SCAN_ID, key_plan),         "pisid mirror: key_plan");
-static_assert (offsetof (INDX_SCAN_ID, resolved_keys)    == offsetof (PARALLEL_INDEX_SCAN_ID, resolved_keys),    "pisid mirror: resolved_keys");
-static_assert (offsetof (INDX_SCAN_ID, key_state)        == offsetof (PARALLEL_INDEX_SCAN_ID, key_state),        "pisid mirror: key_state");
 static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending), "pisid mirror: parallel_pending");
+static_assert (offsetof (INDX_SCAN_ID, gby_skip)         == offsetof (PARALLEL_INDEX_SCAN_ID, gby_skip),         "pisid mirror: gby_skip");
 #if !WINDOWS
 static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
 	       "pisid parallel-only fields must follow all isid fields");
@@ -497,6 +503,9 @@ struct scan_id_struct
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
   bool mvcc_select_lock_needed;	/* true if lock at scanning needed in mvcc */
+  bool upddel_target_scan;	/* the row locks are the statement's: the outermost READ COMMITTED DELETE/UPDATE
+				 * target, not SELECT ... FOR UPDATE.  Kept across a partition switch. */
+  bool lock_ends_with_statement;	/* the same, narrowed by the class this scan is on now */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
@@ -545,7 +554,8 @@ struct scan_id_struct
 
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
-				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+				bool mvcc_select_lock_needed, bool upddel_target_scan,
+				SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 				QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				val_descr * vd,
 				/* fields of HEAP_SCAN_ID */
@@ -571,7 +581,8 @@ extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id
 				      ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest);
 extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 /* fields of SCAN_ID */
-				 bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+				 bool mvcc_select_lock_needed, bool upddel_target_scan,
+				 SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 				 QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				 val_descr * vd,
 				 /* fields of INDX_SCAN_ID */
@@ -603,10 +614,7 @@ extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
 				       int key_range_idx);
 extern int scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
-					   DOMAIN_SEARCH_KEYS search_keys);
-extern DOMAIN_SEARCH_KEYS scan_index_search_keys (const INDX_SCAN_ID * isidp);
-extern BTREE_SEARCH_COMPARE scan_index_search_compare (const INDX_SCAN_ID * isidp);
-extern void scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
+					   const DOMAIN_KEY_RANGES * ranges);
 
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */

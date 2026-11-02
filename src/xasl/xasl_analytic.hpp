@@ -23,13 +23,13 @@
 #ifndef _XASL_ANALYTIC_HPP_
 #define _XASL_ANALYTIC_HPP_
 
-struct domain_plan_item;
 
 #include "dbtype_def.h"
 #include "db_function.hpp"          // FUNC_CODE
 #include "query_sum_accumulator.h"  // SUM_ACC
 #include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"         // QUERY_OPTIONS
+#include "xasl_aggregate.hpp"        // aggregate_accumulator_domain
 
 // forward definitions
 struct qfile_list_id;
@@ -73,7 +73,6 @@ namespace cubxasl
     FUNC_CODE function;		/* analytic function type */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     tp_domain *domain;		/* domain of the result */
-    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
 
     DB_TYPE opr_dbtype;		/* operand data type */
     regu_variable_node operand;	/* operand */
@@ -101,6 +100,17 @@ namespace cubxasl
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583: a SUM / AVG's or STDDEV /
+							 * VARIANCE's, the compiler's plan
+							 * (domain_plan_analytic_accumulator), its converters looked
+							 * up at unpack */
+    /* CBRD-27583: a MEDIAN / PERCENTILE whose sorted operand is a string: the domain its sort compares the
+     * operand in (the function's type) and the converter into it, found at unpack from the sort list's domain of the
+     * operand's key; NULL otherwise */
+    tp_domain *sort_key_cmp_dom;
+    TP_VALUE_CONVERTER sort_key_conv;
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
     void init ();
   };

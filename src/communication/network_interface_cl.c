@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include <algorithm>
+#include <chrono>
 
 #include "porting.h"
 #include "network.h"
@@ -100,8 +101,8 @@
 
 #if defined (CS_MODE)
 #define NET_DEFER_END_QUERIES_MAX 5
-static QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
-static int net_Deferred_end_queries_count = 0;
+static CUB_THREAD_LOCAL QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
+static CUB_THREAD_LOCAL int net_Deferred_end_queries_count = 0;
 #endif /* CS_MODE */
 
 /*
@@ -4001,6 +4002,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
 
+	  assert (server_credential != NULL);
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
@@ -4646,12 +4648,38 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	      free_and_init (request);
 	      return error;
 	    }
-	  sysprm_update_client_session_parameters (session_params);
+	}
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_is_sub_client ())
+	{
+	  /*
+	   * The parameter values on the client (prm_Def) are process-wide and shared with the main client and
+	   * the other sub-clients, so a sub-client must not rewrite them. Keep the session parameter values of
+	   * this sub-client in its own thread-local array instead (see sysprm_set_sub_client_session_parameters ()).
+	   * The session of a new sub-client is created with cached_session_parameters loaded by the main client.
+	   */
+	  error = sysprm_set_sub_client_session_parameters (update_parameter_values ? session_params :
+							    cached_session_parameters);
+	  if (error != NO_ERROR)
+	    {
+	      sysprm_free_session_parameters (&session_params);
+	      free_and_init (request);
+	      return error;
+	    }
 	}
       else
+#endif
 	{
-	  /* use the values stored in cached_session_parameters */
-	  sysprm_update_client_session_parameters (cached_session_parameters);
+	  if (update_parameter_values)
+	    {
+	      sysprm_update_client_session_parameters (session_params);
+	    }
+	  else
+	    {
+	      /* use the values stored in cached_session_parameters */
+	      sysprm_update_client_session_parameters (cached_session_parameters);
+	    }
 	}
       sysprm_free_session_parameters (&session_params);
     }
@@ -6158,15 +6186,75 @@ is_top_level_class (MOBJ mobj)
 }
 
 /*
+ * stats_progress_clock_msec - monotonic clock for the progress of UPDATE STATISTICS ON ALL CLASSES
+ *
+ * return: msec from an arbitrary origin
+ */
+INT64
+stats_progress_clock_msec (void)
+{
+  return std::chrono::duration_cast < std::chrono::milliseconds >
+    (std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
+/*
+ * stats_log_update_progress - report the progress of UPDATE STATISTICS ON ALL CLASSES to the server event log
+ *
+ * return: none; a failure to report never fails the run and leaves the current error as it was
+ *
+ *   classop(in):
+ *   phase(in): STATS_PROGRESS_STATISTICS or STATS_PROGRESS_HISTOGRAM
+ *   state(in): STATS_PROGRESS_STARTED or STATS_PROGRESS_FINISHED
+ *   seq(in): 1-based position of the class in the phase
+ *   total(in): number of classes in the phase
+ *   class_start_msec(in): stats_progress_clock_msec () when the class started
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *   error(in): result of the class (finished only)
+ */
+void
+stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
+			   INT64 run_start_msec, int error)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 7) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 now = stats_progress_clock_msec ();
+  INT64 class_ms = now - class_start_msec;
+  INT64 elapsed_ms = now - run_start_msec;
+
+  ptr = or_pack_oid (request, WS_OID (classop));
+  ptr = or_pack_int (ptr, phase);
+  ptr = or_pack_int (ptr, state);
+  ptr = or_pack_int (ptr, seq);
+  ptr = or_pack_int (ptr, total);
+  ptr = or_pack_int (ptr, (int) std::min (class_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, (int) std::min (elapsed_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, error);
+
+  er_stack_push ();
+  (void) net_client_request (NET_SERVER_QST_LOG_STATS_PROGRESS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			     OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  er_stack_pop ();
+#endif /* CS_MODE */
+  /* SA_MODE has no server event log */
+}
+
+/*
  * stats_update_all_statistics -
  *
  * return:
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   print_summary(in): print the summary line here; true only for WITH NO HISTOGRAM, which skips the
+ *                      histogram pass that normally prints it
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
  *
- * NOTE:
+ * NOTE: the progress of each class goes to the server event log.
  */
 int
-stats_update_all_statistics (int with_fullscan, int print_summary)
+stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6184,7 +6272,13 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
       class_mop = lmops->mops[i];
       if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
+	  INT64 class_start_msec = stats_progress_clock_msec ();
+
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, NO_ERROR);
 	  error = stats_update_statistics (class_mop, with_fullscan);
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, error);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -6218,9 +6312,12 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
  *   skip_mops(in): classes to leave out of the histogram build (optimizedb --no-histogram-classes). Their
  *                  existing histograms are kept as they are. NULL if none
  *   n_skip(in): number of entries in skip_mops
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *
+ * NOTE: the progress of each class goes to the server event log.
  */
 int
-update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
+update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6261,13 +6358,21 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
 	  continue;
 	}
 
+      INT64 class_start_msec = stats_progress_clock_msec ();
+
+      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, NO_ERROR);
+
       obj = db_find_class (sm_get_ch_name (class_mop));
       if (obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, error);
 	  AU_RESTORE (save);
 	  locator_free_list_mops (lmops);
-	  return er_errid ();
+	  return error;
 	}
 
       histogram_info.target_columns = NULL;
@@ -6278,6 +6383,8 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
 
       error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
 					       &hist_skipped);
+      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, error);
       n_hist_skipped += hist_skipped;
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
@@ -7385,6 +7492,78 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 #endif /* !CS_MODE */
 }
 
+#if !defined (CS_MODE)
+/* free the values qmgr_server_db_values made */
+static void
+qmgr_free_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, DB_VALUE * server_db_values)
+{
+  if (server_db_values != NULL)
+    {
+      for (int i = 0; i < dbval_cnt; i++)
+	{
+	  db_value_clear (&server_db_values[i]);
+	}
+      db_private_free (thread_p, server_db_values);
+    }
+}
+
+/*
+ * qmgr_server_db_values () - the bound values as the server takes them, in the server's allocation: an object as its
+ *   OID, as the client's packing sends it in CS mode (CBRD-27583: the plans the server makes before the rows take an
+ *   object's values as OIDs)
+ *   return: the values, NULL without values or on error (when *error is set)
+ */
+static DB_VALUE *
+qmgr_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, const DB_VALUE * dbvals, bool * error)
+{
+  DB_VALUE *server_db_values;
+  OID *oid;
+  int i;
+
+  *error = false;
+  if (dbval_cnt <= 0)
+    {
+      return NULL;
+    }
+
+  server_db_values = (DB_VALUE *) db_private_alloc (thread_p, dbval_cnt * sizeof (DB_VALUE));
+  if (server_db_values == NULL)
+    {
+      *error = true;
+      return NULL;
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      db_make_null (&server_db_values[i]);
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      switch (DB_VALUE_TYPE (&dbvals[i]))
+	{
+	case DB_TYPE_OBJECT:
+	  /* server cannot handle objects, convert to OID instead */
+	  oid = ws_identifier (db_get_object (&dbvals[i]));
+	  if (oid != NULL)
+	    {
+	      db_make_oid (&server_db_values[i], oid);
+	    }
+	  break;
+
+	default:
+	  /* Clone value */
+	  if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
+	    {
+	      qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
+	      *error = true;
+	      return NULL;
+	    }
+	  break;
+	}
+    }
+  return server_db_values;
+}
+#endif /* !CS_MODE */
+
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -7592,69 +7771,20 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   return list_id;
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
-  DB_VALUE *server_db_values = NULL;
-  OID *oid;
-  int i;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
   /* reallocate dbvals to use server allocation */
-  if (dbval_cnt > 0)
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbvals, &error);
+  if (!error)
     {
-      size_t s = dbval_cnt * sizeof (DB_VALUE);
-
-      server_db_values = (DB_VALUE *) db_private_alloc (thread_p, s);
-      if (server_db_values == NULL)
-	{
-	  goto cleanup;
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_make_null (&server_db_values[i]);
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  switch (DB_VALUE_TYPE (&dbvals[i]))
-	    {
-	    case DB_TYPE_OBJECT:
-	      /* server cannot handle objects, convert to OID instead */
-	      oid = ws_identifier (db_get_object (&dbvals[i]));
-	      if (oid != NULL)
-		{
-		  db_make_oid (&server_db_values[i], oid);
-		}
-	      break;
-
-	    default:
-	      /* Clone value */
-	      if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-	      break;
-	    }
-	}
+      /* call the server routine of query execute */
+      list_id =
+	xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
+			     srv_cache_time, query_timeout, NULL);
     }
-  else
-    {
-      /* No dbvals */
-      server_db_values = NULL;
-    }
-
-  /* call the server routine of query execute */
-  list_id =
-    xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
-			 srv_cache_time, query_timeout, NULL);
-
-cleanup:
-  if (server_db_values != NULL)
-    {
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_value_clear (&server_db_values[i]);
-	}
-      db_private_free (thread_p, server_db_values);
-    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -7762,13 +7892,20 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   return regu_result;
 #else /* CS_MODE */
-  QFILE_LIST_ID *regu_result;
+  QFILE_LIST_ID *regu_result = NULL;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  regu_result =
-    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
-				     query_timeout);
+  /* CBRD-27583: an object as its OID, as qmgr_execute_query sends it */
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbval_ptr, &error);
+  if (!error)
+    {
+      regu_result =
+	xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt,
+					 server_db_values, &flag, query_timeout);
+    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -8524,7 +8661,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -8575,7 +8712,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
