@@ -13689,7 +13689,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
       /* user explicitly specifies keylimit */
       key_infop->is_user_given_keylimit = true;
 
-      /* CBRD-27748: a KEYLIMIT value is BIGINT, as a LIMIT value is; the hint stays as written (a view prints it) */
+      /* a KEYLIMIT value is BIGINT, as a LIMIT value is. The hint stays as written, since a view prints it */
       limit_l = pt_copy_limit_value (parser, limit_u->next);
       limit_u = pt_copy_limit_value (parser, limit_u);
       if (limit_u == NULL || (limit_l == NULL && key_limit->next != NULL))

@@ -5580,7 +5580,7 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desire
 }
 
 /*
- * tp_value_to_row_bound () - CBRD-27748: the integer a row number is compared with in place of value
+ * tp_value_to_row_bound () - the integer a row number is compared with in place of value
  *    return: DOMAIN_COMPATIBLE, or the status of the coercion when value is not a number
  *    value(in): value compared with a row number (ROWNUM, INST_NUM, ORDERBY_NUM, GROUPBY_NUM), not NULL
  *    exclusive(in): true when value itself is outside the bound (rownum < value, rownum >= value)
@@ -5650,7 +5650,7 @@ tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_TYPE source_ty
 }
 
 /*
- * tp_value_limit_sum () - CBRD-27748: the BIGINT sum of a LIMIT offset and count, the row number the query reads up to
+ * tp_value_limit_sum () - the BIGINT sum of a LIMIT offset and count, the row number the query reads up to
  *    return: DOMAIN_COMPATIBLE with limit_sum and sum_overflow set, or the status of the coercion of a value that
  *            does not read as BIGINT (a value beyond BIGINT is DOMAIN_OVERFLOW, which is not the sum's overflow)
  *    offset(in): the offset, not NULL

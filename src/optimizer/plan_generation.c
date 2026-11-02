@@ -4347,8 +4347,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      /* CBRD-27748: key_limit_eval () reads this N - 1 as ceil (N) - 1 (2.4 gives 2); the leaf N is shared with the
-       * upper bound, so the flag goes on the N - 1 node */
+      /* key_limit_eval () reads this N - 1 as ceil (N) - 1 (2.4 gives 2). The leaf N is shared with the upper
+       * bound, so the flag goes on the N - 1 node */
       REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
@@ -4373,7 +4373,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      /* CBRD-27748: read as ceil (N) - 1 (see R_EQ) */
+      /* read as ceil (N) - 1 (see R_EQ) */
       REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
@@ -4393,7 +4393,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      /* CBRD-27748: read as ceil (N) - 1 (see R_EQ) */
+      /* read as ceil (N) - 1 (see R_EQ) */
       REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);

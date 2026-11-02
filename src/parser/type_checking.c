@@ -7526,7 +7526,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
 
-  /* CBRD-27748: before the LIMIT clause is copied into the numbering predicates (below) and its values are typed */
+  /* before the LIMIT clause is copied into the numbering predicates (below) and its values are typed */
   pt_preset_limit_value (parser, node);
 
   if (sc_info->donot_fold == true)
@@ -8459,7 +8459,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       break;
 
     case PT_NAME:
-      /* CBRD-27748: a key limit value was typed BIGINT by pt_preset_limit_value () in pt_eval_type_pre () */
+      /* a key limit value was typed BIGINT by pt_preset_limit_value () in pt_eval_type_pre () */
       break;
 
     case PT_VALUE:
@@ -8976,10 +8976,10 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 }
 
 /*
- * pt_fold_limit_expr () - CBRD-27748: fold an expression of literals in a LIMIT value into a BIGINT literal, in place
+ * pt_fold_limit_expr () - fold an expression of literals in a LIMIT value into a BIGINT literal, in place
  *   return: none
  *   parser(in):
- *   node(in/out): the expression, without a host variable; a literal on return when the expression folds
+ *   node(in/out): the expression, without a host variable. A literal on return when the expression folds
  *   is_key_limit(in): true for a KEYLIMIT value, whose hint is printed as it is
  *
  * Note: The literals were typed BIGINT before, so the arithmetic is BIGINT arithmetic. The expression stays when it
@@ -9026,7 +9026,7 @@ pt_fold_limit_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit)
 }
 
 /*
- * pt_preset_limit_value_internal () - CBRD-27748: type a LIMIT value as BIGINT before it is typed with the query
+ * pt_preset_limit_value_internal () - type a LIMIT value as BIGINT before it is typed with the query
  *   return: none
  *   parser(in):
  *   node(in): an offset or a count of a LIMIT clause, or a KEYLIMIT value
@@ -9076,7 +9076,7 @@ pt_preset_limit_value_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool is
       break;
 
     case PT_VALUE:
-      /* an integer literal beyond BIGINT is parsed as NUMERIC; the conversion reports the error. The converted
+      /* an integer literal beyond BIGINT is parsed as NUMERIC, so the conversion reports the error. The converted
        * literal prints as its number, not as a CAST */
       if (node->type_enum != PT_TYPE_BIGINT && node->type_enum != PT_TYPE_NULL
 	  && pt_coerce_value_explicit (parser, node, node, PT_TYPE_BIGINT, NULL) == NO_ERROR
@@ -9122,7 +9122,7 @@ pt_preset_limit_value_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool is
 }
 
 /*
- * pt_preset_limit_value () - CBRD-27748: type the LIMIT values a node holds as BIGINT
+ * pt_preset_limit_value () - type the LIMIT values a node holds as BIGINT
  *   return: none
  *   parser(in):
  *   node(in):

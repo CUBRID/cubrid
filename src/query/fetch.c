@@ -2345,7 +2345,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *   vd(in)        : value descriptor
  *   exclusive(in) : true when the value of a leaf is itself outside the bound (rownum < N, rownum >= N)
  *   conv(in)      : the converter of regu_var's compiled type into BIGINT the unpack found (CBRD-27583), when
- *                   regu_var is the key limit itself (KEY_INFO key_limit_l_conv, key_limit_u_conv); NULL below it
+ *                   regu_var is the key limit itself (KEY_INFO key_limit_l_conv, key_limit_u_conv), NULL below it
  *   result(out)   : evaluated BIGINT, valid when *is_null is false
  *   is_null(out)  : set to true when a NULL takes part in the expression
  *
@@ -2355,7 +2355,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
  *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
  *
- *       CBRD-27748: a leaf is read as the rows its comparison admits, so that the key limit reads the rows the
+ *       A leaf is read as the rows its comparison admits, so that the key limit reads the rows the
  *       sequential scan keeps by comparing the values (tp_value_to_row_bound):
  *         exclusive false (rownum <= N, rownum > N) : floor (N)      2.4 -> 2, 2.5 -> 2, 2 -> 2
  *         exclusive true  (rownum < N, rownum >= N) : ceil (N) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
@@ -2446,8 +2446,8 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
 
   /* the rows the comparison admits: floor (N) for rownum <= N, ceil (N) - 1 for rownum < N (exclusive), and beyond
    * the BIGINT range DB_BIGINT_MAX or -1 by the sign (rownum < 1e46: all rows, rownum < -1e46: no rows). The value
-   * is read by the converter the unpack found for the key limit (CBRD-27583) when this leaf is the key limit itself;
-   * a leaf under an N - 1 or a LEAST/GREATEST finds its own, once per scan, from the type the plan compiled for it */
+   * is read by the converter the unpack found for the key limit (CBRD-27583) when this leaf is the key limit itself.
+   * A leaf under an N - 1 or a LEAST/GREATEST finds its own, once per scan, from the type the plan compiled for it */
   planned = regu_var->domain != NULL ? TP_DOMAIN_TYPE (regu_var->domain) : DB_TYPE_NULL;
   if (conv == NULL && planned != DB_TYPE_BIGINT && planned != DB_TYPE_VARIABLE && planned != DB_TYPE_NULL)
     {
@@ -2483,8 +2483,8 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
  *   upper(out)      : upper limit, set when key_limit_u is not NULL
  *   is_null(out)    : set to true when a NULL takes part in either bound (no row can match)
  *
- * Note: CBRD-27748: both bounds go through key_limit_eval (), which reads each leaf as the number of rows its
- *       comparison admits. The tree is never computed as a whole (the fast path that fetched it and rounded it to
+ * Note: Both bounds go through key_limit_eval (), which reads each leaf as the number of rows its comparison
+ *       admits. The tree is never computed as a whole (the fast path that fetched it and rounded it to
  *       BIGINT is gone): N - 1 computed on 2.4 and then rounded gives 1, while the rows rownum < 2.4 keeps are 2.
  */
 int

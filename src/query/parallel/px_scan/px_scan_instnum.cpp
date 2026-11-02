@@ -297,9 +297,9 @@ namespace parallel_scan
 		 && tp_value_to_row_bound (limit_val, draw.is_less_than, conversion != NULL ? conversion->source : DB_TYPE_NULL,
 					   conversion != NULL ? conversion->conv : NULL, &saturated_limit) == DOMAIN_COMPATIBLE)
 	  {
-	    /* CBRD-27748: serial widens inst_num() rather than coercing the bound, so out of BIGINT range a
+	    /* serial widens inst_num() rather than coercing the bound, so out of BIGINT range a
 	     * positive bound admits every row and a negative one none, whatever its type
-	     * (NUMERIC, DOUBLE, string; it was NUMERIC only), as the key limit does. */
+	     * (NUMERIC, DOUBLE, string, no longer NUMERIC only), as the key limit does. */
 	    raw_limit = (saturated_limit < 0) ? 0 : saturated_limit;
 	    er_clear ();
 	  }

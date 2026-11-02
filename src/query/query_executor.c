@@ -4275,9 +4275,9 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       return NO_ERROR;
     }
 
-  /* CBRD-27748: the limit is the upper bound the optimizer took from the orderby_num () predicate, read as a key
-   * limit is: the rows the comparison admits (orderby_num () < 2.4 keeps 2 rows, not 2.4 - 1 rounded to 1), by the
-   * converter the unpack found for the limit's compiled type (CBRD-27583, orderby_limit_conv) */
+  /* the limit is the upper bound the optimizer took from the orderby_num () predicate, read as a key limit is:
+   * the rows the comparison admits (orderby_num () < 2.4 keeps 2 rows, not 2.4 - 1 rounded to 1), by the converter
+   * the unpack found for the limit's compiled type (CBRD-27583, orderby_limit_conv) */
   if (fetch_key_limits (thread_p, NULL, NULL, xasl->orderby_limit, xasl->orderby_limit_conv, &xasl_state->vd, NULL,
 			&row_limit, &is_null) != NO_ERROR)
     {
@@ -4286,7 +4286,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
   if (is_null)
     {
-      /* the predicate matches no row; no limit is needed to find that out */
+      /* the predicate matches no row, so no limit is needed to find that out */
       return NO_ERROR;
     }
 
@@ -21142,9 +21142,9 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       if (offset_valp != NULL && !DB_IS_NULL (offset_valp) && !DB_IS_NULL (limit_valp))
 	{
-	  /* CBRD-27748: LIMIT offset, count reads the rows up to offset + count, a BIGINT like the two values (an expression
-	   * such as ? / 2 may still hold its NUMERIC result here; the predicate casts it). A sum beyond BIGINT is an
-	   * error here, once and before any row is read, so that every plan and an empty table report it the same way */
+	  /* LIMIT offset, count reads the rows up to offset + count, a BIGINT like the two values (an expression such
+	   * as ? / 2 may still hold its NUMERIC result here, which the predicate casts). A sum beyond BIGINT is an error
+	   * here, once and before any row is read, so that every plan and an empty table report it the same way */
 	  DB_BIGINT limit_sum;
 	  bool sum_overflow;
 
@@ -34110,7 +34110,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       return NO_ERROR;
     }
 
-  /* a BIGINT row bound; more rows than an int counts are too many for a top-n */
+  /* a BIGINT row bound. More rows than an int counts are too many for a top-n */
   assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_BIGINT);
   if (db_get_bigint (&ubound_val) > INT_MAX)
     {
@@ -34714,8 +34714,8 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      /* CBRD-27748: both bounds are BIGINT row bounds; an AND keeps the larger one, which stays correct since the
-       * predicate filters the rows the top-n kept, and a NULL one is the lowest */
+      /* both bounds are BIGINT row bounds. An AND keeps the larger one, which stays correct since the predicate
+       * filters the rows the top-n kept, and a NULL one is the lowest */
       if (DB_IS_NULL (&right_bound)
 	  || (!DB_IS_NULL (&left_bound) && db_get_bigint (&left_bound) > db_get_bigint (&right_bound)))
 	{
@@ -34750,9 +34750,9 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      /* CBRD-27748: the rows the comparison admits, as BIGINT: floor (N) for orderby_num () <= N, ceil (N) - 1 for
+      /* the rows the comparison admits, as BIGINT: floor (N) for orderby_num () <= N, ceil (N) - 1 for
        * orderby_num () < N where N is outside the bound (< 2.4 keeps 2 rows), by the conversion the unpack found
-       * for the term's bound (CBRD-27583, bound_conversion). A value that is not a number gives no bound here; the
+       * for the term's bound (CBRD-27583, bound_conversion). A value that is not a number gives no bound here. The
        * predicate reports it */
       const DOMAIN_BOUND_CONVERSION *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
       assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (val));

@@ -4621,8 +4621,7 @@ regu_set_global_error (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * pt_set_bigint_value_text () - CBRD-27748: give a BIGINT literal the text of its number, so that it prints as the
- *                               number
+ * pt_set_bigint_value_text () - give a BIGINT literal the text of its number, so that it prints as the number
  *   return: none
  *   parser(in):
  *   literal(in/out): a BIGINT literal
@@ -4642,10 +4641,10 @@ pt_set_bigint_value_text (PARSER_CONTEXT * parser, PT_NODE * literal)
 }
 
 /*
- * pt_limit_bigint_value () - CBRD-27748: a BIGINT literal of a LIMIT value, printed as a plain number
+ * pt_limit_bigint_value () - a BIGINT literal of a LIMIT value, printed as a plain number
  *   return: the literal, or NULL when the value does not fit BIGINT (the error is reported on limit)
  *   parser(in):
- *   value(in): the value; a NULL value gives a NULL literal
+ *   value(in): the value. A NULL value gives a NULL literal
  *   limit(in): the LIMIT value the literal stands for
  */
 PT_NODE *
@@ -4676,12 +4675,12 @@ pt_limit_bigint_value (PARSER_CONTEXT * parser, const DB_VALUE * value, PT_NODE 
 }
 
 /*
- * pt_copy_limit_value () - CBRD-27748: copy a LIMIT or KEYLIMIT value into a predicate or a key limit, as BIGINT
+ * pt_copy_limit_value () - copy a LIMIT or KEYLIMIT value into a predicate or a key limit, as BIGINT
  *   return: the copy, or NULL on error
  *   parser(in):
  *   limit(in): an offset or a count of a LIMIT clause, or a KEYLIMIT value
  *
- * Note: A LIMIT value is BIGINT (CBRD-27748). A literal is typed so before the copy, and an expression of literals
+ * Note: A LIMIT value is BIGINT. A literal is typed so before the copy, and an expression of literals
  *       is folded into one (pt_preset_limit_value): both are copied as they are and print as their number. A host
  *       variable, or an expression with one, is cast to BIGINT in the copy: the predicate is what a PL/CSQL static
  *       SQL stores and parses again, and the cast carries the type there. The LIMIT clause itself is left as
@@ -4697,8 +4696,8 @@ pt_copy_limit_value (PARSER_CONTEXT * parser, PT_NODE * limit)
       return copy;
     }
 
-  /* an expression holds a host variable, or does not evaluate (9223372036854775807 + 1, reported when it was typed);
-   * a PL/CSQL static SQL is typed without folding, so an expression of literals comes here too */
+  /* an expression holds a host variable, or does not evaluate (9223372036854775807 + 1, reported when it was typed).
+   * A PL/CSQL static SQL is typed without folding, so an expression of literals comes here too */
   return pt_wrap_with_cast_op (parser, copy, PT_TYPE_BIGINT, 0, 0, NULL);
 }
 
@@ -4817,7 +4816,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	  goto error_exit;
 	}
 
-      /* CBRD-27748: offset + count, a BIGINT like the two values (a NUMERIC sum let '2' + '2' concatenate) */
+      /* offset + count, a BIGINT like the two values (a NUMERIC sum let '2' + '2' concatenate) */
       sum->info.expr.op = PT_PLUS;
       sum->type_enum = PT_TYPE_BIGINT;
 
@@ -4828,7 +4827,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	  goto error_exit;
 	}
 
-      /* part2 owns the sum from here; a failure below frees it with part2 */
+      /* part2 owns the sum from here, so a failure below frees it with part2 */
       part2->info.expr.arg2 = sum;
       offset_copy = sum->info.expr.arg1;
       count_copy = sum->info.expr.arg2;
@@ -4837,9 +4836,9 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       if (offset_copy->node_type == PT_VALUE && count_copy->node_type == PT_VALUE
 	  && !DB_IS_NULL (pt_value_to_db (parser, offset_copy)) && !DB_IS_NULL (pt_value_to_db (parser, count_copy)))
 	{
-	  /* CBRD-27748: a sum of literals is folded here; one beyond BIGINT is an error, as it is when the query runs
-	   * with host variables (qexec_check_limit_clause). A value that does not read as BIGINT was reported when it
-	   * was typed (pt_preset_limit_value), so the sum stays as it is */
+	  /* a sum of literals is folded here. One beyond BIGINT is an error, as it is when the query runs with host
+	   * variables (qexec_check_limit_clause). A value that does not read as BIGINT was reported when it was typed
+	   * (pt_preset_limit_value), so the sum stays as it is */
 	  DB_BIGINT limit_sum;
 	  bool sum_overflow;
 	  PT_NODE *folded;
@@ -4849,7 +4848,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	    {
 	      if (sum_overflow)
 		{
-		  /* reported once, here; the predicate keeps the sum (a NULL return is an allocation failure) */
+		  /* reported once, here. The predicate keeps the sum (a NULL return is an allocation failure) */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 		  PT_ERRORc (parser, limit, er_msg ());
 		}
@@ -10395,7 +10394,7 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
 	  if (tp_value_limit_sum (limit_val, &range, &limit_sum, &sum_overflow) != DOMAIN_COMPATIBLE || sum_overflow)
 	    {
-	      /* unusable for the limit optimizations; a sum beyond BIGINT is reported when the query runs
+	      /* unusable for the limit optimizations. A sum beyond BIGINT is reported when the query runs
 	       * (qexec_check_limit_clause) */
 	      error = ER_FAILED;
 	      goto cleanup;

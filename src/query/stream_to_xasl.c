@@ -2309,8 +2309,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       return NULL;
     }
   {
-    /* CBRD-27583: each upper bound's conversion, which a top-N takes (qexec_setup_topn_proc). CBRD-27748: into BIGINT,
-     * of the bound's own type for < as well, since the bound is read as the rows its comparison admits
+    /* CBRD-27583: each upper bound's conversion into BIGINT, which a top-N takes (qexec_setup_topn_proc): of the
+     * bound's own type for < as well, since the bound is read as the rows its comparison admits
      * (tp_value_to_row_bound: ceil (N) - 1 for a <), not as N - 1 computed in the bound's type and then rounded */
     bool planned = true;
     /* *INDENT-OFF* */
@@ -2355,7 +2355,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
-  /* CBRD-27748: into BIGINT (was INTEGER): the limit is read as a row bound, which is BIGINT (qexec_fill_sort_limit) */
+  /* into BIGINT, since the limit is read as a row bound (qexec_fill_sort_limit) */
   xasl->orderby_limit_conv = xasl->orderby_limit == NULL ? NULL
     : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Bigint_domain);
 
