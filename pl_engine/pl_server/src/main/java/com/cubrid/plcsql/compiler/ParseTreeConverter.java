@@ -3009,7 +3009,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s044
                         "the number of arguments to procedure "
-                                + name
+                                + Misc.detachPkgName(name)
                                 + " does not match the number of its formal parameters");
             } else if (res > 0) {
                 // in this case, res indicates the index of the problematic argument.
@@ -3018,7 +3018,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         "argument "
                                 + res
                                 + " to the procedure "
-                                + name
+                                + Misc.detachPkgName(name)
                                 + " must be updatable because it is to an OUT parameter");
             }
 
