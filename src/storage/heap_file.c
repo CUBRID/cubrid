@@ -766,6 +766,8 @@ static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRI
 static int heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch,
 					   int oos_scratch_size, bool * oos_owned_buffer,
                                          const heap_pending_record *pending = nullptr);
+static int heap_attrvalue_read_oos (RECDES * recdes, HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr,
+                                    const heap_pending_record * pending) __attribute__ ((noinline));
 static int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout,
                                           HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
                                           bool *is_oos);
@@ -11349,16 +11351,6 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 }
 
 /*
- * heap_attrvalue_read () - Read one scalar attribute value from the heap record.
- *   return: NO_ERROR
- *   recdes(in): Instance record descriptor
- *   value(in): Disk value attribute information
- *   attr_info(in/out): The attribute information structure
- *
- * Note: OOS-marked variable attributes are resolved one at a time through
- * heap_attrvalue_point_variable() / heap_attrvalue_read_oos_inline().
- */
-/*
  * Type-fixed decode kernels, resolved once per representation by
  * heap_attrvalue_resolve_plan () and called for every record after that.
  *
@@ -11540,6 +11532,55 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
   value->rd_attrepr = attrepr;
 }
 
+/*
+ * heap_attrvalue_read_oos () - Resolve one OOS attribute and convert it to a DB_VALUE.
+ *   return: NO_ERROR, or the Resolve or conversion error
+ *   recdes(in): Instance record descriptor holding the OOS reference
+ *   value(in/out): Disk value attribute information
+ *   attrepr(in): The attribute structure
+ *   pending(in): Pending record that retains the OOS values, or NULL
+ *
+ * Note: Out of line so the one-page scratch stays off the frames of the record loops that
+ *   inline heap_attrvalue_read ().
+ */
+static int
+heap_attrvalue_read_oos (RECDES * recdes, HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr,
+			 const heap_pending_record * pending)
+{
+  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
+  bool oos_owned_buffer = false;
+  /* OOS Resolve uses scratch up to one I/O page and allocates larger values. */
+  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
+  int error;
+
+  error = heap_attrvalue_read_oos_inline (recdes, attrepr->location, &raw, oos_scratch, IO_MAX_PAGE_SIZE,
+					  &oos_owned_buffer, pending);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
+  /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
+  if (oos_owned_buffer && raw.data != oos_scratch)
+    {
+      recdes_free_data_area (&raw);
+    }
+
+  return error;
+}
+
+/*
+ * heap_attrvalue_read () - Read one scalar attribute value from the heap record.
+ *   return: NO_ERROR, or an error from locating, resolving or converting the value
+ *   recdes(in): Instance record descriptor
+ *   value(in/out): Disk value attribute information
+ *   attr_info(in/out): The attribute information structure
+ *   layout(in): Layout derived from recdes, or NULL to derive it here
+ *   pending(in): Pending record that retains the OOS values, or NULL
+ *   prefetched_oos(in): OOS payload already resolved by a grouped read, or NULL
+ */
 /* *INDENT-OFF* */
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
@@ -11551,11 +11592,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
 
-  bool scalar_oos_buffer = false;
   bool copy_raw = false;
-  /* OOS Resolve uses scratch up to one I/O page and allocates larger values. */
-  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int error;
 
   /* does attribute exist in this disk representation? */
@@ -11607,27 +11644,18 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	{
 	  bool is_oos;
 	  error = heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &is_oos);
-	  if (error == NO_ERROR && is_oos)
-	    {
-	      error = heap_attrvalue_read_oos_inline (recdes, attrepr->location, &raw, oos_scratch,
-						      IO_MAX_PAGE_SIZE, &scalar_oos_buffer, pending);
-	      copy_raw = scalar_oos_buffer;
-	    }
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
+	  if (is_oos)
+	    {
+	      return heap_attrvalue_read_oos (recdes, value, attrepr, pending);
+	    }
 	}
     }
 
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, copy_raw);
-  /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
-  if (scalar_oos_buffer && raw.data != oos_scratch)
-    {
-      recdes_free_data_area (&raw);
-    }
-
-  return error;
+  return heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, copy_raw);
 }
 
 /* *INDENT-OFF* */
