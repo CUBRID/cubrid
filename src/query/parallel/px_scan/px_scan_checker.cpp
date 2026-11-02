@@ -190,7 +190,8 @@ namespace parallel_scan
 
   /* a GROUP BY skip runs in parallel (CBRD-27664) when its workers' partial aggregates combine in the leader's key
    * order merge: every aggregate combines, its inputs are computable in a worker, and no group count stops the scan
-   * (groupby_num, which runs serially and stops early). The scan stays ascending (groupby_desc, the spec check). */
+   * (groupby_num, which runs serially and stops early). The scan direction does not matter: a worker's run ends when
+   * its key goes back, and the merge compares keys in the GROUP BY order. */
   static bool
   is_groupby_skip_parallel (XASL_NODE *arg)
   {
@@ -494,12 +495,12 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby skip and a descending groupby skip need globally ordered traversal; an ascending
-		 * groupby skip merges its workers' partial aggregates in key order, which its XASL check decides
+		/* orderby skip needs globally ordered traversal; a groupby skip, ascending or descending, merges
+		 * its workers' partial aggregates in key order, which its XASL check decides
 		 * (is_groupby_skip_parallel ()). orderby_desc/groupby_desc only tell the first sort column is DESC
 		 * and are used only with skip (see scan_get_index_oidset ()), so they alone do not prevent a
 		 * parallel scan. */
-		if (arg->indexptr->orderby_skip || (arg->indexptr->groupby_skip && arg->indexptr->groupby_desc))
+		if (arg->indexptr->orderby_skip)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
