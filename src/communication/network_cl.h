@@ -103,7 +103,7 @@ extern void net_client_shutdown_server (void);
 extern int net_client_init (const char *dbname, const char *hostname, int client_type);
 #if defined(MULTI_CONN_TO_A_SERVER)
 extern int net_client_sub_init ();
-extern void net_client_sub_final ();
+extern void net_client_sub_final (bool server_error);
 #endif
 extern int net_client_final (bool server_error);
 
