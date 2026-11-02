@@ -6765,6 +6765,13 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   new_source = NULL;
   free_compiled_statement (trigger->action);
 
+  /*
+   * The cache now holds a change that the transaction may still roll back.
+   * Rolling back restores the trigger object with its old cache coherency number,
+   * so the number here is reset to have the trigger read again when it is validated next.
+   */
+  trigger->chn = NULL_CHN;
+
 end:
   if (parser != NULL)
     {
