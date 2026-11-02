@@ -426,6 +426,7 @@ static PARSER_VARCHAR *pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * 
 static PARSER_VARCHAR *pt_print_showstmt (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p);
+static PT_NODE *pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list);
 static PARSER_VARCHAR *pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_timeout (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -10143,9 +10144,22 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
+      PT_NODE *as_attr_list = p->info.spec.as_attr_list;
+      PT_NODE *derived_table = p->info.spec.derived_table;
+
+      /* the select list of a derived table can carry hidden columns (e.g. an order-by column added while a subquery
+       * with ORDER BY is merged into it) that the attribute list does not name */
+      if (p->info.spec.derived_table_type == PT_IS_SUBQUERY && derived_table != NULL
+	  && derived_table->node_type == PT_SELECT && derived_table->info.query.q.select.list != NULL
+	  && derived_table->info.query.q.select.list->node_type != PT_NODE_LIST)
+	{
+	  as_attr_list =
+	    pt_pad_attr_list_for_static_sql (parser, as_attr_list, derived_table->info.query.q.select.list);
+	}
+
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
+      r1 = pt_print_bytes_l (parser, as_attr_list);
       q = pt_append_nulstring (parser, q, " (");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -18355,6 +18369,62 @@ pt_name_list_has_name (PT_NODE * name_list, const char *name)
 }
 
 /*
+ * pt_pad_attr_list_for_static_sql () - pad the attribute list printed for a CTE or a derived table with generated
+ *                                      names so that it covers every column of the select list, hidden ones too
+ *   return: attr_list, or a padded copy of it
+ *   parser(in):
+ *   attr_list(in): the attribute list (PT_NAME list) to print
+ *   select_list(in): the select list of the CTE or the derived table
+ *
+ * Note: rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
+ *       from scratch at runtime; that re-parse derives the exposed column count directly from how many items
+ *       the attribute list prints. A rewrite/optimization applied after the attribute list was computed (e.g.
+ *       adding a hidden order-by carry column while merging a ROWNUM-filtered outer query with an ORDER BY inner
+ *       subquery) can grow the actual select list past the attribute list's length, so pad a local copy here
+ *       instead of printing an attribute list/select list pair that a fresh parse would reject as mismatched.
+ */
+static PT_NODE *
+pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list)
+{
+  PT_NODE *padded_list;
+  PT_NODE *extra = NULL;
+  int actual_cnt, declared_cnt;
+  int version;
+  int i;
+
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      return attr_list;
+    }
+
+  actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+  declared_cnt = pt_length_of_list (attr_list);
+  if (actual_cnt <= declared_cnt)
+    {
+      return attr_list;
+    }
+
+  padded_list = parser_copy_tree_list (parser, attr_list);
+  version = declared_cnt;
+  for (i = declared_cnt; i < actual_cnt; i++)
+    {
+      const char *generated_name;
+
+      /* keep clear of any user-declared name so the list printed can't collide with it once this text is
+       * re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
+      do
+	{
+	  generated_name = mq_generate_name (parser, "hidden_col", &version);
+	}
+      while (pt_name_list_has_name (attr_list, generated_name));
+
+      extra = parser_append_node (pt_name (parser, generated_name), extra);
+    }
+
+  return parser_append_node (extra, padded_list);
+}
+
+/*
  * pt_print_with_cte ()
  * return :
  * parser (in) :
@@ -18366,43 +18436,10 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   PT_NODE *as_attr_list = p->info.cte.as_attr_list;
 
-  /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
-   * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
-   * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
-   * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
-   * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
-   * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
-   * reject as mismatched. */
   if (parser->flag.is_parsing_static_sql)
     {
-      PT_NODE *select_list = pt_get_select_list (parser, p->info.cte.non_recursive_part);
-      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      int declared_cnt = pt_length_of_list (as_attr_list);
-
-      if (actual_cnt > declared_cnt)
-	{
-	  PT_NODE *extra = NULL;
-	  int version = declared_cnt;
-	  int i;
-
-	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
-	  for (i = declared_cnt; i < actual_cnt; i++)
-	    {
-	      const char *generated_name;
-
-	      /* keep clear of any user-declared name so the header printed below can't collide with it once
-	       * this text is re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
-	      do
-		{
-		  generated_name = mq_generate_name (parser, "hidden_col", &version);
-		}
-	      while (pt_name_list_has_name (p->info.cte.as_attr_list, generated_name));
-
-	      extra = parser_append_node (pt_name (parser, generated_name), extra);
-	    }
-
-	  as_attr_list = parser_append_node (extra, as_attr_list);
-	}
+      as_attr_list = pt_pad_attr_list_for_static_sql (parser, as_attr_list,
+						      pt_get_select_list (parser, p->info.cte.non_recursive_part));
     }
 
   /* name of cte */
@@ -19379,6 +19416,84 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 }
 
 /*
+ *   pt_keeps_distinct_values () : checks if distinct values of FROM stay
+ *				   distinct when converted to the type of TO
+ *   return:
+ *   from(in): node whose values are converted
+ *   to(in): node giving the target type
+ *   check_precision(in): whether a shorter target string truncates
+ *
+ * Note: '7' and '07' both become 7 as a number, 'a' and 'A' are equal in a
+ *	 case insensitive collation, and a BIGINT loses digits as a DOUBLE.
+ */
+bool
+pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_precision)
+{
+  PT_TYPE_ENUM from_type = from->type_enum;
+  PT_TYPE_ENUM to_type = to->type_enum;
+  PT_COLL_INFER from_coll, to_coll;
+  int from_prec, to_prec;
+
+  switch (from_type)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+      if (to_type == PT_TYPE_DOUBLE || (from_type == PT_TYPE_SMALLINT && to_type == PT_TYPE_FLOAT))
+	{
+	  return true;
+	}
+      /* fall through */
+    case PT_TYPE_BIGINT:
+      return (PT_IS_DISCRETE_NUMBER_TYPE (to_type) || to_type == PT_TYPE_NUMERIC || PT_IS_CHAR_STRING_TYPE (to_type));
+
+    case PT_TYPE_NUMERIC:
+      if (to_type == PT_TYPE_NUMERIC)
+	{
+	  /* a smaller scale rounds */
+	  return (from->data_type != NULL && to->data_type != NULL
+		  && to->data_type->info.data_type.dec_precision >= from->data_type->info.data_type.dec_precision);
+	}
+      return PT_IS_CHAR_STRING_TYPE (to_type);
+
+    case PT_TYPE_FLOAT:
+      return (to_type == PT_TYPE_FLOAT || to_type == PT_TYPE_DOUBLE);
+
+    case PT_TYPE_DATE:
+      return (to_type == PT_TYPE_DATE || to_type == PT_TYPE_DATETIME);
+
+    case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
+      if (!PT_IS_CHAR_STRING_TYPE (to_type))
+	{
+	  return false;
+	}
+      if (!pt_get_collation_info (from, &from_coll) || !pt_get_collation_info (to, &to_coll)
+	  || from_coll.coll_id != to_coll.coll_id)
+	{
+	  return false;
+	}
+      if (check_precision)
+	{
+	  if (from->data_type == NULL || to->data_type == NULL)
+	    {
+	      return false;
+	    }
+	  from_prec = from->data_type->info.data_type.precision;
+	  to_prec = to->data_type->info.data_type.precision;
+	  if (to_prec != TP_FLOATING_PRECISION_VALUE
+	      && (from_prec == TP_FLOATING_PRECISION_VALUE || from_prec > to_prec))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return from_type == to_type;
+    }
+}
+
+/*
  *   pt_expr_keep_uniqueness () : checks if the given operator
  *				  is keeping uniqueness
  *   return:
@@ -19406,6 +19521,151 @@ pt_expr_keep_uniqueness (const PT_NODE * expr)
       return false;
     }
   return false;
+}
+
+/*
+ *   pt_get_exact_number_digits () : gets the integer digits and the scale of an exact number operand
+ *   return: false if the node is not an exact number or its digits are unknown
+ *   node(in):
+ *   int_digits(out):
+ *   scale(out):
+ */
+static bool
+pt_get_exact_number_digits (const PT_NODE * node, int *int_digits, int *scale)
+{
+  int int_digits2, scale2, prec;
+
+  *scale = 0;
+  switch (node->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+      *int_digits = DB_SMALLINT_PRECISION;
+      return true;
+    case PT_TYPE_INTEGER:
+      *int_digits = DB_INTEGER_PRECISION;
+      return true;
+    case PT_TYPE_BIGINT:
+      *int_digits = DB_BIGINT_PRECISION;
+      return true;
+    case PT_TYPE_NUMERIC:
+      break;
+    default:
+      return false;
+    }
+
+  if (node->node_type == PT_VALUE)
+    {
+      if (!node->info.value.db_value_is_initialized)
+	{
+	  return false;
+	}
+      /* a constant carries its own precision and scale */
+      db_get_numeric_precision_and_scale (&node->info.value.db_value, &prec, scale, NULL);
+      *int_digits = prec - *scale;
+      return true;
+    }
+
+  if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_CAST:
+	  /* the declared precision of CAST (x AS NUMERIC) is the default one, not the digits of x */
+	  if (node->data_type == NULL || !pt_get_exact_number_digits (node->info.expr.arg1, int_digits, scale))
+	    {
+	      return false;
+	    }
+	  *scale = node->data_type->info.data_type.dec_precision;
+	  return true;
+	case PT_PLUS:
+	case PT_MINUS:
+	  /* the declared precision of the result is a placeholder */
+	  if (node->info.expr.arg2 == NULL || !pt_get_exact_number_digits (node->info.expr.arg1, int_digits, scale)
+	      || !pt_get_exact_number_digits (node->info.expr.arg2, &int_digits2, &scale2))
+	    {
+	      return false;
+	    }
+	  *int_digits = MAX (*int_digits, int_digits2) + 1;
+	  *scale = MAX (*scale, scale2);
+	  return true;
+	default:
+	  return false;
+	}
+    }
+
+  if (node->data_type == NULL)
+    {
+      return false;
+    }
+  *int_digits = node->data_type->info.data_type.precision - node->data_type->info.data_type.dec_precision;
+  *scale = node->data_type->info.data_type.dec_precision;
+  return true;
+}
+
+/*
+ *   pt_expr_keeps_distinct_values () : checks if an expression accepted by
+ *					pt_expr_keep_uniqueness () maps distinct
+ *					values of its argument to distinct values
+ *   return:
+ *   expr(in): expression parse tree node
+ *
+ * Note: the operator alone is not enough. '7' + 0 and '07' + 0 are both 7,
+ *	 and 1e-20 + 1 and 0 + 1 are both 1 as a DOUBLE.
+ */
+bool
+pt_expr_keeps_distinct_values (const PT_NODE * expr)
+{
+  PT_TYPE_ENUM type = expr->type_enum;
+  PT_NODE *arg;
+  int i, int_digits, scale;
+
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+      if (!PT_IS_CHAR_STRING_TYPE (type))
+	{
+	  return false;
+	}
+      break;
+    case PT_PLUS:
+    case PT_MINUS:
+      if (type == PT_TYPE_NUMERIC)
+	{
+	  /* the operands are aligned to the larger scale, and a sum with more digits than
+	   * DB_MAX_NUMERIC_PRECISION is rounded */
+	  return (pt_get_exact_number_digits (expr, &int_digits, &scale)
+		  && int_digits + scale <= DB_MAX_NUMERIC_PRECISION);
+	}
+      if (!PT_IS_DISCRETE_NUMBER_TYPE (type) && type != PT_TYPE_DATE && type != PT_TYPE_TIME
+	  && type != PT_TYPE_DATETIME && type != PT_TYPE_TIMESTAMP && !PT_IS_CHAR_STRING_TYPE (type))
+	{
+	  return false;
+	}
+      break;
+    case PT_CAST:
+      break;
+    default:
+      /* PT_EQ gives only true or false */
+      return false;
+    }
+
+  /* the argument holding the column must convert to the result type without merging values */
+  for (i = 0; i < 2; i++)
+    {
+      arg = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
+      if (arg == NULL || (arg->node_type != PT_NAME && arg->node_type != PT_EXPR))
+	{
+	  continue;
+	}
+      if (!pt_keeps_distinct_values (arg, expr, expr->info.expr.op == PT_CAST))
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
