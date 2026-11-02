@@ -441,6 +441,9 @@ namespace parallel_scan
 	return err_code;
       }
 
+    /* the clone's partitioned inners that got no memo go back to the scan block iteration, as in the main thread */
+    qexec_settle_per_row_walk (m_xasl);
+
     if (level > 1)
       {
 	m_scan_func_ptr = (UINTPTR *)db_private_alloc (&thread_ref, level * sizeof (UINTPTR));

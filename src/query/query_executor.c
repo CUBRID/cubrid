@@ -11898,6 +11898,57 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_settle_per_row_walk () - drive per outer row only the partitioned inners that got the memo they need
+ *   return: void
+ *   xasl(in): the first scan of a scan chain, its memos made
+ *
+ * Note: the optimizer drives a partitioned NL inner per outer row when the outer key repeats, so that its memo
+ *	 keeps a repeated key from walking the partitions again (XASL_NL_PER_ROW_IF_MEMO). An inner that gets no memo
+ *	 (new_memoize_storage ()) would switch its scan to every partition for every outer row, so it goes back to the
+ *	 scan block iteration, and so do the scans after it unless something before them is driven per outer row: a
+ *	 SEMI / ANTI inner, an inner that prunes per row, or one that got its memo (CBRD-27866).
+ */
+void
+qexec_settle_per_row_walk (XASL_NODE * xasl)
+{
+  XASL_NODE *xptr;
+  bool per_row = false;
+
+  for (xptr = xasl; xptr != NULL && !XASL_IS_FLAGED (xptr, XASL_NL_PER_ROW_IF_MEMO); xptr = xptr->scan_ptr)
+    {
+      ;
+    }
+  if (xptr == NULL)
+    {
+      return;
+    }
+
+  for (xptr = xasl->scan_ptr; xptr != NULL; xptr = xptr->scan_ptr)
+    {
+      if (XASL_IS_NL_SEMI_OR_ANTI (xptr))
+	{
+	  per_row = true;
+	  continue;
+	}
+
+      if ((XASL_IS_FLAGED (xptr, XASL_NL_PER_ROW_IF_MEMO) && xptr->memoize_storage != NULL)
+	  || (xptr->spec_list != NULL && ACCESS_SPEC_IS_FLAGED (xptr->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)))
+	{
+	  per_row = true;
+	}
+
+      if (per_row)
+	{
+	  XASL_SET_FLAG (xptr, XASL_NL_FOLLOWING_JOIN);
+	}
+      else
+	{
+	  XASL_CLEAR_FLAG (xptr, XASL_NL_FOLLOWING_JOIN);
+	}
+    }
+}
+
+/*
  * qexec_reset_sa_inner_scan_block () -
  *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
  *   inner(in) : candidate semi/anti inner scan
@@ -22414,6 +22465,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    }
 		}
 	    }
+
+	  qexec_settle_per_row_walk (xasl);
 
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.gby_skip_state != NULL)
 	    {

@@ -2886,6 +2886,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_PER_ROW_IF_MEMO))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_PER_ROW_IF_MEMO);
+	  fprintf (foutput, "%sXASL_NL_PER_ROW_IF_MEMO", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%s%d", (nflag ? "|" : ""), xasl_p->flag);

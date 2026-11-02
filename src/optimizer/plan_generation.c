@@ -2622,7 +2622,9 @@ nl_inner_prunes_per_row (QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
  *
  * Note: walked per outer row, a partitioned inner switches its scan to every partition for every outer key the memo
  *	 has not seen, which costs more than running the outer again for each partition when the key hardly repeats
- *	 (CBRD-27866). A scan that locks its rows has no memo (qexec_execute_mainblock_internal ()).
+ *	 (CBRD-27866). A scan that locks its rows has no memo (qexec_execute_mainblock_internal ()). The executor
+ *	 refuses a memo for more inners than this sees (memoize.cpp: checker, nondeterministic), so such an inner is
+ *	 walked per row only if it gets one (XASL_NL_PER_ROW_IF_MEMO, qexec_settle_per_row_walk ()).
  */
 static bool
 nl_inner_memo_covers_repeats (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
@@ -2939,6 +2941,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		      if (prunes)
 			{
 			  ACCESS_SPEC_SET_FLAG (scan->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW);
+			}
+		      else
+			{
+			  /* the executor may still find no memo for it (qexec_settle_per_row_walk ()) */
+			  XASL_SET_FLAG (scan, XASL_NL_PER_ROW_IF_MEMO);
 			}
 		    }
 		}
