@@ -207,6 +207,7 @@ static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activit
 static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
 static bool reload_moved_block_trigger (TR_TRIGGER * trigger);
+static int follow_reloaded_block_trigger (TR_TRIGGER * trigger, TR_ACTIVITY ** act, bool * skip);
 
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
 static int find_user_trigger_objects (DB_OBJLIST ** objects);
@@ -1897,7 +1898,7 @@ validate_trigger (TR_TRIGGER * trigger)
 }
 
 /*
- * reload_moved_block_trigger() - Reads a trigger again when the procedure of its PL/CSQL block action was not found.
+ * reload_moved_block_trigger() - Reads a trigger again when the procedure of its PL/CSQL block action is gone.
  *    return: true if the procedure has moved and the action is to be run again
  *    trigger(in/out): trigger structure
  *
@@ -1906,6 +1907,8 @@ validate_trigger (TR_TRIGGER * trigger)
  *    A cached trigger keeps calling the old name until it is read again.
  *    This happens when another transaction changed the owner after the trigger was cached,
  *    and when a running action changed the owner of its own trigger.
+ *    Nothing is done while the procedure under the cached name exists.
+ *    An error raised inside the block is then not taken for a moved procedure.
  *    The error of the failed call is kept here. The caller clears it when the procedure has moved.
  */
 static bool
@@ -1931,8 +1934,10 @@ reload_moved_block_trigger (TR_TRIGGER * trigger)
   er_stack_push ();
 
   AU_SAVE_AND_DISABLE (save);
-  if (validate_trigger (trigger) == NO_ERROR && trigger->block_sp_name != NULL
-      && strcmp (old_sp_name, trigger->block_sp_name) != 0)
+
+  /* an error raised inside the block may say the same, while the procedure itself is still there */
+  if (jsp_find_stored_procedure (old_sp_name, DB_AUTH_NONE) == NULL && validate_trigger (trigger) == NO_ERROR
+      && trigger->block_sp_name != NULL && strcmp (old_sp_name, trigger->block_sp_name) != 0)
     {
       moved = true;
     }
@@ -1943,6 +1948,31 @@ reload_moved_block_trigger (TR_TRIGGER * trigger)
   free_and_init (old_sp_name);
 
   return moved;
+}
+
+/*
+ * follow_reloaded_block_trigger() - Prepares to run the action of a trigger read again by reload_moved_block_trigger.
+ *    return: error code
+ *    trigger(in): trigger structure read again
+ *    act(out): action of the trigger read again
+ *    skip(out): true if the trigger read again is not to be run
+ *
+ * Note:
+ *    The trigger may have been made inactive along with the owner change.
+ *    The action is run as the new owner. execute_activity sets the user back after the action.
+ */
+static int
+follow_reloaded_block_trigger (TR_TRIGGER * trigger, TR_ACTIVITY ** act, bool * skip)
+{
+  *skip = (trigger->status != TR_STATUS_ACTIVE);
+  if (*skip)
+    {
+      return NO_ERROR;
+    }
+
+  *act = trigger->action;
+
+  return AU_SET_USER (trigger->owner);
 }
 
 /*
@@ -4545,6 +4575,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
   bool is_statement = false;
   bool used_cached_statement = true;
   bool reloaded = false;
+  bool skip_reloaded = false;
 
   if (trigger->object)
     {
@@ -4631,6 +4662,17 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  error = free_stale_statement (act);
 	  if (error == NO_ERROR && act->parser == NULL)
 	    {
+	      /* compiling a call to a procedure that has moved would fail before it runs */
+	      if (!reloaded && reload_moved_block_trigger (trigger))
+		{
+		  reloaded = true;
+		  error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
+		  if (error != NO_ERROR || skip_reloaded)
+		    {
+		      break;
+		    }
+		}
+
 	      error = compile_trigger_activity (trigger, act, 0);
 	      used_cached_statement = false;
 	    }
@@ -4680,20 +4722,12 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 		  reloaded = true;
 		  er_clear ();
 
-		  /* follow the trigger as read again, which may have been made inactive as well */
-		  if (trigger->status != TR_STATUS_ACTIVE)
+		  error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
+		  if (error != NO_ERROR || skip_reloaded)
 		    {
 		      break;
 		    }
 
-		  /* execute_activity sets the user back after the action */
-		  error = AU_SET_USER (trigger->owner);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-
-		  act = trigger->action;
 		  goto compile_stmt_again;
 		}
 
