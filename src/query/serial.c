@@ -1204,11 +1204,26 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       goto exit_on_error;
     }
 
+#if defined (SERVER_MODE)
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
-      repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
-		       REPL_INFO_TYPE_RBR_NORMAL);
+      const OR_INDEX *serial_index = NULL;
+      for (int i = 0; i < attr_info->last_classrepr->n_indexes; i++)
+        {
+          const OR_INDEX *index = &attr_info->last_classrepr->indexes[i];
+          if (BTID_IS_EQUAL (&index->btid, &serial_Cached_btid))
+            {
+              serial_index = index;
+              break;
+            }
+        }
+      ret = repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA,
+                                    RVREPL_DATA_UPDATE, key_val, serial_index, REPL_INFO_TYPE_RBR_NORMAL);
+      if (ret != NO_ERROR)
+        {
+          goto exit_on_error;
+        }
       repl_add_update_lsa (thread_p, serial_oidp);
 
       if (lock_mode != X_LOCK)
@@ -1216,6 +1231,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	  repl_end_flush_mark (thread_p, false);
 	}
     }
+
+#endif /* SERVER_MODE */
 
   if (lock_mode != X_LOCK)
     {

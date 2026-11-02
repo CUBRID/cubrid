@@ -36,6 +36,7 @@
 #include "error_manager.h"
 #include "oid.h"
 #include "work_space.h"
+#include "replication_key.h"
 #include "schema_manager.h"
 #include "authenticate.h"
 #include "object_accessor.h"
@@ -5316,6 +5317,10 @@ ws_repl::ws_free_repl_obj (WS_REPL_OBJ * obj)
     {
       free_and_init (obj->packed_pkey_value);
     }
+  if (obj->rk_metadata != NULL)
+    {
+      free_and_init (obj->rk_metadata);
+    }
   free_and_init (obj);
 }
 
@@ -5356,9 +5361,15 @@ ws_repl::ws_clear_all_repl_objs (void)
  */
 int
 ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-				  RECDES * recdes, int operation, bool has_index)
+                                  const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation, bool has_index)
 {
   WS_REPL_OBJ *repl_obj = NULL;
+
+  if (!repl_key_is_valid (rk_metadata, rk_metadata_length))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Missing RK metadata for replication object.");
+      return ER_HA_GENERIC_ERROR;
+    }
 
   repl_obj = (WS_REPL_OBJ *) malloc (sizeof (WS_REPL_OBJ));
   if (repl_obj == NULL)
@@ -5381,6 +5392,17 @@ ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int 
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   memcpy (repl_obj->packed_pkey_value, packed_pkey_value, packed_pkey_value_length);
+
+  repl_obj->rk_metadata = (char *) malloc (rk_metadata_length);
+  if (repl_obj->rk_metadata == NULL)
+    {
+      free_and_init (repl_obj->packed_pkey_value);
+      free_and_init (repl_obj);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, rk_metadata_length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (repl_obj->rk_metadata, rk_metadata, rk_metadata_length);
+  repl_obj->rk_metadata_length = rk_metadata_length;
 
   repl_obj->recdes = recdes;
   repl_obj->has_index = has_index;

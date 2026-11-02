@@ -2513,6 +2513,18 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      char *attribute_name = NULL;
+      int allocated_name = 0;
+      if (or_get_attrname (record, att->id, &attribute_name, &allocated_name) != NO_ERROR || attribute_name == NULL)
+        {
+          goto error_cleanup;
+        }
+      att->name = allocated_name ? attribute_name : strdup (attribute_name);
+      if (att->name == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (attribute_name) + 1);
+          goto error_cleanup;
+        }
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2865,6 +2877,13 @@ error_cleanup:
 
   if (rep->attributes)
     {
+      for (i = 0; i < rep->n_attributes; i++)
+        {
+          if (rep->attributes[i].name != NULL)
+            {
+              free_and_init (rep->attributes[i].name);
+            }
+        }
       free_and_init (rep->attributes);
     }
 
@@ -3631,6 +3650,11 @@ or_free_classrep (OR_CLASSREP * rep)
     {
       for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
 	{
+	  if (att->name != NULL)
+	    {
+	      free_and_init (att->name);
+	    }
+
 	  if (att->default_value.value != NULL)
 	    {
 	      free_and_init (att->default_value.value);
@@ -4790,12 +4814,17 @@ or_is_replication_candidate_key (const OR_INDEX * index)
       return false;
     }
 
+  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      return false;
+    }
+
   if (index->type == BTREE_PRIMARY_KEY)
     {
       return true;
     }
 
-  if (index->type != BTREE_UNIQUE || index->n_atts <= 0 || index->atts == NULL)
+  if ((index->type != BTREE_UNIQUE && index->type != BTREE_REVERSE_UNIQUE) || index->n_atts <= 0 || index->atts == NULL)
     {
       return false;
     }
