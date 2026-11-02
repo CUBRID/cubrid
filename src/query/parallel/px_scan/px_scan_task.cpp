@@ -29,7 +29,6 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "query_executor.h"
-#include "domain_plan.h"
 #include "stream_to_xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "memoize.hpp"
@@ -503,6 +502,8 @@ namespace parallel_scan
 	  {
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
+	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
+	m_trace_handler->add_expr_compile_dump (m_xasl);
 	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time, m_scan_id,
 				    elapsed_time);
       }
@@ -558,6 +559,20 @@ namespace parallel_scan
       }
 
     qexec_free_xasl_state (&thread_ref, m_xasl_state);
+    if (!m_uses_xasl_clone)
+      {
+	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression
+	 * programs (which a clone would keep across executions) have to go with it -- that is what
+	 * the XASL_DECACHE_CLONE pass does.  It takes two passes, not one.  This tree was unpacked
+	 * with use_xasl_clone off, so nothing in it carries CLEAR_AT_CLONE_DECACHE, and the clear
+	 * routines read that mark in opposite directions: the flagged pass releases only the values
+	 * that carry it, the unflagged pass only the values that do not.  A flagged pass alone would
+	 * therefore release no value at all and leak them into this worker's private heap, which
+	 * lives as long as the thread.  Clear unflagged first for the values, then flagged for the
+	 * programs -- the same two-pass shape qmgr_process_query () uses for a one-shot XASL. */
+	qexec_clear_xasl (&thread_ref, m_xasl, true, false);
+	XASL_SET_FLAG (m_xasl, XASL_DECACHE_CLONE);
+      }
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -655,8 +670,10 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
-    /* the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
+    /* the agg-expr marking is the clone's unpack's (stx_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
+    /* this worker's clone scans its own spec and projects/aggregates its own rows */
+    qexec_set_expr_share_spec (m_xasl, m_xasl->spec_list);
 
     for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
       {
@@ -669,21 +686,16 @@ namespace parallel_scan
 
     /* The worker's own copy on its own heap: it frees it in finalize. */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
-    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state, true);
+    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state);
     if (m_xasl_state == nullptr)
       {
-	/* the copy of the resolved domains sets its own error (the block size, a value's clone) */
+	/* the copy sets its own error (a value's clone) */
 	if (er_errid () == NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
 	  }
 	return ER_FAILED;
       }
-    /* the worker's own load numbers its items and resolved indexes as the leader's plan does: it reads the leader's
-     * resolutions with its own items (copied_from_leader) */
-    assert (m_xasl->domain_plan == nullptr || m_xasl_state->resolved_domain.plan == nullptr
-	    || (m_xasl->domain_plan->n_items == m_xasl_state->resolved_domain.plan->n_items
-		&& m_xasl->domain_plan->n_resolved == m_xasl_state->resolved_domain.plan->n_resolved));
     m_vd = &m_xasl_state->vd;
     return NO_ERROR;
   }
@@ -943,7 +955,8 @@ namespace parallel_scan
 	    index_page = nullptr;
 	    index_slot_hint = NULL_SLOTID;
 	    index_range_idx = -1;
-	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page, &index_slot_hint,
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, m_slot_iterator.held_leaf (),
+			index_page, &index_slot_hint,
 			&index_range_idx);
 	  }
 	else

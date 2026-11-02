@@ -380,6 +380,58 @@ namespace cubstorage
     return result;
   }
 
+  bool
+  bestspace::shard::update_freespace (VPID vpid, std::uint16_t freespace, std::size_t &entry_index)
+  {
+    std::size_t i;
+
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	if (update_freespace_at (i, vpid, freespace))
+	  {
+	    entry_index = i;
+	    return true;
+	  }
+      }
+
+    return false;
+  }
+
+  bool
+  bestspace::shard::update_freespace_at (std::size_t entry_index, VPID vpid, std::uint16_t freespace)
+  {
+    L1 expected, desired;
+    VPID entry_vpid;
+
+    assert (entry_index < ENTRIES_PER_SHARD);
+
+    while (true)
+      {
+	expected = m_L1[entry_index].load ();
+	entry_vpid = expected.get_vpid ();
+
+	if (!VPID_EQ (&entry_vpid, &vpid))
+	  {
+	    return false;
+	  }
+
+	if (expected.get_freespace () == freespace)
+	  {
+	    return true;
+	  }
+
+	desired = expected;
+	desired.set_freespace (freespace);
+
+	// the caller must hold the page's write latch, so the freespace it records is the page's current value
+	if (m_L1[entry_index].compare_exchange_strong (expected, desired))
+	  {
+	    L2_update (entry_index / L2_FANOUT, entry_index % L2_FANOUT);
+	    return true;
+	  }
+      }
+  }
+
   void
   bestspace::shard::add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
@@ -1225,7 +1277,22 @@ namespace cubstorage
     return m_size;
   }
 
-  void
+  bool
+  bestspace::candidate_queue::update_if_exist (bestspace_entry candidate)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (!remove_if_exist (candidate))
+      {
+	return false;
+      }
+
+    insert (candidate);
+    m_max_freespace.store (m_array[m_size - 1].freespace, std::memory_order_release);
+    return true;
+  }
+
+  bool
   bestspace::candidate_queue::remove_if_exist (bestspace_entry &candidate)
   {
     int i;
@@ -1237,9 +1304,11 @@ namespace cubstorage
 	  {
 	    std::memmove (m_array.data () + i, m_array.data () + i + 1, sizeof (bestspace_entry) * (m_size - i - 1));
 	    m_size--;
-	    break;
+	    return true;
 	  }
       }
+
+    return false;
   }
 
   void
@@ -1282,6 +1351,7 @@ namespace cubstorage
     : m_shards ()
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
+    , m_nonheader_page_capacity (heap_nonheader_page_capacity ())
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
     , m_recs_sumlen (recs_sumlen)
@@ -1409,11 +1479,7 @@ namespace cubstorage
 
     // strategy
     consume_size = static_cast<int> (size) + SPAGE_SLOT_SIZE;
-    needed_size = consume_size + m_unfill_space;
-    if (needed_size > heap_nonheader_page_capacity ())
-      {
-	needed_size = consume_size;
-      }
+    needed_size = get_needed_size (consume_size);
     if (m_distributed_insert)
       {
 	shard = static_cast<std::size_t> (thread_ref.index) % m_shards.size ();
@@ -1456,33 +1522,52 @@ namespace cubstorage
     return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, is_newrec, page_watcher);
   }
 
-  bestspace::tier
-  bestspace::size_to_tier (std::uint16_t size)
+  void
+  bestspace::update_freespace (VPID vpid, std::uint16_t freespace, int &l1_pos)
   {
-    assert (size <= DB_PAGESIZE);
+    bestspace_entry candidate;
+    std::size_t i, entry_index;
 
-    // FS0: 1-7%
-    // FS1: 8-15%
-    // FS2: 16-24%
-    // FS3: 25-34%
-    // FS4: 35-45%
-    // FS5: 46-57%
-    // FS6: 58-70%
-    // FS7: 71-84%
-    // FS8: 85-100%
-    static constexpr std::int16_t threshold[] = { 7, 15, 24, 34, 45, 57, 70, 84 };
-    std::int16_t percentage;
-    std::int8_t i;
+    candidate.freespace = freespace;
+    candidate.volid = vpid.volid;
+    candidate.pageid = vpid.pageid;
+    m_candidates.update_if_exist (candidate);
 
-    percentage = size * 100 / DB_PAGESIZE;
-    for (i = 0; i < static_cast<std::int8_t> (tier::FS8) + 1; i++)
+    // the same page may also be in another shard's L1;
+    // only one entry is updated, the cached one or else the first match,
+    // as L1_find updates only the entry it hands out
+    if (l1_pos >= 0)
       {
-	if (percentage <= threshold[i])
+	i = static_cast<std::size_t> (l1_pos) / ENTRIES_PER_SHARD;
+	entry_index = static_cast<std::size_t> (l1_pos) % ENTRIES_PER_SHARD;
+	if (i < m_shards.size () && m_shards[i].update_freespace_at (entry_index, vpid, freespace))
 	  {
-	    return static_cast<tier> (i - 1);
+	    return;
+	  }
+	l1_pos = -1;		// unknown; the sweep over all shards sets it again
+      }
+
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	entry_index = 0;
+	if (m_shards[i].update_freespace (vpid, freespace, entry_index))
+	  {
+	    l1_pos = static_cast<int> (i * ENTRIES_PER_SHARD + entry_index);
+	    return;
 	  }
       }
-    return tier::FS8;
+  }
+
+  void
+  bestspace::add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
+			    std::uint64_t recs_sumlen)
+  {
+    std::size_t shard;
+
+    // get_estimates () sums every shard, so any shard can take the count;
+    // the shard is the one find () picks for this thread
+    shard = m_distributed_insert ? static_cast<std::size_t> (thread_ref.index) % m_shards.size () : 0;
+    m_shards[shard].add_estimates (num_pages, recs_num, recs_sumlen);
   }
 
   void

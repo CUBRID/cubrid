@@ -67,6 +67,10 @@ struct setobj;
    : (((b) == -1) ? ((a) != 0 && (c) == (a)) : ((c) / (b) != (a))))
 #if defined (__GNUC__) || defined (__clang__)
 #define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
+/* Unlike the OR_CHECK_* macros above, these compute the result and report overflow without
+ * relying on signed wraparound (undefined behavior) or volatile pinning of the operands. */
+#define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
+#define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
 #else
 /* Same reasoning as the OR_ADD_OVERFLOW fallback below: the product must not be
  * formed with a signed *, because that is itself the undefined behaviour the check
@@ -1113,7 +1117,7 @@ extern "C"
   extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
-  extern int valcnv_convert_value_to_string (DB_VALUE * value);
+  extern int valcnv_convert_value_to_string (DB_VALUE * value, bool is_collection_value_to_string = false);
   extern int valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value);
 
 #if defined __cplusplus

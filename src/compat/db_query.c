@@ -62,7 +62,9 @@ struct alloc_resource
   DB_QUERY_RESULT *free_qres_list;	/* list of free query entry structures */
 };
 
-static struct
+/* query result table of the connection; per connection (thread-local) for multiple connections, because the
+ * end of a transaction ends the results in it (db_clear_client_query_result ()) */
+static CUB_THREAD_LOCAL struct
 {				/* global query table variable */
   int qres_cnt;			/* number of active query entries */
   int qres_closed_cnt;		/* number of closed query entries */
@@ -81,8 +83,9 @@ static const int QP_QRES_LIST_INIT_CNT = 10;
 static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
 
-static char *db_Execution_plan = NULL;
-static int db_Execution_plan_length = -1;
+/* execution plan of the last query of the connection */
+static CUB_THREAD_LOCAL char *db_Execution_plan = NULL;
+static CUB_THREAD_LOCAL int db_Execution_plan_length = -1;
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);
@@ -416,6 +419,10 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->host_variables.size = 0;
   info->host_variables.vals = NULL;
   info->host_var_expected_domains = NULL;
+  info->host_var_derived_from = NULL;
+  info->host_var_derived_pads = NULL;
+  info->host_var_derived_count = 0;
+  info->host_var_format_classes = NULL;
   info->auto_param_count = 0;
   info->recompile = 0;
   info->oids_included = 0;
@@ -461,6 +468,19 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	  size += or_packed_domain_size (info->host_var_expected_domains[i], 0);
 	}
       packed_size += size;
+      /* CBRD-27583: and each one's format class (PT_HOST_VAR_CLASS) */
+      packed_size += OR_INT_SIZE * (info->host_variables.size - info->auto_param_count);
+    }
+  /* CBRD-27583: the derived positions: count, then each one's index, user position, whether it reads the value padded
+   * to a CHAR column's length, and domain */
+  packed_size += OR_INT_SIZE;
+  for (i = info->host_variables.size - info->auto_param_count; info->host_var_derived_count > 0
+       && i < info->host_variables.size; i++)
+    {
+      if (info->host_var_derived_from[i] >= 0)
+	{
+	  packed_size += OR_INT_SIZE * 3 + or_packed_domain_size (info->host_var_expected_domains[i], 0);
+	}
     }
   /* calculate size for columns */
   packed_size += or_packed_query_format_size (info->columns, &columns_cnt);
@@ -543,6 +563,23 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	}
       for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
 	{
+	  ptr = or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
+	}
+      for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
+	{
+	  ptr = or_pack_int (ptr, info->host_var_format_classes != NULL
+			     ? PT_HOST_VAR_CLASS (info->host_var_format_classes[i]) : 0);
+	}
+    }
+  ptr = or_pack_int (ptr, info->host_var_derived_count);
+  for (i = info->host_variables.size - info->auto_param_count; info->host_var_derived_count > 0
+       && i < info->host_variables.size; i++)
+    {
+      if (info->host_var_derived_from[i] >= 0)
+	{
+	  ptr = or_pack_int (ptr, i);
+	  ptr = or_pack_int (ptr, info->host_var_derived_from[i]);
+	  ptr = or_pack_int (ptr, info->host_var_derived_pads != NULL && info->host_var_derived_pads[i]);
 	  ptr = or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
 	}
     }
@@ -638,6 +675,60 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	{
 	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
 	}
+      /* every position's, as the EXECUTE's parser counts the auto-parameters among its host variables */
+      info->host_var_format_classes = (int *) calloc (info->host_variables.size, sizeof (int));
+      if (info->host_var_format_classes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  info->host_variables.size * sizeof (int));
+	  goto error;
+	}
+      for (i = 0; i < var_count; i++)
+	{
+	  ptr = or_unpack_int (ptr, &info->host_var_format_classes[i]);
+	}
+    }
+  ptr = or_unpack_int (ptr, &info->host_var_derived_count);
+  if (info->host_var_derived_count > 0)
+    {
+      const int size = info->host_variables.size;
+      TP_DOMAIN **domains = (TP_DOMAIN **) realloc (info->host_var_expected_domains, size * sizeof (TP_DOMAIN *));
+      if (domains == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size * sizeof (TP_DOMAIN *));
+	  goto error;
+	}
+      info->host_var_expected_domains = domains;
+      info->host_var_derived_from = (int *) malloc (size * sizeof (int));
+      if (info->host_var_derived_from == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size * sizeof (int));
+	  goto error;
+	}
+      info->host_var_derived_pads = (bool *) calloc (size, sizeof (bool));
+      if (info->host_var_derived_pads == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size * sizeof (bool));
+	  goto error;
+	}
+      for (int k = 0; k < size; k++)
+	{
+	  info->host_var_derived_from[k] = -1;
+	  if (k >= size - info->auto_param_count)
+	    {
+	      domains[k] = NULL;
+	    }
+	}
+      for (int d = 0; d < info->host_var_derived_count; d++)
+	{
+	  int k, from, pads;
+	  ptr = or_unpack_int (ptr, &k);
+	  ptr = or_unpack_int (ptr, &from);
+	  ptr = or_unpack_int (ptr, &pads);
+	  ptr = or_unpack_domain (ptr, &domains[k], NULL);
+	  info->host_var_derived_from[k] = from;
+	  info->host_var_derived_pads[k] = pads != 0;
+	}
     }
 
   /* subquery */
@@ -717,6 +808,18 @@ error:
     {
       db_value_clear_array (&info->host_variables);
       free_and_init (info->host_variables.vals);
+    }
+  if (info->host_var_derived_from)
+    {
+      free_and_init (info->host_var_derived_from);
+    }
+  if (info->host_var_derived_pads)
+    {
+      free_and_init (info->host_var_derived_pads);
+    }
+  if (info->host_var_format_classes)
+    {
+      free_and_init (info->host_var_format_classes);
     }
   if (info->host_var_expected_domains)
     {
@@ -1314,6 +1417,51 @@ db_clear_client_query_result (int notify_server, bool end_holdable)
 	}
     }
 }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * db_final_client_query_result () - end the remaining query results and free the query result table of the
+ *				     connection of this thread
+ * return : none
+ *
+ * Note: Called when a sub-client is shut down, after its connection is closed and before its workspace is finalized
+ *       (the values of the results are freed with the memory areas of the workspace).
+ *       The results still open (e.g., holdable ones, ones not ended by db_query_end (), or ones of a transaction
+ *       not ended because nothing was updated) are ended here; the caller must not use them any more.
+ *       The server is not notified, since it ends the queries of a connection when the connection is closed.
+ */
+void
+db_final_client_query_result (void)
+{
+  DB_QUERY_RESULT *q_res;
+
+  /* end every remaining result, including the holdable ones */
+  db_clear_client_query_result (false, true);
+
+  if (Qres_table.qres_cnt > 0)
+    {
+      /* safe-guard: db_clear_client_query_result () removes every result from the table */
+      assert (false);
+      return;
+    }
+
+  while (Qres_table.alloc_res.free_qres_list != NULL)
+    {
+      q_res = Qres_table.alloc_res.free_qres_list;
+      Qres_table.alloc_res.free_qres_list = q_res->next;
+      free_and_init (q_res);
+    }
+  Qres_table.alloc_res.free_qres_cnt = 0;
+  Qres_table.alloc_res.max_qres_cnt = 0;
+
+  if (Qres_table.qres_list != NULL)
+    {
+      free_and_init (Qres_table.qres_list);
+    }
+  Qres_table.entry_cnt = 0;
+  Qres_table.qres_closed_cnt = 0;
+}
+#endif
 
 /*
  * db_cp_query_type_helper() - Copies the given type to a newly allocated type

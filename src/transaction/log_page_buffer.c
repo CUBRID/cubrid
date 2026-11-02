@@ -9197,6 +9197,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	    }
+	  else if (er_errid () == ER_LOG_BKUP_INCOMPATIBLE)
+	    {
+	      error_expected = true;
+	    }
 	  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
 	  LOG_CS_EXIT (thread_p);
 	  goto error;
@@ -9268,10 +9272,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       if (compat != REL_FULLY_COMPATIBLE && compat != REL_BACKWARD_COMPATIBLE)
 	{
 	  /* Database is incompatible with current release */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_INCOMPATIBLE, 2, rel_name (),
-		  rel_release_string ());
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_INCOMPATIBLE, 3, rel_name (),
+		  rel_release_string (), session->bkup.bkuphdr->db_release);
 	  error_code = ER_LOG_BKUP_INCOMPATIBLE;
 	  LOG_CS_EXIT (thread_p);
+	  error_expected = true;
 	  goto error;
 	}
 

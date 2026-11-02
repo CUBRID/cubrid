@@ -1765,7 +1765,7 @@ lang_get_collation_by_name (const char *coll_name)
 
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
-      if (strcmp (coll_name, lang_Collations[i]->coll.coll_name) == 0)
+      if (strcasecmp (coll_name, lang_Collations[i]->coll.coll_name) == 0)
 	{
 	  return lang_Collations[i];
 	}

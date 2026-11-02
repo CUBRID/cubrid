@@ -24,7 +24,6 @@
 #ifndef _QUERY_LIST_H_
 #define _QUERY_LIST_H_
 
-struct domain_plan_item;
 
 #ident "$Id$"
 
@@ -44,10 +43,16 @@ typedef enum
   JOIN_LEFT,
   JOIN_RIGHT,
   JOIN_OUTER,
-  JOIN_CSELECT
+  JOIN_CSELECT,
+  JOIN_SEMI,
+  JOIN_ANTI
 } JOIN_TYPE;
 
-#define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+#define IS_OUTER_JOIN_TYPE(t) \
+  ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+
+#define IS_NULL_FILL_JOIN_TYPE(t) \
+  (IS_OUTER_JOIN_TYPE (t) || (t) == JOIN_ANTI)
 
 /* PAGE CONSTANTS */
 
@@ -374,7 +379,6 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
-  struct domain_plan_item *plan_item;	/* load-derived, not serialized */
   int pos_no;			/* value position number */
 };
 
@@ -445,11 +449,6 @@ struct qfile_tuple_descriptor
   int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass. Lives in the
 				 * f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values), so freeing
 				 * f_valp frees it. */
-  DB_VALUE *f_cast;		/* f_cast_cnt values: the collection casts a column's value into f_cast[i] when the value is
-				 * not of the column's domain (qdata_get_dbval_from_constant_regu_variable), so a peeked
-				 * value - a scan's value another column reads too - keeps the type its producer gave it.
-				 * Allocated with f_valp, cleared and freed with it (qfile_clear_list_id). */
-  int f_cast_cnt;
 
   /* T_COL_SRC */
   QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
@@ -549,8 +548,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
       (list_id)->tpl_descr.f_len = NULL; \
-      (list_id)->tpl_descr.f_cast = NULL; \
-      (list_id)->tpl_descr.f_cast_cnt = 0; \
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \
@@ -601,7 +598,7 @@ enum
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
-  QFILE_NOT_USE_MEMBUF = 0x0800,
+  QFILE_FLAG_NO_MEMBUF = 0x0800,
   QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
 				 * carry the 8-byte [len][prev_len] header (type_list.hdr_size) */
 };
@@ -742,14 +739,24 @@ enum
   EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
   TRAN_AUTO_COMMIT = 0x1 << 16,
   LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
-  HV_PRED_PLAN_UNPEEKED = 0x1 << 18	/* plan built with unbound host-var predicate markers; the
+  HV_PRED_PLAN_UNPEEKED = 0x1 << 18,	/* plan built with unbound host-var predicate markers; the
 					 * first execution replans under the actual bind values */
+  XASL_TRACE_PLAN_DETAIL = 0x1 << 19,	/* the session shows its plans in detail (csql ;plan detail): the trace
+					 * carries the compiled expression programs' section too */
+  BIND_WATCH_CANDIDATE = 0x1 << 20	/* the statement passed target selection for bind-value plan
+					 * variants (joined nodes, a skewed host-var predicate not
+					 * pinned by a unique key): its executions choose among the
+					 * query's plans by fingerprint (bind_variant.h) */
 };
+
+/* the plan choices a LIMIT value decides (pt_recompile_for_limit_optimizations) */
+#define XASL_LIMIT_OPT_FLAGS (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED)
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
 #define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
 #define IS_XASL_TRACE_JSON(flag)    (((flag) & XASL_TRACE_JSON) != 0)
+#define IS_XASL_TRACE_PLAN_DETAIL(flag)    (((flag) & XASL_TRACE_PLAN_DETAIL) != 0)
 
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 

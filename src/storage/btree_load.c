@@ -164,6 +164,9 @@ struct load_args
 #define BT_LOAD_POOL_SPAN_NPAGES 64
 #define BT_LOAD_OVF_REFILL_NPAGES 256
 
+/* er_message keeps a reference to its logging flag; the provider's kept error never logs. */
+static const bool bt_load_er_message_logging = false;
+
 typedef enum bt_load_slot_state
 {
   BT_LOAD_SLOT_IDLE = 0,
@@ -239,6 +242,8 @@ struct bt_load_provider
   pthread_cond_t *cond_worker;
   pthread_cond_t cond_main;
   int first_error;
+    cuberr::er_message * first_error_msg;	/* Error context of the worker whose failure set first_error; the leader takes
+						 * it once every worker is done. */
   BT_LOAD_SPAN *main_inline_spans;
   BT_LOAD_SPAN *main_inline_current;
   BT_LOAD_SPAN *ovf_inline_spans;
@@ -2981,9 +2986,12 @@ bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool i
 	}
       if (provider->first_error != NO_ERROR)
 	{
-	  error = provider->first_error;
+	  /* Another worker or the leader failed first and holds the build's error; this worker only stops.  Every
+	   * caller expects a failed claim to leave an error in this thread, so set one.  Only the first failure's
+	   * error reaches the leader (bt_load_worker_epilogue ()). */
 	  pthread_mutex_unlock (&provider->mtx);
-	  return error;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	  return ER_BTREE_LOAD_FAILED;
 	}
       span = slot->ready_span;
       slot->ready_span = NULL;
@@ -3045,6 +3053,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->slots = (BT_LOAD_WORKER_SLOT *) calloc ((size_t) n_workers, sizeof (*provider->slots));
   provider->cond_worker = (pthread_cond_t *) malloc ((size_t) n_workers * sizeof (*provider->cond_worker));
   provider->first_error = NO_ERROR;
+  provider->first_error_msg = new cuberr::er_message (bt_load_er_message_logging);
   provider->main_inline_spans = NULL;
   provider->main_inline_current = NULL;
   provider->ovf_inline_spans = NULL;
@@ -3054,7 +3063,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->consumed_pages = 0;
   provider->consumed_ovf_pages = 0;
   provider->returned_pages = 0;
-  if (provider->slots == NULL || provider->cond_worker == NULL)
+  if (provider->slots == NULL || provider->cond_worker == NULL || provider->first_error_msg == NULL)
     {
       if (provider->slots != NULL)
 	{
@@ -3064,6 +3073,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
 	{
 	  free_and_init (provider->cond_worker);
 	}
+      delete provider->first_error_msg;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      (size_t) n_workers * (sizeof (BT_LOAD_WORKER_SLOT) + sizeof (pthread_cond_t)));
       delete provider;
@@ -3132,6 +3142,11 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
       if (all_done)
 	{
 	  pthread_mutex_unlock (&provider->mtx);
+	  if (provider->first_error_msg->err_id != NO_ERROR)
+	    {
+	      /* A worker failed first.  No worker runs now, so take its error into the leader's own context. */
+	      cuberr::context::get_thread_local_error ().swap (*provider->first_error_msg);
+	    }
 	  return provider->first_error;
 	}
       if (selected < 0)
@@ -3510,6 +3525,7 @@ bt_load_provider_close (BT_LOAD_PROVIDER * provider)
   bt_load_free_spans (provider->ovf_inline_spans);
   bt_load_free_ledger (provider->ledger);
   free_and_init (provider->cond_worker);
+  delete provider->first_error_msg;
   pthread_cond_destroy (&provider->cond_main);
   pthread_mutex_destroy (&provider->mtx);
   delete provider;
@@ -5443,6 +5459,8 @@ bt_load_worker_epilogue (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int err
       if (provider->first_error == NO_ERROR)
 	{
 	  provider->first_error = error;
+	  /* The build's first failure: keep its error context for the leader (bt_load_provider_service_loop ()). */
+	  provider->first_error_msg->swap (cuberr::context::get_thread_local_error ());
 	}
       for (int i = 0; i < provider->n_workers; i++)
 	{
@@ -5678,7 +5696,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUN
 
 static SCAN_CODE
 get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
-	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher, HFID * hfid)
+	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, HFID * hfid)
 {
   int error = NO_ERROR;
   assert (*offset >= 0);
@@ -5692,10 +5710,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 	  if (VSID_IS_NULL (&new_fsector.vsid))
 	    {
 	      /* end */
-	      if (old_pgwatcher->pgptr != NULL)
-		{
-		  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
-		}
 	      return S_END;
 	    }
 	  *fsector = new_fsector;
@@ -5719,9 +5733,11 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 	    }
 	  if (bit64_is_set (fsector->page_bitmap, *offset))
 	    {
+	      /* release the current page first: the next VPID comes from the scan-start bitmap, not from this page's
+	       * chain link, and holding this page while waiting deadlocks with vacuum deallocating an empty page */
 	      if (scan_cache->page_watcher.pgptr != NULL)
 		{
-		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, old_pgwatcher);
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		}
 
 	      error = pgbuf_ordered_fix (thread_p, vpid_out, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
@@ -5734,10 +5750,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 		  if (error != NO_ERROR && error != ER_PB_BAD_PAGEID)
 		    {
 		      /* non-dealloc error (e.g. ER_INTERRUPTED): propagate */
-		      if (old_pgwatcher->pgptr != NULL)
-			{
-			  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
-			}
 		      return S_ERROR;
 		    }
 		  /* when bitmap is built, that page was valid.
@@ -5745,11 +5757,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 		   * this is not error, it can be ignored */
 		  er_clear ();
 		  continue;
-		}
-
-	      if (old_pgwatcher->pgptr != NULL)
-		{
-		  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
 		}
 
 	      if (error != NO_ERROR)
@@ -5792,8 +5799,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_dirty_satisfied;
   bool is_btree_ops_log = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
 
-  PGBUF_WATCHER old_pgwatcher;
-  HFID hfid;
   VPID vpid = vpid_Null_vpid;
 
   OID slot_resume_oid;
@@ -5808,8 +5813,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
 
   VPID_SET_NULL (&vpid);
-  hfid = sort_args->hfids[0];
-  PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
 
   OID_SET_NULL (&slot_resume_oid);
 
@@ -5817,7 +5820,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
     {
       page_iter_scan_result =
 	get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
-		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher,
+		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache,
 		       &sort_args->hfids[sort_args->cur_class]);
       if (page_iter_scan_result == S_END)
 	{
@@ -5881,7 +5884,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	  {
 	    page_iter_scan_result =
 	      get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
-			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher,
+			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache,
 			     &sort_args->hfids[sort_args->cur_class]);
 	    if (page_iter_scan_result == S_END)
 	      {
@@ -5940,8 +5943,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 				   sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
 				   sort_args->btid->sys_btid->vfid.fileid);
 		  }
-		hfid = sort_args->hfids[sort_args->cur_class];
-		PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
 	      }
 	    continue;
 	  }
@@ -6936,6 +6937,16 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    {
 	      break;
 	    }
+	  if (pos < 0)
+	    {
+	      /* No partition can hold the value: the foreign key is invalid. */
+	      val_print = pr_valstring (&fk_key);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+		      (val_print ? val_print : "unknown value"));
+	      ret = ER_FK_INVALID;
+	      db_private_free (thread_p, val_print);
+	      break;
+	    }
 
 	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {
@@ -6966,8 +6977,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
-				  &pk_bt_scan.C_page, &found);
+	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, NULL, DB_EQ, &pk_bt_scan.C_vpid,
+				  &pk_bt_scan.slot_id, &pk_bt_scan.C_page, &found);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
