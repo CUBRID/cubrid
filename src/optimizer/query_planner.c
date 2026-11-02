@@ -5131,7 +5131,8 @@ qo_nljoin_cost (QO_PLAN * planp)
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
   double guessed_result_cardinality, limit_val, outer_card, required_card, inner_scan_card, inner_fetch_rows;
-  double divisor, rows_per_group;
+  double divisor, rows_per_group, limit_rows;
+  bool is_groupby_limit = false;
 
   inner = planp->plan_un.join.inner;
 
@@ -5163,30 +5164,23 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
     }
-  else if (qo_plan_is_groupby_limit_join (planp, &rows_per_group))
+  else if ((is_groupby_limit = qo_plan_is_groupby_limit_join (planp, &rows_per_group))
+	   || (QO_PLAN_HAS_LIMIT (planp)
+	       && (planp->info->planner->can_apply_limit_card || qo_plan_is_orderby_skip_candidate (planp))))
     {
-      /* a GROUP BY skip stops after the LIMIT groups (CBRD-27685): the outer rows of those groups, of which an
-       * inner join keeps the share that finds a match */
-      if (outer->plan_type == QO_PLANTYPE_SCAN)
+      if (is_groupby_limit)
 	{
-	  required_card = MAX (planp->info->planner->groupby_limit_groups * rows_per_group / (outer->info)->hit_prob,
-			       1.0);
-	  guessed_result_cardinality = MIN (required_card, (outer->info)->cardinality);
+	  /* a GROUP BY skip stops after the LIMIT groups (CBRD-27685): the outer rows of those groups, which the
+	   * GROUP BY does not bound in rows */
+	  limit_val = planp->info->planner->groupby_limit_groups * rows_per_group;
+	  limit_rows = DBL_MAX;
 	}
       else
 	{
-	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
+	  limit_val = QO_PLAN_HAS_CONSTANT_LIMIT (planp)
+	    ? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env)) : GUESSED_BIND_LIMIT_CARD;
+	  limit_rows = limit_val;
 	}
-      outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
-      planp->limit_nljoin_guessed_card =
-	MAX (1.0, guessed_result_cardinality * ((planp->info)->cardinality / outer_card));
-      guessed_result_cardinality = MAX (1.0, guessed_result_cardinality);
-    }
-  else if (QO_PLAN_HAS_LIMIT (planp)
-	   && (planp->info->planner->can_apply_limit_card || qo_plan_is_orderby_skip_candidate (planp)))
-    {
-      limit_val = QO_PLAN_HAS_CONSTANT_LIMIT (planp)
-	? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env)) : GUESSED_BIND_LIMIT_CARD;
 
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
@@ -5198,7 +5192,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 	   * (rows read * plan_card/outer_card). */
 	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
 	  planp->limit_nljoin_guessed_card =
-	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
+	    MAX (1.0, MIN (limit_rows, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
@@ -5207,7 +5201,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card),
 	   * and never more than the LIMIT since the query stops there. */
 	  planp->limit_nljoin_guessed_card =
-	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
+	    MAX (1.0, MIN (limit_rows, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else
 	{
