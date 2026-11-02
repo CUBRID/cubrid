@@ -931,15 +931,20 @@ namespace cubload
 
     if (token == NULL || str_size == 0)
       {
-	if (er_errid() != NO_ERROR)
-	  {
-	    return er_errid();
-	  }
-	else
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-	    return ER_LDR_MEMORY_ERROR;
-	  }
+	/*
+	 * The text could not be assembled. A monetary constant is the one kind text_token ()
+	 * has to build rather than point at, and a failed malloc is the only way it hands
+	 * back an empty one.
+	 *
+	 * Say so rather than returning whatever er_errid () holds. An error from earlier in
+	 * the same line is still standing when a converter is entered - a time literal the
+	 * engine refused leaves ER_DATE_CONVERSION there, and an element the collection
+	 * turned down leaves its own - and the control file has not been consulted yet, so
+	 * even an error it ignores is still set. Handing one of those back would report this
+	 * value as having failed for a reason that belongs to another.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	return ER_LDR_MEMORY_ERROR;
       }
 
     if (str_size >= 2
