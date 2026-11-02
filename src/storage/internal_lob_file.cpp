@@ -1055,6 +1055,14 @@ xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &l
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
+  /* An auto-commit open starts a transaction with no snapshot yet; without one vacuum does not wait for this
+   * cursor and can reclaim the chain while it is being read. */
+  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
   err = internal_lob_read_open (thread_p, locator, cursor.reader);
   if (err != NO_ERROR)
     {
