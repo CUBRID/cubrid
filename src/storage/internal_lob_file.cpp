@@ -56,6 +56,13 @@ internal_lob_set_generic_error (void)
   return ER_GENERIC_ERROR;
 }
 
+static int
+internal_lob_set_value_gone (void)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERNAL_LOB_VALUE_GONE, 0);
+  return ER_INTERNAL_LOB_VALUE_GONE;
+}
+
 /*
  * internal_lob_physical_bytes () - stored byte count of a value with this logical length.
  *   CLOB: logical length is already a byte count.  BLOB: it is a bit count.
@@ -836,15 +843,14 @@ internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &loca
   if (stored_bytes < 0)
     {
       err = er_errid ();
-      if (err != NO_ERROR && err != ER_GENERIC_ERROR)
+      if (err != NO_ERROR && err != ER_GENERIC_ERROR && err != ER_SP_UNKNOWN_SLOTID)
 	{
 	  return err;
 	}
     }
   if (stored_bytes < 0 || !internal_lob_length_matches_stored (locator.length, (DB_BIGINT) stored_bytes))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERNAL_LOB_VALUE_GONE, 0);
-      return ER_INTERNAL_LOB_VALUE_GONE;
+      return internal_lob_set_value_gone ();
     }
 
   err = oos_read_open (thread_p, locator.oid, reader.oos_reader);
@@ -895,14 +901,19 @@ internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos
 
       err = oos_read_pull (thread_p, reader.oos_reader,
 			   dest.subspan ((std::size_t) nread, (std::size_t) request_size), pulled);
+      /* A value deleted before the open can be reclaimed while it is read: vacuum cuts the chain from its tail,
+       * so a chunk is gone or the chain ends early.  Report that as the vanished value it is. */
+      if (err == ER_SP_UNKNOWN_SLOTID || (err == NO_ERROR && pulled <= 0))
+	{
+	  return internal_lob_set_value_gone ();
+	}
       if (err != NO_ERROR)
 	{
 	  return err;
 	}
 
-      if (pulled <= 0 || pulled > request_size)
+      if (pulled > request_size)
 	{
-	  /* The chain ended early or returned nonsense while bytes were still expected. */
 	  return internal_lob_set_generic_error ();
 	}
 
