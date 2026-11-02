@@ -12159,6 +12159,23 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   hostvar->info.host_var.index = parser->host_var_count;
   hostvar->type_enum = PT_TYPE_NONE;
 
+  /* a copy that the parser made of the name (e.g. the first argument of FIELD, copied into each comparison) is the
+   * same variable at the same place in the text: give it the same index, as "?" copied there keeps its index.
+   * a new index for each copy would leave all but one of them out of the printed text */
+  if (name_node->buffer_pos >= 0 && parser->static_sql_host_var_end != NULL)
+    {
+      for (int i = 0; i < parser->host_var_count; i++)
+	{
+	  if (parser->static_sql_host_var_end[i] == name_node->buffer_pos)
+	    {
+	      hostvar->info.host_var.index = i;
+	      PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
+	      parser_free_tree (parser, name_node);
+	      return hostvar;
+	    }
+	}
+    }
+
   // Expand parser->host_variables by realloc
   int count_to_realloc = parser->host_var_count + 1;
 
