@@ -682,6 +682,9 @@ class sector_page_iterator
 
     inline struct qmgr_temp_file *get_current_tfile () const { return m_current_tfile; }
     inline VPID get_current_vpid () const { return m_last_vpid; }
+    /* did get_next_page () return NULL because a page could not be fetched (the error is set on the thread), rather
+     * than because every page was handed out? */
+    inline bool failed () const { return m_failed; }
 
   private:
     int m_membuf_index;		/* -1 = initial, >=0 = CAS winner iterating membuf, -2 = not winner */
@@ -690,6 +693,7 @@ class sector_page_iterator
     VSID m_current_vsid;
     VPID m_last_vpid;		/* VPID of the last returned page */
     struct qmgr_temp_file *m_current_tfile;
+    bool m_failed;		/* a page fetch failed: get_next_page () returned NULL on an error */
 };
 // *INDENT-ON*
 #endif /* __cplusplus */
