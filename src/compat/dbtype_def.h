@@ -503,12 +503,17 @@ extern "C"
   typedef enum
   {
     DB_OBJECT_UNKNOWN = -1,
+
+    /* database objects: each one is a single object owned by a user */
     DB_OBJECT_CLASS = 0,	/* TABLE, VIEW (_db_class) */
     DB_OBJECT_TRIGGER = 1,	/* TRIGGER (_db_trigger) */
     DB_OBJECT_SERIAL = 2,	/* SERIAL (_db_serial) */
     DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
     DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
-    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+    DB_OBJECT_PROCEDURE = 5,	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+
+    /* system objects: each one stands for every object of its type, so object_of in _db_auth is NULL */
+    DB_OBJECT_SENSITIVITY_LABEL = 100	/* SENSITIVITY LABEL */
   } DB_OBJECT_TYPE;
 
   /* session state id */

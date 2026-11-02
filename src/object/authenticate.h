@@ -139,6 +139,21 @@ extern int au_login (const char *name, const char *password, bool ignore_dba_pri
 extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
 extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 
+/* a system object: a privilege on it covers every object of its type, and the DBA owns it */
+typedef struct au_system_object AU_SYSTEM_OBJECT;
+struct au_system_object
+{
+  DB_OBJECT_TYPE type;
+  const char *name;		/* the keywords that name it in SQL */
+  DB_AUTH privileges;		/* the privileges that can be granted on it */
+};
+
+extern const AU_SYSTEM_OBJECT AU_SYSTEM_OBJECTS[];
+extern const int AU_SYSTEM_OBJECTS_COUNT;
+
+extern const AU_SYSTEM_OBJECT *au_find_system_object (DB_OBJECT_TYPE obj_type);
+extern int au_make_system_object_when_clauses (char *buf, int buf_size);
+
 #if defined (SA_MODE)
 extern int au_force_write_new_auth (void);
 #endif

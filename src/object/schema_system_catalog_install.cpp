@@ -1767,7 +1767,7 @@ namespace cubschema
     {
       {"grantor_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"grantee_name", format_varchar (DB_MAX_USER_LENGTH)},
-      {"object_type", format_varchar (16)},
+      {"object_type", format_varchar (32)},
       {"object_name", format_varchar (255)},
       {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"auth_type", format_varchar (7)},

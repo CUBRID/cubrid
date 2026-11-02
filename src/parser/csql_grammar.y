@@ -585,6 +585,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_cascade_constraints
 %type <number> plcsql_text
 %type <number> opt_replace
+%type <number> system_object
+%type <number> on_system_object
 %type <number> opt_of_inner_left_right
 %type <number> opt_class_type
 %type <number> opt_of_attr_column_method
@@ -1633,6 +1635,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> JSON_UNQUOTE
 %token <cptr> JSON_VALID
 %token <cptr> JOB
+%token <cptr> LABEL
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -1709,6 +1712,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> SEED_
 %token <cptr> SEMI
 %token <cptr> SEMICOLON
+%token <cptr> SENSITIVITY
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SERVER
@@ -8483,6 +8487,21 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| revoke_cmd on_system_object from_id_list
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
+
+			if (node)
+			  {
+			    node->info.revoke.user_list = $3;
+			    node->info.revoke.spec_list = NULL;
+			    node->info.revoke.auth_cmd_list = $1;
+			    node->info.revoke.system_object = (DB_OBJECT_TYPE) $2;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 revoke_cmd
@@ -8573,6 +8592,28 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| grant_cmd on_system_object to_id_list
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
+
+			if (node)
+			  {
+			    node->info.grant.user_list = $3;
+			    node->info.grant.spec_list = NULL;
+			    node->info.grant.auth_cmd_list = $1;
+			    node->info.grant.system_object = (DB_OBJECT_TYPE) $2;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+system_object
+	: SENSITIVITY LABEL
+		{{
+			$$ = DB_OBJECT_SENSITIVITY_LABEL;
+		}}
 	;
 
 opt_with_grant_option
@@ -8587,11 +8628,22 @@ opt_with_grant_option
 	;
 
 on_class_list
-	: ON_
-		{ push_msg(MSGCAT_SYNTAX_MISSING_CLASS_SPEC_LIST); }
+	: on_
 	  class_spec_list
 		{ pop_msg(); }
-		{ $$ = $3; }
+		{ $$ = $2; }
+	;
+
+on_system_object
+	: on_
+	  system_object
+		{ pop_msg(); }
+		{ $$ = $2; }
+	;
+
+on_
+	: ON_
+		{ push_msg(MSGCAT_SYNTAX_MISSING_CLASS_SPEC_LIST); }
 	;
 
 to_id_list
@@ -20854,6 +20906,7 @@ identifier
 	| KEYLIMIT               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| KEYS                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| KILL                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LABEL                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LAG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LAST_VALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20924,6 +20977,7 @@ identifier
 	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SEED_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SENSITIVITY            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

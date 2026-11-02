@@ -54,16 +54,16 @@ class au_auth_accessor
     {
       INDEX_FOR_GRANTEE_NAME = 0,
       INDEX_FOR_GRANTOR_NAME = 1,
-      INDEX_FOR_OBJECT_NAME = 2,
+      INDEX_FOR_OBJECT = 2,
       INDEX_FOR_AUTH_TYPE = 3,
       /* Total count for the above */
       COUNT_FOR_VARIABLES
     };
 
     int create_new_auth ();
-    int set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_object, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type,
+    int set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_object, MOP grantor, MOP user, MOP object_of, DB_AUTH auth_type,
 		      bool grant_option);
-    int get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
+    int find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
 
   public:
     explicit au_auth_accessor ();

@@ -84,7 +84,7 @@ static void free_class_grants (CLASS_GRANT *grants);
 static void free_class_users (CLASS_USER *users);
 static CLASS_USER *find_or_add_user (CLASS_AUTH *auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH *auth, MOP source, MOP user, int cache);
-static int build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop);
+static int build_class_grant_list (CLASS_AUTH *cl_auth, DB_OBJECT_TYPE obj_type, MOP class_mop);
 
 static void issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth,
 				   CLASS_GRANT *grant, int authbits, DB_OBJECT_TYPE obj_type);
@@ -505,6 +505,15 @@ au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop
       cl_auth.users = NULL;
       break;
     default:
+      if (au_find_system_object (obj_type) != NULL)
+	{
+	  /* the DBA owns every system object */
+	  cl_auth.class_mop = NULL;
+	  cl_auth.owner = Au_dba_user;
+	  cl_auth.users = NULL;
+	  break;
+	}
+
       assert (false);
       error = ER_FAILED;
       return (error);
@@ -515,7 +524,7 @@ au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop
   u->available_auth = AU_FULL_AUTHORIZATION;
 
   /* add entries for the other users with authorization on this class */
-  error = build_class_grant_list (&cl_auth, class_mop);
+  error = build_class_grant_list (&cl_auth, obj_type, class_mop);
   if (error == NO_ERROR)
     {
       /* loop through the grant list, issuing grant statements */
@@ -739,6 +748,7 @@ free_class_users (CLASS_USER *users)
  *                          the class "class".
  *   return: error code
  *   cl_auth(in):  class authorization state
+ *   obj_type(in): object type
  *   class(in): class object
  *
  * Note: The db_root class used to have a user attribute which was a set
@@ -747,7 +757,7 @@ free_class_users (CLASS_USER *users)
  *       now used to find all users.
  */
 static int
-build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop)
+build_class_grant_list (CLASS_AUTH *cl_auth, DB_OBJECT_TYPE obj_type, MOP class_mop)
 {
   int error = NO_ERROR;
   MOP user, auth, source;
@@ -811,8 +821,14 @@ build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop)
       gsize = set_size (grants);
       for (int j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
 	{
+	  error = set_get_element (grants, GRANT_ENTRY_TYPE (j), &value);
+	  if (error != NO_ERROR || db_get_int (&value) != obj_type)
+	    {
+	      continue;
+	    }
+
 	  error = set_get_element (grants, GRANT_ENTRY_CLASS (j), &value);
-	  if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_OBJECT || db_get_object (&value) != class_mop)
+	  if (error != NO_ERROR || db_get_object (&value) != class_mop)
 	    {
 	      continue;
 	    }
@@ -922,11 +938,12 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
 
   output_ctx ("\n");
 
+  username = au_get_user_name (grant->user->obj);
+
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
       SPLIT_USER_SPECIFIED_NAME (sm_get_ch_name (auth->class_mop), owner_name, class_name);
-      username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON ", gtype);
       break;
@@ -934,22 +951,25 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
       unique_name[0] = '\0';
       jsp_get_unique_name (auth->class_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
       SPLIT_USER_SPECIFIED_NAME (unique_name, owner_name, class_name);
-      username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON PROCEDURE ", gtype);
       break;
     default:
-      output_ctx ("GRANT %s ON ", gtype);
+      output_ctx ("GRANT %s ON %s", gtype, au_find_system_object (obj_type)->name);
       break;
     }
 
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+  /* NULL for a system object, whose name is written above */
+  if (class_name != NULL)
     {
-      output_ctx ("[%s].[%s]", owner_name, class_name);
-    }
-  else
-    {
-      output_ctx ("[%s]", class_name);
+      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	{
+	  output_ctx ("[%s].[%s]", owner_name, class_name);
+	}
+      else
+	{
+	  output_ctx ("[%s]", class_name);
+	}
     }
 
   if (username != NULL)

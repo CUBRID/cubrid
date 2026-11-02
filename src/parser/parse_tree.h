@@ -682,6 +682,14 @@ struct trace_json_t;
 	}						    \
     } while (0)
 
+#define PT_GET_AUTH_CMD_LIST(p)								\
+  (((p)->node_type == PT_GRANT) ? (p)->info.grant.auth_cmd_list :			\
+   ((p)->node_type == PT_REVOKE) ? (p)->info.revoke.auth_cmd_list : NULL)
+
+#define PT_GET_SYSTEM_OBJECT(p)								\
+  (((p)->node_type == PT_GRANT) ? (p)->info.grant.system_object :			\
+   ((p)->node_type == PT_REVOKE) ? (p)->info.revoke.system_object : DB_OBJECT_UNKNOWN)
+
 /* Check if spec is flagged with any of flags_ */
 #define PT_IS_SPEC_FLAG_SET(spec_, flags_)		    \
   (((spec_)->info.spec.flag & (flags_)) != 0)
@@ -2449,8 +2457,9 @@ struct pt_grant_info
 {
   PT_NODE *auth_cmd_list;	/* PT_AUTH_CMD(list) */
   PT_NODE *user_list;		/* PT_NAME */
-  PT_NODE *spec_list;		/* PT_SPEC (class) or PT_NAME (procedure) */
+  PT_NODE *spec_list;		/* PT_SPEC (class) or PT_NAME (procedure); NULL for a system object */
   PT_MISC_TYPE grant_option;	/* = PT_GRANT_OPTION or PT_NO_GRANT_OPTION */
+  DB_OBJECT_TYPE system_object;	/* DB_OBJECT_UNKNOWN unless on a system object */
 };
 
 /* Info for Host_Var */
@@ -2804,7 +2813,8 @@ struct pt_revoke_info
 {
   PT_NODE *auth_cmd_list;
   PT_NODE *user_list;
-  PT_NODE *spec_list;
+  PT_NODE *spec_list;		/* NULL for a system object */
+  DB_OBJECT_TYPE system_object;	/* DB_OBJECT_UNKNOWN unless on a system object */
 };
 
 /* Info ROLLBACK  */
