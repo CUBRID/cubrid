@@ -633,7 +633,7 @@ namespace cubschema
       {"grade_level", "integer"},
       {"info_type", format_varchar (255)},
       {"source", format_varchar (255)},
-      {"labeled_by", format_varchar (255)},
+      {"labeled_by", format_varchar (DB_MAX_USER_LENGTH)},
       {"create_time", "datetime"},
       {"update_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_sensitivity_labels_spec ()}

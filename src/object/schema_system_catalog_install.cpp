@@ -1359,7 +1359,7 @@ namespace cubschema
       {"grade", CT_SENSITIVITY_LABEL_GRADE_NAME},
       {"info_type", CT_SENSITIVITY_LABEL_INFO_TYPE_NAME},
       {"source", CT_SENSITIVITY_LABEL_SOURCE_NAME},
-      {"labeled_by", format_varchar (255)},
+      {"labeled_by", format_varchar (DB_MAX_USER_LENGTH)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"}
     },
@@ -2438,7 +2438,7 @@ namespace cubschema
       {"grade_level", "integer"},
       {"info_type", format_varchar (255)},
       {"source", format_varchar (255)},
-      {"labeled_by", format_varchar (255)},
+      {"labeled_by", format_varchar (DB_MAX_USER_LENGTH)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
       // query specs
