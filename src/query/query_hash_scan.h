@@ -141,6 +141,9 @@ unsigned int qdata_hash_string (const LANG_COLLATION * lang_coll, LANG_FASTCMP f
 				int size);
 bool qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
+unsigned int qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size);
+unsigned int qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size);
+unsigned int qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args);
