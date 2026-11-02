@@ -291,6 +291,8 @@ def validate_manifest(data):
     samples = data.get("samples")
     if not isinstance(samples, list):
         raise ValueError("invalid samples")
+    if len(samples) != data["rounds"] * len(QUERIES) * data["runs"]:
+        raise ValueError("missing samples")
     expected_samples = {(r, case, i) for r in range(1, data["rounds"] + 1) for case in QUERIES for i in range(data["runs"])}
     seen = set()
     for sample in samples:

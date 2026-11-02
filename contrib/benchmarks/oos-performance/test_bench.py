@@ -11,6 +11,7 @@
 
 import json
 import copy
+import resource
 import subprocess
 import shutil
 import sys
@@ -190,8 +191,11 @@ class ComparisonTest(unittest.TestCase):
         paths = [self.root / "a.json", self.root / "b.json"]
         for path, data in zip(paths, (a, b)):
             path.write_text(json.dumps(data))
+        # An unbounded allocation must fail fast here instead of exhausting the host.
+        limit = lambda: resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30))
         return subprocess.run([sys.executable, str(Path(bench.__file__)), "compare", "--baseline", str(paths[0]),
-                               "--candidate", str(paths[1]), *options], capture_output=True, text=True)
+                               "--candidate", str(paths[1]), *options], capture_output=True, text=True,
+                              preexec_fn=limit)
 
     def test_equal_conditions_and_different_installations(self):
         other = copy.deepcopy(self.manifest)
@@ -246,9 +250,11 @@ class ComparisonTest(unittest.TestCase):
             data = copy.deepcopy(self.manifest)
             data["samples"][0]["counters"]["cycles:u"]["value"] = val
             variants.append(data)
-        for mutation in ("missing", "duplicate", "counter", "warmup", "elapsed", "schema"):
+        for mutation in ("missing", "duplicate", "counter", "warmup", "elapsed", "schema", "rounds", "runs"):
             data = copy.deepcopy(self.manifest)
             if mutation == "missing": data["samples"].pop()
+            if mutation == "rounds": data["rounds"] = 10**9
+            if mutation == "runs": data["runs"] = 10**9
             if mutation == "duplicate": data["samples"].append(copy.deepcopy(data["samples"][0]))
             if mutation == "counter": del data["samples"][0]["counters"]["task-clock"]
             if mutation == "warmup": data["samples"][0]["warmup"] = False
