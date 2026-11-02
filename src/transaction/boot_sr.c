@@ -145,11 +145,6 @@ enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 
-#if defined(SA_MODE)
-extern void boot_client_all_finalize (int final_level);
-#endif /* SA_MODE */
-
-
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
 #if defined(SERVER_MODE)
@@ -1880,7 +1875,10 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  session_states_init (thread_p);
+  if (session_states_init (thread_p) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -2295,7 +2293,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -2387,7 +2389,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
@@ -2598,10 +2604,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tran_index = NULL_TRAN_INDEX;
   logtb_set_to_system_tran_index (thread_p);
 
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+  tf_compile_meta_classes ();
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {
@@ -2687,7 +2690,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  session_states_init (thread_p);
+  error_code = session_states_init (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
@@ -3923,7 +3930,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
       domain_type_pair_table_final ();
       tp_final ();
       locator_free_areas ();
-      set_final ();
       sysprm_final ();
       area_final ();
       msgcat_final ();
@@ -4922,7 +4928,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5138,7 +5148,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
    */
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
@@ -5493,7 +5507,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5573,7 +5591,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       ASSERT_ERROR ();
       goto error_exit;
     }
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
