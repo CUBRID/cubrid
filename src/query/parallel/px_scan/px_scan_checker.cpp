@@ -947,6 +947,13 @@ namespace parallel_scan
       case BUILDVALUE_PROC:
 	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
 	set_flag (result, CANNOT_LIST_MERGE);
+	/* its output reads the last row's columns once the scans are closed (XASL_OUTPUT_READS_SCAN): the buildvalue
+	 * gather fetches no row into the leader's value list, and the row by row read leaves the values pointing into
+	 * the workers' lists, which close with the scan */
+	if (XASL_IS_FLAGED (arg, XASL_OUTPUT_READS_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
 	if (arg->proc.buildvalue.agg_list)
 	  {
 	    buildvalue_opt = true;

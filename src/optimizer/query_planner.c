@@ -4668,7 +4668,9 @@ qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void 
  *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression.
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
  *	 select list, a derived table inside the recursive part of a CTE (planned with its own
- *	 environment before the part), an ALL superclass scan, a system catalog scan.
+ *	 environment before the part), an ALL superclass scan, a system catalog scan, the source of
+ *	 aggregates without GROUP BY whose columns an ON DUPLICATE KEY UPDATE reads
+ *	 (XASL_OUTPUT_READS_SCAN).
  */
 static int
 qo_query_serial_level (QO_ENV * env)

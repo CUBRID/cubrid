@@ -799,6 +799,7 @@ static int qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QF
 				   SORT_LIST * orderby_list, XASL_STATE * xasl_state, OUTPTR_LIST * outptr_list);
 static int qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 						 QFILE_TUPLE_RECORD * tplrec);
+static int qexec_own_scan_values (XASL_NODE * xasl);
 static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					   QFILE_TUPLE_RECORD * tplrec);
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
@@ -12928,7 +12929,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
  *           per row
  *   xasl(in): the block, its first spec opened
  *
- * The questions in order: the block's kind (a BUILDVALUE with aggregates; a BUILDLIST projection or hash GROUP BY,
+ * The questions in order: the block's kind (a BUILDVALUE with aggregates whose output reads no column of the scan,
+ * XASL_OUTPUT_READS_SCAN; a BUILDLIST projection or hash GROUP BY,
  * not a sort-only GROUP BY, ROLLUP, analytics or a DML scan), then its one spec (a sequential heap scan of a class,
  * no locking read, not the min/max index scan), then what its row loop does besides -- the object fetches, the
  * correlated subqueries, the join and if predicates, inst_num (), the hierarchy, the single-tuple stop -- each of
@@ -12951,7 +12953,8 @@ qexec_batch_eligible (const XASL_NODE * xasl)
 
   if (xasl->type == BUILDVALUE_PROC)
     {
-      if (xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false)
+      if (xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false
+	  || XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
 	{
 	  return false;
 	}
@@ -20625,6 +20628,42 @@ exit_on_error:
 }
 
 /*
+ * qexec_own_scan_values () - copy the values a block's scans left in its value lists into memory of their own
+ *   return: NO_ERROR, or ER_FAILED
+ *   xasl(in): a block marked XASL_OUTPUT_READS_SCAN, its scans not closed yet
+ *
+ * The block's output list reads the last row's columns once its scans are closed
+ * (qexec_end_buildvalueblock_iterations ()), and a fixed heap scan leaves a string pointing into the page it peeked,
+ * which closing the scan lets go.  A copy is freed by the next row the slot takes (fetch_val_list ()) or by
+ * qexec_clear_xasl ().
+ */
+static int
+qexec_own_scan_values (XASL_NODE * xasl)
+{
+  XASL_NODE *scan;
+  QPROC_DB_VALUE_LIST v;
+  DB_VALUE copy;
+
+  for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL; v = v->next)
+	{
+	  if (DB_IS_NULL (v->val) || v->val->need_clear)
+	    {
+	      continue;
+	    }
+	  if (pr_clone_value (v->val, &copy) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  pr_clear_value (v->val);
+	  *v->val = copy;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * qexec_end_buildvalueblock_iterations () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -22116,6 +22155,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  /* call the first xasl interpreter function */
 	  qp_scan = (*func_vector[0]) (thread_p, xasl, xasl_state, &tplrec, &func_vector[1]);
+
+	  /* the output list reads the last row's columns after the scans are closed below */
+	  if (qp_scan == S_SUCCESS && XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN)
+	      && qexec_own_scan_values (xasl) != NO_ERROR)
+	    {
+	      qp_scan = S_ERROR;
+	    }
 
 	  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
