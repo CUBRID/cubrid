@@ -434,9 +434,12 @@ TEST_F (OosSqlDeferredWrite, SmallWorkspaceFlushDoesNotNeedOosPreparation)
 
 TEST_F (OosSqlDeferredWrite, WorkspaceFlushNearSizeGateReservesMvccHeadroom)
 {
-  const int sizes[] = { DB_PAGESIZE / 4 - 128, DB_PAGESIZE / 4 - 40, DB_PAGESIZE / 4 + 16 };
-  const int expected_oos[] = { 0, 1, 1 };
-  for (int i = 0; i < 3; ++i)
+  /* target - 48 is the smallest value whose row crosses the target once the full MVCC header is reserved; its
+   * compact workspace record must still take the server preparation path. */
+  const int target = heap_oos_inline_target_size ();
+  const int sizes[] = { target - 128, target - 48, target - 40, target + 16 };
+  const int expected_oos[] = { 0, 1, 1, 1 };
+  for (int i = 0; i < 4; ++i)
     {
       SCOPED_TRACE (sizes[i]);
       ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);

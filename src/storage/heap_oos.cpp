@@ -126,7 +126,7 @@ heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid,
     }
   /* Reserve the full MVCC header, even when part of it is already present. Existing stubs must be
    * rebuilt in the destination heap regardless of the compact record's size. */
-  if (record->length > DB_PAGESIZE / 4 - OR_MVCC_MAX_HEADER_SIZE || heap_recdes_contains_oos (record))
+  if (record->length > heap_oos_inline_target_size () - OR_MVCC_MAX_HEADER_SIZE || heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }

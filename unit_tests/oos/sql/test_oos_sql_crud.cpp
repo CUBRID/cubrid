@@ -92,7 +92,7 @@ TEST_F (OosSqlCrud, SmallRecordNoOos)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  // 200-byte record: below the DB_PAGESIZE/4 record trigger => no OOS
+  // 200-byte record: below the four-record target => no OOS
   rc = exec_sql ("INSERT INTO t_oos_crud VALUES (1, REPEAT(X'CD', 200))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
@@ -243,7 +243,7 @@ TEST_F (OosSqlCrud, Cbrd27006ReadDispatchBatchesOnlyMultiOosProjections)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  // 4500B + 4500B: still > DB_PAGESIZE/4 after the first demotion, so both go OOS
+  // 4500B + 4500B: still above the four-record target after the first demotion, so both go OOS
   rc = exec_sql ("INSERT INTO t_oos_crud VALUES (1, 'row1', REPEAT(X'AA', 4500), REPEAT(X'BB', 4500))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
