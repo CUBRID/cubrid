@@ -65,6 +65,14 @@ struct copy_col_domain
 extern bool copy_fit_char_precision (const char *str, int str_len, const COPY_COL_DOMAIN *dom, int *fitted_len);
 
 /*
+ * copy_check_char_encoding () - Check a character value's bytes against the
+ *   column's codeset, as INSERT through a CAS and loaddb check theirs: only
+ *   while intl_check_input_string is on.
+ *   return: whether the bytes are valid. Nothing is raised, as above.
+ */
+extern bool copy_check_char_encoding (const char *str, int str_len, const COPY_COL_DOMAIN *dom);
+
+/*
  * copy_format_error () - Raise a COPY format error that says where it happened.
  *
  * The reason alone ("BIGINT expects 8 bytes") does not say which of ten

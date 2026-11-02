@@ -47,7 +47,8 @@
  *   DB_TYPE_BIGINT:   8 bytes, network byte order
  *   DB_TYPE_FLOAT:    4 bytes, IEEE 754
  *   DB_TYPE_DOUBLE:   8 bytes, IEEE 754
- *   DB_TYPE_VARCHAR:  raw UTF-8 bytes (no NUL terminator)
+ *   DB_TYPE_VARCHAR:  raw bytes in the column's codeset (no NUL terminator);
+ *                     COPY converts no codeset
  *   DB_TYPE_DATE:     4 bytes, network byte order: a julian day number, NOT
  *                     unix epoch seconds. 0 is the zero date; otherwise
  *                     1721424 (0001-01-01) .. 5373484 (9999-12-31).

@@ -116,6 +116,14 @@ read_double (const char *buf)
 }
 
 bool
+copy_check_char_encoding (const char *str, int str_len, const COPY_COL_DOMAIN *dom)
+{
+  char *invalid_pos = NULL;
+
+  return intl_check_string (str, str_len, &invalid_pos, (INTL_CODESET) dom->codeset) == INTL_UTF8_VALID;
+}
+
+bool
 copy_fit_char_precision (const char *str, int str_len, const COPY_COL_DOMAIN *dom, int *fitted_len)
 {
   int precision = dom->precision;
@@ -298,6 +306,10 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       /* Build against the column's own domain: the value then matches the
        * attribute exactly and heap_attrinfo_set stores it without coercing. */
       int fitted = field_len;
+      if (!copy_check_char_encoding (data, field_len, dom))
+	{
+	  return binary_error (row, col, "invalid byte sequence for the column's character set");
+	}
       if (!copy_fit_char_precision (data, field_len, dom, &fitted))
 	{
 	  return binary_error (row, col, "value too long for the column type");
