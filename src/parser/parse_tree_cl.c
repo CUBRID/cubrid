@@ -10060,8 +10060,10 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && p->info.spec.remote_server_name != NULL
 		   && (parser->custom_print & PT_SHORT_PRINT))
 	    {
-	      /* A remote DML target takes this shape to get its columns. An error message ends with the statement
-	       * printed short, so the target is printed there as the user wrote it. */
+	      /* A remote DML target takes this shape to get its columns. An error message ends with
+	       * the statement printed short, and there the target is printed as <table>@<server>
+	       * followed by its range variable. As for a local table, the range variable is the
+	       * table name when no alias is written. */
 	      q = pt_append_nulstring (parser, q, p->info.spec.derived_table->info.dblink_table.remote_table_name);
 	      q = pt_append_nulstring (parser, q, "@");
 	      if (p->info.spec.remote_server_name->next)
