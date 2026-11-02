@@ -4523,6 +4523,63 @@ numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
 }
 
 /*
+ * numeric_agg_expr_from_disk () - unpack a NUMERIC attribute's record bytes into an agg-expr value
+ *   return: true on success, false when the coefficient does not fit uint128
+ *   disk(in): the attribute's first byte in the record (the 3-byte header)
+ *   avail(in): bytes readable from disk, or -1 when the caller does not know
+ *   out(out): the agg-expr value
+ *
+ * The same reading mr_data_readval_numeric () makes -- the total size and the value's
+ * sign in header[0], the precision and the scale's sign in header[1], the scale in
+ * header[2], then the low (size - 3) bytes of the big-endian magnitude -- without the
+ * 17-byte DB_VALUE in between: a page batch (expr_batch.c) loads a NUMERIC column
+ * straight from the records into the word domain the aggregate accumulator takes.
+ */
+bool
+numeric_agg_expr_from_disk (const unsigned char *disk, int avail, NUMERIC_AGG_EXPR_VAL * out)
+{
+  int size, nbytes, i, scale;
+  bool is_negative, is_negative_scale;
+  uint128_t coefficient = 0;
+
+  if (disk == NULL || (avail >= 0 && avail < NUMERIC_HEADER_SIZE))
+    {
+      return false;
+    }
+  size = (disk[0] & 0x7F);
+  if (size < NUMERIC_HEADER_SIZE || (avail >= 0 && size > avail))
+    {
+      return false;
+    }
+  nbytes = size - NUMERIC_HEADER_SIZE;
+  if (nbytes > DB_NUMERIC_BUF_SIZE)
+    {
+      return false;
+    }
+  is_negative = (disk[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+  is_negative_scale = (disk[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+  scale = is_negative_scale ? -((int) disk[2]) : (int) disk[2];
+
+  /* the magnitude is big-endian; a 17-byte payload whose top byte is set exceeds uint128 */
+  disk += NUMERIC_HEADER_SIZE;
+  if (nbytes == DB_NUMERIC_BUF_SIZE)
+    {
+      if (disk[0] != 0)
+	{
+	  return false;
+	}
+      disk++;
+      nbytes--;
+    }
+  for (i = 0; i < nbytes; i++)
+    {
+      coefficient = (coefficient << 8) | (uint128_t) disk[i];
+    }
+  numeric_agg_expr_make (out, coefficient, scale, is_negative);
+  return true;
+}
+
+/*
  * numeric_agg_expr_from_int_dbv () - build an agg-expr value from an integer operand
  *   return: true when the value was taken, false to leave the tree to the legacy path
  *   dbv(in): a SHORT, INTEGER or BIGINT value
