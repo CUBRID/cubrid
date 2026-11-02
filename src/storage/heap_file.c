@@ -11054,7 +11054,8 @@ heap_recdes_read_var_offsets (const RECDES * recdes, const char *var_table, int 
  * heap_recdes_get_var_offset_entry () - Read the raw variable offset table entry
  *   (offset value plus flag bits) of a variable attribute.
  *
- *   return: NO_ERROR on success, ER_GENERIC_ERROR when the record's offset size is corrupted
+ *   return: NO_ERROR on success, ER_FAILED when the header or location is out of range,
+ *           ER_GENERIC_ERROR when the record's offset size is corrupted
  *           (no error is set; callers decide how to report it).
  */
 int
