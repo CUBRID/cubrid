@@ -714,8 +714,7 @@ heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
       return false;
     }
 
-  return (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) == NO_ERROR
-	  && heap_recdes_get_var_offset_entry (recdes, attrepr->location + 1, &next_entry) == NO_ERROR
+  return (heap_recdes_get_var_offset_pair (recdes, attrepr->location, &vot_entry, &next_entry) == NO_ERROR
 	  && OR_GET_VAR_OFFSET (vot_entry) != OR_GET_VAR_OFFSET (next_entry) && OR_IS_OOS (vot_entry));
 }
 

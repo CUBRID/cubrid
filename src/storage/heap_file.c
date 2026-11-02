@@ -11000,7 +11000,7 @@ heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRIBUTE * attre
 
 /* *INDENT-OFF* */
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
-heap_recdes_get_var_offset_pair (const RECDES * recdes, const char *var_table, int offset_size, int location,
+heap_recdes_read_var_offsets (const RECDES * recdes, const char *var_table, int offset_size, int location,
                                 int *entry_out, int *next_entry_out)
 /* *INDENT-ON* */
 
@@ -11012,7 +11012,7 @@ heap_recdes_get_var_offset_pair (const RECDES * recdes, const char *var_table, i
     }
   const int table_bytes = recdes->length - (int) (var_table - recdes->data);
   if (recdes->length < OR_MVCC_MIN_HEADER_SIZE || table_bytes < 0 || location < 0
-      || location > table_bytes / offset_size - 2)
+      || location > table_bytes / offset_size - (next_entry_out != NULL ? 2 : 1))
     {
       return ER_FAILED;
     }
@@ -11022,15 +11022,24 @@ heap_recdes_get_var_offset_pair (const RECDES * recdes, const char *var_table, i
     {
     case OR_BYTE_SIZE:
       *entry_out = OR_GET_BYTE (entry);
-      *next_entry_out = OR_GET_BYTE (entry + OR_BYTE_SIZE);
+      if (next_entry_out != NULL)
+	{
+	  *next_entry_out = OR_GET_BYTE (entry + OR_BYTE_SIZE);
+	}
       break;
     case OR_SHORT_SIZE:
       *entry_out = OR_GET_SHORT (entry);
-      *next_entry_out = OR_GET_SHORT (entry + OR_SHORT_SIZE);
+      if (next_entry_out != NULL)
+	{
+	  *next_entry_out = OR_GET_SHORT (entry + OR_SHORT_SIZE);
+	}
       break;
     case OR_INT_SIZE:
       *entry_out = OR_GET_INT (entry);
-      *next_entry_out = OR_GET_INT (entry + OR_INT_SIZE);
+      if (next_entry_out != NULL)
+	{
+	  *next_entry_out = OR_GET_INT (entry + OR_INT_SIZE);
+	}
       break;
     default:
       assert_release (false);
@@ -11049,49 +11058,25 @@ heap_recdes_get_var_offset_pair (const RECDES * recdes, const char *var_table, i
 int
 heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out)
 {
-  if (!heap_recdes_has_valid_header (recdes) || location < 0)
+  if (!heap_recdes_has_valid_header (recdes))
     {
       return ER_FAILED;
     }
-  int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  if (location >= (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size)
+  return heap_recdes_read_var_offsets (recdes, recdes->data + OR_HEADER_SIZE (recdes->data),
+				       OR_GET_OFFSET_SIZE (recdes->data), location, entry_out, NULL);
+}
+
+/* Read two adjacent raw variable offset table entries after validating both. */
+int
+heap_recdes_get_var_offset_pair (const RECDES * recdes, int location, int *entry_out, int *next_entry_out)
+{
+  assert (next_entry_out != NULL);
+  if (!heap_recdes_has_valid_header (recdes))
     {
       return ER_FAILED;
     }
-  void *var_table;
-  char *entry_ptr;
-
-  switch (offset_size)
-    {
-    case OR_BYTE_SIZE:
-    case OR_SHORT_SIZE:
-    case OR_INT_SIZE:
-      break;
-    default:
-      assert_release (false);
-      return ER_GENERIC_ERROR;
-    }
-
-  var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
-  entry_ptr = OR_VAR_TABLE_ELEMENT_PTR (var_table, location, offset_size);
-
-  switch (offset_size)
-    {
-    case OR_BYTE_SIZE:
-      *entry_out = OR_GET_BYTE (entry_ptr);
-      break;
-    case OR_SHORT_SIZE:
-      *entry_out = OR_GET_SHORT (entry_ptr);
-      break;
-    case OR_INT_SIZE:
-      *entry_out = OR_GET_INT (entry_ptr);
-      break;
-    default:
-      assert_release (false);
-      return ER_GENERIC_ERROR;
-    }
-
-  return NO_ERROR;
+  return heap_recdes_read_var_offsets (recdes, recdes->data + OR_HEADER_SIZE (recdes->data),
+				       OR_GET_OFFSET_SIZE (recdes->data), location, entry_out, next_entry_out);
 }
 
 /*
@@ -11124,8 +11109,8 @@ heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stu
   int this_offset;
   int next_offset;
 
-  if (heap_recdes_get_var_offset_pair (recdes, recdes->data + header_size, offset_size, location,
-				       &this_entry, &next_entry) != NO_ERROR)
+  if (heap_recdes_read_var_offsets (recdes, recdes->data + header_size, offset_size, location,
+				    &this_entry, &next_entry) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -11231,8 +11216,8 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
   int this_off, next_off;
   const int location = attrepr->location;
   *is_oos = false;
-  int error = heap_recdes_get_var_offset_pair (recdes, layout->var_table, layout->offset_size, location,
-					       &offset, &next_off);
+  int error = heap_recdes_read_var_offsets (recdes, layout->var_table, layout->offset_size, location,
+					    &offset, &next_off);
   if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);

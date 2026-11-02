@@ -32,6 +32,7 @@
 #include <unistd.h>
 #endif
 
+#include <climits>
 #include <cstring>
 #include <map>
 #include <string>
@@ -435,6 +436,36 @@ TEST_F (OosWorkspaceBytes, InlineVariableOffsetsAndValueOrder)
 	    }
 	  RECDES record = { (int) bytes.size (), (int) bytes.size (), REC_HOME, bytes.data () };
 	  ASSERT_EQ (OR_GET_OFFSET_SIZE (record.data), width);
+	  {
+	    std::vector<char> offsets_bytes (bytes.begin (), bytes.begin () + header + 2 * width);
+	    OR_PUT_OFFSET_INTERNAL (offsets_bytes.data () + header, OR_SET_VAR_OOS (20), width);
+	    OR_PUT_OFFSET_INTERNAL (offsets_bytes.data () + header + width, OR_SET_VAR_LAST_ELEMENT (40), width);
+	    RECDES offsets_record = { (int) offsets_bytes.size (), (int) offsets_bytes.size (), REC_HOME,
+				      offsets_bytes.data ()
+				    };
+	    int first = -1, next = -1;
+	    ASSERT_EQ (heap_recdes_get_var_offset_pair (&offsets_record, 0, &first, &next), NO_ERROR);
+	    EXPECT_EQ (first, OR_SET_VAR_OOS (20));
+	    EXPECT_EQ (next, OR_SET_VAR_LAST_ELEMENT (40));
+	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&offsets_record, 1, &first), NO_ERROR);
+	    EXPECT_EQ (first, OR_SET_VAR_LAST_ELEMENT (40));
+	    for (int location :
+		 {
+			 -1, 1, INT_MAX
+			 })
+	      {
+		first = -1;
+		next = -1;
+		EXPECT_EQ (heap_recdes_get_var_offset_pair (&offsets_record, location, &first, &next), ER_FAILED);
+		EXPECT_EQ (first, -1);
+		EXPECT_EQ (next, -1);
+	      }
+	    offsets_record.length = header + 2 * width - 1;
+	    first = next = -1;
+	    EXPECT_EQ (heap_recdes_get_var_offset_pair (&offsets_record, 0, &first, &next), ER_FAILED);
+	    EXPECT_EQ (first, -1);
+	    EXPECT_EQ (next, -1);
+	  }
 	  HEAP_CACHE_ATTRINFO attrs;
 	  ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, 3, ids, &attrs), NO_ERROR);
 	  scope_exit end_attrs ([&] ()
@@ -516,6 +547,10 @@ TEST_F (OosWorkspaceBytes, InlineVariableOffsetsAndValueOrder)
 	  std::memcpy (guarded, bytes.data (), header + width);
 	  OR_PUT_INT (guarded, OR_GET_INT (guarded) | (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS));
 	  RECDES truncated = { header + width, header + width, REC_HOME, guarded };
+	  int first = -1, next = -1;
+	  EXPECT_EQ (heap_recdes_get_var_offset_pair (&truncated, 0, &first, &next), ER_FAILED);
+	  EXPECT_EQ (first, -1);
+	  EXPECT_EQ (next, -1);
 	  EXPECT_EQ (heap_attrinfo_read_dbvalues (thread, &oid, &truncated, &attrs), ER_FAILED);
 	  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
 	  er_clear ();

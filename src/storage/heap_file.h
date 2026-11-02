@@ -766,9 +766,9 @@ extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID
 extern bool heap_recdes_contains_oos (const RECDES * record);
 extern bool heap_recdes_has_valid_header (const RECDES * record);
 
-/* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
- * so the grouped OOS prefetch path locates OOS-marked attributes exactly as heap_file.c does. */
+/* Read raw variable-offset-table entries, including their flag bits. The pair accessor checks both entries. */
 extern int heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out);
+extern int heap_recdes_get_var_offset_pair (const RECDES * recdes, int location, int *entry_out, int *next_entry_out);
 
 /* Locates the OOS inline stub of variable attribute `location` after checking that its field is exactly one
  * stub inside the record. Every stub reader and the replica fixup locate the stub through it; the heap
