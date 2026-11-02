@@ -63,6 +63,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private String unitClassName;
 
+    // assignments of the initial values of the package variables/constants, in their declaration
+    // order. They run after all the variable holders are created, so that a variable read before
+    // its initialization (e.g. by a function called in an earlier initial value) is NULL.
+    private CodeTemplateList pkgVarInits;
+
     private String getModifier(Decl decl) {
         if (decl.isPkgItem) {
 
@@ -305,6 +310,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+GET-CONNECTION'%",
                 "  %'+DCC-INIT-DECL'%",
                 "  %'+DECLARATIONS'%",
+                "  %'+PKG-VAR-INITS'%",
                 "  %'+OPT-INITIALIZER'%",
                 "  %'+DCC-INIT-RELEASE'%",
                 "  %'+RECORD-DEFS'%",
@@ -348,7 +354,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitUnitPkg(UnitPkg node) {
 
+        pkgVarInits = new CodeTemplateList();
         CodeToResolve pkgItemsCode = visitNodeList(node.pkg.pkgItems);
+        Object pkgVarInitsCode =
+                pkgVarInits.elements.isEmpty()
+                        ? ""
+                        : new CodeTemplate(
+                                "package variable initialization",
+                                Misc.UNKNOWN_LINE_COLUMN,
+                                new String[] {"static {", "  %'+INITS'%", "}"},
+                                "%'+INITS'%",
+                                pkgVarInits);
 
         Object pkgInitCode;
         if (node.pkg.initializer == null) {
@@ -390,6 +406,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 getDirectCallCacheInitDecl(),
                 "%'+DECLARATIONS'%",
                 pkgItemsCode,
+                "%'+PKG-VAR-INITS'%",
+                pkgVarInitsCode,
                 "%'+OPT-INITIALIZER'%",
                 pkgInitCode,
                 "%'+DCC-INIT-RELEASE'%",
@@ -779,7 +797,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         Type ty = node.typeSpec.type;
         String tyJava = getJavaCodeOfType(ty);
-        if (node.val == null) {
+        if (node.val == null || node.isPkgItem) {
+
+            if (node.val != null) {
+                addPkgVarInit(node, node.name + "[0]", node.notNull, node.val);
+            }
 
             String code;
             if (ty instanceof TypeRecord) {
@@ -826,6 +848,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclConst(DeclConst node) {
 
+        if (node.isPkgItem) {
+            addPkgVarInit(node, node.name, node.notNull, node.val);
+            String code =
+                    getModifier(node)
+                            + String.format(
+                                    "final %s %s;", getJavaCodeOfType(node.typeSpec), node.name);
+            return new CodeTemplate("DeclConst", Misc.UNKNOWN_LINE_COLUMN, code);
+        }
+
         return new CodeTemplate(
                 "DeclConst",
                 node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
@@ -838,6 +869,25 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.name,
                 "%'+VAL'%",
                 visitInitialValue(node, node.val));
+    }
+
+    private static final String[] tmplNotNullPkgVarInit =
+            new String[] {
+                "%'TARGET'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
+            };
+    private static final String[] tmplNullablePkgVarInit =
+            new String[] {"%'TARGET'% =", "  %'+VAL'%;"};
+
+    private void addPkgVarInit(Decl decl, String target, boolean notNull, Expr val) {
+        pkgVarInits.addElement(
+                new CodeTemplate(
+                        "PkgVarInit",
+                        notNull ? Misc.getLineColumnOf(decl.ctx) : Misc.UNKNOWN_LINE_COLUMN,
+                        notNull ? tmplNotNullPkgVarInit : tmplNullablePkgVarInit,
+                        "%'TARGET'%",
+                        target,
+                        "%'+VAL'%",
+                        visitInitialValue(decl, val)));
     }
 
     // the initial value of a package variable/constant is evaluated in the class initialization
