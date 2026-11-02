@@ -227,10 +227,10 @@ struct qo_plan
       BITSET hash_terms;	/* hash_terms for hash list scan */
       bool outer_sorted;	/* m-join: outer index scan already yields the merge order */
       bool inner_sorted;
-      bool outer_partial_sort;	/* m-join: outer ordered by the leading join column only; still sorted */
-      bool inner_partial_sort;
-      int mj_term_cnt;		/* m-join: 0 compares join_terms in bitset order, else mj_term_order */
-      int mj_term_order[QO_MJOIN_MAX_SORT_TERMS];	/* join term indexes in the sorted input's key order */
+      bool outer_sort_uncharged;	/* m-join: input re-sorted although qo_sort_cost () charged nothing for it */
+      bool inner_sort_uncharged;
+      int nordered_terms;	/* m-join: 0 compares join_terms in bitset order, else ordered_terms */
+      int ordered_terms[QO_MJOIN_MAX_SORT_TERMS];	/* join term indexes in the sorted input's key order */
     } join;
 
     struct

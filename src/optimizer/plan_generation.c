@@ -301,17 +301,17 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
   /* expression columns in the elists are consumed in bitset order, so a key-order permutation needs none */
-  assert (plan->plan_un.join.mj_term_cnt == 0 || (left_elist == NULL && rght_elist == NULL));
+  assert (plan->plan_un.join.nordered_terms == 0 || (left_elist == NULL && rght_elist == NULL));
 
   for (k = 0;; k++)
     {
-      if (plan->plan_un.join.mj_term_cnt > 0)
+      if (plan->plan_un.join.nordered_terms > 0)
 	{
-	  if (k >= plan->plan_un.join.mj_term_cnt)
+	  if (k >= plan->plan_un.join.nordered_terms)
 	    {
 	      break;
 	    }
-	  i = plan->plan_un.join.mj_term_order[k];
+	  i = plan->plan_un.join.ordered_terms[k];
 	}
       else
 	{
