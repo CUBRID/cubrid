@@ -396,6 +396,7 @@ struct analytic_state
   bool is_last_run;
   bool is_skip_sort;
   bool is_output_rec;
+  bool is_streaming;		/* each function's value is final at its row: rows go to the output file as sorted */
 };
 
 /*
@@ -582,8 +583,10 @@ static SORT_STATUS qexec_analytic_get_next (THREAD_ENTRY * thread_p, RECDES * re
 static int qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static int qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
 					     ANALYTIC_STAGE stage);
+static int qexec_analytic_save_key (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key);
 static int qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 				       ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key, bool reinit);
+static bool qexec_analytic_can_stream (const ANALYTIC_STATE * analytic_state);
 static int qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 					  ANALYTIC_FUNCTION_STATE * func_state, bool is_same_group);
 static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
@@ -29441,6 +29444,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
+  analytic_state.is_streaming = qexec_analytic_can_stream (&analytic_state);
+
   SORT_LISTFILE_PX_ARG anl_px;
   anl_px.key_info = &analytic_state.key_info;
   anl_px.input_list = list_id;
@@ -29473,7 +29478,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * interface doesn't include a finalization function.  If so, finish
    * off that group.
    */
-  if (analytic_state.input_recs != 0)
+  if (analytic_state.input_recs != 0 && !analytic_state.is_streaming)
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{
@@ -29921,6 +29926,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 
   analytic_state->is_last_run = is_last_run;
   analytic_state->is_skip_sort = is_skip_sort;
+  analytic_state->is_streaming = false;
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -30211,13 +30217,22 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	      if (!is_same_group)
 		{
-		  if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, false) !=
-		      NO_ERROR)
+		  if (!analytic_state->is_streaming
+		      && qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state,
+							false) != NO_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
 		  pr_clear_value (func_state->func_p->value);
 		  qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, true);
+		}
+	      else if (analytic_state->is_streaming)
+		{
+		  /* no sort key values to keep: the value goes on into the next sort key as it is */
+		  if (qexec_analytic_save_key (thread_p, func_state, recdes) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		}
 	      else if (func_state->func_p->function != PT_NTILE
 		       && (!QPROC_IS_INTERPOLATION_FUNC (func_state->func_p) || func_state->func_p->option == Q_ALL))
@@ -30335,6 +30350,72 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
 }
 
 /*
+ * qexec_analytic_save_key () - record the key of the function's current sort key
+ *   return: error code or NO_ERROR
+ *   func_state(in/out): function state
+ *   key(in): the sort record
+ */
+static int
+qexec_analytic_save_key (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key)
+{
+  /*
+   * Record the new key; keep it in SORT_KEY format so we can continue
+   * to use the SORTKEY_INFO version of the comparison functions.
+   *
+   * WARNING: the sort module doesn't seem to set key->area_size
+   * reliably, so the only thing we can rely on is key->length.
+   */
+  if (func_state->current_key.area_size < key->length)
+    {
+      void *tmp;
+
+      tmp = db_private_realloc (thread_p, func_state->current_key.data, key->area_size);
+      if (tmp == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      func_state->current_key.data = (char *) tmp;
+      func_state->current_key.area_size = key->area_size;
+    }
+  memcpy (func_state->current_key.data, key->data, key->length);
+  func_state->current_key.length = key->length;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_can_stream () - whether every function's value is final at its row, as it is sorted
+ *   return: true if the rows can go to the output file without the result files
+ *   analytic_state(in): analytic state
+ *
+ * ROW_NUMBER, RANK and DENSE_RANK look at the rows up to the current one only: once a row is evaluated, its value is
+ * the one qexec_analytic_update_group_result () would read back from the function's result files.
+ */
+static bool
+qexec_analytic_can_stream (const ANALYTIC_STATE * analytic_state)
+{
+  int i;
+
+  if (analytic_state->func_count == 0)
+    {
+      return false;
+    }
+
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      FUNC_CODE function = analytic_state->func_state_list[i].func_p->function;
+
+      if (function != PT_ROW_NUMBER && function != PT_RANK && function != PT_DENSE_RANK)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * qexec_analytic_start_group () -
  *   return:
  *   analytic_state(in):
@@ -30347,30 +30428,9 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, AN
 {
   int error;
 
-  /*
-   * Record the new key; keep it in SORT_KEY format so we can continue
-   * to use the SORTKEY_INFO version of the comparison functions.
-   *
-   * WARNING: the sort module doesn't seem to set key->area_size
-   * reliably, so the only thing we can rely on is key->length.
-   */
-
-  if (key)
+  if (key && qexec_analytic_save_key (thread_p, func_state, key) != NO_ERROR)
     {
-      if (func_state->current_key.area_size < key->length)
-	{
-	  void *tmp;
-
-	  tmp = db_private_realloc (thread_p, func_state->current_key.data, key->area_size);
-	  if (tmp == NULL)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  func_state->current_key.data = (char *) tmp;
-	  func_state->current_key.area_size = key->area_size;
-	}
-      memcpy (func_state->current_key.data, key->data, key->length);
-      func_state->current_key.length = key->length;
+      GOTO_EXIT_ON_ERROR;
     }
 
   /*
@@ -30521,11 +30581,43 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_sta
       analytic_state->func_state_list[i].curr_sort_key_tuple_count++;
     }
 
-  /* check if output */
-  if (analytic_state->is_output_rec)
+  if (analytic_state->is_streaming)
     {
-      /* records that did not pass the instnum() predicate evaluation are used for computing the function value, but
-       * are not included in the intermediate file */
+      bool is_output_rec = analytic_state->is_output_rec;
+
+      /* the row's values are final: put them where qexec_analytic_update_group_result () reads them into */
+      for (i = 0; i < analytic_state->func_count; i++)
+	{
+	  ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+
+	  if (func_p->function != PT_ROW_NUMBER)
+	    {
+	      pr_clear_value (func_p->out_value);
+	      if (pr_clone_value (func_p->value, func_p->out_value) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	}
+
+      /* the predicate evaluates at one of the stages; a row it dropped at the intermediate stage stays dropped */
+      if (qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      is_output_rec = is_output_rec && analytic_state->is_output_rec;
+
+      if (is_output_rec
+	  && qexec_insert_tuple_into_list (thread_p, analytic_state->output_file, analytic_state->a_outptr_list,
+					   &xasl_state->vd, analytic_state->output_tplrec) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  else if (analytic_state->is_output_rec)
+    {
+      /* check if output: records that did not pass the instnum() predicate evaluation are used for computing the
+       * function value, but are not included in the intermediate file */
       if (qexec_insert_tuple_into_list (thread_p, list_id, analytic_state->a_outptr_list_interm, &xasl_state->vd,
 					analytic_state->output_tplrec) != NO_ERROR)
 	{
