@@ -20597,13 +20597,15 @@ exit_on_error:
  * A BUILDVALUE evaluates its output list once, after its scans (qexec_end_buildvalueblock_iterations ()): its
  * aggregates' results, constants and the outer blocks' values.  A column of its own scans there reads what the row
  * loop last fetched into the slot, the last row that passed the filters.  A select list cannot name such a column
- * beside an aggregate ("not single valued"), but INSERT ... SELECT ... ON DUPLICATE KEY UPDATE appends the columns its
- * assignments read to the SELECT's list (pt_append_assignment_references ()), and a SELECT of aggregates without
- * GROUP BY carries them so.  The page batch (qexec_batch_eligible ()) and the buildvalue gather of a parallel scan
+ * beside an aggregate ("not single valued"), but two rewrites put one there: INSERT ... SELECT ... ON DUPLICATE KEY
+ * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
+ * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
+ * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
+ * The page batch (qexec_batch_eligible ()) and the buildvalue gather of a parallel scan
  * accumulate the aggregates without fetching any row into the slots, and a row by row parallel scan leaves them
  * pointing into the workers' lists, which close with the scan: such a block is marked XASL_OUTPUT_READS_SCAN, and
  * the page batch and the parallel scan checker (scan_check_parallel_scan_possible ()) leave it to the serial row loop,
- * whose values the executor copies out of the scanned pages before it closes the scans (qexec_own_scan_values ()).
+ * which copies the columns of each row it aggregates for the output list (qexec_keep_last_row ()).
  */
 static bool
 pt_buildvalue_output_reads_scan (XASL_NODE * xasl)

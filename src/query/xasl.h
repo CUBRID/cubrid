@@ -367,6 +367,11 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
+  /* XASL_OUTPUT_READS_SCAN: the scan columns of the last row the filters kept, copied as the row is aggregated
+   * (qexec_keep_last_row ()) for the output list, which reads them after the scans are closed; not serialized */
+  DB_VALUE *last_row;
+  int last_row_cnt;
+  bool last_row_kept;
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
