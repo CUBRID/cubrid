@@ -492,15 +492,17 @@ qo_is_reduceable_const (PT_NODE * expr)
 /*
  * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
  *   return: false if the comparison may be done in an approximate numeric type
+ *   parser(in):
  *   expr(in): expression compared with the constant
  *   val(in): constant side of the comparison
  *
  * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
- *   A host variable is not typed until it is bound, so it is not taken as exact either.
+ *   A host variable is judged by the type its position is compiled for (a plan is not reused for another bind
+ *   type); an untyped one is not exact.
  *   NUMERIC of precision DBL_DIG or less is exact anyway: DOUBLE keeps its distinct values distinct.
  */
 bool
-qo_is_exact_compare_const (PT_NODE * expr, PT_NODE * val)
+qo_is_exact_compare_const (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * val)
 {
   if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
     {
@@ -511,6 +513,24 @@ qo_is_exact_compare_const (PT_NODE * expr, PT_NODE * val)
       && expr->data_type->info.data_type.precision <= DBL_DIG)
     {
       return true;
+    }
+
+  if (val->node_type == PT_HOST_VAR && val->info.host_var.var_type == PT_HOST_IN && val->info.host_var.index >= 0)
+    {
+      TP_DOMAIN *domain = pt_host_var_position_domain (parser, val->info.host_var.index);
+      if (domain != NULL)
+	{
+	  switch (TP_DOMAIN_TYPE (domain))
+	    {
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_NUMERIC:
+	      return true;
+	    default:
+	      return false;
+	    }
+	}
     }
 
   switch (val->type_enum)
@@ -722,7 +742,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	      if (qo_is_reduceable_const (arg2))
 		{
-		  if (qo_is_exact_compare_const (arg1, arg2))
+		  if (qo_is_exact_compare_const (parser, arg1, arg2))
 		    {
 		      found_equality_term = true;
 		      break;	/* immediately break */

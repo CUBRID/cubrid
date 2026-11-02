@@ -1649,7 +1649,7 @@ qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * c
 	  continue;
 	}
 
-      if (!qo_is_exact_compare_const (other, val))
+      if (!qo_is_exact_compare_const (parser, other, val))
 	{
 	  continue;
 	}
