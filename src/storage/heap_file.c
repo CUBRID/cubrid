@@ -13154,7 +13154,7 @@ try
   int small_column_size[8];
   std::vector<int> large_column_size;
   int *column_size = small_column_size;
-  if (attr_info->num_values > 8)
+  if (attr_info->num_values > (int) (sizeof (small_column_size) / sizeof (small_column_size[0])))
     {
       large_column_size.resize (attr_info->num_values);
       column_size = large_column_size.data ();
