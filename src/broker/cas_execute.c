@@ -171,13 +171,12 @@ struct t_attr_table
 
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
-static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type);
+static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type,
+			    bool typed_null);
 static DB_TYPE netval_null_type (char u_type);
-static void set_column_type (DB_DOMAIN * domain, T_COLUMN_TYPE * column_type);
 static DB_DOMAIN *column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx,
 				 T_BROKER_VERSION client_version);
-static bool column_types_changed (DB_SESSION * session, const T_QUERY_RESULT * q_result,
-				  T_BROKER_VERSION client_version);
+static bool column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
 static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size,
@@ -1119,7 +1118,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (num_bind > 0)
     {
-      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
       if (err_code < 0)
 	{
 	  goto execute_error;
@@ -1341,7 +1340,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       char include_column_info;
 
       if (db_check_single_query (session) == NO_ERROR
-	  && !column_types_changed (session, srv_handle->q_result, client_version))
+	  && !column_types_vary (srv_handle->q_result, client_version))
 	{
 	  include_column_info = 0;
 	}
@@ -1453,7 +1452,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   num_bind = srv_handle->num_markers;
   if (num_bind > 0)
     {
-      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
       if (err_code < 0)
 	{
 	  goto execute_all_error;
@@ -1693,7 +1692,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       char include_column_info;
 
       if (db_check_single_query (session) == NO_ERROR
-	  && !column_types_changed (session, &srv_handle->q_result[0], client_version))
+	  && !column_types_vary (&srv_handle->q_result[0], client_version))
 	{
 	  include_column_info = 0;
 	}
@@ -1790,7 +1789,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   if (num_bind > 0)
     {
-      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
       if (err_code < 0)
 	{
 	  goto execute_error;
@@ -2358,7 +2357,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
     }
 
-  err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+  err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
   FREE_MEM (remap_argv);	/* value_list now owns the bind values */
   if (err_code < 0)
     {
@@ -2955,7 +2954,7 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 	}
 
       desired_type = get_attr_type (obj_p, attr_name);
-      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, desired_type);
+      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, desired_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
@@ -3254,7 +3253,7 @@ ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf)
 	}
 
       attr_type = get_attr_type (obj, attr_name);
-      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, attr_type);
+      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, attr_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
@@ -3352,7 +3351,8 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale, char *db_t
 }
 
 int
-make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf, char desired_type)
+make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf, char desired_type,
+		 bool typed_null)
 {
   DB_VALUE *value_list = NULL;
   int i, type_idx, val_idx;
@@ -3377,7 +3377,7 @@ make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET
     {
       type_idx = 2 * i;
       val_idx = 2 * i + 1;
-      err_code = netval_to_dbval (argv[type_idx], argv[val_idx], &(value_list[i]), net_buf, desired_type);
+      err_code = netval_to_dbval (argv[type_idx], argv[val_idx], &(value_list[i]), net_buf, desired_type, typed_null);
       if (err_code < 0)
 	{
 	  for (i--; i >= 0; i--)
@@ -3947,7 +3947,8 @@ set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char chars
 }
 
 static int
-netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF * net_buf, char desired_type)
+netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF * net_buf, char desired_type,
+		 bool typed_null)
 {
   char type;
   int err_code = 0;
@@ -3996,8 +3997,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
   net_arg_get_size (&data_size, net_value);
   if (data_size <= 0)
     {
-      /* a V13 driver sends a NULL with the type it declared: a NULL of the type the same type's value takes */
-      null_type = DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
+      /* a V13 driver binds a NULL with the type it declared: a NULL of the type the same type's value takes */
+      null_type = typed_null && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
 	? netval_null_type (type) : DB_TYPE_NULL;
       type = CCI_U_TYPE_NULL;
       data_size = 0;
@@ -4344,7 +4345,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 		break;
 	      }
 
-	    ele_size = netval_to_dbval (ele_type_arg, cur_p, &ele_val, net_buf, desired_type);
+	    ele_size = netval_to_dbval (ele_type_arg, cur_p, &ele_val, net_buf, desired_type, false);
 	    if (ele_size < 0)
 	      {
 		return ele_size;
@@ -6997,7 +6998,9 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 			      T_BROKER_VERSION client_version)
 {
   DB_QUERY_TYPE *column_info = NULL, *col;
+  DB_DOMAIN *domain;
   int num_cols;
+  DB_TYPE db_type;
   int num_col_offset;
   char *col_name, *attr_name, *class_name;
   T_COL_UPDATE_INFO *col_update_info = NULL;
@@ -7005,7 +7008,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
   int stmt_id = q_result->stmt_id;
   char updatable_flag = prepare_flag & CCI_PREPARE_UPDATABLE;
   char *null_type_column = NULL;
-  T_COLUMN_TYPE *column_types = NULL;
 
   q_result->col_updatable = FALSE;
   q_result->include_oid = FALSE;
@@ -7013,7 +7015,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
     {
       FREE_MEM (q_result->null_type_column);
     }
-  FREE_MEM (q_result->column_types);
   hm_col_update_info_free (q_result);
 
   if (stmt_type == CUBRID_STMT_SELECT)
@@ -7045,27 +7046,25 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
       net_buf_cp_int (net_buf, num_cols, &num_col_offset);
       for (col = column_info; col != NULL; col = db_query_format_next (col))
 	{
+	  char set_type;
+	  unsigned char cas_type;
+	  int precision;
+	  short scale;
 	  char *temp_column = NULL;
-	  T_COLUMN_TYPE *temp_types = NULL;
-	  T_COLUMN_TYPE *column_type;
+	  char charset;
 
 	  temp_column = (char *) REALLOC (null_type_column, num_cols + 1);
-	  if (temp_column != NULL)
+	  if (temp_column == NULL)
 	    {
-	      null_type_column = temp_column;
-	      temp_types = (T_COLUMN_TYPE *) REALLOC (column_types, sizeof (T_COLUMN_TYPE) * (num_cols + 1));
-	    }
-	  if (temp_types == NULL)
-	    {
-	      FREE_MEM (null_type_column);
-	      FREE_MEM (column_types);
+	      if (null_type_column != NULL)
+		{
+		  FREE_MEM (null_type_column);
+		}
 	      FREE_MEM (col_update_info);
-	      db_query_format_free (column_info);
 	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	    }
+	  null_type_column = temp_column;
 	  null_type_column[num_cols] = 0;
-	  column_types = temp_types;
-	  column_type = &column_types[num_cols];
 
 	  if (stripped_column_name)
 	    {
@@ -7112,21 +7111,63 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	      attr_name = (char *) "";
 	    }
 
-	  set_column_type (column_domain (col, q_result, num_cols, client_version), column_type);
-	  if (IS_NULL_CAS_TYPE (column_type->cas_type))
+	  domain = column_domain (col, q_result, num_cols, client_version);
+	  db_type = TP_DOMAIN_TYPE (domain);
+
+
+	  if (TP_IS_SET_TYPE (db_type))
+	    {
+	      set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
+
+	      cas_type = set_extended_cas_type ((T_CCI_U_TYPE) set_type, db_type);
+	      precision = 0;
+	      scale = 0;
+	    }
+	  else
+	    {
+	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
+	      precision = db_domain_precision (domain);
+	      scale = (short) db_domain_scale (domain);
+	      charset = db_domain_codeset (domain);
+	    }
+
+	  if (IS_NULL_CAS_TYPE (cas_type))
 	    {
 	      null_type_column[num_cols] = 1;
 	    }
 
-	  set_column_info (net_buf, column_type->cas_type, column_type->scale, column_type->precision,
-			   column_type->charset, col_name, attr_name, class_name,
+	  /*
+	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
+	   *   precision = 0;
+	   */
+
+	  if (shm_appl->max_string_length >= 0)
+	    {
+	      if (precision < 0 || precision > shm_appl->max_string_length)
+		{
+		  precision = shm_appl->max_string_length;
+		}
+	    }
+
+
+	  set_column_info (net_buf, cas_type, scale, precision, charset, col_name, attr_name, class_name,
 			   (char) db_query_format_is_non_null (col), client_version);
 
 	  num_cols++;
 	}
 
       q_result->null_type_column = null_type_column;
-      q_result->column_types = column_types;
+      if (q_result->result == NULL)
+	{
+	  /* the PREPARE reply: the column info a client holds until an execution sends it again */
+	  FREE_MEM (q_result->untyped_column);
+	  q_result->num_untyped_column = 0;
+	  if (num_cols > 0 && (q_result->untyped_column = (char *) MALLOC (num_cols)) != NULL)
+	    {
+	      memcpy (q_result->untyped_column, null_type_column, num_cols);
+	      q_result->num_untyped_column = num_cols;
+	    }
+	}
       net_buf_overwrite_int (net_buf, num_col_offset, num_cols);
       if (column_info)
 	{
@@ -7162,60 +7203,19 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 }
 
 /*
- * set_column_type () - the type of a result column the client receives in the column info
- */
-static void
-set_column_type (DB_DOMAIN * domain, T_COLUMN_TYPE * column_type)
-{
-  DB_TYPE db_type = TP_DOMAIN_TYPE (domain);
-  int precision;
-  short scale;
-  char charset;
-
-  if (TP_IS_SET_TYPE (db_type))
-    {
-      char set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
-
-      column_type->cas_type = set_extended_cas_type ((T_CCI_U_TYPE) set_type, db_type);
-      precision = 0;
-      scale = 0;
-    }
-  else
-    {
-      column_type->cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
-      precision = db_domain_precision (domain);
-      scale = (short) db_domain_scale (domain);
-      charset = db_domain_codeset (domain);
-    }
-
-  if (shm_appl->max_string_length >= 0)
-    {
-      if (precision < 0 || precision > shm_appl->max_string_length)
-	{
-	  precision = shm_appl->max_string_length;
-	}
-    }
-
-  column_type->precision = precision;
-  column_type->scale = scale;
-  column_type->charset = charset;
-}
-
-/*
  * column_domain () - CBRD-27679: the domain of a result column the client receives: the compiled one, or for a column
- *   the compilation leaves untyped (a VARIABLE or NULL domain: a bind, a session variable, a NULL) the column's domain
- *   in the result of the plan the execution ran, for a PROTOCOL_V13 or later client (an older one keeps the column
- *   info it has always received)
+ *   the PREPARE reply left untyped (a bind, a session variable, a NULL) the column's domain in the result of the plan
+ *   the execution ran, for a PROTOCOL_V13 or later client (an older one keeps the column info it has always received).
+ *   The PREPARE reply decides, not the compiled list at the execution: an EXECUTE statement compiles the list again
+ *   with its values.
  */
 static DB_DOMAIN *
 column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx, T_BROKER_VERSION client_version)
 {
-  DB_DOMAIN *domain = db_query_format_domain (col);
   const DB_QUERY_RESULT *result = (const DB_QUERY_RESULT *) q_result->result;
 
-  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13)
-      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL) && result != NULL
-      && result->type == T_SELECT)
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) && col_idx < q_result->num_untyped_column
+      && q_result->untyped_column[col_idx] && result != NULL && result->type == T_SELECT)
     {
       /* an OID-including result carries the row's OID in its first list column (cursor_get_tuple_value) */
       const int list_idx = col_idx + (result->res.s.cursor_id.is_oid_included ? 1 : 0);
@@ -7224,53 +7224,34 @@ column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx
 	  return result->res.s.cursor_id.list_id.type_list.domp[list_idx];
 	}
     }
-  return domain;
+  return db_query_format_domain (col);
 }
 
 /*
- * column_types_changed () - CBRD-27679: whether the plan an execution ran gives a result column another type than the
- *   client last received for the handle: a plan compiled for the bind type signature of the execution's values, or
- *   for the session variables it reads. Both drivers keep the column info an execution sends for the handle. Only a
- *   PROTOCOL_V13 or later client gets it: an older one keeps the column info it has always received.
+ * column_types_vary () - CBRD-27679: whether an execution sends a PROTOCOL_V13 or later client the column info again:
+ *   when the PREPARE reply left a result column untyped, which column_domain types by the plan the execution ran. It
+ *   is sent at every such execution, not only when the types change: under a SHARD proxy connections share one handle
+ *   and its PREPARE reply, so the handle cannot know which column info the requesting client holds.
  */
 static bool
-column_types_changed (DB_SESSION * session, const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version)
+column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version)
 {
-  DB_QUERY_TYPE *col;
-  T_COLUMN_TYPE type;
-  int i = 0;
+  int i;
 
-  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) || q_result->stmt_type != CUBRID_STMT_SELECT
-      || session->type_list == NULL)
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) || q_result->stmt_type != CUBRID_STMT_SELECT)
     {
       return false;
     }
-  if (q_result->column_types == NULL)
-    {
-      /* the column info last sent kept no types (out of memory): send it again */
-      return true;
-    }
 
-  for (col = session->type_list[q_result->stmt_id - 1]; col != NULL; col = col->next)
+  for (i = 0; i < q_result->num_untyped_column; i++)
     {
-      if (col->visible_type != USER_COLUMN)
-	{
-	  continue;
-	}
-      if (i >= q_result->num_column)
+      if (q_result->untyped_column[i])
 	{
 	  return true;
 	}
-      set_column_type (column_domain (col, q_result, i, client_version), &type);
-      if (type.cas_type != q_result->column_types[i].cas_type || type.precision != q_result->column_types[i].precision
-	  || type.scale != q_result->column_types[i].scale || type.charset != q_result->column_types[i].charset)
-	{
-	  return true;
-	}
-      i++;
     }
 
-  return i != q_result->num_column;
+  return false;
 }
 
 static int

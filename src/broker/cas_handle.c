@@ -365,7 +365,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	    {
 	      hm_col_update_info_free (&(q_result[i]));
 	      FREE_MEM (q_result[i].null_type_column);
-	      FREE_MEM (q_result[i].column_types);
+	      FREE_MEM (q_result[i].untyped_column);
 	    }
 	}
 

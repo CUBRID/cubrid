@@ -70,22 +70,13 @@ struct t_col_update_info
   char updatable;
 };
 
-/* the type of a result column as the client last received it */
-typedef struct t_column_type T_COLUMN_TYPE;
-struct t_column_type
-{
-  int precision;
-  short scale;
-  unsigned char cas_type;
-  char charset;
-};
-
 typedef struct t_query_result T_QUERY_RESULT;
 struct t_query_result
 {
   void *result;
   char *null_type_column;
-  T_COLUMN_TYPE *column_types;
+  char *untyped_column;		/* the columns the PREPARE reply left untyped (CBRD-27679) */
+  int num_untyped_column;
   T_COL_UPDATE_INFO *col_update_info;
   void *column_info;
   int copied;
