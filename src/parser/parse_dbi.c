@@ -1096,8 +1096,19 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 
       db_value = pt_host_var_db_value (parser, value);
 
+      if (db_value && value->info.host_var.index < parser->host_var_count && parser->host_var_compiled_domains != NULL
+	  && parser->host_var_compiled_domains[value->info.host_var.index] != NULL
+	  && !pt_host_var_is_context_typed (parser->host_var_expected_domains[value->info.host_var.index]))
+	{
+	  /* CBRD-27583: the plan reads a value-typed position's value as bound; a compile-time read leaves it so */
+	  return db_value;
+	}
+
       if (db_value)
 	{
+	  const DB_TYPE bound_type = DB_VALUE_DOMAIN_TYPE (db_value);
+	  char name[256];
+
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
 	      && value->type_enum != PT_TYPE_NUMERIC
 	      && value->type_enum != PT_TYPE_CHAR && value->type_enum != PT_TYPE_VARCHAR
@@ -1111,8 +1122,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	      if (!hv_dom	/* must be cached before use! */
 		  || tp_value_cast (db_value, db_value, hv_dom, false) != DOMAIN_COMPATIBLE)
 		{
-		  PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-			       pt_node_to_db_domain_name (value));
+		  PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       "host var", pt_host_var_coerce_target (parser, value->info.host_var.index, bound_type,
+								      pt_node_to_db_domain_name (value), name,
+								      sizeof (name)));
 		  return NULL;
 		}
 
@@ -1152,7 +1165,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 			       != DOMAIN_COMPATIBLE)
 			{
 			  PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				       "host var", pr_type_name (expected_db_type));
+				       "host var", pt_host_var_coerce_target (parser, value->info.host_var.index,
+									      bound_type,
+									      pr_type_name (expected_db_type), name,
+									      sizeof (name)));
 			  return NULL;
 			}
 		    }
@@ -1174,7 +1190,9 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 		      || tp_value_coerce (db_value, db_value, hv_dom) != DOMAIN_COMPATIBLE)
 		    {
 		      PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   "host var", pt_node_to_db_domain_name (value));
+				   "host var", pt_host_var_coerce_target (parser, value->info.host_var.index,
+									  bound_type, pt_node_to_db_domain_name (value),
+									  name, sizeof (name)));
 		      return NULL;
 		    }
 		  value->expected_domain = hv_dom;
@@ -3058,6 +3076,228 @@ pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val
 }
 
 /*
+ * pt_value_has_domain_type () - CBRD-27583: whether a bound value has the type a value-typed position was compiled
+ *   for: the DB_TYPE, and for a string its codeset and collation (a NULL has type DB_TYPE_NULL)
+ */
+bool
+pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  if (type != TP_DOMAIN_TYPE (domain))
+    {
+      return false;
+    }
+  return !TP_IS_CHAR_TYPE (type)
+    || (db_get_string_codeset (val) == domain->codeset && db_get_string_collation (val) == domain->collation_id);
+}
+
+/*
+ * pt_host_var_coerce_target () - CBRD-27583: the target a bind-time conversion error names, followed by the
+ *   host variable's user position (from 0; a derived position names the user position its value comes from) and the
+ *   type of the bound value, never the value: "short (?:0 of type character varying)"; the message's own sentence
+ *   stays in front of it, and a literal's position names the target alone
+ *   return: buf, or target
+ */
+const char *
+pt_host_var_coerce_target (const PARSER_CONTEXT * parser, int index, DB_TYPE type, const char *target, char *buf,
+			   int size)
+{
+  const int position = index < parser->host_var_count ? index
+    : pt_is_derived_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+  if (position < 0)
+    {
+      return target;
+    }
+  snprintf (buf, size, "%s (?:%d of type %s)", target, position, pr_type_name (type));
+  return buf;
+}
+
+/*
+ * pt_cast_bind_copy_value () - CBRD-27583: the value a bind copy's position reads, the bound value cast
+ *   into the column's CHAR(n) as the reduction of a literal casts it (qo_reduce_equality_terms): a value longer than
+ *   the column, a string or the text of a number or a date, is cut, which the reduced term, still ANDed, rejects.
+ *   Returns whether the value has such a cast.
+ */
+bool
+pt_cast_bind_copy_value (const DB_VALUE * source, DB_VALUE * dest, const TP_DOMAIN * domain)
+{
+  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (source)))
+    {
+      return tp_value_cast_force (source, dest, domain, false) == DOMAIN_COMPATIBLE;
+    }
+  /* a number's or a date's cast into a shorter CHAR(n) overflows instead of cutting: cut its text */
+  DB_VALUE text;
+  db_make_null (&text);
+  TP_DOMAIN_STATUS status = tp_value_cast (source, &text, &tp_String_domain, false);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      status = tp_value_cast_force (&text, dest, domain, false);
+    }
+  pr_clear_value (&text);
+  return status == DOMAIN_COMPATIBLE;
+}
+
+/*
+ * pt_set_derived_host_variable () - CBRD-27583: a derived position holds the value of its user position converted
+ *   into the derived position's domain, the conversion a context-typed position gets (pt_set_host_variables). A value
+ *   that does not convert is a bind-time error naming the derived position's type.
+ */
+int
+pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE * source)
+{
+  DB_VALUE *hv = &parser->host_variables[index];
+  TP_DOMAIN *domain = parser->host_var_expected_domains[index];
+
+  pr_clear_value (hv);
+  const TP_DOMAIN_STATUS status = !pt_is_padded_host_var (parser, index)
+    ? tp_value_cast_preserve_domain (source, hv, domain, false, true)
+    : pt_cast_bind_copy_value (source, hv, domain) ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (domain)));
+      char name[256];
+      PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		   pt_host_var_coerce_target (parser, index, DB_VALUE_DOMAIN_TYPE (source), target, name,
+					      sizeof (name)));
+      return ER_FAILED;
+    }
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) && TP_DOMAIN_TYPE (domain) != DB_VALUE_DOMAIN_TYPE (source)
+      && DB_VALUE_DOMAIN_TYPE (source) == DB_TYPE_VARCHAR && !pt_is_padded_host_var (parser, index))
+    {
+      /* as pt_set_host_variables: a VARCHAR value bound to a CHAR(n) keeps its original value once the cast accepts it;
+       * a bind copy's position reads it padded, as the reduced CHAR comparison did */
+      pr_clear_value (hv);
+      pr_clone_value (source, hv);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_set_agnostic_host_variable () - CBRD-27583: an AGNOSTIC position (pt_classify_host_var_positions) holds
+ *   only whether its value is NULL: NULL, or the INTEGER 1 for any other value
+ */
+void
+pt_set_agnostic_host_variable (const DB_VALUE * val, DB_VALUE * hv)
+{
+  const bool null = DB_IS_NULL (val);
+  pr_clear_value (hv);
+  if (null)
+    {
+      db_make_null (hv);
+    }
+  else
+    {
+      db_make_int (hv, 1);
+    }
+}
+
+/*
+ * pt_host_var_is_context_typed () - CBRD-27583: whether a position's expected domain is one the client casts the
+ *   value into before it sends it (a context-typed position). An ENUM domain (CUBRIDSUS-9007) converts no value and
+ *   the collation axis's ENFORCE domain converts only a string value (pt_collation_rule_cast): such a position is
+ *   value-typed, as is one with no domain.
+ */
+bool
+pt_host_var_is_context_typed (const TP_DOMAIN * expected)
+{
+  return expected != NULL && TP_DOMAIN_TYPE (expected) != DB_TYPE_UNKNOWN && TP_DOMAIN_TYPE (expected) != DB_TYPE_NULL
+    && TP_DOMAIN_TYPE (expected) != DB_TYPE_ENUMERATION && expected->collation_flag != TP_DOMAIN_COLL_ENFORCE;
+}
+
+/*
+ * pt_host_var_is_leave_typed () - CBRD-27583: whether a context-typed position is a string whose expected domain
+ *   leaves the collation to the value (LEAVE): its plan is the one of the value's collation, which its compiled domain
+ *   (the value's) keeps
+ */
+bool
+pt_host_var_is_leave_typed (const TP_DOMAIN * expected)
+{
+  return pt_host_var_is_context_typed (expected) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (expected))
+    && expected->collation_flag == TP_DOMAIN_COLL_LEAVE;
+}
+
+/*
+ * pt_host_var_is_char_typed () - CBRD-27583: whether a context-typed position's expected domain is a CHAR: the
+ *   client sends a VARCHAR value as it is and casts any other into the CHAR (pt_set_host_variables), so its plan is the
+ *   one of the type the client sends, which its compiled domain keeps (pt_host_var_sent_domain; a LEAVE CHAR
+ *   position's is the value's)
+ */
+bool
+pt_host_var_is_char_typed (const TP_DOMAIN * expected)
+{
+  return pt_host_var_is_context_typed (expected) && TP_DOMAIN_TYPE (expected) == DB_TYPE_CHAR;
+}
+
+/*
+ * pt_host_var_leave_collation () - CBRD-27583: the collation a LEAVE position takes from a value of this type and
+ *   collation: a string's own, -1 for another type (the client casts it into the expected domain's), -2 for a NULL
+ */
+int
+pt_host_var_leave_collation (DB_TYPE type, int collation)
+{
+  return type == DB_TYPE_NULL ? -2 : TP_IS_CHAR_TYPE (type) ? collation : -1;
+}
+
+/* CBRD-27583: whether a value is one the compilation of a position's plan took: a value-typed position's value of its
+ * compiled domain, a LEAVE position's value of the compiled value's collation, a CHAR position's VARCHAR of the
+ * compiled VARCHAR's collation or another value of the compiled CHAR (a LEAVE CHAR one's of the collation); and a
+ * NULL at a comparison operand, or at an NVL family operand whose node keeps its domain without it */
+static bool
+pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
+{
+  const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
+  if (DB_IS_NULL (val) && (PT_HOST_VAR_CLASS (format_class) == PT_HOST_VAR_CLASS_COMPARE
+			   || (format_class & PT_HOST_VAR_NULL_MATCHES)))
+    {
+      return true;
+    }
+  const TP_DOMAIN *compiled = parser->host_var_compiled_domains[index];
+  if (DB_IS_NULL (val) && (format_class & PT_HOST_VAR_BIND_DOMAIN))
+    {
+      /* the client converts a NULL into a NULL of the bind domain the position took */
+      return TP_DOMAIN_TYPE (compiled) == TP_DOMAIN_TYPE (parser->host_var_bind_domains[index]);
+    }
+  const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
+  if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
+    {
+      const bool sent_varchar = !DB_IS_NULL (val) && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
+      if (sent_varchar != (TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR))
+	{
+	  return false;
+	}
+      if (sent_varchar)
+	{
+	  return db_get_string_collation (val) == compiled->collation_id;
+	}
+      if (!leave)
+	{
+	  return true;
+	}
+    }
+  if (!leave)
+    {
+      return pt_value_has_domain_type (val, compiled);
+    }
+  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  return pt_host_var_leave_collation (type, TP_IS_CHAR_TYPE (type) ? db_get_string_collation (val) : -1)
+    == pt_host_var_leave_collation (TP_DOMAIN_TYPE (compiled), compiled->collation_id);
+}
+
+/*
+ * pt_host_var_format_differs () - CBRD-27583: whether a STR_TO_DATE format position receives a format of another class
+ *   than the one its plan typed the result by (or than none, compiled without a value)
+ */
+static bool
+pt_host_var_format_differs (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
+{
+  const int c = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
+  return ((c & PT_HOST_VAR_FORMAT_POSITION) && pt_value_format_class (val) != PT_HOST_VAR_FORMAT_CLASS (c))
+    || ((c & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL
+	&& pt_elt_index_signature (c, pt_value_elt_index (val))
+	!= pt_elt_index_signature (c, parser->host_var_elt_indexes[index]));
+}
+
+/*
  * pt_set_host_variables() - sets parser's host_variables & count
  *   return: none
  *   parser(in):  the parser context
@@ -3082,6 +3322,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
     }
 
   parser->flag.set_host_var = 0;
+  parser->flag.bind_signature_changed = 0;
 
   if (parser->host_var_count > count)
     {
@@ -3108,7 +3349,28 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
       pr_clear_value (hv);
       hv_dom = parser->host_var_expected_domains[i];
-      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
+      if (parser->host_var_format_classes != NULL
+	  && PT_HOST_VAR_CLASS (parser->host_var_format_classes[i]) == PT_HOST_VAR_CLASS_AGNOSTIC
+	  && TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_INTEGER)
+	{
+	  /* CBRD-27583: only whether the value is NULL reaches the plan, whatever its type */
+	  pt_set_agnostic_host_variable (val, hv);
+	  continue;
+	}
+      if (pt_host_var_format_differs (parser, i, val))
+	{
+	  /* CBRD-27583: a STR_TO_DATE format of another class: the result type of this plan is not the value's */
+	  parser->flag.bind_signature_changed = 1;
+	}
+      if (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL
+	  && !pt_host_var_matches_compiled (parser, i, val))
+	{
+	  /* CBRD-27583: a value-typed position compiled for another type: the plan of this value's signature is
+	   * another one (the caller recompiles); the value is not cast into this plan's domain */
+	  parser->flag.bind_signature_changed = 1;
+	  pr_clone_value (val, hv);
+	}
+      else if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
 	  pr_clone_value (val, hv);
 	}
@@ -3118,9 +3380,11 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
 	  if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	    {
+	      char name[256];
 	      typ = TP_DOMAIN_TYPE (hv_dom);
+	      const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ));
 	      PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-			   pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
+			   pt_host_var_coerce_target (parser, i, val_type, target, name, sizeof (name)));
 	      return;
 	    }
 	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
@@ -3131,9 +3395,256 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 		}
 	    }
 	}
+      if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_BIT && parser->host_var_compiled_domains != NULL
+	  && parser->host_var_compiled_domains[i] != NULL
+	  && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[i]) == DB_TYPE_BIT
+	  && parser->host_var_compiled_domains[i]->precision == TP_FLOATING_PRECISION_VALUE)
+	{
+	  /* a value-typed position compiles as the floating BIT (pt_host_var_value_domain): the value carries that
+	   * precision too, since the disk writer packs by the value's (a length prefix) and the reader by the domain's */
+	  hv->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
+    }
+
+  /* the derived positions of another signature's plan are not this plan's: they are not filled */
+  for (i = parser->host_var_count;
+       !parser->flag.bind_signature_changed && i < parser->host_var_count + parser->auto_param_count; i++)
+    {
+      if (pt_is_derived_host_var (parser, i)
+	  && pt_set_derived_host_variable (parser, i, &values[parser->host_var_derived_from[i]]) != NO_ERROR)
+	{
+	  return;
+	}
     }
 
   parser->flag.set_host_var = 1;	/* OK */
+}
+
+/*
+ * pt_host_vars_match_signature () - CBRD-27583: whether the compilation of a bind type signature is the plan of these
+ *   values: every value-typed position receives a value of its compiled domain and every STR_TO_DATE format position
+ *   a format of its class (pt_set_host_variables)
+ */
+bool
+pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  if (parser->host_var_compiled_domains == NULL || count < parser->host_var_count)
+    {
+      return false;
+    }
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      if ((parser->host_var_compiled_domains[i] != NULL && !pt_host_var_matches_compiled (parser, i, &values[i]))
+	  || pt_host_var_format_differs (parser, i, &values[i]))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * pt_host_var_bind_domain_differs () - CBRD-27583: whether the bind converts the value of a user position into
+ *   another type than this compilation of its signature planned the position with: the bind casts the value into
+ *   the position's bind domain (host_var_bind_domains; tp_value_cast_preserve_domain in pt_set_host_variables) and
+ *   every use reads it converted. A collation-enforcing domain types only a NULL (a string takes its collation), a CHAR
+ *   keeps a VARCHAR, an ENUM converts nothing; a position that took its bind domain, or that holds only whether its
+ *   value is NULL (AGNOSTIC), does not differ.
+ */
+static bool
+pt_host_var_bind_domain_differs (const PARSER_CONTEXT * parser, int index)
+{
+  const TP_DOMAIN *bind = parser->host_var_bind_domains[index];
+  const int format_class = parser->host_var_format_classes[index];
+  if (bind == NULL || TP_DOMAIN_TYPE (bind) == DB_TYPE_UNKNOWN || TP_DOMAIN_TYPE (bind) == DB_TYPE_NULL
+      || TP_DOMAIN_TYPE (bind) == DB_TYPE_ENUMERATION || (format_class & PT_HOST_VAR_BIND_DOMAIN)
+      || PT_HOST_VAR_CLASS (format_class) == PT_HOST_VAR_CLASS_AGNOSTIC)
+    {
+      return false;
+    }
+  /* the value's NULL-ness is the bound value's: a NULL's host variable can hold a stand-in's type
+   * (pt_host_var_stand_in) */
+  const bool null = PT_HOST_VAR_FORMAT_CLASS (format_class) == PT_HOST_VAR_FORMAT_NULL;
+  const DB_TYPE type = null ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]);
+  const DB_TYPE converted = (bind->collation_flag == TP_DOMAIN_COLL_ENFORCE && !null)
+    || (TP_DOMAIN_TYPE (bind) == DB_TYPE_CHAR && type == DB_TYPE_VARCHAR) ? type : TP_DOMAIN_TYPE (bind);
+  const TP_DOMAIN *planned = pt_host_var_position_domain ((PARSER_CONTEXT *) parser, index);
+  return converted != (planned != NULL ? TP_DOMAIN_TYPE (planned) : DB_TYPE_NULL);
+}
+
+/*
+ * pt_host_var_bind_domains_differ () - CBRD-27583: whether a user position of this compilation of a bind type
+ *   signature differs (pt_host_var_bind_domain_differs): the statement compiles once more, its positions taking their
+ *   bind domains (pt_take_host_var_bind_domains); that compilation differs at no position
+ */
+bool
+pt_host_var_bind_domains_differ (const PARSER_CONTEXT * parser)
+{
+  bool differs = false, took = false;
+  for (int i = 0; parser->host_var_bind_domains != NULL && i < parser->host_var_count; i++)
+    {
+      took = took || (parser->host_var_format_classes[i] & PT_HOST_VAR_BIND_DOMAIN);
+      if (!pt_host_var_bind_domain_differs (parser, i))
+	{
+	  continue;
+	}
+      differs = true;
+    }
+  assert (!took || !differs);
+  return differs && !took;
+}
+
+/*
+ * pt_take_host_var_bind_domains () - CBRD-27583: in the second compilation of a bind type signature, every
+ *   position keeps the bind domain the first compilation found, and a position where it differs
+ *   (pt_host_var_bind_domain_differs) takes it (PT_HOST_VAR_BIND_DOMAIN): a NULL bound there becomes a NULL of it, as
+ *   the bind makes it; the bind converts any other value as a context-typed position's (a collation-enforcing
+ *   domain differs only for a NULL)
+ */
+void
+pt_take_host_var_bind_domains (PARSER_CONTEXT * parser, const PARSER_CONTEXT * first)
+{
+  assert (parser->host_var_bind_domains != NULL && first->host_var_bind_domains != NULL
+	  && parser->host_var_count == first->host_var_count);
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      parser->host_var_bind_domains[i] = first->host_var_bind_domains[i];
+      if (!pt_host_var_bind_domain_differs (first, i))
+	{
+	  continue;
+	}
+      parser->host_var_format_classes[i] |= PT_HOST_VAR_BIND_DOMAIN;
+      if (PT_HOST_VAR_FORMAT_CLASS (parser->host_var_format_classes[i]) == PT_HOST_VAR_FORMAT_NULL)
+	{
+	  DB_VALUE *hv = &parser->host_variables[i];
+	  (void) tp_value_cast_preserve_domain (hv, hv, parser->host_var_bind_domains[i], false, true);
+	}
+    }
+}
+
+/*
+ * pt_value_format_class () - CBRD-27583: the STR_TO_DATE format class of a bound value: db_check_time_date_format of a
+ *   string, as type checking classifies a literal format; PT_HOST_VAR_FORMAT_NULL for NULL; 0 for any other value (its
+ *   string form has no specifier)
+ */
+int
+pt_value_format_class (const DB_VALUE * val)
+{
+  if (DB_IS_NULL (val))
+    {
+      return PT_HOST_VAR_FORMAT_NULL;
+    }
+  if (!TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val)))
+    {
+      return 0;
+    }
+  const int size = db_get_string_size (val);
+  char *format = (char *) malloc (size + 1);
+  if (format == NULL)
+    {
+      return 0;
+    }
+  memcpy (format, db_get_string (val), size);
+  format[size] = '\0';
+  const int format_class = db_check_time_date_format (format);
+  free (format);
+  return format_class;
+}
+
+/*
+ * pt_value_elt_index () - CBRD-27583: a bound value as ELT's index: the BIGINT the row casts it to, or
+ *   PT_HOST_VAR_ELT_NULL / PT_HOST_VAR_ELT_INVALID for a NULL / a value of no BIGINT
+ */
+DB_BIGINT
+pt_value_elt_index (const DB_VALUE * val)
+{
+  if (DB_IS_NULL (val))
+    {
+      return PT_HOST_VAR_ELT_NULL;
+    }
+  DB_VALUE index;
+  db_make_null (&index);
+  const DB_BIGINT result = tp_value_coerce (val, &index, &tp_Bigint_domain) == DOMAIN_COMPATIBLE
+    ? db_get_bigint (&index) : PT_HOST_VAR_ELT_INVALID;
+  pr_clear_value (&index);
+  return result;
+}
+
+/*
+ * pt_elt_index_signature () - CBRD-27583: an ELT index position's value as the bind type signature carries it:
+ *   the branch it picks, PT_HOST_VAR_ELT_NULL / PT_HOST_VAR_ELT_UNKNOWN, or PT_HOST_VAR_ELT_INVALID for every value
+ *   that picks no branch (they type the result alike)
+ *   format_class(in): the position's host_var_format_classes, which holds the ELT's number of branches
+ */
+DB_BIGINT
+pt_elt_index_signature (int format_class, DB_BIGINT elt_index)
+{
+  const bool picks = elt_index >= 1 && elt_index <= (format_class >> PT_HOST_VAR_ELT_BRANCHES_SHIFT);
+  return picks || elt_index == PT_HOST_VAR_ELT_NULL || elt_index == PT_HOST_VAR_ELT_UNKNOWN
+    ? elt_index : PT_HOST_VAR_ELT_INVALID;
+}
+
+/*
+ * pt_host_var_format_classes () - CBRD-27583: the parser's format classes of the user positions, allocated as unknown
+ *   on first use
+ */
+int *
+pt_host_var_format_classes (PARSER_CONTEXT * parser)
+{
+  if (parser->host_var_format_classes == NULL && parser->host_var_count > 0)
+    {
+      parser->host_var_format_classes = (int *) malloc (parser->host_var_count * sizeof (int));
+      for (int i = 0; parser->host_var_format_classes != NULL && i < parser->host_var_count; i++)
+	{
+	  parser->host_var_format_classes[i] = PT_HOST_VAR_FORMAT_UNKNOWN;
+	}
+    }
+  return parser->host_var_format_classes;
+}
+
+/*
+ * pt_set_host_var_format_classes () - CBRD-27583: before the compilation of a bind type signature, the format class of
+ *   each value (the compilation may bind only the values' types): a STR_TO_DATE whose format is a user position types
+ *   its result by it
+ */
+int
+pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  int *classes = pt_host_var_format_classes (parser);
+  if (classes == NULL && parser->host_var_count > 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, parser->host_var_count * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  if (parser->host_var_elt_indexes == NULL && parser->host_var_count > 0)
+    {
+      parser->host_var_elt_indexes = (DB_BIGINT *) malloc (parser->host_var_count * sizeof (DB_BIGINT));
+      if (parser->host_var_elt_indexes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  parser->host_var_count * sizeof (DB_BIGINT));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (int i = 0; i < parser->host_var_count; i++)
+	{
+	  parser->host_var_elt_indexes[i] = PT_HOST_VAR_ELT_UNKNOWN;
+	}
+    }
+  for (int i = 0; i < parser->host_var_count && i < count; i++)
+    {
+      /* the class of the position's occurrences is the statement's, not the value's */
+      const int occurrences = classes[i] & (PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES);
+      if (!parser->flag.has_str_to_date_or_elt)
+	{
+	  /* no STR_TO_DATE format or ELT index position can be marked: nothing reads a value's class or index */
+	  classes[i] = (DB_IS_NULL (&values[i]) ? PT_HOST_VAR_FORMAT_NULL : 0) | occurrences;
+	  continue;
+	}
+      classes[i] = pt_value_format_class (&values[i]) | occurrences;
+      /* and its index value, which an ELT index position's plan takes */
+      parser->host_var_elt_indexes[i] = pt_value_elt_index (&values[i]);
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -3155,8 +3666,10 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
 	{
 	  val = &parser->host_variables[idx];
 	}
-      else if (idx >= parser->host_var_count && idx < parser->host_var_count + parser->auto_param_count)
+      else if (idx >= parser->host_var_count && idx < parser->host_var_count + parser->auto_param_count
+	       && (parser->flag.set_host_var || !pt_is_derived_host_var (parser, idx)))
 	{
+	  /* a literal's value; a derived position's, like a user position's, only once the user's values are set */
 	  val = &parser->host_variables[idx];
 	}
     }

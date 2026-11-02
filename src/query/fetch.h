@@ -33,7 +33,6 @@
 #include "qfile_tuple_layout.h"
 #include "regu_var.hpp"		/* REGU_VARIABLE definition + flags for the inline fetch_peek_dbval () */
 #include "query_executor.h"	/* val_descr definition for the inline fetch_peek_dbval () TYPE_POS_VALUE path */
-#include "domain_resolve.h"	/* the resolved-domain accessors the inline fetch_peek_dbval () reads */
 
 // forward definitions
 struct regu_variable_list_node;
@@ -43,13 +42,12 @@ extern int fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, regu_variable_node * 
 
 /*
  * fetch_peek_dbval () - returns a POINTER to an existing db_value
- *   Inline fast-path for the dominant per-row cases: a regu_var the load confirmed simple
- *   (REGU_VARIABLE_FAST_PEEK; a regu whose domain is variable once it took its domain in this execution,
- *   REGU_VARIABLE_VARIABLE_DOMAIN). Returns the value pointer directly - no call frame, no type switch, no
- *   domain dereference:
+ *   Inline fast-path for the dominant per-row cases: a regu_var previously confirmed simple
+ *   (REGU_VARIABLE_FAST_PEEK set by fetch_peek_dbval_slow () on the first fetch). Returns the value
+ *   pointer directly - no call frame, no type switch, no domain dereference:
  *     TYPE_DBVAL     -> the embedded constant db_value;
  *     TYPE_CONSTANT  -> the value-pointer slot, only when there is no linked subquery to execute;
- *     TYPE_POS_VALUE -> the reference's value in resolve_domains' value array (REGU_RESOLVED_VALUE);
+ *     TYPE_POS_VALUE -> the bind value at its position;
  *     TYPE_*ATTR_ID  -> the cached attribute value pointer (instance/shared/class; re-checked != NULL
  *                       so a later cache reset is handled safely, same as the slow path).
  *   Everything else (incl. the first fetch that sets the flag, collation/variable-domain, subqueries)
@@ -59,9 +57,7 @@ inline int
 fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_descr * vd, OID * class_oid,
 		  OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval)
 {
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FAST_PEEK)
-      && (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_VARIABLE_DOMAIN)
-	  || qexec_node_domain_is_set (vd, regu_var->plan_item)))
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FAST_PEEK))
     {
       switch (regu_var->type)
 	{
@@ -74,8 +70,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	  *peek_dbval = regu_var->value.dbvalptr;
 	  return NO_ERROR;
 	case TYPE_POS_VALUE:
-	  /* the reference's own value: the slow path flags only a bind reference with a plan item */
-	  *peek_dbval = (DB_VALUE *) REGU_RESOLVED_VALUE (vd, regu_var);
+	  /* a peek reads the bound value (val_descr.dbval_ptr is const) */
+	  *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
 	  return NO_ERROR;
 	case TYPE_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:
@@ -108,11 +104,13 @@ extern int fetch_copy_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_
 extern int fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, val_descr * vd,
 			   OID * class_oid, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, int peek);
 extern void fetch_init_val_list (regu_variable_list_node * regu_list);
+extern void fetch_force_not_const_recursive (regu_variable_node & reguvar);
 
-extern int fetch_key_limits (THREAD_ENTRY * thread_p, regu_variable_node * key_limit_l,
-			     regu_variable_node * key_limit_u, val_descr * vd, DB_BIGINT * lower, DB_BIGINT * upper,
-			     bool * is_null);
+extern int fetch_key_limits (THREAD_ENTRY * thread_p, regu_variable_node * key_limit_l, TP_VALUE_CONVERTER l_conv,
+			     regu_variable_node * key_limit_u, TP_VALUE_CONVERTER u_conv, val_descr * vd,
+			     DB_BIGINT * lower, DB_BIGINT * upper, bool * is_null);
 
 extern bool fetch_is_agg_expr_shape (const regu_variable_node * regu_var, int budget);
+extern bool fetch_opcode_caches (OPERATOR_TYPE opcode);
 
 #endif /* _FETCH_H_ */

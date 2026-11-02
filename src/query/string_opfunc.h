@@ -241,6 +241,17 @@ extern int db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_
 			   DB_VALUE * trimmed_string);
 extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, const DB_VALUE * pad_length,
 			  const DB_VALUE * pad_charset, DB_VALUE * padded_string);
+extern int qstr_like_match (const char *tar, int tar_length, const char *pattern, int pattern_length,
+			    INTL_CODESET codeset, int coll_id);
+/* The matcher for a LIKE without an ESCAPE under one (codeset, collation), chosen once with
+ * qstr_like_match_resolve (): the byte-lockstep instance qstr_eval_like () would dispatch to for every call when
+ * the collation is eligible for one (the generic loop stands in for a pattern it declines), qstr_like_match ()
+ * itself otherwise.  Calling the matcher decides what qstr_like_match () decides for the same arguments; a caller
+ * that matches many strings under one collation (the page batch's LIKE leaf) skips the collation lookup, the pad
+ * character and the dispatch per call. */
+typedef int (*QSTR_LIKE_MATCH_FN) (const char *tar, int tar_length, const char *pattern, int pattern_length,
+				   INTL_CODESET codeset, int coll_id);
+extern QSTR_LIKE_MATCH_FN qstr_like_match_resolve (INTL_CODESET codeset, int coll_id);
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
 
@@ -313,6 +324,9 @@ extern int db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
 extern int db_sys_timezone (DB_VALUE * result_timezone);
 extern int db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
 		       DB_VALUE * result_str, const TP_DOMAIN * domain);
+extern int db_to_char_with_converter (const DB_VALUE * src_value, const DB_VALUE * format_or_length,
+				      const DB_VALUE * lang_str, DB_VALUE * result_str, const TP_DOMAIN * domain,
+				      DB_TYPE src_conv_type, TP_VALUE_CONVERTER src_conv);
 extern int db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
 		       DB_VALUE * result_date);
 extern int db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
@@ -382,13 +396,14 @@ extern int db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_V
 					    const bool compute_lower_bound, const int last_safe_logical_pos);
 extern int db_like_bound (const DB_VALUE * const src_pattern, const DB_VALUE * const src_escape,
 			  DB_VALUE * const result_bound, const bool compute_lower_bound);
-extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
+extern int db_hex (const DB_VALUE * param, DB_VALUE * result, DB_TYPE param_conv_type, TP_VALUE_CONVERTER param_conv);
 extern int db_uuidv4 (DB_VALUE * result);
 extern int db_uuid_bin (UUID_VERSION version, UUID_STATE * uuid_state, uint64_t epoch_ms, DB_VALUE * result);
-extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
+extern int db_ascii (const DB_VALUE * param, DB_VALUE * result, DB_TYPE param_conv_type, TP_VALUE_CONVERTER param_conv);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_base, DB_VALUE * result);
 extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);
-extern int db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain);
+extern int db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain,
+					  DB_TYPE src_conv_type, TP_VALUE_CONVERTER src_conv);
 extern int db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string);
 extern int db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number);
 

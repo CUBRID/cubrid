@@ -23,7 +23,7 @@
 #include "px_merge_join_partition.hpp"
 
 #include "dbtype.h"
-#include "domain_plan.h"
+#include "domain_rules.h"
 #include "error_manager.h"
 #include "file_manager.h"
 #include "list_file.h"
@@ -48,7 +48,7 @@ namespace parallel_query
       /* cmp_keys orders the boundaries with tp_value_compare; the merge orders keys by each column's resolved
        * comparison, so only pairs where both give the same order (same domain, plain or DIRECT compare) partition */
       bool
-      compares_match_cmp_keys (const QFILE_LIST_MERGE_INFO &merge_info, const DOMAIN_COMPARE_PLAN *const *compares,
+      compares_match_cmp_keys (const QFILE_LIST_MERGE_INFO &merge_info, const DOMAIN_COMPARE *compares,
 			       const QFILE_LIST_ID *outer_list_id, const QFILE_LIST_ID *inner_list_id)
       {
 	for (int k = 0; k < merge_info.ls_column_cnt; k++)
@@ -57,7 +57,7 @@ namespace parallel_query
 	    const TP_DOMAIN *inner_dom = inner_list_id->type_list.domp[merge_info.ls_inner_column[k]];
 	    const DB_TYPE outer_type = TP_DOMAIN_TYPE (outer_dom);
 	    const DB_TYPE inner_type = TP_DOMAIN_TYPE (inner_dom);
-	    const DOMAIN_COMPARE *compare = (compares != NULL && compares[k] != NULL) ? &compares[k]->fixed : NULL;
+	    const DOMAIN_COMPARE *compare = compares != NULL ? &compares[k] : NULL;
 
 	    if (outer_type == DB_TYPE_VARIABLE || inner_type == DB_TYPE_VARIABLE)
 	      {
@@ -1087,7 +1087,7 @@ namespace parallel_query
     }
 
     bool
-    is_applicable (const QFILE_LIST_MERGE_INFO &merge_info, const DOMAIN_COMPARE_PLAN *const *compares,
+    is_applicable (const QFILE_LIST_MERGE_INFO &merge_info, const DOMAIN_COMPARE *compares,
 		   const QFILE_LIST_ID *outer_list_id, const QFILE_LIST_ID *inner_list_id)
     {
       if (merge_info.join_type != JOIN_INNER)

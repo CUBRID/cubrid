@@ -31,7 +31,6 @@
 
 #include "memory_alloc.h"
 #include "area_alloc.h"
-#include "message_catalog.h"
 #include "memory_hash.h"
 #include "error_manager.h"
 #include "oid.h"
@@ -47,11 +46,9 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "class_object.h"
-#include "environment_variable.h"
 #include "db.h"
 #include "transaction_cl.h"
 #include "object_template.h"
-#include "server_interface.h"
 #include "view_transform.h"
 #include "dbtype.h"
 #include "execute_statement.h"
@@ -72,7 +69,7 @@ extern unsigned int db_on_server;
  *    Linked list of mops to be reset at commit/abort.
  */
 
-MOP ws_Commit_mops = NULL;
+CUB_THREAD_LOCAL MOP ws_Commit_mops = NULL;
 
 /*
  * ws_Mop_table
@@ -81,14 +78,14 @@ MOP ws_Commit_mops = NULL;
  *    transaction manager.
  */
 
-WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
+static CUB_THREAD_LOCAL WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
 
 /*
  * ws_Mop_table_size
  *    Records the current size of the OID to MOP hash table.
  */
 
-unsigned int ws_Mop_table_size = 0;
+static CUB_THREAD_LOCAL unsigned int ws_Mop_table_size = 0;
 
 /*
  * ws_Resident_classes
@@ -99,7 +96,7 @@ unsigned int ws_Mop_table_size = 0;
  *    list.
  */
 
-DB_OBJLIST *ws_Resident_classes = NULL;
+CUB_THREAD_LOCAL DB_OBJLIST *ws_Resident_classes = NULL;
 
 /*
  * ws_Stats
@@ -107,9 +104,9 @@ DB_OBJLIST *ws_Resident_classes = NULL;
  *    This contains random information about the state of the workspace.
  */
 
-WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static CUB_THREAD_LOCAL WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-int ws_Num_dirty_mop = 0;
+static CUB_THREAD_LOCAL int ws_Num_dirty_mop = 0;
 
 /*
  * We used to keep a global dirty list here. But for more efficient traversals
@@ -118,7 +115,27 @@ int ws_Num_dirty_mop = 0;
  * and visit each class' dirty list. The dirty flag here is consulted by
  * ws_has_updated to determine if there are dirty objects in this workspace.
  */
-static bool Ws_dirty;
+static CUB_THREAD_LOCAL bool Ws_dirty;
+
+/*
+ * Deferred free
+ *    While a transaction aborted only at the client unwinds through its callers,
+ *    the callers may still hold SM_CLASS, constraint and attribute pointers of the
+ *    objects decached by ws_abort_mops (). During that time ws_decache () only
+ *    detaches the object from its MOP and keeps the memory in these lists.
+ *    Instances keep their class so that they are freed before the class.
+ */
+typedef struct ws_deferred_free WS_DEFERRED_FREE;
+struct ws_deferred_free
+{
+  WS_DEFERRED_FREE *next;
+  MOBJ obj;
+  SM_CLASS *class_;		/* class of an instance, NULL if obj is a class */
+};
+
+static bool ws_Defer_free = false;
+static WS_DEFERRED_FREE *ws_Deferred_instances = NULL;
+static WS_DEFERRED_FREE *ws_Deferred_classes = NULL;
 
 /*
  * Null_object
@@ -130,7 +147,7 @@ static bool Ws_dirty;
  *    avoids having to keep an extra bit in the MOP structre.
  */
 
-static MOP Null_object;
+static CUB_THREAD_LOCAL MOP Null_object;
 
 /*
  * Classname_cache
@@ -139,14 +156,14 @@ static MOP Null_object;
  *    find class OIDs.
  */
 
-static MHT_TABLE *Classname_cache = NULL;
+static CUB_THREAD_LOCAL MHT_TABLE *Classname_cache = NULL;
 
 
 /*
  * Objlist_area
  *    Area for allocating external object list links.
  */
-static AREA *Objlist_area = NULL;
+static CUB_THREAD_LOCAL AREA *Objlist_area = NULL;
 
 /* When MVCC is enabled, fetched objects are not locked. Which means next
  * fetch call would go to server and check if object was changed. However,
@@ -154,7 +171,7 @@ static AREA *Objlist_area = NULL;
  * checking on server, mark fetched object with the snapshot version and
  * don't re-fetch until snapshot version is changed.
  */
-static unsigned int ws_MVCC_snapshot_version = 0;
+static CUB_THREAD_LOCAL unsigned int ws_MVCC_snapshot_version = 0;
 
 /*
  * ws_area_init
@@ -177,6 +194,11 @@ static int add_class_object (MOP class_mop, MOP obj);
 static void remove_class_object (MOP class_mop, MOP obj);
 static int mark_instance_deleted (MOP op, void *args);
 static void ws_clear_internal (bool clear_vmop_keys);
+static bool ws_defer_free (MOBJ obj, SM_CLASS * class_);
+static void ws_free_deferred_instances (SM_CLASS * class_);
+static void ws_free_instance_memory (SM_CLASS * class_, MOBJ obj);
+static void ws_free_class_memory (SM_CLASS * class_);
+static void ws_free_deferred_objects (void);
 static void ws_print_oid (OID * oid);
 #if defined (CUBRID_DEBUG)
 static int ws_describe_mop (MOP mop, void *args);
@@ -2310,7 +2332,7 @@ ws_find_class (const char *name)
  *    initialization phase.
  */
 int
-ws_init (void)
+ws_init (bool is_sub)
 {
   int error_code = NO_ERROR;
   unsigned int i;
@@ -2324,9 +2346,12 @@ ws_init (void)
       return ER_FAILED;
     }
 
-  if (db_create_workspace_heap () == 0)
+  if (!is_sub)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      if (db_create_workspace_heap () == 0)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
     }
 
   /*
@@ -2404,7 +2429,10 @@ ws_init (void)
   return NO_ERROR;
 
 error:
-  db_destroy_workspace_heap ();
+  if (!is_sub)
+    {
+      db_destroy_workspace_heap ();
+    }
 
   ws_area_final ();
   pr_area_final ();
@@ -2440,12 +2468,20 @@ error:
  * Note: Must only be called prior to closing the database.
  */
 void
-ws_final (void)
+ws_final (bool is_sub)
 {
   MOP mop, next;
   unsigned int slot;
 
-  tr_final ();
+  if (!is_sub)
+    {
+      tr_final ();
+    }
+
+  /* No call chain holds the objects detached by a server-down abort any more. After the server goes down,
+   * db_shutdown () does nothing, so this runs at the next restart (boot_client_common ()); a client that
+   * exits without restarting leaves them to the process exit. */
+  ws_free_deferred_objects ();
 
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))
     {
@@ -2488,7 +2524,19 @@ ws_final (void)
       free_and_init (ws_Mop_table);
     }
 
-  db_destroy_workspace_heap ();
+  if (!is_sub)
+    {
+      db_destroy_workspace_heap ();
+    }
+  else
+    {
+      /* a sub-client does not reach area_final (); destroy the areas of this thread created by ws_init () */
+      ws_area_final ();
+      pr_area_final ();
+      set_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
+    }
 
   /* clean up misc globals */
   ws_Mop_table = NULL;
@@ -2607,7 +2655,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	  /* remove information for existing class */
 	  ws_drop_classname ((MOBJ) mop->object);
 	  ws_decache_all_instances (mop);
-	  classobj_free_class ((SM_CLASS *) mop->object);
+	  ws_free_class_memory ((SM_CLASS *) mop->object);
 	}
       mop->object = obj;
       mop->class_mop = class_mop;
@@ -2741,7 +2789,7 @@ ws_decache (MOP mop)
 	    }
 	  else
 	    {
-	      obj_free_memory ((SM_CLASS *) mop->class_mop->object, (MOBJ) mop->object);
+	      ws_free_instance_memory ((SM_CLASS *) mop->class_mop->object, (MOBJ) mop->object);
 	      if (WS_IS_DELETED (mop))
 		{
 		  remove_class_object (mop->class_mop, mop);
@@ -2763,7 +2811,7 @@ ws_decache (MOP mop)
 	  ws_drop_classname ((MOBJ) mop->object);
 
 	  ws_decache_all_instances (mop);
-	  classobj_free_class ((SM_CLASS *) mop->object);
+	  ws_free_class_memory ((SM_CLASS *) mop->object);
 	}
     }
 
@@ -2773,6 +2821,137 @@ ws_decache (MOP mop)
   /* this no longer apples */
   mop->composition_fetch = 0;
   mop->decached = 1;
+}
+
+/*
+ * ws_defer_free - Keep the memory of a decached object in the deferred free lists.
+ *    return: true if deferred, false if the caller must free it now
+ *    obj(in): memory representation of the object
+ *    class_(in): class of obj if obj is an instance, NULL if obj is a class
+ */
+static bool
+ws_defer_free (MOBJ obj, SM_CLASS * class_)
+{
+  WS_DEFERRED_FREE *node;
+
+  if (!ws_Defer_free)
+    {
+      return false;
+    }
+
+  node = (WS_DEFERRED_FREE *) malloc (sizeof (WS_DEFERRED_FREE));
+  if (node == NULL)
+    {
+      /* free it now as before */
+      return false;
+    }
+
+  node->obj = obj;
+  node->class_ = class_;
+  if (class_ != NULL)
+    {
+      node->next = ws_Deferred_instances;
+      ws_Deferred_instances = node;
+    }
+  else
+    {
+      node->next = ws_Deferred_classes;
+      ws_Deferred_classes = node;
+    }
+
+  return true;
+}
+
+/*
+ * ws_free_deferred_instances - Free the deferred instances of a class.
+ *    return: void
+ *    class_(in): class of the instances to free, NULL for all instances
+ */
+static void
+ws_free_deferred_instances (SM_CLASS * class_)
+{
+  WS_DEFERRED_FREE **link = &ws_Deferred_instances;
+  WS_DEFERRED_FREE *node;
+
+  while ((node = *link) != NULL)
+    {
+      if (class_ == NULL || node->class_ == class_)
+	{
+	  *link = node->next;
+	  obj_free_memory (node->class_, node->obj);
+	  free_and_init (node);
+	}
+      else
+	{
+	  link = &node->next;
+	}
+    }
+}
+
+/*
+ * ws_free_instance_memory - Free or defer the memory of a decached instance.
+ *    return: void
+ *    class_(in): class of the instance
+ *    obj(in): memory representation of the instance
+ */
+static void
+ws_free_instance_memory (SM_CLASS * class_, MOBJ obj)
+{
+  if (!ws_defer_free (obj, class_))
+    {
+      obj_free_memory (class_, obj);
+    }
+}
+
+/*
+ * ws_free_class_memory - Free or defer the memory of a decached class.
+ *    return: void
+ *    class_(in): class structure
+ */
+static void
+ws_free_class_memory (SM_CLASS * class_)
+{
+  if (ws_defer_free ((MOBJ) class_, NULL))
+    {
+      return;
+    }
+
+  /* deferred instances of this class need it to be freed */
+  ws_free_deferred_instances (class_);
+  classobj_free_class (class_);
+}
+
+/*
+ * ws_set_defer_free - Turn on or off the deferred free of decached objects.
+ *    return: void
+ *    defer(in): true to keep the memory of decached objects until ws_free_deferred_objects ()
+ */
+void
+ws_set_defer_free (bool defer)
+{
+  ws_Defer_free = defer;
+}
+
+/*
+ * ws_free_deferred_objects - Free the objects kept by the deferred free.
+ *    return: void
+ *
+ * Note: Must be called where no call chain holds a pointer into the workspace objects.
+ */
+static void
+ws_free_deferred_objects (void)
+{
+  WS_DEFERRED_FREE *node;
+
+  /* instances first, they need their class to be freed */
+  ws_free_deferred_instances (NULL);
+
+  while ((node = ws_Deferred_classes) != NULL)
+    {
+      ws_Deferred_classes = node->next;
+      classobj_free_class ((SM_CLASS *) node->obj);
+      free_and_init (node);
+    }
 }
 
 /*

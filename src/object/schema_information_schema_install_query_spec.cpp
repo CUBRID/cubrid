@@ -16,101 +16,19 @@
  *
  */
 
-/*
- * Please follow the rules below when writing query specifications for information schema views
- *
- *  1. First indent 1 tab, then 2 spaces.
- *     - The CASE statement indents 2 spaces until the END.
- *  2. All lines do not start with a space.
- *  3. All lines end with a space. However, the following case does not end with a space.
- *     - If the current line ends with "(", it ends without a space.
- *     - If the next line starts with ")", the current line ends without a space.
- *  4. Add a space before "(" and after ")", "{" and "}". Remove spaces after "(" and before ")".
- *  5. Add a space before and after "+" and "=" operators.
- *  6. Change the line.
- *     - In the SELECT, FROM, WHERE, and ORDER BY clauses, change the line.
- *     - After the SELECT, FROM, WHERE, and ORDER BY keywords, change the line.
- *     - In the AND and OR clauses, change the line.
- *     - In more than one TABLE expression, change the line.
- *  7. Do not change the line.
- *     - If the expression length is less than 120 characters, write it on one line.
- *     - In the CASE statement, write the WHEN and THEN clauses on one line.
- *     - In the FROM clause, write a TABLE expression and related tables on one line.
- *  8. In the SELECT and FROM clauses, use the AS keyword before alias.
- *  9. If the CAST function is used, write a comment about the data type being changed.
- * 10. If column are compared without changing in the CASE statement, write the column name after the CASE keyword.
- * 11. If %s (Format Specifier) is used in the FROM clause, write a comment about the value to be used.
- * 12. Because path expression cannot be used in ANSI style, write a join condition in the WHERE clause.
- */
+#include "schema_information_schema_install.hpp"
 
 #include "class_object.h"
 #include "dbtype_def.h"
 #include "schema_system_catalog_constants.h"
 #include "authenticate.h"
+#include "schema_system_metadata_query_spec.hpp"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
 #include "tde.h"
 #include "trigger_manager.h"
 
 #include <cstdio>
-
-/* ============================================================================= */
-/* Authorization check macros */
-/* ============================================================================= */
-
-/* ----------------------------------------------------------------------------- */
-/* Building blocks (used internally by other macros) */
-/* ----------------------------------------------------------------------------- */
-
-#define CURRENT_USER_GROUPS_SUBQUERY \
-  "SELECT SET {CURRENT_USER} + COALESCE (SUM (SET {[grp].[g].[name]}), SET {}) " \
-  "FROM [" AU_USER_CLASS_NAME "] AS [usr], TABLE ([usr].[groups]) AS [grp] ([g]) " \
-  "WHERE [usr].[name] = CURRENT_USER"
-
-#define AUTH_CHECK_DBA \
-  "{'DBA'} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")"
-
-#define AUTH_CHECK_OWNER(owner_name_expr) \
-  "{" owner_name_expr "} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")"
-
-#define AUTH_CHECK_GRANT(object_of_expr, auth_type) \
-  "{" object_of_expr "} SUBSETEQ (" \
-    "SELECT SUM (SET {[auth].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
-    "WHERE {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
-    "AND [auth].[auth_type] = '" auth_type "'" \
-  ")"
-
-/* ----------------------------------------------------------------------------- */
-/* Composite macros (used in query specs) */
-/* ----------------------------------------------------------------------------- */
-
-#define AUTH_CHECK_OBJECT(owner_name_expr, object_of_expr, auth_type) \
-  "(" \
-    AUTH_CHECK_DBA " " \
-    "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_GRANT(object_of_expr, auth_type) \
-  ")"
-
-#define AUTH_CHECK_SCHEMA(user_name_expr) \
-  "(" \
-    AUTH_CHECK_DBA " " \
-    "OR " AUTH_CHECK_OWNER(user_name_expr) \
-  ")"
-
-#define AUTH_CHECK_PRIVILEGE(owner_name_expr, grantee_name_expr, grantor_name_expr) \
-  "(" \
-    "{'DBA', " owner_name_expr ", " grantee_name_expr ", " grantor_name_expr "} * (" \
-      CURRENT_USER_GROUPS_SUBQUERY \
-    ") SETNEQ {}" \
-  ")"
-
-#define AUTH_CHECK_SYNONYM(is_public_expr, owner_name_expr) \
-  "(" \
-    AUTH_CHECK_DBA " " \
-    "OR " is_public_expr " = 1 " \
-    "OR (" is_public_expr " = 0 AND " AUTH_CHECK_OWNER(owner_name_expr) ")" \
-  ")"
-
 
 /* CUBRID does not currently support column privilege.
  * This view returns empty results until column privilege support is implemented.
@@ -256,7 +174,7 @@ sm_define_view_columns_spec (void)
       ") AS [key_info] "
         "ON [key_info].[class_of] = [cls] AND [key_info].[key_attr_name] = [attr].[attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
+      AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
     DB_TYPE_STRING, DB_TYPE_CHAR,
     DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
@@ -362,7 +280,7 @@ sm_define_view_foreign_servers_spec (void)
       /* CT_SERVER_NAME */
       "[%s] AS [srv] "
     "WHERE "
-      "(" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[srv].[owner].[name]") ")",
+      AUTH_CHECK_USER ("[srv].[owner].[name]"),
     CT_SERVER_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
@@ -404,7 +322,7 @@ sm_define_view_key_column_usage_spec (void)
       "LEFT OUTER JOIN [%s] AS [ref_key] "
         "ON [ref_key].[index_of] = [ref_idx] AND [ref_key].[key_order] = [idx_key].[key_order] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
+      AUTH_CHECK_PRIVILEGE ("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
@@ -458,7 +376,7 @@ sm_define_view_parameters_spec (void)
       /* CT_DATATYPE_NAME — LEFT JOIN so OUT CURSOR (type_id=28, not in _db_data_type) rows survive */
       "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "EXECUTE") " "
+      AUTH_CHECK_PRIVILEGE ("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "EXECUTE") " "
       "AND [sp_args].[sp_of].[is_system_generated] = 0",
     SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT,
     DB_TYPE_RESULTSET,
@@ -511,7 +429,7 @@ sm_define_view_partitions_spec (void)
       "TABLE ([part_cls].[super_classes]) AS [t] ([super]), "
       "TABLE ([super].[partition]) AS [t2] ([part_info]) "
     "WHERE "
-      AUTH_CHECK_OBJECT("[super].[owner].[name]", "[super].[class_of]", "SELECT"),
+      AUTH_CHECK_PRIVILEGE ("[super].[owner].[name]", "[super].[class_of]", "SELECT"),
     DB_PARTITION_HASH,
     DB_PARTITION_RANGE,
     DB_PARTITION_LIST,
@@ -556,7 +474,7 @@ sm_define_view_referential_constraints_spec (void)
       "LEFT OUTER JOIN [%s] AS [ref_pk] "
         "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
     "WHERE "
-      AUTH_CHECK_OBJECT("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
+      AUTH_CHECK_PRIVILEGE ("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
       "AND [idx].[is_foreign_key] = 1",
     SM_FK_MATCH_NONE,
     SM_FK_MATCH_PARTIAL,
@@ -601,7 +519,7 @@ sm_define_view_routine_privileges_spec (void)
       /* CT_STORED_PROC_NAME */
       "INNER JOIN [%s] AS [sp] ON [sp] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_USER ("[sp].[owner].[name], [auth].[grantee].[name], [auth].[grantor].[name]") " "
       /* DB_OBJECT_PROCEDURE */
       "AND [auth].[object_type] = %d",
     CT_CLASSAUTH_NAME,
@@ -650,7 +568,7 @@ sm_define_view_routines_spec (void)
       "'EXTERNAL' AS [routine_body], "
       /* SP_LANG_PLCSQL */
       "IF ([sp].[lang] = %d "
-          "AND (" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[sp].[owner].[name]") "), "
+          "AND " AUTH_CHECK_USER ("[sp].[owner].[name]") ", "
           "[sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
       "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
@@ -688,7 +606,7 @@ sm_define_view_routines_spec (void)
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_OBJECT("[sp].[owner].[name]", "[sp]", "EXECUTE") " "
+      "AND " AUTH_CHECK_PRIVILEGE ("[sp].[owner].[name]", "[sp]", "EXECUTE") " "
       "AND [sp].[is_system_generated] = 0",
     SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
     SP_TYPE_FUNCTION, DB_TYPE_RESULTSET,
@@ -743,7 +661,7 @@ sm_define_view_schemata_spec (void)
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_SCHEMA("[usr].[name]"),
+      "AND " AUTH_CHECK_USER ("[usr].[name]"),
     AU_USER_CLASS_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
@@ -841,7 +759,7 @@ sm_define_view_statistics_spec (void)
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
+      AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_CLASS_NAME,
@@ -874,7 +792,8 @@ sm_define_view_synonyms_spec (void)
       /* CT_SYNONYM_NAME */
       "[%s] AS [syn] "
     "WHERE "
-      AUTH_CHECK_SYNONYM("[syn].[is_public]", "[syn].[owner].[name]"),
+      "[syn].[is_public] = 1 "
+      "OR " AUTH_CHECK_USER ("[syn].[owner].[name]"),
     CT_SYNONYM_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
@@ -909,7 +828,7 @@ sm_define_view_table_constraints_spec (void)
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
+      AUTH_CHECK_PRIVILEGE ("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]", "SELECT") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
   // *INDENT-ON*
@@ -939,7 +858,7 @@ sm_define_view_table_privileges_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[cls].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_USER ("[cls].[owner].[name], [auth].[grantee].[name], [auth].[grantor].[name]") " "
       /* DB_OBJECT_CLASS */
       "AND [auth].[object_type] = %d",
     CT_CLASSAUTH_NAME,
@@ -1005,7 +924,7 @@ sm_define_view_tables_spec (void)
       "LEFT OUTER JOIN [%s] AS [serial] "
         "ON [serial].[class_name] = [cls].[class_name] AND [serial].[owner] = [cls].[owner] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
+      AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
@@ -1070,7 +989,7 @@ sm_define_view_triggers_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[tr].[owner].[name]", "[cls].[class_of]", "SELECT") " "
+      AUTH_CHECK_PRIVILEGE ("[tr].[owner].[name]", "[cls].[class_of]", "SELECT") " "
       /* DML row/statement triggers per spec */
       "AND [tr].[event] BETWEEN %d AND %d",
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
@@ -1116,7 +1035,7 @@ sm_define_view_views_spec (void)
       /* CT_QUERYSPEC_NAME */
       "[%s] AS [q] "
     "WHERE "
-      AUTH_CHECK_OBJECT("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]", "SELECT"),
+      AUTH_CHECK_PRIVILEGE ("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]", "SELECT"),
     SM_CLASSFLAG_WITHCHECKOPTION,
     SM_CLASSFLAG_LOCALCHECKOPTION,
     CT_QUERYSPEC_NAME);
