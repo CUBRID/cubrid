@@ -2332,33 +2332,6 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
     }
 }
 
-/*
- * is_argument_wrapped_with_cast_op () - check if regu_var is a cast
- *					 expression
- *   return: true/false
- *   regu_list(in/out): Regulator Variable list
- *   vd(in): Value Descriptor
- *   class_oid(in): Class Identifier
- *   obj_oid(in): Object Identifier
- *   tplrec(in): tuple slot (record + layout descriptor)
- *   peek(int):
- */
-bool
-is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
-{
-  if (regu_var == NULL)
-    {
-      return false;
-    }
-
-  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
-    {
-      return (regu_var->value.arithptr->opcode == T_CAST || regu_var->value.arithptr->opcode == T_CAST_WRAP);
-    }
-
-  return false;
-}
-
 /* TODO: next functions are duplicate from string op func that get as argument PT_OP_TYPE. Please try to merge
  *       PT_OP_TYPE and OPERATOR_TYPE.
  */
