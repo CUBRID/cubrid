@@ -1318,7 +1318,7 @@ typedef UINT64 PT_HINT_ENUM;
 							 * different histogram territory (per-statement form of
 							 * plan_cache_bind_sensitivity) */
 #define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
-#define  PT_HINT_NO_SUBQUERY_HASH		(1ULL << 48)	/* don't hash the subquery's list for IN lookups */
+#define  PT_HINT_NO_HASH_LOOKUP			(1ULL << 48)	/* don't hash the subquery's list for IN lookups */
 
 /* Codes for error messages */
 typedef enum

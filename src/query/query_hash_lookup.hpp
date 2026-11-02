@@ -38,6 +38,18 @@ struct xasl_node;
 
 typedef struct hash_lookup HASH_LOOKUP;
 
+/* the trace of a subquery's hash (query_dump.c), kept with the hash as the subquery cache keeps its own */
+typedef struct hash_lookup_stats HASH_LOOKUP_STATS;
+struct hash_lookup_stats
+{
+  UINT64 builds;		/* tables built over the subquery's list */
+  UINT64 lookups;		/* the lookups those tables answered */
+  int method;			/* the tables' HASH_METHOD (query_hash_scan.h) */
+};
+
+extern const HASH_LOOKUP_STATS *hash_lookup_get_stats (const HASH_LOOKUP *hash);
+extern void hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src);
+
 /* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
 extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
 extern void hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl);

@@ -48,6 +48,7 @@
 #include "query_hash_scan.h"
 #include "query_manager.h"
 #include "system_parameter.h"
+#include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_iteration.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -77,6 +78,7 @@ struct hash_lookup
   QFILE_LIST_SCAN_ID list_scan;	/* a scan of the list: a HYBRID table's tuples are read by their positions through it */
   QFILE_TUPLE_RECORD tuple_record;	/* the tuple the last hash_lookup_next found */
   DB_VALUE value;		/* that tuple's list value */
+  HASH_LOOKUP_STATS stats;	/* kept until the subquery's XASL is cleared, past hash_lookup_destroy_tree */
 };
 
 static bool hash_lookup_type (DB_TYPE type);
@@ -241,16 +243,18 @@ hash_lookup_create (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, bool owns_
 }
 
 /*
- * hash_lookup_destroy () - frees a hash hash_lookup_create made, with its table if it owns it (qexec_clear_xasl)
+ * hash_lookup_release () - frees what the hash holds, with its table if it owns it, and keeps the hash with its stats;
+ *			    a later lookup builds the table again
  */
-void
-hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
+static void
+hash_lookup_release (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 {
   HL_HEAPID old_heap = db_change_private_heap (thread_p, 0);
 
   if (hash->scan_open)
     {
       qfile_close_scan (thread_p, &hash->list_scan);
+      hash->scan_open = false;
     }
   pr_clear_value (&hash->value);
   if (hash->owns_table && hash->table != NULL)
@@ -258,13 +262,28 @@ hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
       qdata_hscan_destroy (thread_p, &hash->table->hash_scan);
       db_private_free (thread_p, hash->table);
     }
+  hash->table = NULL;
+  (void) db_change_private_heap (thread_p, old_heap);
+}
+
+/*
+ * hash_lookup_destroy () - frees a hash hash_lookup_create made, with its table if it owns it (qexec_clear_xasl)
+ */
+void
+hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
+{
+  HL_HEAPID old_heap;
+
+  hash_lookup_release (thread_p, hash);
+  old_heap = db_change_private_heap (thread_p, 0);
   db_private_free (thread_p, hash);
   (void) db_change_private_heap (thread_p, old_heap);
 }
 
 /*
- * hash_lookup_destroy_tree () - frees the hashes in an XASL tree: a parallel aptr worker frees those of the tree it ran
- *			       as it clears the tree (qexec_clear_xasl_for_parallel_aptr does not)
+ * hash_lookup_destroy_tree () - frees the tables of the hashes in an XASL tree: a parallel aptr worker frees those of
+ *			       the tree it ran as it clears the tree (qexec_clear_xasl_for_parallel_aptr does not). The
+ *			       hashes stay with their stats for the trace, and qexec_clear_xasl frees them.
  */
 void
 hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
@@ -273,11 +292,54 @@ hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
     if (node->hash_lookup != NULL)
       {
-	hash_lookup_destroy (thread_p, node->hash_lookup);
-	node->hash_lookup = NULL;
+	hash_lookup_release (thread_p, node->hash_lookup);
       }
     return true;
   }, true);
+}
+
+/*
+ * hash_lookup_get_stats () - the hash's stats for the trace
+ */
+const HASH_LOOKUP_STATS *
+hash_lookup_get_stats (const HASH_LOOKUP *hash)
+{
+  return &hash->stats;
+}
+
+/*
+ * hash_lookup_merge_stats () - adds the stats of a PX scan worker's clone of a subquery to the leader's node
+ *				(xasl_merge_stats); the leader's node gets a hash for them if it has none
+ */
+void
+hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src)
+{
+  const HASH_LOOKUP_STATS *src_stats;
+  HASH_LOOKUP_STATS *dst_stats;
+
+  if (src->hash_lookup == NULL || src->hash_lookup->stats.builds + src->hash_lookup->stats.lookups == 0)
+    {
+      return;
+    }
+  if (dst->hash_lookup == NULL)
+    {
+      dst->hash_lookup = hash_lookup_create (thread_get_thread_entry_info (), NULL, true);
+      if (dst->hash_lookup == NULL)
+	{
+	  /* only the trace loses the stats */
+	  er_clear ();
+	  return;
+	}
+    }
+
+  src_stats = &src->hash_lookup->stats;
+  dst_stats = &dst->hash_lookup->stats;
+  dst_stats->builds += src_stats->builds;
+  dst_stats->lookups += src_stats->lookups;
+  if (src_stats->builds > 0)
+    {
+      dst_stats->method = src_stats->method;
+    }
 }
 
 /*
@@ -431,8 +493,8 @@ hash_lookup_new_table (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_I
     }
   if (error == NO_ERROR && !table->unusable)
     {
-      subquery->xasl_stats.hash_lookup_builds++;
-      subquery->xasl_stats.hash_lookup_method = table->hash_scan.hash_list_scan_type;
+      subquery->hash_lookup->stats.builds++;
+      subquery->hash_lookup->stats.method = table->hash_scan.hash_list_scan_type;
     }
   return error;
 }
@@ -516,6 +578,7 @@ hash_lookup_start (HASH_LOOKUP *hash, const DB_VALUE *item)
     }
   qdata_hscan_set_key (&hash->hash_scan, hash_key);
   qfile_slot_reset (&hash->tuple_record);
+  hash->stats.lookups++;
   return true;
 }
 

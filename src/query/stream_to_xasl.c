@@ -5768,7 +5768,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
       && alsm_eval_term->elemset->xasl != NULL && alsm_eval_term->elemset->value.srlist_id != NULL)
     {
       XASL_NODE *subquery = alsm_eval_term->elemset->xasl;
-      if (subquery->hash_lookup_term == NULL && !XASL_IS_FLAGED (subquery, XASL_NO_SUBQUERY_HASH))
+      if (subquery->hash_lookup_term == NULL && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP))
 	{
 	  subquery->hash_lookup_term = alsm_eval_term;
 	}
@@ -5777,7 +5777,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
 	  /* a second term reads the list: a PX scan worker would read the leader's list through one term only
 	   * (hash_lookup_share), so the terms read the list as they did before the hash */
 	  subquery->hash_lookup_term = NULL;
-	  XASL_SET_FLAG (subquery, XASL_NO_SUBQUERY_HASH);
+	  XASL_SET_FLAG (subquery, XASL_NO_HASH_LOOKUP);
 	}
     }
 

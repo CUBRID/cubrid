@@ -46,6 +46,9 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "query_hash_lookup.hpp"
+#endif /* SERVER_MODE || SA_MODE */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3810,14 +3813,15 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
     }
 
-  if (xasl_p->xasl_stats.hash_lookup_builds > 0)
+  if (xasl_p->hash_lookup != NULL && hash_lookup_get_stats (xasl_p->hash_lookup)->builds > 0)
     {
+      const HASH_LOOKUP_STATS *hl_stats = hash_lookup_get_stats (xasl_p->hash_lookup);
+
       hash_lookup = trace_json_object ();
       trace_json_object_set_new (hash_lookup, "method",
-				 trace_json_string (qdump_hashjoin_type_string
-						    ((HASH_METHOD) xasl_p->xasl_stats.hash_lookup_method)));
-      trace_json_object_set_new (hash_lookup, "builds", trace_json_integer (xasl_p->xasl_stats.hash_lookup_builds));
-      trace_json_object_set_new (hash_lookup, "lookups", trace_json_integer (xasl_p->xasl_stats.hash_lookup_count));
+				 trace_json_string (qdump_hashjoin_type_string ((HASH_METHOD) hl_stats->method)));
+      trace_json_object_set_new (hash_lookup, "builds", trace_json_integer (hl_stats->builds));
+      trace_json_object_set_new (hash_lookup, "lookups", trace_json_integer (hl_stats->lookups));
       trace_json_object_set_new (proc, "HASH_LOOKUP", hash_lookup);
     }
 
@@ -4579,13 +4583,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
     }
 
-  if (xasl_p->xasl_stats.hash_lookup_builds > 0)
+  if (xasl_p->hash_lookup != NULL && hash_lookup_get_stats (xasl_p->hash_lookup)->builds > 0)
     {
+      const HASH_LOOKUP_STATS *hl_stats = hash_lookup_get_stats (xasl_p->hash_lookup);
+
       fprintf (fp, "%*c", indent, ' ');
       fprintf (fp, "HASH_LOOKUP (method: %s, builds: %llu, lookups: %llu)\n",
-	       qdump_hashjoin_type_string ((HASH_METHOD) xasl_p->xasl_stats.hash_lookup_method),
-	       (unsigned long long) xasl_p->xasl_stats.hash_lookup_builds,
-	       (unsigned long long) xasl_p->xasl_stats.hash_lookup_count);
+	       qdump_hashjoin_type_string ((HASH_METHOD) hl_stats->method), (unsigned long long) hl_stats->builds,
+	       (unsigned long long) hl_stats->lookups);
     }
 
   astats = xasl_p->analytic_stats;

@@ -22,6 +22,7 @@
 #include "error_manager.h"
 #include "tsc_timer.h"
 #include "memoize.hpp"
+#include "query_hash_lookup.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -101,9 +102,6 @@ extern "C" {
       dst_node->xasl_stats.fetch_time += src_node->xasl_stats.fetch_time;
       dst_node->xasl_stats.ioreads += src_node->xasl_stats.ioreads;
       dst_node->xasl_stats.fetches += src_node->xasl_stats.fetches;
-      dst_node->xasl_stats.hash_lookup_builds += src_node->xasl_stats.hash_lookup_builds;
-      dst_node->xasl_stats.hash_lookup_count += src_node->xasl_stats.hash_lookup_count;
-      dst_node->xasl_stats.hash_lookup_method = (src_node->xasl_stats.hash_lookup_method != HASH_METH_NOT_USE) ? src_node->xasl_stats.hash_lookup_method : dst_node->xasl_stats.hash_lookup_method;
 
       /* HS_NONE < HS_ACCEPT_ALL < HS_REJECT_ALL: one clone that gave up hashing keeps the GROUP BY partial */
       if (src_node->groupby_stats.groupby_hash > dst_node->groupby_stats.groupby_hash)
@@ -203,6 +201,8 @@ extern "C" {
 	  dst_node->sq_cache->size_max += src_node->sq_cache->size_max;
 	  dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
 	}
+
+      hash_lookup_merge_stats (dst_node, src_node);
 
       if (dst_node->memoize_storage != nullptr && src_node->memoize_storage != nullptr)
 	{

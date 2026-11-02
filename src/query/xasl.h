@@ -585,7 +585,7 @@ struct cte_proc_node
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
-#define XASL_NO_SUBQUERY_HASH		(0x1 << 29)	/* IN lookups read this subquery's list without a hash */
+#define XASL_NO_HASH_LOOKUP		(0x1 << 29)	/* IN lookups read this subquery's list without a hash */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
@@ -1192,9 +1192,6 @@ struct xasl_stat
   UINT64 fetches;
   UINT64 ioreads;
   UINT64 fetch_time;
-  UINT64 hash_lookup_builds;	/* tables built over this subquery's list for its IN lookups (query_hash_lookup.cpp) */
-  UINT64 hash_lookup_count;	/* the lookups those tables answered */
-  int hash_lookup_method;	/* the tables' HASH_METHOD (query_hash_scan.h) */
 };
 
 struct func_stat

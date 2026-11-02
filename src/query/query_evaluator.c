@@ -1012,16 +1012,17 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 }
 
 /*
- * eval_list_lookup_hashed () - a list a hash may answer the R_EQ lookups of: a correlated subquery executes again for
- *				each outer row, so its list is seldom looked up twice, and NO_SUBQUERY_HASH turns the hash
- *				off. A PX hash join worker evaluates no term with a subquery (plan_generation.c keeps it
- *				out of the join's predicates)
+ * eval_is_hash_candidate () - the subquery's list may get a hash for its R_EQ lookups; hash_lookup_comparable then
+ *			       checks the comparison's types and collation. A correlated subquery executes again for
+ *			       each outer row, so its list is seldom looked up twice, and NO_HASH_LOOKUP turns the hash
+ *			       off. A PX hash join worker evaluates no term with a subquery (plan_generation.c keeps it
+ *			       out of the join's predicates)
  */
 static bool
-eval_list_lookup_hashed (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
+eval_is_hash_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
 {
   return subquery != NULL && XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL)
-    && !XASL_IS_FLAGED (subquery, XASL_NO_SUBQUERY_HASH) && list_id->type_list.type_cnt == 1;
+    && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP) && list_id->type_list.type_cnt == 1;
 }
 
 /*
@@ -1045,7 +1046,7 @@ eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_des
     {
       return NO_ERROR;
     }
-  if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (subquery, XASL_NO_SUBQUERY_HASH))
+  if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP))
     {
       return NO_ERROR;
     }
@@ -1057,7 +1058,7 @@ eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_des
       return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
   list_id = et_alsm->elemset->value.srlist_id->list_id;
-  if (list_id->tuple_cnt == 0 || !eval_list_lookup_hashed (subquery, list_id))
+  if (list_id->tuple_cnt == 0 || !eval_is_hash_candidate (subquery, list_id))
     {
       return NO_ERROR;
     }
@@ -1079,7 +1080,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
   SCAN_CODE qp_scan;
   DB_LOGICAL res, t_res;
 
-  if (rel_operator != R_EQ || !eval_list_lookup_hashed (subquery, list_id))
+  if (rel_operator != R_EQ || !eval_is_hash_candidate (subquery, list_id))
     {
       return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
     }
@@ -1112,7 +1113,6 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
       return V_ERROR;
     }
 
-  subquery->xasl_stats.hash_lookup_count++;
 #if !defined (NDEBUG)
   /* the hash answers as reading the list does */
   assert (res == V_ERROR || res == eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd));
