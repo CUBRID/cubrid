@@ -1177,24 +1177,13 @@ histogram_key_kind_for_type (DB_TYPE type)
     }
 }
 
-void
-histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
+/* the equality estimate of one constant against a column whose histogram is already open in
+ * histogram_reader: histogram_get_equal_selectivity () past the blob parse, which is most of a
+ * probe's cost and is the same for every constant of the column */
+static void
+histogram_equal_selectivity_with_reader (hist::HistogramReader &histogram_reader, PT_NODE *lhs,
+    DB_VALUE *rhs_db_value, double *selectivity, bool *success)
 {
-  assert (selectivity != NULL);
-
-  if (rhs_db_value == NULL)
-    {
-      *success = false;
-      return;
-    }
-
-  hist::HistogramReader histogram_reader;
-  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
-    {
-      *success = false;
-      return;
-    }
-
   hist::histogram_key key;
   if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
@@ -1371,6 +1360,71 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
     }
   *success = true;
   return;
+}
+
+void
+histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
+{
+  assert (selectivity != NULL);
+
+  if (rhs_db_value == NULL)
+    {
+      *success = false;
+      return;
+    }
+
+  hist::HistogramReader histogram_reader;
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      *success = false;
+      return;
+    }
+
+  histogram_equal_selectivity_with_reader (histogram_reader, lhs, rhs_db_value, selectivity, success);
+}
+
+/*
+ * histogram_get_equal_selectivity_sum () - the sum of the equality estimates of many constants
+ *   against one column, each exactly as histogram_get_equal_selectivity () prices it
+ *   lhs (in)    : column node
+ *   values (in) : the constants; a NULL entry or a NULL value adds nothing
+ *   n (in)      : number of constants
+ *   sum (out)   : the sum
+ *   success (out): false when the column has no usable histogram or a constant cannot be priced
+ *
+ * The histogram is opened once for all of them: a row snapshot prices hundreds of keys of one
+ * join at a time (CBRD-27478), and a per-key probe would parse the blob again for each.
+ */
+void
+histogram_get_equal_selectivity_sum (PT_NODE *lhs, DB_VALUE **values, int n, double *sum, bool *success)
+{
+  hist::HistogramReader histogram_reader;
+  double one;
+
+  assert (sum != NULL && success != NULL);
+  *sum = 0.0;
+  *success = false;
+
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      return;
+    }
+
+  for (int i = 0; i < n; i++)
+    {
+      if (values[i] == NULL || DB_IS_NULL (values[i]))
+	{
+	  continue;
+	}
+      one = 0.0;
+      histogram_equal_selectivity_with_reader (histogram_reader, lhs, values[i], &one, success);
+      if (!*success)
+	{
+	  return;
+	}
+      *sum += one;
+    }
+  *success = true;
 }
 
 void

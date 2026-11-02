@@ -1318,6 +1318,9 @@ typedef UINT64 PT_HINT_ENUM;
 							 * different histogram territory (per-statement form of
 							 * plan_cache_bind_sensitivity) */
 #define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
+#define  PT_HINT_ROW_SNAPSHOT			(1ULL << 48)	/* read the rows a constant filter selects while planning,
+								 * even with row_snapshot_max_rows=0 (CBRD-27478) */
+#define  PT_HINT_NO_ROW_SNAPSHOT		(1ULL << 49)	/* do not read them (CBRD-27478) */
 
 /* Codes for error messages */
 typedef enum
