@@ -743,6 +743,9 @@ namespace parallel_query_execute
   }
 }
 
+/* The optimizer does not discount a correlated subquery, the recursive part of a CTE or a MERGE
+ * query, which this check and scan_check_parallel_scan_possible () keep serial; it repeats those
+ * conditions on the parse tree in qo_query_serial_level () (query_planner.c). Change both together. */
 extern int
 check_parallel_subquery_possible (XASL_NODE *xasl)
 {

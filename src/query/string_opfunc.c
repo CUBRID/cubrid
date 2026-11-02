@@ -5986,6 +5986,106 @@ db_string_fix_string_size (DB_VALUE * src_string)
 	implementation it will incorrectly process strings containing
 	character 1.
 */
+/*
+ * qstr_like_match () - LIKE without an ESCAPE over raw bytes: what db_string_like () decides for two strings of this
+ *			codeset and collation (the page batch's LIKE leaf runs it on record bytes)
+ *   return: V_TRUE, V_FALSE or V_ERROR
+ */
+int
+qstr_like_match (const char *tar, int tar_length, const char *pattern, int pattern_length, INTL_CODESET codeset,
+		 int coll_id)
+{
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+/* qstr_like_match_resolve ()'s instances: the lockstep matcher of the collation's kind without an escape, its
+ * answer read as qstr_eval_like () reads it (a decline goes to the generic loop through qstr_eval_like (), where
+ * the matcher declines again); the resolver returns one only under the conditions qstr_eval_like () dispatches
+ * on, so the two decide alike */
+static int
+qstr_like_match_utf8 (const char *tar, int tar_length, const char *pattern, int pattern_length, INTL_CODESET codeset,
+		      int coll_id)
+{
+  int match = qstr_like_match_lockstep_utf8 (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+					     REINTERPRET_CAST (const unsigned char *, pattern), pattern_length, -1, 0);
+
+  if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+    {
+      return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+    }
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+static int
+qstr_like_match_sb (const char *tar, int tar_length, const char *pattern, int pattern_length, INTL_CODESET codeset,
+		    int coll_id)
+{
+  int match = qstr_like_match_lockstep_sb (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+					   REINTERPRET_CAST (const unsigned char *, pattern), pattern_length, -1, 0);
+
+  if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+    {
+      return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+    }
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+static int
+qstr_like_match_binary (const char *tar, int tar_length, const char *pattern, int pattern_length,
+			INTL_CODESET codeset, int coll_id)
+{
+  int match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+					       REINTERPRET_CAST (const unsigned char *, pattern), pattern_length, -1,
+					       0);
+
+  if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+    {
+      return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+    }
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+/*
+ * qstr_like_match_resolve () - the matcher qstr_like_match () runs for a (codeset, collation), chosen once
+ *   return: the matcher (never NULL)
+ *   codeset(in): the strings' codeset
+ *   coll_id(in): their collation
+ *
+ * The same dispatch qstr_eval_like () makes without an escape: the collation's lockstep kind, cross-checked
+ * against the codeset, picks the instance; any other collation gets qstr_like_match ().
+ */
+QSTR_LIKE_MATCH_FN
+qstr_like_match_resolve (INTL_CODESET codeset, int coll_id)
+{
+  const LANG_COLLATION *lang_coll = lang_get_collation (coll_id);
+
+  switch (lang_coll->byte_lockstep_kind)
+    {
+    case LANG_LOCKSTEP_UTF8:
+      if (codeset == INTL_CODESET_UTF8)
+	{
+	  return qstr_like_match_utf8;
+	}
+      break;
+    case LANG_LOCKSTEP_SB:
+      /* without an escape there is no escape byte to keep on the generic loop */
+      if (codeset == INTL_CODESET_ISO88591)
+	{
+	  return qstr_like_match_sb;
+	}
+      break;
+    case LANG_LOCKSTEP_BINARY:
+      if (codeset == INTL_CODESET_BINARY)
+	{
+	  return qstr_like_match_binary;
+	}
+      break;
+    default:
+      break;
+    }
+  return qstr_like_match;
+}
+
 static int
 qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_length, const char *escape,
 		INTL_CODESET codeset, int coll_id)
@@ -7539,34 +7639,13 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   /* the compiler types a string column or expression VARCHAR (the manual's "date/time string" row), and
    * the zone such a string carries goes into the result string. A string literal, bind or session variable keeps the
-   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and resolve_domains
-   * types a bind or a session variable's value into the domain it passes. */
+   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and XASL generation
+   * types a bind or a session variable's read by its value. */
   zone_to_string = domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && result_type == DB_TYPE_DATETIMETZ;
   if (domain != NULL && !zone_to_string)
     {
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
-
-#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
-  {
-    /* debug cross-check: domain_resolve (DOMAIN_CTX_FUNC_ARG) answers the result type - from the value's type,
-     * but for a string the compiler typed VARCHAR whose zone goes into the result string */
-    DB_TYPE left_class = !zone_to_string ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
-      : DB_VALUE_DOMAIN_TYPE (left);
-    DOMAIN_OPERAND operands[2] = {
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, false}
-      ,
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, false}
-    };
-    RESOLVED_DOMAIN resolved;
-    bool needs_late_bind;
-    int cross_check_error =
-      domain_resolve (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, operands, 2, NULL, &resolved, &needs_late_bind);
-    assert (cross_check_error == NO_ERROR && !needs_late_bind);
-    assert (cross_check_error != NO_ERROR
-	    || TP_DOMAIN_TYPE (resolved.domain) == (zone_to_string ? DB_TYPE_VARCHAR : result_type));
-  }
-#endif
 
   switch (result_type)
     {
@@ -10780,6 +10859,8 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 	DB_DATE date;
 
 	dt_tz_p = &dt;
+	/* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+	 * (as STR_TO_DATE does); its result type is fixed */
 	if (type != DB_TYPE_DATETIME && type != DB_TYPE_DATE)
 	  {
 	    tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
@@ -11962,6 +12043,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 
       db_make_null (&new_time_value);
+      /* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+       * (as STR_TO_DATE does); its result type is fixed */
       TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -12614,6 +12697,18 @@ int
 db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
 	    DB_VALUE * result_str, const TP_DOMAIN * domain)
 {
+  return db_to_char_with_converter (src_value, format_or_length, lang_str, result_str, domain, DB_TYPE_NULL, NULL);
+}
+
+/*
+ * db_to_char_with_converter () - db_to_char with CBRD-27583: the converter unpack planned for a string
+ *   src_value's type into domain (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
+ */
+int
+db_to_char_with_converter (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
+			   DB_VALUE * result_str, const TP_DOMAIN * domain, DB_TYPE src_conv_type,
+			   TP_VALUE_CONVERTER src_conv)
+{
   int error_status = NO_ERROR;
   DB_TYPE type;
 
@@ -12639,7 +12734,13 @@ db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const
 	}
       else
 	{
-	  error_status = db_value_coerce (src_value, result_str, domain);
+	  /* db_value_coerce's cast */
+	  const TP_DOMAIN_STATUS status =
+	    tp_value_cast_with_converter (src_value, result_str, domain, true, src_conv_type, src_conv);
+	  if (status != DOMAIN_COMPATIBLE)
+	    {
+	      error_status = tp_domain_status_er_set (status, ARG_FILE_LINE, src_value, domain);
+	    }
 	}
 
       return error_status;
@@ -21826,6 +21927,8 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
       {
 	bool check_has_date = false;
 
+	/* CBRD-27583 exception, the data carries the type (2-7): a string's content, which the function parses
+	 * (as STR_TO_DATE does); its result type is fixed */
 	if (dateformat == false)
 	  {
 	    if (db_check_datetime_format (value_ptr))
@@ -22671,25 +22774,6 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	  goto error;
 	}
     }
-
-#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
-  {
-    /* debug cross-check: resolve_domains' format type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
-    DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
-    DOMAIN_OPERAND operands[2] = {
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}
-      ,
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, false}
-    };
-    RESOLVED_DOMAIN resolved;
-    bool needs_late_bind;
-    int cross_check_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, operands, 2, domain, &resolved,
-					    &needs_late_bind);
-    assert (domain != NULL || format_class == res_type);
-    assert (cross_check_error == NO_ERROR && !needs_late_bind);
-    assert (cross_check_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == res_type);
-  }
-#endif
 
   /*
    * 1. Get information according to format specifiers
@@ -26283,6 +26367,8 @@ convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, con
  *  returns: error code or NO_ERROR
  *   param(in): parameter to turn to hex
  *   result(out): varchar db_value with hex representation
+ *   param_conv_type(in), param_conv(in): CBRD-27583: the converter unpack planned for param's type into the
+ *     type its branch casts it to (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note:
  *  If param is a generic string, the hex representation will be the
@@ -26292,7 +26378,7 @@ convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, con
  *  capacity, the return value is 'FFFFFFFFFFFFFFFF'.
  */
 int
-db_hex (const DB_VALUE * param, DB_VALUE * result)
+db_hex (const DB_VALUE * param, DB_VALUE * result, DB_TYPE param_conv_type, TP_VALUE_CONVERTER param_conv)
 {
   /* String length limits for numeric values of param. When param is numeric, it will be cast to BIGINT db type and
    * then internally to UINT64. hex_lenght_limits[i] is the upper limit of the closed set of integers that can be
@@ -26391,7 +26477,7 @@ coerce_pos:
       param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* don't mind error code here, we need to know if param is out of range */
-      (void) tp_value_auto_cast (param, &param_db_bigint, domain);
+      (void) tp_value_auto_cast_with_converter (param, &param_db_bigint, domain, param_conv_type, param_conv);
       if (DB_IS_NULL (&param_db_bigint))
 	{
 	  /* param is out of range, set it to max */
@@ -26433,7 +26519,8 @@ coerce_pos:
     {
       db_make_null (&tval);
       ptval = &tval;
-      if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast_with_converter (param, &tval, &tp_Char_domain, false, param_conv_type, param_conv)
+	  != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
 	  goto error;
@@ -26712,13 +26799,15 @@ uuidv4_generate_bytes (unsigned char *out_bytes)
  *  returns: error code or NO_ERROR
  *   param(in): string
  *   result(out): smallint db_value of ASCII code
+ *   param_conv_type(in), param_conv(in): CBRD-27583: the converter unpack planned for a number's or a date's
+ *     type into CHAR (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note:
  *  If param is a zero-length string, result should be zero.
  *  If param is DB null, result should be DB null
  */
 int
-db_ascii (const DB_VALUE * param, DB_VALUE * result)
+db_ascii (const DB_VALUE * param, DB_VALUE * result, DB_TYPE param_conv_type, TP_VALUE_CONVERTER param_conv)
 {
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
@@ -26790,7 +26879,8 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       DB_VALUE new_value;
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
       db_make_null (&new_value);
-      TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
+      TP_DOMAIN_STATUS status =
+	tp_value_auto_cast_with_converter (param, &new_value, new_domain, param_conv_type, param_conv);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
@@ -27351,12 +27441,15 @@ init_builtin_calendar_names (LANG_LOCALE_DATA * lld)
  * src (in)	    : source value
  * result (in/out)  : enumeration value
  * enum_domain (in) : enumeration domain
+ * src_conv_type (in), src_conv (in): CBRD-27583: the converter unpack planned for src's type into enum_domain
+ *				       (stx_arith_cast_target), DB_TYPE_NULL and NULL for none
  *
  * Note: The result value will hold the index of the enum if src has a
  * corespondent in the enumeration values or 0 otherwise.
  */
 int
-db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain)
+db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain,
+			       DB_TYPE src_conv_type, TP_VALUE_CONVERTER src_conv)
 {
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
@@ -27369,7 +27462,8 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP
 
   db_make_null (result);
 
-  status = tp_value_cast (src, result, enum_domain, false);
+  /* a value out of the enumeration is its overflow value, no error */
+  status = tp_value_cast_with_converter (src, result, enum_domain, false, src_conv_type, src_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       if (status == DOMAIN_ERROR)

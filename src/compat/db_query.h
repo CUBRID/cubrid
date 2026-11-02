@@ -155,7 +155,13 @@ extern "C"
     DB_QUERY_TYPE *columns;	/* columns */
     CUBRID_STMT_TYPE stmt_type;	/* statement type */
     DB_VALUE_ARRAY host_variables;	/* statement host variables */
-    TP_DOMAIN **host_var_expected_domains;
+    TP_DOMAIN **host_var_expected_domains;	/* the user positions' and (CBRD-27583) the derived positions' */
+    int *host_var_derived_from;	/* CBRD-27583: [host_variables.size] a derived position's user position, else -1 */
+    bool *host_var_derived_pads;	/* CBRD-27583: [host_variables.size] true at a derived position
+					 * that reads its user position's value padded to the CHAR column it
+					 * is compared with */
+    int host_var_derived_count;	/* CBRD-27583: how many of auto_param_count are derived positions */
+    int *host_var_format_classes;	/* CBRD-27583: [user positions] each one's PT_HOST_VAR_CLASS */
     int auto_param_count;	/* number of auto parametrized values */
     int recompile;		/* statement should be recompiled */
     int do_cache;		/* statement uses result cache */

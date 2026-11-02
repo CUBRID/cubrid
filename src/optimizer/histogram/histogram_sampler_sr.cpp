@@ -782,9 +782,7 @@ namespace
     int error = NO_ERROR;
     bool scancache_inited = false;
     bool attrinfo_inited = false;
-    PGBUF_WATCHER old_pw;
 
-    PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     *total_rows = 0;
     *null_rows = 0;
 
@@ -828,9 +826,15 @@ namespace
 
 	/* fix the page safely + confirm it is a heap data page before scanning (see the multi-column
 	 * variant): a bitmap page may have been deallocated since the snapshot or not be a heap page */
+	/* release the current page first, as input_handler_heap::get_next_vpid_with_fix () does: holding it while
+	 * waiting for the next bitmap page deadlocks with vacuum deallocating an empty page */
 	if (scan_cache.page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher, &old_pw);
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, scan_cache.page_watcher.pgptr);
+	      }
+	    pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
 	  }
 	fix_err = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 				     &scan_cache.page_watcher);
@@ -843,14 +847,6 @@ namespace
 	  }
 	if (scan_cache.page_watcher.pgptr == NULL)
 	  {
-	    if (old_pw.pgptr != NULL)
-	      {
-		if (part.should_demote ())
-		  {
-		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-		  }
-		pgbuf_ordered_unfix (thread_p, &old_pw);
-	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
 	      {
 		error = fix_err;
@@ -858,14 +854,6 @@ namespace
 	      }
 	    er_clear ();
 	    continue;
-	  }
-	if (old_pw.pgptr != NULL)
-	  {
-	    if (part.should_demote ())
-	      {
-		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	      }
-	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
 	  {
@@ -923,11 +911,6 @@ namespace
     error = NO_ERROR;
 
 cleanup:
-    if (old_pw.pgptr != NULL)
-      {
-	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	pgbuf_ordered_unfix (thread_p, &old_pw);
-      }
     if (attrinfo_inited)
       {
 	heap_attrinfo_end (thread_p, &attr_info);
@@ -1303,9 +1286,7 @@ cleanup:
     bool scancache_inited = false;
     bool attrinfo_inited = false;
     VPID vpid;
-    PGBUF_WATCHER old_pw;
 
-    PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     *total_rows = 0;
 
     error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
@@ -1348,9 +1329,15 @@ cleanup:
 	/* Fix the page safely and confirm it is a heap data page before scanning it: a page in the
 	 * ftab bitmap may have been deallocated since the snapshot, or not be a heap page. Feeding
 	 * such a page to heap_next_1page trips an spage assertion. Mirrors input_handler_heap. */
+	/* release the current page first, as input_handler_heap::get_next_vpid_with_fix () does: holding it while
+	 * waiting for the next bitmap page deadlocks with vacuum deallocating an empty page */
 	if (scan_cache.page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher, &old_pw);
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, scan_cache.page_watcher.pgptr);
+	      }
+	    pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
 	  }
 	fix_err = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 				     &scan_cache.page_watcher);
@@ -1363,14 +1350,6 @@ cleanup:
 	  }
 	if (scan_cache.page_watcher.pgptr == NULL)
 	  {
-	    if (old_pw.pgptr != NULL)
-	      {
-		if (part.should_demote ())
-		  {
-		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-		  }
-		pgbuf_ordered_unfix (thread_p, &old_pw);
-	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
 	      {
 		error = fix_err;
@@ -1378,14 +1357,6 @@ cleanup:
 	      }
 	    er_clear ();
 	    continue;		/* deallocated since the ftab snapshot; skip */
-	  }
-	if (old_pw.pgptr != NULL)
-	  {
-	    if (part.should_demote ())
-	      {
-		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	      }
-	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
 	  {
@@ -1448,11 +1419,6 @@ cleanup:
     error = NO_ERROR;
 
 cleanup:
-    if (old_pw.pgptr != NULL)
-      {
-	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	pgbuf_ordered_unfix (thread_p, &old_pw);
-      }
     if (attrinfo_inited)
       {
 	heap_attrinfo_end (thread_p, &attr_info);
