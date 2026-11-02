@@ -861,6 +861,15 @@ TEST_F (OosSqlDeferredWrite, PrefetchSkipsUnexpandedOosNeighbors)
     }
 }
 
+// Overwrites the stack below the caller, where the scalar OOS reader kept its scratch buffer.
+static void __attribute__ ((noinline))
+scribble_dead_stack ()
+{
+  char area[4 * IO_MAX_PAGE_SIZE];
+  std::memset (area, 0x5A, sizeof (area));
+  __asm__ __volatile__ ("" : : "r" (area) : "memory");
+}
+
 TEST_F (OosSqlDeferredWrite, PendingReferencesResolveAndFinalizeInPlace)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, "
@@ -1015,6 +1024,9 @@ TEST_F (OosSqlDeferredWrite, PendingReferencesResolveAndFinalizeInPlace)
       ATTR_ID id = db_attribute_id (db_get_attribute (cls, i == 0 ? "a" : "b"));
       ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, 1, &id, &attrs), NO_ERROR);
       ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &record, &attrs, &storage), NO_ERROR);
+      // Once the reader returns, its dead stack frame still holds the right bytes until something reuses it.
+      // Overwrite it so a value that kept pointing at the scratch buffer is caught.
+      scribble_dead_stack ();
       int bits = 0;
       const char *bytes = db_get_bit (heap_attrinfo_access (id, &attrs), &bits);
       ASSERT_NE (bytes, nullptr);
