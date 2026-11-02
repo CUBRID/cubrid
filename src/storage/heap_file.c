@@ -5516,6 +5516,36 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool 
 }
 
 /*
+ * heap_oos_remove_file () - Remove the OOS file of a heap, if it has one
+ *   return: NO_ERROR or error code
+ *   hfid(in): Object heap file identifier.
+ */
+static int
+heap_oos_remove_file (THREAD_ENTRY * thread_p, const HFID * hfid)
+{
+  VFID oos_vfid;
+  int error;
+
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  if (!VFID_ISNULL (&oos_vfid))
+    {
+      error = oos_remove_file (thread_p, oos_vfid);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * xheap_destroy () - Destroy a heap file
  *   return: int
  *   hfid(in): Object heap file identifier.
@@ -5528,6 +5558,7 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 {
   VFID vfid;
   LOG_DATA_ADDR addr;
+  int error;
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
@@ -5539,25 +5570,11 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
       file_postpone_destroy (thread_p, &vfid);
     }
 
-  /* OOS file cleanup */
-  {
-    VFID oos_vfid;
-    VFID_SET_NULL (&oos_vfid);
-    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
-      {
-	ASSERT_ERROR ();
-	return er_errid ();
-      }
-    if (!VFID_ISNULL (&oos_vfid))
-      {
-	int error = oos_remove_file (thread_p, oos_vfid);
-	if (error != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return error;
-	  }
-      }
-  }
+  error = heap_oos_remove_file (thread_p, hfid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
@@ -5602,25 +5619,11 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
       file_postpone_destroy (thread_p, &vfid);
     }
 
-  /* OOS file cleanup */
-  {
-    VFID oos_vfid;
-    VFID_SET_NULL (&oos_vfid);
-    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
-      {
-	ASSERT_ERROR ();
-	return er_errid ();
-      }
-    if (!VFID_ISNULL (&oos_vfid))
-      {
-	ret = oos_remove_file (thread_p, oos_vfid);
-	if (ret != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return ret;
-	  }
-      }
-  }
+  ret = heap_oos_remove_file (thread_p, hfid);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
