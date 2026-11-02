@@ -181,6 +181,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 typedef struct gby_skip_state GBY_SKIP_STATE;
+struct pruning_context;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -595,7 +596,8 @@ struct cte_proc_node
 #define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
-#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
+#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc is a partitioned NL inner, or comes after one or after a
+							 * NL semi/anti inner in the scan chain: driven per outer row */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
@@ -935,7 +937,9 @@ typedef enum
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6	/* a partitioned NL inner walked per outer row prunes its partitions
+						 * by the outer row's join values (CBRD-27866) */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
@@ -1238,6 +1242,8 @@ struct partition_spec_node
   HFID hfid;			/* class hfid */
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
+  int pos;			/* position among the class's partitions (pruningset_to_spec_list ()) */
+  bool row_pruned;		/* left out for the current outer row (partition_prune_spec_for_row ()) */
   SCAN_STATS scan_stats;
   const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
 };
@@ -1264,6 +1270,7 @@ struct access_spec_node
   SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
+  struct pruning_context *row_pruning;	/* pruning by the outer row's join values, loaded on its first row, or NULL */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
   bool cached_scan;		/* runtime-only cached-scan activation; not serialized */

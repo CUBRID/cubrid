@@ -2068,6 +2068,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      p->curent = NULL;
 	      p->pruned = false;
 	    }
+	  partition_clear_spec_row_pruning (p);
 
 	  /* free table-wide sampling pick once (all paths); idempotent */
 	}
@@ -11694,7 +11695,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  * blocks by the iterator: its partition sweep is one probe of one outer row (qexec_execute_scan,
  * CBRD-26872), so its match memo answers for all partitions and no restart invalidates it
  * (CBRD-27465). A following join after it is driven per outer row the same way, and its row
- * memo spans that partition walk (CBRD-27493).
+ * memo spans that partition walk (CBRD-27493), as does a partitioned inner join (CBRD-27866).
  */
 static SCAN_CODE
 qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -11730,8 +11731,9 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   XASL_NODE *prev_xptr;
   XASL_NODE *xptr2, *xptr3;
 
-  /* first find the last scan block to be moved */
-  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_NL_SEMI_OR_ANTI (last_xptr->scan_ptr);
+  /* first find the last scan block to be moved; a scan driven per outer row walks its own partitions
+   * (qexec_execute_scan), and so do the scans after it (CBRD-27866) */
+  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_PER_OUTER_ROW (last_xptr->scan_ptr);
        last_xptr = last_xptr->scan_ptr)
     {
       if (!last_xptr->next_scan_block_on
@@ -11941,6 +11943,12 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
       spec->curent = NULL;
       spec->s_id.single_fetched = false;
       inner->spec_list->s_id.single_fetched = false;
+
+      if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_PRUNE_PER_ROW) && !XASL_IS_NL_SEMI_OR_ANTI (inner)
+	  && partition_prune_spec_for_row (thread_p, spec->s_id.vd, spec) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
 
       part_scan = qexec_init_next_partition (thread_p, spec, inner);
       if (part_scan == S_ERROR)
@@ -12806,6 +12814,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       /* first partition */
       spec->curent = spec->parts;
+      while (spec->row_pruning != NULL && spec->curent != NULL && spec->curent->row_pruned)
+	{
+	  spec->curent = spec->curent->next;
+	}
     }
   else
     {
@@ -12839,16 +12851,12 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	  spec->curent->batch_why_not = spec->s_id.s.hsid.batch_why_not;
 	}
 
-      /* move to next partition */
-      if (spec->curent->next == NULL)
-	{
-	  /* no more partitions */
-	  spec->curent = NULL;
-	}
-      else
+      /* move to next partition, past the ones the outer row's join values left out (CBRD-27866) */
+      do
 	{
 	  spec->curent = spec->curent->next;
 	}
+      while (spec->row_pruning != NULL && spec->curent != NULL && spec->curent->row_pruned);
     }
 
   /* prepare to record stats for the next partition */
