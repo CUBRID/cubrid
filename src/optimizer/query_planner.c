@@ -4936,62 +4936,130 @@ qo_plan_nl_chain_has_semi_anti (QO_PLAN * plan)
 }
 
 /*
- * qo_nl_outer_key_ndv () - the number of distinct join keys among the outer rows of a nested-loop join
- *   return: the estimate, at most rows; rows when it cannot be estimated or memoize is off
- *   planp(in): the nested-loop join
- *   rows(in): the outer rows the inner is probed for
- *
- * Note: a SEMI / ANTI inner and the joins after it keep one memo across their partition walk, so only
- *	 an outer key the memo has not seen walks the partitions. Each outer column of an equality join
- *	 term counts with its NDV in the outer rows (qo_node_rows_in_join (), qo_estimate_ndv ()).
+ * qo_outer_seg_ndv () - distinct values of a column among the rows of its table an outer holds
+ *   return: the estimate, 0 without statistics
+ *   env(in):
+ *   seg(in): a column of a table in the outer
+ *   outer_nodes(in): the tables of the outer
+ *   rows(in): the outer rows
  */
 static double
-qo_nl_outer_key_ndv (QO_PLAN * planp, double rows)
+qo_outer_seg_ndv (QO_ENV * env, QO_SEGMENT * seg, BITSET * outer_nodes, double rows)
+{
+  QO_NODE *node = QO_SEG_HEAD (seg);
+  double seg_ndv = qo_seg_ndv (seg);
+  double node_rows;
+
+  if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0)
+    {
+      return 0.0;
+    }
+
+  node_rows = qo_node_rows_in_join (env, node, outer_nodes, rows);
+  if (node_rows <= 0.0)
+    {
+      return 0.0;
+    }
+
+  return qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv);
+}
+
+/*
+ * qo_nl_outer_key_ndv () - the number of distinct memoize keys among the outer rows of a nested-loop join
+ *   return: the estimate, at most rows; rows when it cannot be estimated or the inner is not memoized
+ *   planp(in): the nested-loop join
+ *   inner_node(in): the node the inner scans
+ *   rows(in): the outer rows the inner is probed for
+ *
+ * Note: the memoize key of an NL inner is the outer columns of the terms the inner evaluates. A memo
+ *	 lives as long as one partition of a plain inner (qexec_next_scan_block_renew_memoize ()), or
+ *	 spans the whole partition walk of a SEMI / ANTI inner and the joins after it, so only a key it
+ *	 has not seen probes the partition again. Each outer column counts with its NDV in the outer
+ *	 rows (qo_outer_seg_ndv ()), an equivalence class once. The executor does not memoize a scan that
+ *	 locks the rows it reads (UPDATE / DELETE, FOR UPDATE), nor with memoize_memory_limit = 0.
+ */
+static double
+qo_nl_outer_key_ndv (QO_PLAN * planp, QO_NODE * inner_node, double rows)
 {
   QO_ENV *env = planp->info->env;
   QO_PLAN *outer = planp->plan_un.join.outer;
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
   QO_TERM *term;
   QO_SEGMENT *seg;
-  QO_NODE *node;
+  BITSET key_segs;
   BITSET_ITERATOR bi, si;
-  double key_ndv = 1.0, seg_ndv, node_rows;
+  double key_ndv = 1.0, seg_ndv;
   bool found = false;
   int t, s;
 
-  if (prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT) <= 0)
+  if (prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT) <= 0
+      || (tree != NULL && PT_IS_SELECT (tree)
+	  && PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE)))
     {
       return rows;
     }
 
+  /* the outer columns of the terms on the inner node; info->terms also holds the terms among the
+   * outer nodes, which are not part of the key */
+  bitset_init (&key_segs, env);
   for (t = bitset_iterate (&(planp->info->terms), &bi); t != -1; t = bitset_next_member (&bi))
     {
       term = QO_ENV_TERM (env, t);
-      if (!qo_is_equi_join_term (term))
+      if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (inner_node)))
 	{
 	  continue;
 	}
 
       for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &si); s != -1; s = bitset_next_member (&si))
 	{
-	  seg = QO_ENV_SEG (env, s);
-	  node = QO_SEG_HEAD (seg);
-	  if (!BITSET_MEMBER (outer->info->nodes, QO_NODE_IDX (node)))
+	  if (BITSET_MEMBER (outer->info->nodes, QO_NODE_IDX (QO_SEG_HEAD (QO_ENV_SEG (env, s)))))
+	    {
+	      bitset_add (&key_segs, s);
+	    }
+	}
+    }
+
+  for (s = bitset_iterate (&key_segs, &si); s != -1; s = bitset_next_member (&si))
+    {
+      seg_ndv = qo_outer_seg_ndv (env, QO_ENV_SEG (env, s), &(outer->info->nodes), rows);
+      if (seg_ndv <= 0.0)
+	{
+	  /* no statistics */
+	  found = false;
+	  break;
+	}
+
+      /* columns of one equivalence class hold the same value in a row (x.k = o.k): count the class once,
+       * with the fewest distinct values among its columns */
+      seg = QO_ENV_SEG (env, s);
+      if (QO_SEG_EQCLASS (seg) != NULL)
+	{
+	  BITSET_ITERATOR oi;
+	  int o;
+	  bool counted = false;
+
+	  for (o = bitset_iterate (&key_segs, &oi); o != -1 && !counted; o = bitset_next_member (&oi))
+	    {
+	      QO_SEGMENT *other = QO_ENV_SEG (env, o);
+	      double other_ndv;
+
+	      if (o == s || QO_SEG_EQCLASS (other) != QO_SEG_EQCLASS (seg))
+		{
+		  continue;
+		}
+	      other_ndv = qo_outer_seg_ndv (env, other, &(outer->info->nodes), rows);
+	      counted = (other_ndv > 0.0 && (other_ndv < seg_ndv || (other_ndv == seg_ndv && o < s)));
+	    }
+	  if (counted)
 	    {
 	      continue;
 	    }
-
-	  seg_ndv = qo_seg_ndv (seg);
-	  node_rows = qo_node_rows_in_join (env, node, &(outer->info->nodes), rows);
-	  if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0 || node_rows <= 0.0)
-	    {
-	      /* no statistics */
-	      return rows;
-	    }
-
-	  key_ndv *= qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv);
-	  found = true;
 	}
+
+      key_ndv *= seg_ndv;
+      found = true;
     }
+  bitset_delset (&key_segs);
 
   return found ? MIN (rows, MAX (1.0, key_ndv)) : rows;
 }
@@ -5170,24 +5238,25 @@ qo_nljoin_cost (QO_PLAN * planp)
   outer_io_cost = outer->variable_io_cost;
 
   /* a partitioned inner is scanned one partition at a time, and every partition is probed for every
-   * outer row (CBRD-27566). A SEMI / ANTI inner, or one after it in the chain, walks the partitions
-   * within each outer row: each further partition costs a scan switch and a descent, for each outer
-   * key its memo has not seen (qo_nl_outer_key_ndv ()). Otherwise the
-   * executor runs the outer again for each further partition (qexec_next_scan_block_iterations ()):
+   * outer row (CBRD-27566). Each further partition costs a descent for each outer key the inner's
+   * memo has not seen (qo_nl_outer_key_ndv ()). A SEMI / ANTI inner, or one after it in the chain,
+   * walks the partitions within each outer row and also switches its scan to each of them. Otherwise
+   * the executor runs the outer again for each further partition (qexec_next_scan_block_iterations ()):
    * a scan or a nested-loop chain all over, a materialized outer as a list scan. */
   scan_blocks = (inner->plan_type == QO_PLANTYPE_SCAN) ? qo_node_scan_blocks (inner->plan_un.scan.node) : 1;
   if (scan_blocks > 1)
     {
       double extra_blocks = (double) (scan_blocks - 1);
+      double key_ndv = qo_nl_outer_key_ndv (planp, inner->plan_un.scan.node, guessed_result_cardinality);
 
       if (qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE || qo_plan_nl_chain_has_semi_anti (outer))
 	{
-	  inner_cpu_cost += qo_nl_outer_key_ndv (planp, guessed_result_cardinality) * extra_blocks
+	  inner_cpu_cost += key_ndv * extra_blocks
 	    * (inner->iscan_descent_cpu + (double) PARTITION_SCAN_SWITCH_OVERHEAD * QO_CPU_WEIGHT);
 	}
       else
 	{
-	  inner_cpu_cost += guessed_result_cardinality * extra_blocks * inner->iscan_descent_cpu;
+	  inner_cpu_cost += key_ndv * extra_blocks * inner->iscan_descent_cpu;
 	  if (outer->plan_type == QO_PLANTYPE_SCAN || outer->plan_type == QO_PLANTYPE_FOLLOW
 	      || (outer->plan_type == QO_PLANTYPE_JOIN
 		  && (outer->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
