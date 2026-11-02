@@ -12810,10 +12810,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
       if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
 	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
-	  if (current_log_record->type == LOG_DUMMY_OOS_RECORD)
-	    {
-	      /* TODO: add CDC support for rebuilding multi-chunk OOS records after this marker. */
-	    }
+	  /* TODO: add CDC support for rebuilding multi-chunk OOS records after a LOG_DUMMY_OOS_RECORD marker. */
 
 	  if (!is_redo && current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	    {

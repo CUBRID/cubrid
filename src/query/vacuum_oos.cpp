@@ -146,8 +146,10 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
  *   or fully rolls back. (Contrast vacuum_heap_oos_delete_within_sysop: that one runs inside the caller's
  *   existing sysop and must NOT open its own.)
  *
- *   The caller only calls this for RVHF_UPDATE_NOTIFY_VACUUM records; see commit fc0e35ced for why
- *   other log record types must be excluded.
+ *   The only caller is vacuum_forward_walk_reclaim_oos, which vacuum.c calls for RVHF_UPDATE_NOTIFY_VACUUM
+ *   and RVHF_DELETE_NEWHOME_NOTIFY_VACUUM only. Other heap log records stay out: for example
+ *   RVHF_MVCC_DELETE_MODIFY_HOME logs the same OOS OIDs that its slot still holds, so the REMOVE path
+ *   frees them and a second delete here would be a double free.
  */
 static int
 vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, OOS_REF_VECTOR oos_refs)
@@ -403,7 +405,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
    * dropped OOS file, or an odd recovery ordering. We still must not fail vacuum here. Returning
    * ER_FAILED would restart a release-build spin in the vacuum_heap_page loop (it clears the error
    * and retries the same page without moving forward). Instead, log it, clear the error, and skip
-   * OOS cleanup for this record (a small, logged leak). See commit 1bf7dda05. */
+   * OOS cleanup for this record (a small, logged leak). */
   {
     int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
     int record_flags = OR_GET_RECORD_FLAGS (record->data);
@@ -460,9 +462,8 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
       return error_code;
     }
 
-  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. When a record references
-   * several OOS values on the same page, one day we should sort/group them by page and delete all of
-   * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
+  /* TODO(perf): oos_delete re-fixes the page per OID, as noted in vacuum_forward_walk_oos_delete_atomic. These
+   * references are not even sorted by page yet. */
   for (const oos_chain_ref &oos_ref : oos_refs)
     {
       const OID &oos_oid = oos_ref.head_oid;

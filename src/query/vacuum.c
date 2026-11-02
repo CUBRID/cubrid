@@ -3612,7 +3612,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   *     image is the only way left to free them.
 	   *   - DELETE keeps the same OIDs, so REMOVE frees them already. Freeing them here too would be a
 	   *     double free and trip an assert -- so the check below lets UPDATE in but keeps DELETE out.
-	   *   - Other heap ops log no undo image, so the undo_data_size check above already skips them. */
+	   *   - The same check keeps other heap ops out; vacuum_process_log_record does not even unpack their
+	   *     undo image. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
 	      error_code =

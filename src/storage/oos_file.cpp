@@ -1706,7 +1706,8 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
   return NO_ERROR;
 }
 
-/* The lap sort and the cursor's upper_bound MUST use this same order. */
+/* Orders VPIDs by (volid, pageid). oos_reclaim_empty_pages sorts its candidates with it. The growth-gate sweep
+ * compares its cursor to each page with it, so it must match the ascending order in which the sweep visits pages. */
 static bool
 oos_vpid_lt (const VPID &a, const VPID &b)
 {
@@ -1940,8 +1941,8 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
   for (int partition = 0; partition < n_partitions; partition++)
     {
       /* The first partition visits VPIDs after the cursor; the second wraps and visits the
-       * cursor and all preceding VPIDs. Since sectors and bits are ascending, this preserves
-       * the old sorted-vector circular order exactly. */
+       * cursor and all preceding VPIDs. Sectors and bits are ascending, so each partition
+       * visits pages in ascending VPID order. */
       for (int sector_index = 0; sector_index < collector.nsects; sector_index++)
 	{
 	  const FILE_PARTIAL_SECTOR &partsect = collector.partsect_ftab[sector_index];
@@ -2106,10 +2107,6 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
   {
     oos_cleanup_insert_publication_state_on_error (thread_p);
   });
-
-  // TODO: Once the OOS_RECORD_HEADER spec is finalized (first segment header and rest segment header),
-  // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
-  // oos_insert_across_pages() functions.
 
   LOG_LSA identity_stamp = NULL_LSA;
 
