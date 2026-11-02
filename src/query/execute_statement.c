@@ -1199,7 +1199,8 @@ update_auto_increment_error:
  *
  * Without serial_restart the server keeps the current_val and started on the page (serial_row_write_keep_value ()).
  * The flag is set before dbt_finish_object (), which writes the row itself at REPEATABLE READ and above, and is
- * cleared on return.
+ * cleared on return. On failure the row is decached: a failed write leaves it dirty, and a later flush would apply
+ * the statement that failed.
  */
 static int
 do_finish_serial_object (DB_OTMPL ** obj_tmpl, MOP serial_object, bool restart)
@@ -1223,6 +1224,10 @@ do_finish_serial_object (DB_OTMPL ** obj_tmpl, MOP serial_object, bool restart)
 	}
     }
   serial_object->serial_restart = 0;
+  if (error != NO_ERROR)
+    {
+      ws_decache (serial_object);
+    }
   return error;
 }
 
