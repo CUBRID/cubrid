@@ -6525,6 +6525,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
     {
       goto error_exit;
     }
+  hash_key->info.value.is_reserved_hash_key = true;
 
   /* outer_info */
   outer_info->expr_list = parser_append_node (outer_info->expr_list /* back */ , hash_key /* front */ );
@@ -6552,6 +6553,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
     {
       goto error_exit;
     }
+  hash_key->info.value.is_reserved_hash_key = true;
 
   /* inner_info */
   inner_info->expr_list = parser_append_node (inner_info->expr_list /* back */ , hash_key /* front */ );
@@ -6757,11 +6759,11 @@ qo_check_pass_through_wrapper (QO_ENV * env, XASL_NODE * xasl)
       return false;
     }
 
-  /* each row: the plan copies a name, and qo_check_pass_through_hashjoin () checks an expression. A constant at the
-   * front would be taken for the hash key placeholder, and VALUES has one PT_NODE_LIST per row. */
+  /* each row: VALUES has one PT_NODE_LIST per row. The plan copies a name, and qo_check_pass_through_hashjoin ()
+   * checks an expression. */
   select_list = query->info.query.q.select.list;
 
-  if (select_list->node_type == PT_VALUE || select_list->node_type == PT_NODE_LIST)
+  if (select_list->node_type == PT_NODE_LIST)
     {
       return false;
     }
@@ -6866,8 +6868,8 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
     }
 
   /* STEP 2: the output columns: the join copies each name and evaluates each expression.
-   * The input lists wrap their names and expressions in pointer nodes. Their only bare PT_VALUE is the hash key
-   * placeholder, which qo_init_projection_info () puts at the front. */
+   * The input lists wrap their names and expressions in pointer nodes and lead with the hash key placeholder
+   * (qo_init_projection_info ()). */
   bitset_init (&expr_segs, env);
 
   has_expr = false;
@@ -6876,7 +6878,7 @@ qo_check_pass_through_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set,
 
   for (node = wrapper_out_list; node != NULL; node = node->next)
     {
-      if (node == wrapper_out_list && node->node_type == PT_VALUE)
+      if (node == wrapper_out_list && node->node_type == PT_VALUE && node->info.value.is_reserved_hash_key)
 	{
 	  continue;
 	}
@@ -7329,8 +7331,9 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	{
 	  assert (name_node != NULL);
 
-	  /* the first entry, the only place the hash key placeholder can be (qo_check_pass_through_hashjoin ()) */
-	  if (name_node == wrapper_out_list && name_node->node_type == PT_VALUE)
+	  /* the first entry, the only place the hash key placeholder can be (qo_init_projection_info ()) */
+	  if (name_node == wrapper_out_list && name_node->node_type == PT_VALUE
+	      && name_node->info.value.is_reserved_hash_key)
 	    {
 	      found_index = QFILE_RESERVED_HASH_KEY_POS;
 	    }
