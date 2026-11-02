@@ -842,13 +842,15 @@ namespace cubxasl
 	return nullptr;
       }
 
-    /* ref: stx_restore_outptr_list; the compiled program is not copied, the copy compiles its own */
+    /* ref: stx_restore_outptr_list; the copy binds its own program from the image the unpack set, which it shares */
     dest->valptrp = spawn (src->valptrp);
     if (src->valptrp != nullptr && dest->valptrp == nullptr)
       {
 	return nullptr;
       }
     dest->valptr_cnt = src->valptr_cnt;
+    dest->eval_prog_image = src->eval_prog_image;
+    dest->eval_prog_image_size = src->eval_prog_image_size;
 
     return dest;
   }
