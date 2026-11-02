@@ -91,6 +91,33 @@ def results(path):
             if re.fullmatch(r"\s*-?\d+(?:\s+-?\d+)*\s*", line)]
 
 
+def validate_fixture_observation(value, rows):
+    expected_values = {"rows": rows, "distinct_ids": rows, "invalid_rows": 0, "payload_bytes": rows * 80}
+    if (not isinstance(value, dict) or set(value) != set(expected_values)
+            or any(type(value[key]) is not int or value[key] != expected for key, expected in expected_values.items())):
+        raise ValueError("invalid fixture observation")
+
+
+def capture_fixture(args, output, client, phase):
+    prefix = output / f"fixture-{phase}"
+    sql = prefix.with_suffix(".sql")
+    sql.write_text(f"""SELECT COUNT(*), COUNT(DISTINCT id),
+COALESCE(SUM(CASE WHEN id BETWEEN 1 AND {args.rows} AND v = MOD(id, 100)
+  AND OCTET_LENGTH(payload) = 80 AND HEX(payload) = REPEAT('78', 80)
+  THEN 0 ELSE 1 END), 0), COALESCE(SUM(OCTET_LENGTH(payload)), 0) FROM n;
+""")
+    run(csql_command(args.database, sql, str(client)), prefix, args.timeout)
+    found = results(prefix.with_suffix(".stdout"))
+    if len(found) != 1 or len(found[0]) != 4:
+        raise ValueError(f"invalid fixture validation output; see {prefix}.stdout")
+    observation = dict(zip(("rows", "distinct_ids", "invalid_rows", "payload_bytes"), found[0]))
+    try:
+        validate_fixture_observation(observation, args.rows)
+    except ValueError as error:
+        raise ValueError(f"fixture validation failed; see {prefix}.stdout") from error
+    return observation
+
+
 def counters(path):
     found = {}
     for fields in csv.reader(Path(path).read_text().splitlines(), delimiter=";"):
@@ -236,7 +263,7 @@ def positive_number(value):
 
 
 def validate_manifest(data):
-    if not isinstance(data, dict) or type(data.get("schema")) is not int or data["schema"] != 2 or data.get("workload") != "ordinary_scan":
+    if not isinstance(data, dict) or type(data.get("schema")) is not int or data["schema"] != 3 or data.get("workload") != "ordinary_scan":
         raise ValueError("unsupported manifest schema or workload")
     if data.get("complete") is not True:
         raise ValueError("incomplete measurement; no performance verdict is possible")
@@ -248,6 +275,12 @@ def validate_manifest(data):
     for key in ("label", "fixture_sha256", "harness_sha256"):
         if not isinstance(data.get(key), str) or not data[key]:
             raise ValueError(f"invalid {key}")
+    validation = data.get("fixture_validation")
+    if (not isinstance(validation, dict) or set(validation) != {"version", "before", "after"}
+            or type(validation["version"]) is not int or validation["version"] != 1):
+        raise ValueError("invalid fixture validation")
+    for phase in ("before", "after"):
+        validate_fixture_observation(validation[phase], data["rows"])
     conditions = data.get("conditions")
     if not isinstance(conditions, dict) or set(conditions) != {"before", "after"}:
         raise ValueError("missing observed conditions")
@@ -285,7 +318,7 @@ def measure(args):
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     manifest = {
-        "schema": 2, "workload": "ordinary_scan", "label": args.label, "rows": args.rows, "scans": args.scans,
+        "schema": 3, "workload": "ordinary_scan", "label": args.label, "rows": args.rows, "scans": args.scans,
         "rounds": args.rounds, "runs": args.runs, "queries": QUERIES,
         "fixture_sha256": hashlib.sha256(fixture(args.rows).encode()).hexdigest(),
         "harness_sha256": digest(__file__), "server": identity,
@@ -302,11 +335,8 @@ def measure(args):
         summary.write_text(json.dumps(manifest, indent=2) + "\n")
 
     save()
-    validation = output / "validate.sql"
-    validation.write_text("SELECT COUNT(*), MIN(id), MAX(id), SUM(LENGTH(payload)) FROM n;\n")
-    run(csql_command(args.database, validation, str(client)), output / "validate", args.timeout)
-    if results(output / "validate.stdout") != [(args.rows, 1, args.rows, args.rows * 80)]:
-        raise ValueError("fixture validation failed; see validate.stdout")
+    manifest["fixture_validation"] = {"version": 1, "before": capture_fixture(args, output, client, "before")}
+    save()
     for case, sql in QUERIES.items():
         (output / f"{case}.sql").write_text((sql + "\n") * args.scans)
     manifest["conditions"] = {"before": capture_conditions(args, output, client, utility, "before")}
@@ -338,6 +368,10 @@ def measure(args):
     if process_identity(args.server_pid) != identity or manifest["conditions"]["before"] != manifest["conditions"]["after"]:
         save()
         raise ValueError("server or conditions changed during measurement")
+    manifest["fixture_validation"]["after"] = capture_fixture(args, output, client, "after")
+    save()
+    if process_identity(args.server_pid) != identity:
+        raise ValueError("server process changed during fixture validation")
     manifest["complete"] = True
     save()
     print(summary)

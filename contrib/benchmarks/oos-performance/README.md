@@ -120,6 +120,15 @@ SHA-256 fingerprint alongside the server identity.
 The server identity includes its command-line arguments, including the exact
 database argument; the configuration file selection must also match.
 
+Before and after sampling, the scan runner validates the actual rows outside
+`perf stat`. It requires exactly the IDs from 1 through the requested row count,
+with `v = MOD(id, 100)` and each payload exactly 80 bytes of lowercase `x`.
+The summary records both observations, and the validation SQL and output remain
+in the artifact directory. A failed check leaves the measurement incomplete.
+These endpoint checks do not detect changes that are reversed between checks;
+continue to prohibit concurrent DML. The generated fixture SQL hash identifies
+the SQL text, not the loaded data. These checks do not establish physical layout.
+
 The scan runner captures conditions before and after the samples. It records the
 host boot ID and architecture, server and client CPU affinity, `LANG`, `LC_ALL`,
 `LC_CTYPE`, and `LC_COLLATE` for both processes, and the live server values of
@@ -143,9 +152,10 @@ python3 bench.py compare --baseline /path/to/artifacts/base/summary.json \
   --candidate /path/to/artifacts/candidate/summary.json --max-overhead-percent 2
 ```
 
-The comparator accepts only complete schema 2 scan manifests. Older schema 1
-artifacts, including `ordinary.py` artifacts, lack the required observations and
-cannot be compared with this command. Collect new scan artifacts for each build.
+The comparator accepts only complete schema 3 scan manifests with valid fixture
+observations at both endpoints. Older schema 1 and 2 artifacts, including
+`ordinary.py` artifacts, lack the required observations. Collect new scan
+artifacts for each build using the revised harness.
 
 Exit status is 0 for results within the supplied instruction budget, 1 for a
 detected regression, and 2 for invalid or inconclusive evidence. The initial

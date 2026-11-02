@@ -12,6 +12,7 @@
 import json
 import copy
 import subprocess
+import shutil
 import sys
 import os
 from pathlib import Path
@@ -34,7 +35,7 @@ class OrdinaryFixtureTest(unittest.TestCase):
         self.assertIn("a=MOD(id,100)+1", ordinary.validation("trial_update0", 1))
 
 
-class ServerAssociationTest(unittest.TestCase):
+class BenchmarkEnvironmentTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -49,6 +50,8 @@ class ServerAssociationTest(unittest.TestCase):
         self.identity = {"pid": 123, "start_ticks": 10, "executable": str(self.root / "bin/cub_server"),
                          "argv": ["cub_server", "db_a"]}
 
+
+class ServerAssociationTest(BenchmarkEnvironmentTest):
     def measure(self, server_env=None):
         original_read = Path.read_bytes
         env = self.env if server_env is None else server_env
@@ -102,6 +105,64 @@ class ServerAssociationTest(unittest.TestCase):
         self.assertFalse((self.root / "out").exists())
 
 
+class FixtureMeasurementTest(BenchmarkEnvironmentTest):
+    def exercise(self, before, after):
+        calls = []
+        def fake_run(command, prefix, timeout):
+            calls.append(command)
+            if command[0] == "perf":
+                case = "narrow" if "narrow.sql" in str(command) else "wide"
+                prefix.with_suffix(".stdout").write_text(" ".join(map(str, bench.expected(100)[case])) + "\n")
+                prefix.with_suffix(".perf").write_text("\n".join(f"100;;{name};100;100" for name in bench.EVENTS))
+            else:
+                value = before if "before" in prefix.name else after
+                prefix.with_suffix(".stdout").write_text(value)
+            prefix.with_suffix(".stderr").write_text("")
+            return 1.0
+        with mock.patch.object(bench, "validate_server", return_value=(self.identity, self.root / "bin/csql")), \
+             mock.patch.object(bench, "matching_utility", return_value="cubrid"), \
+             mock.patch.object(bench.os, "sched_getaffinity", return_value={0}), \
+             mock.patch.object(bench, "process_identity", return_value=self.identity), \
+             mock.patch.object(bench, "capture_conditions", return_value={"same": True}), \
+             mock.patch.object(bench, "run", side_effect=fake_run), \
+             mock.patch("builtins.print"):
+            try:
+                bench.measure(self.args)
+            finally:
+                self.calls = calls
+
+    def test_invalid_preflight_stops_before_perf(self):
+        with self.assertRaises(ValueError):
+            self.exercise("100 100 2 8000\n", "100 100 0 8000\n")
+        self.assertFalse(any(c[0] == "perf" for c in self.calls))
+        self.assertFalse(json.loads((self.root / "out/summary.json").read_text())["complete"])
+
+    def test_malformed_preflight_output_stops_before_perf(self):
+        for value in ("100 100 0\n", "100 100 0 8000\n1\n", "100 100 NULL 8000\n"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    self.exercise(value, "100 100 0 8000\n")
+                self.assertFalse(any(c[0] == "perf" for c in self.calls))
+                shutil.rmtree(self.root / "out")
+
+    def test_valid_endpoints_and_timed_queries(self):
+        self.exercise("100 100 0 8000\n", "100 100 0 8000\n")
+        manifest = json.loads((self.root / "out/summary.json").read_text())
+        self.assertTrue(manifest["complete"])
+        self.assertEqual(manifest["fixture_validation"], {"version": 1, "before": {"rows": 100, "distinct_ids": 100, "invalid_rows": 0, "payload_bytes": 8000}, "after": {"rows": 100, "distinct_ids": 100, "invalid_rows": 0, "payload_bytes": 8000}})
+        for case, query in bench.QUERIES.items():
+            self.assertEqual((self.root / "out" / f"{case}.sql").read_text(), query + "\n")
+        self.assertEqual(sum(c[0] == "perf" for c in self.calls), 6)
+
+    def test_invalid_postflight_leaves_incomplete(self):
+        with self.assertRaises(ValueError):
+            self.exercise("100 100 0 8000\n", "100 100 1 8000\n")
+        manifest = json.loads((self.root / "out/summary.json").read_text())
+        self.assertFalse(manifest["complete"])
+        self.assertEqual(sum(c[0] == "perf" for c in self.calls), 6)
+        self.assertTrue(any("after" in p.name for p in (self.root / "out").glob("*.stdout")))
+
+
 class ComparisonTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -115,10 +176,12 @@ class ComparisonTest(unittest.TestCase):
                       "charset": {"column_charset": "utf8", "column_collation": "utf8_bin",
                                   "literal_charset": "utf8", "literal_collation": "utf8_bin"}}
         counters = {name: {"value": 100, "unit": "", "running_percent": 100} for name in bench.EVENTS}
-        self.manifest = {"schema": 2, "workload": "ordinary_scan", "complete": True, "label": "test",
+        self.manifest = {"schema": 3, "workload": "ordinary_scan", "complete": True, "label": "test",
                          "rows": 100, "scans": 1, "rounds": 1, "runs": 3, "queries": bench.QUERIES,
                          "fixture_sha256": "f", "harness_sha256": "h",
                          "conditions": {"before": conditions, "after": copy.deepcopy(conditions)},
+                         "fixture_validation": {"version": 1, "before": {"rows": 100, "distinct_ids": 100, "invalid_rows": 0, "payload_bytes": 8000},
+                                                "after": {"rows": 100, "distinct_ids": 100, "invalid_rows": 0, "payload_bytes": 8000}},
                          "samples": [{"round": 1, "case": case, "run": run, "warmup": run == 0,
                                       "elapsed_seconds": 1, "counters": copy.deepcopy(counters)}
                                      for case in bench.QUERIES for run in range(3)]}
@@ -142,6 +205,22 @@ class ComparisonTest(unittest.TestCase):
         result = self.compare(data, data)
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_invalid_fixture_evidence_rejected_even_when_both_match(self):
+        for mutation in ("old1", "old2", "version", "missing_phase", "extra", "bool", "wrong", "not_object"):
+            data = copy.deepcopy(self.manifest)
+            if mutation == "old1": data["schema"] = 1
+            if mutation == "old2": data["schema"] = 2
+            if mutation == "version": data["fixture_validation"]["version"] = True
+            if mutation == "missing_phase": del data["fixture_validation"]["after"]
+            if mutation == "extra": data["fixture_validation"]["before"]["extra"] = 0
+            if mutation == "bool": data["fixture_validation"]["before"]["invalid_rows"] = False
+            if mutation == "wrong": data["fixture_validation"]["before"]["invalid_rows"] = 2
+            if mutation == "not_object": data["fixture_validation"] = []
+            with self.subTest(mutation=mutation):
+                result = self.compare(data, data)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
 
     def test_invalid_evidence_never_prints_verdict(self):
         variants = []
