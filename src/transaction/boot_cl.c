@@ -245,14 +245,12 @@ install_system_metadata (void)
     }
 
   tr_init ();
-  catcls_init ();
   error = catcls_install ();
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  info_schema_init ();
   error = info_schema_install ();
 
   return error;

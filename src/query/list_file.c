@@ -1184,6 +1184,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
+  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
+    {
+      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
+    }
   else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
@@ -1200,14 +1204,6 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  free_and_init (list_id_p);
 	}
       return NULL;
-    }
-
-  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
-    {
-      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-      list_id_p->tfile_vfid->membuf = NULL;
-      list_id_p->tfile_vfid->membuf_npages = 0;
-      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
@@ -3809,6 +3805,7 @@ sector_page_iterator::sector_page_iterator ()
   VSID_SET_NULL (&m_current_vsid);
   VPID_SET_NULL (&m_last_vpid);
   m_current_tfile = NULL;
+  m_failed = false;
 }
 
 PAGE_PTR
@@ -3834,6 +3831,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	      if (page == NULL)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
+		  m_failed = true;
 		  return NULL;
 		}
 
@@ -3888,6 +3886,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	  if (page == NULL)
 	    {
 	      assert_release_error (er_errid () != NO_ERROR);
+	      m_failed = true;
 	      return NULL;
 	    }
 
