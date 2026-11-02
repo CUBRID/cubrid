@@ -1194,7 +1194,7 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   srv_handle = hm_find_srv_handle (srv_h_id);
-  if (auto_commit_mode == TRUE)
+  if (auto_commit_mode == TRUE && !ux_lob_read_cursor_is_open ())
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
