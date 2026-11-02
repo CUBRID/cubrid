@@ -3129,6 +3129,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		{
 		  derived_table->info.query.all_distinct = PT_DISTINCT;
 		}
+
+	      /* LIMIT of a DISTINCT query without ORDER BY is rewritten to FOR ORDERBY_NUM() (see pt_eval_type_pre ()),
+	       * which mq_update_order_by () does not move since there is no ORDER BY */
+	      if (query_spec->info.query.order_by == NULL && query_spec->info.query.orderby_for != NULL)
+		{
+		  derived_table->info.query.orderby_for =
+		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
+					derived_table->info.query.orderby_for);
+		}
 	    }
 
 	  result = tmp_result;
