@@ -1400,6 +1400,12 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	      goto error;
 	    }
 	  target_cls = db_get_string (&target_cls_val);
+	  if (target_cls == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      err = er_errid ();
+	      goto error;
+	    }
 
 	  owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
 
@@ -1821,6 +1827,13 @@ drop_stored_procedure_code (MOP sp_mop)
 	}
 
       target_cls = db_get_string (&target_cls_val);
+      if (target_cls == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  err = er_errid ();
+	  goto error;
+	}
+
       code_mop = jsp_find_stored_procedure_code (target_cls);
       if (code_mop == NULL)
 	{
