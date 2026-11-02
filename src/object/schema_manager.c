@@ -11457,6 +11457,19 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	}
     }
 
+#if !defined (NDEBUG)
+  /* The ids below are read through these pointers. An attribute freed by a reinstall of the class
+   * has no name until its block is reused, so stop here instead of writing whatever id it holds. */
+  {
+    int i;
+
+    for (i = 0; con->attributes[i] != NULL; i++)
+      {
+	assert (con->attributes[i]->header.name != NULL);
+      }
+  }
+#endif /* !NDEBUG */
+
   /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.
    * This is where the promotion of attribute name references to ids references happens.
    */
