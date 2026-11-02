@@ -2458,6 +2458,7 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
  *   thread_p(in)  : thread entry
  *   regu_var(in)  : key limit expression (lower or upper)
  *   vd(in)        : value descriptor
+ *   exclusive(in) : true when the value of a leaf is itself outside the bound (rownum < N, rownum >= N)
  *   result(out)   : evaluated BIGINT, valid when *is_null is false
  *   is_null(out)  : set to true when a NULL takes part in the expression
  *
@@ -2466,17 +2467,25 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
  *       REGU_VARIABLE_KEY_LIMIT_ARITH and they are computed here in BIGINT, so a bound beyond the BIGINT
  *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
  *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
+ *
+ *       A leaf is read as the rows its comparison admits, so that the key limit reads the rows the sequential
+ *       scan keeps by comparing the values (tp_value_to_row_bound):
+ *         exclusive false (rownum <= N, rownum > N) : floor (N)      2.4 -> 2, 2.5 -> 2, 2 -> 2
+ *         exclusive true  (rownum < N, rownum >= N) : ceil (N) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
+ *       The N - 1 the optimizer builds for rownum < N is flagged REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE and read
+ *       as its leaf N with exclusive true, not as N - 1 rounded (2.4 - 1 rounded is 1, two keys are right).
+ *
  *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
  *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
  *       scan_init_index_key_limit (). A positive bound beyond the BIGINT range becomes DB_BIGINT_MAX.
  */
 static int
-key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, DB_BIGINT * result, bool * is_null)
+key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, bool exclusive,
+		DB_BIGINT * result, bool * is_null)
 {
   TP_DOMAIN *bigint_domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
   TP_DOMAIN_STATUS dom_status;
   DB_VALUE *peek_val;
-  DB_VALUE coerced_val;
   DB_BIGINT left, right, diff;
   int error_code;
 
@@ -2490,14 +2499,21 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
       switch (arithptr->opcode)
 	{
 	case T_SUB:
+	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE))
+	    {
+	      /* rownum < N: N is outside the bound, so the bound is ceil (N) - 1 and not N - 1 rounded
+	       * (2.4 reads 2 keys, 2 reads 1) */
+	      return key_limit_eval (thread_p, arithptr->leftptr, vd, true, result, is_null);
+	    }
+	  [[fallthrough]];
 	case T_LEAST:
 	case T_GREATEST:
-	  error_code = key_limit_eval (thread_p, arithptr->leftptr, vd, &left, is_null);
+	  error_code = key_limit_eval (thread_p, arithptr->leftptr, vd, false, &left, is_null);
 	  if (error_code != NO_ERROR || *is_null)
 	    {
 	      return error_code;
 	    }
-	  error_code = key_limit_eval (thread_p, arithptr->rightptr, vd, &right, is_null);
+	  error_code = key_limit_eval (thread_p, arithptr->rightptr, vd, false, &right, is_null);
 	  if (error_code != NO_ERROR || *is_null)
 	    {
 	      return error_code;
@@ -2540,11 +2556,11 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
       return NO_ERROR;
     }
 
-  db_make_null (&coerced_val);
-  dom_status = tp_value_coerce (peek_val, &coerced_val, bigint_domain);
+  /* the rows the comparison admits: floor (N) for rownum <= N, ceil (N) - 1 for rownum < N (exclusive), and beyond
+   * the BIGINT range DB_BIGINT_MAX or -1 by the sign (rownum < 1e46: all rows, rownum < -1e46: no rows) */
+  dom_status = tp_value_to_row_bound (peek_val, exclusive, result);
   if (dom_status == DOMAIN_COMPATIBLE)
     {
-      *result = db_get_bigint (&coerced_val);
       if (*result < 0)
 	{
 	  /* a negative bound skips or reads nothing whatever its magnitude, so keep only the sign
@@ -2554,51 +2570,8 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
       return NO_ERROR;
     }
 
-  if (dom_status == DOMAIN_OVERFLOW)
-    {
-      /* beyond the BIGINT range: only the sign matters, whatever the type (NUMERIC, DOUBLE, string)
-       * ex) rownum < 1e46: upper DB_BIGINT_MAX - 1, all rows.  rownum < -1e46: upper -1 - 1, no rows */
-      db_make_null (&coerced_val);
-      if (tp_value_coerce (peek_val, &coerced_val, tp_domain_resolve_default (DB_TYPE_DOUBLE)) == DOMAIN_COMPATIBLE)
-	{
-	  *result = (db_get_double (&coerced_val) < 0) ? -1 : DB_BIGINT_MAX;
-	  return NO_ERROR;
-	}
-    }
-
   (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_val, bigint_domain);
   return ER_FAILED;
-}
-
-/*
- * key_limit_fetch_bigint () - fetch a key limit expression as a whole and coerce it to BIGINT
- *   return      : true on success; false when the fetch fails, the value does not fit in BIGINT or is NULL.
- *                 No error is set here for the last two cases
- *   thread_p(in): thread entry
- *   regu_var(in): key limit expression
- *   vd(in)      : value descriptor
- *   result(out) : BIGINT value on success
- */
-static bool
-key_limit_fetch_bigint (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, DB_BIGINT * result)
-{
-  DB_VALUE *peek_val;
-  DB_VALUE coerced_val;
-
-  if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &peek_val) != NO_ERROR)
-    {
-      return false;
-    }
-
-  db_make_null (&coerced_val);
-  if (tp_value_coerce (peek_val, &coerced_val, tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE
-      || DB_IS_NULL (&coerced_val) || DB_VALUE_DOMAIN_TYPE (&coerced_val) != DB_TYPE_BIGINT)
-    {
-      return false;
-    }
-
-  *result = db_get_bigint (&coerced_val);
-  return true;
 }
 
 /*
@@ -2613,11 +2586,9 @@ key_limit_fetch_bigint (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_D
  *   upper(out)      : upper limit, set when key_limit_u is not NULL
  *   is_null(out)    : set to true when a NULL takes part in either bound (no row can match)
  *
- * Note: Each bound is first fetched as a whole and coerced to BIGINT, so every in-range query behaves as
- *       before. When either bound fails that way (a value beyond the BIGINT range, or NULL), the error
- *       left by the fetch is cleared and both bounds are evaluated again with key_limit_eval (), which
- *       reports the error if the value is really bad. Both bounds, because the upper bound of a range is
- *       built as upper - lower and the two sides have to see the same lower value.
+ * Note: Both bounds go through key_limit_eval (), which reads each leaf as the number of rows its comparison
+ *       admits. The tree is never computed as a whole: N - 1 computed on 2.4 and then rounded gives 1, while
+ *       the rows rownum < 2.4 keeps are 2.
  */
 int
 fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, REGU_VARIABLE * key_limit_u, VAL_DESCR * vd,
@@ -2632,17 +2603,9 @@ fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, REGU_VAR
 
   *is_null = false;
 
-  if ((key_limit_l == NULL || key_limit_fetch_bigint (thread_p, key_limit_l, vd, lower))
-      && (key_limit_u == NULL || key_limit_fetch_bigint (thread_p, key_limit_u, vd, upper)))
-    {
-      return NO_ERROR;
-    }
-
-  er_clear ();
-
   if (key_limit_l != NULL)
     {
-      error_code = key_limit_eval (thread_p, key_limit_l, vd, lower, is_null);
+      error_code = key_limit_eval (thread_p, key_limit_l, vd, false, lower, is_null);
       if (error_code != NO_ERROR || *is_null)
 	{
 	  return error_code;
@@ -2651,7 +2614,7 @@ fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, REGU_VAR
 
   if (key_limit_u != NULL)
     {
-      error_code = key_limit_eval (thread_p, key_limit_u, vd, upper, is_null);
+      error_code = key_limit_eval (thread_p, key_limit_u, vd, false, upper, is_null);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;

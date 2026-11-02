@@ -5404,6 +5404,114 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desire
 }
 
 /*
+ * tp_value_to_row_bound () - the integer a row number is compared with in place of value
+ *    return: DOMAIN_COMPATIBLE, or the status of the coercion when value is not a number
+ *    value(in): value compared with a row number (ROWNUM, INST_NUM, ORDERBY_NUM, GROUPBY_NUM), not NULL
+ *    exclusive(in): true when value itself is outside the bound (rownum < value, rownum >= value)
+ *    row_bound(out): the integer bound
+ *
+ * Note: An optimization that reads value as a number of rows (key limit, sort limit, top-n, parallel scan) takes the
+ *       bound from here, so that it selects the rows the sequential scan selects by comparing the values. A row number
+ *       is an integer, so the rows are the same:
+ *         exclusive false (rownum <= value, rownum > value) : floor (value)      2.4 -> 2, 2.5 -> 2, 2 -> 2
+ *         exclusive true  (rownum < value, rownum >= value) : ceil (value) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
+ *       Beyond the BIGINT range the bound is DB_BIGINT_MAX when value is positive and -1 when negative: no row
+ *       number passes those limits, so the rows are the same again.
+ *
+ *       The coercion to BIGINT rounds. The rounded value is compared back with value and stepped down when it lies
+ *       above value, or on value when exclusive. The comparison, not the type, decides, so NUMERIC, DOUBLE and
+ *       numeric strings are handled alike. A NaN compares equal to everything, as it does in the sequential scan:
+ *       every row when value is inside the bound, no row when outside.
+ */
+TP_DOMAIN_STATUS
+tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_BIGINT * row_bound)
+{
+  DB_VALUE rounded_value, zero_value;
+  TP_DOMAIN_STATUS coerce_status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+
+  assert (value != NULL && !DB_IS_NULL (value) && row_bound != NULL);
+
+  db_make_null (&rounded_value);
+  coerce_status = tp_value_coerce (value, &rounded_value, &tp_Bigint_domain);
+  if (coerce_status == DOMAIN_OVERFLOW)
+    {
+      pr_clear_value (&rounded_value);
+      db_make_int (&zero_value, 0);
+      compare_result = tp_value_compare (value, &zero_value, 1, 0);
+      if (compare_result == DB_GT || (compare_result == DB_EQ && !exclusive))
+	{
+	  *row_bound = DB_BIGINT_MAX;
+	  return DOMAIN_COMPATIBLE;
+	}
+      if (compare_result == DB_LT || compare_result == DB_EQ)
+	{
+	  *row_bound = -1;
+	  return DOMAIN_COMPATIBLE;
+	}
+      return coerce_status;
+    }
+  if (coerce_status != DOMAIN_COMPATIBLE || DB_IS_NULL (&rounded_value))
+    {
+      pr_clear_value (&rounded_value);
+      return (coerce_status != DOMAIN_COMPATIBLE) ? coerce_status : DOMAIN_INCOMPATIBLE;
+    }
+
+  /* The coercion rounded value to the nearest integer, so the bound lies within 1 of value. Step it down once when
+   * it lies above value (2.5 -> 3 -> 2: floor), or when it equals value and value itself is outside the bound
+   * (rownum < 2 -> 1: ceil - 1). No bound when the comparison cannot read value as a number. */
+  *row_bound = db_get_bigint (&rounded_value);
+  compare_result = tp_value_compare (&rounded_value, value, 1, 0);
+  pr_clear_value (&rounded_value);
+  if (compare_result == DB_UNK)
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  if ((compare_result == DB_GT || (exclusive && compare_result == DB_EQ)) && *row_bound > DB_BIGINT_MIN)
+    {
+      (*row_bound)--;
+    }
+
+  return DOMAIN_COMPATIBLE;
+}
+
+/*
+ * tp_value_limit_sum () - the BIGINT sum of a LIMIT offset and count, the row number the query reads up to
+ *    return: DOMAIN_COMPATIBLE with limit_sum and sum_overflow set, or the status of the coercion of a value that
+ *            does not read as BIGINT (a value beyond BIGINT is DOMAIN_OVERFLOW, which is not the sum's overflow)
+ *    offset(in): the offset, not NULL
+ *    count(in): the row count, not NULL
+ *    limit_sum(out): offset + count
+ *    sum_overflow(out): true when the sum lies beyond BIGINT (limit_sum is then unusable)
+ *
+ * Note: A LIMIT value is BIGINT, and so is the sum: a sum beyond BIGINT is an error, reported by the caller
+ *       (once, when the values are literals folded at compile time, or when the query starts). A value that does
+ *       not read as BIGINT is the caller's to report too, where the value is typed or bound.
+ */
+TP_DOMAIN_STATUS
+tp_value_limit_sum (const DB_VALUE * offset, const DB_VALUE * count, DB_BIGINT * limit_sum, bool * sum_overflow)
+{
+  DB_VALUE offset_bigint, count_bigint;
+  TP_DOMAIN_STATUS coerce_status;
+
+  assert (offset != NULL && !DB_IS_NULL (offset) && count != NULL && !DB_IS_NULL (count));
+
+  db_make_null (&offset_bigint);
+  db_make_null (&count_bigint);
+  coerce_status = tp_value_coerce (offset, &offset_bigint, &tp_Bigint_domain);
+  if (coerce_status == DOMAIN_COMPATIBLE)
+    {
+      coerce_status = tp_value_coerce (count, &count_bigint, &tp_Bigint_domain);
+    }
+  if (coerce_status == DOMAIN_COMPATIBLE)
+    {
+      *sum_overflow = OR_ADD_OVERFLOW (db_get_bigint (&offset_bigint), db_get_bigint (&count_bigint), limit_sum);
+    }
+
+  return coerce_status;
+}
+
+/*
  * tp_value_coerce_strict () - convert a value to desired domain without loss
  *			       of precision
  * return : error code or NO_ERROR

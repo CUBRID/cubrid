@@ -11695,9 +11695,12 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
       /* user explicitly specifies keylimit */
       key_infop->is_user_given_keylimit = true;
 
-      if (limit_u->type_enum == PT_TYPE_MAYBE)
+      /* a KEYLIMIT value is BIGINT, as a LIMIT value is: a copy is typed so and the hint stays as written */
+      limit_l = pt_copy_limit_value (parser, limit_u->next);
+      limit_u = pt_copy_limit_value (parser, limit_u);
+      if (limit_u == NULL || (limit_l == NULL && key_limit->next != NULL))
 	{
-	  limit_u->expected_domain = dom_bigint;
+	  goto error;
 	}
       regu_var_u = pt_to_regu_variable (parser, limit_u, UNBOX_AS_VALUE);
       if (regu_var_u == NULL)
@@ -11705,13 +11708,8 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
 	  goto error;
 	}
 
-      limit_l = limit_u->next;
       if (limit_l != NULL)
 	{
-	  if (limit_l->type_enum == PT_TYPE_MAYBE)
-	    {
-	      limit_l->expected_domain = dom_bigint;
-	    }
 	  regu_var_l = pt_to_regu_variable (parser, limit_l, UNBOX_AS_VALUE);
 	  if (regu_var_l == NULL)
 	    {

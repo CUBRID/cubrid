@@ -4094,11 +4094,8 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 static int
 qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, int *limit_ptr)
 {
-  DB_VALUE *dbvalp = NULL;
-  DB_VALUE limit_value;
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_INTEGER);
-  DB_TYPE orig_type;
-  int error = NO_ERROR;
+  DB_BIGINT row_limit = 0;
+  bool is_null = false;
 
   if (limit_ptr == NULL)
     {
@@ -4114,51 +4111,30 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       return NO_ERROR;
     }
 
-  if (fetch_peek_dbval (thread_p, xasl->orderby_limit, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+  /* the limit is the upper bound the optimizer took from the orderby_num () predicate, read as a key limit is: the
+   * rows the comparison admits (orderby_num () < 2.4 keeps 2 rows, not 2.4 - 1 rounded to 1) */
+  if (fetch_key_limits (thread_p, NULL, xasl->orderby_limit, &xasl_state->vd, NULL, &row_limit, &is_null) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-
-  if (orig_type != DB_TYPE_INTEGER)
+  if (is_null)
     {
-      TP_DOMAIN_STATUS dom_status;
-
-      /* into a value of its own: the limit is a bind value other readers share (resolve_domains' value array) */
-      db_make_null (&limit_value);
-      dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  if (dom_status == DOMAIN_OVERFLOW)
-	    {
-	      /* The limit is too bog to fit an integer. However, since this limit is used to keep the sort run flushes
-	       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
-	       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
-	       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
-	      return NO_ERROR;
-	    }
-	  else
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      return error;
-	    }
-	}
-      dbvalp = &limit_value;
-
-      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_INTEGER)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_FAILED;
-	}
+      /* the predicate matches no row; no limit is needed to find that out */
+      return NO_ERROR;
     }
 
-  *limit_ptr = db_get_int (dbvalp);
-  if (*limit_ptr < 0)
+  if (row_limit > INT_MAX)
     {
-      /* If the limit is below 0, set it to 0 and still return success. */
-      *limit_ptr = 0;
+      /* The limit is too big to fit an integer. However, since this limit is used to keep the sort run flushes
+       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
+       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
+       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
+      return NO_ERROR;
     }
+
+  /* If the limit is below 0, set it to 0 and still return success. */
+  *limit_ptr = (row_limit < 0) ? 0 : (int) row_limit;
 
   return NO_ERROR;
 }
@@ -16784,6 +16760,7 @@ int
 qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * empty_result)
 {
   DB_VALUE *limit_valp;
+  DB_VALUE *offset_valp = NULL;
   DB_VALUE zero_val;
   DB_VALUE_COMPARE_RESULT cmp_with_zero;
 
@@ -16795,7 +16772,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (xasl->limit_offset != NULL)
     {
       /* limit_offset should be greater than 0. Otherwise, raises an error. */
-      if (fetch_peek_dbval (thread_p, xasl->limit_offset, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, xasl->limit_offset, &xasl_state->vd, NULL, NULL, NULL, &offset_valp) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -16824,6 +16801,22 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  NO_ERROR)
 	{
 	  return ER_FAILED;
+	}
+
+      if (offset_valp != NULL && !DB_IS_NULL (offset_valp) && !DB_IS_NULL (limit_valp))
+	{
+	  /* LIMIT offset, count reads the rows up to offset + count, a BIGINT like the two values (an expression
+	   * such as ? / 2 may still hold its NUMERIC result here; the predicate casts it). A sum beyond BIGINT is an
+	   * error here, once and before any row is read, so that every plan and an empty table report it the same way */
+	  DB_BIGINT limit_sum;
+	  bool sum_overflow;
+
+	  if (tp_value_limit_sum (offset_valp, limit_valp, &limit_sum, &sum_overflow) == DOMAIN_COMPATIBLE
+	      && sum_overflow)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+	      return ER_FAILED;
+	    }
 	}
 
       /* the comparison the load or resolve_domains resolved, as tp_value_compare asks it */
@@ -29500,6 +29493,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   REGU_VARIABLE *lhs, *rhs;
   REL_OP op;
   DB_VALUE *val;
+  DB_BIGINT row_bound;
   int cmp;
   DB_VALUE left_bound, right_bound;
 
@@ -29530,8 +29524,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      /* a bound has its term's type and an AND keeps the smaller one, so only the values know the keys: the key pair
-       * table's comparison of the two bounds */
+      /* both bounds are BIGINT and an AND keeps the smaller one */
       cmp = domain_compare_by_type_pair (&left_bound, &right_bound, 1, 1, NULL);
       if (cmp == DB_GT)
 	{
@@ -29606,31 +29599,23 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto error_return;
 	}
 
-      if (op == R_LT)
+      if (DB_IS_NULL (val))
 	{
-	  /* add 1 so we can use R_LE, after the subtraction's operand coercion for the bound's type - a string as
-	   * DOUBLE - resolved once for this execution's bound */
-	  DB_VALUE one_val;
-	  db_make_int (&one_val, 1);
-	  const DOMAIN_OPERAND operands[2] = {
-	    {NULL, DB_VALUE_DOMAIN_TYPE (val), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
-	  };
-	  DOMAIN_OPERAND_COERCION operand_coercion;
-	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);
-	  error =
-	    qdata_coerce_arith_operands (T_SUB, operand_coercion.conv, operand_coercion.operand_domain,
-					 &operand_coercion.arith, val, &one_val, ubound,
-					 qexec_get_node_domain (vd, rhs->domain, rhs->plan_item));
-	}
-      else
-	{
-	  error = pr_clone_value (val, ubound);
+	  /* no bound: the predicate matches no row */
+	  goto cleanup;
 	}
 
-      if (error != NO_ERROR)
+      /* the rows the comparison admits, as BIGINT: floor (N) for orderby_num () <= N, ceil (N) - 1 for
+       * orderby_num () < N where N is outside the bound (< 2.4 keeps 2 rows). A value that is not a number gives
+       * no bound here; the predicate reports it */
+      if (tp_value_to_row_bound (val, op == R_LT, &row_bound) != DOMAIN_COMPATIBLE)
 	{
-	  goto error_return;
+	  er_clear ();
+	  goto cleanup;
 	}
+
+      /* a negative bound keeps no row: 0 makes qexec_setup_topn_proc () skip the top-n */
+      db_make_bigint (ubound, (row_bound < 0) ? 0 : row_bound);
       goto cleanup;
     }
 

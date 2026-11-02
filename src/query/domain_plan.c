@@ -2437,6 +2437,10 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_pred (ctx, xasl->instnum_pred);
   domain_walk_pred (ctx, xasl->ordbynum_pred);
   domain_walk_regu (ctx, xasl->orderby_limit);
+  /* the sort limit is a key limit tree the sort computes (fetch_key_limits), which turns an overflow of its
+   * arithmetic into a limit: a constant there is the sort's to compute, not one whose failure is resolve_domains'
+   * error (orderby_num () < 1e30 is every row) */
+  domain_force_row (xasl->orderby_limit);
   /* the LIMIT is checked before the scan: outside the if_pred's constant branch, and outside its own when the block is
    * the top-most one */
   ctx->constant_branch = XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) ? entry_constant_branch : block_constant_branch;

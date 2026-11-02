@@ -460,6 +460,9 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
   extern int tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern TP_DOMAIN_STATUS tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_BIGINT * row_bound);
+  extern TP_DOMAIN_STATUS tp_value_limit_sum (const DB_VALUE * offset, const DB_VALUE * count, DB_BIGINT * limit_sum,
+					      bool * sum_overflow);
 
   extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 					 bool implicit_coercion);

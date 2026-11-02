@@ -4285,6 +4285,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  return false;
 	}
       regu_low->domain = dom_bigint;
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4309,6 +4310,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  return false;
 	}
       regu_low->domain = dom_bigint;
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4328,6 +4330,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  return false;
 	}
       regu_low->domain = dom_bigint;
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;

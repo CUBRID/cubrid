@@ -208,6 +208,10 @@ const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's co
 					 * stx_build_domain_plan publishes the item); regu_is_variable_pos () is the
 					 * compile-time view - a TYPE_POS_VALUE whose domain is DB_TYPE_VARIABLE -
 					 * which implies the flag for such a regu */
+const int REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE = 0x10000;	/* the N - 1 the optimizer builds for rownum < N, rownum >= N
+							 * and rownum = N, where N itself is outside the bound:
+							 * key_limit_eval () reads it as ceil (N) - 1, not as N - 1
+							 * rounded, so that 2.4 gives 2 and not 1 */
 
 class regu_variable_node
 {

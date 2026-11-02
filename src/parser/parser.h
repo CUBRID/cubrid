@@ -611,6 +611,9 @@ extern "C"
 
   extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE num_op,
 					      bool is_gby_num);
+  extern PT_NODE *pt_copy_limit_value (PARSER_CONTEXT * parser, PT_NODE * limit);
+  extern PT_NODE *pt_limit_bigint_value (PARSER_CONTEXT * parser, const DB_VALUE * value, PT_NODE * limit);
+  extern void pt_set_bigint_value_text (PARSER_CONTEXT * parser, PT_NODE * literal);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
   extern void pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination);
   extern void pt_set_fill_default_in_path_expression (PT_NODE * node);
