@@ -1445,7 +1445,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1359 Java VM crashed: %1$s
 
-1360 Last Error
+1360 The secret of session %1$u does not match.
+1361 Cannot end session %1$u because it is not attached to this connection.
+
+1362 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
