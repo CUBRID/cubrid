@@ -38,9 +38,8 @@
  * first volume. It is not a disk compatibility level: it rejects databases of unreleased builds of the same level
  * whose storage format differs, and offers no upgrade path. Volumes formatted before the stamp hold 0.
  * Bump it when an unreleased change makes existing databases unreadable.
- * 1: out-of-row overflow storage (CBRD-26357).
- * 2: remove unused OOS vacuum notification recovery index (CBRD-26357). */
-#define DISK_STORAGE_FORMAT_REVISION 2
+ * 1: out-of-row overflow storage (CBRD-26357). */
+#define DISK_STORAGE_FORMAT_REVISION 1
 
 /*
  * Disk sectors
