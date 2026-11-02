@@ -48,6 +48,14 @@ const std::size_t MAX_DIGITS_FOR_BIGINT = 19; // default for 64 bit signed big i
 namespace cubload
 {
   // TODO CBRD-21654 reuse conversion function in load_sa_loader.cpp source file
+  //
+  // CBRD-27337 took most of it. The server loader reads nothing but this table, and on the
+  // standalone side an attribute goes through ldr_convert_value () and a collection element
+  // through ldr_convert_elem_value (). What is left is the %constructor argument slot, which
+  // still hands every type to elem_converter[] in load_sa_loader.cpp, so ldr_date_elem (),
+  // ldr_time_elem (), ldr_bstr_elem (), ldr_xstr_elem (), ldr_float_elem (), ldr_double_elem ()
+  // and ldr_int_elem () are kept alive by that one call. Object references stay there on
+  // purpose - this table has no entry for them.
   int mismatch (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_short (const char *str, const size_t str_size, const attribute *attr, db_value *val);

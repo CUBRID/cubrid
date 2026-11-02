@@ -2367,6 +2367,15 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	   * A constructor argument. Arguments carry no domain of their own, so
 	   * they take their natural type and db_send_argarray () coerces them
 	   * positionally against the method signature.
+	   *
+	   * TODO CBRD-21654 send this through ldr_convert_elem_value () as well. It is the
+	   * last caller that hands every type to elem_converter [], and it is what keeps the
+	   * standalone copies of the date, time, bit string, float, double and integer
+	   * conversions alive. The slot's conv_att is already NULL, which the shared table
+	   * takes - ldr_str_elem () passes NULL to it today. Measure first: ldr_float_elem ()
+	   * and ldr_bstr_elem () read GET_DOMAIN () to name a type and to pick a cast target,
+	   * and ldr_int_elem () has its own path for a digit string too long for a BIGINT, so
+	   * the message or the code a bad argument reports can move.
 	   */
 	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val));
 	}
