@@ -200,10 +200,9 @@ namespace parallel_index_scan
 	    if (cs == S_ERROR)
 	      {
 		handler->exit_overflow_help (thread_p, m_chain_pool_idx);
-		if (m_was_producer && walker->m_page != nullptr)
+		if (m_was_producer)
 		  {
-		    pgbuf_unfix (thread_p, walker->m_page);
-		    walker->m_page = nullptr;
+		    walker->release_leaf (thread_p);
 		  }
 		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
 		  {
@@ -222,10 +221,9 @@ namespace parallel_index_scan
 	    if (rerr != NO_ERROR)
 	      {
 		handler->exit_overflow_help (thread_p, m_chain_pool_idx);
-		if (m_was_producer && walker->m_page != nullptr)
+		if (m_was_producer)
 		  {
-		    pgbuf_unfix (thread_p, walker->m_page);
-		    walker->m_page = nullptr;
+		    walker->release_leaf (thread_p);
 		  }
 		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
 		  {
