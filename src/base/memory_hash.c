@@ -1500,6 +1500,42 @@ mht_get (MHT_TABLE * ht, const void *key)
 }
 
 /*
+ * mht_get_hash - find data associated with key, its hash computed by the caller
+ *   return: the data associated with the key, or NULL if not found
+ *   ht(in): hash table
+ *   key(in): hashing key
+ *   hash(in): the key's hash over the full unsigned range, of which the table's hash function takes hash % size
+ *	       as the bucket for every size (so the caller's one hash serves the lookup and whatever else it
+ *	       hashes the key for)
+ *
+ * Note: mht_get () without the call of the table's hash function.
+ */
+void *
+mht_get_hash (MHT_TABLE * ht, const void *key, unsigned int hash)
+{
+  HENTRY_PTR hentry;
+
+  assert (ht != NULL);
+  assert (key != NULL);
+
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+  assert (hash == (*ht->hash_func) (key, ht->size));
+
+  for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
+    {
+      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+	{
+	  mht_adjust_lru_list (ht, hentry);
+	  return hentry->data;
+	}
+    }
+  return NULL;
+}
+
+/*
  * mht_adjust_lru_list -
  *   ht(in): hash table
  *   hentry(in): hash entry
@@ -2354,6 +2390,18 @@ mht_count (const MHT_TABLE * ht)
   return ht->nentries;
 }
 
+/* a hash reduced to [0, ht_size): the full range (ht_size UINT_MAX, a caller that keeps the whole hash, as the hash
+ * GROUP BY's key does) is the hash itself but for UINT_MAX, without the division */
+static inline unsigned int
+mht_reduce (unsigned int hash, unsigned int ht_size)
+{
+  if (ht_size == UINT_MAX)
+    {
+      return (hash == UINT_MAX) ? 0 : hash;
+    }
+  return hash % ht_size;
+}
+
 /*
  * mht_get_hash_number - get linear hash number or string hash number
  *   return: the hash value of the hash key
@@ -2510,7 +2558,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  else
 	    {
 	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
-	      hashcode %= ht_size;
+	      hashcode = mht_reduce (hashcode, ht_size);
 	    }
 	  break;
 	case DB_TYPE_SET:
@@ -2545,7 +2593,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	    /* Memory addresses are compared in mr_cmpval_elo,
 	     * so no additional processing is needed. */
 	    hashcode = GET_PTR_FOR_HASH (val);
-	    hashcode %= ht_size;
+	    hashcode = mht_reduce (hashcode, ht_size);
 	  }
 	  break;
 	case DB_TYPE_ENUMERATION:
@@ -2566,7 +2614,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		len = (int) strlen (json_body);
 
 		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
-		hashcode %= ht_size;
+		hashcode = mht_reduce (hashcode, ht_size);
 		db_private_free (NULL, json_body);
 	      }
 	  }
@@ -2656,7 +2704,7 @@ mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size)
   key ^= (key >> 4);
   key *= c2;
   key ^= (key >> 15);
-  return (key % ht_size);
+  return mht_reduce (key, ht_size);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
