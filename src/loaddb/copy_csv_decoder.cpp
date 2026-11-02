@@ -24,6 +24,7 @@
 
 #include "copy_binary_decoder.hpp"	/* COPY_DECODE_NEED_MORE */
 #include "copy_column_types.h"
+#include "chartype.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "error_code.h"
@@ -51,6 +52,18 @@ csv_error (copy_row_error *row_error, int col, const char *reason)
   return ER_COPY_CSV_FORMAT_ERROR;
 }
 
+/* A number may have white space on either side, as INSERT's cast allows
+ * (tp_atobi ()); strtol () and the others skip only the leading part. */
+static bool
+csv_only_spaces_left (const char *p)
+{
+  while (char_isspace (*p))
+    {
+      p++;
+    }
+  return *p == '\0';
+}
+
 static int
 csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom, DB_VALUE *val,
 		  copy_row_error *row_error, int col)
@@ -63,7 +76,7 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     {
       errno = 0;
       long v = strtol (s.c_str (), &endp, 10);
-      if (endp == s.c_str () || *endp != '\0')
+      if (endp == s.c_str () || !csv_only_spaces_left (endp))
 	{
 	  goto bad_value;
 	}
@@ -81,7 +94,7 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     {
       errno = 0;
       long long v = strtoll (s.c_str (), &endp, 10);
-      if (endp == s.c_str () || *endp != '\0')
+      if (endp == s.c_str () || !csv_only_spaces_left (endp))
 	{
 	  goto bad_value;
 	}
@@ -96,7 +109,7 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     {
       errno = 0;
       float v = strtof (s.c_str (), &endp);
-      if (endp == s.c_str () || *endp != '\0')
+      if (endp == s.c_str () || !csv_only_spaces_left (endp))
 	{
 	  goto bad_value;
 	}
@@ -114,7 +127,7 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     {
       errno = 0;
       double v = strtod (s.c_str (), &endp);
-      if (endp == s.c_str () || *endp != '\0')
+      if (endp == s.c_str () || !csv_only_spaces_left (endp))
 	{
 	  goto bad_value;
 	}
@@ -132,7 +145,7 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     case DB_TYPE_SHORT:
     {
       long v = strtol (s.c_str (), &endp, 10);
-      if (endp == s.c_str () || *endp != '\0')
+      if (endp == s.c_str () || !csv_only_spaces_left (endp))
 	{
 	  goto bad_value;
 	}
