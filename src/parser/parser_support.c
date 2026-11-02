@@ -3133,7 +3133,7 @@ pt_statement_line_number (const PT_NODE * stmt)
 {
   if (stmt)
     {
-      return stmt->line_number;
+      return (stmt->stmt_start_line > 0) ? stmt->stmt_start_line : stmt->line_number;
     }
 
   return 1;

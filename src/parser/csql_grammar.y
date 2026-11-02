@@ -49,6 +49,7 @@ typedef struct YYLTYPE
   int last_line;
   int last_column;
   int buffer_pos; /* position in the buffer being parsed */
+  int start_line; /* line of the first token in the symbol, 0 if the symbol is empty */
 
 } YYLTYPE;
 #define YYLTYPE_IS_DECLARED 1
@@ -475,6 +476,9 @@ static int g_plcsql_text_pos;
  * take into account the context information. The left-side symbol in a rule
  * will have the same context information as the last symbol from its
  * right side
+ *
+ * An empty rule takes first_line from the symbol before it, so start_line
+ * is kept separately: the start_line of the first non-empty symbol.
  */
 #define YYLLOC_DEFAULT(Current, Rhs, N)				        \
     do									\
@@ -485,6 +489,15 @@ static int g_plcsql_text_pos;
 	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
+	  (Current).start_line   = 0;					\
+	  for (int yyi_ = 1; yyi_ <= (N); yyi_++)				\
+	    {								\
+	      if (YYRHSLOC (Rhs, yyi_).start_line > 0)			\
+		{							\
+		  (Current).start_line = YYRHSLOC (Rhs, yyi_).start_line; \
+		  break;						\
+		}							\
+	    }								\
 	}								\
       else								\
 	{								\
@@ -493,6 +506,7 @@ static int g_plcsql_text_pos;
 	  (Current).first_column = (Current).last_column =		\
 	    YYRHSLOC (Rhs, 0).last_column;				\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
+	  (Current).start_line   = 0;					\
 	}								\
     while (0)
 
@@ -1936,6 +1950,12 @@ stmt
 			parser_restore_si_datetime ();
 			parser_restore_si_tran_id ();
 			parser_restore_cannot_prepare ();
+
+			if (node)
+			  {
+			    /* line_number may be past the start, e.g. the SELECT after WITH or the UNION node */
+			    node->stmt_start_line = @3.start_line;
+			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
