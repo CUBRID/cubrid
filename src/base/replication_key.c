@@ -46,6 +46,17 @@ struct repl_key_buffer
 };
 
 /*
+ * repl_key_type_is_supported () - check whether an index type can be an RK
+ *   return: true for PRIMARY KEY, UNIQUE, or REVERSE UNIQUE
+ *   type(in): BTREE_TYPE value
+ */
+static bool
+repl_key_type_is_supported (int type)
+{
+  return type == BTREE_PRIMARY_KEY || type == BTREE_UNIQUE || type == BTREE_REVERSE_UNIQUE;
+}
+
+/*
  * repl_key_buffer_reserve_space() - make room for the next write
  *   return: true on success, false on size or allocation error
  *   b(in/out): buffer whose capacity may grow; length is unchanged
@@ -164,14 +175,12 @@ repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN *col
   *data = NULL;
   *length = 0;
 
-  if (name == NULL || name[0] == '\0' || count <= 0 || columns == NULL
-      || (type != BTREE_PRIMARY_KEY && type != BTREE_UNIQUE && type != BTREE_REVERSE_UNIQUE))
+  if (name == NULL || *name == '\0' || count <= 0 || columns == NULL || !repl_key_type_is_supported (type))
     {
       return repl_key_invalid ();
     }
 
-  if (!repl_key_put_int (&b, REPL_KEY_METADATA_VERSION) || !repl_key_put_int (&b, type)
-      || !repl_key_put_name (&b, name) || !repl_key_put_int (&b, count))
+  if (!repl_key_put_int (&b, type) || !repl_key_put_name (&b, name) || !repl_key_put_int (&b, count))
     {
       goto error;
     }
@@ -381,11 +390,9 @@ repl_key_parse (const char *data, int length, char *output, int capacity)
     }
 
   repl_key_reader r = { data, length };
-  int version, type, count;
+  int type, count;
   const char *name;
-  if (!repl_key_get_int (&r, &version) || version != REPL_KEY_METADATA_VERSION
-      || !repl_key_get_int (&r, &type)
-      || (type != BTREE_PRIMARY_KEY && type != BTREE_UNIQUE && type != BTREE_REVERSE_UNIQUE)
+  if (!repl_key_get_int (&r, &type) || !repl_key_type_is_supported (type)
       || !repl_key_get_name (&r, &name) || name[0] == '\0' || !repl_key_get_int (&r, &count)
       || count <= 0 || count > r.remaining / (OR_INT_SIZE * 14))
     {
@@ -447,7 +454,7 @@ repl_key_parse (const char *data, int length, char *output, int capacity)
 }
 
 /*
- * repl_key_is_valid() - check the RK descriptor's version, fields, and bounds
+ * repl_key_is_valid() - check the RK descriptor's fields and bounds
  *   return: true if valid, false otherwise
  *   data(in): packed descriptor
  *   length(in): descriptor length in bytes
