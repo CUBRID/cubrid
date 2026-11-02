@@ -1400,6 +1400,7 @@ exit:
       }
 
     res.t_info = type_info (db_type, scale, prec);
+    res.qid_kind = attr ? QID_TABLE_COLUMN : QID_PKG_VAR;
 
     return err;
   }

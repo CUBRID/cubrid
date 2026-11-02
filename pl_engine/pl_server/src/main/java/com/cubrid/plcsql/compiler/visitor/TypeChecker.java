@@ -115,7 +115,9 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitTypeSpecPercent(TypeSpecPercent node) {
-        dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, node.qualifier, spOwner));
+        if (node.qidKind == ServerAPI.QID_TABLE_COLUMN) {
+            dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, node.qualifier, spOwner));
+        }
         assert node.type != null;
         return node.type;
     }

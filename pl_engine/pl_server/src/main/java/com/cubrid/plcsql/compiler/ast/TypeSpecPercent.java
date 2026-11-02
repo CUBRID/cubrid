@@ -43,6 +43,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String qualifier;
     public final String id;
     public final int typeVisitMode;
+    public int qidKind; // ServerAPI.QID_TABLE_COLUMN or QID_PKG_VAR
 
     public TypeSpecPercent(ParserRuleContext ctx, String qualifier, String id, int typeVisitMode) {
         super(ctx, null); // null: unknown yet

@@ -644,7 +644,7 @@ namespace cubpl
   GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS()
 
 #define GLOBAL_SEMANTICS_RESPONSE_ID_TYPE_PACKER_ARGS() \
-  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), t_info
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), t_info, qid_kind
 
   global_semantics_response_common::global_semantics_response_common ()
     : idx (-1)
@@ -730,6 +730,7 @@ namespace cubpl
 
   global_semantics_response_id_type::global_semantics_response_id_type ()
     : t_info ()
+    , qid_kind (QID_TABLE_COLUMN)
   {
     //
   }

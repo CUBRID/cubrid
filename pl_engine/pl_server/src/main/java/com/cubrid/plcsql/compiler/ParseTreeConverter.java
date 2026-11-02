@@ -628,6 +628,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (it.errCode != 0) {
             throw new SemanticError(Misc.getLineColumnOf(tsp.ctx), it.errMsg); // s411
         }
+        tsp.qidKind = it.qidKind;
 
         // package variables and constants of PL-only types
         if (it.typeInfo.dbType == DBType.DB_PL_BOOLEAN) {

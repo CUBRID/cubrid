@@ -111,6 +111,10 @@ public class ServerAPI {
     public static final int QUESTION_SERIAL = 3;
     public static final int QUESTION_ID_TYPE = 4;
 
+    // kind of <qualifier>.<id> in the answer to a QUESTION_ID_TYPE question
+    public static final int QID_TABLE_COLUMN = 0;
+    public static final int QID_PKG_VAR = 1; // package variable or constant
+
     public abstract static class Question implements PackableObject, UnPackableObject {
         public int seqNo = -1;
         public int errCode;
@@ -288,6 +292,7 @@ public class ServerAPI {
 
         // output
         public TypeInfo typeInfo; // SQL type if the id exists, otherwise null
+        public int qidKind; // QID_TABLE_COLUMN or QID_PKG_VAR
 
         public void setAnswer(int seqNo, TypeInfo typeInfo) {
             this.seqNo = seqNo;
@@ -302,6 +307,7 @@ public class ServerAPI {
             }
 
             typeInfo = new TypeInfo(unpacker);
+            qidKind = unpacker.unpackInt();
         }
 
         @Override

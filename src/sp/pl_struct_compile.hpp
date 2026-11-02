@@ -183,6 +183,13 @@ namespace cubpl
     GSQT_ID_TYPE = 4,
   };
 
+  // kind of <qualifier>.<id> in the answer to a GSQT_ID_TYPE question
+  enum qualified_id_kind
+  {
+    QID_TABLE_COLUMN = 0,
+    QID_PKG_VAR = 1,	// package variable or constant
+  };
+
   struct EXPORT_IMPORT global_semantics_question : public cubpacking::packable_object
   {
     global_semantics_question () = default;
@@ -250,6 +257,7 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     cubmethod::type_info t_info;
+    int qid_kind;	// qualified_id_kind
   };
 
   struct EXPORT_IMPORT global_semantics_response : public cubpacking::packable_object
