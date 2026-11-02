@@ -213,4 +213,26 @@ extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
 extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 bool is_final, QFILE_LIST_ID * merged_results);
+extern bool qexec_batch_eligible (const xasl_node * xasl);
+
+/* the hash GROUP BY of a BUILDLIST block as a page batch's blocking node (expr_batch.h) */
+struct expr_chunk_node;
+struct expr_batch_plan;
+struct expr_batch;
+struct expr_batch_gby_map;
+struct scan_batch_project;
+typedef struct qexec_batch_gby QEXEC_BATCH_GBY;
+extern struct expr_batch_gby_map *qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, xasl_node * xasl,
+							      val_descr * vd, const char **why_not);
+extern void qexec_batch_gby_map_destroy (THREAD_ENTRY * thread_p, struct expr_batch_gby_map *map);
+/* can the block's heap scan run its filter a chunk at a time while its rows go on one by one? */
+extern bool qexec_batch_filter_eligible (const xasl_node * xasl);
+extern QEXEC_BATCH_GBY *qexec_batch_gby_create (THREAD_ENTRY * thread_p, xasl_node * xasl, val_descr * vd,
+						const struct scan_batch_project *row,
+						QFILE_LIST_ID * (*list) (void *arg), void (*sync) (void *arg),
+						void *arg);
+extern void qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * gby);
+extern int qexec_batch_gby_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
+				    struct expr_batch_plan *plan, struct expr_batch *batch);
+
 #endif /* _QUERY_EXECUTOR_H_ */
