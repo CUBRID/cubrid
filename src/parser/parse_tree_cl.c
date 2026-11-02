@@ -73,6 +73,9 @@
 #define DONT_PRT_LONG_STRING_LENGTH 256
 /* CBRD-27583: the cache key text prints a LIMIT rewritten into a numbering predicate too: the plan reads its binds */
 #define PT_PRINT_LIMIT(parser, rewrite_limit) ((rewrite_limit) || ((parser)->custom_print & PT_PRINT_HOST_VAR_COUNT))
+/* the text printed with quotes is the one parsed again (e.g. a view spec, see parser_print_tree_with_quotes ()), while
+ * the text printed for a plan or a column name is only shown */
+#define PT_PRINT_TO_PARSE_AGAIN(parser) (((parser)->custom_print & PT_PRINT_QUOTES) != 0)
 
 #define PT_APPLY_WALK(parser, ptr, arg) do { \
          if((ptr))                           \
@@ -435,6 +438,7 @@ static PARSER_VARCHAR *pt_print_trigger_spec_list (PARSER_CONTEXT * parser, PT_N
 static PARSER_VARCHAR *pt_print_truncate (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_do (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p);
+static bool pt_select_prints_paren (PT_NODE * p);
 static bool pt_set_op_prints_paren (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand);
 static bool pt_select_prints_limit_for_orderby_for (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -15170,15 +15174,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       return q;
     }
 
-  if (p->info.query.is_subquery == PT_IS_SUBQUERY
-      || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
-      || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by))
-    {
-      if (!p->info.query.flag.subquery_cached)
-	{
-	  set_paren = true;
-	}
-    }
+  set_paren = pt_select_prints_paren (p);
 
   if (set_paren)
     {
@@ -16477,6 +16473,24 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 }
 
 /*
+ * pt_select_prints_paren () - check whether pt_print_select () wraps the printed text of a SELECT in parentheses
+ *   return:
+ *   p(in): SELECT
+ */
+static bool
+pt_select_prints_paren (PT_NODE * p)
+{
+  if (p->info.query.flag.subquery_cached)
+    {
+      return false;
+    }
+
+  return (p->info.query.is_subquery == PT_IS_SUBQUERY
+	  || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
+	  || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by));
+}
+
+/*
  * pt_set_op_prints_paren () - check whether a set operation wraps its printed text in parentheses by itself
  *   return:
  *   parser(in):
@@ -16485,11 +16499,12 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
  * Note: A set operation is printed as "(arg1 op arg2)" followed by its ORDER BY, FOR and LIMIT clauses. As a
  *       subquery (e.g. of EXISTS or IN), those clauses would be taken as clauses of the enclosing query when the
  *       printed text (e.g. a view spec) is parsed again, so it is printed as "(arg1 op arg2 order by ...)".
+ *       The text that is only shown (a plan, a column name) is printed as before.
  */
 static bool
 pt_set_op_prints_paren (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  if (p->info.query.is_subquery != PT_IS_SUBQUERY)
+  if (!PT_PRINT_TO_PARSE_AGAIN (parser) || p->info.query.is_subquery != PT_IS_SUBQUERY)
     {
       return false;
     }
@@ -16504,32 +16519,35 @@ pt_set_op_prints_paren (PARSER_CONTEXT * parser, PT_NODE * p)
  *   parser(in):
  *   operand(in):
  *
- * Note: A SELECT operand prints parentheses only when it has ORDER BY (see pt_print_select ()), and a set operation
- *       operand only by pt_set_op_prints_paren (). Wrap any other operand that prints FOR or LIMIT (e.g. a DISTINCT
- *       SELECT with LIMIT), or the clause would be taken as a clause of the whole set operation.
+ * Note: ORDER BY, FOR and LIMIT of an operand would be taken as clauses of the whole set operation when the printed
+ *       text is parsed again, so wrap an operand that prints them but not its own parentheses (e.g. a DISTINCT
+ *       SELECT with LIMIT).
  */
 static PARSER_VARCHAR *
 pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  bool prints_paren;
 
   r1 = pt_print_bytes (parser, operand);
 
-  if (operand == NULL || !PT_IS_QUERY_NODE_TYPE (operand->node_type) || operand->info.query.order_by != NULL
-      || pt_set_op_prints_paren (parser, operand))
+  if (!PT_PRINT_TO_PARSE_AGAIN (parser) || operand == NULL || !PT_IS_QUERY_NODE_TYPE (operand->node_type))
     {
       return r1;
     }
 
-  if (operand->node_type == PT_SELECT && operand->info.query.is_subquery == PT_IS_SUBQUERY
-      && !operand->info.query.flag.subquery_cached)
+  if (operand->node_type == PT_SELECT)
     {
-      /* printed in parentheses by pt_print_select () */
-      return r1;
+      prints_paren = pt_select_prints_paren (operand);
+    }
+  else
+    {
+      prints_paren = pt_set_op_prints_paren (parser, operand);
     }
 
-  if (operand->info.query.orderby_for == NULL
-      && !(operand->info.query.limit != NULL && PT_PRINT_LIMIT (parser, operand->info.query.flag.rewrite_limit)))
+  if (prints_paren
+      || (operand->info.query.order_by == NULL && operand->info.query.orderby_for == NULL
+	  && !(operand->info.query.limit != NULL && PT_PRINT_LIMIT (parser, operand->info.query.flag.rewrite_limit))))
     {
       return r1;
     }
@@ -16550,11 +16568,13 @@ pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand)
  * Note: LIMIT of a DISTINCT SELECT without ORDER BY and GROUP BY is rewritten to FOR ORDERBY_NUM() (see
  *       pt_eval_type_pre ()), but FOR is not accepted without ORDER BY when the printed text (e.g. a view spec) is
  *       parsed again. LIMIT is kept in the tree, so print it instead; it is rewritten to the same FOR again.
+ *       The text that is only shown (a plan) keeps FOR, which is what is executed.
  */
 static bool
 pt_select_prints_limit_for_orderby_for (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  return (p->info.query.order_by == NULL && p->info.query.orderby_for != NULL && p->info.query.limit != NULL
+  return (PT_PRINT_TO_PARSE_AGAIN (parser) && p->info.query.all_distinct == PT_DISTINCT
+	  && p->info.query.order_by == NULL && p->info.query.orderby_for != NULL && p->info.query.limit != NULL
 	  && !PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit));
 }
 

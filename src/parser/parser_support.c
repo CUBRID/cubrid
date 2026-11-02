@@ -3692,6 +3692,22 @@ pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_is_orderby_for_upper_bound () - check if FOR ORDERBY_NUM() is only an upper bound
+ *   return: true if orderby_for is only 'orderby_num () <= expr' or 'orderby_num () < expr'
+ *   orderby_for(in):
+ *
+ * Note: pt_has_orderby_for_with_predicate () and pt_exists_limit_is_removable () (whose bound must be a positive
+ *	 constant as well) decide with this whether the first tuple of an EXISTS subquery is enough.
+ */
+bool
+pt_is_orderby_for_upper_bound (PT_NODE * orderby_for)
+{
+  return (orderby_for->next == NULL && orderby_for->or_next == NULL && pt_is_expr_node (orderby_for)
+	  && PT_IS_ORDERBYNUM (orderby_for->info.expr.arg1)
+	  && (orderby_for->info.expr.op == PT_LE || orderby_for->info.expr.op == PT_LT));
+}
+
+/*
  * pt_has_orderby_for_with_predicate ()
  *          - check if tree has a FOR ORDERBY_NUM() predicate other than an upper bound
  *   return: true if tree has such a predicate (e.g. LIMIT with offset)
@@ -3712,15 +3728,9 @@ pt_has_orderby_for_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       orderby_for = node->info.query.orderby_for;
-      if (orderby_for != NULL)
+      if (orderby_for != NULL && !pt_is_orderby_for_upper_bound (orderby_for))
 	{
-	  /* there is only 'orderby_num <= ' */
-	  if (orderby_for->next != NULL || orderby_for->or_next != NULL || !pt_is_expr_node (orderby_for)
-	      || !PT_IS_ORDERBYNUM (orderby_for->info.expr.arg1)
-	      || (orderby_for->info.expr.op != PT_LE && orderby_for->info.expr.op != PT_LT))
-	    {
-	      return true;
-	    }
+	  return true;
 	}
 
       if (node->node_type != PT_SELECT)

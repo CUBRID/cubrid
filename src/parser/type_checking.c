@@ -8541,8 +8541,7 @@ pt_exists_limit_is_removable (PT_NODE * node)
   if (orderby_for != NULL)
     {
       /* only 'orderby_num() <= n' (n >= 1) or 'orderby_num() < n' (n >= 2) */
-      if (orderby_for->next != NULL || orderby_for->or_next != NULL || !pt_is_expr_node (orderby_for)
-	  || !PT_IS_ORDERBYNUM (orderby_for->info.expr.arg1))
+      if (!pt_is_orderby_for_upper_bound (orderby_for))
 	{
 	  return false;
 	}
@@ -8639,6 +8638,13 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  /* INTERSECT and EXCEPT compare whole rows of their operands, so neither their select lists nor LIMIT can be
 	   * changed. The select lists of the other set operands must be kept too, to match the number of columns. */
+	  return;
+	}
+
+      if (pt_has_analytic (parser, node))
+	{
+	  /* the analytic functions are evaluated with the select list, and ORDER BY may refer to them by position, so
+	   * the select list can not be chopped */
 	  return;
 	}
 
