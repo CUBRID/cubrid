@@ -721,6 +721,7 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
   unique_name[0] = '\0';
   PARSER_CONTEXT *dummy_parser = NULL;
   MOP owner = NULL;
+  DB_VALUE generated_val;
 
   assert (sp_mop != NULL && new_owner_mop != NULL);
 
@@ -728,6 +729,21 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
     {
       error = ER_AU_DBA_ONLY;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "change_sp_owner");
+      goto end;
+    }
+
+  /*
+   * A system generated procedure belongs to the object that made it, such as the trigger of a PL/CSQL block action.
+   * Moving it alone would leave that object calling a name that no longer exists.
+   */
+  error = db_get (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  if (db_get_int (&generated_val) == 1)
+    {
+      ERROR_SET_ERROR (error, ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED);
       goto end;
     }
 
