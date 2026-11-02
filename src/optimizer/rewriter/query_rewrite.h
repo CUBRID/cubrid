@@ -53,6 +53,7 @@ struct qo_unnest_info
   PT_NODE *outer_spec;		/* the one enclosing spec the ON names; the lifted spec joins right after its chain */
   bool is_anti;			/* ANTI rather than SEMI */
   bool is_in_form;		/* an IN form, whose on_cond starts with a synthesized equality */
+  bool is_derived;		/* the subquery FROM holds several tables: the inner is a derived table over them */
 };
 
 struct spec_id_info
