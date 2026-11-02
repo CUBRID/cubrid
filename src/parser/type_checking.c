@@ -7526,8 +7526,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
 
-  /* CBRD-27748: a LIMIT value is BIGINT. Typed here, before the LIMIT clause is copied into the numbering predicates
-   * (pt_limit_to_numbering_expr, below in this function) and before its values are typed with the query */
+  /* CBRD-27748: before the LIMIT clause is copied into the numbering predicates (below) and its values are typed */
   pt_preset_limit_value (parser, node);
 
   if (sc_info->donot_fold == true)
@@ -8460,9 +8459,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       break;
 
     case PT_NAME:
-      /* CBRD-27748: a key limit bind is a BIGINT position (CBRD-27583): pt_preset_limit_value () gave it the expected
-       * domain before the type checking of this node (pt_eval_type_pre), with the literals and the expressions of the
-       * KEYLIMIT, so nothing is left to do here */
+      /* CBRD-27748: a key limit value was typed BIGINT by pt_preset_limit_value () in pt_eval_type_pre () */
       break;
 
     case PT_VALUE:
@@ -8985,13 +8982,9 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
  *   node(in/out): the expression, without a host variable; a literal on return when the expression folds
  *   is_key_limit(in): true for a KEYLIMIT value, whose hint is printed as it is
  *
- * Note: Why: a view and a KEYLIMIT hint store the expression's text, and the KEYLIMIT grammar reads no CAST and no
- *       div (keylimit 5 / 2 was stored as keylimit 5 div 2, which a SELECT on the view could not parse). A folded
- *       number prints as itself. The literals were typed BIGINT before, so the arithmetic is BIGINT arithmetic
- *       (99999999999999999999 - 99999999999999999998 is an error, not 1). The expression stays when it
- *       does not evaluate (9223372036854775807 + 1, reported) or is not folded (a PL/CSQL static SQL is typed
- *       without folding). A KEYLIMIT expression also stays when it folds to a negative number, which the KEYLIMIT
- *       grammar does not read back from a view's text (the value is rejected when the query runs, as it was).
+ * Note: The literals were typed BIGINT before, so the arithmetic is BIGINT arithmetic. The expression stays when it
+ *       does not evaluate (9223372036854775807 + 1, reported) or when a KEYLIMIT folds to a negative number, which
+ *       the KEYLIMIT grammar does not read back from a view's text.
  */
 static void
 pt_fold_limit_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit)
@@ -9039,16 +9032,9 @@ pt_fold_limit_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit)
  *   node(in): an offset or a count of a LIMIT clause, or a KEYLIMIT value
  *   is_key_limit(in): true for a KEYLIMIT value
  *
- * Note: A LIMIT value is a number of rows, a BIGINT: it is converted as a value stored into a BIGINT column is.
- *       A host variable takes BIGINT as its expected domain, so the client converts the value when it binds it
- *       (2.5 is 3, '2' is 2, 1e30 is an error). A literal is converted here (99999999999999999999 is an error), and
- *       an expression of literals is folded into one (1 + 1 is 2). Both print as their number, so a view's text and
- *       a PL/CSQL static SQL, which store the printed query, carry no CAST (the KEYLIMIT grammar reads none). The
- *       host variables in the arithmetic of a value are typed too, so LIMIT ? + ? adds two BIGINT values instead of
- *       concatenating two strings; the arithmetic itself is cast when the value is copied into the numbering
- *       predicate (pt_copy_limit_value). A comparison with ROWNUM is not a LIMIT value: the value keeps its type
- *       and the comparison is made on the values; an optimization that reads it as a number of rows selects the
- *       same rows (tp_value_to_row_bound).
+ * Note: A LIMIT value is a number of rows, a BIGINT, converted as a value stored into a BIGINT column is: a host
+ *       variable takes BIGINT as its expected domain (2.5 is 3, '2' is 2, 1e30 is an error), a literal is converted
+ *       here and an expression of literals is folded. Both print as their number, so a view's text carries no CAST.
  */
 static void
 pt_preset_limit_value_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit)

@@ -34110,8 +34110,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       return NO_ERROR;
     }
 
-  /* CBRD-27748: a BIGINT row bound (qexec_get_orderbynum_upper_bound), not the value rounded to an int; more rows than
-   * an int counts are too many for a top-n */
+  /* a BIGINT row bound; more rows than an int counts are too many for a top-n */
   assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_BIGINT);
   if (db_get_bigint (&ubound_val) > INT_MAX)
     {

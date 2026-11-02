@@ -5589,21 +5589,12 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desire
  *                   that already is a BIGINT, or a caller on the client side, which coerces by the value's type
  *    row_bound(out): the integer bound
  *
- * Note: Why: a comparison with a row number (rownum <= 2.5) is a comparison of values, and the sequential scan makes
- *       it so. Every optimization that turned the value into a number of rows rounded it on its own (2.5 to 3 rows on
- *       an index, 2.4 - 1 to 1 row on a sort), so the same query gave different rows on different plans.
- *       An optimization that reads value as a number of rows (key limit, sort limit, top-n, parallel scan) takes the
- *       bound from here, so that it selects the rows the sequential scan selects by comparing the values. A row number
- *       is an integer, so the rows are the same:
+ * Note: An optimization that reads value as a number of rows (key limit, sort limit, top-n, parallel scan) takes the
+ *       bound from here, so that it selects the rows the sequential scan selects by comparing the values:
  *         exclusive false (rownum <= value, rownum > value) : floor (value)      2.4 -> 2, 2.5 -> 2, 2 -> 2
  *         exclusive true  (rownum < value, rownum >= value) : ceil (value) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
- *       Beyond the BIGINT range the bound is DB_BIGINT_MAX when value is positive and -1 when negative: no row
- *       number passes those limits, so the rows are the same again.
- *
- *       The coercion to BIGINT rounds. The rounded value is compared back with value and stepped down when it lies
- *       above value, or on value when exclusive. The comparison, not the type, decides, so NUMERIC, DOUBLE and
- *       numeric strings are handled alike. A NaN compares equal to everything, as it does in the sequential scan:
- *       every row when value is inside the bound, no row when outside.
+ *       Beyond the BIGINT range the bound is DB_BIGINT_MAX when value is positive and -1 when negative.
+ *       The comparison, not the type, decides, so NUMERIC, DOUBLE and numeric strings are handled alike.
  */
 TP_DOMAIN_STATUS
 tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_TYPE source_type, TP_VALUE_CONVERTER converter,
@@ -5667,12 +5658,9 @@ tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_TYPE source_ty
  *    limit_sum(out): offset + count
  *    sum_overflow(out): true when the sum lies beyond BIGINT (limit_sum is then unusable)
  *
- * Note: Why: the sum was built in the type of the values, so LIMIT ?, ? bound with '2' and '2' read up to '22'
- *       (a string concatenation) and a NUMERIC sum escaped the BIGINT range the predicate compares in. The sum is
- *       computed in one place for the parser's fold, the optimizer's estimate and the check at the start of the query.
- *       A LIMIT value is BIGINT, and so is the sum: a sum beyond BIGINT is an error, reported by the caller
- *       (once, when the values are literals folded at compile time, or when the query starts). A value that does
- *       not read as BIGINT is the caller's to report too, where the value is typed or bound.
+ * Note: A LIMIT value is BIGINT, and so is the sum. A sum beyond BIGINT and a value that does not read as BIGINT
+ *       are the caller's to report (the parser's fold, the optimizer's estimate and qexec_check_limit_clause share
+ *       this function).
  */
 TP_DOMAIN_STATUS
 tp_value_limit_sum (const DB_VALUE * offset, const DB_VALUE * count, DB_BIGINT * limit_sum, bool * sum_overflow)

@@ -4817,9 +4817,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	  goto error_exit;
 	}
 
-      /* CBRD-27748: offset + count, a BIGINT like the two values. It was NUMERIC (38, 0), which let a bind value keep
-       * its own type in the addition: '2' + '2' was the string '22' and NUMERIC 1.5 + 1.5 the NUMERIC 3.0, while the
-       * same LIMIT read on an index rounded each value to BIGINT first, so the plans disagreed */
+      /* CBRD-27748: offset + count, a BIGINT like the two values (a NUMERIC sum let '2' + '2' concatenate) */
       sum->info.expr.op = PT_PLUS;
       sum->type_enum = PT_TYPE_BIGINT;
 
@@ -10397,8 +10395,8 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
 	  if (tp_value_limit_sum (limit_val, &range, &limit_sum, &sum_overflow) != DOMAIN_COMPATIBLE || sum_overflow)
 	    {
-	      /* CBRD-27748: unusable for the limit optimizations; a sum beyond BIGINT is reported when the query runs
-	       * (qexec_check_limit_clause), not here, where the caller only decides a plan */
+	      /* unusable for the limit optimizations; a sum beyond BIGINT is reported when the query runs
+	       * (qexec_check_limit_clause) */
 	      error = ER_FAILED;
 	      goto cleanup;
 	    }
@@ -10886,9 +10884,7 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
     {
       arg_ordby_num = arg2;
       rhs = arg1;
-      /* CBRD-27748: ORDERBY_NUM () is on the right: mirror the operator, n >= ORDERBY_NUM () is ORDERBY_NUM () <= n.
-       * The operators were negated instead (<= to >), which read 3 >= ORDERBY_NUM () as a lower bound; only the
-       * plan's estimate of the rows was wrong, the rows were right */
+      /* ORDERBY_NUM () is on the right: mirror the operator, n >= ORDERBY_NUM () is ORDERBY_NUM () <= n */
       switch (op)
 	{
 	case PT_LE:
@@ -10960,9 +10956,7 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
       pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
     }
 
-  /* CBRD-27748: the rows the comparison admits: floor (n) for ORDERBY_NUM () <= n, ceil (n) - 1 for ORDERBY_NUM () < n
-   * (lt), as the server reads the bound (fetch.c key_limit_eval). The client has no unpack converter: the value's
-   * own type is passed. The bound was rounded to BIGINT and then decremented for <, so 2.4 gave 1 (2 is right) */
+  /* the rows the comparison admits, as key_limit_eval () reads them: floor (n) for <= n, ceil (n) - 1 for < n (lt) */
   if (DB_IS_NULL (&limit)
       || tp_value_to_row_bound (&limit, lt, DB_VALUE_DOMAIN_TYPE (&limit), NULL, &row_bound) != DOMAIN_COMPATIBLE)
     {
