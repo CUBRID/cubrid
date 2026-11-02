@@ -588,6 +588,37 @@ la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT *context)
 }
 
 /*
+ * la_release_oversized_recdes() - give back the record areas larger than a page
+ *
+ * Note: a record larger than a page gets its own allocation, which otherwise stays until its slot is handed out
+ *   again; with one pool per worker a run of big rows would stay allocated in every worker. Call only when no
+ *   repl object refers to a record of the pool.
+ */
+void
+la_release_oversized_recdes (LA_APPLY_WORKER_CONTEXT *context)
+{
+  LA_RECDES_POOL *pool = &context->recdes_pool;
+  RECDES *recdes;
+  int i;
+
+  if (pool->is_initialized == false)
+    {
+      return;
+    }
+
+  for (i = 0; i < pool->num_recdes; i++)
+    {
+      recdes = &pool->recdes_arr[i];
+      if (recdes->area_size > pool->db_page_size)
+	{
+	  free_and_init (recdes->data);
+	  recdes->data = pool->area + pool->db_page_size * i;
+	  recdes->area_size = pool->db_page_size;
+	}
+    }
+}
+
+/*
  * la_init_recdes_pool() - initialize recdes pool
  *   return:
  *

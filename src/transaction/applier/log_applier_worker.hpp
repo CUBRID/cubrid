@@ -124,5 +124,6 @@ extern void la_worker_end_session (LA_WORKER_SESSION *session);
 
 extern RECDES *la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT *context);
 extern int la_realloc_recdes_data (LA_APPLY_WORKER_CONTEXT *context, RECDES *recdes, int data_size);
+extern void la_release_oversized_recdes (LA_APPLY_WORKER_CONTEXT *context);
 
 #endif /* _LOG_APPLIER_WORKER_HPP_ */

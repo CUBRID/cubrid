@@ -1430,6 +1430,11 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
     }
 
   error = la_flush_repl_items (true, stats);
+  if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
+    {
+      /* nothing refers to the pool's records any more */
+      la_release_oversized_recdes (context);
+    }
 
   if (trace_level >= 2)
     {
