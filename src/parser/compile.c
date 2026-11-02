@@ -488,7 +488,12 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (statement->node_type == PT_CREATE_ENTITY && statement->info.create_entity.entity_type == PT_CLASS)
+      /* CREATE TABLE ... AS SELECT, CREATE VIEW and ALTER VIEW (AS, ADD QUERY, CHANGE QUERY) may have queries
+       * referring a CTE */
+      if (statement->node_type == PT_CREATE_ENTITY
+	  || (statement->node_type == PT_ALTER
+	      && (statement->info.alter.code == PT_RESET_QUERY || statement->info.alter.code == PT_ADD_QUERY
+		  || statement->info.alter.code == PT_MODIFY_QUERY)))
 	{
 	  (void) parser_walk_tree (parser, statement, NULL, NULL, pt_resolve_cte_specs, NULL);
 	}
