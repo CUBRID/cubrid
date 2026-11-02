@@ -10,6 +10,9 @@
 # limitations under the License.
 
 import json
+import copy
+import subprocess
+import sys
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -59,6 +62,7 @@ class ServerAssociationTest(unittest.TestCase):
              mock.patch.object(Path, "read_bytes", read_bytes), \
              mock.patch.object(bench.shutil, "which", return_value=str(self.root / "bin/csql")), \
              mock.patch.object(bench.os, "sched_getaffinity", return_value={0}), \
+             mock.patch.object(bench, "matching_utility", return_value="cubrid"), \
              mock.patch.object(bench, "run", side_effect=RuntimeError("SQL reached")) as run:
             try:
                 bench.measure(self.args)
@@ -96,6 +100,136 @@ class ServerAssociationTest(unittest.TestCase):
                 ordinary.measure(self.args)
         run.assert_not_called()
         self.assertFalse((self.root / "out").exists())
+
+
+class ComparisonTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        env = {name: None for name in bench.LOCALE_ENV}
+        conditions = {"version": 1, "boot_id": "boot", "architecture": "x86_64",
+                      "server_affinity": [1], "client_affinity": [2],
+                      "locale_environment": {"client": env, "server": env.copy()},
+                      "server_parameters": {name: "0" for name in bench.PARAMETERS},
+                      "charset": {"column_charset": "utf8", "column_collation": "utf8_bin",
+                                  "literal_charset": "utf8", "literal_collation": "utf8_bin"}}
+        counters = {name: {"value": 100, "unit": "", "running_percent": 100} for name in bench.EVENTS}
+        self.manifest = {"schema": 2, "workload": "ordinary_scan", "complete": True, "label": "test",
+                         "rows": 100, "scans": 1, "rounds": 1, "runs": 3, "queries": bench.QUERIES,
+                         "fixture_sha256": "f", "harness_sha256": "h",
+                         "conditions": {"before": conditions, "after": copy.deepcopy(conditions)},
+                         "samples": [{"round": 1, "case": case, "run": run, "warmup": run == 0,
+                                      "elapsed_seconds": 1, "counters": copy.deepcopy(counters)}
+                                     for case in bench.QUERIES for run in range(3)]}
+
+    def compare(self, a, b, *options):
+        paths = [self.root / "a.json", self.root / "b.json"]
+        for path, data in zip(paths, (a, b)):
+            path.write_text(json.dumps(data))
+        return subprocess.run([sys.executable, str(Path(bench.__file__)), "compare", "--baseline", str(paths[0]),
+                               "--candidate", str(paths[1]), *options], capture_output=True, text=True)
+
+    def test_equal_conditions_and_different_installations(self):
+        other = copy.deepcopy(self.manifest)
+        self.manifest["client"] = {"executable": "/one/csql"}
+        other["client"] = {"executable": "/two/csql"}
+        self.assertEqual(self.compare(self.manifest, other).returncode, 0)
+
+    def test_invalid_evidence_never_prints_verdict(self):
+        variants = []
+        for key in ("server_affinity", "server_parameters", "charset"):
+            data = copy.deepcopy(self.manifest)
+            for phase in ("before", "after"):
+                del data["conditions"][phase][key]
+            variants.append(data)
+        for field, value in (("server_affinity", [3]), ("server_parameters", {**self.manifest["conditions"]["before"]["server_parameters"], "data_buffer_size": "8"}),
+                             ("charset", {**self.manifest["conditions"]["before"]["charset"], "literal_charset": "euckr"})):
+            data = copy.deepcopy(self.manifest)
+            for phase in ("before", "after"):
+                data["conditions"][phase][field] = value
+            variants.append(data)
+        data = copy.deepcopy(self.manifest)
+        data["conditions"]["after"]["client_affinity"] = [9]
+        variants.append(data)
+        data = copy.deepcopy(self.manifest)
+        for phase in ("before", "after"):
+            data["conditions"][phase]["server_parameters"]["max_query_cache_entries"] = "1"
+        variants.append(data)
+        for val in (float("nan"), float("inf"), -1, 0):
+            data = copy.deepcopy(self.manifest)
+            data["samples"][0]["counters"]["cycles:u"]["value"] = val
+            variants.append(data)
+        for mutation in ("missing", "duplicate", "counter", "warmup", "elapsed", "schema"):
+            data = copy.deepcopy(self.manifest)
+            if mutation == "missing": data["samples"].pop()
+            if mutation == "duplicate": data["samples"].append(copy.deepcopy(data["samples"][0]))
+            if mutation == "counter": del data["samples"][0]["counters"]["task-clock"]
+            if mutation == "warmup": data["samples"][0]["warmup"] = False
+            if mutation == "elapsed": data["samples"][0]["elapsed_seconds"] = float("nan")
+            if mutation == "schema": data["schema"] = 1
+            variants.append(data)
+        missing_both = copy.deepcopy(self.manifest)
+        for phase in ("before", "after"):
+            del missing_both["conditions"][phase]["boot_id"]
+        result = self.compare(missing_both, missing_both)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        old = {"schema": 1, "complete": True, "samples": []}
+        self.assertEqual(self.compare(old, old).returncode, 2)
+        for data in variants:
+            with self.subTest(data=data):
+                result = self.compare(self.manifest, data)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
+        for threshold in ("nan", "inf", "-1"):
+            result = self.compare(self.manifest, self.manifest, "--max-overhead-percent", threshold)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stdout, "")
+        overflow = copy.deepcopy(self.manifest)
+        for sample in overflow["samples"]:
+            sample["counters"]["instructions:u"]["value"] = 1e308
+        result = self.compare(overflow, overflow)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+
+    def test_parameter_and_charset_parsing(self):
+        data = "\n".join(f"[S*] {name}=0 (1)" for name in bench.PARAMETERS)
+        self.assertEqual(bench.parse_parameters("[  ] data_buffer_size=123 (0)\n" + data)["data_buffer_size"], "0")
+        with self.assertRaises(ValueError): bench.parse_parameters(data + "\n[S ] data_buffer_size=1 (0)")
+        with self.assertRaises(ValueError): bench.parse_parameters(data.replace("[S*] data_buffer_size=0 (1)", ""))
+        with self.assertRaises(ValueError): bench.parse_parameters(data.replace("max_query_cache_entries=0", "max_query_cache_entries=1"))
+        self.assertEqual(bench.parse_charset("utf8\tutf8_bin\tutf8\tutf8_bin\n")["literal_collation"], "utf8_bin")
+        with self.assertRaises(ValueError): bench.parse_charset("'utf8'\n")
+
+    def test_capture_records_live_outputs_and_affinity(self):
+        args = SimpleNamespace(database="db", server_pid=42, timeout=1)
+        def fake_run(command, prefix, timeout):
+            if "paramdump" in command:
+                output = "\n".join(f"[S ] {name}=0 (0)" for name in bench.PARAMETERS)
+            else:
+                output = "utf8\tutf8_bin\tutf8\tutf8_bin\n"
+            prefix.with_suffix(".stdout").write_text(output)
+            prefix.with_suffix(".stderr").write_text("")
+        with mock.patch.object(bench, "run", side_effect=fake_run), \
+             mock.patch.object(bench, "server_environment", return_value={b"LANG": b"C"}), \
+             mock.patch.object(bench.os, "sched_getaffinity", side_effect=lambda pid: {1} if pid else {2}):
+            captured = bench.capture_conditions(args, self.root, "/install/bin/csql", "/install/bin/cubrid", "before")
+        self.assertEqual(captured["server_affinity"], [1])
+        self.assertEqual(captured["client_affinity"], [2])
+        self.assertEqual(captured["locale_environment"]["server"]["LANG"], "C")
+        self.assertTrue((self.root / "conditions-before-parameters.stdout").exists())
+        self.assertTrue((self.root / "conditions-before-charset.stdout").exists())
+
+    def test_perf_rejects_duplicate_and_nonfinite_values(self):
+        path = self.root / "counter.perf"
+        lines = [f"100;;{name};100;100" for name in bench.EVENTS]
+        path.write_text("\n".join(lines))
+        self.assertEqual(len(bench.counters(path)), 3)
+        for bad in (lines + [lines[0]], ["nan;;instructions:u;100;100", *lines[1:]],
+                    [lines[0], lines[1], "100;;task-clock;100;101"]):
+            path.write_text("\n".join(bad))
+            with self.assertRaises(ValueError): bench.counters(path)
 
 
 if __name__ == "__main__":

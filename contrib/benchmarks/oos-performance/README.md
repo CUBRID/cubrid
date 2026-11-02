@@ -114,10 +114,27 @@ Before executing SQL or starting counters, the harness resolves `csql` from
 `PATH` and checks that it resolves to `$CUBRID/bin/csql`. Put the selected
 installation's `bin` directory first in `PATH`; a client from another installation
 is rejected even when it can connect to the selected server. Every query uses
-that checked absolute executable path. The summary records the resolved CSQL
-path and its SHA-256 fingerprint alongside the server identity.
+that checked absolute executable path. The harness also checks that `cubrid` resolves to `$CUBRID/bin/cubrid` before
+it calls `paramdump`. The summary records the resolved CSQL path and its
+SHA-256 fingerprint alongside the server identity.
 The server identity includes its command-line arguments, including the exact
 database argument; the configuration file selection must also match.
+
+The scan runner captures conditions before and after the samples. It records the
+host boot ID and architecture, server and client CPU affinity, `LANG`, `LC_ALL`,
+`LC_CTYPE`, and `LC_COLLATE` for both processes, and the live server values of
+`data_buffer_size`, `log_buffer_size`, `max_plan_cache_entries`,
+`max_query_cache_entries` and `query_cache_size_in_pages`.
+It also queries the charset and collation of the fixture column and the SQL
+literal. Both query result cache limits must be zero. The raw command output
+and the observed conditions remain in the artifact directory. A change between
+the two observations leaves the measurement incomplete.
+
+These observations cover selected conditions at two points in time. They do not
+prove that all configuration, database locale, compiler settings, or machine
+conditions match, or that conditions stayed unchanged between observations.
+Use separate installation and registry paths for the builds. The comparator
+checks the observed facts, not those paths or executable hashes.
 
 ## Compare
 
@@ -125,6 +142,10 @@ database argument; the configuration file selection must also match.
 python3 bench.py compare --baseline /path/to/artifacts/base/summary.json \
   --candidate /path/to/artifacts/candidate/summary.json --max-overhead-percent 2
 ```
+
+The comparator accepts only complete schema 2 scan manifests. Older schema 1
+artifacts, including `ordinary.py` artifacts, lack the required observations and
+cannot be compared with this command. Collect new scan artifacts for each build.
 
 Exit status is 0 for results within the supplied instruction budget, 1 for a
 detected regression, and 2 for invalid or inconclusive evidence. The initial
