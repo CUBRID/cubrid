@@ -4419,24 +4419,28 @@ qo_hq_fixed_numeric_key (PT_NODE * arg, int *precision, int *scale)
 /*
  * qo_hq_is_inexact_numeric_pair () - checks whether the hash list scan hashes
  *   a pair whose common type is NUMERIC through a DOUBLE that can round equal
- *   values of the two sides apart
+ *   values of the two sides apart, or does not hash it at all
  *   return: true for such a pair
- *   arg1(in), arg2(in): the sides of a PT_EQ conjunct
- * Note: fixed NUMERIC sides of one scale hash as they are. A NUMERIC converts
- *       its coefficient with one rounding and then divides it by 10^scale,
- *       which rounds again unless the coefficient is below 2^53 (15 digits);
- *       a negative scale or a float NUMERIC rounds as well.
+ *   prior(in): the side of a PT_EQ conjunct with PRIOR
+ *   build(in): the other side
+ * Note: the PRIOR key is typed float NUMERIC, so a pair with a NUMERIC PRIOR
+ *       side hashes as DOUBLE; equal values of one fixed scale convert alike.
+ *       A NUMERIC converts its coefficient with one rounding and then divides
+ *       it by 10^scale, which rounds again unless the coefficient is below
+ *       2^53 (15 digits); a negative scale or a float NUMERIC rounds as well.
+ *       An integer PRIOR side and a fixed NUMERIC column hash in their common
+ *       NUMERIC, or not at all beyond 38 digits.
  */
 static bool
-qo_hq_is_inexact_numeric_pair (PT_NODE * arg1, PT_NODE * arg2)
+qo_hq_is_inexact_numeric_pair (PT_NODE * prior, PT_NODE * build)
 {
-  PT_NODE *arg[2] = { arg1, arg2 };
+  PT_NODE *arg[2] = { prior, build };
   bool fixed[2] = { false, false };
   int precision[2] = { 0, 0 };
   int scale[2] = { 0, 0 };
   int i;
 
-  if (arg1->type_enum != PT_TYPE_NUMERIC && arg2->type_enum != PT_TYPE_NUMERIC)
+  if (prior->type_enum != PT_TYPE_NUMERIC && build->type_enum != PT_TYPE_NUMERIC)
     {
       return false;
     }
@@ -4449,14 +4453,25 @@ qo_hq_is_inexact_numeric_pair (PT_NODE * arg1, PT_NODE * arg2)
 	  fixed[i] = qo_hq_fixed_numeric_key (arg[i], &precision[i], &scale[i]);
 	  break;
 	case PT_TYPE_SMALLINT:
+	  precision[i] = DB_SMALLINT_PRECISION;
+	  break;
 	case PT_TYPE_INTEGER:
+	  precision[i] = DB_INTEGER_PRECISION;
+	  break;
 	case PT_TYPE_BIGINT:
+	  precision[i] = DB_BIGINT_PRECISION;
+	  break;
 	case PT_TYPE_MAYBE:
 	  break;
 	default:
 	  /* the common type is not NUMERIC */
 	  return false;
 	}
+    }
+
+  if (precision[0] > 0 && prior->type_enum != PT_TYPE_NUMERIC && fixed[1] && PT_IS_NAME_NODE (build))
+    {
+      return MAX (precision[0], precision[1] - scale[1]) + MAX (scale[1], 0) > DB_MAX_FIXED_NUMERIC_PRECISION;
     }
 
   if (fixed[0] && fixed[1] && scale[0] == scale[1])
@@ -4482,7 +4497,7 @@ qo_hq_is_inexact_numeric_pair (PT_NODE * arg1, PT_NODE * arg2)
  *       ('1.0' and '"1"' against '1') can hash apart. The build key is
  *       evaluated on every row, even one no parent reaches, so a cast there
  *       can fail where the single-table plan never evaluates it. A NUMERIC
- *       pair is hashed as DOUBLE (see qo_hq_is_inexact_numeric_pair).
+ *       PRIOR key is hashed as DOUBLE (see qo_hq_is_inexact_numeric_pair).
  */
 static bool
 qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
@@ -4510,8 +4525,8 @@ qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
       return false;
     }
 
-  /* TODO: the hash key of a NUMERIC pair is DOUBLE; drop this once NUMERIC keys hash exactly */
-  if (qo_hq_is_inexact_numeric_pair (arg1, arg2))
+  /* TODO: a NUMERIC PRIOR key hashes as DOUBLE; drop the DOUBLE cases once it hashes exactly */
+  if (c1.has_prior ? qo_hq_is_inexact_numeric_pair (arg1, arg2) : qo_hq_is_inexact_numeric_pair (arg2, arg1))
     {
       return true;
     }
