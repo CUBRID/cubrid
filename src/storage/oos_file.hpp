@@ -120,8 +120,6 @@ struct oos_read_request
 
 #define OOS_STATS_NEXT_BEST_INDEX(i) \
   (((i) + 1) % OOS_NUM_BEST_SPACESTATS)
-#define OOS_STATS_PREV_BEST_INDEX(i) \
-  (((i) == 0) ? (OOS_NUM_BEST_SPACESTATS - 1) : ((i) - 1))
 
 typedef struct oos_bestspace OOS_BESTSPACE;
 struct oos_bestspace
