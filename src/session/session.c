@@ -46,6 +46,7 @@
 #endif /* defined (SA_MODE) */
 #include "lock_free.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
 
@@ -189,12 +190,14 @@ typedef struct active_sessions
   session_hashmap_type states_hashmap;
   SESSION_ID last_session_id;
   int num_holdable_cursors;
+  bool is_initialized;		/* finalize also runs on boot error paths that never initialized the table */
 
   // *INDENT-OFF*
   active_sessions ()
     : states_hashmap {}
     , last_session_id (0)
     , num_holdable_cursors (0)
+    , is_initialized (false)
   {
   }
   // *INDENT-ON*
@@ -600,13 +603,17 @@ session_control_daemon_destroy ()
 /*
  * session_states_init () - Initialize session states area
  *
+ *   return: NO_ERROR or error code
+ *
  * Note: Creates and initializes a main memory hash table that will be
  * used by session states operations. This routine should only be
  * called once during server boot.
  */
-void
+int
 session_states_init (THREAD_ENTRY * thread_p)
 {
+  int error_code;
+
   sessions.last_session_id = 0;
   sessions.num_holdable_cursors = 0;
 
@@ -614,11 +621,19 @@ session_states_init (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 #endif /* SESSION_DEBUG */
 
-  sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50, session_state_Descriptor);
+  error_code = sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50,
+					     session_state_Descriptor);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  sessions.is_initialized = true;
 
 #if defined (SERVER_MODE)
   session_control_daemon_init ();
 #endif /* SERVER_MODE */
+  return NO_ERROR;
 }
 
 /*
@@ -637,7 +652,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
   const char *env_value = envvar_get ("DUMP_SESSION");
-  if (env_value != NULL)
+  if (env_value != NULL && sessions.is_initialized)
     {
       session_states_dump (thread_p);
     }
@@ -648,6 +663,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 
   /* destroy hash and freelist */
   sessions.states_hashmap.destroy ();
+  sessions.is_initialized = false;
 }
 
 /*
@@ -1348,6 +1364,23 @@ db_value_alloc_and_copy (const DB_VALUE * src)
 static void
 update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
 {
+  DB_VALUE *value = db_value_alloc_and_copy (new_value);
+  const DB_TYPE type = var->value != NULL ? DB_VALUE_DOMAIN_TYPE (var->value) : DB_TYPE_NULL;
+  if (value != NULL && DB_IS_NULL (value) && type != DB_TYPE_NULL)
+    {
+      /* CBRD-27583: a session variable's type is its value's domain; assigning NULL keeps that type, as a NULL of it */
+      db_value_domain_init (value, type, db_value_precision (var->value), db_value_scale (var->value));
+      if (QSTR_IS_ANY_CHAR_OR_BIT (type))
+	{
+	  value->data.ch.medium.buf = NULL;
+	}
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  db_string_put_cs_and_collation (value, db_get_string_codeset (var->value),
+					  db_get_string_collation (var->value));
+	}
+    }
+
   if (var->value != NULL)
     {
       if (QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (var->value)))
@@ -1358,7 +1391,7 @@ update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
       free_and_init (var->value);
     }
 
-  var->value = db_value_alloc_and_copy (new_value);
+  var->value = value;
 }
 
 /*
