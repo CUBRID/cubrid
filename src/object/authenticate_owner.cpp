@@ -421,12 +421,6 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-
-      /* abort on error */
-      if (tr_rename_trigger (trigger_mop, trigger_old_name, false, true) != NO_ERROR)
-	{
-	  assert (false);
-	}
       goto end;
     }
 

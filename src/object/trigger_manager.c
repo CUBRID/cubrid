@@ -207,6 +207,7 @@ static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activit
 static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
 static bool reload_moved_block_trigger (TR_TRIGGER * trigger);
+static bool trigger_activity_in_use (TR_TRIGGER * trigger);
 static int follow_reloaded_block_trigger (TR_TRIGGER * trigger, TR_ACTIVITY ** act, bool * skip);
 
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
@@ -1898,6 +1899,58 @@ validate_trigger (TR_TRIGGER * trigger)
 }
 
 /*
+ * trigger_activity_in_use() - Checks whether the action or the condition of a trigger is being run.
+ *    return: true if either of them is in use
+ *    trigger(in): trigger structure
+ *
+ * Note:
+ *    Reading the trigger again or changing its cache frees its activities, which a nested firing may still be running.
+ */
+static bool
+trigger_activity_in_use (TR_TRIGGER * trigger)
+{
+  return ((trigger->action != NULL && trigger->action->in_use > 0)
+	  || (trigger->condition != NULL && trigger->condition->in_use > 0));
+}
+
+/*
+ * tr_make_block_procedure_call() - Makes the action that calls the internal procedure of a PL/CSQL block action.
+ *    return: error code
+ *    sp_name(in): procedure name qualified with its owner
+ *    buf(out): buffer for the action
+ *    buf_size(in): size of the buffer
+ *
+ * Note:
+ *    The trigger is made and its owner is changed with the same text.
+ *    The owner name is quoted, as it may be a reserved word.
+ */
+int
+tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
+{
+  const char *name;
+  int owner_len;
+  int len;
+
+  /* an empty name gives NULL, and a name without an owner gives the name itself or follows an empty owner */
+  name = sm_remove_qualifier_name (sp_name);
+  if (name == NULL || name <= sp_name + 1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_INTERNAL_ERROR, 1, sp_name != NULL ? sp_name : "");
+      return ER_TR_INTERNAL_ERROR;
+    }
+  owner_len = (int) (name - sp_name) - 1;
+
+  len = snprintf (buf, buf_size, "CALL [%.*s].[%s]()", owner_len, sp_name, name);
+  if (len < 0 || len >= buf_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_INTERNAL_ERROR, 1, sp_name);
+      return ER_TR_INTERNAL_ERROR;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * reload_moved_block_trigger() - Reads a trigger again when the procedure of its PL/CSQL block action is gone.
  *    return: true if the procedure has moved and the action is to be run again
  *    trigger(in/out): trigger structure
@@ -1918,9 +1971,7 @@ reload_moved_block_trigger (TR_TRIGGER * trigger)
   bool moved = false;
   int save;
 
-  /* reading the trigger again frees its activities, which a nested firing may still be running */
-  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger->action->in_use > 0
-      || (trigger->condition != NULL && trigger->condition->in_use > 0))
+  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger_activity_in_use (trigger))
     {
       return false;
     }
@@ -6690,8 +6741,8 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char new_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *new_block_sp_name;
+  char new_call[DB_MAX_IDENTIFIER_LENGTH + 16] = { '\0' };
   char *new_source = NULL;
-  size_t new_source_len;
   int save;
   int error = NO_ERROR;
 
@@ -6728,16 +6779,17 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   snprintf (new_sp_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (old_sp_name));
 
-  /* the owner name may need quoting, for example a reserved word */
-  new_source_len = strlen ("CALL [].[]()") + strlen (new_sp_name) + 1;
-  new_source = (char *) malloc (new_source_len);
-  if (new_source == NULL)
+  error = tr_make_block_procedure_call (new_sp_name, new_call, sizeof (new_call));
+  if (error != NO_ERROR)
     {
-      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, new_source_len);
       goto end;
     }
-  snprintf (new_source, new_source_len, "CALL [%s].[%s]()", downcase_owner_name,
-	    sm_remove_qualifier_name (old_sp_name));
+  new_source = strdup (new_call);
+  if (new_source == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, strlen (new_call) + 1);
+      goto end;
+    }
 
   /* au_change_sp_owner compiles the procedure again for the new owner and reports errors to a parser */
   parser = parser_create_parser ();
@@ -6777,8 +6829,7 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
-  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger->action->in_use > 0
-      || (trigger->condition != NULL && trigger->condition->in_use > 0))
+  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger_activity_in_use (trigger))
     {
       goto end;
     }
