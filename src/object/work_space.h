@@ -693,7 +693,8 @@ public:
    ~ws_repl ();
 
   int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-                               const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation, bool has_index);
+			       const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation,
+			       bool has_index);
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);

@@ -3155,27 +3155,27 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
     {
     case LOG_REPLICATION_DATA:
       {
-        const char *class_name, *key_bytes, *metadata;
-        if (!repl_key_unpack_log (area, length, &class_name, &key_bytes, &item->packed_key_value_length,
-                                  &metadata, &item->rk_metadata_length))
-          {
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-                    "Invalid or missing replication-key metadata in data log.");
-            goto error_return;
-          }
+	const char *class_name, *key_bytes, *metadata;
+	if (!repl_key_unpack_log (area, length, &class_name, &key_bytes, &item->packed_key_value_length,
+				  &metadata, &item->rk_metadata_length))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		    "Invalid or missing replication-key metadata in data log.");
+	    goto error_return;
+	  }
 
-        item->class_name = db_private_strdup (NULL, class_name);
-        item->packed_key_value = (char *) malloc (item->packed_key_value_length + item->rk_metadata_length);
-        if (item->class_name == NULL || item->packed_key_value == NULL)
-          {
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
-            goto error_return;
-          }
+	item->class_name = db_private_strdup (NULL, class_name);
+	item->packed_key_value = (char *) malloc (item->packed_key_value_length + item->rk_metadata_length);
+	if (item->class_name == NULL || item->packed_key_value == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+	    goto error_return;
+	  }
 
-        memcpy (item->packed_key_value, key_bytes, item->packed_key_value_length);
-        item->rk_metadata = item->packed_key_value + item->packed_key_value_length;
-        memcpy (item->rk_metadata, metadata, item->rk_metadata_length);
-        item->item_type = repl_log->rcvindex;
+	memcpy (item->packed_key_value, key_bytes, item->packed_key_value_length);
+	item->rk_metadata = item->packed_key_value + item->packed_key_value_length;
+	memcpy (item->rk_metadata, metadata, item->rk_metadata_length);
+	item->item_type = repl_log->rcvindex;
       }
       break;
 
@@ -4947,8 +4947,8 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
   has_index = classobj_class_has_indexes (class_);
 
   error =
-    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, item->rk_metadata, item->rk_metadata_length, recdes,
-					   operation, has_index);
+    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length,
+					   item->rk_metadata, item->rk_metadata_length, recdes, operation, has_index);
   return error;
 }
 
@@ -5115,7 +5115,7 @@ end:
  * Note: A different RK could make the SQL log's WHERE clause target another row.
  */
 static bool
-la_can_log_repl_sql (LA_ITEM *item, DB_OBJECT *class_obj)
+la_can_log_repl_sql (LA_ITEM * item, DB_OBJECT * class_obj)
 {
   char *local = NULL;
   int length = 0;

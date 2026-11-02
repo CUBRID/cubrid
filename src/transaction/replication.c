@@ -75,7 +75,7 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
   DB_VALUE key;
   char description[1024];
   if (!repl_key_unpack_log ((const char *) data, length, &class_name, &key_bytes, &key_length,
-                            &metadata, &metadata_length))
+			    &metadata, &metadata_length))
     {
       fprintf (fp, "Invalid replication-key metadata log\n");
       return;
@@ -293,14 +293,15 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   length(out): descriptor length in bytes
  */
 int
-repl_pack_key_metadata (THREAD_ENTRY *thread_p, const OR_INDEX *index, char **data, int *length)
+repl_pack_key_metadata (THREAD_ENTRY * thread_p, const OR_INDEX * index, char **data, int *length)
 {
   *data = NULL;
   *length = 0;
 
   if (index == NULL || !or_is_replication_candidate_key (index) || index->n_atts <= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Cannot describe the selected replication key.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "Cannot describe the selected replication key.");
       return ER_HA_GENERIC_ERROR;
     }
 
@@ -317,11 +318,12 @@ repl_pack_key_metadata (THREAD_ENTRY *thread_p, const OR_INDEX *index, char **da
       OR_ATTRIBUTE *a = index->atts[i];
 
       if (a == NULL || a->domain == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Missing replication key attribute domain.");
-          error = ER_HA_GENERIC_ERROR;
-          goto end;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "Missing replication key attribute domain.");
+	  error = ER_HA_GENERIC_ERROR;
+	  goto end;
+	}
 
       columns[i].id = a->id;
       columns[i].name = a->name;
@@ -330,15 +332,15 @@ repl_pack_key_metadata (THREAD_ENTRY *thread_p, const OR_INDEX *index, char **da
       columns[i].not_null = a->is_notnull;
 
       if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && !OID_ISNULL (&a->domain->class_oid))
-        {
-          char *class_name = NULL;
-          error = heap_get_class_name (thread_p, &a->domain->class_oid, &class_name);
-          if (error != NO_ERROR)
-            {
-              goto end;
-            }
-          columns[i].domain_class_name = class_name;
-        }
+	{
+	  char *class_name = NULL;
+	  error = heap_get_class_name (thread_p, &a->domain->class_oid, &class_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  columns[i].domain_class_name = class_name;
+	}
     }
 
   error = repl_key_pack (index->btname, index->type, index->n_atts, columns, data, length);
@@ -346,9 +348,9 @@ end:
   for (int i = 0; i < index->n_atts; i++)
     {
       if (columns[i].domain_class_name != NULL)
-        {
-          free_and_init (columns[i].domain_class_name);
-        }
+	{
+	  free_and_init (columns[i].domain_class_name);
+	}
     }
 
   free_and_init (columns);
@@ -370,7 +372,7 @@ end:
  */
 int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX *index, REPL_INFO_TYPE repl_info)
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index, REPL_INFO_TYPE repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -469,10 +471,10 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
       error = repl_pack_key_metadata (thread_p, index, &key_metadata, &metadata_length);
       if (error != NO_ERROR)
-        {
-          free_and_init (class_name);
-          return error;
-        }
+	{
+	  free_and_init (class_name);
+	  return error;
+	}
 
       repl_rec->tde_encrypted = tde_algo != TDE_ALGORITHM_NONE;
 
@@ -480,12 +482,12 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
       if (metadata_length > INT_MAX - repl_rec->length - (int) OR_INT_SIZE - (int) MAX_ALIGNMENT)
-        {
-          free_and_init (key_metadata);
-          free_and_init (class_name);
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "RK log metadata is too large.");
-          return ER_HA_GENERIC_ERROR;
-        }
+	{
+	  free_and_init (key_metadata);
+	  free_and_init (class_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "RK log metadata is too large.");
+	  return ER_HA_GENERIC_ERROR;
+	}
       repl_rec->length += metadata_length + OR_INT_SIZE + MAX_ALIGNMENT;
 
       ptr = (char *) malloc (repl_rec->length);
@@ -494,7 +496,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  error = ER_REPL_ERROR;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
 	  free_and_init (class_name);
-          free_and_init (key_metadata);
+	  free_and_init (key_metadata);
 	  return error;
 	}
 

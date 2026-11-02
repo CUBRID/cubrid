@@ -2516,21 +2516,21 @@ or_get_current_representation (RECDES * record, int do_indexes)
       char *attribute_name = NULL;
       int allocated_name = 0;
       if (or_get_diskattr_string (diskatt, ORC_ATT_NAME_INDEX, &attribute_name, &allocated_name) != NO_ERROR
-          || attribute_name == NULL)
-        {
-          goto error_cleanup;
-        }
+	  || attribute_name == NULL)
+	{
+	  goto error_cleanup;
+	}
       size_t name_length = strlen (attribute_name) + 1;
       att->name = strdup (attribute_name);
       if (allocated_name)
-        {
-          db_private_free (NULL, attribute_name);
-        }
+	{
+	  db_private_free (NULL, attribute_name);
+	}
       if (att->name == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length);
-          goto error_cleanup;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length);
+	  goto error_cleanup;
+	}
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2884,12 +2884,12 @@ error_cleanup:
   if (rep->attributes)
     {
       for (i = 0; i < rep->n_attributes; i++)
-        {
-          if (rep->attributes[i].name != NULL)
-            {
-              free_and_init (rep->attributes[i].name);
-            }
-        }
+	{
+	  if (rep->attributes[i].name != NULL)
+	    {
+	      free_and_init (rep->attributes[i].name);
+	    }
+	}
       free_and_init (rep->attributes);
     }
 

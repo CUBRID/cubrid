@@ -5357,7 +5357,8 @@ ws_repl::ws_clear_all_repl_objs (void)
  */
 int
 ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-                                  const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation, bool has_index)
+				  const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation,
+				  bool has_index)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5386,7 +5387,7 @@ ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int 
     {
       free_and_init (repl_obj);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-              packed_pkey_value_length + rk_metadata_length);
+	      packed_pkey_value_length + rk_metadata_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

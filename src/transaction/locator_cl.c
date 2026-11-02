@@ -6990,13 +6990,13 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       /* includes leading and trailing alignment */
       if (repl_obj->rk_metadata_length > INT_MAX - repl_obj->packed_pkey_value_length - 3 * (int) MAX_ALIGNMENT)
-        {
-          ws_free_repl_obj (repl_obj);
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Replication-key payload is too large.");
-          return ER_HA_GENERIC_ERROR;
-        }
+	{
+	  ws_free_repl_obj (repl_obj);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Replication-key payload is too large.");
+	  return ER_HA_GENERIC_ERROR;
+	}
       required_length = repl_obj->packed_pkey_value_length + repl_obj->rk_metadata_length
-                        + 2 * OR_INT_SIZE + MAX_ALIGNMENT + INT_ALIGNMENT;
+	+ 2 * OR_INT_SIZE + MAX_ALIGNMENT + INT_ALIGNMENT;
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);

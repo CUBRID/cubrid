@@ -34,10 +34,10 @@ struct repl_key_column
   int not_null;
 };
 
-extern int repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN *columns,
-                          char **data, int *length);
-extern bool repl_key_unpack_log (const char *data, int length, const char **class_name, const char **key, int *key_length,
-                                 const char **metadata, int *metadata_length);
+extern int repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN * columns,
+			  char **data, int *length);
+extern bool repl_key_unpack_log (const char *data, int length, const char **class_name, const char **key,
+				 int *key_length, const char **metadata, int *metadata_length);
 extern bool repl_key_is_valid (const char *data, int length);
 extern bool repl_key_equal (const char *left, int left_length, const char *right, int right_length);
 extern void repl_key_describe (const char *data, int length, char *output, int capacity);
