@@ -104,6 +104,7 @@ extern int ux_stream_abort (T_NET_BUF * net_buf);
 extern int ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf);
 extern int ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf);
 extern int ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern bool ux_lob_read_cursor_is_open (void);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 
