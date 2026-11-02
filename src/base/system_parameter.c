@@ -830,6 +830,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
+#define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
+
 // #endregion
 
 /*
@@ -1214,7 +1216,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PB_NBUFFERS,
    PRM_NAME_PB_NBUFFERS,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -1225,7 +1227,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PAGE_BUFFER_SIZE,
    PRM_NAME_PAGE_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -4571,7 +4573,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
+   {false, {.b = true}},
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
@@ -5637,9 +5639,10 @@ SYSPRM_PARAM prm_Def[] = {
    * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
    * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
    * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
-   * free; the Mackert-Lohman formula degrades safely to "no caching" when
-   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
-   * default equals the former 32768 on every page size. */
+   * free. cost_effective_cache_pages is a floor of the cache the optimizer assumes: the
+   * server's data_buffer_pages is used when larger (CBRD-27474), so 0 or a small value does not
+   * lower the cache below the buffer. It is denominated in pages (not bytes) so the default
+   * equals the former 32768 on every page size. */
   {PRM_ID_COST_SEQ_PAGE,
    PRM_NAME_COST_SEQ_PAGE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
@@ -5711,6 +5714,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HASH_JOIN_RUNTIME_FILTER,
+   PRM_NAME_HASH_JOIN_RUNTIME_FILTER,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

@@ -1901,7 +1901,20 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
 	  /* strings equal only under the collation ('A' and 'a') can give different results, e.g. ASCII (key) */
 	  return mht_compare_dbvalues_are_identical (value1, value2) != 0;
 	}
-      return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL, 0) == DB_EQ;
+      if (domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL, 0) != DB_EQ)
+	{
+	  return false;
+	}
+      /* one instant in two zones compares equal but can give different results, e.g. CAST (key AS VARCHAR) */
+      switch (type)
+	{
+	case DB_TYPE_TIMESTAMPTZ:
+	  return db_get_timestamptz (value1)->tz_id == db_get_timestamptz (value2)->tz_id;
+	case DB_TYPE_DATETIMETZ:
+	  return db_get_datetimetz (value1)->tz_id == db_get_datetimetz (value2)->tz_id;
+	default:
+	  return true;
+	}
     }
   /* only a collection key compares by its elements' values; any other key comparison is decided by the compiler */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
