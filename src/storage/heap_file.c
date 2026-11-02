@@ -13146,6 +13146,7 @@ static int
 heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
 					     std::vector<heap_oos_column_plan> * oos_plan, bool * has_oos,
 					     size_t * inline_size_after_oos_ptr)
+try
 /* *INDENT-ON* */
 {
 /* *INDENT-OFF* */
@@ -13154,16 +13155,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   int *column_size = small_column_size;
   if (attr_info->num_values > 8)
     {
-      try
-        {
-          large_column_size.resize (attr_info->num_values);
-        }
-      catch (const std::bad_alloc &)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-                  attr_info->num_values * sizeof (int));
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
+      large_column_size.resize (attr_info->num_values);
       column_size = large_column_size.data ();
     }
 /* *INDENT-ON* */
@@ -13266,6 +13258,15 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   *inline_size_after_oos_ptr = header_size + payload_size;
   return NO_ERROR;
 }
+/* *INDENT-OFF* */
+catch (const std::bad_alloc &)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+          (size_t) attr_info->num_values
+          * (sizeof (int) + sizeof (heap_oos_column_plan) + sizeof (heap_oos_demote_candidate)));
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+}
+/* *INDENT-ON* */
 
 /*
  * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
@@ -14247,22 +14248,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
 
   /* determine the layout and the size */
-  /* *INDENT-OFF* */
-  try
+  if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_plan, &has_oos,
+					   &inline_size_after_oos) != NO_ERROR)
     {
-      if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_plan, &has_oos,
-                                              &inline_size_after_oos) != NO_ERROR)
-        {
-          return S_ERROR;
-        }
-    }
-  catch (const std::bad_alloc &)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-              attr_info->num_values * sizeof (heap_oos_column_plan));
       return S_ERROR;
     }
-  /* *INDENT-ON* */
   mvcc_extra = 0;
   header_size = OR_NON_MVCC_HEADER_SIZE;
   if (is_mvcc_class)
