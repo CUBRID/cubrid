@@ -373,6 +373,7 @@ static int allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTR
 static int allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
 					   DB_OBJLIST * subclasses, SM_TEMPLATE * template_);
 static int allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_TEMPLATE * template_);
+static void free_copied_constraint_attributes (SM_CLASS * class_, SM_CLASS_CONSTRAINT * stop);
 static int drop_foreign_key_ref (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * flat_cons,
 				 SM_CLASS_CONSTRAINT ** cons);
 static int drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_CLASS_CONSTRAINT * cons);
@@ -11487,6 +11488,8 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
   int num_indexes = 0;
   int err;
   bool dont_decache_and_flush = false;
+  bool holds_copies = false;
+  SM_CLASS_CONSTRAINT *copy_stop = NULL;
   SM_ATTRIBUTE **att, **new_attributes;
   int att_count;
 
@@ -11511,8 +11514,11 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
        * the referenced superclass, and that update reinstalls this class and frees its attributes.
        * Every index constraint, such as the inherited primary key, would then point to freed
        * attributes, so each one keeps its own copy. */
+      holds_copies = true;
       for (con = class_->constraints; con != NULL; con = con->next)
 	{
+	  /* if the copy below fails, only the index constraints before copy_stop hold copies */
+	  copy_stop = con;
 	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type) && con->attributes[0] != NULL)
 	    {
 	      /* we are sure that con->attributes points to class attributes */
@@ -11553,6 +11559,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	      con->attributes = new_attributes;
 	    }
 	}
+      copy_stop = NULL;
     }
   class_->dont_decache_constraints_or_flush = 1;
 
@@ -11602,24 +11609,8 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
       /* Reset dont_decache_constraints_or_flush */
       class_->dont_decache_constraints_or_flush = 0;
 
-      for (con = class_->constraints; con != NULL; con = con->next)
-	{
-	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
-	    {
-	      /* free the copies made above. Their cached domains are shared with the class and stay. */
-	      for (att = con->attributes; *att; att++)
-		{
-		  classobj_free_attribute (*att);
-		  *att = NULL;
-		}
-
-	      if (class_->recache_constraints == 0)
-		{
-		  /* recache constraints since attributes are not set */
-		  class_->recache_constraints = 1;
-		}
-	    }
-	}
+      free_copied_constraint_attributes (class_, NULL);
+      holds_copies = false;
 
       /* recache class constraints since index constraints held copied attributes */
       if (class_->recache_constraints)
@@ -11658,7 +11649,54 @@ structure_error:
   /* the workspace has already been damaged by this point, the caller will have to recognize the error and abort the
    * transaction. */
   ASSERT_ERROR_AND_SET (err);
+
+  /* A lock abort has already freed the class with the workspace, as update_class () assumes.
+   * A server-down abort keeps it until ws_final (). */
+  if (holds_copies && err != ER_LK_UNILATERALLY_ABORTED)
+    {
+      /* The abort frees only the attribute arrays of the constraints, not the copies.
+       * Rebuild the list so that it does not keep the emptied entries. */
+      class_->dont_decache_constraints_or_flush = 0;
+      free_copied_constraint_attributes (class_, copy_stop);
+      if (class_->recache_constraints)
+	{
+	  (void) classobj_cache_class_constraints (class_);
+	  class_->recache_constraints = 0;
+	}
+    }
+
   return err;
+}
+
+/*
+ * free_copied_constraint_attributes() - Free the attribute copies that allocate_disk_structures()
+ *    made for the index constraints of the class, and mark the constraints for recaching.
+ *   return: none
+ *   class_(in): class structure
+ *   stop(in): constraint where the copying stopped, or NULL if it finished.
+ *             Only the index constraints before it hold copies.
+ */
+static void
+free_copied_constraint_attributes (SM_CLASS * class_, SM_CLASS_CONSTRAINT * stop)
+{
+  SM_CLASS_CONSTRAINT *con;
+  SM_ATTRIBUTE **att;
+
+  for (con = class_->constraints; con != stop; con = con->next)
+    {
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
+	{
+	  /* Their cached domains are shared with the class and stay. */
+	  for (att = con->attributes; *att; att++)
+	    {
+	      classobj_free_attribute (*att);
+	      *att = NULL;
+	    }
+
+	  /* recache constraints since attributes are not set */
+	  class_->recache_constraints = 1;
+	}
+    }
 }
 
 /*
