@@ -1273,6 +1273,7 @@ struct access_spec_node
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   struct pruning_context *row_pruning;	/* pruning by the outer row's join values, loaded on its first row, or NULL */
+  bool row_rewind_pending;	/* rewound for a new outer row, its partition not opened yet (qexec_open_row_partition ()) */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
   bool cached_scan;		/* runtime-only cached-scan activation; not serialized */

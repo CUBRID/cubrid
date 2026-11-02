@@ -167,6 +167,14 @@
 #define QEXEC_IS_MULTI_PARTITION_SPEC(specp) \
   ((specp) != NULL && (specp)->parts != NULL && (specp)->parts->next != NULL)
 
+/* a partitioned NL inner the optimizer drives per outer row (CBRD-27866): rewound without opening a partition, which
+ * waits for a memo miss (qexec_open_row_partition ()) */
+#define QEXEC_IS_DEFERRED_PARTITION_WALK(xasl) \
+  (XASL_IS_FLAGED ((xasl), XASL_NL_FOLLOWING_JOIN) && !XASL_IS_NL_SEMI_OR_ANTI (xasl) \
+   && (xasl)->spec_list != NULL && (xasl)->spec_list->parts != NULL \
+   && (XASL_IS_FLAGED ((xasl), XASL_NL_PER_ROW_IF_MEMO) \
+       || ACCESS_SPEC_IS_FLAGED ((xasl)->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)))
+
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
@@ -821,6 +829,8 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static bool qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec);
 
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
@@ -2069,6 +2079,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      p->pruned = false;
 	    }
 	  partition_clear_spec_row_pruning (p);
+	  p->row_rewind_pending = false;
 
 	  /* free table-wide sampling pick once (all paths); idempotent */
 	}
@@ -11785,7 +11796,9 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  return S_ERROR;
 		}
-	      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
+	      /* a deferred partition walk opens its partition on the row that needs it (qexec_open_row_partition ()) */
+	      sb_next = (QEXEC_IS_DEFERRED_PARTITION_WALK (xptr2->scan_ptr) ? S_SUCCESS
+			 : qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr));
 	      if (sb_next == S_SUCCESS)
 		{
 		  xptr2->next_scan_block_on = true;
@@ -11848,7 +11861,8 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 			{
 			  return S_ERROR;
 			}
-		      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
+		      sb_next = (QEXEC_IS_DEFERRED_PARTITION_WALK (xptr2->scan_ptr) ? S_SUCCESS
+				 : qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr));
 		      if (sb_next == S_SUCCESS)
 			{
 			  xptr2->next_scan_block_on = true;
@@ -11949,6 +11963,87 @@ qexec_settle_per_row_walk (XASL_NODE * xasl)
 }
 
 /*
+ * qexec_row_partition_has_next () - whether the partition walk of an outer row has a partition after the current one
+ *   return: bool
+ *   spec(in): a partitioned spec walked per outer row
+ */
+static bool
+qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec)
+{
+  const PARTITION_SPEC_TYPE *part;
+
+  for (part = (spec->curent != NULL) ? spec->curent->next : NULL; part != NULL; part = part->next)
+    {
+      if (spec->row_pruning == NULL || !part->row_pruned)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qexec_open_row_partition () - open the first partition an outer row walks, for a memo miss
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   xasl(in)    : a partitioned NL inner driven per outer row, rewound by qexec_reset_sa_inner_scan_block ()
+ *
+ * Note: the rewind leaves the scan where the previous row left it, so a row the memo answers switches no partition.
+ *	 A row it does not answer is pruned by its join values first (ACCESS_SPEC_FLAG_PRUNE_PER_ROW). When its first
+ *	 partition is the one still open, the scan is only reset to read it again with the row's keys, as an
+ *	 unpartitioned inner is; otherwise the walk starts over from that partition (CBRD-27866).
+ */
+static SCAN_CODE
+qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  PARTITION_SPEC_TYPE *first;
+  SCAN_CODE part_scan;
+  bool put_success;
+
+  spec->row_rewind_pending = false;
+
+  if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)
+      && partition_prune_spec_for_row (thread_p, spec->s_id.vd, spec) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  for (first = spec->parts; first != NULL && spec->row_pruning != NULL && first->row_pruned; first = first->next)
+    {
+      ;
+    }
+
+  if (first != NULL && first == spec->curent && spec->s_id.status == S_STARTED)
+    {
+      xasl->curr_spec = spec;
+      return (scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR) ? S_ERROR : S_SUCCESS;
+    }
+
+  xasl->curr_spec = spec;
+  spec->curent = NULL;
+  part_scan = (first != NULL) ? qexec_init_next_partition (thread_p, spec, xasl) : S_END;
+  if (part_scan == S_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (part_scan == S_END)
+    {
+      /* the row's join values leave out every partition: nothing to join, and the memo keeps that for its key */
+      xasl->curr_spec = NULL;
+      if (xasl->memoize_storage != NULL && memoize_put_nullptr (thread_p, xasl, &put_success) == ER_FAILED)
+	{
+	  return S_ERROR;
+	}
+      return S_END;
+    }
+
+  spec->s_id.single_fetched = false;
+  return S_SUCCESS;
+}
+
+/*
  * qexec_reset_sa_inner_scan_block () -
  *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
  *   inner(in) : candidate semi/anti inner scan
@@ -11965,6 +12060,17 @@ qexec_settle_per_row_walk (XASL_NODE * xasl)
 SCAN_CODE
 qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 {
+  if (QEXEC_IS_DEFERRED_PARTITION_WALK (inner))
+    {
+      /* the partition is opened only if the memo does not answer the row: a hit costs no partition switch, and a
+       * miss reuses the partition left open when it is the row's first one (CBRD-27866) */
+      inner->curr_spec = inner->spec_list;
+      inner->spec_list->row_rewind_pending = true;
+      inner->spec_list->s_id.single_fetched = false;
+      inner->next_scan_block_on = false;
+      return S_SUCCESS;
+    }
+
   if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
       || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN)
 	  && (QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)
@@ -11994,12 +12100,6 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
       spec->curent = NULL;
       spec->s_id.single_fetched = false;
       inner->spec_list->s_id.single_fetched = false;
-
-      if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_PRUNE_PER_ROW) && !XASL_IS_NL_SEMI_OR_ANTI (inner)
-	  && partition_prune_spec_for_row (thread_p, spec->s_id.vd, spec) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
 
       part_scan = qexec_init_next_partition (thread_p, spec, inner);
       if (part_scan == S_ERROR)
@@ -12336,6 +12436,16 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	}
     }
 
+  if (xasl->spec_list != NULL && xasl->spec_list->row_rewind_pending)
+    {
+      SCAN_CODE open_scan = qexec_open_row_partition (thread_p, xasl);
+
+      if (open_scan != S_SUCCESS)
+	{
+	  return open_scan;
+	}
+    }
+
   if (XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec == NULL && xasl->spec_list != NULL
       && xasl->spec_list->parts != NULL)
     {
@@ -12384,8 +12494,13 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec))
 	{
 	  /* a following join is driven per outer row, and the block iterator never moves it to its next
-	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493) */
-	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493). A deferred walk
+	   * stops on its last partition and leaves it open for the next row to reuse (CBRD-27866). */
+	  SCAN_CODE sb_scan = S_END;
+	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
+	    {
+	      sb_scan = qexec_next_scan_block (thread_p, xasl);
+	    }
 	  if (sb_scan == S_ERROR)
 	    {
 	      return S_ERROR;
