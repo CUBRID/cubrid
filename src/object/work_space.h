@@ -84,7 +84,7 @@ struct ws_repl_obj
   OID class_oid;
   char *packed_pkey_value;
   int packed_pkey_value_length;
-  char *rk_metadata;
+  char *rk_metadata;		/* points inside packed_pkey_value */
   int rk_metadata_length;
   bool has_index;
   int operation;

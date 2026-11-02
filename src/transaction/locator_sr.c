@@ -6861,16 +6861,13 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 }
 
 /*
- * locator_repl_get_key_value () - read pkey value from copy_area
- *
- * return: length of unpacked key value
- *
- *   key_value(out): primary key value
- *   force_area(in):
- *   obj(in): object that describes memory location of key_value
- *
+ * locator_repl_get_payload() - extract the key, RK descriptor, and row image
+ *   return: NO_ERROR or ER_HA_GENERIC_ERROR
+ *   area, obj(in): copy area and object location
+ *   key, metadata(out): pointers into area; do not free
+ *   key_length, metadata_length(out): packed field lengths in bytes
+ *   recdes(out): row image after the RK descriptor
  */
-/* The new wire payload is [key length][metadata length][key][metadata][row image]. */
 static int
 locator_repl_get_payload (LC_COPYAREA *area, LC_COPYAREA_ONEOBJ *obj, const char **key, int *key_length,
                           const char **metadata, int *metadata_length, RECDES *recdes)
@@ -6878,6 +6875,7 @@ locator_repl_get_payload (LC_COPYAREA *area, LC_COPYAREA_ONEOBJ *obj, const char
   LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
   char *limit = (char *) LC_FIND_ONEOBJ_PTR_IN_COPYAREA (many, many->num_objs - 1);
   ptrdiff_t available = limit - area->mem;
+
   if (obj->offset < 0 || obj->length < (int) (2 * OR_INT_SIZE)
       || obj->offset % MAX_ALIGNMENT != 0 || obj->offset > available || obj->length > available - obj->offset)
     {
@@ -6889,22 +6887,27 @@ locator_repl_get_payload (LC_COPYAREA *area, LC_COPYAREA_ONEOBJ *obj, const char
     *key_length = OR_GET_INT (start);
     *metadata_length = OR_GET_INT (start + OR_INT_SIZE);
     *key = PTR_ALIGN (start + 2 * OR_INT_SIZE, MAX_ALIGNMENT);
+
     if (*key_length <= 0 || *metadata_length <= 0 || *key > end || *key_length > end - *key)
       {
         goto invalid;
       }
+
     *metadata = PTR_ALIGN (*key + *key_length, INT_ALIGNMENT);
     if (*metadata > end || *metadata_length > end - *metadata
         || !repl_key_is_valid (*metadata, *metadata_length))
       {
         goto invalid;
       }
+
     recdes->data = (char *) *metadata + *metadata_length;
     recdes->length = recdes->area_size = CAST_BUFLEN (end - recdes->data);
+
     if (obj->operation == LC_FLUSH_DELETE && recdes->length != 0)
       {
         goto invalid;
       }
+
     return NO_ERROR;
   }
 invalid:
@@ -6912,7 +6915,15 @@ invalid:
   return ER_HA_GENERIC_ERROR;
 }
 
-/* Caller holds the force-scancache schema lock. Reuse this exact BTID for the row lookup. */
+/*
+ * locator_repl_check_key() - compare the master's RK with the local RK before row lookup
+ *   return: NO_ERROR or an error code
+ *   thread_p(in): thread entry
+ *   class_oid(in): replicated class
+ *   metadata, metadata_length(in): RK descriptor from the master
+ *   btid(out): selected local RK index for row lookup
+ * Note: The caller holds the force-scancache schema lock.
+ */
 static int
 locator_repl_check_key (THREAD_ENTRY *thread_p, const OID *class_oid, const char *metadata,
                        int metadata_length, BTID *btid)
@@ -6925,10 +6936,12 @@ locator_repl_check_key (THREAD_ENTRY *thread_p, const OID *class_oid, const char
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
+
   char *local = NULL;
   int local_length = 0;
   int error = NO_ERROR;
   BTID_SET_NULL (btid);
+
   for (int i = 0; i < representation->n_indexes; i++)
     {
       OR_INDEX *index = &representation->indexes[i];
@@ -6942,12 +6955,15 @@ locator_repl_check_key (THREAD_ENTRY *thread_p, const OID *class_oid, const char
           break;
         }
     }
+
   if (error == NO_ERROR && !repl_key_equal (metadata, metadata_length, local, local_length))
     {
       char master_description[1024], local_description[1024], message[3072];
       char *class_name = NULL;
+
       repl_key_describe (metadata, metadata_length, master_description, sizeof (master_description));
       repl_key_describe (local, local_length, local_description, sizeof (local_description));
+
       error = heap_get_class_name (thread_p, class_oid, &class_name);
       if (error == NO_ERROR)
         {
@@ -6956,15 +6972,18 @@ locator_repl_check_key (THREAD_ENTRY *thread_p, const OID *class_oid, const char
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
           error = ER_HA_GENERIC_ERROR;
         }
+
       if (class_name != NULL)
         {
           free_and_init (class_name);
         }
     }
+
   if (local != NULL)
     {
       free_and_init (local);
     }
+
   heap_classrepr_free_and_init (representation, &cache_index);
   return error;
 }

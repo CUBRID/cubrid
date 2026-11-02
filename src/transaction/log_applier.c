@@ -247,7 +247,7 @@ struct la_item
   char *ha_sys_prm;
   int packed_key_value_length;
   char *packed_key_value;	/* disk image of pkey value */
-  char *rk_metadata;
+  char *rk_metadata;		/* points inside packed_key_value */
   int rk_metadata_length;
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
   LOG_LSA lsa;			/* the LSA of the replication log record */
@@ -3163,15 +3163,17 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
                     "Invalid or missing replication-key metadata in data log.");
             goto error_return;
           }
+
         item->class_name = db_private_strdup (NULL, class_name);
-        item->packed_key_value = (char *) malloc (item->packed_key_value_length);
-        item->rk_metadata = (char *) malloc (item->rk_metadata_length);
-        if (item->class_name == NULL || item->packed_key_value == NULL || item->rk_metadata == NULL)
+        item->packed_key_value = (char *) malloc (item->packed_key_value_length + item->rk_metadata_length);
+        if (item->class_name == NULL || item->packed_key_value == NULL)
           {
             er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
             goto error_return;
           }
+
         memcpy (item->packed_key_value, key_bytes, item->packed_key_value_length);
+        item->rk_metadata = item->packed_key_value + item->packed_key_value_length;
         memcpy (item->rk_metadata, metadata, item->rk_metadata_length);
         item->item_type = repl_log->rcvindex;
       }
@@ -3231,11 +3233,6 @@ error_return:
 	{
 	  free_and_init (item->packed_key_value);
 	}
-      if (item->rk_metadata != NULL)
-        {
-          free_and_init (item->rk_metadata);
-        }
-
       free_and_init (item);
     }
 
@@ -3308,11 +3305,6 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
     {
       free_and_init (item->packed_key_value);
     }
-  if (item->rk_metadata != NULL)
-    {
-      free_and_init (item->rk_metadata);
-    }
-
   free_and_init (item);
 
   return;
@@ -5116,6 +5108,31 @@ end:
 }
 
 /*
+ * la_can_log_repl_sql() - check whether a SQL log can use the row log's RK
+ *   return: true if the local RK matches, false otherwise
+ *   item(in): row log with the master's RK descriptor
+ *   class_obj(in): local class used to select an RK
+ * Note: A different RK could make the SQL log's WHERE clause target another row.
+ */
+static bool
+la_can_log_repl_sql (LA_ITEM *item, DB_OBJECT *class_obj)
+{
+  char *local = NULL;
+  int length = 0;
+
+  er_stack_push ();
+  int error = repl_key_from_class (class_obj, &local, &length);
+  bool matches = error == NO_ERROR && repl_key_equal (item->rk_metadata, item->rk_metadata_length, local, length);
+  if (local != NULL)
+    {
+      free_and_init (local);
+    }
+
+  er_stack_pop ();
+  return matches;
+}
+
+/*
  * la_apply_update_log() - apply the update log to the target slave using server side update
  *   return: NO_ERROR or error code
  *   item : replication item
@@ -5128,22 +5145,6 @@ end:
  *      . create a replication object to be flushed and add it to a link
  *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
-static bool
-la_can_log_repl_sql (LA_ITEM *item, DB_OBJECT *class_obj)
-{
-  char *local = NULL;
-  int length = 0;
-  er_stack_push ();
-  int error = repl_key_from_class (class_obj, &local, &length);
-  bool matches = error == NO_ERROR && repl_key_equal (item->rk_metadata, item->rk_metadata_length, local, length);
-  if (local != NULL)
-    {
-      free_and_init (local);
-    }
-  er_stack_pop ();
-  return matches;
-}
-
 static int
 la_apply_update_log (LA_ITEM * item)
 {

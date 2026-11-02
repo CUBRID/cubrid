@@ -23,7 +23,7 @@
 
 struct tp_domain;
 
-#define REPL_KEY_METADATA_VERSION 1
+#define REPL_KEY_METADATA_VERSION 2
 
 typedef struct repl_key_column REPL_KEY_COLUMN;
 struct repl_key_column

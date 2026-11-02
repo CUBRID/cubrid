@@ -45,47 +45,71 @@ struct repl_key_buffer
   int capacity;
 };
 
+/*
+ * repl_key_buffer_reserve_space() - make room for the next write
+ *   return: true on success, false on size or allocation error
+ *   b(in/out): buffer whose capacity may grow; length is unchanged
+ *   extra(in): bytes needed for the next write
+ */
 static bool
-repl_key_reserve (repl_key_buffer *b, int extra)
+repl_key_buffer_reserve_space (repl_key_buffer *b, int extra)
 {
   if (extra < 0 || b->length > INT_MAX - extra)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "RK metadata is too large.");
       return false;
     }
+
   int needed = b->length + extra;
   if (needed <= b->capacity)
     {
       return true;
     }
+
   int capacity = b->capacity > 0 && b->capacity <= INT_MAX / 2 ? b->capacity * 2 : needed;
   if (capacity < needed)
     {
       capacity = needed;
     }
+
   char *data = (char *) realloc (b->data, capacity);
   if (data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity);
       return false;
     }
+
   b->data = data;
   b->capacity = capacity;
   return true;
 }
 
+/*
+ * repl_key_put_int() - append one integer to the RK buffer
+ *   return: true on success, false if space cannot be reserved
+ *   b(in/out): output buffer
+ *   value(in): integer to serialize
+ */
 static bool
 repl_key_put_int (repl_key_buffer *b, int value)
 {
-  if (!repl_key_reserve (b, OR_INT_SIZE))
+  if (!repl_key_buffer_reserve_space (b, OR_INT_SIZE))
     {
       return false;
     }
+
   OR_PUT_INT (b->data + b->length, value);
   b->length += OR_INT_SIZE;
   return true;
 }
 
+/*
+ * repl_key_put_name() - append a normalized identifier and alignment padding
+ *   return: true on success, false on invalid length or allocation error
+ *   b(in/out): output buffer
+ *   name(in): identifier; NULL is serialized as an empty name
+ * Note: On failure, a length prefix may remain; repl_key_pack discards the buffer.
+ */
 static bool
 repl_key_put_name (repl_key_buffer *b, const char *name)
 {
@@ -93,22 +117,29 @@ repl_key_put_name (repl_key_buffer *b, const char *name)
     {
       name = "";
     }
+
   int length = intl_identifier_lower_string_size (name) + 1;
   if (length <= 0 || length > INT_MAX - (int) INT_ALIGNMENT)
     {
       return false;
     }
+
   int padded = DB_ALIGN (length, INT_ALIGNMENT);
-  if (!repl_key_put_int (b, length) || !repl_key_reserve (b, padded))
+  if (!repl_key_put_int (b, length) || !repl_key_buffer_reserve_space (b, padded))
     {
       return false;
     }
+
   memset (b->data + b->length, 0, padded);
   intl_identifier_lower (name, b->data + b->length);
   b->length += padded;
   return true;
 }
 
+/*
+ * repl_key_invalid() - report malformed or missing RK metadata
+ *   return: ER_HA_GENERIC_ERROR
+ */
 static int
 repl_key_invalid (void)
 {
@@ -116,27 +147,40 @@ repl_key_invalid (void)
   return ER_HA_GENERIC_ERROR;
 }
 
+/*
+ * repl_key_pack() - serialize the chosen constraint and its ordered RK columns
+ *   return: NO_ERROR or an error code
+ *   name(in): constraint name
+ *   type(in): index type
+ *   count(in): number of RK columns
+ *   columns(in): ordered RK columns
+ *   data(out): allocated descriptor owned by the caller
+ *   length(out): descriptor length in bytes
+ */
 int
 repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN *columns, char **data, int *length)
 {
   repl_key_buffer b = { NULL, 0, 0 };
-  TP_DOMAIN *copy = NULL;
   *data = NULL;
   *length = 0;
+
   if (name == NULL || name[0] == '\0' || count <= 0 || columns == NULL
       || (type != BTREE_PRIMARY_KEY && type != BTREE_UNIQUE && type != BTREE_REVERSE_UNIQUE))
     {
       return repl_key_invalid ();
     }
+
   if (!repl_key_put_int (&b, REPL_KEY_METADATA_VERSION) || !repl_key_put_int (&b, type)
       || !repl_key_put_name (&b, name) || !repl_key_put_int (&b, count))
     {
       goto error;
     }
+
   for (int i = 0; i < count; i++)
     {
       const REPL_KEY_COLUMN *c = &columns[i];
       TP_DOMAIN *domain = c->domain;
+
       /* Indexed attributes are scalar domains; never serialize cache pointers or physical class OIDs. */
       if (c->id < 0 || c->name == NULL || c->name[0] == '\0' || domain == NULL
           || domain->next != NULL || domain->setdomain != NULL || !tp_valid_indextype (TP_DOMAIN_TYPE (domain)))
@@ -144,50 +188,47 @@ repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN *col
           repl_key_invalid ();
           goto error;
         }
+
+      /* Keep readable domain fields for mismatch logs; the packed domain also retains enum values. */
       if (!repl_key_put_int (&b, c->id) || !repl_key_put_name (&b, c->name)
           || !repl_key_put_int (&b, TP_DOMAIN_TYPE (domain)) || !repl_key_put_int (&b, domain->precision)
           || !repl_key_put_int (&b, domain->scale) || !repl_key_put_int (&b, domain->codeset)
-          || !repl_key_put_int (&b, domain->collation_id) || !repl_key_put_int (&b, domain->collation_flag)
-          || !repl_key_put_int (&b, domain->is_parameterized) || !repl_key_put_int (&b, domain->self_ref)
+          || !repl_key_put_int (&b, domain->collation_id)
           || !repl_key_put_name (&b, c->domain_class_name)
           || !repl_key_put_int (&b, c->descending != 0) || !repl_key_put_int (&b, c->not_null != 0))
         {
           goto error;
         }
-      copy = tp_domain_copy (domain, false);
-      if (copy == NULL)
+
+      TP_DOMAIN full_domain = *domain;
+      full_domain.built_in_index = 0;
+      int domain_length = or_packed_domain_size (&full_domain, 0);
+
+      if (domain_length <= 0 || !repl_key_put_int (&b, domain_length)
+          || !repl_key_buffer_reserve_space (&b, domain_length))
         {
           goto error;
         }
-      copy->built_in_index = 0;
-      copy->collation_flag = domain->collation_flag;
-      int domain_length = or_packed_domain_size (copy, 0);
-      if (domain_length <= 0 || !repl_key_put_int (&b, domain_length) || !repl_key_reserve (&b, domain_length))
-        {
-          goto error;
-        }
-      char *end = or_pack_domain (b.data + b.length, copy, 0, 0);
+
+      char *end = or_pack_domain (b.data + b.length, &full_domain, 0, 0);
       if (end == NULL || end != b.data + b.length + domain_length)
         {
           repl_key_invalid ();
           goto error;
         }
+
       b.length += domain_length;
-      tp_domain_free (copy);
-      copy = NULL;
     }
+
   *data = b.data;
   *length = b.length;
   return NO_ERROR;
 error:
-  if (copy != NULL)
-    {
-      tp_domain_free (copy);
-    }
   if (b.data != NULL)
     {
       free_and_init (b.data);
     }
+
   int error = er_errid ();
   return error != NO_ERROR ? error : repl_key_invalid ();
 }
@@ -198,6 +239,12 @@ struct repl_key_reader
   int remaining;
 };
 
+/*
+ * repl_key_get_int() - read one integer within the input bounds
+ *   return: true on success, false if fewer than OR_INT_SIZE bytes remain
+ *   r(in/out): reader position and remaining length
+ *   value(out): decoded integer
+ */
 static bool
 repl_key_get_int (repl_key_reader *r, int *value)
 {
@@ -205,6 +252,7 @@ repl_key_get_int (repl_key_reader *r, int *value)
     {
       return false;
     }
+
   int word;
   memcpy (&word, r->data, OR_INT_SIZE);
   *value = OR_GET_INT ((char *) &word);
@@ -213,6 +261,12 @@ repl_key_get_int (repl_key_reader *r, int *value)
   return true;
 }
 
+/*
+ * repl_key_get_name() - read a bounded, NUL-terminated name
+ *   return: true on success, false for an invalid name or length
+ *   r(in/out): reader position and remaining length
+ *   name(out): pointer into the input buffer; do not free
+ */
 static bool
 repl_key_get_name (repl_key_reader *r, const char **name)
 {
@@ -221,18 +275,27 @@ repl_key_get_name (repl_key_reader *r, const char **name)
     {
       return false;
     }
+
   int padded = DB_ALIGN (length, INT_ALIGNMENT);
   if (padded > r->remaining || r->data[length - 1] != '\0' || (int) strlen (r->data) != length - 1)
     {
       return false;
     }
+
   *name = r->data;
   r->data += padded;
   r->remaining -= padded;
   return true;
 }
 
-/* Parse the data-log envelope without trusting offsets or an optional legacy tail. */
+/*
+ * repl_key_unpack_log() - extract the class, key, and RK descriptor from a row log
+ *   return: true on success, false for a malformed log
+ *   data(in): packed log payload
+ *   length(in): payload length in bytes
+ *   class_name, key, metadata(out): pointers into data; do not free
+ *   key_length, metadata_length(out): lengths of the corresponding fields
+ */
 bool
 repl_key_unpack_log (const char *data, int length, const char **class_name, const char **key, int *key_length,
                      const char **metadata, int *metadata_length)
@@ -241,6 +304,7 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
     {
       return false;
     }
+
   repl_key_reader r = { data, length };
   int class_name_length;
   if (!repl_key_get_int (&r, key_length) || *key_length <= 0
@@ -249,12 +313,14 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
     {
       return false;
     }
+
   /* or_pack_string_with_length stores the padded size, unlike RK metadata names. */
   const char *terminator = (const char *) memchr (r.data, '\0', class_name_length);
   if (terminator == NULL || terminator == r.data || r.data + class_name_length - terminator > (int) INT_ALIGNMENT)
     {
       return false;
     }
+
   for (const char *p = terminator; p < r.data + class_name_length; p++)
     {
       if (*p != '\0')
@@ -262,96 +328,157 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
           return false;
         }
     }
+
   *class_name = r.data;
   r.data += class_name_length;
   r.remaining -= class_name_length;
+
   int padding = (MAX_ALIGNMENT - (r.data - data) % MAX_ALIGNMENT) % MAX_ALIGNMENT;
   if (padding > r.remaining || *key_length > r.remaining - padding)
     {
       return false;
     }
+
   r.data += padding;
   r.remaining -= padding;
   *key = r.data;
   r.data += *key_length;
   r.remaining -= *key_length;
+
   padding = (INT_ALIGNMENT - (r.data - data) % INT_ALIGNMENT) % INT_ALIGNMENT;
   if (padding > r.remaining)
     {
       return false;
     }
+
   r.data += padding;
   r.remaining -= padding;
+
   if (!repl_key_get_int (&r, metadata_length) || *metadata_length != r.remaining
       || !repl_key_is_valid (r.data, *metadata_length))
     {
       return false;
     }
+
   *metadata = r.data;
   return true;
 }
 
-bool
-repl_key_is_valid (const char *data, int length)
+/*
+ * repl_key_parse() - validate a descriptor and optionally describe it
+ *   return: true for a valid descriptor, false otherwise
+ *   data(in): packed descriptor
+ *   length(in): descriptor length in bytes
+ *   output(out): optional description buffer
+ *   capacity(in): size of output in bytes
+ */
+static bool
+repl_key_parse (const char *data, int length, char *output, int capacity)
 {
   if (data == NULL || length <= 0)
     {
       return false;
     }
+
   repl_key_reader r = { data, length };
-  int version, type, count, value;
+  int version, type, count;
   const char *name;
   if (!repl_key_get_int (&r, &version) || version != REPL_KEY_METADATA_VERSION
       || !repl_key_get_int (&r, &type)
       || (type != BTREE_PRIMARY_KEY && type != BTREE_UNIQUE && type != BTREE_REVERSE_UNIQUE)
       || !repl_key_get_name (&r, &name) || name[0] == '\0' || !repl_key_get_int (&r, &count)
-      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 12))
+      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 14))
     {
       return false;
     }
+
+  int used = 0;
+  if (output != NULL)
+    {
+      const char *type_name = type == BTREE_PRIMARY_KEY ? "PRIMARY KEY"
+        : type == BTREE_REVERSE_UNIQUE ? "REVERSE UNIQUE" : "UNIQUE";
+      used = snprintf (output, capacity, "constraint='%s', type=%s, columns=%d", name, type_name, count);
+    }
+
   for (int i = 0; i < count; i++)
     {
-      if (!repl_key_get_int (&r, &value) || value < 0 || !repl_key_get_name (&r, &name) || name[0] == '\0')
+      int id, fields[5], desc, not_null, domain_length;
+      const char *column, *class_name;
+
+      if (!repl_key_get_int (&r, &id) || id < 0 || !repl_key_get_name (&r, &column) || column[0] == '\0')
         {
           return false;
         }
-      for (int j = 0; j < 8; j++)
+
+      for (int j = 0; j < 5; j++)
         {
-          if (!repl_key_get_int (&r, &value))
+          if (!repl_key_get_int (&r, &fields[j]))
             {
               return false;
             }
         }
-      if (!repl_key_get_name (&r, &name))
-        {
-          return false;
-        }
-      for (int j = 0; j < 2; j++)
-        {
-          if (!repl_key_get_int (&r, &value) || (value != 0 && value != 1))
-            {
-              return false;
-            }
-        }
-      int domain_length;
-      if (!repl_key_get_int (&r, &domain_length) || domain_length <= 0 || domain_length > r.remaining
+
+      if (!repl_key_get_name (&r, &class_name)
+          || !repl_key_get_int (&r, &desc) || (desc != 0 && desc != 1)
+          || !repl_key_get_int (&r, &not_null) || (not_null != 0 && not_null != 1)
+          || !repl_key_get_int (&r, &domain_length) || domain_length <= 0 || domain_length > r.remaining
           || domain_length % INT_ALIGNMENT != 0)
         {
           return false;
         }
+
       r.data += domain_length;
       r.remaining -= domain_length;
+
+      if (output != NULL && used >= 0 && used < capacity)
+        {
+          const char *domain_type = pr_type_name ((DB_TYPE) fields[0]);
+          int written = snprintf (output + used, capacity - used,
+                                  " [column='%s', id=%d, domain=%s(%d,%d), charset=%d, collation=%d, "
+                                  "class='%s', order=%s, %s]",
+                                  column, id, domain_type ? domain_type : "UNKNOWN", fields[1], fields[2], fields[3],
+                                  fields[4], class_name,
+                                  desc ? "DESC" : "ASC", not_null ? "NOT NULL" : "NULL");
+          used = written < 0 || written >= capacity - used ? capacity : used + written;
+        }
     }
+
   return r.remaining == 0;
 }
 
+/*
+ * repl_key_is_valid() - check the RK descriptor's version, fields, and bounds
+ *   return: true if valid, false otherwise
+ *   data(in): packed descriptor
+ *   length(in): descriptor length in bytes
+ */
+bool
+repl_key_is_valid (const char *data, int length)
+{
+  return repl_key_parse (data, length, NULL, 0);
+}
+
+/*
+ * repl_key_equal() - compare two RK descriptors byte for byte
+ *   return: true only if the descriptors match and are valid
+ *   left, right(in): packed descriptors
+ *   left_length, right_length(in): descriptor lengths in bytes
+ */
 bool
 repl_key_equal (const char *left, int left_length, const char *right, int right_length)
 {
-  return repl_key_is_valid (left, left_length) && repl_key_is_valid (right, right_length)
-    && left_length == right_length && memcmp (left, right, left_length) == 0;
+  return left != NULL && right != NULL && left_length > 0 && left_length == right_length
+    && memcmp (left, right, left_length) == 0 && repl_key_is_valid (left, left_length);
 }
 
+/*
+ * repl_key_describe() - format RK fields needed to diagnose a mismatch
+ *   return: void
+ *   data(in): packed descriptor
+ *   length(in): descriptor length in bytes
+ *   output(out): description buffer
+ *   capacity(in): size of output in bytes
+ */
 void
 repl_key_describe (const char *data, int length, char *output, int capacity)
 {
@@ -359,53 +486,21 @@ repl_key_describe (const char *data, int length, char *output, int capacity)
     {
       return;
     }
-  if (!repl_key_is_valid (data, length))
+
+  if (!repl_key_parse (data, length, output, capacity))
     {
       snprintf (output, capacity, "%s", data == NULL || length == 0 ? "(no RK)" : "(invalid RK metadata)");
-      return;
-    }
-  repl_key_reader r = { data, length };
-  int version = 0, type = 0, count = 0;
-  const char *name = "";
-  repl_key_get_int (&r, &version);
-  repl_key_get_int (&r, &type);
-  repl_key_get_name (&r, &name);
-  repl_key_get_int (&r, &count);
-  const char *type_name = type == BTREE_PRIMARY_KEY ? "PRIMARY KEY"
-    : type == BTREE_REVERSE_UNIQUE ? "REVERSE UNIQUE" : "UNIQUE";
-  int used = snprintf (output, capacity, "constraint='%s', type=%s, columns=%d", name, type_name, count);
-  for (int i = 0; i < count && used >= 0 && used < capacity; i++)
-    {
-      int id = 0, fields[8] = { 0 }, desc = 0, not_null = 0, domain_length = 0;
-      const char *column = "", *class_name = "";
-      repl_key_get_int (&r, &id);
-      repl_key_get_name (&r, &column);
-      for (int j = 0; j < 8; j++)
-        {
-          repl_key_get_int (&r, &fields[j]);
-        }
-      repl_key_get_name (&r, &class_name);
-      repl_key_get_int (&r, &desc);
-      repl_key_get_int (&r, &not_null);
-      repl_key_get_int (&r, &domain_length);
-      r.data += domain_length;
-      r.remaining -= domain_length;
-      const char *domain_type = pr_type_name ((DB_TYPE) fields[0]);
-      int written = snprintf (output + used, capacity - used,
-                              " [column='%s', id=%d, domain=%s(%d,%d), charset=%d, collation=%d, "
-                              "collation_flag=%d, parameterized=%d, self_ref=%d, class='%s', order=%s, %s]",
-                              column, id, domain_type ? domain_type : "UNKNOWN", fields[1], fields[2], fields[3],
-                              fields[4], fields[5], fields[6], fields[7], class_name,
-                              desc ? "DESC" : "ASC", not_null ? "NOT NULL" : "NULL");
-      if (written < 0 || written >= capacity - used)
-        {
-          break;
-        }
-      used += written;
     }
 }
 
 #if !defined (SERVER_MODE)
+/*
+ * repl_key_from_class() - describe the client-side RK used for a SQL log
+ *   return: NO_ERROR or an error code
+ *   class_obj(in): class whose RK is selected
+ *   data(out): allocated descriptor owned by the caller, or NULL if no RK exists
+ *   length(out): descriptor length in bytes
+ */
 int
 repl_key_from_class (struct db_object *class_obj, char **data, int *length)
 {
@@ -415,13 +510,16 @@ repl_key_from_class (struct db_object *class_obj, char **data, int *length)
   int error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
   *data = NULL;
   *length = 0;
+
   if (error != NO_ERROR)
     {
       return error;
     }
+
   SM_CONSTRAINT_TYPE types[] = { SM_CONSTRAINT_PRIMARY_KEY, SM_CONSTRAINT_UNIQUE, SM_CONSTRAINT_REVERSE_UNIQUE };
   BTREE_TYPE index_types[] = { BTREE_PRIMARY_KEY, BTREE_UNIQUE, BTREE_REVERSE_UNIQUE };
   int kind = BTREE_UNIQUE;
+
   for (int i = 0; i < 3 && chosen == NULL; i++)
     {
       for (SM_CLASS_CONSTRAINT *c = class_->constraints; c != NULL; c = c->next)
@@ -435,21 +533,25 @@ repl_key_from_class (struct db_object *class_obj, char **data, int *length)
             }
         }
     }
+
   if (chosen == NULL)
     {
       return NO_ERROR;
     }
+
   int count = 0;
   while (chosen->attributes[count] != NULL)
     {
       count++;
     }
+
   columns = (REPL_KEY_COLUMN *) calloc (count, sizeof (*columns));
   if (columns == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (*columns));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
   for (int i = 0; i < count; i++)
     {
       SM_ATTRIBUTE *a = chosen->attributes[i];
@@ -458,6 +560,7 @@ repl_key_from_class (struct db_object *class_obj, char **data, int *length)
       columns[i].domain = a->domain;
       columns[i].descending = chosen->asc_desc ? chosen->asc_desc[i] : 0;
       columns[i].not_null = (a->flags & SM_ATTFLAG_NON_NULL) != 0;
+
       if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && a->domain->class_mop != NULL)
         {
           columns[i].domain_class_name = sm_get_ch_name (a->domain->class_mop);
@@ -468,6 +571,7 @@ repl_key_from_class (struct db_object *class_obj, char **data, int *length)
             }
         }
     }
+
   error = repl_key_pack (chosen->name, kind, count, columns, data, length);
 end:
   free_and_init (columns);

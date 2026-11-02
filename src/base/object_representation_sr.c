@@ -2515,14 +2515,20 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
       char *attribute_name = NULL;
       int allocated_name = 0;
-      if (or_get_attrname (record, att->id, &attribute_name, &allocated_name) != NO_ERROR || attribute_name == NULL)
+      if (or_get_diskattr_string (diskatt, ORC_ATT_NAME_INDEX, &attribute_name, &allocated_name) != NO_ERROR
+          || attribute_name == NULL)
         {
           goto error_cleanup;
         }
-      att->name = allocated_name ? attribute_name : strdup (attribute_name);
+      size_t name_length = strlen (attribute_name) + 1;
+      att->name = strdup (attribute_name);
+      if (allocated_name)
+        {
+          db_private_free (NULL, attribute_name);
+        }
       if (att->name == NULL)
         {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (attribute_name) + 1);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length);
           goto error_cleanup;
         }
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);

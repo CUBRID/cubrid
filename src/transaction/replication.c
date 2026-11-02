@@ -285,6 +285,77 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 }
 
 /*
+ * repl_pack_key_metadata() - serialize the cached RK used for the logged key value
+ *   return: NO_ERROR or an error code
+ *   thread_p(in): thread entry
+ *   index(in): selected RK index
+ *   data(out): allocated descriptor owned by the caller
+ *   length(out): descriptor length in bytes
+ */
+int
+repl_pack_key_metadata (THREAD_ENTRY *thread_p, const OR_INDEX *index, char **data, int *length)
+{
+  *data = NULL;
+  *length = 0;
+
+  if (index == NULL || !or_is_replication_candidate_key (index) || index->n_atts <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Cannot describe the selected replication key.");
+      return ER_HA_GENERIC_ERROR;
+    }
+
+  REPL_KEY_COLUMN *columns = (REPL_KEY_COLUMN *) calloc (index->n_atts, sizeof (*columns));
+  if (columns == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, index->n_atts * sizeof (*columns));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  int error = NO_ERROR;
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *a = index->atts[i];
+
+      if (a == NULL || a->domain == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Missing replication key attribute domain.");
+          error = ER_HA_GENERIC_ERROR;
+          goto end;
+        }
+
+      columns[i].id = a->id;
+      columns[i].name = a->name;
+      columns[i].domain = a->domain;
+      columns[i].descending = index->asc_desc ? index->asc_desc[i] : 0;
+      columns[i].not_null = a->is_notnull;
+
+      if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && !OID_ISNULL (&a->domain->class_oid))
+        {
+          char *class_name = NULL;
+          error = heap_get_class_name (thread_p, &a->domain->class_oid, &class_name);
+          if (error != NO_ERROR)
+            {
+              goto end;
+            }
+          columns[i].domain_class_name = class_name;
+        }
+    }
+
+  error = repl_key_pack (index->btname, index->type, index->n_atts, columns, data, length);
+end:
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      if (columns[i].domain_class_name != NULL)
+        {
+          free_and_init (columns[i].domain_class_name);
+        }
+    }
+
+  free_and_init (columns);
+  return error;
+}
+
+/*
  * repl_log_insert - insert a replication info to the transaction descriptor
  *
  * return: NO_ERROR or error code
@@ -297,62 +368,6 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
-/* Serialize the same cached RK that produced the logged key value. */
-int
-repl_pack_key_metadata (THREAD_ENTRY *thread_p, const OR_INDEX *index, char **data, int *length)
-{
-  *data = NULL;
-  *length = 0;
-  if (index == NULL || !or_is_replication_candidate_key (index) || index->n_atts <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Cannot describe the selected replication key.");
-      return ER_HA_GENERIC_ERROR;
-    }
-  REPL_KEY_COLUMN *columns = (REPL_KEY_COLUMN *) calloc (index->n_atts, sizeof (*columns));
-  if (columns == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, index->n_atts * sizeof (*columns));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  int error = NO_ERROR;
-  for (int i = 0; i < index->n_atts; i++)
-    {
-      OR_ATTRIBUTE *a = index->atts[i];
-      if (a == NULL || a->domain == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Missing replication key attribute domain.");
-          error = ER_HA_GENERIC_ERROR;
-          goto end;
-        }
-      columns[i].id = a->id;
-      columns[i].name = a->name;
-      columns[i].domain = a->domain;
-      columns[i].descending = index->asc_desc ? index->asc_desc[i] : 0;
-      columns[i].not_null = a->is_notnull;
-      if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && !OID_ISNULL (&a->domain->class_oid))
-        {
-          char *class_name = NULL;
-          error = heap_get_class_name (thread_p, &a->domain->class_oid, &class_name);
-          if (error != NO_ERROR)
-            {
-              goto end;
-            }
-          columns[i].domain_class_name = class_name;
-        }
-    }
-  error = repl_key_pack (index->btname, index->type, index->n_atts, columns, data, length);
-end:
-  for (int i = 0; i < index->n_atts; i++)
-    {
-      if (columns[i].domain_class_name != NULL)
-        {
-          free_and_init (columns[i].domain_class_name);
-        }
-    }
-  free_and_init (columns);
-  return error;
-}
-
 int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX *index, REPL_INFO_TYPE repl_info)
