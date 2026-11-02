@@ -357,6 +357,33 @@ struct analytic_function_state
   int sort_key_tuple_position;	/* position of value_scan_id in current sort key */
 
   int group_consumed_tuples;	/* number of consumed tuples from current group */
+
+  DB_VALUE stream_value;	/* streaming: the value of the sort key group that ended, for its waiting rows */
+};
+
+/* the functions whose value is final once their row is evaluated */
+#define QEXEC_ANALYTIC_IS_FINAL_AT_ROW(func_p) \
+  ((func_p)->function == PT_ROW_NUMBER || (func_p)->function == PT_RANK || (func_p)->function == PT_DENSE_RANK)
+
+/* the functions whose value needs the partition's rows: they wait for the partition to end */
+#define QEXEC_ANALYTIC_WAITS_FOR_PARTITION(func_p) \
+  ((func_p)->function == PT_NTILE || (func_p)->function == PT_CUME_DIST || (func_p)->function == PT_PERCENT_RANK)
+
+/* the memory the waiting rows of a sort key group take before the next ones go to a list file */
+#define ANALYTIC_STREAM_AREA_MAX_SIZE (1024 * 1024)
+
+/* streaming: the sorted rows that wait for their sort key group to end, in order */
+typedef struct analytic_stream_buffer ANALYTIC_STREAM_BUFFER;
+struct analytic_stream_buffer
+{
+  char *area;			/* rows: whether it is output, the row values of the functions, the input tuple */
+  int area_size;
+  int area_used;
+  int area_rows;
+  QFILE_LIST_ID *spill;		/* the input tuples of the rows past the area */
+  int *spill_vals;		/* whether it is output and the row values, of each row in spill */
+  int spill_vals_size;
+  int spill_rows;
 };
 
 typedef struct analytic_state ANALYTIC_STATE;
@@ -396,7 +423,11 @@ struct analytic_state
   bool is_last_run;
   bool is_skip_sort;
   bool is_output_rec;
-  bool is_streaming;		/* each function's value is final at its row: rows go to the output file as sorted */
+  bool is_streaming;		/* rows go to the output file as they are sorted (qexec_analytic_can_stream) */
+  bool stream_waits;		/* some function's value is final at the end of its sort key group only */
+  bool stream_peer_ends;	/* a function needs where the sort key group of a waiting row ends */
+  int *row_vals;		/* streaming: the values the functions final at a row have for it */
+  ANALYTIC_STREAM_BUFFER stream;
 };
 
 /*
@@ -584,7 +615,16 @@ static int qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_S
 static int qexec_analytic_save_key (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key);
 static int qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 				       ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key, bool reinit);
-static bool qexec_analytic_can_stream (const ANALYTIC_STATE * analytic_state);
+static bool qexec_analytic_can_stream (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
+static int qexec_analytic_stream_finalize_group (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
+						 bool is_same_group);
+static int qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
+					  QFILE_TUPLE_RECORD * tplrec);
+static int qexec_analytic_stream_put_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
+					  bool is_output_rec, const int *row_vals, int row, int rows,
+					  const int *peer_ends);
+static int qexec_analytic_stream_flush (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
+static void qexec_analytic_stream_clear (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
 static int qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 					  ANALYTIC_FUNCTION_STATE * func_state, bool is_same_group);
 static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
@@ -29385,7 +29425,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
-  analytic_state.is_streaming = qexec_analytic_can_stream (&analytic_state);
+  analytic_state.is_streaming = qexec_analytic_can_stream (thread_p, &analytic_state);
 
   SORT_LISTFILE_PX_ARG anl_px;
   anl_px.key_info = &analytic_state.key_info;
@@ -29419,7 +29459,28 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * interface doesn't include a finalization function.  If so, finish
    * off that group.
    */
-  if (analytic_state.input_recs != 0 && !analytic_state.is_streaming)
+  if (analytic_state.input_recs != 0 && analytic_state.is_streaming)
+    {
+      /* end the last sort key group of the functions that wait for it, and put out its rows */
+      if (analytic_state.stream_waits)
+	{
+	  for (i = 0; i < analytic_state.func_count; i++)
+	    {
+	      if (!QEXEC_ANALYTIC_IS_FINAL_AT_ROW (analytic_state.func_state_list[i].func_p)
+		  && qexec_analytic_stream_finalize_group (thread_p, &analytic_state.func_state_list[i],
+							   false) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	  if (qexec_analytic_stream_flush (thread_p, &analytic_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      finalized = true;
+    }
+  else if (analytic_state.input_recs != 0)
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{
@@ -29688,6 +29749,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   /* initialize tuple record */
   func_state->group_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   func_state->value_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  db_make_null (&func_state->stream_value);
 
   /* initialize dbvals */
   db_make_null (&func_state->csktc_dbval);
@@ -29868,6 +29930,10 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->is_last_run = is_last_run;
   analytic_state->is_skip_sort = is_skip_sort;
   analytic_state->is_streaming = false;
+  analytic_state->stream_waits = false;
+  analytic_state->stream_peer_ends = false;
+  analytic_state->row_vals = NULL;
+  memset (&analytic_state->stream, 0, sizeof (ANALYTIC_STREAM_BUFFER));
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -29990,6 +30056,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
   QFILE_TUPLE_RECORD dummy;
   QFILE_TUPLE_RECORD data_slot = QFILE_TUPLE_RECORD_INITIALIZER;	/* slot over the sorted input tuple */
   int status;
+  bool group_ended = false;	/* streaming: the sort key group of the functions that wait for it ended */
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
@@ -30158,16 +30225,26 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	      if (!is_same_group)
 		{
-		  if (!analytic_state->is_streaming
-		      && qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state,
-							false) != NO_ERROR)
+		  if (!analytic_state->is_streaming)
 		    {
-		      goto exit_on_error;
+		      if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, false) !=
+			  NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		    }
+		  else if (!QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_state->func_p))
+		    {
+		      if (qexec_analytic_stream_finalize_group (thread_p, func_state, false) != NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		      group_ended = true;
 		    }
 		  pr_clear_value (func_state->func_p->value);
 		  qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, true);
 		}
-	      else if (analytic_state->is_streaming)
+	      else if (analytic_state->is_streaming && QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_state->func_p))
 		{
 		  /* no sort key values to keep: the value goes on into the next sort key as it is */
 		  if (qexec_analytic_save_key (thread_p, func_state, recdes) != NO_ERROR)
@@ -30175,17 +30252,46 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 		      goto exit_on_error;
 		    }
 		}
+	      else if (analytic_state->is_streaming && QEXEC_ANALYTIC_WAITS_FOR_PARTITION (func_state->func_p))
+		{
+		  /* the rows wait for the partition; only the sort key group's start is counted (NTILE has none) */
+		  if (func_state->func_p->function != PT_NTILE)
+		    {
+		      qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, false);
+		    }
+		}
 	      else if (func_state->func_p->function != PT_NTILE
 		       && (!QPROC_IS_INTERPOLATION_FUNC (func_state->func_p) || func_state->func_p->option == Q_ALL))
 		{
-		  if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, true) !=
-		      NO_ERROR)
+		  if (!analytic_state->is_streaming)
 		    {
-		      goto exit_on_error;
+		      if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, true) !=
+			  NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		    }
+		  else
+		    {
+		      if (qexec_analytic_stream_finalize_group (thread_p, func_state, true) != NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		      group_ended = true;
 		    }
 		  qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, false);
 		}
 	    }
+	}
+
+      if (group_ended)
+	{
+	  /* the rows before this one have their values now */
+	  if (qexec_analytic_stream_flush (thread_p, analytic_state) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  group_ended = false;
 	}
 
       /* aggregate tuple across all functions */
@@ -30327,34 +30433,480 @@ qexec_analytic_save_key (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func
 }
 
 /*
- * qexec_analytic_can_stream () - whether every function's value is final at its row, as it is sorted
+ * qexec_analytic_can_stream () - whether the rows can go to the output file as they are sorted
  *   return: true if the rows can go to the output file without the result files
- *   analytic_state(in): analytic state
+ *   analytic_state(in/out): analytic state; sets whether rows wait for their sort key group to end
  *
- * ROW_NUMBER, RANK and DENSE_RANK look at the rows up to the current one only: once a row is evaluated, its value is
- * the one qexec_analytic_update_group_result () would read back from the function's result files.
+ * qexec_analytic_update_group_result () gives a row the value its function had at the end of the row's sort key group
+ * (its partition, without an ORDER BY). ROW_NUMBER, RANK and DENSE_RANK have it once the row is evaluated. The
+ * aggregates, FIRST_VALUE and LAST_VALUE have it when the group ends, so the group's rows wait for it. NTILE, CUME_DIST
+ * and PERCENT_RANK need the partition's row count, so its rows wait for the partition to end. The rows of the functions
+ * of an evaluation group wait together, which their groups ending together allows. The other functions read the values
+ * of other rows of the partition, from the result files.
  */
 static bool
-qexec_analytic_can_stream (const ANALYTIC_STATE * analytic_state)
+qexec_analytic_can_stream (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state)
 {
-  int i;
+  int i, keys, group_keys = -1;
 
   if (analytic_state->func_count == 0)
     {
       return false;
     }
 
+  if (analytic_state->is_last_run && analytic_state->xasl->instnum_pred != NULL)
+    {
+      /* an inst_num () predicate keeps a row out of the intermediate file only, so qexec_analytic_update_group_result ()
+       * gives the kept rows the values of the result files in turn; that pairing stays on the existing path */
+      return false;
+    }
+
   for (i = 0; i < analytic_state->func_count; i++)
     {
-      FUNC_CODE function = analytic_state->func_state_list[i].func_p->function;
+      ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
 
-      if (function != PT_ROW_NUMBER && function != PT_RANK && function != PT_DENSE_RANK)
+      if (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p))
 	{
+	  continue;
+	}
+
+      switch (func_p->function)
+	{
+	case PT_MIN:
+	case PT_MAX:
+	case PT_SUM:
+	case PT_AVG:
+	case PT_COUNT:
+	case PT_COUNT_STAR:
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	case PT_FIRST_VALUE:
+	case PT_LAST_VALUE:
+	  keys = func_p->sort_list_size;
+	  break;
+
+	case PT_NTILE:
+	case PT_CUME_DIST:
+	case PT_PERCENT_RANK:
+	  keys = func_p->sort_prefix_size;
+	  break;
+
+	default:
 	  return false;
+	}
+
+      if (group_keys != -1 && group_keys != keys)
+	{
+	  /* the groups end at different rows */
+	  return false;
+	}
+      group_keys = keys;
+      if (func_p->function == PT_CUME_DIST)
+	{
+	  analytic_state->stream_peer_ends = true;
 	}
     }
 
+  analytic_state->stream_waits = (group_keys != -1);
+
+  analytic_state->row_vals = (int *) db_private_alloc (thread_p, sizeof (int) * analytic_state->func_count);
+  if (analytic_state->row_vals == NULL)
+    {
+      /* the existing path does not need it */
+      analytic_state->stream_waits = false;
+      return false;
+    }
+
   return true;
+}
+
+/*
+ * qexec_analytic_stream_finalize_group () - end the sort key group of a function whose rows wait for it
+ *   return: error code or NO_ERROR
+ *   func_state(in/out): function state
+ *   is_same_group(in): true if a sort key ends, false if a partition
+ *
+ * As qexec_analytic_finalize_group (), but the value is kept for the waiting rows instead of written to the result
+ * files.
+ */
+static int
+qexec_analytic_stream_finalize_group (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, bool is_same_group)
+{
+  if (qdata_finalize_analytic_func (thread_p, func_state->func_p, is_same_group) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  pr_clear_value (&func_state->stream_value);
+  if (pr_clone_value (func_state->func_p->value, &func_state->stream_value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_stream_add_row () - put out an evaluated row, or keep it until its sort key group ends
+ *   return: error code or NO_ERROR
+ *   analytic_state(in/out): analytic state
+ *   tplrec(in): the sorted input tuple, whose values are fetched
+ */
+static int
+qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, QFILE_TUPLE_RECORD * tplrec)
+{
+  ANALYTIC_STREAM_BUFFER *stream = &analytic_state->stream;
+  int *row_vals = analytic_state->row_vals;
+  int vals_size = sizeof (int) * (1 + analytic_state->func_count);
+  int tpl_len, rec_len, i;
+
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+
+      if (func_p->function == PT_ROW_NUMBER)
+	{
+	  row_vals[i] = db_get_int (func_p->out_value);
+	}
+      else if (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p))
+	{
+	  row_vals[i] = db_get_int (func_p->value);
+	}
+      else if (func_p->function == PT_CUME_DIST || func_p->function == PT_PERCENT_RANK)
+	{
+	  /* where the row's sort key group starts in the partition */
+	  ANALYTIC_FUNCTION_STATE *func_state = &analytic_state->func_state_list[i];
+	  row_vals[i] = func_state->curr_group_tuple_count - func_state->curr_sort_key_tuple_count;
+	}
+    }
+
+  if (!analytic_state->stream_waits)
+    {
+      return qexec_analytic_stream_put_row (thread_p, analytic_state, analytic_state->is_output_rec, row_vals, 0, 0,
+					    NULL);
+    }
+
+  /* the row waits for its sort key group to end: keep the input tuple, it is fetched again then */
+  tpl_len = QFILE_GET_TUPLE_LENGTH (tplrec->tpl);
+  rec_len = DB_ALIGN (vals_size + tpl_len, MAX_ALIGNMENT);
+
+  if (stream->spill == NULL && stream->area_used + rec_len > stream->area_size)
+    {
+      int new_size = MAX (stream->area_size * 2, DB_PAGESIZE);
+
+      while (new_size < stream->area_used + rec_len)
+	{
+	  new_size *= 2;
+	}
+
+      if (new_size <= ANALYTIC_STREAM_AREA_MAX_SIZE)
+	{
+	  char *area = (char *) (stream->area == NULL ? db_private_alloc (thread_p, new_size)
+				 : db_private_realloc (thread_p, stream->area, new_size));
+	  if (area == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  stream->area = area;
+	  stream->area_size = new_size;
+	}
+      else
+	{
+	  /* the group is large: its next rows go to a list file */
+	  stream->spill = qfile_open_list (thread_p, &analytic_state->input_scan->list_id.type_list, NULL,
+					   analytic_state->xasl_state->query_id, 0, NULL);
+	  if (stream->spill == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  if (stream->spill == NULL)
+    {
+      char *rec = stream->area + stream->area_used;
+
+      ((int *) rec)[0] = analytic_state->is_output_rec;
+      memcpy (rec + sizeof (int), row_vals, vals_size - sizeof (int));
+      memcpy (rec + vals_size, tplrec->tpl, tpl_len);
+      stream->area_used += rec_len;
+      stream->area_rows++;
+      return NO_ERROR;
+    }
+
+  if ((stream->spill_rows + 1) * vals_size > stream->spill_vals_size)
+    {
+      int new_size = MAX (stream->spill_vals_size * 2, DB_PAGESIZE);
+      int *vals;
+
+      while (new_size < (stream->spill_rows + 1) * vals_size)
+	{
+	  new_size *= 2;
+	}
+      vals = (int *) (stream->spill_vals == NULL ? db_private_alloc (thread_p, new_size)
+		      : db_private_realloc (thread_p, stream->spill_vals, new_size));
+      if (vals == NULL)
+	{
+	  return ER_FAILED;
+	}
+      stream->spill_vals = vals;
+      stream->spill_vals_size = new_size;
+    }
+  stream->spill_vals[stream->spill_rows * (1 + analytic_state->func_count)] = analytic_state->is_output_rec;
+  memcpy (&stream->spill_vals[stream->spill_rows * (1 + analytic_state->func_count) + 1], row_vals,
+	  vals_size - sizeof (int));
+  if (qfile_add_tuple_to_list (thread_p, stream->spill, tplrec->tpl) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  stream->spill_rows++;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_stream_put_row () - write a row whose values are final to the output file
+ *   return: error code or NO_ERROR
+ *   analytic_state(in/out): analytic state; the row's values are fetched in its value list
+ *   is_output_rec(in): whether the inst_num () predicate at the intermediate stage kept the row
+ *   row_vals(in): the values of the functions final at the row
+ *
+ * The values go where qexec_analytic_update_group_result () reads them into, and the predicate deferred to the group
+ * stage is evaluated here, the point and order that stage evaluated it at.
+ */
+static int
+qexec_analytic_stream_put_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, bool is_output_rec,
+			       const int *row_vals, int row, int rows, const int *peer_ends)
+{
+  XASL_STATE *xasl_state = analytic_state->xasl_state;
+  bool row_is_output_rec, group_is_output_rec;
+  int i, rc;
+
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      ANALYTIC_FUNCTION_STATE *func_state = &analytic_state->func_state_list[i];
+      ANALYTIC_TYPE *func_p = func_state->func_p;
+
+      pr_clear_value (func_p->out_value);
+      if (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p))
+	{
+	  db_make_int (func_p->out_value, row_vals[i]);
+	}
+      else if (QEXEC_ANALYTIC_WAITS_FOR_PARTITION (func_p))
+	{
+	  /* the row's place in its partition, which the waiting rows are, as the result files would give it */
+	  int group_tuple_count = func_state->curr_group_tuple_count;
+	  int sort_key_tuple_count = func_state->curr_sort_key_tuple_count;
+	  int error;
+
+	  func_state->curr_group_tuple_count = rows;
+	  func_state->group_tuple_position = row;
+	  if (func_p->function == PT_NTILE)
+	    {
+	      error = qexec_analytic_evaluate_ntile_function (thread_p, func_state);
+	    }
+	  else
+	    {
+	      func_state->sort_key_tuple_position = row - row_vals[i];
+	      func_state->curr_sort_key_tuple_count = (peer_ends != NULL ? peer_ends[i] - row_vals[i] : 0);
+	      error = qexec_analytic_evaluate_cume_dist_percent_rank_function (thread_p, func_state);
+	    }
+	  func_state->curr_group_tuple_count = group_tuple_count;
+	  func_state->curr_sort_key_tuple_count = sort_key_tuple_count;
+
+	  if (error != NO_ERROR || pr_clone_value (func_p->value, func_p->out_value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (pr_clone_value (&func_state->stream_value, func_p->out_value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /* the predicate evaluates at one of the stages; a row it dropped at the intermediate stage stays dropped. The state's
+   * flag is the evaluated row's, which a flush of the waiting rows comes between, so it is kept. */
+  row_is_output_rec = analytic_state->is_output_rec;
+  rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
+  group_is_output_rec = analytic_state->is_output_rec;
+  analytic_state->is_output_rec = row_is_output_rec;
+  if (rc != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (is_output_rec && group_is_output_rec)
+    {
+      return qexec_insert_tuple_into_list (thread_p, analytic_state->output_file, analytic_state->a_outptr_list,
+					   &xasl_state->vd, analytic_state->output_tplrec);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_stream_flush () - write the waiting rows, whose sort key group ended
+ *   return: error code or NO_ERROR
+ *   analytic_state(in/out): analytic state
+ */
+static int
+qexec_analytic_stream_flush (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state)
+{
+  ANALYTIC_STREAM_BUFFER *stream = &analytic_state->stream;
+  XASL_STATE *xasl_state = analytic_state->xasl_state;
+  int func_cnt = analytic_state->func_count;
+  int vals_cnt = 1 + func_cnt;
+  int rows = stream->area_rows + stream->spill_rows;
+  int *peer_ends = NULL;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_LIST_SCAN_ID scan_id;
+  bool scan_open = false;
+  char *rec;
+  int i, r, error = NO_ERROR;
+
+  if (rows == 0)
+    {
+      return NO_ERROR;
+    }
+
+  if (analytic_state->stream_peer_ends)
+    {
+      /* where each row's sort key group ends: the next group's start, the rows being in order */
+      peer_ends = (int *) db_private_alloc (thread_p, sizeof (int) * rows * func_cnt);
+      if (peer_ends == NULL)
+	{
+	  return ER_FAILED;
+	}
+      for (r = 0, rec = stream->area; r < rows; r++)
+	{
+	  const int *vals;
+
+	  if (r < stream->area_rows)
+	    {
+	      vals = (const int *) rec;
+	      rec += DB_ALIGN (sizeof (int) * vals_cnt + QFILE_GET_TUPLE_LENGTH (rec + sizeof (int) * vals_cnt),
+			       MAX_ALIGNMENT);
+	    }
+	  else
+	    {
+	      vals = &stream->spill_vals[(r - stream->area_rows) * vals_cnt];
+	    }
+	  memcpy (&peer_ends[r * func_cnt], vals + 1, sizeof (int) * func_cnt);
+	}
+      for (i = 0; i < func_cnt; i++)
+	{
+	  int start = -1, end = rows;
+
+	  for (r = rows - 1; r >= 0; r--)
+	    {
+	      if (peer_ends[r * func_cnt + i] != start)
+		{
+		  /* the row ends a group: the group after it starts at the next row */
+		  start = peer_ends[r * func_cnt + i];
+		  end = r + 1;
+		}
+	      peer_ends[r * func_cnt + i] = end;
+	    }
+	}
+    }
+
+  /* the kept tuples are the input list's */
+  qfile_slot_set_layout (&tplrec, &analytic_state->input_scan->list_id.type_list);
+
+  for (r = 0, rec = stream->area; r < rows && error == NO_ERROR; r++)
+    {
+      const int *vals;
+
+      if (r < stream->area_rows)
+	{
+	  char *tpl = rec + sizeof (int) * vals_cnt;
+
+	  vals = (const int *) rec;
+	  qfile_slot_set_tuple_ptr (&tplrec, tpl, 0);
+	  rec += DB_ALIGN (sizeof (int) * vals_cnt + QFILE_GET_TUPLE_LENGTH (tpl), MAX_ALIGNMENT);
+	}
+      else
+	{
+	  vals = &stream->spill_vals[(r - stream->area_rows) * vals_cnt];
+	  if (!scan_open)
+	    {
+	      if (qfile_open_list_scan (stream->spill, &scan_id) != NO_ERROR)
+		{
+		  error = ER_FAILED;
+		  break;
+		}
+	      scan_open = true;
+	    }
+	  if (qfile_scan_list_next (thread_p, &scan_id, &tplrec, PEEK) != S_SUCCESS)
+	    {
+	      error = ER_FAILED;
+	      break;
+	    }
+	}
+
+      if (fetch_val_list (thread_p, analytic_state->a_regu_list, &xasl_state->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR
+	  || qexec_analytic_stream_put_row (thread_p, analytic_state, vals[0], vals + 1, r, rows,
+					    peer_ends != NULL ? &peer_ends[r * func_cnt] : NULL) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  if (scan_open)
+    {
+      qfile_close_scan (thread_p, &scan_id);
+    }
+  if (peer_ends != NULL)
+    {
+      db_private_free_and_init (thread_p, peer_ends);
+    }
+
+  stream->area_used = 0;
+  stream->area_rows = 0;
+  if (stream->spill != NULL)
+    {
+      qfile_close_list (thread_p, stream->spill);
+      qfile_destroy_list (thread_p, stream->spill);
+      qfile_free_list_id (stream->spill);
+      stream->spill = NULL;
+      stream->spill_rows = 0;
+    }
+
+  return error;
+}
+
+/*
+ * qexec_analytic_stream_clear () - free the waiting rows
+ */
+static void
+qexec_analytic_stream_clear (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state)
+{
+  ANALYTIC_STREAM_BUFFER *stream = &analytic_state->stream;
+
+  if (stream->area != NULL)
+    {
+      db_private_free_and_init (thread_p, stream->area);
+    }
+  if (stream->spill_vals != NULL)
+    {
+      db_private_free_and_init (thread_p, stream->spill_vals);
+    }
+  if (stream->spill != NULL)
+    {
+      qfile_close_list (thread_p, stream->spill);
+      qfile_destroy_list (thread_p, stream->spill);
+      qfile_free_list_id (stream->spill);
+      stream->spill = NULL;
+    }
+  if (analytic_state->row_vals != NULL)
+    {
+      db_private_free_and_init (thread_p, analytic_state->row_vals);
+    }
 }
 
 /*
@@ -30525,33 +31077,7 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_sta
 
   if (analytic_state->is_streaming)
     {
-      bool is_output_rec = analytic_state->is_output_rec;
-
-      /* the row's values are final: put them where qexec_analytic_update_group_result () reads them into */
-      for (i = 0; i < analytic_state->func_count; i++)
-	{
-	  ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
-
-	  if (func_p->function != PT_ROW_NUMBER)
-	    {
-	      pr_clear_value (func_p->out_value);
-	      if (pr_clone_value (func_p->value, func_p->out_value) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-	}
-
-      /* the predicate evaluates at one of the stages; a row it dropped at the intermediate stage stays dropped */
-      if (qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-      is_output_rec = is_output_rec && analytic_state->is_output_rec;
-
-      if (is_output_rec
-	  && qexec_insert_tuple_into_list (thread_p, analytic_state->output_file, analytic_state->a_outptr_list,
-					   &xasl_state->vd, analytic_state->output_tplrec) != NO_ERROR)
+      if (qexec_analytic_stream_add_row (thread_p, analytic_state, tplrec) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -30588,6 +31114,7 @@ qexec_clear_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_
 
   /* clear db_values */
   pr_clear_value (func_state->func_p->value);
+  pr_clear_value (&func_state->stream_value);
   pr_clear_value (&func_state->cgtc_dbval);
   pr_clear_value (&func_state->cgtc_nn_dbval);
   pr_clear_value (&func_state->csktc_dbval);
@@ -30637,6 +31164,8 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_s
   analytic_state->output_tplrec = NULL;
 
   qfile_clear_sort_key_info (&analytic_state->key_info);
+
+  qexec_analytic_stream_clear (thread_p, analytic_state);
 
   if (analytic_state->curr_sort_page.page_p != NULL)
     {
