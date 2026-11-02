@@ -116,6 +116,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
         unitName = name;
 
+        // The package initialization (the initial values of the package variables/constants and
+        // the package initializer) runs when the package class is used first, which can be in a
+        // call to a PARALLEL_ENABLE function, where the server-side SQL is forbidden. So, if the
+        // spec has a PARALLEL_ENABLE function, the initialization follows the same restrictions.
+        pkgInitRestricted = false;
+        if (specContext.seq_of_declare_specs() != null) {
+            for (Declare_specContext ds : specContext.seq_of_declare_specs().declare_spec()) {
+                Routine_declContext rd = ds.routine_decl();
+                if (rd != null && !rd.routine_header().parallel_enable_spec().isEmpty()) {
+                    pkgInitRestricted = true;
+                    break;
+                }
+            }
+        }
+
         // visit package spec items
         topLevelStmt = CREATE_PKG_SPEC;
         pkgSpecItems = visitSeq_of_declare_specs(specContext.seq_of_declare_specs());
@@ -160,7 +175,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
 
             if (bodyContext.body() != null) {
-                initializer = visitBody(bodyContext.body());
+                boolean saved = enterPkgInit();
+                try {
+                    initializer = visitBody(bodyContext.body());
+                } finally {
+                    exitPkgInit(saved);
+                }
                 if (bodyContext.body().label_name() != null) {
                     checkLabel(name, bodyContext.body().label_name()); // s096
                 }
@@ -259,11 +279,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 gpc.usesDefaultArg = (gpc.args.nodes.size() < paramList.nodes.size());
                 gpc.targetClass = ps.targetClass;
                 gpc.uniqueName = ps.uniqueName;
+                rejectIfParallelRestricted(gpc);
                 if (Misc.isEmptyStr(ps.targetClass) || gpc.usesDefaultArg) {
-                    setConnectionRequired(gpc.ctx);
+                    connectionRequired = true;
                 } else {
                     // PL/CSQL SP call without using default arguments
-                    rejectIfParallelEnabled(gpc.ctx);
                     referencedClasses.add(ps.targetClass);
                     referencedMethods.add(Misc.methodKey(ps.targetClass, ps.uniqueName));
                 }
@@ -332,11 +352,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 gfc.usesDefaultArg = (gfc.args.nodes.size() < paramList.nodes.size());
                 gfc.targetClass = fs.targetClass;
                 gfc.uniqueName = fs.uniqueName;
+                rejectIfParallelRestricted(gfc);
                 if (Misc.isEmptyStr(fs.targetClass) || gfc.usesDefaultArg) {
-                    setConnectionRequired(gfc.ctx);
+                    connectionRequired = true;
                 } else {
                     // PL/CSQL SP call without using default arguments
-                    rejectIfParallelEnabled(gfc.ctx);
                     referencedClasses.add(fs.targetClass);
                     referencedMethods.add(Misc.methodKey(fs.targetClass, fs.uniqueName));
                 }
@@ -1263,6 +1283,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         new ExprGlobalFuncCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.FunctionSignature(uniqName));
+                rememberParallelRestriction(ret);
 
                 return ret; // done
             }
@@ -1277,6 +1298,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
                 addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
+                rememberParallelRestriction(ret);
                 return ret;
             } else {
                 throw new SemanticError(
@@ -1316,6 +1338,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
+                rejectNonParallelPkgRoutineIfParallelEnabled(ctx, decl);
                 ExprLocalFuncCall ret =
                         new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
                 addToLocalRoutineCalls(ret);
@@ -1612,7 +1635,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclConst ret = (DeclConst) symbolStack.getPrevisitedDecl(name);
         assert ret != null && ret.ctx == ctx; // by the previsit
 
-        ret.val = visitDefault_value_part(ctx.default_value_part());
+        boolean saved = enterPkgInit();
+        try {
+            ret.val = visitDefault_value_part(ctx.default_value_part());
+        } finally {
+            exitPkgInit(saved);
+        }
         ret.hidden = false;
 
         checkRedefinitionOfUsedName(name, ctx);
@@ -1655,7 +1683,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclVar ret = (DeclVar) symbolStack.getPrevisitedDecl(name);
         assert ret != null && ret.ctx == ctx; // by the previsit
 
-        ret.val = visitDefault_value_part(ctx.default_value_part());
+        boolean saved = enterPkgInit();
+        try {
+            ret.val = visitDefault_value_part(ctx.default_value_part());
+        } finally {
+            exitPkgInit(saved);
+        }
         ret.hidden = false;
 
         checkRedefinitionOfUsedName(name, ctx);
@@ -1681,6 +1714,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_decl(Routine_declContext ctx) {
 
+        boolean savedParallelEnabled = parallelEnabled;
         routineDefNestLevel++;
         try {
             String name = Misc.getNormalizedText(ctx.routine_header().uniq_name().name);
@@ -1698,6 +1732,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             final int DECL_TOP_LEVEL = SymbolStack.LEVEL_MAIN + (topLevelStmt == CREATE_SP ? 0 : 1);
             int scopeLevel = symbolStack.getCurrentScope().level;
             if (scopeLevel == DECL_TOP_LEVEL) {
+                // a local routine inherits it from the enclosing routine
+                parallelEnabled = (ret.directive & DeclRoutine.DIRECTIVE_PARALLEL_ENABLE) != 0;
                 sqlDataAccess = ServerConstants.SP_SQL_TYPE_NO_SQL; // reset the global variable
             }
 
@@ -1757,6 +1793,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return ret;
         } finally {
             routineDefNestLevel--;
+            parallelEnabled = savedParallelEnabled;
         }
     }
 
@@ -2122,6 +2159,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     addToSqlUses(ret);
                     return ret;
                 } else {
+                    rejectNonParallelPkgRoutineIfParallelEnabled(ctx, (DeclFunc) decl);
                     return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
                 }
             }
@@ -2152,6 +2190,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 addToSqlUses(ret);
                 return ret;
             } else {
+                rejectNonParallelPkgRoutineIfParallelEnabled(ctx, (DeclFunc) decl);
                 return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
             }
         }
@@ -2908,7 +2947,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     if (parallelEnabled) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx),
-                                "Stored functions declared with PARALLEL_ENABLE cannot use DBMS_OUTPUT package");
+                                getParallelRestricted() + " cannot use DBMS_OUTPUT package");
                     }
 
                     // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
@@ -2941,6 +2980,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         new StmtGlobalProcCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(uniqName));
+                rememberParallelRestriction(ret);
 
                 return ret; // done
             }
@@ -2955,6 +2995,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
                 addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
+                rememberParallelRestriction(ret);
                 return ret;
             } else {
                 throw new SemanticError(
@@ -2981,6 +3022,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + " must be updatable because it is to an OUT parameter");
             }
 
+            rejectNonParallelPkgRoutineIfParallelEnabled(ctx, decl);
             StmtLocalProcCall ret =
                     new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
             addToLocalRoutineCalls(ret);
@@ -3246,6 +3288,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private boolean connectionRequired = false;
     private boolean parallelEnabled = false;
+    private boolean pkgInitRestricted = false;
+    private boolean visitingPkgInitCode = false;
 
     private boolean controlFlowBlocked;
 
@@ -3268,8 +3312,67 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (parallelEnabled) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx),
-                    "Stored functions declared with PARALLEL_ENABLE cannot use a feature that calls DB server");
+                    getParallelRestricted() + " cannot use a feature that calls DB server");
         }
+    }
+
+    // A call to a global procedure/function calls DB server whether it is a direct call or not
+    // (see rejectIfParallelEnabled), but it is found to be one or the other only after the
+    // server answers the semantic questions, when the visit of the routine containing it is
+    // over. So, remember the restriction where the call is.
+    private final Map<AstNode, String> parallelRestrictedCalls = new HashMap<>();
+
+    private void rememberParallelRestriction(AstNode globalCall) {
+        if (parallelEnabled) {
+            parallelRestrictedCalls.put(globalCall, getParallelRestricted());
+        }
+    }
+
+    private void rejectIfParallelRestricted(AstNode globalCall) {
+        String restricted = parallelRestrictedCalls.get(globalCall);
+        if (restricted != null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(globalCall.ctx),
+                    restricted + " cannot use a feature that calls DB server");
+        }
+    }
+
+    // A routine of the same package is called with a plain Java call, which the restrictions on
+    // the server-side SQL do not see. So, allow only the PARALLEL_ENABLE ones, whose bodies are
+    // checked against the same restrictions. Local routines are checked as part of the routine
+    // enclosing them.
+    private void rejectNonParallelPkgRoutineIfParallelEnabled(
+            ParserRuleContext ctx, DeclRoutine decl) {
+        if (parallelEnabled
+                && topLevelStmt != CREATE_SP
+                && decl.scope.level == SymbolStack.LEVEL_MAIN + 1
+                && (decl.directive & DeclRoutine.DIRECTIVE_PARALLEL_ENABLE) == 0) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s444
+                    getParallelRestricted()
+                            + " can call only local routines and PARALLEL_ENABLE functions in the same package");
+        }
+    }
+
+    private String getParallelRestricted() {
+        return visitingPkgInitCode
+                ? "the initialization of a package having PARALLEL_ENABLE functions" // s446
+                : "Stored functions declared with PARALLEL_ENABLE";
+    }
+
+    // the package initialization code is visited: see pkgInitRestricted
+    private boolean enterPkgInit() {
+        boolean saved = parallelEnabled;
+        if (pkgInitRestricted && routineDefNestLevel == 0 && topLevelStmt != CREATE_SP) {
+            parallelEnabled = true;
+            visitingPkgInitCode = true;
+        }
+        return saved;
+    }
+
+    private void exitPkgInit(boolean saved) {
+        parallelEnabled = saved;
+        visitingPkgInitCode = false;
     }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
@@ -3550,8 +3653,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 isPublic = (topLevelStmt == CREATE_SP || topLevelStmt == CREATE_PKG_SPEC);
 
-                if (!ctx.routine_header().parallel_enable_spec().isEmpty()) {
-                    parallelEnabled = true;
+                if (!ctx.routine_header().parallel_enable_spec().isEmpty()
+                        && ctx.routine_header().PROCEDURE() != null) {
+                    // CREATE PROCEDURE rejects it in its syntax, but package procedures reach here
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(
+                                    ctx.routine_header().parallel_enable_spec().get(0)), // s445
+                            "PARALLEL_ENABLE can be specified only for functions");
                 }
             }
 
@@ -3582,6 +3690,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (!ctx.routine_header().deterministic_spec().isEmpty()
                         && ctx.routine_header().deterministic_spec(0).NOT() == null) {
                     directive |= DeclRoutine.DIRECTIVE_DETERMINISTIC;
+                }
+                // parallel enabled or not
+                if (!ctx.routine_header().parallel_enable_spec().isEmpty()) {
+                    directive |= DeclRoutine.DIRECTIVE_PARALLEL_ENABLE;
                 }
             }
 

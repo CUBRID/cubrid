@@ -155,9 +155,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             return "";
         }
         return new String[] {
-            "static {",
-            "  dccInit = null; // not to keep the classes it refers to reachable",
-            "}"
+            "static {", "  dccInit = null; // not to keep the classes it refers to reachable", "}"
         };
     }
 

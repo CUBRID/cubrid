@@ -49,6 +49,7 @@ public abstract class DeclRoutine extends Decl {
 
     public static final int DIRECTIVE_AUTHID_CALLER = 1;
     public static final int DIRECTIVE_DETERMINISTIC = (1 << 1);
+    public static final int DIRECTIVE_PARALLEL_ENABLE = (1 << 2);
 
     public String getHeaderString() {
 
