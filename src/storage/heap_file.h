@@ -757,6 +757,7 @@ extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npage
 				 PGBUF_WATCHER * new_pg_watcher);
 
 extern int heap_nonheader_page_capacity ();
+extern int heap_oos_inline_target_size (void);
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
@@ -766,9 +767,9 @@ extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID
 extern bool heap_recdes_contains_oos (const RECDES * record);
 extern bool heap_recdes_has_valid_header (const RECDES * record);
 
-/* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
- * so the grouped OOS prefetch path locates OOS-marked attributes exactly as heap_file.c does. */
+/* Read raw variable-offset-table entries, including their flag bits. The pair accessor checks both entries. */
 extern int heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out);
+extern int heap_recdes_get_var_offset_pair (const RECDES * recdes, int location, int *entry_out, int *next_entry_out);
 
 /* Locates the OOS inline stub of variable attribute `location` after checking that its field is exactly one
  * stub inside the record. Every stub reader and the replica fixup locate the stub through it; the heap
