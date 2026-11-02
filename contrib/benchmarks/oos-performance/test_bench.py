@@ -136,6 +136,13 @@ class ComparisonTest(unittest.TestCase):
         other["client"] = {"executable": "/two/csql"}
         self.assertEqual(self.compare(self.manifest, other).returncode, 0)
 
+    def test_missing_fixture_observations_reject_even_matching_manifests(self):
+        data = copy.deepcopy(self.manifest)
+        data.pop("fixture_validation", None)
+        result = self.compare(data, data)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+
     def test_invalid_evidence_never_prints_verdict(self):
         variants = []
         for key in ("server_affinity", "server_parameters", "charset"):
