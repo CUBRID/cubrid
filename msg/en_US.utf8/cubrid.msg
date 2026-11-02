@@ -1502,8 +1502,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
 1389 %1$s cannot be called by the main client thread.
 
-1390 Last Error
+1390 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
 
+1391 HA constraint violation: Changing replication option is not allowed in HA mode.
+
+1392 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+
+1393 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
+
+1394 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
