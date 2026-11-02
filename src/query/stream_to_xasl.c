@@ -107,6 +107,7 @@ static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PRO
 static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PROC_NODE * ptr);
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
 static char *stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDVALUE_PROC_NODE * ptr);
+static int stx_attach_agg_prog_image (THREAD_ENTRY * thread_p, int offset, AGGREGATE_TYPE * agg_list);
 static char *stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *tmp, MERGELIST_PROC_NODE * ptr);
 static char *stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p);
 static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_MERGE_INFO * ptr);
@@ -271,6 +272,13 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->tcard_list = NULL;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->rtf = NULL;
+  xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
+  xasl->rtf_off = 0;
+  xasl->rtf_applied = false;
+  xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
@@ -2933,6 +2941,13 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->rtf = NULL;
+  xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
+  xasl->rtf_off = 0;
+  xasl->rtf_applied = false;
+  xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
   return ptr;
 
@@ -3519,6 +3534,12 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     }
 
   ptr = or_unpack_int (ptr, &offset);
+  if (stx_attach_agg_prog_image (thread_p, offset, stx_build_list_proc->g_agg_list) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
       stx_build_list_proc->a_eval_list = NULL;
@@ -3631,6 +3652,45 @@ error:
   return NULL;
 }
 
+/*
+ * stx_attach_agg_prog_image () - CBRD-27361: the aggregate list's operand program XASL generation compiled
+ *   (xts_save_agg_prog_image), set on the list head for its first evaluation
+ *   return: NO_ERROR, or ER_FAILED out of memory
+ *   offset(in): the image's offset in the stream, 0 for none
+ *   agg_list(in): the list
+ */
+static int
+stx_attach_agg_prog_image (THREAD_ENTRY * thread_p, int offset, AGGREGATE_TYPE * agg_list)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int size;
+
+  if (offset == 0 || agg_list == NULL)
+    {
+      return NO_ERROR;
+    }
+  (void) or_unpack_int (&xasl_unpack_info->packed_xasl[offset], &size);
+  if (size > 0)
+    {
+      char *image = stx_alloc_struct (thread_p, size);
+
+      if (image == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return ER_FAILED;
+	}
+      memcpy (image, &xasl_unpack_info->packed_xasl[offset + OR_INT_SIZE], size);
+      agg_list->operand_prog_image = image;
+    }
+  else
+    {
+      /* the operands keep their interpreted fetch */
+      agg_list->operand_prog_image = "";
+    }
+  agg_list->operand_prog_image_size = size;
+  return NO_ERROR;
+}
+
 static char *
 stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_NODE * stx_build_value_proc)
 {
@@ -3681,6 +3741,12 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (stx_attach_agg_prog_image (thread_p, offset, stx_build_value_proc->agg_list) != NO_ERROR)
+    {
+      return NULL;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3826,6 +3892,10 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   int error = NO_ERROR;
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+  /* no runtime filter yet: 0 is a filter built from keys that were all NULL (the trace prints it); every execution
+   * sets it back to this before its aptr loop (qexec_execute_mainblock_internal ()), a join under a px executor,
+   * which never looks for a filter, too */
+  node_p->rtf_keys = -1;
 
   /* outer */
   ptr = or_unpack_int (ptr, &offset);
@@ -5076,7 +5146,10 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
   outptr_list->eval_prog_row_ready = false;
+  outptr_list->eval_prog_row_external = false;
   outptr_list->eval_prog_share_spec = NULL;
+  outptr_list->eval_prog_image = NULL;
+  outptr_list->eval_prog_image_size = 0;
 
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
@@ -5093,6 +5166,33 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+    }
+
+  /* CBRD-27361: the program compiled at XASL generation (xts_save_valptr_prog_image), bound on its first evaluation */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset != 0)
+    {
+      int size;
+
+      (void) or_unpack_int (&xasl_unpack_info->packed_xasl[offset], &size);
+      if (size > 0)
+	{
+	  char *image = stx_alloc_struct (thread_p, size);
+
+	  if (image == NULL)
+	    {
+	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	      return NULL;
+	    }
+	  memcpy (image, &xasl_unpack_info->packed_xasl[offset + OR_INT_SIZE], size);
+	  outptr_list->eval_prog_image = image;
+	}
+      else
+	{
+	  /* the list keeps its interpreted fetch */
+	  outptr_list->eval_prog_image = "";
+	}
+      outptr_list->eval_prog_image_size = size;
     }
 
   return ptr;
@@ -5143,6 +5243,8 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
   pred_expr->scan_prog = NULL;
   pred_expr->scan_prog_state = 0;
   pred_expr->scan_prog_gen = 0;
+  pred_expr->scan_prog_image = NULL;	/* set by the access spec that filters with this tree */
+  pred_expr->scan_prog_image_size = 0;
 
   switch (pred_expr->type)
     {
@@ -5864,6 +5966,32 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 	}
     }
 
+  /* CBRD-27361: the data filter compiled at XASL generation (xts_save_scan_pred_image), bound on its first evaluation */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset != 0 && access_spec->where_pred != NULL)
+    {
+      int size;
+
+      (void) or_unpack_int (&xasl_unpack_info->packed_xasl[offset], &size);
+      if (size > 0)
+	{
+	  char *image = stx_alloc_struct (thread_p, size);
+
+	  if (image == NULL)
+	    {
+	      goto error;
+	    }
+	  memcpy (image, &xasl_unpack_info->packed_xasl[offset + OR_INT_SIZE], size);
+	  access_spec->where_pred->scan_prog_image = image;
+	}
+      else
+	{
+	  /* the client declined the filter: it stays interpreted */
+	  access_spec->where_pred->scan_prog_image = "";
+	}
+      access_spec->where_pred->scan_prog_image_size = size;
+    }
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5950,6 +6078,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
 
   ptr = or_unpack_int (ptr, &access_spec->pruning_type);
+  access_spec->batch_keep = NULL;	/* the struct is not allocated zeroed (stx_alloc_struct ()) */
   access_spec->parts = NULL;
   access_spec->curent = NULL;
   access_spec->pruned = false;
@@ -7597,6 +7726,8 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->operand_prog_base = -1;
   aggregate->operand_prog_share_spec = NULL;
   aggregate->operand_prog_link_stamp = 0;
+  aggregate->operand_prog_image = NULL;	/* the list head's: set by the proc that owns the list */
+  aggregate->operand_prog_image_size = 0;
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
