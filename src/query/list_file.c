@@ -3823,6 +3823,7 @@ sector_page_iterator::sector_page_iterator ()
   VSID_SET_NULL (&m_current_vsid);
   VPID_SET_NULL (&m_last_vpid);
   m_current_tfile = NULL;
+  m_failed = false;
 }
 
 PAGE_PTR
@@ -3848,6 +3849,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	      if (page == NULL)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
+		  m_failed = true;
 		  return NULL;
 		}
 
@@ -3902,6 +3904,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	  if (page == NULL)
 	    {
 	      assert_release_error (er_errid () != NO_ERROR);
+	      m_failed = true;
 	      return NULL;
 	    }
 
