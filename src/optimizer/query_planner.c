@@ -18777,6 +18777,13 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	  is_const_eq_term = false;
 	  for (j = bitset_iterate (terms, &bi); j != -1; j = bitset_next_member (&bi))
 	    {
+	      /* only a term this scan evaluates fixes the column */
+	      if (!BITSET_MEMBER (plan->plan_un.scan.terms, j) && !BITSET_MEMBER (plan->plan_un.scan.kf_terms, j)
+		  && !BITSET_MEMBER (plan->sarged_terms, j))
+		{
+		  continue;
+		}
+
 	      expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
 	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
 		  && (PT_IS_CONST (expr->info.expr.arg1) || PT_IS_CONST (expr->info.expr.arg2)))
