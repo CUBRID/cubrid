@@ -4776,9 +4776,10 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
  *       per input, one page cost the fewest instructions; fan-ins above half the buffer were not measured, so the
  *       other half goes to the output section. The leader of a parallel sort has its own bound, BTSORT_PX_LEADER_FANIN.
  *
- *       index_build_merge_fanin caps the count; 0, the default, sets no cap. A cap changes nothing while the runs are
- *       no more than the cap. Beyond it, the merge takes one more pass, which writes and reads the sort data once more,
- *       and in exchange each input of the first pass reads more pages at a time.
+ *       index_build_merge_fanin caps the count, at 256 by default; 0 sets no cap. A cap changes nothing while the runs
+ *       are no more than the cap. Beyond it, the merge takes one more pass, which writes and reads the sort data once
+ *       more, and in exchange each input of the first pass reads more pages at a time. The default bounds the temp
+ *       space of short runs: every file takes at least a sector, and keys longer than a page make runs of a page.
  */
 static int
 btsort_get_num_half_tmpfiles (int tot_buffers)

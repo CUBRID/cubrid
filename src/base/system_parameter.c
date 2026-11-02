@@ -5282,8 +5282,10 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   /* CBRD-27236: the most temp files a merge pass of the index build sort reads from, which is otherwise half the
-   * sort buffer in pages. 0, the default, sets no cap: a cap only adds a pass, which writes and reads the sort data
-   * once more, and the many runs it avoids reading by turns cost a SATA SSD nothing measurable. Set it for a device
+   * sort buffer in pages. The default 256 bounds the temp space of a build whose runs are short: a key longer than a
+   * page makes runs of a page, and each temp file takes at least a sector, so with no cap a 64M sort buffer can
+   * reserve a sector for each of 2,048 files. The cap changes nothing while the runs are no more than 256, and beyond
+   * it adds a pass, which writes and reads the sort data once more. 0 sets no cap. A lower cap also suits a device
    * whose reads slow down to a third or less when thousands of runs are read by turns, such as a volume of about
    * 1,000 read IOPS (see btsort_get_num_half_tmpfiles ()). Changeable on-line, for the CREATE INDEX statements that
    * follow. */
@@ -5292,8 +5294,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 0}},
-   {false, {.i = 0}},
+   {false, {.i = 256}},
+   {false, {.i = 256}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
