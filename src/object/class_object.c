@@ -553,7 +553,7 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
  *          PK and NOT NULL UNIQUE constraints, it may be worth exploring
  *          an approach that copies only the type information.
  *
- * return: NO_ERROR on success, ER_FAILED on error
+ * return: NO_ERROR on success, error code on failure
  *   src(in): source attribute
  *   dest(in/out): destination attribute
  */
@@ -569,7 +569,7 @@ classobj_copy_pk_and_uk_notnull_constraints (const SM_ATTRIBUTE * src, SM_ATTRIB
 	    classobj_make_constraint (src_cons->name, src_cons->type, &src_cons->index, src_cons->has_function);
 	  if (dest_new == NULL)
 	    {
-	      return ER_FAILED;
+	      return er_errid ();
 	    }
 
 	  if (dest->constraints == NULL)
@@ -2351,6 +2351,7 @@ classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type, BTID * id, 
 
   if (constraint == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_CONSTRAINT));
       return NULL;
     }
 
@@ -2363,6 +2364,7 @@ classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type, BTID * id, 
   if (name && !constraint->name)
     {
       classobj_free_constraint (constraint);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (name) + 1);
       return NULL;
     }
 
@@ -4724,8 +4726,11 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 memory_error:
   /* Could try to free the partially allocated things.  If we get here then we're out of virtual memory, a few leaks
    * aren't going to matter much. */
-  assert (er_errid () != NO_ERROR);
-  return er_errid ();
+  if (error == NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  return error;
 }
 
 
