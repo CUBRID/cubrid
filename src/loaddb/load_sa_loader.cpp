@@ -722,18 +722,16 @@ static int ldr_act_add_class_all_attrs (const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 
 /*
- * LDR_IS_INSIDE_COLLECTION - is this value the leading brace of a collection
+ * LDR_IS_COLLECTION_OPEN_BRACE - is this value the leading brace of a collection
  *    str(in): token text. NULL marks the trailing brace
  *    type(in): parser type of the token
  * Note:
  *    A collection is one attribute however many elements it holds, so the leading brace
- *    must not advance next_attr - only the trailing brace does.
- *    Deciding this from the token alone needs no state: there used to be a decrement inside
- *    ldr_collection_db_collection () cancelling the increment, with the two halves of
- *    the rule sitting in different functions.
+ *    must not advance next_attr - only the trailing brace does. The token alone decides
+ *    it, with no state to consult.
  *    When type is LDR_COLLECTION, str is either "{" or NULL. Refer to process_values()
  */
-#define LDR_IS_INSIDE_COLLECTION(str, type) ((type) == LDR_COLLECTION && (str) != NULL)
+#define LDR_IS_COLLECTION_OPEN_BRACE(str, type) ((type) == LDR_COLLECTION && (str) != NULL)
 
 /*
  * ldr_act_value - hand one value to whatever is reading this line
@@ -1027,14 +1025,9 @@ error_exit:
 	    process_values ((constant_type *) c->val, true);
 	    if (ldr_Current_context->act_mode == LDR_ACT_METH)
 	      {
-		/* A %constructor line: ldr_act_meth () refused the leading brace and stepped over
-		 * the slot, so the collection has already been accounted for. Sending the trailing
-		 * brace to ldr_act_attr () as well takes a second slot, and the rest of the line
-		 * then reads into the wrong descriptors - a domain conflict on an ordinary
-		 * attribute that came next, a collection attribute swallowed without a word, or
-		 * ER_LDR_VALUE_OVERFLOW past the last one, which clears context->valid and drops
-		 * every line left in the class. An error --error-control-file was told to ignore
-		 * is replaced by one it was not. */
+		/* A %constructor line: ldr_act_meth () refused the leading brace and spent the
+		 * slot on it, so the collection is accounted for. The trailing brace would take a
+		 * second slot, and the rest of the line would read into the wrong descriptors. */
 		break;
 	      }
 	    /* The collection is finished and stored through the attribute path, for a class
@@ -1806,14 +1799,13 @@ ldr_clear_context (LDR_CONTEXT *context)
  *    need_clear false - so once the line is done the slot holds a pointer into memory
  *    that is gone.
  *
- *    Nothing reads it today: finish_line () refuses a line that did not fill every slot,
- *    so construct_instance () never sees one left from the line before. That is the only
- *    thing standing between here and a read of freed memory, and it is a count check,
- *    not a statement about lifetimes. Empty the slots instead.
+ *    A slot the next line does not fill must not hand that on, so empty them all here.
+ *    finish_line () refuses a line short of a value today, but that is a count check,
+ *    not a statement about lifetimes.
  *
- *    db_value_clear () alone would not do it. pr_clear_value () returns without touching
- *    a value whose need_clear is false, which is exactly the borrowed one, so say null
- *    after it.
+ *    db_value_clear () alone does not empty one: pr_clear_value () returns without
+ *    touching a value whose need_clear is false, which is exactly the borrowed one, so
+ *    say null after it.
  */
 static void
 ldr_clear_ctor_values (LDR_CONTEXT *context)
@@ -2163,7 +2155,7 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     }
 
 error_exit:
-  if (!LDR_IS_INSIDE_COLLECTION (str, type))
+  if (!LDR_IS_COLLECTION_OPEN_BRACE (str, type))
     {
       context->next_attr += 1;
     }
@@ -2335,21 +2327,13 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
   db_value_clear (&attdesc->ctor_val);
 
   /*
-   * A collection on a CONSTRUCTOR line is refused here, and said so.
+   * A collection on a %constructor line is refused here, and said so. Its braces and
+   * elements do not line up with the slots the way an attribute's do.
    *
-   * It never worked. The braces and the elements did not line up with the slots: the
-   * elements reached ldr_act_elem () with context->collection still NULL, so
-   * set_add_element () quietly did nothing, and the trailing brace went on to
-   * ldr_act_attr () and took a second slot - reading into whichever descriptor
-   * next_attr had moved to, or past the last one. A line short of one value then
-   * added up to the right count, passed the check and was stored with the collection
-   * gone - no error, no failed count.
-   *
-   * The slot taken at error_exit below is now the whole of it: process_values ()
-   * drops the trailing brace in this mode and ldr_act_elem () drops the elements, so
-   * the collection costs exactly what any other value costs. The count check used to
-   * catch this by accident, because the elements took slots too. Do not leave it to
-   * arithmetic.
+   * The slot taken at error_exit below is the whole cost of it: process_values () drops
+   * the trailing brace in this mode and ldr_act_elem () drops the elements, so the
+   * collection takes exactly what any other value takes. Refuse it here rather than
+   * leaving it to the count check at the end of the line.
    */
   if (type == LDR_COLLECTION)
     {
@@ -2948,7 +2932,7 @@ error_exit:
   /* The class object keeps its own copy, so release whatever the conversion and the cast allocated. */
   db_value_clear (&src_val);
   db_value_clear (&dest_val);
-  if (!LDR_IS_INSIDE_COLLECTION (str, type))
+  if (!LDR_IS_COLLECTION_OPEN_BRACE (str, type))
     {
       context->next_attr += 1;
     }
@@ -4335,13 +4319,11 @@ ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len,
   int err = NO_ERROR;
 
   /*
-   * Which brace this is comes from the token, not from whether a collection happens
-   * to be open. The two are not the same thing, and reading the state here once took
-   * a trailing brace for a leading one - building a collection nobody asked for, on
-   * whichever slot next_attr had moved to. LDR_IS_INSIDE_COLLECTION () says what the
-   * token is, and needs nothing else to be true.
+   * Which brace this is comes from the token, not from whether a collection happens to
+   * be open: the two are not the same thing, and only the token is always right.
+   * LDR_IS_COLLECTION_OPEN_BRACE () says which it is.
    */
-  if (LDR_IS_INSIDE_COLLECTION (str, LDR_COLLECTION))
+  if (LDR_IS_COLLECTION_OPEN_BRACE (str, LDR_COLLECTION))
     {
       /*
        * We've just seen the leading brace of a collection, and we need to
@@ -4968,8 +4950,10 @@ ldr_store_cast (LDR_ATTDESC *attdesc, data_type slot, bool direct, bool bound_bi
  *    slot(in): the parser type this applies to
  *    handler(in): what to call instead
  * Note:
- *    name_attr is still set, because a %constructor line converts by the slot's
- *    own type without going through the handler.
+ *    name_attr is cleared. A %constructor line converts by the slot's own type without
+ *    going through the handler, and this slot holds one because the token is not a value
+ *    of the attribute's type - a collection, a reference, or a type the class refuses. A
+ *    failure there has nothing to name beyond the domain conflict the caller reports.
  */
 static void
 ldr_store_handler (LDR_ATTDESC *attdesc, data_type slot, LDR_SETTER handler)

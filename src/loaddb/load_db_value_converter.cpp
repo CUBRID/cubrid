@@ -327,11 +327,9 @@ namespace cubload
 	  {
 	    /*
 	     * Let the engine name the rest, through the call INSERT makes. A cast that
-	     * overflowed is not a domain conflict: INSERT says ER_IT_DATA_OVERFLOW for
-	     * it, and so did the standalone loader before the conversion moved ahead of
-	     * the object template, which used to make this same call. Reporting one code
-	     * for every kind of failure also broke --error-control-file, which filters by
-	     * code - a file naming -427 no longer matched the overflow it was written for.
+	     * overflowed is not a domain conflict - INSERT says ER_IT_DATA_OVERFLOW for it -
+	     * and --error-control-file filters by code, so a file naming -427 has to match the
+	     * overflow it was written for.
 	     */
 	    error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, &natural, &domain);
 	  }
