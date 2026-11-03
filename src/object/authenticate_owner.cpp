@@ -310,11 +310,12 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   SM_CLASS *target_class = NULL;
 #endif
   DB_VALUE value;
-  const char *trigger_old_name = NULL;
+  char trigger_old_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool has_savepoint = false;
+  bool renamed = false;
   int save = 0;
   int error = NO_ERROR;
 
@@ -344,11 +345,14 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       goto end;
     }
 
-  if (!DB_IS_STRING (&value) || (trigger_old_name = db_get_string (&value)) == NULL)
+  if (!DB_IS_STRING (&value) || db_get_string (&value) == NULL)
     {
+      pr_clear_value (&value);
       ERROR_SET_WARNING_1ARG (error, ER_TR_TRIGGER_NOT_FOUND, "");
       goto end;
     }
+  strncpy (trigger_old_name, db_get_string (&value), sizeof (trigger_old_name) - 1);
+  pr_clear_value (&value);
 
   /* Check if the owner to be changed is the same. */
   error = obj_get (trigger_mop, TR_ATT_OWNER, &value);
@@ -414,6 +418,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       ASSERT_ERROR ();
       goto end;
     }
+  renamed = true;
 
   /* owner */
   db_make_object (&value, owner_mop);
@@ -448,6 +453,12 @@ end:
   if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER);
+    }
+
+  if (renamed && error != NO_ERROR)
+    {
+      /* the savepoint rolls back the trigger object, but not the name in the trigger cache */
+      tr_reset_renamed_trigger_cache (trigger_mop, trigger_old_name);
     }
 
   return error;

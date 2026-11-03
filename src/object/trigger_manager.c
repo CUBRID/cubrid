@@ -6718,6 +6718,52 @@ end:
 }
 
 /*
+ * tr_reset_renamed_trigger_cache() - Brings the cache of a trigger back after its rename is rolled back.
+ *    return: none
+ *    trigger_object(in): trigger object
+ *    name(in): name before the rename
+ *
+ * Note:
+ *    Rolling back restores the trigger object with its old cache coherency number,
+ *    so the trigger is not read again and the cache keeps the name set by tr_rename_trigger.
+ *    The number is reset to have the trigger read again when it is validated next.
+ *    A running action keeps its activity, because reading the trigger again would free it.
+ *    For a running action, only the cached name is put back.
+ */
+void
+tr_reset_renamed_trigger_cache (DB_OBJECT * trigger_object, const char *name)
+{
+  TR_TRIGGER *trigger = NULL;
+  char *restored_name = NULL;
+
+  trigger = (TR_TRIGGER *) mht_get (tr_object_map, (void *) trigger_object);
+  if (trigger == NULL)
+    {
+      return;
+    }
+
+  if (!trigger_activity_in_use (trigger))
+    {
+      trigger->chn = NULL_CHN;
+      return;
+    }
+
+  if (trigger->name == NULL || strcmp (trigger->name, name) == 0)
+    {
+      return;
+    }
+
+  restored_name = strdup (name);
+  if (restored_name == NULL)
+    {
+      return;
+    }
+
+  free_and_init (trigger->name);
+  trigger->name = restored_name;
+}
+
+/*
  * tr_change_block_procedure_owner() - Moves the internal procedure of a PL/CSQL block action to a new owner.
  *    return: error code
  *    trigger_object(in): trigger object whose owner is changing
