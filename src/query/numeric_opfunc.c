@@ -5880,13 +5880,11 @@ numeric_shortest_scale_double (uint64_t scaled, const uint64_t * g)
  *   return: the significand at the scaling's exponent
  *   v(in), low(in), high(in): the value and the ends of its rounding interval scaled by 10^-k, times 4, as
  *                             numeric_shortest_scale_double () returns them
- *   c(in): the binary significand
+ *   open(in): 1 when the interval ends are outside it, 0 when inside
  */
 static inline uint64_t
-numeric_shortest_pick (uint64_t v, uint64_t low, uint64_t high, uint64_t c)
+numeric_shortest_pick (uint64_t v, uint64_t low, uint64_t high, uint64_t open)
 {
-  /* the interval ends are inside only for an even binary significand */
-  const uint64_t open = c & 1;
   const uint64_t s = v >> 2, t = s + 1;
   bool s_in, t_in;
 
@@ -5930,6 +5928,31 @@ numeric_shortest_strip (uint64_t digits, int k, uint64_t * significand, int *exp
 }
 
 /*
+ * numeric_shortest_decimal () - the shortest decimal inside the rounding interval of c * 2^q
+ *   c(in), q(in): the binary significand and exponent, c below 2^53
+ *   irregular(in): the interval below c * 2^q is half as wide as the one above
+ *   open(in): 1 when the interval ends are outside it, 0 when inside
+ *   significand(out): at most 17 digits, no trailing zero
+ *   exponent(out): the decimal is significand * 10^exponent
+ */
+static void
+numeric_shortest_decimal (uint64_t c, int q, bool irregular, uint64_t open, uint64_t * significand, int *exponent)
+{
+  uint64_t digits;
+  int k, h;
+  const uint64_t *g;
+
+  k = irregular ? numeric_shortest_floor_log10_three_quarters_pow2 (q) : numeric_shortest_floor_log10_pow2 (q);
+  g = _gv_shortest_decimal_pow10[k - NUMERIC_SHORTEST_K_MIN];
+  h = q + numeric_shortest_floor_log2_pow10 (-k) + 2;
+
+  digits = numeric_shortest_pick (numeric_shortest_scale_double ((4 * c) << h, g),
+				  numeric_shortest_scale_double ((4 * c - (irregular ? 1 : 2)) << h, g),
+				  numeric_shortest_scale_double ((4 * c + 2) << h, g), open);
+  numeric_shortest_strip (digits, k, significand, exponent);
+}
+
+/*
  * numeric_shortest_decimal_of_double () - the shortest decimal that reads back as x
  *   x(in): positive and finite
  *   significand(out): at most 17 digits, no trailing zero
@@ -5938,10 +5961,8 @@ numeric_shortest_strip (uint64_t digits, int k, uint64_t * significand, int *exp
 static void
 numeric_shortest_decimal_of_double (double x, uint64_t * significand, int *exponent)
 {
-  uint64_t bits, fraction, c, digits;
-  int biased, q, k, h;
-  bool irregular;
-  const uint64_t *g;
+  uint64_t bits, fraction, c;
+  int biased, q;
 
   assert (x > 0 && x <= DBL_MAX);
   memcpy (&bits, &x, sizeof (bits));
@@ -5959,15 +5980,76 @@ numeric_shortest_decimal_of_double (double x, uint64_t * significand, int *expon
     }
 
   /* x = c * 2^q; at a power of two above the smallest normal the interval below is half as wide */
-  irregular = fraction == 0 && biased > 1;
-  k = irregular ? numeric_shortest_floor_log10_three_quarters_pow2 (q) : numeric_shortest_floor_log10_pow2 (q);
-  g = _gv_shortest_decimal_pow10[k - NUMERIC_SHORTEST_K_MIN];
-  h = q + numeric_shortest_floor_log2_pow10 (-k) + 2;
+  numeric_shortest_decimal (c, q, fraction == 0 && biased > 1, c & 1, significand, exponent);
+}
 
-  digits = numeric_shortest_pick (numeric_shortest_scale_double ((4 * c) << h, g),
-				  numeric_shortest_scale_double ((4 * c - (irregular ? 1 : 2)) << h, g),
-				  numeric_shortest_scale_double ((4 * c + 2) << h, g), c);
-  numeric_shortest_strip (digits, k, significand, exponent);
+/*
+ * numeric_shortest_digits () - the digits and the decimal point position that _dtoa () mode 0 gives for x
+ *   x(in): a double, or a float widened to a double when is_float
+ *   is_float(in): as _dtoa () with float_type 1: an integer below 10^15 as it is; otherwise the interval is the float's,
+ *                 its ends inside, and the interval below a power of two is half as wide also for the smallest normal
+ *                 and the subnormal floats
+ *   max_digits(in): the digits after the first max_digits are cut, not rounded
+ *   buf(out): max_digits + 1 bytes; the digits without a trailing zero, "0", "Infinity" or "NaN", cut to max_digits
+ *             and NUL terminated
+ *   decpt(out): x = 0.<digits> * 10^decpt; 9999 for an infinity or a NaN
+ *   sign(out): the sign bit of x, also for a zero or a NaN
+ */
+void
+numeric_shortest_digits (double x, bool is_float, int max_digits, char *buf, int *decpt, int *sign)
+{
+  uint64_t bits, fraction, significand;
+  int biased, exponent, n, i;
+  char reversed[20];
+
+  memcpy (&bits, &x, sizeof (bits));
+  *sign = (int) (bits >> 63);
+  fraction = bits & ((UINT64_C (1) << 52) - 1);
+  biased = (int) ((bits >> 52) & 0x7ff);
+
+  if (biased == 0x7ff)
+    {
+      *decpt = 9999;
+      snprintf (buf, max_digits + 1, "%s", fraction == 0 ? "Infinity" : "NaN");
+      return;
+    }
+  if (biased == 0 && fraction == 0)
+    {
+      *decpt = 1;
+      strcpy (buf, "0");
+      return;
+    }
+
+  if (is_float && fabs (x) < 1e15 && fabs (x) == floor (fabs (x)))
+    {
+      /* _dtoa () writes an integer below 10^15 as it is, before it looks at the interval */
+      numeric_shortest_strip ((uint64_t) fabs (x), 0, &significand, &exponent);
+    }
+  else if (is_float)
+    {
+      /* a widened float is a normal double whose low 29 significand bits are zero */
+      numeric_shortest_decimal ((fraction | (UINT64_C (1) << 52)) >> 29, biased - 1075 + 29, fraction == 0, 0,
+				&significand, &exponent);
+    }
+  else
+    {
+      numeric_shortest_decimal_of_double (fabs (x), &significand, &exponent);
+    }
+
+  n = 0;
+  do
+    {
+      reversed[n++] = (char) ('0' + significand % 10);
+      significand /= 10;
+    }
+  while (significand != 0);
+
+  *decpt = n + exponent;
+  for (i = 0; i < n && i < max_digits; i++)
+    {
+      buf[i] = reversed[n - 1 - i];
+    }
+  buf[i] = '\0';
 }
 
 /*

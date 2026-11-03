@@ -161,6 +161,7 @@ extern void numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec
 extern void numeric_coerce_num_to_double (const DB_VALUE * num_value, int scale, double *adouble);
 extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					   bool * is_value_negative);
+extern void numeric_shortest_digits (double x, bool is_float, int max_digits, char *buf, int *decpt, int *sign);
 extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					  bool * is_value_negative);
 
