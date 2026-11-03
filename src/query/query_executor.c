@@ -14260,7 +14260,10 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!buildvalue->is_always_false)
 	    {
-	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+	      /* CBRD-27870: an output that reads a column of the scan (XASL_OUTPUT_READS_SCAN) needs the row loop to
+	       * reach qexec_keep_last_row (); the statistics/index based evaluation ends the block without it and left
+	       * that column NULL despite source rows. */
+	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY) || XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
 		{
 		  /* A hierarchical query aggregates the CONNECT BY expansion, not the class rows, so the
 		   * statistics/index based evaluation (which counts the class) does not apply. Clear the flag
@@ -14300,7 +14303,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (!xasl->fptr_list	/* no path expressions */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
-	      && agg_ptr->function == PT_COUNT_STAR && !XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+	      && agg_ptr->function == PT_COUNT_STAR && !XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY)
+	      && !XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 	      bool is_scan_ptr = xasl->scan_ptr ? true : false;
