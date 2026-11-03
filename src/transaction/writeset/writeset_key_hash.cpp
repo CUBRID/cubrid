@@ -35,6 +35,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "language_support.h"
+#include "numeric_opfunc.h"
 #include "system_parameter.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -54,6 +55,7 @@ static DB_VALUE *wset_strip_zone (DB_VALUE *v, DB_VALUE *scratch);
 static DB_VALUE *wset_unsign_zero (DB_VALUE *v, DB_VALUE *scratch);
 static DB_VALUE *wset_strip_currency (DB_VALUE *v, DB_VALUE *scratch);
 static DB_VALUE *wset_round_bit_length (DB_VALUE *v, DB_VALUE *scratch);
+static DB_VALUE *wset_canonical_numeric (DB_VALUE *v, DB_VALUE *scratch, char *text);
 static bool wset_value_is_nan (const DB_VALUE *v);
 static int wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *has_nan);
 
@@ -336,6 +338,98 @@ wset_round_bit_length (DB_VALUE *v, DB_VALUE *scratch)
 }
 
 /*
+ * wset_canonical_numeric - the value hashed for a NUMERIC key value, as the number it stands for
+ *
+ *   v(in): key value
+ *   scratch(out): holds the value returned when v is a NUMERIC value
+ *   text(out): NUMERIC_MAX_STRING_SIZE bytes that scratch refers to
+ *
+ * return: scratch holding the decimal text of a NUMERIC value, or v itself for any other value
+ *
+ * Note: The index compares NUMERIC values as numbers (mr_cmpval_numeric, numeric_db_value_compare), so 1.00
+ *       stored as NUMERIC(10,2) and 1.000 stored as NUMERIC(12,3) are one key and must hash alike. A column
+ *       declared without a precision keeps each value with the precision and scale it arrived with, and a
+ *       packed NUMERIC carries both, so the value is hashed as its decimal text instead: the sign, the integer
+ *       digits without leading zeros and the fraction digits without trailing zeros (1.000 -> "1",
+ *       1.50 -> "1.5", -0.0 -> "0").
+ */
+static DB_VALUE *
+wset_canonical_numeric (DB_VALUE *v, DB_VALUE *scratch, char *text)
+{
+  char digits[NUMERIC_MAX_STRING_SIZE];
+  const char *p;
+  const char *int_end;
+  const char *frac_end;
+  int scale;
+  int len;
+  bool negative;
+  bool is_float_numeric = false;
+  char *out = text;
+
+  if (DB_IS_NULL (v) || DB_VALUE_DOMAIN_TYPE (v) != DB_TYPE_NUMERIC)
+    {
+      return v;
+    }
+
+  /* an optional '-' and then the coefficient digits, zero padded on the left */
+  numeric_coerce_num_to_dec_str (v, digits);
+  p = digits;
+  negative = (*p == '-');
+  if (negative)
+    {
+      p++;
+    }
+  len = (int) strlen (p);
+  /* a value a column without a declared precision keeps carries its own scale in the value itself */
+  scale = db_get_numeric_scale (v, &is_float_numeric);
+  if (scale < 0)
+    {
+      scale = 0;
+    }
+  if (scale > len)
+    {
+      scale = len;
+    }
+  int_end = p + len - scale;
+  frac_end = p + len;
+
+  while (p < int_end - 1 && *p == '0')
+    {
+      p++;
+    }
+  while (frac_end > int_end && frac_end[-1] == '0')
+    {
+      frac_end--;
+    }
+
+  /* zero has no sign and no fraction */
+  if (negative && !(int_end - p == 1 && *p == '0' && frac_end == int_end))
+    {
+      *out++ = '-';
+    }
+  if (int_end == p)
+    {
+      *out++ = '0';
+    }
+  else
+    {
+      memcpy (out, p, (size_t) (int_end - p));
+      out += int_end - p;
+    }
+  if (frac_end > int_end)
+    {
+      *out++ = '.';
+      memcpy (out, int_end, (size_t) (frac_end - int_end));
+      out += frac_end - int_end;
+    }
+  *out = '\0';
+
+  db_make_string (scratch, text);
+
+  return scratch;
+}
+
+/*
  * wset_value_is_nan - whether a key value is a FLOAT, DOUBLE or MONETARY NaN
  *
  *   v(in): key value
@@ -472,6 +566,8 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool
 	      DB_VALUE sign_free;
 	      DB_VALUE currency_free;
 	      DB_VALUE bytes_free;
+	      DB_VALUE numeric_free;
+	      char numeric_text[NUMERIC_MAX_STRING_SIZE];
 	      DB_VALUE *hashed;
 
 	      if (wset_value_is_nan (&element))
@@ -483,6 +579,7 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool
 	      hashed = wset_unsign_zero (hashed, &sign_free);
 	      hashed = wset_strip_currency (hashed, &currency_free);
 	      hashed = wset_round_bit_length (hashed, &bytes_free);
+	      hashed = wset_canonical_numeric (hashed, &numeric_free, numeric_text);
 
 	      /* 0xC1 tag followed by the packed element in its aligned size, so the layout does not depend on
 	       * how much of that size the packer used. or_pack_mem_value aligns its start and its value to
@@ -541,7 +638,8 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool
  *
  * Note: Keys the index compares as equal get one hash. A character key is hashed through its collation pseudo
  *       key (wset_string_hash), a composite key element by element (wset_midxkey_hash), and any other value over
- *       its packed bytes after wset_strip_zone, wset_unsign_zero, wset_strip_currency and wset_round_bit_length.
+ *       its packed bytes after wset_strip_zone, wset_unsign_zero, wset_strip_currency, wset_round_bit_length and
+ *       wset_canonical_numeric.
  */
 int
 wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is_nan_out)
@@ -550,6 +648,8 @@ wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is
   DB_VALUE sign_free;
   DB_VALUE currency_free;
   DB_VALUE bytes_free;
+  DB_VALUE numeric_free;
+  char numeric_text[NUMERIC_MAX_STRING_SIZE];
   DB_VALUE *hashed;
   char *buf;
   int buf_len;
@@ -593,6 +693,7 @@ wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is
   hashed = wset_unsign_zero (hashed, &sign_free);
   hashed = wset_strip_currency (hashed, &currency_free);
   hashed = wset_round_bit_length (hashed, &bytes_free);
+  hashed = wset_canonical_numeric (hashed, &numeric_free, numeric_text);
 
   buf_len = OR_VALUE_ALIGNED_SIZE (hashed);
   buf = (char *) malloc ((size_t) buf_len);

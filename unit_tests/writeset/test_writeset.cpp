@@ -31,6 +31,7 @@
 
 #include "intl_support.h"
 #include "language_support.h"
+#include "numeric_opfunc.h"
 
 #include <atomic>
 #include <cstring>
@@ -562,6 +563,94 @@ TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
     pr_clear_value (&key_minus);
     pr_clear_value (&key_one);
     delete child;
+  }
+}
+
+TEST_CASE ("a NUMERIC key hashes the number it stands for", "[writeset]")
+{
+  /* The index compares NUMERIC keys as numbers, so 1.00 as NUMERIC(10,2) and 1.000 as NUMERIC(12,3) are one key
+   * and must have one hash, though each packs its own precision and scale; another number must not match. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 206, 1);
+
+  auto numeric_of = [] (DB_VALUE *v, const char *text)
+  {
+    REQUIRE (numeric_coerce_string_to_num (text, (int) strlen (text), INTL_CODESET_UTF8, v) == NO_ERROR);
+  };
+
+  SECTION ("WRITE of one number in two scales and a REF share one hash")
+  {
+    TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+    DB_VALUE two_places;
+    DB_VALUE three_places;
+    DB_VALUE other;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (domain != NULL);
+    numeric_of (&two_places, "1.00");
+    numeric_of (&three_places, "1.000");
+    numeric_of (&other, "1.001");
+    {
+      bool is_float_numeric = false;
+
+      REQUIRE (db_get_numeric_scale (&two_places, &is_float_numeric)
+	       != db_get_numeric_scale (&three_places, &is_float_numeric));
+    }
+
+    REQUIRE (write_key_hash (&class_oid, &two_places) == write_key_hash (&class_oid, &three_places));
+    REQUIRE (write_key_hash (&class_oid, &two_places) != write_key_hash (&class_oid, &other));
+
+    REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &three_places, domain) == NO_ERROR);
+    REQUIRE (child->wset_hashes.size () == 1);
+    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &two_places));
+
+    delete child;
+  }
+
+  SECTION ("the fraction, the sign of zero and leading zeros do not split a key")
+  {
+    DB_VALUE a;
+    DB_VALUE b;
+
+    numeric_of (&a, "1.5");
+    numeric_of (&b, "1.50000");
+    REQUIRE (write_key_hash (&class_oid, &a) == write_key_hash (&class_oid, &b));
+
+    numeric_of (&a, "0");
+    numeric_of (&b, "-0.00");
+    REQUIRE (write_key_hash (&class_oid, &a) == write_key_hash (&class_oid, &b));
+
+    numeric_of (&a, "-12.5");
+    numeric_of (&b, "-012.50");
+    REQUIRE (write_key_hash (&class_oid, &a) == write_key_hash (&class_oid, &b));
+
+    numeric_of (&a, "12.5");
+    REQUIRE (write_key_hash (&class_oid, &a) != write_key_hash (&class_oid, &b));
+  }
+
+  SECTION ("composite key: NUMERIC elements in two scales give one hash")
+  {
+    TP_DOMAIN *element_domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+    TP_DOMAIN *key_domain;
+    DB_VALUE value;
+    DB_VALUE key_two;
+    DB_VALUE key_three;
+    DB_VALUE key_other;
+
+    REQUIRE (element_domain != NULL);
+    numeric_of (&value, "1.00");
+    make_value_int_key (&key_two, &key_domain, element_domain, &value, 1);
+    numeric_of (&value, "1.000");
+    make_value_int_key (&key_three, &key_domain, element_domain, &value, 1);
+    numeric_of (&value, "1.001");
+    make_value_int_key (&key_other, &key_domain, element_domain, &value, 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_two) == write_key_hash (&class_oid, &key_three));
+    REQUIRE (write_key_hash (&class_oid, &key_two) != write_key_hash (&class_oid, &key_other));
+
+    pr_clear_value (&key_two);
+    pr_clear_value (&key_three);
+    pr_clear_value (&key_other);
   }
 }
 
