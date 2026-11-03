@@ -1427,6 +1427,11 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  /* remove merged one(nextp) */
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
+
+	  /* the merged range may now overlap one skipped as disjoint before it (e.g. k > 7 sorted ahead of
+	   * k between 7 and 59 when k < 7 is the current one); check them again */
+	  nextp = curp + 1;
+	  next_n = cur_n + 1;
 	}
 
       curp++;
