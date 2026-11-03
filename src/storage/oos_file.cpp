@@ -494,6 +494,18 @@ oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR page_header)
   return (OOS_HDR_STATS *) recdes.data;
 }
 
+/* Non-logged: bestspace hints in the header page don't need WAL. */
+static void
+oos_hdr_page_set_dirty_unlogged (THREAD_ENTRY *thread_p, PAGE_PTR hdr_page)
+{
+  LOG_DATA_ADDR addr;
+  addr.vfid = NULL;
+  addr.pgptr = hdr_page;
+  addr.offset = 0;
+  log_skip_logging (thread_p, &addr);
+  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+}
+
 // ****************************************************************************
 // OOS Bestspace — second_best helpers
 // ****************************************************************************
@@ -1102,13 +1114,7 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid)
 	  pgbuf_get_vpid (pgptr, &page_vpid);
 	  oos_stats_update_internal (thread_p, oos_hdr, &page_vpid, freespace);
 
-	  /* Non-logged update — hints don't need WAL */
-	  LOG_DATA_ADDR addr;
-	  addr.vfid = NULL;
-	  addr.pgptr = hdr_page;
-	  addr.offset = 0;
-	  log_skip_logging (thread_p, &addr);
-	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+	  oos_hdr_page_set_dirty_unlogged (thread_p, hdr_page);
 	}
 
       pgbuf_unfix_and_init (thread_p, hdr_page);
@@ -1688,13 +1694,7 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
 	}
       if (hdr_changed)
 	{
-	  /* Non-logged update — hints don't need WAL */
-	  LOG_DATA_ADDR addr;
-	  addr.vfid = NULL;
-	  addr.pgptr = hdr_page;
-	  addr.offset = 0;
-	  log_skip_logging (thread_p, &addr);
-	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+	  oos_hdr_page_set_dirty_unlogged (thread_p, hdr_page);
 	}
     }
 
@@ -3084,12 +3084,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 	  /* Release header latch before sync scan to reduce contention.
 	   * Sync only updates the global hash cache (not best[]),
 	   * so we don't need the header page during the scan. */
-	  LOG_DATA_ADDR addr;
-	  addr.vfid = NULL;
-	  addr.pgptr = hdr_page;
-	  addr.offset = 0;
-	  log_skip_logging (thread_p, &addr);
-	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+	  oos_hdr_page_set_dirty_unlogged (thread_p, hdr_page);
 	  pgbuf_unfix_and_init (thread_p, hdr_page);
 	  oos_hdr = NULL;
 
@@ -3127,13 +3122,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
   if (found_page != NULL)
     {
-      /* Found a page — update header stats (non-logged) */
-      LOG_DATA_ADDR addr;
-      addr.vfid = NULL;
-      addr.pgptr = hdr_page;
-      addr.offset = 0;
-      log_skip_logging (thread_p, &addr);
-      pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+      oos_hdr_page_set_dirty_unlogged (thread_p, hdr_page);
       pgbuf_unfix_and_init (thread_p, hdr_page);
 
       /* Adopt the WRITE latch acquired at validation (Phase C). Safety invariant for reclaim: a
