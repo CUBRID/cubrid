@@ -131,28 +131,34 @@ const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
 
-int tr_Current_depth = 0;
-int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
-OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
+/*
+ * The trigger manager state below is per connection (thread-local for multiple connections), because it refers to
+ * the objects in the workspace of each connection. It is initialized and freed by tr_init () and tr_final ().
+ */
+CUB_THREAD_LOCAL int tr_Current_depth = 0;
+CUB_THREAD_LOCAL int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
+CUB_THREAD_LOCAL OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
 
-bool tr_Invalid_transaction = false;
-char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
+CUB_THREAD_LOCAL bool tr_Invalid_transaction = false;
+CUB_THREAD_LOCAL char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
 
-bool tr_Trace = true;
+CUB_THREAD_LOCAL bool tr_Trace = true;
 
-TR_DEFERRED_CONTEXT *tr_Deferred_activities = NULL;
-TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail = NULL;
+CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities = NULL;
+CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail = NULL;
 
-static int tr_User_triggers_valid = 0;
-static int tr_User_triggers_modified = 0;
-static TR_TRIGLIST *tr_User_triggers = NULL;
+static CUB_THREAD_LOCAL int tr_User_triggers_valid = 0;
+static CUB_THREAD_LOCAL int tr_User_triggers_modified = 0;
+static CUB_THREAD_LOCAL TR_TRIGLIST *tr_User_triggers = NULL;
 
-static TR_TRIGLIST *tr_Uncommitted_triggers = NULL;
-static TR_SCHEMA_CACHE *tr_Schema_caches = NULL;
+static CUB_THREAD_LOCAL TR_TRIGLIST *tr_Uncommitted_triggers = NULL;
+static CUB_THREAD_LOCAL TR_SCHEMA_CACHE *tr_Schema_caches = NULL;
 
 /*
  * Global trigger firing state flag, used to determine if triggers are fired.
  * This can be modified using tr_set_execution_enabled().
+ * It is intentionally process-wide, so db_disable_trigger () of the main client (e.g., applylogdb) applies to
+ * the sub-clients too.
  */
 static bool tr_Execution_enabled = true;
 
@@ -166,7 +172,7 @@ static bool tr_Execution_enabled = true;
  *
  */
 
-static MHT_TABLE *tr_object_map = NULL;
+static CUB_THREAD_LOCAL MHT_TABLE *tr_object_map = NULL;
 
 static const char *time_as_string (DB_TRIGGER_TIME tr_time);
 static char *tr_process_name (const char *name_string);
@@ -195,6 +201,7 @@ static int object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger);
 static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname,
 				 const char **tempname);
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
+static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
 
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
@@ -324,6 +331,7 @@ make_activity (void)
   act->parser = NULL;
   act->statement = NULL;
   act->exec_cnt = 0;
+  act->in_use = 0;
 
   return act;
 }
@@ -1730,6 +1738,44 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
   return error;
 }
 
+/*
+ * free_stale_statement() - Free the compiled statement of an activity if a class it refers to has changed.
+ *    return: error code
+ *    activity(in/out): activity
+ *
+ * Note:
+ *    The compiled statement is bound to the classes resolved at compile time, so it would not follow a later change.
+ */
+static int
+free_stale_statement (TR_ACTIVITY * activity)
+{
+  int error = NO_ERROR;
+
+  /* a nested firing may run inside the statement this would free */
+  if (activity->parser == NULL || activity->in_use > 0)
+    {
+      return NO_ERROR;
+    }
+
+  switch (pt_has_modified_class ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement))
+    {
+    case DB_CLASS_NOT_MODIFIED:
+      break;
+
+    case DB_CLASS_MODIFIED:
+      /* a dropped class leaves ER_HEAP_UNKNOWN_OBJECT behind */
+      er_clear ();
+      free_compiled_statement (activity);
+      break;
+
+    default:
+      ASSERT_ERROR_AND_SET (error);
+      break;
+    }
+
+  return error;
+}
+
 /* TRIGGER STRUCTURE & OBJECT MAP */
 
 
@@ -1741,7 +1787,6 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
  * Note:
  *    This is used to check the validity of a cached trigger structure.
  *    It should be called once before any API level trigger operation takes place.
- *    Among other things, this must make sure the condition and action statements are compiled and ready to go.
  *    It also checks "quickly" to see if the associated trigger instance was modified since the last time the trigger
  *    was cached. This could be faster.
  */
@@ -1776,27 +1821,6 @@ validate_trigger (TR_TRIGGER * trigger)
 
       tr_clear_trigger (trigger);
       *trigger = new_trigger;
-
-      if (compile_trigger_activity (trigger, trigger->condition, 1))
-	{
-	  trigger->status = TR_STATUS_INVALID;
-	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	}
-
-      if (compile_trigger_activity (trigger, trigger->action, 0))
-	{
-	  trigger->status = TR_STATUS_INVALID;
-	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	}
-
     }
 
   return NO_ERROR;
@@ -4020,13 +4044,7 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
   /* Do we need to disable authorization just for check_authorization ? */
   AU_SAVE_AND_DISABLE (save);
 
-  /*
-   * Turn off the "fetch" flag to tr_map_trigger so we don't attempt to validate the trigger by compiling
-   * the statements, etc.  As we're going to delete it, we don't care if the trigger is valid or not.
-   * In particular this is necessary if any of the triggers referenced classes have been deleted
-   * because the validation will fail tr_map_trigger would return an error.
-   */
-
+  /* no need to validate the cached trigger, as it is going to be deleted */
   trigger = tr_map_trigger (obj, false);
   if (trigger == NULL)
     {
@@ -4225,7 +4243,6 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
     }
   else
     {
-      /* should have been done by now */
       if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	  && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	{
@@ -4233,7 +4250,8 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 	  act->exec_cnt = 0;
 	}
 
-      if (act->parser == NULL)
+      error = free_stale_statement (act);
+      if (error == NO_ERROR && act->parser == NULL)
 	{
 	  error = compile_trigger_activity (trigger, act, 1);
 	}
@@ -4254,8 +4272,10 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 		  temp = NULL;
 		}
 
+	      act->in_use++;
 	      pt_status = pt_exec_trigger_stmt ((PARSER_CONTEXT *) act->parser, (PT_NODE *) act->statement, current,
 						temp, &value);
+	      act->in_use--;
 	      /*
 	       * recall that pt_exec_trigger_stmt can return a positive
 	       * value for success, errors must be checked against negative
@@ -4429,7 +4449,8 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	      free_compiled_statement (act);
 	      act->exec_cnt = 0;
 	    }
-	  if (act->parser == NULL)
+	  error = free_stale_statement (act);
+	  if (error == NO_ERROR && act->parser == NULL)
 	    {
 	      error = compile_trigger_activity (trigger, act, 0);
 	      used_cached_statement = false;
@@ -4454,9 +4475,11 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 		  temp = NULL;
 		}
 
+	      act->in_use++;
 	      pt_status =
 		pt_exec_trigger_stmt ((PARSER_CONTEXT *) act->parser, (PT_NODE *) act->statement, current, temp,
 				      &value);
+	      act->in_use--;
 
 	      /* If using the cached statement and ER_QPROC_INVALID_XASLNODE error returned, It means that the
 	       * act->statement is old or invalid. It should be re-compiled again.

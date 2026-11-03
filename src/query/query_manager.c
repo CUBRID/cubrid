@@ -2174,16 +2174,29 @@ xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xqmgr_drop_query_plans_by_sha1 () - Drop all the stored query plans
- *   return: NO_ERROR or ER_FAILED
+ * xqmgr_drop_query_plans_by_sha1 () - Drop the stored query plans of the sha1
+ *   return: NO_ERROR
  *
- * Note: Clear sha1 XASL/filter predicate cache entries out upon request of the client.
+ * Note: Clear sha1 XASL cache entries out upon request of the client.
  */
 int
-xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1)
+xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1)
 {
   xcache_remove_by_sha1 (thread_p, sha1);
   return NO_ERROR;
+}
+
+/*
+ * xqmgr_drop_query_clones () - Drop the XASL clones kept in the stored query plans
+ *   return: error code
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ *
+ * Note: The plans stay in the XASL cache.
+ */
+int
+xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  return xcache_drop_clones (thread_p, sha1);
 }
 
 /*
@@ -3049,27 +3062,52 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   static int temp_mem_buffer_pages = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES);
   static int index_scan_key_buffer_pages = prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
-  assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
-
-  if (!QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
+  if (membuf_type == TEMP_FILE_MEMBUF_NONE)
     {
-      return NULL;
-    }
-
-  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
-
-  tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
-  if (tfile_vfid_p == NULL)
-    {
+      /* not cached: created when needed and freed by qmgr_put_temp_file_into_list () when released */
+      num_buffer_pages = 0;
       tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
-    }
+      if (tfile_vfid_p == NULL)
+	{
+	  return NULL;
+	}
 
-  if (tfile_vfid_p == NULL)
+      tfile_vfid_p->membuf = NULL;
+      tfile_vfid_p->membuf_last = temp_mem_buffer_pages - 1;
+    }
+  else if (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
     {
+      num_buffer_pages =
+	((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
+
+      tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
+      if (tfile_vfid_p == NULL)
+	{
+	  tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
+	  if (tfile_vfid_p == NULL)
+	    {
+	      return NULL;
+	    }
+	}
+
+      tfile_vfid_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tfile_vfid_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
+      tfile_vfid_p->membuf_last = -1;
+
+      page_p =
+	(PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf + DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT));
+
+      for (i = 0; i < num_buffer_pages; i++)
+	{
+	  tfile_vfid_p->membuf[i] = page_p;
+	  qmgr_put_page_header (page_p, &pgheader);
+	  page_p += DB_PAGESIZE;
+	}
+    }
+  else
+    {
+      assert (false);		/* impossible case: an invalid membuf type */
       return NULL;
     }
-
-  tfile_vfid_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tfile_vfid_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
 
   /* initialize tfile_vfid */
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
@@ -3078,17 +3116,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tfile_vfid_p->membuf_type = membuf_type;
   tfile_vfid_p->preserved = false;
   tfile_vfid_p->tde_encrypted = false;
-  tfile_vfid_p->membuf_last = -1;
-
-  page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
-		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
-
-  for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
-    {
-      tfile_vfid_p->membuf[i] = page_p;
-      qmgr_put_page_header (page_p, &pgheader);
-      page_p += DB_PAGESIZE;
-    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];

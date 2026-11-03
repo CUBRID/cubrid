@@ -38,6 +38,7 @@
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "subquery_cache.h"
+#include "xasl_predicate.hpp"
 #include "pl_signature.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -179,6 +180,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 // *INDENT-ON*
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
+typedef struct gby_skip_state GBY_SKIP_STATE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -219,8 +221,6 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
-  int domain_scope;		/* server, load-derived, not serialized: the scope of the correlated values its block
-				 * reads converted once, which a scan filling this list starts anew; 0 none */
 };
 
 /* To handle selected update list, click counter related */
@@ -264,6 +264,11 @@ struct update_assignment
   DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
   REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
   bool clear_value_at_clone_decache;	/* true, if need to clear constant db_value at clone decache */
+  TP_DOMAIN *domain;		/* CBRD-27583: the attribute's domain, which the value converts into */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  DB_TYPE value_type;		/* CBRD-27583: the type the value comes in, chosen at unpack */
+  TP_VALUE_CONVERTER conv;	/* CBRD-27583: value_type into domain (ASSIGN), chosen at unpack */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 /*on duplicate key update info structure */
@@ -347,6 +352,10 @@ struct buildlist_proc_node
   EHID *upddel_oid_locator_ehids;	/* array of temporary extensible hash for UPDATE/DELETE generated SELECT
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
+  GBY_SKIP_STATE *gby_skip_state;	/* GROUP BY skip aggregated during the scan, one execution's; not serialized */
+  const TP_DOMAIN **g_hk_compares;	/* per hash key column, the domain whose cmpval and collation compare its values
+					 * (domain_compare_in_domain), decided at unpack; NULL: each execution's key domains;
+					 * not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
@@ -371,9 +380,8 @@ struct mergelist_proc_node
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
-  /* load-derived, not serialized: [ls_merge.ls_column_cnt] each merge column pair's comparison, as the
-   * load or resolve_domains resolved it */
-  const struct DOMAIN_COMPARE_PLAN **merge_compares;
+  /* CBRD-27583: [ls_merge.ls_column_cnt] each merge column pair's comparison, decided at unpack; not serialized */
+  const struct DOMAIN_COMPARE *merge_compares;
 };
 
 typedef struct hashjoin_proc_node
@@ -384,8 +392,32 @@ typedef struct hashjoin_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
+  struct hjoin_runtime_filter *rtf;	/* the runtime filter this join built for its other input, or NULL */
+  XASL_NODE *rtf_target;	/* the input it is on, until hjoin_rtf_release () */
+  INT64 rtf_keys;		/* trace: the filter's distinct keys, the rows it saw and dropped (-1: not built) */
+  INT64 rtf_rows;
+  INT64 rtf_dropped;
+  INT64 rtf_off;		/* trace: the rows checked when the filter left the target (hjoin_rtf_sample ()), 0 while on */
+  bool rtf_applied;		/* trace: a scan of the target consulted the filter */
+  HJOIN_PREHASH prehash;	/* the build input's key hashes, taken as its tuples are written */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
+
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, UPDATE + local subquery) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+  char *remote_key_col;		/* remote WHERE column the per-row value is compared to, NULL when the proc sends
+				 * no WHERE (INSERT SELECT, and the UPDATE shape that updates every remote row) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
+  char *remote_using_index;	/* the statement's USING INDEX clause, sent as written, NULL when there is none */
+};
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
@@ -403,18 +435,12 @@ struct update_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
-};
-
-/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
- * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
-typedef struct remote_dml_sink REMOTE_DML_SINK;
-struct remote_dml_sink
-{
-  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
-  char *url;			/* DBLink connection URL */
-  char *user;			/* DBLink connection user */
-  char *pwd;			/* DBLink connection password */
-  char *table_name;		/* remote target table name */
+  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A local
+   * subquery becomes a bind placeholder; what pt_dblink_dml_is_remote_only_expr accepts is deparsed into
+   * the SET text instead, its value not being computable on this side. */
+  REMOTE_DML_SINK sink;
+  char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
+  int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;
@@ -443,6 +469,15 @@ struct insert_proc_node
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
   char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
+  TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
+  int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
+				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  DB_TYPE *value_types;		/* CBRD-27583: the type each value comes in - per row of values and
+				 * attribute, a single row for a SELECT - chosen at unpack */
+  TP_VALUE_CONVERTER *convs;	/* CBRD-27583: each value_types entry into its attribute's domain */
+  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583: each default_types entry into its attribute's domain */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -458,8 +493,6 @@ struct delete_proc_node
 				 * in conditions */
   /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
   REMOTE_DML_SINK sink;
-  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
-  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<>", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -630,12 +663,87 @@ struct cte_proc_node
   (((func_p)->function == PT_MEDIAN) \
    || ((func_p)->function == PT_PERCENTILE_CONT))
 
+/*
+ * CBRD-27583: the terms an ORDERBY_NUM predicate's upper bound comes from (qexec_get_orderbynum_upper_bound):
+ * the comparisons of its AND tree's leaves of ORDERBY_NUM () (a constant) with a value, a host variable or an
+ * expression, on either side. xasl_orderbynum_upper_bound gives the bound and the relation with the bound on the
+ * right, NULL for another term or relation than < and <=. The compiler decides the operand coercion of bound - 1 of
+ * each < (xasl_for_each_orderbynum_less_than, in that order), which the stream carries after the predicate with their
+ * count. The compiler, unpack and the execution pick the terms with these two functions alone, which is why they pick
+ * the same terms (unpack checks the count).
+ */
+inline REGU_VARIABLE *
+xasl_orderbynum_upper_bound (const PRED_EXPR * pred, REL_OP * op)
+{
+  if (pred->type != T_EVAL_TERM || pred->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+    {
+      return NULL;
+    }
+  const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+  REGU_VARIABLE *bound = term->rhs;
+  *op = term->rel_op;
+  if (term->lhs->type != TYPE_CONSTANT)
+    {
+      /* the bound on the left: the reversed comparison */
+      if (term->rhs->type != TYPE_CONSTANT)
+	{
+	  return NULL;
+	}
+      bound = term->lhs;
+      *op = *op == R_GT ? R_LT : *op == R_GE ? R_LE : *op == R_LT ? R_GT : *op == R_LE ? R_GE : R_NONE;
+    }
+  if (bound->type != TYPE_POS_VALUE && bound->type != TYPE_DBVAL && bound->type != TYPE_INARITH)
+    {
+      return NULL;
+    }
+  return *op == R_LT || *op == R_LE ? bound : NULL;
+}
+
+/* *INDENT-OFF* */
+template <typename PRED, typename VISIT>
+inline void
+xasl_for_each_orderbynum_upper_bound (PRED * pred, VISIT && visit)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
+    {
+      xasl_for_each_orderbynum_upper_bound (pred->pe.m_pred.lhs, visit);
+      xasl_for_each_orderbynum_upper_bound (pred->pe.m_pred.rhs, visit);
+      return;
+    }
+  REL_OP op;
+  const REGU_VARIABLE *bound = xasl_orderbynum_upper_bound (pred, &op);
+  if (bound != NULL)
+    {
+      visit (&pred->pe.m_eval_term.et.et_comp, bound, op);
+    }
+}
+
+template <typename PRED, typename VISIT>
+inline void
+xasl_for_each_orderbynum_less_than (PRED * pred, VISIT && visit)
+{
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_upper_bound (pred, [&visit] (auto * term, const REGU_VARIABLE * bound, REL_OP op)
+    {
+      if (op == R_LT)
+	{
+	  visit (term, bound);
+	}
+    });
+  /* *INDENT-ON* */
+}
+
+/* *INDENT-ON* */
+
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
 #define	PCOL_ISLEAF_TUPLE_OFFSET	2
 #define	PCOL_LEVEL_TUPLE_OFFSET		3
-#define	PCOL_INDEX_STRING_TUPLE_OFFSET	4
-#define	PCOL_PARENTPOS_TUPLE_OFFSET	5
+#define	PCOL_PARENTPOS_TUPLE_OFFSET	4
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
 /* XASL FILE IDENTIFICATION */
@@ -1026,14 +1134,36 @@ struct groupby_stat
   int rows;
   INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
+  int groupby_hash_merge_parts;	/* partitions of the hash merge of the leftovers (qexec_gby_hash_merge ()), or 0 */
+  int groupby_hash_merge_levels;	/* 2 when a partition of the merge was split once more, else 1 */
+  int groupby_hash_merge_sorted;	/* the partitions of the merge left to the sort as they were */
+  INT64 groupby_hash_groups;	/* the groups the hash merge estimated (its distinct-key sketch), or 0 */
+  int groupby_hash_merge_workers;	/* the workers that merged the partitions (qexec_gby_px_merge ()), or 0: printed
+					 * with the partition count; parallel_num counts the same workers then */
+  const char *groupby_hash_merge_why;	/* why no worker merged them, when they were to */
+  struct timeval groupby_hash_merge_finish_time;	/* the leader's finish of the groups the workers merged (HAVING,
+							 * the output list: qexec_gby_px_finish ()), after their rounds */
+  INT64 groupby_hash_merge_finish_groups;	/* those groups */
+  /* the page batch's hash GROUP BY node of the serial scan (qexec_batch_gby_consume ()), shown with the plan
+   * details: the rows it took, of which it handed some to the row path's table call (the rest it accumulated from
+   * its cache of groups), the groups the cache took in, its flushes and clears, and its own time -- the row path's
+   * calls are in groupby_time */
+  INT64 batch_rows;
+  INT64 batch_rows_rowpath;
+  INT64 batch_groups_cached;
+  INT64 batch_flushes;
+  INT64 batch_clears;
+  struct timeval batch_time;
   bool run_groupby;
   bool groupby_sort;
-  int parallel_num;
-  UINT64 px_min_groupby_time;
+  int parallel_num;		/* the workers of the stage that ran in parallel: the sort of the leftovers
+				 * (sort_end_parallelism ()) or their hash merge (qexec_gby_px_merge ()); below, the range
+				 * over those workers */
+  UINT64 px_min_groupby_time;	/* ms: the sort's run, or the merge's two rounds */
   UINT64 px_max_groupby_time;
-  UINT64 px_min_groupby_pages;
+  UINT64 px_min_groupby_pages;	/* sort data pages, or the temporary list pages a merge worker wrote */
   UINT64 px_max_groupby_pages;
-  UINT64 px_min_groupby_ioreads;
+  UINT64 px_min_groupby_ioreads;	/* sort I/O pages, or the pages a merge worker read from disk */
   UINT64 px_max_groupby_ioreads;
 };
 
@@ -1097,6 +1227,7 @@ struct partition_spec_node
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
   SCAN_STATS scan_stats;
+  const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -1118,6 +1249,7 @@ struct access_spec_node
   int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
+  SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
@@ -1137,11 +1269,8 @@ namespace memoize
   class storage;
 }
 // *INDENT-ON*
-struct domain_plan;
-
 struct xasl_node
 {
-  struct domain_plan *domain_plan;	/* tree-wide unpack-arena plan, not serialized */
   XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
@@ -1152,6 +1281,10 @@ struct xasl_node
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into INTEGER, found at
+						 * unpack from its domain; not serialized */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */
 
   VAL_LIST *single_tuple;	/* single tuple result */
@@ -1180,9 +1313,8 @@ struct xasl_node
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
   REGU_VARIABLE *limit_offset;	/* offset of limit clause */
   REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
-  /* load-derived, not serialized: the row count's comparison with 0, as the load or resolve_domains resolved
-   * it */
-  const struct DOMAIN_COMPARE_PLAN *limit_compare;
+  /* CBRD-27583: the row count's comparison with an INT 0, decided at unpack; not serialized */
+  const struct DOMAIN_COMPARE *limit_compare;
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 
@@ -1268,6 +1400,18 @@ struct xasl_node
   int executed_parallelism;	/* parallelism of the query */
   memoize::storage *memoize_storage;
   // *INDENT-ON*
+  struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
+  DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
+  INT64 rtf_rows;		/* ... and the rows this node checked against it and dropped (trace): the thread that
+				 * runs the node adds to them; a worker's clone merges them into the leader's node once
+				 * (hjoin_rtf_unbind_clone ()) */
+  INT64 rtf_dropped;
+  INT64 rtf_off;		/* ... and the rows checked when the filter left this node (hjoin_rtf_sample ()): 0 while
+				 * it is on; merged into the leader's node like the counters */
+  bool rtf_applied;		/* ... and whether a scan of this node consulted it at all: set where the scan opens with the
+				 * filter on the node (the row loop, the page batch, a worker's clone), merged like them */
+  HJOIN_PREHASH *hj_prehash;	/* a hash join's build input hashes this node's written tuples append to (not owned;
+				 * hjoin_prehash_arm ()), or NULL */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
