@@ -24,6 +24,9 @@
 #include "error_manager.h"
 #include "internal_lob_dml_session.hpp"
 #include "query_list.h"
+#include "query_manager.h"
+#include "stream_to_xasl.h"
+#include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
 #include "xserver_interface.h"
@@ -49,6 +52,8 @@ class internal_lob_xasl_dml_context : public internal_lob_dml_staging_context
       , m_query_flag (query_flag)
       , m_client_cache_time (client_cache_time)
       , m_query_timeout (query_timeout)
+      , m_xasl_entry (NULL)
+      , m_xclone (XASL_CLONE_INITIALIZER)
     {
       if (dbval_data_size > 0)
 	{
@@ -56,23 +61,55 @@ class internal_lob_xasl_dml_context : public internal_lob_dml_staging_context
 	}
     }
 
+    ~internal_lob_xasl_dml_context () override
+    {
+      release_xasl (thread_get_thread_entry_info ());
+    }
+
+    /* The execution start of a normal execute, done at INIT and held until the stream ends: the classes stay
+     * locked and the plan valid while the bytes arrive. */
+    int fix_xasl (THREAD_ENTRY *thread_p)
+    {
+      int error = qmgr_fix_xasl_for_execute (thread_p, &m_xasl_id, &m_xasl_entry, &m_xclone);
+
+      if (error == NO_ERROR && !xcache_uses_clones ())
+	{
+	  /* an uncached clone lives in this thread's private heap; END unpacks its own */
+	  xcache_retire_clone (thread_p, m_xasl_entry, &m_xclone);
+	}
+      return error;
+    }
+
+    void abort_dml (THREAD_ENTRY *thread_p) override
+    {
+      internal_lob_dml_staging_context::abort_dml (thread_p);
+      release_xasl (thread_p);
+    }
+
   protected:
     int execute_dml (THREAD_ENTRY *thread_p, std::int64_t &affected_rows) override
     {
       CACHE_TIME server_cache_time;
       QUERY_ID query_id = NULL_QUERY_ID;
-      QFILE_LIST_ID *list_id;
-      xasl_cache_ent *cache_entry = NULL;
+      QFILE_LIST_ID *list_id = NULL;
       void *dbval_data = m_dbval_data.empty () ? NULL : m_dbval_data.data ();
       int error = NO_ERROR;
 
-      CACHE_TIME_RESET (&server_cache_time);
-      list_id = xqmgr_execute_query (thread_p, &m_xasl_id, &query_id, m_dbval_count, dbval_data, &m_query_flag,
-				     &m_client_cache_time, &server_cache_time, m_query_timeout, &cache_entry);
-      if (cache_entry != NULL)
+      assert (m_xasl_entry != NULL);
+      if (m_xclone.xasl == NULL)
 	{
-	  xcache_unfix (thread_p, cache_entry);
+	  /* fix_xasl () dropped the uncached clone of the INIT thread */
+	  error = stx_map_stream_to_xasl (thread_p, &m_xclone.xasl, false, m_xasl_entry->stream.buffer,
+					  m_xasl_entry->stream.buffer_size, &m_xclone.xasl_buf);
 	}
+      if (error == NO_ERROR)
+	{
+	  CACHE_TIME_RESET (&server_cache_time);
+	  list_id = qmgr_execute_fixed_query (thread_p, &m_xasl_id, m_xasl_entry, &m_xclone, &query_id,
+					      m_dbval_count, dbval_data, &m_query_flag, &m_client_cache_time,
+					      &server_cache_time, m_query_timeout);
+	}
+      release_xasl (thread_p);
       if (list_id == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -89,12 +126,28 @@ class internal_lob_xasl_dml_context : public internal_lob_dml_staging_context
     }
 
   private:
+    void release_xasl (THREAD_ENTRY *thread_p)
+    {
+      if (m_xasl_entry == NULL)
+	{
+	  return;
+	}
+      if (m_xclone.xasl != NULL)
+	{
+	  xcache_retire_clone (thread_p, m_xasl_entry, &m_xclone);
+	}
+      xcache_unfix (thread_p, m_xasl_entry);
+      m_xasl_entry = NULL;
+    }
+
     XASL_ID m_xasl_id;
     int m_dbval_count;
     std::vector<char> m_dbval_data;
     QUERY_FLAG m_query_flag;
     CACHE_TIME m_client_cache_time;
     int m_query_timeout;
+    XASL_CACHE_ENTRY *m_xasl_entry;	/* fixed from INIT until END ran it or the stream ended */
+    XASL_CLONE m_xclone;
 };
 
 static stream_session *
@@ -125,7 +178,7 @@ internal_lob_dml_create_session (THREAD_ENTRY *thread_p, const char *config, int
   int query_timeout;
   int slot_count;
   std::vector<internal_lob_dml_slot_config> slot_configs;
-  internal_lob_dml_staging_context *context = NULL;
+  internal_lob_xasl_dml_context *context = NULL;
   internal_lob_dml_session *session = NULL;
 
   if (error_code == NULL || config == NULL || config_len < 0)
@@ -202,7 +255,12 @@ internal_lob_dml_create_session (THREAD_ENTRY *thread_p, const char *config, int
       *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       return NULL;
     }
-  *error_code = context->init (thread_p);
+  /* a stale plan fails here, before any byte is sent */
+  *error_code = context->fix_xasl (thread_p);
+  if (*error_code == NO_ERROR)
+    {
+      *error_code = context->init (thread_p);
+    }
   if (*error_code != NO_ERROR)
     {
       delete context;
