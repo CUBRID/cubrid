@@ -3365,17 +3365,21 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    {
 	      bool signature_miss = false;
 
-	      /* do_recompile carries the compile-stage verdicts that made the cached XASL
-	       * unusable as-is: the LIKE / MRO / SORT-LIMIT checks and the UNPEEKED flag
-	       * null the XASL id when this execution's values require a fresh plan. The
-	       * kept tree exists precisely to serve that replan without re-parsing, so the
-	       * verdict must ride along -- otherwise a LIMIT value crossing the MRO
+	      /* Only the verdicts this execution's values made ride along: the LIKE and
+	       * MRO / SORT-LIMIT checks of do_get_prepared_statement_info (), which set
+	       * bind_before_compile when they null the XASL id. The kept tree exists to serve
+	       * that replan without re-parsing -- otherwise a LIMIT value crossing the MRO
 	       * threshold would silently keep the previous plan (review report: with the
 	       * kept tree alive, limit 50 -> 500 stayed on the MRO plan instead of
-	       * recompiling to SORT). CBRD-27583: a PREPARE that made no plan leaves no XASL id, which is no verdict. */
+	       * recompiling to SORT). The UNPEEKED and BIND_WATCH_CANDIDATE flags also null
+	       * the XASL id, but they are the PREPARE's stored header and so hold on every
+	       * EXECUTE; a kept tree exists only once the first execution fixed its plan
+	       * under bound values (do_recompile_and_execute_prepared_statement), and the
+	       * variant step and bind watch run below on the kept tree. Passing them on
+	       * would recompile every execution. A PREPARE that made no plan leaves no
+	       * XASL id, which is no verdict either. */
 	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result,
-								    do_recompile
-								    && !statement->info.execute.plan_at_execute,
+								    statement->info.execute.bind_before_compile != 0,
 								    &signature_miss);
 	      if (err >= 0)
 		{
