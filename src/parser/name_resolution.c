@@ -1347,11 +1347,12 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else
 	    {
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+	      /* aliases and the names deferred by name binding have no type. resolve them before the type checking
+	       * below */
+	      table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
 	    }
 	  spec->info.spec.derived_table = table;
-
-	  /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
-	  table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
 	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
