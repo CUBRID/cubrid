@@ -12059,7 +12059,7 @@ sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) == NULL
       || user_name == NULL || strlen (user_name) >= DB_MAX_USER_LENGTH)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
       error = ER_NET_DATASIZE_MISMATCH;
     }
   else if (crypt_generate_random_bytes (nonce_bytes, sizeof (nonce_bytes)) != NO_ERROR)

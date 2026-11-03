@@ -5380,7 +5380,7 @@ cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, 
   free_and_init (request);
   if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      return error;
     }
 
   ptr = or_unpack_int (reply, &error);
@@ -5457,7 +5457,7 @@ cau_response (const char *user_name, const char *nonce, INT64 issued_at, const c
   free_and_init (a_request);
   if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      return error;
     }
 
   or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &error);

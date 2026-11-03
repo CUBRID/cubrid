@@ -2841,13 +2841,6 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * css_set_user_access_status() - set user access status information
- *   return: void
- *   db_user(in):
- *   host(in):
- *   program_name(in):
- */
-/*
  * css_consume_auth_proof () - has this connection just proven user_name's
  *   password? The proof is spent either way.
  */
@@ -2866,6 +2859,13 @@ css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
   return proven;
 }
 
+/*
+ * css_set_user_access_status() - set user access status information
+ *   return: void
+ *   db_user(in):
+ *   host(in):
+ *   program_name(in):
+ */
 void
 css_set_user_access_status (const char *db_user, const char *host, const char *program_name)
 {
