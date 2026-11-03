@@ -27606,6 +27606,13 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	  && node->info.query.shared_view_group <= PT_SHARED_VIEW_MAX_GROUPS)
 	{
 	  info->shared_view_xasl[node->info.query.shared_view_group] = (XASL_NODE *) node->info.query.xasl;
+
+	  /* the members read the result after the block of the representative ends, so keep it to the end of the
+	   * query; a regeneration from the same tree sees the correlation level pt_uncorr_post () overwrote */
+	  if (node->info.query.xasl != NULL)
+	    {
+	      XASL_SET_FLAG ((XASL_NODE *) node->info.query.xasl, XASL_ZERO_CORR_LEVEL);
+	    }
 	}
       if (node->node_type == PT_SELECT)
 	{
