@@ -19455,7 +19455,7 @@ pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_p
 	{
 	  return true;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_TYPE_BIGINT:
       return (PT_IS_DISCRETE_NUMBER_TYPE (to_type) || to_type == PT_TYPE_NUMERIC || PT_IS_CHAR_STRING_TYPE (to_type));
 
