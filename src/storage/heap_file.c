@@ -23943,11 +23943,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    }
 	}
 
-      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the forward
-       * REC_NEWHOME record before the destructive physical delete below removes the forward slot.
-       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID
-       * is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is
-       * reclaimed by vacuum. */
+      /* For non-MVCC deletes (!is_mvcc_op, as in SA_MODE or for an MVCC-disabled class), eagerly delete the OOS
+       * records referenced by the forward REC_NEWHOME record before the destructive physical delete below removes
+       * the forward slot. There is no new image on DELETE and OOS OIDs are never shared across rows, so every
+       * OOS OID is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is reclaimed
+       * by vacuum. */
       if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
 	{
 	  rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, NULL, "delete relocation");
@@ -24290,10 +24290,10 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the home record
-       * before the destructive physical delete below removes the slot. There is no new image on
-       * DELETE and OOS OIDs are never shared across rows, so every OOS OID is reclaimed. MVCC mode
-       * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
+      /* For non-MVCC deletes (!is_mvcc_op, as in SA_MODE or for an MVCC-disabled class), eagerly delete the OOS
+       * records referenced by the home record before the destructive physical delete below removes the slot.
+       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID is
+       * reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
       if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
 	{
 	  error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, NULL, "delete home");
@@ -24719,10 +24719,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records referenced only by the
-   * old forward record (REC_NEWHOME). All 4 sub-paths below either overwrite or remove the
-   * forward slot, so OOS attached to the old forward becomes unreachable. In MVCC mode
-   * (SERVER_MODE) the old OOS is preserved for concurrent readers; vacuum's forward-walk
+  /* For non-MVCC updates (!is_mvcc_op, as in SA_MODE, for an MVCC-disabled class, or for an in-place update),
+   * eagerly delete old OOS records referenced only by the old forward record (REC_NEWHOME). All 4 sub-paths
+   * below either overwrite or remove the forward slot, so OOS attached to the old forward becomes unreachable.
+   * In MVCC mode the old OOS is preserved for concurrent readers; vacuum's forward-walk
    * reclaims it from the undo image of both MVCC sub-paths: update_old_forward is tagged
    * RVHF_UPDATE_NOTIFY_VACUUM and remove_old_forward is tagged
    * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (see the log calls below). */
@@ -24885,7 +24885,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* log operation. In MVCC mode the old forward REC_NEWHOME survives only in this delete's undo
        * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
        * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
-       * from the undo image; otherwise (non-OOS, or SA mode handled by the eager-delete path above)
+       * from the undo image; otherwise (non-OOS, or !is_mvcc_op, handled by the eager-delete path above)
        * use the plain RVHF_DELETE — no behavior change. */
       LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
       if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
@@ -24924,9 +24924,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (update_old_forward)
     {
       /* log operation. In MVCC mode use RVHF_UPDATE_NOTIFY_VACUUM so the vacuum forward-walk
-       * picks up the old forward recdes and reclaims any OOS records it referenced. The home
-       * page log above (line ~24028) carries REC_RELOCATION (8-byte pointer, no OOS); this
-       * forward page log is the one that actually carries the old REC_NEWHOME with OOS. */
+       * picks up the old forward recdes and reclaims any OOS records it referenced. The
+       * update_old_home log on the other sub-paths carries REC_RELOCATION (8-byte pointer, no
+       * OOS); this forward page log is the one that actually carries the old REC_NEWHOME with OOS. */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, context->recdes_p,
 				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
@@ -25208,9 +25208,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
     }
 
-  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records that were replaced.
-   * In MVCC mode (SERVER_MODE), old OOS is preserved for concurrent readers and cleaned
-   * by vacuum via a forward walk of the log block (vacuum_process_log_block). */
+  /* For non-MVCC updates (!is_mvcc_op, as in SA_MODE, for an MVCC-disabled class, or for an in-place update),
+   * eagerly delete old OOS records that were replaced. In MVCC mode, old OOS is preserved for concurrent readers
+   * and cleaned by vacuum via a forward walk of the log block (vacuum_process_log_block). */
   if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
     {
       error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,

@@ -237,8 +237,8 @@ struct oos_stats_info
   VFID oos_vfid;
   int num_user_pages;		/* physical user pages allocated to OOS file */
   int page_size;		/* DB_PAGESIZE */
-  int num_recs;			/* live OOS records tracked by OOS_HDR_STATS */
-  INT64 recs_sumlen;		/* sum of live OOS record body bytes */
+  int num_recs;			/* live chunk records found by walking the OOS data pages, not OOS_HDR_STATS */
+  INT64 recs_sumlen;		/* sum of their slot lengths, each including its OOS_RECORD_HEADER_SIZE header */
 };
 using OOS_STATS_INFO = struct oos_stats_info;
 
