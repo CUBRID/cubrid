@@ -3021,6 +3021,14 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    else
 	      {
 		pr_clear_value (&pinned);
+		if (compare != NULL && compare->method == DOMAIN_COMPARE_DIRECT && compare->conv[0] == NULL
+		    && compare->conv[1] == NULL && t1 == DB_TYPE_NUMERIC
+		    && (t2 == DB_TYPE_SHORT || t2 == DB_TYPE_INTEGER || t2 == DB_TYPE_BIGINT))
+		  {
+		    /* an integer literal against a NUMERIC: the term's comparison takes both as they are, by the exact
+		     * values, so the generic leaf (the term's decided comparison) compares them unconverted */
+		    t2 = t1;
+		  }
 	      }
 	  }
 	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN
