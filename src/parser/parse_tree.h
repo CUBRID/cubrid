@@ -4155,6 +4155,9 @@ struct parser_context
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
+    unsigned compile_uncached:1;	/* CBRD-27478: the statement compiles through do_statement (), outside the XASL
+					 * cache, so it compiles again at every execution: the planner reads no rows
+					 * (row snapshot) for a plan nothing keeps */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned is_verifying_static_sql_text:1;	/* compile the edited text of a PL/CSQL static SQL without preparing it, so that
 						 * the verification leaves no XASL cache entry (see make_static_sql_text ()) */

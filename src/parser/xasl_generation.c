@@ -730,7 +730,9 @@ pt_detach_xasl_supp_info (void)
  * pt_attach_xasl_supp_info () - give back what pt_detach_xasl_supp_info () took, dropping what the statement compiled
  *				  in between left
  *   return: void
- *   saved(in): from pt_detach_xasl_supp_info (); freed
+ *   saved(in): a non-NULL result of pt_detach_xasl_supp_info (); freed. Each non-NULL detach takes exactly one
+ *		attach, before the statement's own XASL generation goes on. A NULL detach took nothing: then compile
+ *		no statement in between and do not call this (it would clear the lists, then dereference NULL)
  */
 void
 pt_attach_xasl_supp_info (struct xasl_supp_info *saved)
@@ -21430,6 +21432,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
   /* Check for join, path expr, and index optimizations */
   plan = qo_optimize_query (parser, select_node);
+
+  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
+   * failed the statement: there is no plan to retry for */
+  if (!plan && pt_has_error (parser)
+      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || er_errid () == ER_INTERRUPTED))
+    {
+      return NULL;
+    }
 
   /* optimization fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)

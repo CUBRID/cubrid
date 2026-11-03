@@ -206,7 +206,8 @@ static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
-static void qo_row_snapshot_apply (QO_ENV * env);
+static int qo_row_snapshot_apply (QO_ENV * env, bool * repriced);
+static void qo_sort_edges_by_selectivity (QO_ENV * env);
 static bool qo_row_snapshot_join_term (QO_TERM * term);
 static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
 static void qo_derived_term_compensate (QO_ENV * env);
@@ -629,16 +630,31 @@ qo_optimize_helper (QO_ENV * env)
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
+  /* Small-table row snapshot (CBRD-27478). It runs after qo_discover_edges (): the node sargs it
+   * evaluates are attached there (qo_node_add_sarg ()) and the term array is final after that call.
+   * qo_discover_edges () sorted the join terms by the selectivities from before it, and the planner
+   * keeps the first of the terms one eqclass joins on: sort them again by the ones it rewrote, before
+   * qo_assign_eq_classes () points eqclasses at terms. A read that lost the transaction or the server,
+   * or was cancelled, fails the statement. */
+  {
+    bool repriced = false;
+
+    if (qo_row_snapshot_apply (env, &repriced) != NO_ERROR)
+      {
+	qo_env_free (env);
+	return NULL;
+      }
+    if (repriced)
+      {
+	qo_sort_edges_by_selectivity (env);
+      }
+  }
+
   /* Don't do these things until *after* qo_discover_edges(); that function may rearrange the QO_TERM structures that
    * were discovered during the earlier phases, and anyone who grabs the idx of one of the terms (or even a pointer to
    * one) will be pointing to the wrong term after they're rearranged.
    */
   qo_assign_eq_classes (env);
-
-  /* Small-table row snapshot (CBRD-27478). It has to run exactly here: the node sargs it evaluates
-   * are attached in qo_discover_edges () (qo_node_add_sarg ()) and the term array is final after
-   * that call, while get_rank () below orders terms by the selectivity this pass rewrites. */
-  qo_row_snapshot_apply (env);
 
   get_local_subqueries (env, tree);
   get_rank (env);
@@ -6322,6 +6338,31 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
 }
 
 /*
+ * qo_sort_edges_by_selectivity () - sort the join terms (the edge zone) on selectivity as descending order
+ *   return: void
+ *   env(in):
+ */
+static void
+qo_sort_edges_by_selectivity (QO_ENV * env)
+{
+  int t1, t2;
+  QO_TERM *term1, *term2;
+
+  for (t1 = 0; t1 < env->nedges - 1; t1++)
+    {
+      term1 = QO_ENV_TERM (env, t1);
+      for (t2 = t1 + 1; t2 < env->nedges; t2++)
+	{
+	  term2 = QO_ENV_TERM (env, t2);
+	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	}
+    }
+}
+
+/*
  * qo_discover_edges () -
  *   return:
  *   env(in):
@@ -6369,19 +6410,7 @@ qo_discover_edges (QO_ENV * env)
 	}
     }
 
-  /* sort join-term on selectivity as descending order */
-  for (t1 = 0; t1 < i - 1; t1++)
-    {
-      term1 = QO_ENV_TERM (env, t1);
-      for (t2 = t1 + 1; t2 < i; t2++)
-	{
-	  term2 = QO_ENV_TERM (env, t2);
-	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
-	    {
-	      qo_exchange (term1, term2);
-	    }
-	}
-    }
+  qo_sort_edges_by_selectivity (env);
   /* sort sarg-term on pred_order desc, selectivity asc */
   for (t1 = i; t1 < env->nterms - 1; t1++)
     {
@@ -8513,8 +8542,9 @@ qo_assign_eq_classes (QO_ENV * env)
 
 /*
  * qo_row_snapshot_apply () - re-derive join selectivities from the rows filtered nodes select
- *   return: void
- *   env(in): optimizer environment, after qo_discover_edges () and qo_assign_eq_classes ()
+ *   return: NO_ERROR, or the error of a read that aborted the transaction, lost the server or was cancelled
+ *   env(in): optimizer environment, after qo_discover_edges ()
+ *   repriced(out): true when a join term's selectivity was rewritten
  *
  * A code/dimension table filtered by a constant and joined to a large table on its key gets the
  * join estimated at 1/NDV, because the planner does not know WHICH key the constant selects:
@@ -8535,8 +8565,8 @@ qo_assign_eq_classes (QO_ENV * env)
  * row or more than row_snapshot_max_rows rows selected, a key the histogram cannot price, a join
  * between two snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
  */
-static void
-qo_row_snapshot_apply (QO_ENV * env)
+static int
+qo_row_snapshot_apply (QO_ENV * env, bool * repriced)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
   int n, t, f, n_filters, column, other, max_rows, error = NO_ERROR;
@@ -8561,15 +8591,18 @@ qo_row_snapshot_apply (QO_ENV * env)
     {
       max_rows = ROW_SNAPSHOT_HINT_MAX_ROWS;
     }
-  if (max_rows <= 0 || (hint & PT_HINT_NO_ROW_SNAPSHOT) || env->nnodes < 2)
+  /* A statement compiled without the XASL cache -- a trigger action at every firing, a statement
+   * that cannot be prepared (a stored function call), any statement with the cache off -- would
+   * read again at every execution, with nothing to keep the plan for. */
+  if (max_rows <= 0 || (hint & PT_HINT_NO_ROW_SNAPSHOT) || env->nnodes < 2 || parser->flag.compile_uncached)
     {
-      return;
+      return NO_ERROR;
     }
 
   snapshots = (ROW_SNAPSHOT **) parser_alloc (parser, env->nnodes * sizeof (ROW_SNAPSHOT *));
   if (snapshots == NULL)
     {
-      return;
+      return NO_ERROR;
     }
   for (n = 0; n < env->nnodes; n++)
     {
@@ -8668,8 +8701,9 @@ qo_row_snapshot_apply (QO_ENV * env)
       row_snapshot_free (columns);
       if (error != NO_ERROR)
 	{
-	  /* the read lost the transaction (rolled back by the server) or the server: the statement
-	   * fails with that error, as its own execution would have */
+	  /* the read lost the transaction (rolled back by the server), the server or the user's
+	   * cancel: the statement fails with that error, as its own execution would have. Planning
+	   * stops here -- a rolled-back transaction has given back the classes it held. */
 	  PT_ERRORc (parser, QO_ENV_PT_TREE (env), er_msg ());
 	  break;
 	}
@@ -8739,12 +8773,14 @@ qo_row_snapshot_apply (QO_ENV * env)
 	}
       QO_TERM_SELECTIVITY (term) = sel;
       QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_SNAPSHOT);
+      *repriced = true;
     }
 
   for (n = 0; n < env->nnodes; n++)
     {
       row_snapshot_free (snapshots[n]);
     }
+  return error;
 }
 
 /* `a.col = b.col` between two nodes, the one join shape qo_row_snapshot_apply () prices */

@@ -62,12 +62,12 @@ row_snapshot_max_rows (void)
   return prm_get_integer_value (PRM_ID_ROW_SNAPSHOT_MAX_ROWS);
 }
 
-/* the columns a snapshot keeps: the ones a histogram is built for, except object references,
- * whose packed form would carry OIDs a later read cannot trust */
+/* the columns a read returns: the ones a histogram is built for -- a key is priced through the
+ * other column's histogram. is_histogrammable_type () already leaves object references out. */
 static bool
 row_snapshot_keeps_type (DB_TYPE type)
 {
-  return is_histogrammable_type (type) && type != DB_TYPE_OID && type != DB_TYPE_OBJECT;
+  return is_histogrammable_type (type);
 }
 
 void
@@ -158,9 +158,12 @@ row_snapshot_const_value (PARSER_CONTEXT *parser, PT_NODE *node)
 
     case PT_HOST_VAR:
       /* a literal is auto-parameterized into a host variable (?:n, index >= host_var_count) before
-       * the optimizer runs; a user host variable counts once it is bound -- the plan is then
-       * compiled for its value, as the histogram estimates already are, and the bind fingerprint
-       * (histogram_bind_fingerprint ()) watches the snapshot's answer for it */
+       * the optimizer runs; a user host variable counts once it is bound. Either way the plan is
+       * compiled for this value's rows and cached under a statement text that does not hold the
+       * value: another literal, or a later bind value, reuses it without a read, as it reuses the
+       * histogram estimates made for the first value. The bind fingerprint
+       * (histogram_bind_fingerprint ()) prices only user host variables, through the filter
+       * column's histogram -- it does not see which rows the read returned. */
       if (node->info.host_var.var_type != PT_HOST_IN || parser->host_variables == NULL)
 	{
 	  return NULL;
@@ -524,11 +527,15 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   FILE *saved_dump_fp;
   struct xasl_supp_info *saved_supp_info;
   bool saved_dump_fp_open, saved_trigger_involved, indexed = false, usable = true;
-  int saved_level, saved_wait, stmt, pos, c, f, n = 0, err = NO_ERROR;
+  int saved_level, saved_wait, saved_row_count, stmt, pos, c, f, n = 0, err = NO_ERROR;
   double scanned = scan ? n_card : -1.0, limit;
 
   *error = NO_ERROR;
-  if (in_read || classop == NULL || class_ == NULL || columns == NULL || n_filters <= 0 || max_rows <= 0)
+  /* Under REPEATABLE READ or above the read would take the transaction's snapshot at compile: a
+   * statement prepared first in its transaction would see the rows of its prepare, not of its
+   * execution. The histograms read the last committed version without one; this read cannot. */
+  if (in_read || classop == NULL || class_ == NULL || columns == NULL || n_filters <= 0 || max_rows <= 0
+      || TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
     {
       return NULL;
     }
@@ -618,7 +625,10 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
    * a lock: a class another transaction holds X on keeps the estimate, where waiting would hold
    * the compile up to lock_timeout and could deadlock it. And it leaves do_Trigger_involved alone:
    * executing a statement clears it, and an INSERT the trigger action being compiled runs would
-   * then set LAST_INSERT_ID as if outside a trigger. */
+   * then set LAST_INSERT_ID as if outside a trigger. Nor the session's row count, which executing a
+   * SELECT resets to -1 and ROW_COUNT () or a driver asks for after the statement before it.
+   * This list has to hold every client global db_execute_statement_local () changes; the test
+   * cbrd_27478 runs a statement with the read on and off and compares what the session shows. */
   er_stack_push ();
   saved_supp_info = pt_detach_xasl_supp_info ();
   if (saved_supp_info == NULL)
@@ -636,6 +646,7 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   qo_get_optimization_param (&saved_level, QO_PARAM_LEVEL);
   qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 1);
   saved_trigger_involved = do_Trigger_involved;
+  saved_row_count = db_get_row_count_cache ();
   saved_wait = TM_TRAN_WAIT_MSECS ();
   if (saved_wait != 0)
     {
@@ -718,8 +729,9 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
       db_close_session_local (session);
     }
 
-  /* a failure that aborted the transaction or lost the server is not the read's alone: the server
-   * has rolled the transaction back, and the statement has to report it */
+  /* a failure that aborted the transaction, lost the server or was the user's cancel is not the
+   * read's alone: the server has rolled the transaction back, or consumed the interrupt the
+   * statement would have stopped on, and the statement has to report it */
   err = usable ? NO_ERROR : er_errid ();
   if (saved_wait != 0)
     {
@@ -738,11 +750,12 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
 	  er_stack_pop ();
 	}
     }
-  if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (err) && !ER_IS_SERVER_DOWN_ERROR (err))
+  if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (err) && !ER_IS_SERVER_DOWN_ERROR (err) && err != ER_INTERRUPTED)
     {
       err = NO_ERROR;
     }
   do_Trigger_involved = saved_trigger_involved;
+  db_update_row_count_cache (saved_row_count);
   qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_level);
   query_Plan_dump_filename = saved_dump_filename;
   query_Plan_dump_fp = saved_dump_fp;

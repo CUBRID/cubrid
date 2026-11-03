@@ -34,7 +34,12 @@
  * class another transaction has locked keeps the estimate, and the compile neither waits nor
  * deadlocks where it took only SCH_S before. The rows are the ones the statement's transaction
  * sees when it is compiled; a plan already cached is not compiled again for new rows, as it is
- * not for new statistics.
+ * not for new statistics, nor for another literal of the same statement text.
+ *
+ * It is not made under REPEATABLE READ or above, where it would take the transaction's snapshot at
+ * compile, nor for a statement compiled outside the XASL cache (a trigger action, a statement that
+ * cannot be prepared), which would read again at every execution. LEADING / USE_* hints that name
+ * no table, or a plan the hints cannot give, drop ROW_SNAPSHOT / NO_ROW_SNAPSHOT with the others.
  */
 
 #ifndef _ROW_SNAPSHOT_CL_HPP_

@@ -9444,17 +9444,17 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.delete_.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	{
-	  q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	  q = pt_append_nulstring (parser, q, " NO_PARALLEL_HASH_JOIN ");
 	}
 
       if (p->info.delete_.hint & PT_HINT_ROW_SNAPSHOT)
 	{
-	  q = pt_append_nulstring (parser, q, "ROW_SNAPSHOT ");
+	  q = pt_append_nulstring (parser, q, " ROW_SNAPSHOT ");
 	}
 
       if (p->info.delete_.hint & PT_HINT_NO_ROW_SNAPSHOT)
 	{
-	  q = pt_append_nulstring (parser, q, "NO_ROW_SNAPSHOT ");
+	  q = pt_append_nulstring (parser, q, " NO_ROW_SNAPSHOT ");
 	}
 
       q = pt_append_nulstring (parser, q, " */");
@@ -16712,17 +16712,17 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.update.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	{
-	  b = pt_append_nulstring (parser, b, "NO_PARALLEL_HASH_JOIN ");
+	  b = pt_append_nulstring (parser, b, " NO_PARALLEL_HASH_JOIN ");
 	}
 
       if (p->info.update.hint & PT_HINT_ROW_SNAPSHOT)
 	{
-	  b = pt_append_nulstring (parser, b, "ROW_SNAPSHOT ");
+	  b = pt_append_nulstring (parser, b, " ROW_SNAPSHOT ");
 	}
 
       if (p->info.update.hint & PT_HINT_NO_ROW_SNAPSHOT)
 	{
-	  b = pt_append_nulstring (parser, b, "NO_ROW_SNAPSHOT ");
+	  b = pt_append_nulstring (parser, b, " NO_ROW_SNAPSHOT ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");
