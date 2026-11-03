@@ -6387,10 +6387,11 @@ qexec_gby_mtable_add (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_GBY_
   for (k = 0; k < key->val_count; k++)
     {
       key->values[k] = &vals[k];
-      if (tpl == NULL || DB_NEED_CLEAR (src->values[k]))
+      if (tpl == NULL || DB_NEED_CLEAR (src->values[k]) || TP_IS_SET_TYPE (DB_VALUE_DOMAIN_TYPE (src->values[k])))
 	{
 	  /* a value the read made (not one pointing into the copy), or the partial entry's that is read into again:
-	   * the key takes a copy of its own */
+	   * the key takes a copy of its own.  A collection read in place still lives in a set reference of the read's
+	   * value list, which the next row's read takes over */
 	  if (pr_clone_value (src->values[k], &vals[k]) != NO_ERROR)
 	    {
 	      /* s->key stays NULL, so the rewind would not clear what was cloned: cleared here (a value copied
@@ -8252,12 +8253,22 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   memset (&job, 0, sizeof (job));	/* end: frees the sort lists the job opened and did not hand over */
   /* the table was dumped into the lists and cleared before this (qdata_save_agg_htable_to_list ()); entries left
    * in it mean the dump did not run, and then there is nothing to merge */
-  if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL || list_id->tuple_cnt == 0
+  if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL
       || mht_count (ctx->hash_table) != 0 || xasl->proc.buildlist.g_first_tuple == XASL_G_FIRST_TUPLE_OUTPUT
       || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)
       || qexec_gby_aggs_follow_row_order (xasl->proc.buildlist.g_agg_list)
       || !qexec_gby_keys_hash_as_compared (&xasl->proc.buildlist))
     {
+      return NO_ERROR;
+    }
+  if (list_id->tuple_cnt == 0)
+    {
+      /* no row left to sort (no first rows kept, none passed the table): the partial entries are the groups and
+       * nothing is merged, but the trace reports their estimate as when rows are left */
+      if (thread_is_on_trace (thread_p) && !ctx->key_sketch_partial && ctx->state != HS_REJECT_ALL)
+	{
+	  xasl->groupby_stats.groupby_hash_groups = (INT64) qdata_key_sketch_estimate (ctx->key_sketch);
+	}
       return NO_ERROR;
     }
   order_free = !qexec_gby_order_reaches_result (xasl);
@@ -27488,6 +27499,13 @@ qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, A
 
   for (regu = gbstate->g_hk_regu_list, i = 0; regu != NULL; regu = regu->next, i++)
     {
+      if (!DB_IS_NULL (regu->value.vfetch_to)
+	  && (TP_IS_SET_TYPE (DB_VALUE_TYPE (regu->value.vfetch_to))
+	      || DB_VALUE_TYPE (regu->value.vfetch_to) == DB_TYPE_VOBJ))
+	{
+	  /* the share took a reference of the key's collection (pr_share_value ()): given back */
+	  pr_clear_value (regu->value.vfetch_to);
+	}
       *regu->value.vfetch_to = gbstate->key_slots[i];
     }
 }
