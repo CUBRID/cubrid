@@ -1626,6 +1626,7 @@ db_compile_statement_local (DB_SESSION * session)
   stmt_ndx = session->stmt_ndx++;
   statement = session->statements[stmt_ndx];
   statement->flag.use_plan_cache = 0;
+  parser->flag.needs_bound_hostvar = 0;
   statement->flag.use_query_cache = 0;
 
   statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
@@ -2682,6 +2683,30 @@ db_get_statement_type (DB_SESSION * session, int stmt)
     }
 
   return retval;
+}
+
+/*
+ * db_statement_needs_bound_values() - tell whether the last compile failed only because a host variable has no value
+ *                                     yet
+ * return : true if so
+ * session(in): the session whose db_compile_statement () just failed
+ *
+ * Note: callers that defer a failed prepare to execute time (CAS ux_prepare) defer only such statements and report
+ *       the error of any other at prepare time. Name resolution marks the constructs that need the type of the bound
+ *       value (parser->flag.needs_bound_hostvar):
+ *       1) UPDATE OBJECT ? SET ... (pt_resolve_object)
+ *       2) a method call in an expression whose ON target is ?, e.g. m () ON ? (pt_bind_names)
+ *       3) a derived table of a collection, TABLE (?) (pt_set_attr_list_types)
+ */
+bool
+db_statement_needs_bound_values (DB_SESSION * session)
+{
+  if (session == NULL || session->parser == NULL)
+    {
+      return false;
+    }
+
+  return session->parser->flag.needs_bound_hostvar;
 }
 
 /*
