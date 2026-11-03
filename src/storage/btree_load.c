@@ -79,7 +79,9 @@ struct load_args
 {				/* This structure is never written to disk; thus logical ordering of fields is ok. */
   BTID_INT *btid;
   const char *bt_name;		/* index name */
-  bool no_redo;			/* No-logging index build: its pages skip content redo logging only; all disk writes take the ordinary flush path (including DWB when enabled).  Durability is enforced by the pre-commit flush+sync gate. */
+  BT_LOAD_PAGE_LOG_MODE page_log_mode;	/* how this thread's finished pages get their content redo */
+  bool shard_put;		/* the shard workers put the leaves, with the mode bt_load_alloc_shard_load_args () derives
+				 * from page_log_mode; false: the leader puts one merged run itself */
 
   RECDES *out_recdes;		/* Pointer to current record descriptor collecting objects. */
   RECDES leaf_nleaf_recdes;	/* Record descriptor used for leaf and non-leaf records. */
@@ -122,13 +124,12 @@ struct load_args
   int ovf_dir_count;
   int ovf_dir_capacity;
   /*
-   * The fields below were added for the no-logging index build (loaddb --no-logging-index, i.e. no_redo == true with
-   * a parallel shard build).  An ordinary CREATE INDEX still maintains some of them, but only as write-only
-   * bookkeeping: it leaves provider == NULL, worker_idx == -1, new_page_fn == bt_load_new_page_serial and
-   * px_outcome == BT_PX_NOT_ATTEMPTED, keeps the vacuum_* queue empty (a worker_idx < 0 caller appends its
-   * notification directly instead of queueing it), and never has the report_* values consumed, because only
-   * bt_load_px_join_finalize () reads them.  Code that runs on both paths must therefore not depend on any of these
-   * carrying a meaningful value.
+   * The fields below serve the parallel shard build (shard_put).  An ordinary CREATE INDEX
+   * still maintains some of them, but only as write-only bookkeeping: it leaves provider == NULL, worker_idx == -1,
+   * new_page_fn == bt_load_new_page_serial and px_outcome == BT_PX_NOT_ATTEMPTED, keeps the vacuum_* queue empty (a
+   * worker_idx < 0 caller appends its notification directly instead of queueing it), and never has the report_*
+   * values consumed, because only bt_load_px_join_finalize () reads them.  Code that runs on both paths must
+   * therefore not depend on any of these carrying a meaningful value.
    */
 
   /* Build transaction's MVCCID, captured before the sort.  Only asserted non-null (SERVER_MODE), on both paths;
@@ -335,8 +336,8 @@ static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int
 				    LOAD_ARGS * load_args, int node_level);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls, int n_oids, int n_keys);
 
-static int btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo,
-			   bool flush_after_unfix);
+static int btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
+			   BT_LOAD_PAGE_LOG_MODE mode);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new, bool ovf_dir);
 static int bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
@@ -1348,7 +1349,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
-  load_args->no_redo = eligible_no_redo;
+  /* The no-logging build writes no content redo at all; only it puts the leaves with the shard workers. */
+  if (eligible_no_redo)
+    {
+      load_args->page_log_mode = BT_LOAD_LOG_NO_REDO;
+      load_args->shard_put = true;
+    }
+  else
+    {
+      load_args->page_log_mode = BT_LOAD_LOG_INLINE;
+      load_args->shard_put = false;
+    }
   /* Do NOT open a build sysop here. For SERVER_MODE, the topop rmutex must not be held across
    * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
    * lock_topop() it themselves (e.g. disk_reserve_sectors() -> log_sysop_start() while creating their
@@ -1359,7 +1370,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    * -- always after the parallel wait has already returned, and is picked up below via
    * log_check_system_op_is_started() once btree_index_sort() completes. */
 #else
-  load_args->no_redo = false;
+  load_args->page_log_mode = BT_LOAD_LOG_INLINE;
+  load_args->shard_put = false;
 #endif
   load_args->vacuum_payload_size = 0;
 
@@ -1557,21 +1569,19 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       goto error;
     }
 #if defined (SERVER_MODE) && !defined (NDEBUG)
-  /* no-redo builds are restricted to genuinely parallel construction, so no_redo can never be true together
-   * with px_outcome == BT_PX_NOT_ATTEMPTED -- both demotion points (btree_sort()'s single-process branch
-   * and btsort_px_construct_index_leaf()'s n_shards < 2 fallback) clear no_redo before returning
-   * BT_PX_NOT_ATTEMPTED. Whenever no_redo is (still) true here, the build sysop was already committed or
-   * aborted deep inside the parallel path, so no open sysop should remain at this level. */
-  assert (!load_args->no_redo || load_args->px_outcome != BT_PX_NOT_ATTEMPTED);
-  assert (!load_args->no_redo || tdes == NULL || tdes->topops.last < 0);
+  /* A shard-put build either ran (px_outcome != BT_PX_NOT_ATTEMPTED) or was demoted to the serial put before any
+   * content page was written (btree_sort ()'s single-process branch and btsort_px_construct_index_leaf ()'s
+   * n_shards < 2 fallback). When it ran, its build sysop was already committed or aborted deep inside the parallel
+   * path, so no open sysop should remain at this level. */
+  assert (!bt_load_parallel_enabled (load_args) || load_args->px_outcome != BT_PX_NOT_ATTEMPTED);
+  assert (!bt_load_parallel_enabled (load_args) || tdes == NULL || tdes->topops.last < 0);
 #endif
 
 #if defined (SERVER_MODE)
-  if (!load_args->no_redo || load_args->px_outcome == BT_PX_NOT_ATTEMPTED)
+  if (!bt_load_parallel_enabled (load_args) || load_args->px_outcome == BT_PX_NOT_ATTEMPTED)
     {
-      /* Legacy (fully logged) builds leave a build sysop for this layer to attach. Genuinely parallel
-       * no-redo builds already committed their own sysop deep inside btree_index_sort() and leave none open
-       * here. */
+      /* Legacy (fully logged) builds leave a build sysop for this layer to attach. Shard-put builds already
+       * committed their own sysop deep inside btree_index_sort() and leave none open here. */
       is_sysop_started = log_check_system_op_is_started (thread_p);
     }
 #endif /* SERVER_MODE */
@@ -1661,11 +1671,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   else
     {
-      /* no-redo builds are restricted to genuinely parallel construction. An empty build (no leaves at all)
-       * can only reach here via the serial/legacy path -- btree_sort()'s single-process branch or
-       * btsort_px_construct_index_leaf()'s n_shards < 2 fallback -- both of which demote
-       * load_args->no_redo to false before any content page (or lack thereof) is decided here. */
-      assert (!load_args->no_redo);
+      /* An empty build (no leaves at all) can only reach here via the serial path -- btree_sort()'s single-process
+       * branch or btsort_px_construct_index_leaf()'s n_shards < 2 fallback -- both of which demote the build to
+       * the fully logged serial put before any content page (or lack thereof) is decided here. */
+      assert (!bt_load_parallel_enabled (load_args));
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load didn't build any leaves btid (%d, (%d, %d)).",
@@ -1702,14 +1711,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL, notification_class_oid, btid, bt_name);
     }
 
-  if (load_args->no_redo)
+  if (bt_load_is_no_logging (load_args))
     {
       /*
        * Durability barrier.  The leaf, non-leaf and overflow pages this build produced were only marked dirty
        * (btree_log_page () skipped their content redo), so before the barrier record
        * (RVBT_NO_LOGGING_INDEX_DURABLE) and the eventual commit can become durable, every one of them must
        * actually be ON DISK.  The sticky root is the one exception: btree_build_nleafs () publishes its final
-       * copy through WAL (btree_log_page () with no_redo == false), so recovery can always rebuild that page.
+       * copy through WAL (btree_log_page () with BT_LOAD_LOG_INLINE), so recovery can always rebuild that page.
        *
        * Flush the whole buffer pool, then synchronize every permanent volume (which also
        * drains the DWB when enabled).  A loaddb-only build has no concurrent traffic to
@@ -1731,10 +1740,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	  goto error;
 	}
     }
-  /* built_nonempty_tree is redundant here -- the empty-index path asserts !no_redo above, because both demotion
-   * points clear no_redo before it can be reached -- but it is kept so that a build with no leaves at all can never
-   * leave a barrier behind for recovery to trip over. */
-  if (load_args->no_redo && built_nonempty_tree)
+  /* built_nonempty_tree is redundant here -- the empty-index path asserts the serial put above, because both
+   * demotion points clear the no-redo mode before it can be reached -- but it is kept so that a build with no
+   * leaves at all can never leave a barrier behind for recovery to trip over. */
+  if (bt_load_is_no_logging (load_args) && built_nonempty_tree)
     {
       LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
@@ -1859,8 +1868,9 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
       assert (slotid > 0);
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo,
-			    load_args->provider != NULL);
+      ret =
+	btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr,
+			load_args->page_log_mode);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -1926,8 +1936,9 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   *header = load_args->leaf.hdr;
 
   /* Save the current leaf page */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo,
-			load_args->provider != NULL);
+  ret =
+    btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr,
+		    load_args->page_log_mode);
   load_args->leaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -2028,8 +2039,9 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
       *header = load_args->nleaf.hdr;
 
       /* Flush the current non-leaf page */
-      if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo,
-			  load_args->provider != NULL) != NO_ERROR)
+      if (btree_log_page
+	  (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr,
+	   load_args->page_log_mode) != NO_ERROR)
 	{
 	  load_args->nleaf.pgptr = NULL;
 	  return NULL;
@@ -2326,8 +2338,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   *header = load_args->nleaf.hdr;
 
   /* Flush the last non-leaf page */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo,
-			load_args->provider != NULL);
+  ret =
+    btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr,
+		    load_args->page_log_mode);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -2461,8 +2474,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       *header = load_args->nleaf.hdr;
 
       /* Flush the last non-leaf page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo,
-			    load_args->provider != NULL);
+      ret =
+	btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr,
+			load_args->page_log_mode);
       load_args->nleaf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -2606,10 +2620,11 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->nleaf.vpid = cur_nleafpgid;
 
   /*
-   * The sticky root predates the no-redo provider allocations.  Publish it through WAL so commit/recovery cannot
+   * The sticky root predates the provider allocations.  Publish it through WAL so commit/recovery cannot
    * expose its original empty slotted-page image.
    */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, false, false);
+  ret = btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr,
+			BT_LOAD_LOG_INLINE);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -2640,22 +2655,20 @@ end:
 /*
  * btree_log_page () - Save the contents of the buffer
  *   return: error code
+ *   load_args(in): the load whose page it is
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
- *   no_redo(in): when true (no-logging index build), skip the full-page content redo
- *   flush_after_unfix(in): when true (parallel no-logging index builds only), write the
- *                          finished no-redo page through to disk before the
- *                          unfix (best effort; never fails the build)
+ *   mode(in): how the content redo is made, see BT_LOAD_PAGE_LOG_MODE
  *
- * Note: This function logs the contents (unless no_redo) and frees
- * the page after setting the dirty bit.
+ * Note: This function logs the contents (unless NO_REDO) and frees the page after setting the dirty bit.
  */
 static int
-btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo, bool flush_after_unfix)
+btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
+		BT_LOAD_PAGE_LOG_MODE mode)
 {
 
-  if (!no_redo)
+  if (mode == BT_LOAD_LOG_INLINE)
     {
       LOG_DATA_ADDR addr;
 
@@ -2665,7 +2678,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
       log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
     }
   /*
-   * no_redo == true: no-logging index pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
+   * NO_REDO: no-logging index pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
    * The page reaches disk through the ordinary flush path (background flusher, eviction,
    * checkpoint, the write-through below, and the pre-commit durability barrier in
    * xbtree_load_index), including DWB staging when enabled.  Content changes are never
@@ -2675,7 +2688,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
    * comes from the explicit gate in xbtree_load_index, not from this function.
    */
   pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
-  if (no_redo && flush_after_unfix)
+  if (mode == BT_LOAD_LOG_NO_REDO && load_args->provider != NULL)
     {
       /*
        * Write-through: submit the finished index page to the ordinary flush path now (write
@@ -3547,14 +3560,27 @@ bool
 bt_load_parallel_enabled (const LOAD_ARGS * load_args)
 {
 #if defined (SERVER_MODE)
-  return load_args != NULL && load_args->no_redo;
+  return load_args != NULL && load_args->shard_put;
 #else
   return false;
 #endif
 }
 
 /*
- * bt_load_demote_to_logged () - drop a no-logging-eligible build onto the fully logged path.  Called by the sort
+ * bt_load_is_no_logging () - The no-logging index build (loaddb --no-logging-index)
+ */
+bool
+bt_load_is_no_logging (const LOAD_ARGS * load_args)
+{
+#if defined (SERVER_MODE)
+  return load_args != NULL && load_args->page_log_mode == BT_LOAD_LOG_NO_REDO;
+#else
+  return false;
+#endif
+}
+
+/*
+ * bt_load_demote_to_logged () - drop a shard-put build onto the fully logged serial path.  Called by the sort
  *   layer at the moment a build finalizes as serial (single-process shape or n_shards < 2), strictly before
  *   any content page is written: the rest of the build then logs normally and no replay barrier record
  *   is appended for it.
@@ -3564,7 +3590,8 @@ bt_load_demote_to_logged (LOAD_ARGS * load_args)
 {
   if (load_args != NULL)
     {
-      load_args->no_redo = false;
+      load_args->page_log_mode = BT_LOAD_LOG_INLINE;
+      load_args->shard_put = false;
     }
 }
 
@@ -3745,8 +3772,9 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   *header = load_args->leaf.hdr;
 
   /* Flush the current leaf page */
-  if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo,
-		      load_args->provider != NULL) != NO_ERROR)
+  if (btree_log_page
+      (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr,
+       load_args->page_log_mode) != NO_ERROR)
     {
       load_args->leaf.pgptr = NULL;
       pgbuf_unfix_and_init (thread_p, new_leafpgptr);
@@ -4223,8 +4251,9 @@ bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_
       assert (slotid > 0);
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo,
-			    load_args->provider != NULL);
+      ret =
+	btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr,
+			load_args->page_log_mode);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -4451,8 +4480,7 @@ bt_load_finalize_ovf_dir (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 	  VPID_COPY (&dir_hdr->next_vpid, &next_vpid);
 	}
 
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, dir_pgptr, load_args->no_redo,
-			    load_args->provider != NULL);
+      ret = btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, dir_pgptr, load_args->page_log_mode);
       dir_pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -4574,8 +4602,9 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
 	}
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo,
-			    load_args->provider != NULL);
+      ret =
+	btree_log_page (thread_p, load_args, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr,
+			load_args->page_log_mode);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -5136,7 +5165,7 @@ bt_load_store_overflow_key (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, cons
 	  }
 	copy_length = MIN (capacity, length);
 	memcpy (target, data, (size_t) copy_length);
-	error = btree_log_page (thread_p, &load_args->btid->ovfid, page, true, true);
+	error = btree_log_page (thread_p, load_args, &load_args->btid->ovfid, page, load_args->page_log_mode);
 	if (error != NO_ERROR)
 	  {
 	    goto end;
@@ -5270,6 +5299,9 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
   load_args->vacuum_payload_size = 0;
+  /* Only the no-logging build has the shard put, and its workers write no content redo either. */
+  assert (src->page_log_mode == BT_LOAD_LOG_NO_REDO);
+  load_args->page_log_mode = BT_LOAD_LOG_NO_REDO;
   /* CBRD-24094: the overflow OID directory state is per-chain, hence per-worker; ovf_dir itself is a property of the index and
    * is inherited from the leader. */
   VPID_SET_NULL (&load_args->ovf_dir_vpid);
@@ -5463,13 +5495,15 @@ bt_load_patch_seam (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, LOAD_AR
     }
   header_left->next_vpid = right->report_first_leaf_vpid;
   header_right->prev_vpid = left->report_last_leaf_vpid;
-  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_left, true, true);
+  error = btree_log_page (thread_p, main_load_args, &main_load_args->btid->sys_btid->vfid, page_left,
+			  main_load_args->page_log_mode);
   page_left = NULL;
   if (error != NO_ERROR)
     {
       goto end;
     }
-  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_right, true, true);
+  error = btree_log_page (thread_p, main_load_args, &main_load_args->btid->sys_btid->vfid, page_right,
+			  main_load_args->page_log_mode);
   page_right = NULL;
 
 end:
@@ -5526,6 +5560,8 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
 	}
       bt_load_clear_vacuum_notifications (shard_load_args[i]);
     }
+
+  main_load_args->provider = provider;
   for (int i = 1; i < n_shards; i++)
     {
       error = bt_load_patch_seam (thread_p, main_load_args, shard_load_args[i - 1], shard_load_args[i]);
@@ -5535,7 +5571,6 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
 	}
     }
 
-  main_load_args->provider = provider;
   main_load_args->new_page_fn = bt_load_new_page_main_inline;
   main_load_args->vpid_first_leaf = shard_load_args[0]->report_first_leaf_vpid;
   main_load_args->vpid_last_leaf = shard_load_args[n_shards - 1]->report_last_leaf_vpid;

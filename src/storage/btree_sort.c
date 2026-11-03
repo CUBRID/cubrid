@@ -965,7 +965,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
       /* single process */
       sort_param->px_parallel_num = 1;
 
-      /* no-redo builds are restricted to genuinely parallel construction. This is the single-process
+      /* the shard put is restricted to genuinely parallel construction. This is the single-process
        * shape (parallelism threshold not met, or no workers could be reserved) -- demote to a fully
        * logged build now, strictly before btree_create_file()/any content page write below, so the
        * legacy build that follows logs normally end to end and no replay barrier record is appended
@@ -1009,7 +1009,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 	  goto cleanup;
 	}
 
-      /* the workers leave the runs of their last pass to the main thread's merge, unless a no-logging build needs
+      /* the workers leave the runs of their last pass to the main thread's merge, unless the shard put needs
        * one result run per worker to partition into key ranges (btsort_px_construct_index_leaf) */
       sort_param->px_leave_runs = !bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
 
@@ -1785,7 +1785,7 @@ btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int parallel_num = 1;
   SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
   int n_data_pages = 0, n_sects = 0, error_code = NO_ERROR;
-  bool no_logging_build = bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
+  bool no_logging_build = bt_load_is_no_logging ((const LOAD_ARGS *) sort_param->put_arg);
 
   if (sort_args_p->n_classes != 1)
     {
@@ -3264,9 +3264,9 @@ bailout:
  *   sort_param(in): main sort parameters; put_fn builds the leaf level
  *   parallel_num(in): number of workers
  *
- * Note: A no-logging build (loaddb --no-logging-index) partitions the workers' result runs into key ranges and
- *       builds them in parallel (btsort_px_construct_index_leaf). Otherwise the main thread merges every run the
- *       workers left in one pass and hands the records to put_fn, as the final pass of a serial sort does.
+ * Note: The shard put partitions the workers' result runs into key ranges and builds them in parallel
+ *       (btsort_px_construct_index_leaf). Otherwise the main thread merges every run the workers left in one pass
+ *       and hands the records to put_fn, as the final pass of a serial sort does.
  */
 static int
 btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param,
@@ -3295,10 +3295,10 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
     }
 
   /*
-   * no-redo builds are restricted to genuinely parallel construction.  btsort_px_construct_index_leaf
+   * the shard put is restricted to genuinely parallel construction.  btsort_px_construct_index_leaf
    * owns both the shard-count decision and the main/overflow-key file creation: it creates and attaches both
-   * files, in one sysop, only once it has committed to n_shards >= 2, and demotes load_args_p->no_redo to
-   * false (with no file created yet) whenever it falls back to BT_PX_NOT_ATTEMPTED.  This removes the
+   * files, in one sysop, only once it has committed to n_shards >= 2, and demotes load_args_p to the serial
+   * put (with no file created yet) whenever it falls back to BT_PX_NOT_ATTEMPTED.  This removes the
    * previous eager file-creation window (main file created and attached to the outer transaction ahead of
    * knowing whether the shard build would actually engage): on the n_shards < 2 fallthrough, no file exists
    * yet when we reach the legacy path below, so there is nothing left orphaned if the eventual put fails --
@@ -3338,9 +3338,9 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
       }
   }
 
-  /* no-redo builds are restricted to genuinely parallel construction, so by construction we never
-   * reach here with load_args_p->no_redo still true -- btsort_px_construct_index_leaf above either committed to
-   * the parallel shard path (returning before this point) or demoted load_args_p->no_redo to false before
+  /* the shard put is restricted to genuinely parallel construction, so by construction we never
+   * reach here with it still enabled -- btsort_px_construct_index_leaf above either committed to
+   * the parallel shard path (returning before this point) or demoted load_args_p to the serial put before
    * returning BT_PX_NOT_ATTEMPTED. The file was therefore never created above; create it now and leave the
    * wrapping sysop open through the put below, exactly like the single-process (serial) fallback in
    * btree_sort() does -- xbtree_load_index attaches it to the outer transaction once the tree is fully
@@ -4404,7 +4404,7 @@ btsort_px_construct_index_leaf (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_
   if (n_shards < 2)
     {
       /*
-       * no-redo builds are restricted to genuinely parallel construction.
+       * the shard put is restricted to genuinely parallel construction.
        * btsort_px_slice_runs_index_leaf allocates shard_inputs only when it commits to n_shards >= 2, so
        * nothing needs freeing here.  Demote to a fully logged build now -- strictly before any file is
        * created -- so the legacy single-run path in btsort_merge_run_for_parallel_index_leaf_build() creates

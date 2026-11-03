@@ -65,6 +65,13 @@ struct bt_load_vacuum_item
 typedef struct load_args LOAD_ARGS;
 typedef struct bt_load_provider BT_LOAD_PROVIDER;
 
+/* How a finished index page gets its content redo (RVBT_COPYPAGE) */
+typedef enum bt_load_page_log_mode
+{
+  BT_LOAD_LOG_INLINE = 0,	/* the writer appends the record itself: the transaction thread */
+  BT_LOAD_LOG_NO_REDO		/* no content redo (loaddb --no-logging-index); the pre-commit barrier flushes */
+} BT_LOAD_PAGE_LOG_MODE;
+
 typedef enum bt_load_px_outcome
 {
   BT_PX_NOT_ATTEMPTED = 0,
@@ -415,6 +422,7 @@ extern int bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_l
 extern int bt_load_decode_sort_record_key (THREAD_ENTRY * thread_p, const RECDES * recdes,
 					   LOAD_ARGS * load_args, DB_VALUE * key_out);
 extern bool bt_load_parallel_enabled (const LOAD_ARGS * load_args);
+extern bool bt_load_is_no_logging (const LOAD_ARGS * load_args);
 extern void bt_load_demote_to_logged (LOAD_ARGS * load_args);
 extern BTSORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 /* Recovery routines */
