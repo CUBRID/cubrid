@@ -6687,6 +6687,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
   DB_VALUE value;
   const char *pass;
   char *dbuser = NULL, *dbpassword = NULL;
+  bool is_user_changed;
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
@@ -6793,10 +6794,17 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 
 	      if (error == NO_ERROR)
 		{
+		  is_user_changed = !ws_is_same_object (user, Au_user);
+
 		  error = AU_SET_USER (user);
 
 		  /* necessary to invalidate vclass cache */
 		  sm_bump_local_schema_version ();
+
+		  if (is_user_changed)
+		    {
+		      tr_invalidate_user_cache ();
+		    }
 		}
 	    }
 	}

@@ -2215,25 +2215,17 @@ tr_update_user_cache (void)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_invalidate_user_cache() - This is called to invalidate the user trigger
  *                              cache and cause it to be recalculated the next
  *                              time a user event is encountered.
  *    return: none
- *
- * Note:
- *    It is intended to be called only by au_set_user() when the user
- *    object has been changed.  Since this can happen frequently under
- *    some conditions, don't do much complicated here.  Delay the actual
- *    cache calulation until it is needed.
  */
 void
 tr_invalidate_user_cache (void)
 {
   tr_User_triggers_valid = 0;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* SCHEMA CACHE */
 
@@ -5865,13 +5857,6 @@ tr_check_abort_triggers (void)
     {
       return;
     }
-
-  (void) run_user_triggers (TR_EVENT_ABORT, TR_TIME_AFTER);
-
-  /*
-   * can the abort triggers have deferred activities ? if so
-   * need to execute the deferred list now
-   */
 
   /* ignore any deferred activities */
   flush_deferred_activities ();
