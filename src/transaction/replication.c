@@ -607,7 +607,7 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   /* Statement replication has no row image for building writeset keys.
    * Fall back to commit order to preserve ordering across the statement. */
-  wset_fallback_to_commit_order (tdes, WSET_FALLBACK_STATEMENT_REPLICATION);
+  wset_switch_to_commit_order (tdes, WSET_FALLBACK_STATEMENT_REPLICATION);
 
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)

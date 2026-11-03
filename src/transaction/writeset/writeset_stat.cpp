@@ -20,7 +20,7 @@
  * writeset_stat.cpp - writeset statistics of the HA master
  *
  * Counted since the server started, in this process's memory only; SHOW WRITESET STATUS shows them.
- * writeset.cpp counts the events as they happen and supplies the size of its commit history for the row.
+ * Writeset modules count events as they happen; writeset_history supplies the current history usage.
  */
 
 #ident "$Id$"
@@ -32,7 +32,7 @@
 #include <atomic>
 
 #include "writeset_stat.hpp"
-#include "writeset.hpp"		/* wset_get_history_usage */
+#include "writeset_history.hpp"	/* wset_history_get_usage */
 
 #include "db_date.h"
 #include "porting.h"
@@ -211,7 +211,7 @@ wset_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values,
       return er_errid ();
     }
 
-  wset_get_history_usage (&history_size, &entry_count);
+  wset_history_get_usage (&history_size, &entry_count);
 
   db_localdatetime (&wset_Statistics_start_time, &start_time);
   db_make_datetime (&vals[idx++], &start_time);

@@ -1137,10 +1137,10 @@ TEST_CASE ("write slot keeps the newest commit when publishes arrive out of orde
   add_write_int (delayed_older, &cls, 7);
 
   /* logged in LSA order, published in the opposite order */
-  wset_note_commit_with_log_lock (delayed_older, &older_lsa);
-  wset_note_commit_with_log_lock (newer, &newer_lsa);
-  wset_publish_commit_to_history (newer, &newer_lsa);
-  wset_publish_commit_to_history (delayed_older, &older_lsa);
+  wset_order_record_commit (delayed_older, &older_lsa);
+  wset_order_record_commit (newer, &newer_lsa);
+  wset_order_publish_commit_keys (newer, &newer_lsa);
+  wset_order_publish_commit_keys (delayed_older, &older_lsa);
 
   log_tdes *successor = make_tdes (3);
   add_write_int (successor, &cls, 7);
@@ -1196,10 +1196,10 @@ TEST_CASE ("delayed overflow clear preserves a newer published commit as the his
   delayed_overflow->wset_overflow = true;
 
   /* logged in LSA order, published in the opposite order */
-  wset_note_commit_with_log_lock (delayed_overflow, &older_lsa);
-  wset_note_commit_with_log_lock (newer, &newer_lsa);
-  wset_publish_commit_to_history (newer, &newer_lsa);
-  wset_publish_commit_to_history (delayed_overflow, &older_lsa);
+  wset_order_record_commit (delayed_overflow, &older_lsa);
+  wset_order_record_commit (newer, &newer_lsa);
+  wset_order_publish_commit_keys (newer, &newer_lsa);
+  wset_order_publish_commit_keys (delayed_overflow, &older_lsa);
 
   REQUIRE (LSA_EQ (&wset_History.history_start, &newer_lsa));
   REQUIRE (wset_History.map.size () == 0);
@@ -1231,7 +1231,7 @@ TEST_CASE ("probe keeps the sequence lock until the history snapshot is acquired
   std::thread worker ([&] ()
   {
     probe_entered.store (true, std::memory_order_release);
-    wset_find_dependency_from_history (tx, &dependency);
+    wset_order_find_dependency (tx, &dependency);
   });
 
   while (!probe_entered.load (std::memory_order_acquire))
@@ -1498,7 +1498,7 @@ TEST_CASE ("concurrent siblings referencing one parent stay parallel", "[writese
       workers.emplace_back ([&child, &dep, i] ()
       {
 	LOG_LSA d;
-	wset_find_dependency_from_history (child[i], &d);
+	wset_order_find_dependency (child[i], &d);
 	dep[i] = d;
       });
     }
@@ -1626,14 +1626,14 @@ TEST_CASE ("sysop fallback label is the latest published coordinate", "[writeset
   LOG_LSA dep;
 
   /* nothing published yet: no coordinate to wait for */
-  wset_find_sysop_fallback_dependency (t2, &dep);
+  wset_order_find_sysop_dependency (t2, &dep);
   REQUIRE (LSA_ISNULL (&dep));
 
   add_write_int (t1, &cls, 1);
   commit_tx (t1, &l1);
 
   /* after a commit the label is that commit, whatever keys t2 touched */
-  wset_find_sysop_fallback_dependency (t2, &dep);
+  wset_order_find_sysop_dependency (t2, &dep);
   REQUIRE (LSA_EQ (&dep, &l1));
 
   delete t1;
@@ -1655,7 +1655,7 @@ TEST_CASE ("raising history_start makes later transactions wait for the sysop", 
   commit_tx (t1, &l1);
 
   /* a system operation at 12|0 is labeled for commit order and raises the floor */
-  wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
+  wset_order_advance_barrier (&sysop, "SYSOP_COMMIT_ORDER");
 
   /* an unrelated key still waits for the sysop: the floor, not the history, decides */
   add_write_int (t2, &cls, 7);
@@ -1668,7 +1668,7 @@ TEST_CASE ("raising history_start makes later transactions wait for the sysop", 
   REQUIRE (LSA_EQ (&dep, &sysop));
 
   /* the next fallback label is the sysop coordinate itself */
-  wset_find_sysop_fallback_dependency (t3, &dep);
+  wset_order_find_sysop_dependency (t3, &dep);
   REQUIRE (LSA_EQ (&dep, &sysop));
 
   delete t1;
@@ -1686,7 +1686,7 @@ TEST_CASE ("an overflowed transaction after a restart waits for the restart floo
   log_tdes *ovf = make_tdes (1);
   LOG_LSA dep;
 
-  wset_raise_history_start (&restart, "RESTART");
+  wset_order_advance_barrier (&restart, "RESTART");
 
   ovf->wset_overflow = true;
   dep = probe (ovf);
@@ -1709,7 +1709,7 @@ TEST_CASE ("an overflowed transaction after a sysop waits for the sysop", "[writ
 
   add_write_int (t1, &cls, 1);
   commit_tx (t1, &l1);
-  wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
+  wset_order_advance_barrier (&sysop, "SYSOP_COMMIT_ORDER");
 
   ovf->wset_overflow = true;
   dep = probe (ovf);

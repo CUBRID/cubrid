@@ -77,7 +77,7 @@ namespace
   int
   history_cap ()
   {
-    return (int) wset_History.history_size;
+    return (int) wset_config_get_key_limit ();
   }
 
   /* run `fn` on `nthreads` threads that all start together (spin on a gate), each
@@ -145,7 +145,7 @@ TEST_CASE ("A2: large single transaction collect/probe/flush cost", "[stress]")
 
   LOG_LSA dep;
   auto t0 = clock_type::now ();
-  wset_find_dependency_from_history (tx, &dep);
+  wset_order_find_dependency (tx, &dep);
   double probe_ms = ms_since (t0);
 
   LOG_LSA commit = lsa_of (10, 0);
@@ -234,7 +234,7 @@ TEST_CASE ("B2: throughput vs thread count", "[stress]")
       double wall = run_parallel (nthreads, iters, [&] (int t)
       {
 	LOG_LSA dep;
-	wset_find_dependency_from_history (tx[t], &dep);
+	wset_order_find_dependency (tx[t], &dep);
 	commit_tx (tx[t], &commit);
       });
 
@@ -277,7 +277,7 @@ TEST_CASE ("B3: cost scales with keys per commit", "[stress]")
       double wall = run_parallel (nthreads, iters, [&] (int t)
       {
 	LOG_LSA dep;
-	wset_find_dependency_from_history (tx[t], &dep);
+	wset_order_find_dependency (tx[t], &dep);
 	commit_tx (tx[t], &commit);
       });
 
@@ -315,7 +315,7 @@ TEST_CASE ("B3s: keys per commit, single thread (supplementary)", "[stress]")
       auto t0 = clock_type::now ();
       for (int i = 0; i < iters; i++)
 	{
-	  wset_find_dependency_from_history (tx, &dep);
+	  wset_order_find_dependency (tx, &dep);
 	  commit_tx (tx, &commit);
 	}
       double wall = ms_since (t0);
@@ -356,7 +356,7 @@ TEST_CASE ("B4: hot key vs disjoint keys", "[stress]")
     hot_ms = run_parallel (nthreads, iters, [&] (int t)
     {
       LOG_LSA dep;
-      wset_find_dependency_from_history (tx[t], &dep);
+      wset_order_find_dependency (tx[t], &dep);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -378,7 +378,7 @@ TEST_CASE ("B4: hot key vs disjoint keys", "[stress]")
     disjoint_ms = run_parallel (nthreads, iters, [&] (int t)
     {
       LOG_LSA dep;
-      wset_find_dependency_from_history (tx[t], &dep);
+      wset_order_find_dependency (tx[t], &dep);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -412,7 +412,7 @@ TEST_CASE ("B5: worst corner (many threads x large commits x large map)", "[stre
   double wall = run_parallel (nthreads, iters, [&] (int t)
   {
     LOG_LSA dep;
-    wset_find_dependency_from_history (tx[t], &dep);
+    wset_order_find_dependency (tx[t], &dep);
     commit_tx (tx[t], &commit);
   });
 
@@ -454,7 +454,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     baseline_ms = run_parallel (nthreads, iters, [&] (int t)
     {
       LOG_LSA dep;
-      wset_find_dependency_from_history (tx[t], &dep);
+      wset_order_find_dependency (tx[t], &dep);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -503,7 +503,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     defence_ms = run_parallel (nthreads, iters, [&] (int t)
     {
       LOG_LSA dep;
-      wset_find_dependency_from_history (tx[t], &dep);
+      wset_order_find_dependency (tx[t], &dep);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -564,7 +564,7 @@ TEST_CASE ("F1: large single FK transaction collect/probe/flush cost", "[stress]
 
   LOG_LSA dep;
   auto t0 = clock_type::now ();
-  wset_find_dependency_from_history (tx, &dep);
+  wset_order_find_dependency (tx, &dep);
   double probe_ms = ms_since (t0);
 
   LOG_LSA commit = lsa_of (10, 0);
@@ -608,7 +608,7 @@ TEST_CASE ("F4: FK rows per commit, single thread", "[stress]")
       auto t0 = clock_type::now ();
       for (int i = 0; i < iters; i++)
 	{
-	  wset_find_dependency_from_history (tx, &dep);
+	  wset_order_find_dependency (tx, &dep);
 	  commit_tx (tx, &commit);
 	}
       double wall = ms_since (t0);
@@ -650,7 +650,7 @@ TEST_CASE ("F5: few transactions x mass FK inserts (16 threads, rows sweep)", "[
       double wall = run_parallel (nthreads, iters, [&] (int t)
       {
 	LOG_LSA dep;
-	wset_find_dependency_from_history (tx[t], &dep);
+	wset_order_find_dependency (tx[t], &dep);
 	commit_tx (tx[t], &commit);
       });
 

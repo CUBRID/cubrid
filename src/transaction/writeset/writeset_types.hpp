@@ -53,7 +53,7 @@ struct wset_entry
   LOG_WSET_KIND kind;
   LOG_LSA lsa;			/* the transaction's last log record when the key was collected; a key collected
 				 * after a system operation started lies after its parent LSA, which is how
-				 * wset_abort_after_lsa finds the keys of an aborted operation */
+				 * wset_discard_keys_after_lsa finds the keys of an aborted operation */
 };
 
 #endif /* _WRITESET_TYPES_HPP_ */

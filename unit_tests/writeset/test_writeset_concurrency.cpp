@@ -145,7 +145,7 @@ namespace
 		  latch.lock ();
 		}
 	      LOG_LSA dep;
-	      wset_find_dependency_from_history (tx[t], &dep);
+	      wset_order_find_dependency (tx[t], &dep);
 	      commit_tx (tx[t], &commit);
 	      if (latched)
 		{

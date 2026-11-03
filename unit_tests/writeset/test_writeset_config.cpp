@@ -20,7 +20,7 @@
  * test_wset_config.cpp - the ha_writeset_history_size parameter really
  *                                drives the history's two capacity limits.
  *
- * initialize() caches the parameter into wset_History.history_size once,
+ * initialize() caches the parameter in writeset_config once,
  * and that single value bounds both the map (a flush clears the whole map when
  * publishing would push it past the limit) and each transaction (collecting past
  * the limit drops the writeset and degrades to commit order). Injecting a small
@@ -35,7 +35,7 @@ using namespace wstest;
 TEST_CASE ("config: initialize caches ha_writeset_history_size", "[writeset]")
 {
   ws_history_guard history (4242);
-  REQUIRE (wset_History.history_size == 4242);
+  REQUIRE (wset_config_get_key_limit () == 4242);
 }
 
 TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "[writeset]")

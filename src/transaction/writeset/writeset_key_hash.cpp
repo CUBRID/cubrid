@@ -343,7 +343,7 @@ wset_round_bit_length (DB_VALUE *v, DB_VALUE *scratch)
  * Note: The index compares these types with MR_CMP, which finds a NaN neither less nor greater than any value,
  *       so a NaN key is equal to every key of its index (inserting 1.0 next to a NaN fails on a unique index).
  *       No hash can stand for that, so a transaction with a NaN key falls back to commit order
- *       (wset_fallback_to_commit_order): it waits for everything before it and everything after it waits for it.
+ *       (wset_switch_to_commit_order): it waits for everything before it and everything after it waits for it.
  */
 static bool
 wset_value_is_nan (const DB_VALUE *v)
@@ -405,7 +405,7 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool
   midxkey = db_get_midxkey (key);
   if (midxkey == NULL || midxkey->domain == NULL)
     {
-      return wset_error (NO_ERROR, "composite key without a domain");
+      return wset_ensure_key_error (NO_ERROR, "composite key without a domain");
     }
 
   /* the first pass only measures the reduced form, the second fills the buffer sized by the first */
@@ -430,7 +430,7 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool
 	  error = pr_midxkey_get_element_nocopy (midxkey, i, &element, NULL, NULL);
 	  if (error != NO_ERROR)
 	    {
-	      error = wset_error (error, "failed to extract a composite key element");
+	      error = wset_ensure_key_error (error, "failed to extract a composite key element");
 	      break;
 	    }
 
@@ -449,7 +449,7 @@ wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool
 	      if (lc == NULL)
 		{
 		  pr_clear_value (&element);
-		  error = wset_error (NO_ERROR, "unknown collation of a composite key element");
+		  error = wset_ensure_key_error (NO_ERROR, "unknown collation of a composite key element");
 		  break;
 		}
 
@@ -574,7 +574,7 @@ wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is
   if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY && key->data.midxkey.domain == NULL)
     {
       assert (false);
-      return wset_error (NO_ERROR, "composite key without a domain");
+      return wset_ensure_key_error (NO_ERROR, "composite key without a domain");
     }
 
   /* a composite key is reduced element by element so that its character elements follow their collation */
@@ -615,12 +615,12 @@ wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is
 }
 
 /*
- * wset_error - preserve a lower-layer error or set a writeset key-build error
+ * wset_ensure_key_error - preserve a lower-layer error or set a writeset key-build error
  *
  * return: error code
  */
 int
-wset_error (int error, const char *detail)
+wset_ensure_key_error (int error, const char *detail)
 {
   if (error != NO_ERROR && error != ER_FAILED)
     {

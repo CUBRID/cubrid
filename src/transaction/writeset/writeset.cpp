@@ -17,7 +17,7 @@
  */
 
 /*
- * writeset.cpp - writeset collection and global commit history for parallel applylogdb
+ * writeset.cpp - transaction-local writeset collection
  */
 
 #ident "$Id$"
@@ -27,14 +27,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 #include <algorithm>
-#include <atomic>
 #include <new>
 
-#include "writeset_history.hpp"
+#include "writeset.hpp"
+#include "writeset_config.hpp"
 #include "writeset_key_hash.hpp"
 #include "writeset_stat.hpp"
+#include "writeset_trace.hpp"
 
 #include "error_manager.h"
 #include "log_impl.h"
@@ -43,7 +43,6 @@
 #include "object_representation.h"
 #include "language_support.h"
 #include "porting.h"
-#include "system_parameter.h"
 #include "db_value_printer.hpp"
 #include "string_buffer.hpp"
 
@@ -52,58 +51,22 @@
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
-/* Global WRITE/REF commit history indexed by writeset key hash. */
-LOG_WSET_HISTORY wset_History;
-
-/* Keys that committers holding the shared history lock are about to publish. The capacity check adds its own
- * keys here before comparing, so several committers that pass the check at the same moment see one another's
- * keys and cannot together push the map past history_size. Always brought back to zero by the publisher. */
-static std::atomic<INT64> wset_Publish_reserved { 0 };
-static int wset_Trace_level = 0;
-
-/* Tracks whether the history locks were initialized.
- * Initialization and finalization are expected to run on a single thread. */
-static bool wset_History_initialized = false;
-
-static const char *wset_kind_name (LOG_WSET_KIND kind);
 static const char *wset_fallback_reason_name (WSET_FALLBACK_REASON reason);
-static void wset_trace_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
-				      DB_VALUE *key, UINT64 hash, LOG_WSET_KIND kind);
+static void wset_trace_log_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
+    DB_VALUE *key, UINT64 hash, LOG_WSET_KIND kind);
 static int wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *domain);
 static int wset_cast_midxkey_element (DB_MIDXKEY *fk_midxkey, int index, TP_DOMAIN *parent_domain,
 				      DB_VALUE *parent_value, bool *has_reference);
 static int wset_make_parent_midxkey (DB_VALUE *fk_value, TP_DOMAIN *parent_pk_domain, DB_VALUE *parent_key,
 				     bool *has_reference);
-static int wset_push_hash (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind);
-static void wset_clear_history_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out);
-static bool wset_history_has_capacity (size_t publish_count);
-static void wset_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *wset_parent_out);
-static bool wset_publish_keys (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *commit_lsa);
-static void wset_clear_overflow_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
-static void wset_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *commit_lsa);
-
-#define WSET_TRACE(level, ...) \
-  do \
-    { \
-      if (wset_Trace_level >= (level)) \
-	{ \
-	  _er_log_debug (ARG_FILE_LINE, "[WSET] " __VA_ARGS__); \
-	} \
-    } \
-  while (0)
-
-static const char *
-wset_kind_name (LOG_WSET_KIND kind)
-{
-  return kind == LOG_WSET_KIND_WRITE ? "WRITE" : "REF";
-}
+static int wset_append_entry (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind);
 
 /*
  * wset_fallback_reason_name - the name of a commit-order fallback reason, printed only in the writeset trace
  *
  *   reason(in): fallback reason
  *
- * Note: Only the FALLBACK line of the writeset trace (wset_fallback_to_commit_order) uses it.
+ * Note: Only the FALLBACK line of the writeset trace (wset_switch_to_commit_order) uses it.
  */
 static const char *
 wset_fallback_reason_name (WSET_FALLBACK_REASON reason)
@@ -122,21 +85,21 @@ wset_fallback_reason_name (WSET_FALLBACK_REASON reason)
 }
 
 static void
-wset_trace_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
-			  DB_VALUE *key, UINT64 hash, LOG_WSET_KIND kind)
+wset_trace_log_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
+			      DB_VALUE *key, UINT64 hash, LOG_WSET_KIND kind)
 {
   char value_text[257];
   string_buffer value;
   const char *printed;
   size_t i;
 
-  if (wset_Trace_level < 2)
+  if (!wset_trace_is_enabled (2))
     {
       return;
     }
 
   value_text[0] = '\0';
-  if (wset_Trace_level >= 3)
+  if (wset_trace_is_enabled (3))
     {
       db_sprint_value (key, value);
       printed = value.get_buffer ();
@@ -156,100 +119,15 @@ wset_trace_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *inde
 
   WSET_TRACE (3,
 	      "COLLECT trid=%d kind=%s hash=%016llx class_oid=%d|%d|%d index_vfid=%d|%d%s%s\n",
-	      tdes->trid, wset_kind_name (kind), (unsigned long long) hash,
+	      tdes->trid, wset_trace_kind_name (kind), (unsigned long long) hash,
 	      class_oid->volid, class_oid->pageid, class_oid->slotid,
 	      index_vfid->volid, index_vfid->fileid,
-	      wset_Trace_level >= 3 ? " key=" : "", wset_Trace_level >= 3 ? value_text : "");
-}
-
-bool
-wset_trace_enabled (int level)
-{
-  return wset_Trace_level >= level;
-}
-
-void
-wset_trace_key_source (LOG_TDES *tdes, const char *operation, const char *image, LOG_WSET_KIND kind,
-		       const OID *table_oid, const OID *row_oid, const char *table_name, const char *constraint_name,
-		       const OID *key_class_oid, const VFID *key_index_vfid)
-{
-  if (wset_Trace_level < 3 || tdes == NULL)
-    {
-      return;
-    }
-
-  WSET_TRACE (3,
-	      "SOURCE trid=%d operation=%s image=%s kind=%s table=%s table_oid=%d|%d|%d row_oid=%d|%d|%d constraint=%s key_class_oid=%d|%d|%d key_index_vfid=%d|%d\n",
-	      tdes->trid, operation, image, wset_kind_name (kind),
-	      table_name != NULL ? table_name : "<unknown>", table_oid->volid, table_oid->pageid,
-	      table_oid->slotid, row_oid->volid, row_oid->pageid, row_oid->slotid,
-	      constraint_name != NULL ? constraint_name : "<unnamed>", key_class_oid->volid,
-	      key_class_oid->pageid, key_class_oid->slotid, key_index_vfid->volid, key_index_vfid->fileid);
+	      wset_trace_is_enabled (3) ? " key=" : "", wset_trace_is_enabled (3) ? value_text : "");
 }
 
 
 /*
- * wset_history_initialize - initialize the global writeset history
- *
- * Note: The global writeset history is initialized once during cub_server startup and finalized
- *       once at shutdown. Caches ha_writeset_history_size and does not access domains or DB_VALUEs.
- *
- * TODO: If the commit LSA sequence can be reinitialized while cub_server is running, clear the
- *       history before processing new transactions.
- */
-void
-wset_history_initialize (void)
-{
-  if (wset_History_initialized)
-    {
-      /* already initialized: do not re-create the locks */
-      return;
-    }
-
-  pthread_rwlock_init (&wset_History.history_lock, NULL);
-  pthread_mutex_init (&wset_History.seq_lock, NULL);
-
-  wset_History.map.clear ();
-  LSA_SET_NULL (&wset_History.history_start);
-  LSA_SET_NULL (&wset_History.prev_commit_lsa);
-  wset_History.history_size = (INT64) prm_get_integer_value (PRM_ID_HA_WRITESET_HISTORY_SIZE);
-  wset_Trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
-
-  wset_History_initialized = true;
-  wset_stat_start ();
-
-  WSET_TRACE (1, "INITIALIZE history_size=%lld trace_level=%d\n",
-	      (long long) wset_History.history_size, wset_Trace_level);
-}
-
-/*
- * wset_history_finalize - release the global commit history
- *
- * Note: Runs once at final shutdown when no transaction is probing or publishing, so the locks can
- *       be destroyed safely.
- */
-void
-wset_history_finalize (void)
-{
-  if (!wset_History_initialized)
-    {
-      /* init never ran (boot error path) or already finalized: nothing to destroy */
-      return;
-    }
-
-  wset_History.map.clear ();
-  LSA_SET_NULL (&wset_History.history_start);
-  LSA_SET_NULL (&wset_History.prev_commit_lsa);
-
-  pthread_mutex_destroy (&wset_History.seq_lock);
-  pthread_rwlock_destroy (&wset_History.history_lock);
-
-  wset_History_initialized = false;
-  wset_Trace_level = 0;
-}
-
-/*
- * wset_push_hash - append one collected key hash to the transaction's writeset
+ * wset_append_entry - append one collected key hash to the transaction's writeset
  *
  *   tdes(in/out): transaction descriptor
  *   hash(in): the key hash
@@ -263,16 +141,16 @@ wset_history_finalize (void)
  *       the same limit because they use the same per-transaction memory.
  */
 static int
-wset_push_hash (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind)
+wset_append_entry (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind)
 {
   LOG_WSET_ENTRY entry;
 
   assert (tdes != NULL);
 
-  if ((INT64) tdes->wset_hashes.size () >= wset_History.history_size)
+  if ((INT64) tdes->wset_hashes.size () >= wset_config_get_key_limit ())
     {
       wset_stat_count_key_limit_exceeded ();
-      wset_fallback_to_commit_order (tdes, WSET_FALLBACK_TRANSACTION_LIMIT);
+      wset_switch_to_commit_order (tdes, WSET_FALLBACK_TRANSACTION_LIMIT);
       return NO_ERROR;
     }
 
@@ -295,7 +173,7 @@ wset_push_hash (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind)
 
 /* Drop a partial writeset and use the commit-order fallback for the whole transaction. */
 void
-wset_fallback_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
+wset_switch_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
 {
   assert (tdes != NULL);
   if (tdes->wset_overflow)
@@ -305,7 +183,7 @@ wset_fallback_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
 
   WSET_TRACE (1, "FALLBACK trid=%d reason=%s collected=%zu limit=%lld\n",
 	      tdes->trid, wset_fallback_reason_name (reason), tdes->wset_hashes.size (),
-	      (long long) wset_History.history_size);
+	      (long long) wset_config_get_key_limit ());
 
   tdes->wset_overflow = true;
   tdes->wset_fallback_reason = (int) reason;
@@ -351,14 +229,14 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
 
   if (is_nan)
     {
-      wset_fallback_to_commit_order (tdes, WSET_FALLBACK_NAN_KEY);
+      wset_switch_to_commit_order (tdes, WSET_FALLBACK_NAN_KEY);
       return NO_ERROR;
     }
 
-  error = wset_push_hash (tdes, hash, LOG_WSET_KIND_WRITE);
+  error = wset_append_entry (tdes, hash, LOG_WSET_KIND_WRITE);
   if (error == NO_ERROR && !tdes->wset_overflow)
     {
-      wset_trace_collected_key (tdes, class_oid, index_vfid, key, hash, LOG_WSET_KIND_WRITE);
+      wset_trace_log_collected_key (tdes, class_oid, index_vfid, key, hash, LOG_WSET_KIND_WRITE);
     }
 
   return error;
@@ -414,7 +292,7 @@ wset_cast_midxkey_element (DB_MIDXKEY *fk_midxkey, int index, TP_DOMAIN *parent_
   if (error != NO_ERROR)
     {
       pr_clear_value (&fk_element);
-      return wset_error (error, "failed to extract a composite foreign-key element");
+      return wset_ensure_key_error (error, "failed to extract a composite foreign-key element");
     }
 
   if (DB_IS_NULL (&fk_element))
@@ -462,7 +340,7 @@ wset_make_parent_midxkey (DB_VALUE *fk_value, TP_DOMAIN *parent_pk_domain, DB_VA
   *has_reference = false;
   if (fk_midxkey == NULL || column_count <= 0 || fk_midxkey->ncolumns != column_count)
     {
-      return wset_error (NO_ERROR, "child FK and parent PK column counts do not match");
+      return wset_ensure_key_error (NO_ERROR, "child FK and parent PK column counts do not match");
     }
 
   parent_values = (DB_VALUE *) malloc ((size_t) column_count * sizeof (*parent_values));
@@ -500,7 +378,7 @@ wset_make_parent_midxkey (DB_VALUE *fk_value, TP_DOMAIN *parent_pk_domain, DB_VA
   error = pr_midxkey_add_elements (parent_key, parent_values, column_count, parent_pk_domain->setdomain);
   if (error != NO_ERROR)
     {
-      error = wset_error (error, "failed to build a parent-domain composite REF key");
+      error = wset_ensure_key_error (error, "failed to build a parent-domain composite REF key");
       pr_clear_value (parent_key);
       goto end;
     }
@@ -569,7 +447,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
     {
       if (DB_VALUE_DOMAIN_TYPE (fk_value) != DB_TYPE_MIDXKEY)
 	{
-	  return wset_error (NO_ERROR, "composite parent PK requires a composite child FK key");
+	  return wset_ensure_key_error (NO_ERROR, "composite parent PK requires a composite child FK key");
 	}
 
       error = wset_make_parent_midxkey (fk_value, parent_pk_domain, &casted, &has_reference);
@@ -591,7 +469,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
       if (DB_IS_NULL (&casted))
 	{
 	  pr_clear_value (&casted);
-	  return wset_error (NO_ERROR, "non-NULL foreign key became NULL after parent-domain cast");
+	  return wset_ensure_key_error (NO_ERROR, "non-NULL foreign key became NULL after parent-domain cast");
 	}
     }
 
@@ -599,430 +477,20 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
   error = wset_hash_key (index_vfid, &casted, &hash, &is_nan);
   if (error == NO_ERROR && is_nan)
     {
-      wset_fallback_to_commit_order (tdes, WSET_FALLBACK_NAN_KEY);
+      wset_switch_to_commit_order (tdes, WSET_FALLBACK_NAN_KEY);
     }
   else if (error == NO_ERROR)
     {
-      error = wset_push_hash (tdes, hash, LOG_WSET_KIND_REF);
+      error = wset_append_entry (tdes, hash, LOG_WSET_KIND_REF);
       if (error == NO_ERROR && !tdes->wset_overflow)
 	{
-	  wset_trace_collected_key (tdes, ref_class_oid, index_vfid, &casted, hash, LOG_WSET_KIND_REF);
+	  wset_trace_log_collected_key (tdes, ref_class_oid, index_vfid, &casted, hash, LOG_WSET_KIND_REF);
 	}
     }
 
   pr_clear_value (&casted);
 
   return error;
-}
-
-/*
- * wset_find_dependency_from_history - find the current transaction's dependency in history
- *
- *   tdes(in/out): transaction writeset and dependency source flag
- *   wset_parent_out(out): selected dependency LSA
- *
- * Note: A REF entry probes write_seq because a reference must wait for the last transaction that
- *       changed the referenced key. A WRITE entry probes the later of write_seq and ref_seq
- *       because it must wait for both the last change to the key and any later transaction that
- *       referenced the key's previous state.
- *
- *       Candidate selection starts at history_start, and the latest candidate across all entries
- *       becomes the writeset dependency.
- *
- *       An overflowed writeset uses prev_commit_lsa, raised to history_start like the writeset
- *       dependency. If the selected candidate came from ref_seq,
- *       it is returned unchanged. Otherwise, the earlier of the writeset dependency and prev_commit_lsa
- *       is returned.
- */
-static void
-wset_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *wset_parent_out)
-{
-  LOG_LSA wset_parent;
-  LOG_LSA prev_commit_snapshot;
-  LOG_LSA history_start_snapshot;
-  bool dependency_from_ref_seq = false;
-  bool key_conflict = false;
-  size_t end = tdes->wset_hashes.size ();
-  size_t index;
-
-  pthread_mutex_lock (&wset_History.seq_lock);
-  LSA_COPY (&prev_commit_snapshot, &wset_History.prev_commit_lsa);
-  pthread_rwlock_rdlock (&wset_History.history_lock);
-  LSA_COPY (&history_start_snapshot, &wset_History.history_start);
-  pthread_mutex_unlock (&wset_History.seq_lock);
-
-  LSA_COPY (&wset_parent, &history_start_snapshot);
-
-  for (index = begin; index < end; index++)
-    {
-      const LOG_WSET_ENTRY &e = tdes->wset_hashes[index];
-      LOG_WSET_SLOTS slots;
-      LOG_LSA candidate;
-      bool candidate_is_ref;
-
-      if (!wset_History.map.probe (e.hash, e.kind, slots, candidate, candidate_is_ref))
-	{
-	  WSET_TRACE (3, "PROBE trid=%d kind=%s hash=%016llx result=MISS\n",
-		      tdes->trid, wset_kind_name (e.kind), (unsigned long long) e.hash);
-	  continue;
-	}
-
-      WSET_TRACE (3,
-		  "PROBE trid=%d kind=%s hash=%016llx write_seq=%lld|%d ref_seq=%lld|%d candidate=%lld|%d source=%s\n",
-		  tdes->trid, wset_kind_name (e.kind), (unsigned long long) e.hash,
-		  (long long) slots.write_seq.pageid, (int) slots.write_seq.offset,
-		  (long long) slots.ref_seq.pageid, (int) slots.ref_seq.offset,
-		  (long long) candidate.pageid, (int) candidate.offset,
-		  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
-
-      if (LSA_ISNULL (&candidate) || !LSA_GT (&candidate, &wset_parent))
-	{
-	  continue;
-	}
-
-      LSA_COPY (&wset_parent, &candidate);
-      dependency_from_ref_seq = candidate_is_ref;
-      key_conflict = true;
-    }
-
-  pthread_rwlock_unlock (&wset_History.history_lock);
-
-  if (key_conflict)
-    {
-      wset_stat_count_conflict (dependency_from_ref_seq);
-    }
-
-  if (dependency_from_ref_seq)
-    {
-      /* Independent REFs are represented by their maximum commit LSA; preserve it. */
-      LSA_COPY (wset_parent_out, &wset_parent);
-      WSET_TRACE (1,
-		  "DEPENDENCY trid=%d source=REF_SLOT history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-		  tdes->trid, (long long) history_start_snapshot.pageid,
-		  (int) history_start_snapshot.offset, (long long) prev_commit_snapshot.pageid,
-		  (int) prev_commit_snapshot.offset, (long long) wset_parent_out->pageid,
-		  (int) wset_parent_out->offset);
-      return;
-    }
-
-  /* Both candidates are safe bounds; choose the smaller one to preserve parallelism. */
-  if (LSA_ISNULL (&prev_commit_snapshot) || LSA_LT (&wset_parent, &prev_commit_snapshot))
-    {
-      LSA_COPY (wset_parent_out, &wset_parent);
-    }
-  else
-    {
-      LSA_COPY (wset_parent_out, &prev_commit_snapshot);
-    }
-
-  if (!LSA_ISNULL (&history_start_snapshot)
-      && (LSA_ISNULL (wset_parent_out) || LSA_LT (wset_parent_out, &history_start_snapshot)))
-    {
-      LSA_COPY (wset_parent_out, &history_start_snapshot);
-    }
-
-  WSET_TRACE (1,
-	      "DEPENDENCY trid=%d source=WRITE_BOUND history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-	      tdes->trid, (long long) history_start_snapshot.pageid,
-	      (int) history_start_snapshot.offset, (long long) prev_commit_snapshot.pageid,
-	      (int) prev_commit_snapshot.offset, (long long) wset_parent_out->pageid,
-	      (int) wset_parent_out->offset);
-}
-
-void
-wset_find_dependency_from_history (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
-{
-  assert (tdes != NULL);
-  assert (wset_parent_out != NULL);
-
-  if (tdes->wset_overflow)
-    {
-      pthread_mutex_lock (&wset_History.seq_lock);
-      LSA_COPY (wset_parent_out, &wset_History.prev_commit_lsa);
-      /* The floor makes every later transaction wait on the slave for what was written before it: everything
-       * before a restart, or a serial operation applied in commit order. prev_commit_lsa does not cover it
-       * after a restart, where it is NULL, or after a serial operation, which can lie above it. Without the
-       * floor a statement replicated after a restart, a DDL for instance, carries no dependency and can run
-       * on the slave beside the transactions written before the restart. Every writer of history_start
-       * holds seq_lock, so it is read consistently with prev_commit_lsa here. */
-      if (!LSA_ISNULL (&wset_History.history_start)
-	  && (LSA_ISNULL (wset_parent_out) || LSA_LT (wset_parent_out, &wset_History.history_start)))
-	{
-	  LSA_COPY (wset_parent_out, &wset_History.history_start);
-	}
-      pthread_mutex_unlock (&wset_History.seq_lock);
-      WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
-		  tdes->trid, (long long) wset_parent_out->pageid, (int) wset_parent_out->offset);
-      return;
-    }
-
-  wset_find_dependency_in_range (tdes, 0, wset_parent_out);
-}
-
-/*
- * wset_publish_keys - publish this commit's collected keys into the history map
- *
- * return: true, or false when the history map ran out of memory; some keys may then be published
- *
- * Note: The caller holds the history lock (shared for the normal path, exclusive when it also
- *       cleared the map). WRITE keys stamp the write slot; a same-key successor is serialized
- *       behind this transaction by the row X-lock, so the assignment is already monotonic. REF keys
- *       stamp the read slot, kept as the newest referencer, so a later writer of the key sees and
- *       waits behind its newest referencer. A brand-new map entry starts with both slots null.
- */
-static bool
-wset_publish_keys (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *commit_lsa)
-{
-  for (size_t index = begin; index < end; index++)
-    {
-      const LOG_WSET_ENTRY &e = tdes->wset_hashes[index];
-      try
-	{
-	  wset_History.map.publish (e.hash, e.kind, *commit_lsa);
-	}
-      catch (const std::bad_alloc &)
-	{
-	  /* the history map allocates a node for a new key; the commit is already logged, so the
-	   * caller handles this the same way as a full history */
-	  return false;
-	}
-      WSET_TRACE (3, "PUBLISH trid=%d kind=%s hash=%016llx commit_lsa=%lld|%d\n",
-		  tdes->trid, wset_kind_name (e.kind), (unsigned long long) e.hash,
-		  (long long) commit_lsa->pageid, (int) commit_lsa->offset);
-      assert (e.kind == LOG_WSET_KIND_WRITE || e.kind == LOG_WSET_KIND_REF);
-      wset_stat_count_publish (e.kind == LOG_WSET_KIND_REF);
-    }
-
-  return true;
-}
-
-/*
- * wset_note_commit_with_log_lock - record a commit in the commit-order state as it is logged
- *
- *   tdes(in): the committing transaction
- *   commit_lsa(in): its commit LSA, just appended
- *
- * Note: Called inside prior_lsa_mutex right after the commit record, so the state follows the log order: a label
- *       decided later in that lock sees this commit as the latest one, and a commit-order transaction (statement
- *       replication or too many keys) raises the history floor to itself before any later commit decides its
- *       label. Only the floor moves here; wset_publish_commit_to_history clears the map afterwards, outside the
- *       log lock, and entries left in it meanwhile lie below the floor and cannot lower a label. Every reader of
- *       prev_commit_lsa and history_start holds seq_lock, so seq_lock alone is enough here.
- */
-void
-wset_note_commit_with_log_lock (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
-{
-  assert (tdes != NULL);
-  assert (commit_lsa != NULL && !LSA_ISNULL (commit_lsa));
-
-  pthread_mutex_lock (&wset_History.seq_lock);
-  if (LSA_ISNULL (&wset_History.prev_commit_lsa) || LSA_GT (commit_lsa, &wset_History.prev_commit_lsa))
-    {
-      LSA_COPY (&wset_History.prev_commit_lsa, commit_lsa);
-    }
-  if (tdes->wset_overflow
-      && (LSA_ISNULL (&wset_History.history_start) || LSA_GT (commit_lsa, &wset_History.history_start)))
-    {
-      LSA_COPY (&wset_History.history_start, commit_lsa);
-    }
-  pthread_mutex_unlock (&wset_History.seq_lock);
-}
-
-static void
-wset_clear_history_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out)
-{
-  assert (clear_floor != NULL);
-  assert (!LSA_ISNULL (clear_floor));
-
-  if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (clear_floor, &wset_History.history_start))
-    {
-      LSA_COPY (&wset_History.history_start, clear_floor);
-    }
-
-  wset_History.map.clear ();
-  wset_stat_count_history_clear ();
-  LSA_COPY (history_start_out, &wset_History.history_start);
-}
-
-/*
- * wset_history_has_capacity - check that publish_count more keys fit in the history
- *
- *   publish_count(in): keys the caller is about to publish
- *
- * Note: For the exclusive-lock path. The exclusive lock keeps every shared-lock publisher out, so no
- *       reservation is in flight and the map size alone is the truth.
- */
-static bool
-wset_history_has_capacity (size_t publish_count)
-{
-  return (INT64) (wset_History.map.size () + publish_count) <= wset_History.history_size;
-}
-
-/*
- * wset_history_reserve_capacity - claim room for publish_count keys under the shared lock
- *
- *   publish_count(in): keys the caller is about to publish
- *
- * return: true when the keys fit counting every other reservation in flight; the claim is kept and the
- *         caller releases it with wset_history_release_capacity after publishing. false when they do not
- *         fit; nothing is kept.
- */
-static bool
-wset_history_reserve_capacity (size_t publish_count)
-{
-  INT64 reserved = wset_Publish_reserved.fetch_add ((INT64) publish_count,
-		   std::memory_order_acq_rel) + (INT64) publish_count;
-
-  if ((INT64) wset_History.map.size () + reserved <= wset_History.history_size)
-    {
-      return true;
-    }
-
-  wset_Publish_reserved.fetch_sub ((INT64) publish_count, std::memory_order_acq_rel);
-
-  return false;
-}
-
-static void
-wset_history_release_capacity (size_t publish_count)
-{
-  wset_Publish_reserved.fetch_sub ((INT64) publish_count, std::memory_order_acq_rel);
-}
-
-static void
-wset_clear_overflow_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
-{
-  LOG_LSA history_start;
-  size_t old_size;
-
-  pthread_mutex_lock (&wset_History.seq_lock);
-  pthread_rwlock_wrlock (&wset_History.history_lock);
-  old_size = wset_History.map.size ();
-  wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
-  pthread_rwlock_unlock (&wset_History.history_lock);
-  pthread_mutex_unlock (&wset_History.seq_lock);
-
-  WSET_TRACE (1,
-	      "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 commit_lsa=%lld|%d history_start=%lld|%d\n",
-	      tdes->trid, old_size, (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-	      (long long) history_start.pageid, (int) history_start.offset);
-}
-
-static void
-wset_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *commit_lsa)
-{
-  const size_t publish_count = end - begin;
-  LOG_LSA history_start;
-  bool history_cleared = false;
-  bool published;
-  const char *clear_reason = "HISTORY_CAPACITY";
-  size_t old_size = 0;
-  size_t new_size = 0;
-
-  pthread_rwlock_rdlock (&wset_History.history_lock);
-  if (wset_history_reserve_capacity (publish_count))
-    {
-      published = wset_publish_keys (tdes, begin, end, commit_lsa);
-      wset_history_release_capacity (publish_count);
-      pthread_rwlock_unlock (&wset_History.history_lock);
-      if (published)
-	{
-	  return;
-	}
-    }
-  else
-    {
-      pthread_rwlock_unlock (&wset_History.history_lock);
-      published = true;
-    }
-
-  pthread_mutex_lock (&wset_History.seq_lock);
-  pthread_rwlock_wrlock (&wset_History.history_lock);
-
-  if (!published)
-    {
-      /* Out of memory while publishing under the shared lock: as with a full history, clear it so every
-       * later transaction waits for this commit instead of for the keys that may be missing. */
-      old_size = wset_History.map.size ();
-      wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
-      history_cleared = true;
-      clear_reason = "OUT_OF_MEMORY";
-    }
-  else
-    {
-      /* The map may change while replacing the shared lock with the exclusive lock. */
-      if (!wset_history_has_capacity (publish_count))
-	{
-	  old_size = wset_History.map.size ();
-	  wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
-	  history_cleared = true;
-	  wset_stat_count_clear_capacity ();
-	}
-
-      if (!wset_publish_keys (tdes, begin, end, commit_lsa))
-	{
-	  old_size = wset_History.map.size ();
-	  wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
-	  history_cleared = true;
-	  clear_reason = "OUT_OF_MEMORY";
-	}
-    }
-
-  new_size = wset_History.map.size ();
-  pthread_rwlock_unlock (&wset_History.history_lock);
-  pthread_mutex_unlock (&wset_History.seq_lock);
-
-  if (history_cleared)
-    {
-      WSET_TRACE (1,
-		  "CLEAR trid=%d reason=%s old_size=%zu publish=%zu new_size=%zu commit_lsa=%lld|%d history_start=%lld|%d\n",
-		  tdes->trid, clear_reason, old_size, publish_count, new_size,
-		  (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-		  (long long) history_start.pageid, (int) history_start.offset);
-    }
-}
-
-/*
- * wset_publish_commit_to_history - publish a committed transaction to history
- *
- *   tdes(in): committed transaction
- *   commit_lsa(in): the assigned commit LSA of this transaction
- *
- * Note: Called after COMMIT LSA assignment and before row locks are released. Aborted transactions
- *       must not call this function.
- */
-void
-wset_publish_commit_to_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
-{
-  assert (tdes != NULL);
-  assert (commit_lsa != NULL);
-
-  if (LSA_ISNULL (commit_lsa))
-    {
-      assert (false);
-      return;
-    }
-
-  WSET_TRACE (1,
-	      "COMMIT trid=%d commit_lsa=%lld|%d dependency=%lld|%d entries=%zu fallback=%d\n",
-	      tdes->trid, (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
-	      tdes->wset_hashes.size (), tdes->wset_overflow ? 1 : 0);
-
-  wset_stat_count_commit (tdes->wset_overflow, tdes->wset_fallback_reason == WSET_FALLBACK_TRANSACTION_LIMIT);
-
-  if (tdes->wset_overflow)
-    {
-      wset_clear_overflow_history (tdes, commit_lsa);
-      return;
-    }
-
-  if (tdes->wset_hashes.empty ())
-    {
-      return;
-    }
-
-  wset_publish_with_capacity (tdes, 0, tdes->wset_hashes.size (), commit_lsa);
 }
 
 /*
@@ -1049,7 +517,7 @@ wset_discard_sysop_keys (LOG_TDES *tdes, size_t sysop_key_begin)
 }
 
 /*
- * wset_abort_after_lsa - drop the keys collected by a system operation that is being aborted
+ * wset_discard_keys_after_lsa - drop keys collected after a rollback boundary
  *
  *   tdes(in/out): transaction holding the collected keys
  *   start_lsa(in): LSA at which the aborted system operation started
@@ -1061,7 +529,7 @@ wset_discard_sysop_keys (LOG_TDES *tdes, size_t sysop_key_begin)
  *       makes later transactions wait longer. An overflow raised inside the operation stays raised.
  */
 void
-wset_abort_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa)
+wset_discard_keys_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa)
 {
   assert (tdes != NULL);
   assert (start_lsa != NULL);
@@ -1071,92 +539,6 @@ wset_abort_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa)
   {
     return LSA_GT (&e.lsa, start_lsa);
   }), tdes->wset_hashes.end ());
-}
-
-/*
- * wset_find_sysop_fallback_dependency - commit-order label for a system operation that replicated rows
- *
- *   tdes(in/out): transaction ending the system operation; the dependency source flag is set
- *   wset_parent_out(out): the label, the latest coordinate published so far (commit or earlier sysop)
- *
- * Note: The operation's keys are not published, so a later writer of the same row cannot find it in the
- *       history. Order is kept by labels alone, the same way a statement-replicated commit is handled:
- *       the operation waits for everything published before it, and wset_raise_history_start then makes
- *       every later transaction wait for the operation.
- */
-void
-wset_find_sysop_fallback_dependency (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
-{
-  assert (tdes != NULL);
-  assert (wset_parent_out != NULL);
-
-  /* both values are guarded by seq_lock; the map is not read. Called inside prior_lsa_mutex. */
-  pthread_mutex_lock (&wset_History.seq_lock);
-  LSA_COPY (wset_parent_out, &wset_History.prev_commit_lsa);
-  if (!LSA_ISNULL (&wset_History.history_start)
-      && (LSA_ISNULL (wset_parent_out) || LSA_LT (wset_parent_out, &wset_History.history_start)))
-    {
-      LSA_COPY (wset_parent_out, &wset_History.history_start);
-    }
-  pthread_mutex_unlock (&wset_History.seq_lock);
-
-  WSET_TRACE (1, "DEPENDENCY trid=%d mode=SYSOP_COMMIT_ORDER dependency=%lld|%d\n", tdes->trid,
-	      (long long) wset_parent_out->pageid, (int) wset_parent_out->offset);
-}
-
-/*
- * wset_raise_history_start - make every later transaction depend on at least this coordinate
- *
- *   lsa(in): coordinate of a system operation applied in commit order on the slave, or the end of the
- *            recovered log at server restart
- *   reason(in): short tag for the trace line, so the log tells the two apart
- *
- * Note: Only the floor moves; the map is kept. Entries at or below the new floor can no longer lower a
- *       label, so keeping them costs nothing but avoids rebuilding the map on every operation.
- */
-void
-wset_raise_history_start (const LOG_LSA *lsa, const char *reason)
-{
-  assert (lsa != NULL);
-  if (LSA_ISNULL (lsa))
-    {
-      assert (false);
-      return;
-    }
-
-  /* every reader of history_start holds seq_lock; the map is not touched, so the history lock is not taken. The
-   * SYSOP_END path calls this inside prior_lsa_mutex, where waiting for the history lock would stall all logging. */
-  pthread_mutex_lock (&wset_History.seq_lock);
-  if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (lsa, &wset_History.history_start))
-    {
-      LSA_COPY (&wset_History.history_start, lsa);
-    }
-  pthread_mutex_unlock (&wset_History.seq_lock);
-
-  WSET_TRACE (1, "HISTORY_START raise reason=%s history_start=%lld|%d\n", reason, (long long) lsa->pageid,
-	      (int) lsa->offset);
-}
-
-/*
- * wset_get_history_usage - how large the commit history is and how many keys it holds, for SHOW WRITESET STATUS
- *   history_size(out): the key limit of the history (ha_writeset_history_size)
- *   entry_count(out): keys in the history now; 0 before the history is set up
- *
- * Note: The key count is read under the shared history lock, so a whole-map clear, which takes the exclusive
- *       lock, does not run at the same time.
- */
-void
-wset_get_history_usage (INT64 *history_size, INT64 *entry_count)
-{
-  *history_size = wset_History.history_size;
-  *entry_count = 0;
-
-  if (wset_History_initialized)
-    {
-      pthread_rwlock_rdlock (&wset_History.history_lock);
-      *entry_count = (INT64) wset_History.map.size ();
-      pthread_rwlock_unlock (&wset_History.history_lock);
-    }
 }
 
 #endif /* SERVER_MODE || SA_MODE */

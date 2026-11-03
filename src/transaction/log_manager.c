@@ -69,6 +69,8 @@
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "writeset.hpp"
+#include "writeset_order.hpp"
+#include "writeset_trace.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
@@ -1513,7 +1515,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   {
     const LOG_LSA restart_lsa = log_Gl.hdr.append_lsa;
 
-    wset_raise_history_start (&restart_lsa, "RESTART");
+    wset_order_advance_barrier (&restart_lsa, "RESTART");
   }
 #endif /* SERVER_MODE */
 
@@ -4093,8 +4095,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
 
   /* a labeled (serial) fragment is traced at level 1; every other system operation at level 2 */
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2
-      || (sysop_commit_order && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1))
+  if (wset_trace_is_enabled (2) || (sysop_commit_order && wset_trace_is_enabled (1)))
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
@@ -4272,7 +4273,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
 	  && log_does_allow_replication () == true)
 	{
 	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
-	  wset_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  wset_discard_keys_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */
@@ -4906,10 +4907,10 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 {
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-  wset_find_sysop_fallback_dependency (tdes, &tdes->wset_dependency_seq);
+  wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_seq);
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_sysop_end_internal (thread_p, tdes, sysop_end, data_size, data, true, sysop_end_lsa_out);
-  wset_raise_history_start (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
+  wset_order_advance_barrier (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 }
@@ -5044,10 +5045,10 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
    * logged. Decided before the lock, a label could miss a commit logged in between, and a later commit could
    * decide its label before a commit-order transaction logged ahead of it raised the history floor: a statement
    * would then not be a barrier on the slave. */
-  wset_find_dependency_from_history (tdes, &tdes->wset_dependency_seq);
+  wset_order_find_dependency (tdes, &tdes->wset_dependency_seq);
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
-  wset_note_commit_with_log_lock (tdes, commit_lsa);
+  wset_order_record_commit (tdes, commit_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 }
@@ -5636,7 +5637,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
 	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
 			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
-	      wset_publish_commit_to_history (tdes, &commit_lsa);
+	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
 	    {
@@ -6409,7 +6410,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
 	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
 			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
-	      wset_publish_commit_to_history (tdes, &commit_lsa);
+	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
 	    {

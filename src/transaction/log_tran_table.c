@@ -48,7 +48,7 @@
 #include "dbtran_def.h"
 #include "log_impl.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "writeset.hpp"
+#include "writeset_history.hpp"
 #endif /* SERVER_MODE || SA_MODE */
 #include "log_lsa.hpp"
 #include "log_manager.h"

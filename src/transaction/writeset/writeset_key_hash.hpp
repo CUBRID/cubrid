@@ -29,6 +29,6 @@
 #include "dbtype.h"		/* DB_VALUE */
 
 extern int wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is_nan_out);
-extern int wset_error (int error, const char *detail);
+extern int wset_ensure_key_error (int error, const char *detail);
 
 #endif /* _WRITESET_KEY_HASH_HPP_ */

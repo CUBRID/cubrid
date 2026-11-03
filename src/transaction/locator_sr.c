@@ -48,6 +48,7 @@
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "writeset.hpp"
+#include "writeset_trace.hpp"
 #include "lock_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -7900,12 +7901,12 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p, RECDES * recdes
 }
 
 /*
- * locator_wset_error () - preserve a lower-layer error or set a writeset key-build error
+ * locator_wset_ensure_key_error () - preserve a lower-layer error or set a writeset key-build error
  *
  * return: error code
  */
 static int
-locator_wset_error (const char *detail)
+locator_wset_ensure_key_error (const char *detail)
 {
   int error_code = er_errid ();
 
@@ -7927,7 +7928,7 @@ locator_wset_trace_key_source (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const c
 {
   char *table_name = NULL;
 
-  if (!wset_trace_enabled (3) || tdes->wset_overflow || tdes->suppress_replication != 0)
+  if (!wset_trace_is_enabled (3) || tdes->wset_overflow || tdes->suppress_replication != 0)
     {
       return;
     }
@@ -7972,7 +7973,7 @@ locator_wset_resolve_ref_partition (THREAD_ENTRY * thread_p, DB_VALUE * key, OID
   classrepr = heap_classrepr_get (thread_p, ref_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
   if (classrepr == NULL)
     {
-      return locator_wset_error ("failed to read referenced parent class");
+      return locator_wset_ensure_key_error ("failed to read referenced parent class");
     }
 
   if (classrepr->has_partition_info > 0)
@@ -8038,7 +8039,7 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
   parent_pk_domain = btree_read_key_type (thread_p, &index->fk->ref_class_pk_btid);
   if (parent_pk_domain == NULL)
     {
-      return locator_wset_error ("failed to read referenced parent key domain");
+      return locator_wset_ensure_key_error ("failed to read referenced parent key domain");
     }
 
   db_make_null (&dbvalue);
@@ -8050,7 +8051,7 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
   if (fk_key == NULL || fk_key_domain == NULL)
     {
       pr_clear_value (&dbvalue);
-      return locator_wset_error ("failed to extract foreign key value");
+      return locator_wset_ensure_key_error ("failed to extract foreign key value");
     }
 
   /* a composite key comes back without a domain; reading its elements needs one */
@@ -8309,7 +8310,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		    {
 		      if (key_domain == NULL)
 			{
-			  error_code = locator_wset_error ("failed to read composite unique key domain");
+			  error_code = locator_wset_ensure_key_error ("failed to read composite unique key domain");
 			  goto error;
 			}
 		      key_dbvalue->data.midxkey.domain = key_domain;

@@ -92,7 +92,7 @@ TEST_CASE ("hash unit cost benchmarks", "[benchmark]")
   LOG_LSA dep;
   BENCHMARK ("probe x1000 keys vs 100k map (read mean/1000 for per-key ns)")
   {
-    wset_find_dependency_from_history (worker, &dep);
+    wset_order_find_dependency (worker, &dep);
     return dep.pageid;
   };
 
@@ -147,7 +147,7 @@ TEST_CASE ("A1: probe per-key cost is flat across map size", "[benchmark]")
       LOG_LSA dep;
       BENCHMARK ("probe x1000 vs map=" + std::to_string (msize) + " (read mean/1000 for per-key ns)")
       {
-	wset_find_dependency_from_history (worker, &dep);
+	wset_order_find_dependency (worker, &dep);
 	return dep.pageid;
       };
 
@@ -211,7 +211,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
   LOG_LSA dep;
   BENCHMARK ("REF probe x1000 keys vs 100k map (read mean/1000 for per-key ns)")
   {
-    wset_find_dependency_from_history (ref_tx, &dep);
+    wset_order_find_dependency (ref_tx, &dep);
     return dep.pageid;
   };
 
@@ -237,7 +237,7 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
 
   BENCHMARK ("FK-row probe x1000 rows (2000 keys; read mean/1000 for per-row ns)")
   {
-    wset_find_dependency_from_history (fk_tx, &dep);
+    wset_order_find_dependency (fk_tx, &dep);
     return dep.pageid;
   };
 

@@ -36,7 +36,10 @@
 #include "dbtype.h"
 #include "log_impl.h"
 #include "object_primitive.h"
-#include "writeset_history.hpp"
+#include "writeset.hpp"
+#include "writeset_config.hpp"
+#include "writeset_history_internal.hpp"
+#include "writeset_order.hpp"
 #include "object_domain.h"
 #include "oid.h"
 #include "system_parameter.h"
@@ -53,7 +56,7 @@ namespace wstest
    * the ten-million-key production default; the previous parameter value is put
    * back at teardown so other cases are unaffected. Injection has to happen
    * before initialize because initialize caches the parameter into
-   * wset_History.history_size once and never re-reads it. */
+   * writeset_config once and never re-reads it. */
   struct ws_history_guard
   {
     ws_history_guard ()
@@ -162,7 +165,7 @@ namespace wstest
   {
     LOG_LSA dep;
 
-    wset_find_dependency_from_history (tdes, &dep);
+    wset_order_find_dependency (tdes, &dep);
     return dep;
   }
 
@@ -171,8 +174,8 @@ namespace wstest
   inline void
   commit_tx (log_tdes *tdes, const LOG_LSA *commit_lsa)
   {
-    wset_note_commit_with_log_lock (tdes, commit_lsa);
-    wset_publish_commit_to_history (tdes, commit_lsa);
+    wset_order_record_commit (tdes, commit_lsa);
+    wset_order_publish_commit_keys (tdes, commit_lsa);
   }
 }
 
