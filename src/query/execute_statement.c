@@ -105,6 +105,7 @@
 #define DB_SERIAL_MIN "-99999999999999999999999999999999999999"
 
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
+#define UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER "cREATEbLOCKtRIGGER"
 
 #define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
 /*
@@ -7464,6 +7465,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   char block_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *trigger;
   SM_CLASS *smclass = NULL;
+  bool has_savepoint = false;
   int error = NO_ERROR;
   CHECK_MODIFICATION_ERROR ();
 
@@ -7541,12 +7543,20 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (action->info.trigger_action.plcsql_block != NULL);
       block_source = (const char *) action->info.trigger_action.plcsql_block->info.value.data_value.str->bytes;
 
+      /* the procedure and the trigger are made together or not at all */
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      has_savepoint = true;
+
       error =
 	create_trigger_block_procedure (parser, name, block_source, block_sp_name, sizeof (block_sp_name),
 					&action_source);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto end;
 	}
       action_type = TR_ACT_EXPRESSION;
     }
@@ -7562,16 +7572,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (trigger == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-
-      if (block_source != NULL)
-	{
-	  /* keep the error of the trigger, not of this cleanup */
-	  er_stack_push ();
-	  (void) jsp_drop_system_generated_procedure (block_sp_name);
-	  er_stack_pop ();
-	}
-
-      return error;
+      goto end;
     }
 
   /* Save the new trigger object in the parse tree. Actually, we probably should also allow INTO variable sub-clause to
@@ -7590,6 +7591,12 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_object (value, trigger);
   statement->etc = (void *) value;
 #endif
+
+end:
+  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER);
+    }
 
   return error;
 }
