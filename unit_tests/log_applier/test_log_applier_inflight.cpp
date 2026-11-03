@@ -59,23 +59,23 @@ TEST_CASE ("in-flight list attaches out-of-order results and retires from the he
 
   LA_INFLIGHT_ENTRY *head = la_inflight_peek ();
   REQUIRE (head != NULL);
-  REQUIRE (head->seq == seq[0]);
-  REQUIRE (head->result_ready);
+  REQUIRE (la_inflight_entry_get_sequence (head) == seq[0]);
+  REQUIRE (la_inflight_entry_has_result (head));
   la_inflight_pop ();
 
   /* the second task has no result yet, so the finished third one waits behind it */
   head = la_inflight_peek ();
   REQUIRE (head != NULL);
-  REQUIRE (head->seq == seq[1]);
-  REQUIRE_FALSE (head->result_ready);
-  REQUIRE (la_inflight_entry_at (1)->seq == seq[2]);
-  REQUIRE (la_inflight_entry_at (1)->result_ready);
+  REQUIRE (la_inflight_entry_get_sequence (head) == seq[1]);
+  REQUIRE_FALSE (la_inflight_entry_has_result (head));
+  REQUIRE (la_inflight_entry_get_sequence (la_inflight_entry_at (1)) == seq[2]);
+  REQUIRE (la_inflight_entry_has_result (la_inflight_entry_at (1)));
 
   LA_RESULT r1 = test_result_for (seq[1], ER_FAILED);
   REQUIRE (la_inflight_attach_result (&r1) == NO_ERROR);
-  REQUIRE (la_inflight_peek ()->result.error == ER_FAILED);
+  REQUIRE (la_inflight_entry_get_result (la_inflight_peek ())->error == ER_FAILED);
   la_inflight_pop ();
-  REQUIRE (la_inflight_peek ()->seq == seq[2]);
+  REQUIRE (la_inflight_entry_get_sequence (la_inflight_peek ()) == seq[2]);
   la_inflight_pop ();
 
   REQUIRE (la_inflight_get_count () == 0);
@@ -91,7 +91,7 @@ TEST_CASE ("in-flight list rejects a result whose task is not in flight", "[log_
 
   LA_RESULT unknown = test_result_for (seq + 7);
   REQUIRE (la_inflight_attach_result (&unknown) == ER_FAILED);
-  REQUIRE_FALSE (la_inflight_peek ()->result_ready);
+  REQUIRE_FALSE (la_inflight_entry_has_result (la_inflight_peek ()));
 
   /* once retired, the same dispatch number is gone */
   LA_RESULT r = test_result_for (seq);
@@ -112,14 +112,14 @@ TEST_CASE ("in-flight list refuses a push beyond its capacity and wraps around",
   REQUIRE (la_inflight_get_count () == 2);
   REQUIRE (la_inflight_entry_at (2) == NULL);
   REQUIRE (la_inflight_entry_at (-1) == NULL);
-  REQUIRE (la_inflight_entry_at (1)->rectype == TEST_RECTYPE_SYSOP_END);
+  REQUIRE (la_inflight_entry_get_rectype (la_inflight_entry_at (1)) == TEST_RECTYPE_SYSOP_END);
 
   /* the ring reuses the freed slot; numbering keeps going */
   la_inflight_pop ();
   REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
   REQUIRE (seq == 2);
-  REQUIRE (la_inflight_entry_at (0)->tranid == 2);
-  REQUIRE (la_inflight_entry_at (1)->tranid == 3);
+  REQUIRE (la_inflight_entry_get_tranid (la_inflight_entry_at (0)) == 2);
+  REQUIRE (la_inflight_entry_get_tranid (la_inflight_entry_at (1)) == 3);
 }
 
 TEST_CASE ("in-flight list init empties the list and restarts dispatch numbering", "[log_applier_inflight]")

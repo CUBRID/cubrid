@@ -29,8 +29,8 @@
 #include "config.h"
 
 #include "log_applier_inflight.hpp"
-#include "log_applier_worker.hpp"
 #include "error_manager.h"
+#include "memory_alloc.h"
 #include "porting.h"
 
 #include <assert.h>
@@ -38,6 +38,16 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+struct la_inflight_entry
+{
+  UINT64 seq;
+  LA_APPLY *apply;		/* owned by the applier; this entry prevents reuse until retire */
+  int tranid;
+  int rectype;
+  bool result_ready;
+  LA_RESULT result;
+};
 
 typedef struct la_inflight_list LA_INFLIGHT_LIST;
 struct la_inflight_list
@@ -237,6 +247,67 @@ la_inflight_entry_at (int pos)
     }
 
   return &la_Inflight.entries[ (la_Inflight.head + pos) % la_Inflight.capacity];
+}
+
+UINT64
+la_inflight_entry_get_sequence (const LA_INFLIGHT_ENTRY *entry)
+{
+  assert (entry != NULL);
+
+  return entry->seq;
+}
+
+LA_APPLY *
+la_inflight_entry_get_apply (const LA_INFLIGHT_ENTRY *entry)
+{
+  assert (entry != NULL);
+
+  return entry->apply;
+}
+
+LA_APPLY *
+la_inflight_entry_take_apply (LA_INFLIGHT_ENTRY *entry)
+{
+  LA_APPLY *apply;
+
+  assert (entry != NULL);
+
+  apply = entry->apply;
+  entry->apply = NULL;
+
+  return apply;
+}
+
+int
+la_inflight_entry_get_tranid (const LA_INFLIGHT_ENTRY *entry)
+{
+  assert (entry != NULL);
+
+  return entry->tranid;
+}
+
+int
+la_inflight_entry_get_rectype (const LA_INFLIGHT_ENTRY *entry)
+{
+  assert (entry != NULL);
+
+  return entry->rectype;
+}
+
+bool
+la_inflight_entry_has_result (const LA_INFLIGHT_ENTRY *entry)
+{
+  assert (entry != NULL);
+
+  return entry->result_ready;
+}
+
+const LA_RESULT *
+la_inflight_entry_get_result (const LA_INFLIGHT_ENTRY *entry)
+{
+  assert (entry != NULL);
+
+  return entry->result_ready ? &entry->result : NULL;
 }
 
 static LA_INFLIGHT_ENTRY *

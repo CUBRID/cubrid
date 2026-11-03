@@ -25,22 +25,10 @@
 
 #include "log_applier_result.hpp"	/* LA_RESULT */
 
-#include <sys/time.h>
-
 /* repl_list a dispatched task applies; defined in log_applier.c. An entry only holds a pointer to it. */
 typedef struct la_apply LA_APPLY;
 
 typedef struct la_inflight_entry LA_INFLIGHT_ENTRY;
-struct la_inflight_entry
-{
-  UINT64 seq;
-  LA_APPLY *apply;		/* repl_list slot freed only when this entry retires, so the coordinator cannot reuse it
-				 * while the result is still pending */
-  int tranid;
-  int rectype;
-  bool result_ready;
-  LA_RESULT result;
-};
 
 extern int la_inflight_init (int capacity);
 extern void la_inflight_clear (void);
@@ -51,5 +39,13 @@ extern void la_inflight_pop (void);
 extern int la_inflight_attach_result (const LA_RESULT *result);
 extern int la_inflight_get_count (void);
 extern LA_INFLIGHT_ENTRY *la_inflight_entry_at (int pos);
+
+extern UINT64 la_inflight_entry_get_sequence (const LA_INFLIGHT_ENTRY *entry);
+extern LA_APPLY *la_inflight_entry_get_apply (const LA_INFLIGHT_ENTRY *entry);
+extern LA_APPLY *la_inflight_entry_take_apply (LA_INFLIGHT_ENTRY *entry);
+extern int la_inflight_entry_get_tranid (const LA_INFLIGHT_ENTRY *entry);
+extern int la_inflight_entry_get_rectype (const LA_INFLIGHT_ENTRY *entry);
+extern bool la_inflight_entry_has_result (const LA_INFLIGHT_ENTRY *entry);
+extern const LA_RESULT *la_inflight_entry_get_result (const LA_INFLIGHT_ENTRY *entry);
 
 #endif /* _LOG_APPLIER_INFLIGHT_HPP_ */

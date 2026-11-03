@@ -427,13 +427,14 @@ static int
 la_coordinator_retire_results (void)
 {
   LA_INFLIGHT_ENTRY *entry;
-  LA_RESULT *result;
+  const LA_RESULT *result;
   LOG_LSA frontier;
   int error;
 
-  while ((entry = la_inflight_peek ()) != NULL && entry->result_ready)
+  while ((entry = la_inflight_peek ()) != NULL && la_inflight_entry_has_result (entry))
     {
-      result = &entry->result;
+      result = la_inflight_entry_get_result (entry);
+      assert (result != NULL);
 
       if (result->error != NO_ERROR)
 	{
@@ -452,7 +453,8 @@ la_coordinator_retire_results (void)
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[WSET] coordinator retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
 			 result->tranid, (long long) result->commit_lsa.pageid, (int) result->commit_lsa.offset,
-			 result->rectype, result->worker_idx, (unsigned long long) entry->seq);
+			 result->rectype, result->worker_idx,
+			 (unsigned long long) la_inflight_entry_get_sequence (entry));
 	}
 
       assert (la_gate_get_frontier (&frontier));

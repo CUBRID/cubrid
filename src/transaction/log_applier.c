@@ -85,6 +85,8 @@
 #include "log_applier_gate.hpp"
 #include "log_applier_pending.hpp"
 #include "log_applier_stat.hpp"
+#include "log_applier_stat_store.hpp"
+#include "log_applier_stat_print.hpp"
 #include "log_applier_debug.hpp"
 #include "log_applier_coordinator.hpp"
 
@@ -712,31 +714,39 @@ la_coordinator_before_dispatch (void *context, const LA_TASK * task)
 static void
 la_coordinator_release_apply_slot (LA_INFLIGHT_ENTRY * entry)
 {
-  if (entry->apply == NULL)
+  LA_APPLY *apply = la_inflight_entry_get_apply (entry);
+
+  if (apply == NULL)
     {
       /* a commit without replicated items has no slot */
       return;
     }
 
-  if (entry->rectype == LOG_SYSOP_END)
+  if (la_inflight_entry_get_rectype (entry) == LOG_SYSOP_END)
     {
-      la_free_all_repl_items (entry->apply);
-      free_and_init (entry->apply);
+      apply = la_inflight_entry_take_apply (entry);
+      la_free_all_repl_items (apply);
+      free_and_init (apply);
       return;
     }
 
-  LSA_SET_NULL (&entry->apply->start_lsa);
-  LSA_SET_NULL (&entry->apply->last_lsa);
-  LSA_SET_NULL (&entry->apply->last_sysop_fragment_lsa);
-  entry->apply->tranid = 0;
+  LSA_SET_NULL (&apply->start_lsa);
+  LSA_SET_NULL (&apply->last_lsa);
+  LSA_SET_NULL (&apply->last_sysop_fragment_lsa);
+  apply->tranid = 0;
 }
 
 static void
 la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG_LSA * frontier)
 {
+  const LA_RESULT *result;
+
   (void) context;
   assert (entry != NULL);
   assert (frontier != NULL);
+
+  result = la_inflight_entry_get_result (entry);
+  assert (result != NULL);
   assert (LSA_GE (frontier, &la_Info.committed_lsa));
 
   la_coordinator_release_apply_slot (entry);
@@ -744,7 +754,7 @@ la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG
     {
       LSA_COPY (&la_Info.committed_lsa, frontier);
     }
-  la_coordinator_add_result_stats (&entry->result);
+  la_coordinator_add_result_stats (result);
 }
 
 /*
@@ -2306,6 +2316,7 @@ la_find_required_lsa (LOG_LSA * required_lsa)
   LOG_LSA task_lowest;
   LOG_LSA lowest_lsa;
   LA_INFLIGHT_ENTRY *entry;
+  LA_APPLY *apply;
 
   assert (required_lsa != NULL);
 
@@ -2323,9 +2334,10 @@ la_find_required_lsa (LOG_LSA * required_lsa)
 
   for (i = 0; (entry = la_inflight_entry_at (i)) != NULL; i++)
     {
-      if (entry->apply != NULL)
+      apply = la_inflight_entry_get_apply (entry);
+      if (apply != NULL)
 	{
-	  la_lower_lsa (&task_lowest, &entry->apply->start_lsa);
+	  la_lower_lsa (&task_lowest, &apply->start_lsa);
 	}
     }
 
@@ -8488,14 +8500,21 @@ static void
 la_free_unretired_fragments (void)
 {
   LA_INFLIGHT_ENTRY *entry;
+  LA_APPLY *apply;
   int i;
 
   for (i = 0; (entry = la_inflight_entry_at (i)) != NULL; i++)
     {
-      if (entry->rectype == LOG_SYSOP_END && entry->apply != NULL)
+      if (la_inflight_entry_get_rectype (entry) != LOG_SYSOP_END)
 	{
-	  la_free_all_repl_items (entry->apply);
-	  free_and_init (entry->apply);
+	  continue;
+	}
+
+      apply = la_inflight_entry_take_apply (entry);
+      if (apply != NULL)
+	{
+	  la_free_all_repl_items (apply);
+	  free_and_init (apply);
 	}
     }
 
