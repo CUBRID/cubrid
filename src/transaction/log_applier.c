@@ -744,14 +744,14 @@ la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG
 
   (void) context;
   assert (entry != NULL);
-  assert (frontier != NULL);
 
   result = la_inflight_entry_get_result (entry);
   assert (result != NULL);
-  assert (LSA_GE (frontier, &la_Info.committed_lsa));
+  assert (frontier == NULL || LSA_GE (frontier, &la_Info.committed_lsa));
 
   la_coordinator_release_apply_slot (entry);
-  if (LSA_GT (frontier, &la_Info.committed_lsa))
+  /* frontier is NULL only when the gate has none yet; committed_lsa then stays where it is */
+  if (frontier != NULL && LSA_GT (frontier, &la_Info.committed_lsa))
     {
       LSA_COPY (&la_Info.committed_lsa, frontier);
     }

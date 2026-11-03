@@ -517,6 +517,7 @@ la_coordinator_retire_results (void)
   LA_INFLIGHT_ENTRY *entry;
   const LA_RESULT *result;
   LOG_LSA frontier;
+  bool has_frontier;
   int error;
 
   while ((entry = la_inflight_peek ()) != NULL && la_inflight_entry_has_result (entry))
@@ -545,8 +546,10 @@ la_coordinator_retire_results (void)
 			 (unsigned long long) la_inflight_entry_get_sequence (entry));
 	}
 
-      assert (la_gate_get_frontier (&frontier));
-      la_Coordinator_config.retire_entry (la_Coordinator_config.context, entry, &frontier);
+      /* the call must stay outside assert(): a release build drops the whole assert expression */
+      has_frontier = la_gate_get_frontier (&frontier);
+      assert (has_frontier);
+      la_Coordinator_config.retire_entry (la_Coordinator_config.context, entry, has_frontier ? &frontier : NULL);
       la_inflight_pop ();
 
       error = la_Coordinator_config.store_progress (la_Coordinator_config.context);
