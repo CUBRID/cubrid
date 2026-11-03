@@ -490,7 +490,7 @@ static int g_plcsql_text_pos;
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
 	  (Current).start_line   = 0;					\
-	  for (int yyi_ = 1; yyi_ <= (N); yyi_++)				\
+	  for (int yyi_ = 1; yyi_ <= (int) (N); yyi_++)			\
 	    {								\
 	      if (YYRHSLOC (Rhs, yyi_).start_line > 0)			\
 		{							\
