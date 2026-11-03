@@ -23,6 +23,8 @@
 #include "error_manager.h"
 #include "session.h"
 
+#include <cassert>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -144,7 +146,14 @@ namespace
       /* an upload only stages bytes for a later statement: its END is not the end of a unit of work */
       /* [리뷰] 업로드 END는 작업 단위를 끝내지 않는다. END의 count가 토큰이다.
        * 토큰은 세션 안에서만 유효하고, 소비는 나중 문장의 heap 삽입이 한다. */
-      stream_session_register (STREAM_KIND_INTERNAL_LOB, internal_lob_stream_session_create, false);
+      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_stream_session_create, NULL, false, false,
+				STREAM_SCOPE_TRAN
+			      };
+
+      if (stream_kind_register (STREAM_KIND_INTERNAL_LOB, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
     }
   };
 

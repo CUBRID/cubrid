@@ -28,6 +28,7 @@
 #include "xasl_cache.h"
 #include "xserver_interface.h"
 
+#include <cassert>
 #include <cstddef>
 #include <vector>
 #include <new>
@@ -243,7 +244,12 @@ namespace
     internal_lob_dml_session_registrar ()
     {
       /* END runs the statement the payload belongs to, so it is the end of a unit of work */
-      stream_session_register (STREAM_KIND_INTERNAL_LOB_DML, internal_lob_dml_create_session, true);
+      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_dml_create_session, NULL, true, false, STREAM_SCOPE_TRAN };
+
+      if (stream_kind_register (STREAM_KIND_INTERNAL_LOB_DML, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
     }
   };
 

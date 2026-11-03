@@ -13791,7 +13791,9 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	}
       else
 	{
-	  ends_unit_of_work = stream_session_kind_ends_unit_of_work (stream_kind);
+	  const stream_kind_desc *desc = stream_kind_find (stream_kind);
+
+	  ends_unit_of_work = desc != NULL && desc->ends_unit_of_work;
 	}
     }
   else if (error_code == NO_ERROR)

@@ -323,7 +323,14 @@ namespace
     internal_lob_load_stream_session_registrar ()
     {
       /* END hands back a slot for the batch text; the batch commits the rows, so END ends no unit of work */
-      stream_session_register (STREAM_KIND_INTERNAL_LOB_LOAD, internal_lob_load_stream_session_create, false);
+      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_load_stream_session_create, NULL, false, false,
+				STREAM_SCOPE_TRAN
+			      };
+
+      if (stream_kind_register (STREAM_KIND_INTERNAL_LOB_LOAD, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
     }
   };
 
