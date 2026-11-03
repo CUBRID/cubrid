@@ -1185,7 +1185,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_READ:		/* read a file */
       {
 	/* the file is appended to the buffer; the buffer is unchanged if it cannot be read */
-	size_t old_len = strlen (csql_edit_contents_get ());
+	int old_len = strlen (csql_edit_contents_get ());
 
 	csql_read_file (argument);
 	if (strlen (csql_edit_contents_get ()) != old_len)
