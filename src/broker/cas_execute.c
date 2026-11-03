@@ -11316,6 +11316,7 @@ ux_stream_is_open (void)
  * statement: it runs nothing, writes nothing and ends nothing. A driver may also
  * need it in the middle of a stream -- copying a stored LOB into an INSERT reads
  * the source through its locator while sending the bytes up the stream.
+ * UPLOAD_RELEASE is admitted too: it drops only uploads no open statement binds.
  */
 bool
 ux_stream_admits_request (int func_code)
@@ -11335,6 +11336,7 @@ ux_stream_admits_request (int func_code)
     case CAS_FC_STREAM_READ_OPEN:
     case CAS_FC_STREAM_READ:
     case CAS_FC_STREAM_RELEASE:
+    case CAS_FC_STREAM_UPLOAD_RELEASE:
     case CAS_FC_END_TRAN:
     case CAS_FC_CHECK_CAS:
     case CAS_FC_END_SESSION:
@@ -11641,8 +11643,8 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
 /*
  * ux_stream_release () - Release a download the driver holds
  *
- * Download handles only: a staged upload belongs to the statement handles that bound it, and the CAS releases
- * it itself. A handle the CAS does not hold is released already, which is not an error.
+ * Download handles only: a staged upload is released with the statement handles that bound it, or by
+ * CAS_FC_STREAM_UPLOAD_RELEASE. A handle the CAS does not hold is released already, which is not an error.
  */
 int
 ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
