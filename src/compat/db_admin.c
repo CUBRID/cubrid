@@ -138,6 +138,16 @@ static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static BOOT_CLIENT_CREDENTIAL gv_client_credential;
 
+/* the password forms the main client logged in with; a sub-client proves the same password (see db_restart_sub ()) */
+typedef struct db_client_password DB_CLIENT_PASSWORD;
+struct db_client_password
+{
+  char des_oldstyle[AU_MAX_PASSWORD_BUF + 4];
+  char sha1[AU_MAX_PASSWORD_BUF + 4];
+  char sha2_512[AU_MAX_PASSWORD_BUF + 4];
+};
+static DB_CLIENT_PASSWORD gv_client_password;
+
 // *INDENT-OFF* 
 static  std::atomic <bool> g_ready_to_sub = false; // flag indicating successful connection in db_restart()
 // *INDENT-ON*
@@ -157,7 +167,8 @@ db_is_main_client_thread (void)
 }
 
 /*
- * g_sub_client_mutex protects the changes of g_ready_to_sub, g_num_sub_clients and gv_client_credential, so that
+ * g_sub_client_mutex protects the changes of g_ready_to_sub, g_num_sub_clients, gv_client_credential and
+ * gv_client_password, so that
  * the main client is not restarted or shut down while a sub-client is starting or alive.
  */
 /* *INDENT-OFF* */
@@ -170,9 +181,10 @@ static CUB_THREAD_LOCAL bool db_Is_sub_client_registered = false;
  * db_register_sub_client () - register the calling thread as a sub-client
  *   return: NO_ERROR, or ER_MAIN_CLIENT_NOT_READY if the main client is not ready
  *   client_credential(out): copy of the credential of the main client
+ *   password(out): copy of the password forms of the main client
  */
 static int
-db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential)
+db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential, DB_CLIENT_PASSWORD * password)
 {
   std::lock_guard < std::mutex > lock (g_sub_client_mutex);
 
@@ -188,6 +200,7 @@ db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   *client_credential = gv_client_credential;
+  *password = gv_client_password;
   g_num_sub_clients++;
   db_Is_sub_client_registered = true;
 
@@ -226,6 +239,7 @@ db_close_sub_client_registration (void)
 
   /* no more sub-clients can be started from now on */
   (void) g_ready_to_sub.store (false, std::memory_order_release);
+  memset (&gv_client_password, 0, sizeof (gv_client_password));
   return g_num_sub_clients;
 }
 
@@ -251,6 +265,7 @@ db_check_no_sub_client_and_block (const char *api_name)
 
   /* no more sub-clients can be started from now on */
   (void) g_ready_to_sub.store (false, std::memory_order_release);
+  memset (&gv_client_password, 0, sizeof (gv_client_password));
   return NO_ERROR;
 }
 #endif
@@ -1110,6 +1125,9 @@ db_restart (const char *program, int print_version, const char *volume)
 	    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
 
 	    gv_client_credential = client_credential;
+	    strcpy (gv_client_password.des_oldstyle, Au_user_password_des_oldstyle);
+	    strcpy (gv_client_password.sha1, Au_user_password_sha1);
+	    strcpy (gv_client_password.sha2_512, Au_user_password_sha2_512);
 	    gv_main_client_thread = pthread_self ();
 	    (void) g_ready_to_sub.store (true, std::memory_order_release);
 	  }
@@ -1141,6 +1159,7 @@ db_restart_sub (int sub_index)
 {
   int error = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL client_credential;
+  DB_CLIENT_PASSWORD password;
   char program_name[512];
 
   if (db_is_main_client_thread ())
@@ -1174,7 +1193,7 @@ db_restart_sub (int sub_index)
   er_init_sub_client_context ();
 
   /* register as a sub-client, so that the main client is not restarted or shut down while this one is alive */
-  error = db_register_sub_client (&client_credential);
+  error = db_register_sub_client (&client_credential, &password);
   if (error != NO_ERROR)
     {
       return error;
@@ -1202,6 +1221,12 @@ db_restart_sub (int sub_index)
       goto error;
     }
 
+  /* the server still asks this connection to prove the password: prove the one the main client logged in with */
+  strcpy (Au_user_password_des_oldstyle, password.des_oldstyle);
+  strcpy (Au_user_password_sha1, password.sha1);
+  strcpy (Au_user_password_sha2_512, password.sha2_512);
+  memset (&password, 0, sizeof (password));
+
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
   error = boot_restart_client_sub (&client_credential);
@@ -1215,6 +1240,7 @@ db_restart_sub (int sub_index)
 
 error:
   /* release the resources of this thread */
+  memset (&password, 0, sizeof (password));
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Disable_modifications = 0;
   au_ctx_destructor ();

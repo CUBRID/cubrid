@@ -1185,7 +1185,12 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 				      Au_user_password_sha1, Au_user_password_sha2_512);
       if (error_code != NO_ERROR)
 	{
-	  (void) net_client_final (false);	/* not registered yet: nothing else closes it */
+	  /* not registered yet: nothing else closes the main connection. A sub-client's connection is closed by
+	   * boot_restart_client_sub (), and net_client_final () would also reset the process-wide state */
+	  if (!is_sub_client)
+	    {
+	      (void) net_client_final (false);
+	    }
 	  goto error;
 	}
     }
