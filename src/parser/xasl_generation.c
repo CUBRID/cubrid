@@ -9851,6 +9851,12 @@ pt_make_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
       return NULL;
     }
 
+  /* without the expression in the query the pseudo result would only cost an extra key column read per row */
+  if (qo_find_func_index_seg (plan->info->env, node, cons->func_index_info->expr_str) == NULL)
+    {
+      return NULL;
+    }
+
   attr = pt_add_func_index_result_attr (parser, spec, cons);
   if (attr == NULL)
     {

@@ -7272,6 +7272,37 @@ qo_func_index_arg_used_raw (PARSER_CONTEXT * parser, PT_NODE * tree, const char 
 }
 
 /*
+ * qo_find_func_index_seg () - find the segment of a function index expression the query uses on a node
+ *   return: the segment, or NULL
+ *   env(in): the environment
+ *   nodep(in): the node
+ *   expr_str(in): printed function index expression
+ */
+QO_SEGMENT *
+qo_find_func_index_seg (QO_ENV * env, QO_NODE * nodep, const char *expr_str)
+{
+  QO_SEGMENT *seg;
+  int i;
+
+  if (expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      seg = QO_ENV_SEG (env, i);
+      if (seg != NULL && QO_SEG_FUNC_INDEX (seg) && QO_SEG_HEAD (seg) == nodep && QO_SEG_NAME (seg) != NULL
+	  && !intl_identifier_casecmp (QO_SEG_NAME (seg), expr_str))
+	{
+	  return seg;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * qo_seg_used_only_in_func_index () - check whether a column is an argument of the function index expression that
  *   the query uses only inside that expression, so that a covering scan reading the function result from the key
  *   never needs the column itself
@@ -7324,16 +7355,8 @@ qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_S
     }
 
   expr_str = index_entry->constraints->func_index_info->expr_str;
-  for (i = 0; i < env->nsegs && func_expr == NULL; i++)
-    {
-      fi_seg = QO_ENV_SEG (env, i);
-      if (fi_seg != NULL && QO_SEG_FUNC_INDEX (fi_seg) && QO_SEG_HEAD (fi_seg) == QO_SEG_HEAD (seg)
-	  && QO_SEG_NAME (fi_seg) != NULL && expr_str != NULL
-	  && !intl_identifier_casecmp (QO_SEG_NAME (fi_seg), expr_str))
-	{
-	  func_expr = QO_SEG_PT_NODE (fi_seg);
-	}
-    }
+  fi_seg = qo_find_func_index_seg (env, QO_SEG_HEAD (seg), expr_str);
+  func_expr = (fi_seg != NULL) ? QO_SEG_PT_NODE (fi_seg) : NULL;
   if (func_expr == NULL)
     {
       return false;
@@ -7530,7 +7553,8 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	}
 
       /* join and subquery terms are evaluated from the raw argument, not from the routed result */
-      for (i = 0; i < env->nterms; i++)
+      seg = qo_find_func_index_seg (env, nodep, expr_str);
+      for (i = 0; i < env->nterms && seg != NULL; i++)
 	{
 	  qo_termp = QO_ENV_TERM (env, i);
 	  if (bitset_is_empty (&(QO_TERM_SUBQUERIES (qo_termp)))
@@ -7539,15 +7563,9 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	      continue;
 	    }
 
-	  for (j = 0; j < env->nsegs; j++)
+	  if (BITSET_MEMBER (QO_TERM_SEGS (qo_termp), QO_SEG_IDX (seg)))
 	    {
-	      seg = QO_ENV_SEG (env, j);
-	      if (seg != NULL && QO_SEG_FUNC_INDEX (seg) && QO_SEG_HEAD (seg) == nodep && QO_SEG_NAME (seg) != NULL
-		  && expr_str != NULL && !intl_identifier_casecmp (QO_SEG_NAME (seg), expr_str)
-		  && BITSET_MEMBER (QO_TERM_SEGS (qo_termp), j))
-		{
-		  return false;
-		}
+	      return false;
 	    }
 	}
     }
