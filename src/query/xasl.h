@@ -602,6 +602,8 @@ struct cte_proc_node
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
 #define XASL_NL_PER_ROW_IF_MEMO		(0x1 << 30)	/* a partitioned NL inner driven per outer row only while it has a memo
 							 * (qexec_settle_per_row_walk ()) */
+#define XASL_NL_PER_ROW_PARTITIONS	(0x1 << 30)	/* a partitioned NL inner the optimizer drives per outer row: its partition
+							 * is opened on a memo miss (qexec_open_row_partition ()) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)

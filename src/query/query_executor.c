@@ -170,10 +170,7 @@
 /* a partitioned NL inner the optimizer drives per outer row (CBRD-27866): rewound without opening a partition, which
  * waits for a memo miss (qexec_open_row_partition ()) */
 #define QEXEC_IS_DEFERRED_PARTITION_WALK(xasl) \
-  (XASL_IS_FLAGED ((xasl), XASL_NL_FOLLOWING_JOIN) && !XASL_IS_NL_SEMI_OR_ANTI (xasl) \
-   && (xasl)->spec_list != NULL && (xasl)->spec_list->parts != NULL \
-   && (XASL_IS_FLAGED ((xasl), XASL_NL_PER_ROW_IF_MEMO) \
-       || ACCESS_SPEC_IS_FLAGED ((xasl)->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)))
+  (XASL_IS_FLAGED ((xasl), XASL_NL_PER_ROW_PARTITIONS) && (xasl)->spec_list != NULL && (xasl)->spec_list->parts != NULL)
 
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
@@ -11916,57 +11913,6 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
- * qexec_settle_per_row_walk () - drive per outer row only the partitioned inners that got the memo they need
- *   return: void
- *   xasl(in): the first scan of a scan chain, its memos made
- *
- * Note: the optimizer drives a partitioned NL inner per outer row when the outer key repeats, so that its memo
- *	 keeps a repeated key from walking the partitions again (XASL_NL_PER_ROW_IF_MEMO). An inner that gets no memo
- *	 (new_memoize_storage ()) would switch its scan to every partition for every outer row, so it goes back to the
- *	 scan block iteration, and so do the scans after it unless something before them is driven per outer row: a
- *	 SEMI / ANTI inner, an inner that prunes per row, or one that got its memo (CBRD-27866).
- */
-void
-qexec_settle_per_row_walk (XASL_NODE * xasl)
-{
-  XASL_NODE *xptr;
-  bool per_row = false;
-
-  for (xptr = xasl; xptr != NULL && !XASL_IS_FLAGED (xptr, XASL_NL_PER_ROW_IF_MEMO); xptr = xptr->scan_ptr)
-    {
-      ;
-    }
-  if (xptr == NULL)
-    {
-      return;
-    }
-
-  for (xptr = xasl->scan_ptr; xptr != NULL; xptr = xptr->scan_ptr)
-    {
-      if (XASL_IS_NL_SEMI_OR_ANTI (xptr))
-	{
-	  per_row = true;
-	  continue;
-	}
-
-      if ((XASL_IS_FLAGED (xptr, XASL_NL_PER_ROW_IF_MEMO) && xptr->memoize_storage != NULL)
-	  || (xptr->spec_list != NULL && ACCESS_SPEC_IS_FLAGED (xptr->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)))
-	{
-	  per_row = true;
-	}
-
-      if (per_row)
-	{
-	  XASL_SET_FLAG (xptr, XASL_NL_FOLLOWING_JOIN);
-	}
-      else
-	{
-	  XASL_CLEAR_FLAG (xptr, XASL_NL_FOLLOWING_JOIN);
-	}
-    }
-}
-
-/*
  * qexec_free_partition_scan_caches () - end the attribute caches an index scan kept for the partitions of a spec
  *   return: void
  *   thread_p(in):
@@ -22687,8 +22633,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    }
 		}
 	    }
-
-	  qexec_settle_per_row_walk (xasl);
 
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.gby_skip_state != NULL)
 	    {

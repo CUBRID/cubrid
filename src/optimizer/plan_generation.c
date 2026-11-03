@@ -2473,7 +2473,7 @@ mark_following_joins (XASL_NODE * sa_scan)
  * Note: left to the scan block iterator, a partitioned inner is one scan block per partition, and the
  *	 iterator runs every scan before it again from the outer for each partition. Driven per outer row
  *	 like a following join, it walks its partitions within the row instead, and its memo spans the walk
- *	 (CBRD-27866), when that pays off (nl_inner_prunes_per_row (), nl_inner_memo_covers_repeats ()). The scans after it are driven per outer row too, so a class hierarchy (spec->next),
+ *	 (CBRD-27866). The scans after it are driven per outer row too, so a class hierarchy (spec->next),
  *	 which only the iterator moves to its next class, keeps the iterator, and so does an outer join.
  */
 static bool
@@ -2612,38 +2612,23 @@ nl_inner_prunes_per_row (QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
 }
 
 /*
- * nl_inner_memo_covers_repeats () - whether the memo of a NL inner walked per outer row keeps a repeated outer key
- *	from walking the partitions again
+ * nl_inner_scan_locks_rows () - whether the inner scans of the query lock the rows they read
  *   return: bool
  *   env(in):
- *   outer(in): the outer plan of the join
- *   inner(in): the inner plan
- *   terms(in): the terms the inner scan evaluates
  *
- * Note: walked per outer row, a partitioned inner switches its scan to every partition for every outer key the memo
- *	 has not seen, which costs more than running the outer again for each partition when the key hardly repeats
- *	 (CBRD-27866). A scan that locks its rows has no memo (qexec_execute_mainblock_internal ()). The executor
- *	 refuses a memo for more inners than this sees (memoize.cpp: checker, nondeterministic), so such an inner is
- *	 walked per row only if it gets one (XASL_NL_PER_ROW_IF_MEMO, qexec_settle_per_row_walk ()).
+ * Note: a scan that locks its rows has no memo (qexec_execute_mainblock_internal ()) and opens each partition again
+ *	 to lock it (qexec_can_switch_index_partition ()), so walked per outer row it switches its scan to every
+ *	 partition for every outer row. Such a partitioned inner is walked per row only when it prunes per row
+ *	 (CBRD-27866).
  */
 static bool
-nl_inner_memo_covers_repeats (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
+nl_inner_scan_locks_rows (QO_ENV * env)
 {
   PT_NODE *tree = QO_ENV_PT_TREE (env);
 
-  if (prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT) == 0)
-    {
-      return false;
-    }
-
-  if (tree == NULL || !PT_IS_SELECT (tree)
-      || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE
-				   | PT_SELECT_INFO_IS_MERGE_QUERY))
-    {
-      return false;
-    }
-
-  return !qo_nl_inner_memoize_is_useless (outer, inner, terms);
+  return (tree == NULL || !PT_IS_SELECT (tree)
+	  || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE
+				       | PT_SELECT_INFO_IS_MERGE_QUERY));
 }
 
 /*
@@ -2934,18 +2919,14 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  bool prunes = nl_inner_prunes_per_row (outer, inner, &predset);
 
-		  if (prunes || nl_inner_memo_covers_repeats (env, outer, inner, &predset))
+		  if (prunes || !nl_inner_scan_locks_rows (env))
 		    {
 		      XASL_SET_FLAG (scan, XASL_NL_FOLLOWING_JOIN);
+		      XASL_SET_FLAG (scan, XASL_NL_PER_ROW_PARTITIONS);
 		      mark_following_joins (scan);
 		      if (prunes)
 			{
 			  ACCESS_SPEC_SET_FLAG (scan->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW);
-			}
-		      else
-			{
-			  /* the executor may still find no memo for it (qexec_settle_per_row_walk ()) */
-			  XASL_SET_FLAG (scan, XASL_NL_PER_ROW_IF_MEMO);
 			}
 		    }
 		}
