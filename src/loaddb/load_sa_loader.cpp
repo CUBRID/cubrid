@@ -2662,12 +2662,14 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
 /*
  * Value sinks
  *
- *    A converted value has three possible destinations, and until now each
- *    write site spelled its own out: the workspace instance being built, the
- *    class object that holds class and shared attributes, and - on the server
- *    side, in load_server_loader.cpp - the heap attribute info. Naming them
- *    keeps the decoder that row_decoder introduces from having to know any of
- *    it; it hands a value to a sink and stops there.
+ *    A converted value has three destinations, one function each: the workspace
+ *    instance being built (ldr_sink_instance ()), the class object that holds class
+ *    and shared attributes (ldr_sink_class_object ()), and, on the server side in
+ *    load_server_loader.cpp, the heap attribute info (server_object_loader::
+ *    sink_heap ()).
+ *
+ *    Whoever converts a value hands it to a sink and stops there, so it needs to know
+ *    nothing about where the value lands.
  */
 
 /*
