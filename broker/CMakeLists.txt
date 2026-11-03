@@ -194,6 +194,9 @@ set(CUBRID_BROKER_SOURCES
   ${BROKER_DIR}/shard_key_func.c
   ${BASE_DIR}/util_func.c
   )
+if(UNIX)
+  list(APPEND CUBRID_BROKER_SOURCES ${BROKER_DIR}/broker_ssl_cert.c)
+endif(UNIX)
 SET_SOURCE_FILES_PROPERTIES(
   ${CUBRID_BROKER_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -216,8 +219,8 @@ target_include_directories(cubrid_broker PRIVATE ${EP_INCLUDES})
 target_link_libraries(cubrid_broker LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cubrid_broker LINK_PRIVATE m)
-  # broker_admin_pub.c reads the SSL certificate to warn of a bundled key; only this utility prints that warning
-  target_compile_definitions(cubrid_broker PRIVATE CHECK_BUNDLED_SSL_KEY)
+  # a broker start calls broker_ssl_cert.c to create a missing SSL certificate and to warn of a bundled key
+  target_compile_definitions(cubrid_broker PRIVATE MANAGE_SSL_CERT)
   target_link_libraries(cubrid_broker LINK_PRIVATE ${LIBOPENSSL_LIBS})
 endif(UNIX)
 if(WIN32)
@@ -236,8 +239,8 @@ target_include_directories(cubrid_gateway PRIVATE ${EP_INCLUDES})
 target_link_libraries(cubrid_gateway LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cubrid_gateway LINK_PRIVATE m)
-  # broker_admin_pub.c reads the SSL certificate to warn of a bundled key; only this utility prints that warning
-  target_compile_definitions(cubrid_gateway PRIVATE CHECK_BUNDLED_SSL_KEY)
+  # a broker start calls broker_ssl_cert.c to create a missing SSL certificate and to warn of a bundled key
+  target_compile_definitions(cubrid_gateway PRIVATE MANAGE_SSL_CERT)
   target_link_libraries(cubrid_gateway LINK_PRIVATE ${LIBOPENSSL_LIBS})
 endif(UNIX)
 if(WIN32)
@@ -605,6 +608,9 @@ set(BROKERADMIN_SOURCES
   ${BROKER_DIR}/shard_shm.c
   ${BROKER_DIR}/shard_key_func.c
   )
+if(UNIX)
+  list(APPEND BROKERADMIN_SOURCES ${BROKER_DIR}/broker_ssl_cert.c)
+endif(UNIX)
 SET_SOURCE_FILES_PROPERTIES(
   ${BROKERADMIN_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -625,6 +631,14 @@ set_target_properties(brokeradmin PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.
 target_compile_definitions(brokeradmin PRIVATE ${BROKER_DEFS} _UC_ADMIN_SO_)
 target_include_directories(brokeradmin PRIVATE ${EP_INCLUDES})
 target_link_libraries(brokeradmin LINK_PRIVATE cubridcs)
+if(UNIX)
+  # a broker start calls broker_ssl_cert.c to create a missing SSL certificate and to warn of a bundled key. Keep
+  # OpenSSL out of the exported symbols, as cubridcs does, so that it does not clash with the OpenSSL of the CUBRID
+  # Manager process that loads this library
+  target_compile_definitions(brokeradmin PRIVATE MANAGE_SSL_CERT)
+  target_link_libraries(brokeradmin LINK_PRIVATE ${LIBOPENSSL_LIBS})
+  target_link_options(brokeradmin PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+endif(UNIX)
 if(WIN32)
   target_link_libraries(brokeradmin LINK_PRIVATE ws2_32)
 endif(WIN32)

@@ -18,11 +18,8 @@
 
 file(GLOB conf_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.conf*" "${CMAKE_SOURCE_DIR}/conf/shard*.txt")
 file(GLOB locale_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.txt")
-file(GLOB cas_certs "${CMAKE_SOURCE_DIR}/conf/cas_ssl*.crt")
 
-install(FILES ${conf_files} ${locale_files} ${cas_certs}
+# no SSL certificate is shipped: the first start of a broker with SSL=ON creates a private key and a self-signed
+# certificate for its host
+install(FILES ${conf_files} ${locale_files}
   DESTINATION ${CUBRID_CONFDIR})
-# a broker with SSL=ON refuses to start if group or others can read the SSL private key
-install(FILES ${CMAKE_SOURCE_DIR}/conf/cas_ssl_cert.key
-  DESTINATION ${CUBRID_CONFDIR}
-  PERMISSIONS OWNER_READ OWNER_WRITE)
