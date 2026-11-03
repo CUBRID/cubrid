@@ -7521,7 +7521,7 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
   if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] reader commit trid=%d commit_lsa=%lld|%d items=%d has_label=%d dependency=%lld|%d "
+		     "[WSET] coordinator commit trid=%d commit_lsa=%lld|%d items=%d has_label=%d dependency=%lld|%d "
 		     "path=%s\n",
 		     lrec->trid, (long long) final->pageid, (int) final->offset,
 		     task.apply == NULL ? 0 : task.apply->num_items, (int) has_label,
@@ -7647,7 +7647,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  LA_APPLY *abort_apply = la_find_apply_list (lrec->trid);
 
-	  _er_log_debug (ARG_FILE_LINE, "[WSET] reader abort trid=%d abort_lsa=%lld|%d items=%d path=%s\n",
+	  _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator abort trid=%d abort_lsa=%lld|%d items=%d path=%s\n",
 			 lrec->trid, (long long) final->pageid, (int) final->offset,
 			 abort_apply == NULL ? 0 : abort_apply->num_items, "parallel");
 	}
@@ -7711,13 +7711,13 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	    return error;
 	  }
 	la_wset_label_store (lrec->trid, &dependency_seq);
-	LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
+	LA_DEBUG_LOG (ARG_FILE_LINE, "coordinator ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
 		      (long long) dependency_seq.pageid, (int) dependency_seq.offset,
 		      (long long) final->pageid, (int) final->offset);
 	if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
 	  {
 	    _er_log_debug (ARG_FILE_LINE,
-			   "[WSET] reader label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
+			   "[WSET] coordinator label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
 			   lrec->trid, (long long) final->pageid, (int) final->offset,
 			   (long long) dependency_seq.pageid, (int) dependency_seq.offset);
 	  }
@@ -9588,7 +9588,7 @@ la_coordinator_exit (const char *reason, int error)
   char buffer[256];
 
   snprintf (buffer, sizeof (buffer),
-	    "applylogdb reader exit: reason=%s error=%d final_lsa=%lld|%d committed_lsa=%lld|%d", reason, error,
+	    "applylogdb coordinator exit: reason=%s error=%d final_lsa=%lld|%d committed_lsa=%lld|%d", reason, error,
 	    (long long) la_Info.final_lsa.pageid, (int) la_Info.final_lsa.offset,
 	    (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);

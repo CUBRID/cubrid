@@ -18,8 +18,8 @@
 /*
  * log_applier_wset_label.hpp - interface for the pending writeset label
  *
- * The log reader stores a LOG_DUMMY_WSET_LABEL here until the following COMMIT or SYSOP_END of the
- * same transaction consumes it. Only the coordinator reads the log, so the holder needs no lock.
+ * The coordinator stores a LOG_DUMMY_WSET_LABEL here until the following COMMIT or SYSOP_END of the
+ * same transaction consumes it. Only the coordinator accesses the holder, so it needs no lock.
  */
 
 #ifndef _LOG_APPLIER_WSET_LABEL_HPP_

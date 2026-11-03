@@ -258,7 +258,7 @@ la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status
     }
 
   _er_log_debug (ARG_FILE_LINE,
-		 "[WSET] reader schedule trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d "
+		 "[WSET] coordinator schedule trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d "
 		 "status=%d dispatch=%llu\n",
 		 task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset, task->rectype,
 		 (long long) task->dependency_seq.pageid, (int) task->dependency_seq.offset, (int) sched_status,
@@ -385,7 +385,8 @@ la_coordinator_complete_without_task (const LOG_LSA *lsa)
 
   if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
     {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] reader complete_without_task lsa=%lld|%d\n", (long long) lsa->pageid,
+      _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator complete_without_task lsa=%lld|%d\n",
+		     (long long) lsa->pageid,
 		     (int) lsa->offset);
     }
 

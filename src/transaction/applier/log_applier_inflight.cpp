@@ -106,8 +106,8 @@ la_inflight_init (int capacity)
  * la_inflight_clear() - drop every entry, keeping the allocation
  *
  * Note:
- *   Called when the applier shuts down. The entries point at apply slots the shutdown frees, so none is left
- *   for a later reader before the next la_inflight_init.
+ *   Called when the applier shuts down. The entries point at apply slots the shutdown frees, so none remains
+ *   accessible before the next la_inflight_init.
  */
 void
 la_inflight_clear (void)
