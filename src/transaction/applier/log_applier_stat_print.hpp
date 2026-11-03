@@ -16,7 +16,7 @@
  */
 
 /*
- * log_applier_stat_print.hpp - print parallel apply statistics for applyinfo
+ * log_applier_stat_print.hpp - interface for printing parallel apply statistics in applyinfo
  */
 
 #ifndef _LOG_APPLIER_STAT_PRINT_HPP_

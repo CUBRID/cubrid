@@ -16,7 +16,11 @@
  */
 
 /*
- * log_applier_coordinator.hpp - order and dispatch parallel apply tasks
+ * log_applier_coordinator.hpp - interface for coordinating parallel apply tasks
+ *
+ * The coordinator is the single owner of scheduling state. It registers tasks in commit order,
+ * parks tasks whose dependency is not complete, dispatches runnable tasks, and retires worker
+ * results only after the completed prefix advances.
  */
 
 #ifndef _LOG_APPLIER_COORDINATOR_HPP_

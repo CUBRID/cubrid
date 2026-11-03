@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_debug.hpp - logging and timing macros for the parallel applier
+ * log_applier_debug.hpp - diagnostic macros for the parallel log applier
  */
 
 #ifndef _LOG_APPLIER_DEBUG_HPP_

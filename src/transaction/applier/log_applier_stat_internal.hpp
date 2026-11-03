@@ -16,7 +16,7 @@
  */
 
 /*
- * log_applier_stat_internal.hpp - state shared by statistics collection and persistence
+ * log_applier_stat_internal.hpp - internal state shared by statistics modules
  */
 
 #ifndef _LOG_APPLIER_STAT_INTERNAL_HPP_

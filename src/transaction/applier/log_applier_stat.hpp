@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_stat.hpp - parallel apply statistics
+ * log_applier_stat.hpp - interface for collecting parallel apply statistics
  */
 
 #ifndef _LOG_APPLIER_STAT_HPP_

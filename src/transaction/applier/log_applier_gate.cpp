@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_gate.cpp - dependency gate that holds a transaction back until what it conflicts with is applied
+ * log_applier_gate.cpp - implementation of dependency and completion-frontier tracking
  *
  * The master labels each transaction with the commit LSA of the latest earlier transaction it conflicts
  * with. Workers running in parallel would still finish conflicting transactions out of order, so the gate

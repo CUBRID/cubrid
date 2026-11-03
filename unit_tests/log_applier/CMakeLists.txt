@@ -39,6 +39,7 @@ set (TEST_LOG_APPLIER_SRC
   ${APPLIER_DIR}/log_applier_task_queue.cpp
   ${APPLIER_DIR}/log_applier_result_queue.cpp
   ${APPLIER_DIR}/log_applier_worker.cpp
+  ${APPLIER_DIR}/log_applier_worker_context.cpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(

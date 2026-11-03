@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_task_queue.cpp - shared task queue feeding the parallel applier workers
+ * log_applier_task_queue.cpp - implementation of the shared coordinator-to-worker task queue
  *
  * The coordinator pushes only tasks the dependency gate has let pass, and any idle worker takes the next
  * one. The gate has already made sure that every predecessor is applied, so it does not matter which

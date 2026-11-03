@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_pending.hpp - transactions held back by the dependency gate until their predecessors are applied
+ * log_applier_pending.hpp - interface for tasks waiting on an incomplete dependency
  */
 
 #ifndef _LOG_APPLIER_PENDING_HPP_

@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_stat.cpp - collect in-memory parallel apply statistics
+ * log_applier_stat.cpp - implementation of in-memory parallel apply statistics
  */
 
 #include "config.h"

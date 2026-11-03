@@ -17,11 +17,11 @@
  */
 
 /*
- * log_applier_worker.hpp - parallel applylogdb worker threads
+ * log_applier_worker.hpp - interface for parallel apply worker threads
  *
- * A worker is one applier thread with its own server connection. The module owns the thread's life
- * cycle (start, session, apply context, task loop, exit) and the per-worker apply context; how one
- * transaction is applied stays in log_applier.c and is handed in as the run_task callback.
+ * A worker owns one thread and one server connection. This module manages thread and session life
+ * cycles and the task loop. Worker-local apply buffers are managed by log_applier_worker_context;
+ * log_applier.c supplies the operation that applies one task.
  */
 
 #ifndef _LOG_APPLIER_WORKER_HPP_
@@ -30,11 +30,10 @@
 #include <pthread.h>
 
 #include "porting.h"
-#include "storage_common.h"	/* RECDES */
-#include "log_compress.h"	/* LOG_ZIP */
 #include "heartbeat.h"		/* HB_MAX_APPLY_WORKER_COUNT */
 #include "log_applier_task.hpp"
 #include "log_applier_result.hpp"
+#include "log_applier_worker_context.hpp"
 
 #define LA_MAX_WORKER_COUNT         HB_MAX_APPLY_WORKER_COUNT	/* per-worker arrays are this long; the number of
 								 * workers actually started is ha_apply_worker_count */
@@ -66,36 +65,6 @@ struct la_worker_session
   bool client_context_started;
 };
 
-/* Record buffers of one worker. Replication items are not sent one by one: they collect on the client
- * side until la_flush_repl_items sends a batch, so every item's record must stay allocated until then.
- * The pool therefore holds as many records as a flush batch, each one db page long, and hands them out
- * in a ring. A record larger than a page gets its own allocation, which the next assignment of that slot
- * frees again. */
-typedef struct la_recdes_pool LA_RECDES_POOL;
-struct la_recdes_pool
-{
-  RECDES *recdes_arr;
-  char *area;			/* continuous area for recdes data */
-  int next_idx;
-  int db_page_size;
-  int num_recdes;
-  bool is_initialized;
-};
-
-/* State one worker thread needs while it rebuilds and applies records. In the serial applier these
- * were globals; each worker has its own copy so the threads never share them. */
-typedef struct la_apply_worker_context LA_APPLY_WORKER_CONTEXT;
-struct la_apply_worker_context
-{
-  int worker_idx;
-  INT16 rec_type;		/* record type of the row being rebuilt, written by la_get_recdes */
-  LOG_ZIP *undo_unzip_ptr;
-  LOG_ZIP *redo_unzip_ptr;
-  LA_RECDES_POOL recdes_pool;
-  struct db_session *marker_session;	/* applied-transaction marker INSERT, compiled once on this connection */
-  int marker_stmt_id;
-};
-
 /* Applies one transaction on the calling worker and fills in its result; owned by log_applier.c. */
 typedef void (*LA_WORKER_RUN_TASK_FUNC) (LA_APPLY_WORKER_CONTEXT *context, LA_TASK *task, int trace_level,
     unsigned long long *applied_item_count, LA_RESULT *result);
@@ -121,9 +90,5 @@ extern int la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFI
 extern void la_worker_join (LA_WORKER *workers, int count);
 extern int la_worker_start_session (LA_WORKER_SESSION *session, int sub_index);
 extern void la_worker_end_session (LA_WORKER_SESSION *session);
-
-extern RECDES *la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT *context);
-extern int la_realloc_recdes_data (LA_APPLY_WORKER_CONTEXT *context, RECDES *recdes, int data_size);
-extern void la_release_oversized_recdes (LA_APPLY_WORKER_CONTEXT *context);
 
 #endif /* _LOG_APPLIER_WORKER_HPP_ */

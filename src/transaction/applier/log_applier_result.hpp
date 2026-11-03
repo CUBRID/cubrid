@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_result.hpp - result of one applied transaction that a worker returns to the coordinator
+ * log_applier_result.hpp - result returned after a worker applies one task
  */
 
 #ifndef _LOG_APPLIER_RESULT_HPP_

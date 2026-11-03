@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_task.hpp - unit of apply work the coordinator reads from the log and hands to a worker
+ * log_applier_task.hpp - complete apply task dispatched by the coordinator
  */
 
 #ifndef _LOG_APPLIER_TASK_HPP_

@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_pending.cpp - transactions held back by the dependency gate until their predecessors are applied
+ * log_applier_pending.cpp - implementation of dependency-waiting task storage
  *
  * The coordinator parks a transaction here when the gate does not let it pass yet, and keeps reading the log
  * instead of waiting. Every time a completion moves the gate's frontier, the coordinator takes out the parked

@@ -16,7 +16,7 @@
  */
 
 /*
- * log_applier_stat_store.cpp - persist parallel apply statistics
+ * log_applier_stat_store.cpp - implementation of parallel apply statistics persistence
  */
 
 #include "config.h"

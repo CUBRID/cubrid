@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_task_queue.hpp - shared task queue feeding the parallel applier workers
+ * log_applier_task_queue.hpp - interface for the shared coordinator-to-worker task queue
  */
 
 #ifndef _LOG_APPLIER_TASK_QUEUE_HPP_

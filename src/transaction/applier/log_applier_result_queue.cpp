@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_result_queue.cpp - shared result queue returning worker results to the coordinator
+ * log_applier_result_queue.cpp - implementation of the shared worker-to-coordinator result queue
  *
  * The queue has its own mutex and condition variables; no thread holds this mutex and the task queue's
  * at the same time.

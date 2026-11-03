@@ -16,7 +16,7 @@
  */
 
 /*
- * log_applier_stat_store.hpp - persist parallel apply statistics
+ * log_applier_stat_store.hpp - interface for persisting parallel apply statistics
  */
 
 #ifndef _LOG_APPLIER_STAT_STORE_HPP_

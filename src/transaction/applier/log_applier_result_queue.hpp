@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_result_queue.hpp - shared result queue returning worker results to the coordinator
+ * log_applier_result_queue.hpp - interface for the shared worker-to-coordinator result queue
  */
 
 #ifndef _LOG_APPLIER_RESULT_QUEUE_HPP_

@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_inflight.hpp - in-flight list: tasks handed to the workers and not yet retired
+ * log_applier_inflight.hpp - interface for dispatched tasks that are not yet retired
  */
 
 #ifndef _LOG_APPLIER_INFLIGHT_HPP_

@@ -16,7 +16,7 @@
  */
 
 /*
- * log_applier_coordinator.cpp - dispatch, collect and retire parallel apply tasks
+ * log_applier_coordinator.cpp - implementation of the parallel apply coordinator
  */
 
 #include "config.h"
@@ -62,6 +62,11 @@ static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_retire_results (void);
 static int la_coordinator_run_alone (LA_TASK *task);
 
+/*
+ * la_coordinator_clock_ns - read the monotonic clock used by scheduling statistics
+ *
+ * return: monotonic time in nanoseconds
+ */
 static UINT64
 la_coordinator_clock_ns (void)
 {
@@ -72,7 +77,15 @@ la_coordinator_clock_ns (void)
   return (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
 }
 
-/* Initialize the coordinator-owned scheduling state. The restart LSA is borrowed and read on first submit. */
+/*
+ * la_coordinator_initialize - initialize coordinator-owned scheduling state
+ *
+ * return: NO_ERROR or an error code
+ *
+ *   config(in): queue capacities, callbacks and restart position
+ *
+ * Note: restart_lsa remains owned by the caller and is read when the first task is submitted.
+ */
 int
 la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
 {
@@ -115,7 +128,13 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
   return NO_ERROR;
 }
 
-/* Dispatch pending tasks whose dependency is now satisfied, preserving their pending order. */
+/*
+ * la_coordinator_drain_ready - dispatch pending tasks whose dependency is satisfied
+ *
+ * return: NO_ERROR or an error code
+ *
+ * Note: ready tasks are dispatched in pending-list order.
+ */
 static int
 la_coordinator_drain_ready (void)
 {
@@ -136,7 +155,13 @@ la_coordinator_drain_ready (void)
   return NO_ERROR;
 }
 
-/* Stop reading new commits while the order ring is full, but keep collecting worker results. */
+/*
+ * la_coordinator_wait_for_commit_order_slot - make room in the commit-order ring
+ *
+ * return: NO_ERROR or an error code
+ *
+ * Note: the coordinator stops accepting new commits but keeps collecting results so the frontier can advance.
+ */
 static int
 la_coordinator_wait_for_commit_order_slot (void)
 {
@@ -164,7 +189,16 @@ la_coordinator_wait_for_commit_order_slot (void)
   return NO_ERROR;
 }
 
-/* Record a runnable task before enqueue so every worker result has a matching in-flight entry. */
+/*
+ * la_coordinator_enqueue_task - record and enqueue one runnable task
+ *
+ * return: NO_ERROR or an error code
+ *
+ *   task_in(in): task released by the dependency gate
+ *   sched_status(in): reason the task is being dispatched
+ *
+ * Note: the in-flight entry is created first so every worker result has a matching dispatch number.
+ */
 static int
 la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_status)
 {
@@ -210,6 +244,11 @@ la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_statu
   return la_task_queue_push (&task);
 }
 
+/*
+ * la_coordinator_trace_schedule - trace one scheduling decision
+ *
+ * return: none
+ */
 static void
 la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq)
 {
@@ -226,13 +265,22 @@ la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status
 		 (unsigned long long) dispatch_seq);
 }
 
+/*
+ * la_coordinator_drain_complete - check whether all accepted work is retired
+ *
+ * return: true if pending, in-flight and commit-order state are empty
+ */
 bool
 la_coordinator_drain_complete (void)
 {
   return (la_pending_is_empty () && la_inflight_get_count () == 0 && la_gate_order_get_count () == 0);
 }
 
-/* Collect completed worker results, advance the frontier and retire entries in dispatch order. */
+/*
+ * la_coordinator_collect_and_retire - collect results and retire the completed dispatch prefix
+ *
+ * return: NO_ERROR or an error code
+ */
 int
 la_coordinator_collect_and_retire (void)
 {
@@ -247,6 +295,11 @@ la_coordinator_collect_and_retire (void)
   return la_coordinator_retire_results ();
 }
 
+/*
+ * la_coordinator_collect_results - consume all currently queued worker results
+ *
+ * return: NO_ERROR or an error code
+ */
 static int
 la_coordinator_collect_results (void)
 {
@@ -267,6 +320,11 @@ la_coordinator_collect_results (void)
   return la_coordinator_drain_ready ();
 }
 
+/*
+ * la_coordinator_record_result - attach one result and update completion state
+ *
+ * return: NO_ERROR or an error code
+ */
 static int
 la_coordinator_record_result (LA_RESULT *result)
 {
@@ -292,7 +350,15 @@ la_coordinator_record_result (LA_RESULT *result)
   return NO_ERROR;
 }
 
-/* Put a taskless SYSOP_END on the order ring so dependencies on that boundary can be released. */
+/*
+ * la_coordinator_complete_without_task - complete a taskless SYSOP_END boundary
+ *
+ * return: NO_ERROR or an error code
+ *
+ *   lsa(in): SYSOP_END position to record and complete
+ *
+ * Note: the boundary still enters the commit-order ring so later dependencies can be released in order.
+ */
 int
 la_coordinator_complete_without_task (const LOG_LSA *lsa)
 {
@@ -326,6 +392,11 @@ la_coordinator_complete_without_task (const LOG_LSA *lsa)
   return la_coordinator_drain_ready ();
 }
 
+/*
+ * la_coordinator_pop_result - wait until one worker result can be removed
+ *
+ * return: NO_ERROR or ER_FAILED when shutdown is requested
+ */
 static int
 la_coordinator_pop_result (LA_RESULT *result)
 {
@@ -347,6 +418,11 @@ la_coordinator_pop_result (LA_RESULT *result)
     }
 }
 
+/*
+ * la_coordinator_wait_until_retired - wait until every in-flight task is retired
+ *
+ * return: NO_ERROR or an error code
+ */
 static int
 la_coordinator_wait_until_retired (void)
 {
@@ -379,6 +455,11 @@ la_coordinator_wait_until_retired (void)
   return NO_ERROR;
 }
 
+/*
+ * la_coordinator_wait_for_inflight_slot - make room in the in-flight list
+ *
+ * return: NO_ERROR or an error code
+ */
 static int
 la_coordinator_wait_for_inflight_slot (void)
 {
@@ -422,7 +503,13 @@ la_coordinator_wait_for_inflight_slot (void)
   return NO_ERROR;
 }
 
-/* Retire only the completed prefix; later results cannot release earlier transaction state. */
+/*
+ * la_coordinator_retire_results - retire the completed prefix of the in-flight list
+ *
+ * return: NO_ERROR or an error code
+ *
+ * Note: a later result cannot release transaction state that precedes an unfinished entry.
+ */
 static int
 la_coordinator_retire_results (void)
 {
@@ -471,6 +558,11 @@ la_coordinator_retire_results (void)
   return NO_ERROR;
 }
 
+/*
+ * la_coordinator_run_alone - drain existing work and run one task by itself
+ *
+ * return: NO_ERROR or an error code
+ */
 static int
 la_coordinator_run_alone (LA_TASK *task)
 {
@@ -503,7 +595,13 @@ la_coordinator_run_alone (LA_TASK *task)
   return la_coordinator_wait_until_retired ();
 }
 
-/* Register a completed log task and either dispatch it or retain it until its dependency is satisfied. */
+/*
+ * la_coordinator_submit_task - register and schedule one complete log task
+ *
+ * return: NO_ERROR or an error code
+ *
+ *   task(in/out): task to dispatch now or retain until its dependency is complete
+ */
 int
 la_coordinator_submit_task (LA_TASK *task)
 {

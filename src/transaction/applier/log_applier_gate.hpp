@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_gate.hpp - dependency gate that holds a transaction back until what it conflicts with is applied
+ * log_applier_gate.hpp - interface for dependency and completion-frontier tracking
  */
 
 #ifndef _LOG_APPLIER_GATE_HPP_

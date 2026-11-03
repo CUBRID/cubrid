@@ -16,7 +16,7 @@
  */
 
 /*
- * log_applier_stat_print.cpp - print parallel apply statistics for applyinfo
+ * log_applier_stat_print.cpp - implementation of parallel apply statistics output for applyinfo
  */
 
 #include "config.h"

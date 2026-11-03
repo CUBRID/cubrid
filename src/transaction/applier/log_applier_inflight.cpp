@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_inflight.cpp - in-flight list: tasks handed to the workers and not yet retired
+ * log_applier_inflight.cpp - implementation of dispatched-task tracking
  *
  * Workers finish out of order and return results on one shared queue. The coordinator records every task
  * it hands over here, attaches each result to its entry by dispatch number, and retires entries from the
