@@ -2589,6 +2589,24 @@ expr_term_compare (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et, DOMA
   return out;
 }
 
+/* an integer against a NUMERIC whose decided comparison takes both sides as they are (by the exact values): the
+ * generic leaf runs that comparison on the unconverted values */
+static bool
+expr_pred_exact_number (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et, DB_TYPE t1, DB_TYPE t2)
+{
+  DOMAIN_COMPARE decided;
+  const DOMAIN_COMPARE *compare;
+
+  if (!((t1 == DB_TYPE_NUMERIC && (t2 == DB_TYPE_SHORT || t2 == DB_TYPE_INTEGER || t2 == DB_TYPE_BIGINT))
+	|| (t2 == DB_TYPE_NUMERIC && (t1 == DB_TYPE_SHORT || t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT))))
+    {
+      return false;
+    }
+  compare = expr_term_compare (env, et, &decided);
+  return compare != NULL && compare->method == DOMAIN_COMPARE_DIRECT && compare->conv[0] == NULL
+    && compare->conv[1] == NULL && (DB_TYPE) compare->source[0] == t1 && (DB_TYPE) compare->source[1] == t2;
+}
+
 /* The domain the server's tree holds for a domain of the tree a compile runs over.  At generation the client's domain
  * objects are not yet what the stream makes of them -- the unpack normalizes a VARCHAR's floating precision and an
  * ENUMERATION's codeset and collation, and equal domains may be different objects -- so where a compile keys on a
@@ -2968,7 +2986,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	const COMP_EVAL_TERM *et;
 	DB_TYPE t1, t2, fast_type;
 	DB_VALUE pinned;
-	bool pin_rhs = false;
+	bool pin_rhs = false, exact;
 
 	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
 	  {
@@ -3021,26 +3039,19 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    else
 	      {
 		pr_clear_value (&pinned);
-		if (compare != NULL && compare->method == DOMAIN_COMPARE_DIRECT && compare->conv[0] == NULL
-		    && compare->conv[1] == NULL && t1 == DB_TYPE_NUMERIC
-		    && (t2 == DB_TYPE_SHORT || t2 == DB_TYPE_INTEGER || t2 == DB_TYPE_BIGINT))
-		  {
-		    /* an integer literal against a NUMERIC: the term's comparison takes both as they are, by the exact
-		     * values, so the generic leaf (the term's decided comparison) compares them unconverted */
-		    t2 = t1;
-		  }
 	      }
 	  }
-	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN
-	    || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
-		 || expr_pred_generic_cmp_type (t1)))
+	exact = !pin_rhs && expr_pred_exact_number (&bctx->env, et, t1, t2);
+	if (!exact && (t1 != t2 || t1 == DB_TYPE_UNKNOWN
+		       || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+			    || expr_pred_generic_cmp_type (t1))))
 	  {
 	    /* differing sides: the plain term evaluator compares them */
 	    pr_clear_value (&pinned);
 	    return expr_scan_pred_interp_leaf (pr, true);
 	  }
-	fast_type = (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
-		     || t1 == DB_TYPE_DATE) ? t1 : DB_TYPE_UNKNOWN;
+	fast_type = (!exact && (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+				|| t1 == DB_TYPE_DATE)) ? t1 : DB_TYPE_UNKNOWN;
 
 	pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
 	if (pred == NULL)
@@ -4628,12 +4639,16 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 
 	t1 = expr_node_type (bctx, et->lhs);
 	t2 = expr_node_type (bctx, et->rhs);
-	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
+	if (expr_pred_exact_number (&bctx->env, et, t1, t2))
+	  {
+	    fast_type = DB_TYPE_UNKNOWN;	/* the term's decided comparison (expr_pred_compare) */
+	  }
+	else if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
 	  {
 	    /* differing sides compare by the values in eval_value_rel_cmp (); left interpreted */
 	    return NULL;
 	  }
-	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)
+	else if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)
 	  {
 	    fast_type = t1;
 	  }
