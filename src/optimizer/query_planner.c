@@ -196,7 +196,7 @@ enum
 /* qo_plan_cmp () does not tell apart by cost two plans whose costs fall into the same bucket of this ratio (the cost
  * model is not that exact); qo_plan_tie_cmp () picks one of them. */
 #define QO_COST_BUCKET_RATIO 1.01
-#define QO_TIE_MAX_NODES 64	/* scans of a plan qo_plan_tie_cmp () compares the join order by */
+#define QO_TIE_MAX_NODES 64	/* scans of a plan whose aliases and indexes qo_plan_tie_cmp () compares */
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
 #define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
@@ -7016,49 +7016,80 @@ qo_cost_bucket (double cost)
   return floor (log (cost) / log (QO_COST_BUCKET_RATIO)) + 1.0;
 }
 
-/*
- * qo_plan_scan_nodes () - the nodes that a plan scans, outer first
- *   return: the number of nodes in nodes[]
- *   plan(in):
- *   nodes(out): at most QO_TIE_MAX_NODES nodes
- *   n(in): the number of nodes already in nodes[]
- */
-static int
-qo_plan_scan_nodes (QO_PLAN * plan, QO_NODE ** nodes, int n)
+/* the values of a plan that qo_plan_tie_cmp () compares, gathered over all its scans */
+typedef struct qo_tie_keys QO_TIE_KEYS;
+struct qo_tie_keys
 {
-  if (plan == NULL || n >= QO_TIE_MAX_NODES)
+  int sorts;			/* sort plans: ORDER BY, GROUP BY or merge input sorts it does not skip */
+  int covering;			/* covering index scans */
+  int range_terms;		/* key range terms of the index scans */
+  int filter_terms;		/* key filter terms of the index scans */
+  double index_pages;		/* pages of the indexes scanned */
+  int n;			/* scans, outer first */
+  QO_NODE *nodes[QO_TIE_MAX_NODES];
+  const char *index_names[QO_TIE_MAX_NODES];	/* the empty name for a scan without an index */
+};
+
+/*
+ * qo_plan_tie_keys () - gather over the scans of a plan, outer first, the values that qo_plan_tie_cmp () compares
+ *   return: nothing
+ *   plan(in):
+ *   keys(in/out): zeroed by the caller
+ */
+static void
+qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
+{
+  QO_NODE_INDEX_ENTRY *index;
+  const char *name;
+
+  if (plan == NULL)
     {
-      return n;
+      return;
     }
 
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      nodes[n++] = plan->plan_un.scan.node;
+      index = plan->plan_un.scan.index;
+      if (index != NULL)
+	{
+	  keys->covering += qo_is_index_covering_scan (plan) ? 1 : 0;
+	  keys->range_terms += bitset_cardinality (&plan->plan_un.scan.terms);
+	  keys->filter_terms += bitset_cardinality (&plan->plan_un.scan.kf_terms);
+	  keys->index_pages += index->cum_stats.pages;
+	}
+      if (keys->n < QO_TIE_MAX_NODES)
+	{
+	  name = (index != NULL && index->head->constraints != NULL) ? index->head->constraints->name : NULL;
+	  keys->nodes[keys->n] = plan->plan_un.scan.node;
+	  keys->index_names[keys->n] = (name != NULL) ? name : "";
+	  keys->n++;
+	}
       break;
 
     case QO_PLANTYPE_SORT:
-      n = qo_plan_scan_nodes (plan->plan_un.sort.subplan, nodes, n);
+      keys->sorts++;
+      qo_plan_tie_keys (plan->plan_un.sort.subplan, keys);
       break;
 
     case QO_PLANTYPE_JOIN:
-      n = qo_plan_scan_nodes (plan->plan_un.join.outer, nodes, n);
-      n = qo_plan_scan_nodes (plan->plan_un.join.inner, nodes, n);
+      qo_plan_tie_keys (plan->plan_un.join.outer, keys);
+      qo_plan_tie_keys (plan->plan_un.join.inner, keys);
       break;
 
     case QO_PLANTYPE_FOLLOW:
-      n = qo_plan_scan_nodes (plan->plan_un.follow.head, nodes, n);
-      if (n < QO_TIE_MAX_NODES)
+      qo_plan_tie_keys (plan->plan_un.follow.head, keys);
+      if (keys->n < QO_TIE_MAX_NODES)
 	{
-	  nodes[n++] = QO_TERM_TAIL (plan->plan_un.follow.path);
+	  keys->nodes[keys->n] = QO_TERM_TAIL (plan->plan_un.follow.path);
+	  keys->index_names[keys->n] = "";
+	  keys->n++;
 	}
       break;
 
     default:
       break;
     }
-
-  return n;
 }
 
 /*
@@ -7070,70 +7101,38 @@ qo_plan_scan_nodes (QO_PLAN * plan, QO_NODE ** nodes, int n)
  *   b_cost(in): qo_plan_cmp_cost (b)
  *
  * Note: Each step compares a value of one plan with the same value of the other, never a relation between the two,
- *   so the steps order all the plans of an info alike, whatever order they are generated in:
- *     1. fewer sorts on top: a plan that skips the ORDER BY or GROUP BY sort
- *     2. a covering index scan
- *     3. more key range terms, then more key filter terms: the index reads fewer keys
+ *   so the steps order all the plans of an info alike, whatever order they are generated in. The values are those
+ *   of all the scans of a plan (qo_plan_tie_keys ()):
+ *     1. fewer sorts: a plan that skips the ORDER BY or GROUP BY sort
+ *     2. more covering index scans
+ *     3. more key range terms, then more key filter terms: the indexes read fewer keys
  *     4. fewer index pages (a sequential scan has none)
  *     5. the lower exact cost
- *     6. the scans in join order by alias, and the index by name: the order of the FROM list or of the index
+ *     6. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
  *        creation does not matter
- *     7. the plan type, then the scan or join method
+ *     7. the plan type, then the scan or join method of the plan under its sorts
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
 {
-  QO_PLAN *a_scan = a, *b_scan = b;
-  QO_NODE_INDEX_ENTRY *a_index, *b_index;
-  QO_NODE *a_nodes[QO_TIE_MAX_NODES], *b_nodes[QO_TIE_MAX_NODES];
-  int a_sorts = 0, b_sorts = 0;
-  int a_val, b_val, a_n, b_n, i, c;
-  const char *a_name, *b_name;
+  QO_TIE_KEYS a_keys, b_keys;
+  QO_PLAN *a_top = a, *b_top = b;
+  int a_val, b_val, i, c;
 
 #define QO_TIE_PREFER_LESS(x, y) \
   do { if ((x) != (y)) return ((x) < (y)) ? PLAN_COMP_LT : PLAN_COMP_GT; } while (0)
 
-  /* 1. the sorts on top */
-  while (a_scan->plan_type == QO_PLANTYPE_SORT)
-    {
-      a_scan = a_scan->plan_un.sort.subplan;
-      a_sorts++;
-    }
-  while (b_scan->plan_type == QO_PLANTYPE_SORT)
-    {
-      b_scan = b_scan->plan_un.sort.subplan;
-      b_sorts++;
-    }
-  QO_TIE_PREFER_LESS (a_sorts, b_sorts);
+  memset (&a_keys, 0, sizeof (QO_TIE_KEYS));
+  memset (&b_keys, 0, sizeof (QO_TIE_KEYS));
+  qo_plan_tie_keys (a, &a_keys);
+  qo_plan_tie_keys (b, &b_keys);
 
-  if (a_scan->plan_type != QO_PLANTYPE_SCAN)
-    {
-      a_scan = NULL;
-    }
-  if (b_scan->plan_type != QO_PLANTYPE_SCAN)
-    {
-      b_scan = NULL;
-    }
-  a_index = (a_scan != NULL) ? a_scan->plan_un.scan.index : NULL;
-  b_index = (b_scan != NULL) ? b_scan->plan_un.scan.index : NULL;
-
-  /* 2. a covering index scan */
-  a_val = (a_scan != NULL && qo_is_index_covering_scan (a_scan)) ? 0 : 1;
-  b_val = (b_scan != NULL && qo_is_index_covering_scan (b_scan)) ? 0 : 1;
-  QO_TIE_PREFER_LESS (a_val, b_val);
-
-  /* 3. the key range and key filter terms of the index */
-  a_val = (a_index != NULL) ? bitset_cardinality (&a_scan->plan_un.scan.terms) : 0;
-  b_val = (b_index != NULL) ? bitset_cardinality (&b_scan->plan_un.scan.terms) : 0;
-  QO_TIE_PREFER_LESS (b_val, a_val);
-  a_val = (a_index != NULL) ? bitset_cardinality (&a_scan->plan_un.scan.kf_terms) : 0;
-  b_val = (b_index != NULL) ? bitset_cardinality (&b_scan->plan_un.scan.kf_terms) : 0;
-  QO_TIE_PREFER_LESS (b_val, a_val);
-
-  /* 4. the index pages */
-  a_val = (a_index != NULL) ? a_index->cum_stats.pages : 0;
-  b_val = (b_index != NULL) ? b_index->cum_stats.pages : 0;
-  QO_TIE_PREFER_LESS (a_val, b_val);
+  /* 1-4. sorts, covering scans, index terms and index pages */
+  QO_TIE_PREFER_LESS (a_keys.sorts, b_keys.sorts);
+  QO_TIE_PREFER_LESS (b_keys.covering, a_keys.covering);
+  QO_TIE_PREFER_LESS (b_keys.range_terms, a_keys.range_terms);
+  QO_TIE_PREFER_LESS (b_keys.filter_terms, a_keys.filter_terms);
+  QO_TIE_PREFER_LESS (a_keys.index_pages, b_keys.index_pages);
 
   /* 5. the exact cost; QO_INFINITY equals itself */
   if (a_cost != b_cost && !QO_COST_EQ (a_cost, b_cost))
@@ -7141,31 +7140,35 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
       return (a_cost < b_cost) ? PLAN_COMP_LT : PLAN_COMP_GT;
     }
 
-  /* 6. the scans in join order, then the index */
-  a_n = qo_plan_scan_nodes (a, a_nodes, 0);
-  b_n = qo_plan_scan_nodes (b, b_nodes, 0);
-  for (i = 0; i < a_n && i < b_n; i++)
+  /* 6. the aliases in join order, then the index names */
+  for (i = 0; i < a_keys.n && i < b_keys.n; i++)
     {
-      a_name = QO_NODE_NAME (a_nodes[i]) != NULL ? QO_NODE_NAME (a_nodes[i]) : "";
-      b_name = QO_NODE_NAME (b_nodes[i]) != NULL ? QO_NODE_NAME (b_nodes[i]) : "";
-      c = strcmp (a_name, b_name);
+      c = strcmp (QO_NODE_NAME (a_keys.nodes[i]) != NULL ? QO_NODE_NAME (a_keys.nodes[i]) : "",
+		  QO_NODE_NAME (b_keys.nodes[i]) != NULL ? QO_NODE_NAME (b_keys.nodes[i]) : "");
       QO_TIE_PREFER_LESS (c, 0);
     }
-  QO_TIE_PREFER_LESS (a_n, b_n);
+  QO_TIE_PREFER_LESS (a_keys.n, b_keys.n);
+  for (i = 0; i < a_keys.n; i++)
+    {
+      c = strcmp (a_keys.index_names[i], b_keys.index_names[i]);
+      QO_TIE_PREFER_LESS (c, 0);
+    }
 
-  /* a plan without an index has the empty name: a value of every plan, as each step needs */
-  a_name = (a_index != NULL && a_index->head->constraints != NULL) ? a_index->head->constraints->name : "";
-  b_name = (b_index != NULL && b_index->head->constraints != NULL) ? b_index->head->constraints->name : "";
-  c = strcmp (a_name != NULL ? a_name : "", b_name != NULL ? b_name : "");
-  QO_TIE_PREFER_LESS (c, 0);
-
-  /* 7. the plan type and method (-1 for a plan that has none) */
-  QO_TIE_PREFER_LESS ((int) a->plan_type, (int) b->plan_type);
-  a_val = (a_scan != NULL) ? (int) a_scan->plan_un.scan.scan_method : -1;
-  b_val = (b_scan != NULL) ? (int) b_scan->plan_un.scan.scan_method : -1;
+  /* 7. the plan type and method under the sorts (-1 for a plan that has none) */
+  while (a_top->plan_type == QO_PLANTYPE_SORT && a_top->plan_un.sort.subplan != NULL)
+    {
+      a_top = a_top->plan_un.sort.subplan;
+    }
+  while (b_top->plan_type == QO_PLANTYPE_SORT && b_top->plan_un.sort.subplan != NULL)
+    {
+      b_top = b_top->plan_un.sort.subplan;
+    }
+  QO_TIE_PREFER_LESS ((int) a_top->plan_type, (int) b_top->plan_type);
+  a_val = (a_top->plan_type == QO_PLANTYPE_SCAN) ? (int) a_top->plan_un.scan.scan_method : -1;
+  b_val = (b_top->plan_type == QO_PLANTYPE_SCAN) ? (int) b_top->plan_un.scan.scan_method : -1;
   QO_TIE_PREFER_LESS (a_val, b_val);
-  a_val = (a->plan_type == QO_PLANTYPE_JOIN) ? (int) a->plan_un.join.join_method : -1;
-  b_val = (b->plan_type == QO_PLANTYPE_JOIN) ? (int) b->plan_un.join.join_method : -1;
+  a_val = (a_top->plan_type == QO_PLANTYPE_JOIN) ? (int) a_top->plan_un.join.join_method : -1;
+  b_val = (b_top->plan_type == QO_PLANTYPE_JOIN) ? (int) b_top->plan_un.join.join_method : -1;
   QO_TIE_PREFER_LESS (a_val, b_val);
 
 #undef QO_TIE_PREFER_LESS
