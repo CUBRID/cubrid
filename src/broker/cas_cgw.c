@@ -141,9 +141,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_END */
   fn_not_supported,		/* CAS_FC_STREAM_INIT */
   fn_not_supported,		/* CAS_FC_STREAM_ABORT */
-  fn_not_supported,		/* CAS_FC_LOB_STREAM_OPEN */
-  fn_not_supported,		/* CAS_FC_LOB_STREAM_READ */
-  fn_not_supported		/* CAS_FC_LOB_STREAM_CLOSE */
+  fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_not_supported,		/* CAS_FC_STREAM_READ */
+  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
 };
 
 static const char *server_func_name[] = {
@@ -195,9 +195,9 @@ static const char *server_func_name[] = {
   "stream_end",
   "stream_init",
   "stream_abort",
-  "lob_stream_open",
-  "lob_stream_read",
-  "lob_stream_close"
+  "stream_read_open",
+  "stream_read",
+  "stream_release"
 };
 
 /* process_request () indexes both tables by func_code - 1 after checking func_code < CAS_FC_MAX */

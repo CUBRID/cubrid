@@ -122,9 +122,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_END */
   fn_not_supported,		/* CAS_FC_STREAM_INIT */
   fn_not_supported,		/* CAS_FC_STREAM_ABORT */
-  fn_not_supported,		/* CAS_FC_LOB_STREAM_OPEN */
-  fn_not_supported,		/* CAS_FC_LOB_STREAM_READ */
-  fn_not_supported		/* CAS_FC_LOB_STREAM_CLOSE */
+  fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_not_supported,		/* CAS_FC_STREAM_READ */
+  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
 };
 #elif defined(CAS_FOR_CGW)
 static T_SERVER_FUNC server_fn_table[] = {
@@ -176,9 +176,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_END */
   fn_not_supported,		/* CAS_FC_STREAM_INIT */
   fn_not_supported,		/* CAS_FC_STREAM_ABORT */
-  fn_not_supported,		/* CAS_FC_LOB_STREAM_OPEN */
-  fn_not_supported,		/* CAS_FC_LOB_STREAM_READ */
-  fn_not_supported		/* CAS_FC_LOB_STREAM_CLOSE */
+  fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_not_supported,		/* CAS_FC_STREAM_READ */
+  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
 };
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 /* ========================================================================
@@ -233,9 +233,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_stream_end,		/* CAS_FC_STREAM_END */
   fn_stream_init,		/* CAS_FC_STREAM_INIT */
   fn_stream_abort,		/* CAS_FC_STREAM_ABORT */
-  fn_lob_stream_open,		/* CAS_FC_LOB_STREAM_OPEN */
-  fn_lob_stream_read,		/* CAS_FC_LOB_STREAM_READ */
-  fn_lob_stream_close		/* CAS_FC_LOB_STREAM_CLOSE */
+  fn_stream_read_open,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_stream_read,		/* CAS_FC_STREAM_READ */
+  fn_stream_release		/* CAS_FC_STREAM_RELEASE */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -292,9 +292,9 @@ static const char *server_func_name[] = {
   "fn_stream_end",
   "fn_stream_init",
   "fn_stream_abort",
-  "fn_lob_stream_open",
-  "fn_lob_stream_read",
-  "fn_lob_stream_close"
+  "fn_stream_read_open",
+  "fn_stream_read",
+  "fn_stream_release"
 };
 
 /* process_request () indexes the names the same way, before the admission check can swap the function */
