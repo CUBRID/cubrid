@@ -730,7 +730,6 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	{
 	  /* Not enough space — update hint and try next */
 	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
-	  *out_pgptr = NULL;
 
 	  if (found_in_hash)
 	    {
@@ -1064,13 +1063,13 @@ oos_stats_update_internal (THREAD_ENTRY *thread_p, OOS_HDR_STATS *oos_hdr,
 }
 
 static void
-oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid, int prev_freespace)
+oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid)
 {
   int freespace;
 
   freespace = spage_get_free_space_without_saving (thread_p, pgptr);
 
-  if (freespace > prev_freespace)
+  if (freespace > 0)
     {
       /* Space was freed — update global cache */
       VPID page_vpid;
@@ -3386,7 +3385,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
       /* Update bestspace cache — page now has more free space after delete */
-      oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
+      oos_stats_update (thread_p, page_ptr, &oos_vfid);
 
       /* Report the page only when this delete emptied it: oos_reclaim_empty_pages can deallocate
        * nothing else, and a page empties at most once per delete, so this also keeps the list
@@ -3912,12 +3911,6 @@ int
 bridge_oos_get_max_chunk_size_within_page ()
 {
   return oos_get_max_chunk_size_within_page ();
-}
-
-int
-bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
-{
-  return oos_vpid_init_new (thread_p, page, args);
 }
 
 const auto_unfix_page_ptr
