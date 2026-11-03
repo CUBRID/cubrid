@@ -627,8 +627,7 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
    * executing a statement clears it, and an INSERT the trigger action being compiled runs would
    * then set LAST_INSERT_ID as if outside a trigger. Nor the session's row count, which executing a
    * SELECT resets to -1 and ROW_COUNT () or a driver asks for after the statement before it.
-   * This list has to hold every client global db_execute_statement_local () changes; the test
-   * cbrd_27478 runs a statement with the read on and off and compares what the session shows. */
+   * This list has to hold every client global db_execute_statement_local () changes. */
   er_stack_push ();
   saved_supp_info = pt_detach_xasl_supp_info ();
   if (saved_supp_info == NULL)
