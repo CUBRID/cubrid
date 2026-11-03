@@ -35,8 +35,10 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "expr_batch.h"
 #include "expr_compile.h"
 #include "query_executor.h"
+#include "query_hash_scan.h"	// qdata_hash_scan_value
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
@@ -1045,6 +1047,203 @@ qdata_clear_value_array (DB_VALUE *values, int count)
 }
 
 /*
+ * qdata_agg_operand_prog_ensure () - the list's compiled operand program for this execution
+ *   return: the active program, or NULL when the operands are interpreted
+ *   agg_list_p(in/out): the aggregate list; its head carries the program state
+ *   val_desc_p(in): the execution's value descriptor
+ *
+ * The same lazy hook every consumer of the list makes before its first row -- compile on
+ * first use (the XASL fixes the domains for every execution), recompile when the scan filter
+ * it shares values with was recompiled, and derive the cell-based accumulator links once per
+ * execution.  Pulled out of qdata_evaluate_aggregate_list () so that a page batch
+ * (qdata_evaluate_aggregate_batch ()) and a parallel worker settle the program the same way.
+ */
+EXPR_PROG *
+qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+			       val_descr *val_desc_p)
+{
+  EXPR_PROG *operand_prog = NULL;
+  bool compiled_now = false;
+
+  if (agg_list_p->operand_prog_state == 0)
+    {
+      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+      compiled_now = true;
+    }
+  if (agg_list_p->operand_prog_state == 1)
+    {
+      operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
+      if (!expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
+	{
+	  /* the scan filter whose slots it reads was recompiled: recompile */
+	  expr_prog_free (operand_prog);
+	  free_and_init (agg_list_p->operand_prog_idx);
+	  agg_list_p->operand_prog = NULL;
+	  agg_list_p->operand_prog_state = 0;
+	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	  operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
+	  compiled_now = true;
+	}
+    }
+  if (operand_prog != NULL)
+    {
+      /* The program says which
+       * operands are one and the same cell: let SUM/AVG over them share an accumulator.
+       * Derived once per execution -- qdata_link_shared_accumulators () reset the links
+       * at execution start -- from the program of THIS execution, never from a program a
+       * later row may replace.  A hash GROUP BY entry created before this row keeps its
+       * own links and accumulates such a pair separately (correct, just not shared). */
+      unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
+
+      if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
+	{
+	  qdata_link_shared_accumulators_by_cell (agg_list_p, val_desc_p);
+	  agg_list_p->operand_prog_link_stamp = stamp;
+	}
+    }
+  return operand_prog;
+}
+
+/*
+ * qdata_agg_chunk_consume () - the aggregate node of a chunk chain: accumulate the chunk's selected rows
+ *   return: NO_ERROR, or an error code
+ *   node(in): its state is a QDATA_AGG_CHUNK_STATE
+ */
+int
+qdata_agg_chunk_consume (cubthread::entry *thread_p, EXPR_CHUNK_NODE *node, EXPR_BATCH_PLAN *plan, EXPR_BATCH *batch)
+{
+  QDATA_AGG_CHUNK_STATE *st = (QDATA_AGG_CHUNK_STATE *) node->state;
+
+  return qdata_evaluate_aggregate_batch (thread_p, st->agg_list, st->vd, plan, batch, st->skip_optimized, NULL);
+}
+
+/*
+ * qdata_evaluate_aggregate_batch () - accumulate the rows of one page batch
+ *   return: NO_ERROR, or an error code
+ *   agg_list_p(in/out): the aggregate list (the accumulators are its nodes' own)
+ *   val_desc_p(in): the execution's value descriptor
+ *   plan(in): the batch plan built over this list (expr_batch.h)
+ *   batch(in): the page batch expr_batch_run () evaluated
+ *   skip_optimized(in): leave the aggregates the optimizer answered before the scan alone (the
+ *                       serial loop's rule; a parallel worker accumulates them)
+ *   alt_acc_list(in): the accumulators to take the rows instead of the nodes' own -- a hash GROUP BY's group
+ *                     (AGGREGATE_HASH_VALUE.accumulators), as qdata_evaluate_aggregate_list () takes them -- or NULL
+ *
+ * One typed loop per aggregate over the page's selected rows, where the row path makes one
+ * call per row and aggregate.  What the row path does on a value's first arrival -- keep it
+ * in acc->value, seed the word accumulator through qdata_aggregate_value_to_accumulator ()
+ * -- happens here on the first value of the page the same way, as a DB_VALUE; the values
+ * after it go straight into the word accumulator (expr_batch_agg_sum_rest ()).  MIN/MAX take
+ * the page's extreme value in that one call; COUNT takes a count.
+ */
+int
+qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				val_descr *val_desc_p, EXPR_BATCH_PLAN *plan, const EXPR_BATCH *batch,
+				bool skip_optimized, cubxasl::aggregate_accumulator *alt_acc_list)
+{
+  cubxasl::aggregate_list_node *agg_p;
+  int i, error;
+
+  for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
+    {
+      cubxasl::aggregate_accumulator *accumulator = (alt_acc_list != NULL) ? &alt_acc_list[i] : &agg_p->accumulator;
+      DB_VALUE dbv;
+      int pos = 0, cnt;
+      INT64 n_added = 0;
+
+      /* skip_optimized: the serial loop leaves an aggregate the optimizer answered before the
+       * scan (agg_optimized) and an ended one alone; a parallel worker's loop accumulates them
+       * like any other, and the coordinator takes the workers' sums */
+      if (accumulator->shared_from > 0 || (skip_optimized && (agg_p->flag.agg_optimized || agg_p->is_ended)))
+	{
+	  continue;
+	}
+      if (!expr_batch_agg_covered (plan, i))
+	{
+	  /* an internal fault, not the plan's content: ER_QPROC_INVALID_XASLNODE would have the client compile the
+	   * statement again and run it (db_execute_and_keep_statement_local (), the CAS's recompile_statement ()),
+	   * hiding it, so the generic error goes out here and below */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+      switch (agg_p->function)
+	{
+	case PT_COUNT_STAR:
+	  accumulator->curr_cnt += batch->n_sel;
+	  break;
+	case PT_COUNT:
+	  cnt = expr_batch_agg_count (plan, batch, i);
+	  if (cnt > 0)
+	    {
+	      /* the row path keeps COUNT (x) in acc->value (qdata_aggregate_value_to_accumulator ())
+	       * and the finalize reads it from there; curr_cnt is kept beside it as the row path does */
+	      db_make_bigint (accumulator->value,
+			      (accumulator->curr_cnt < 1 ? (INT64) 0 : db_get_bigint (accumulator->value)) + cnt);
+	      accumulator->curr_cnt += cnt;
+	    }
+	  break;
+	case PT_SUM:
+	case PT_AVG:
+	  if (!accumulator->sum_acc.is_active
+	      || accumulator->sum_acc.sum_type != sum_acc_agg_sum_type_for (expr_batch_agg_type (plan, i)))
+	    {
+	      /* the first value of the group (or an accumulator a spill emptied): the same call the
+	       * row path makes for it, which keeps it in acc->value and seeds the word accumulator */
+	      if (!expr_batch_agg_next_value (plan, batch, i, &pos, &dbv))
+		{
+		  break;		/* every value of the page is NULL */
+		}
+	      error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+		      agg_p->function, agg_p->domain, &dbv, false);
+	      pr_clear_value (&dbv);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      accumulator->curr_cnt++;
+	      if (!accumulator->sum_acc.is_active
+		  || accumulator->sum_acc.sum_type != sum_acc_agg_sum_type_for (expr_batch_agg_type (plan, i)))
+		{
+		  /* the accumulator did not open in the vector's type: the plan admits only an aggregate whose node
+		   * planned the word accumulator (accumulator_takes) over the vector's type, so this cannot happen */
+		  assert (false);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  return ER_FAILED;
+		}
+	    }
+	  error = expr_batch_agg_sum_rest (plan, batch, i, pos, &accumulator->sum_acc, &n_added);
+	  accumulator->curr_cnt += n_added;
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  break;
+	case PT_MIN:
+	case PT_MAX:
+	  cnt = expr_batch_agg_extremum (plan, batch, i, agg_p->function == PT_MIN, &dbv);
+	  if (cnt > 0)
+	    {
+	      error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+		      agg_p->function, agg_p->domain, &dbv, false);
+	      pr_clear_value (&dbv);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      accumulator->curr_cnt += cnt;
+	    }
+	  break;
+	default:
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in): aggregate expression node list
@@ -1056,34 +1255,16 @@ qdata_clear_value_array (DB_VALUE *values, int count)
  *        Alternate accumulators can not be used for DISTINCT processing or
  *        the GROUP_CONCAT and MEDIAN function.
  */
-/* does the arithmetic tree under regu contain a division?  (the one fused-path shape whose result can
- * differ from the program's: the DOUBLE zero test, see qdata_agg_operand_prog_compile ()) */
-static bool
-qdata_agg_operand_has_div (const REGU_VARIABLE *regu)
-{
-  if (regu == NULL || regu->type != TYPE_INARITH || regu->value.arithptr == NULL)
-    {
-      return false;
-    }
-  if (regu->value.arithptr->opcode == T_DIV)
-    {
-      return true;
-    }
-  return qdata_agg_operand_has_div (regu->value.arithptr->leftptr)
-	 || qdata_agg_operand_has_div (regu->value.arithptr->rightptr);
-}
-
 /*
- * qdata_agg_operand_prog_compile () - lazily compile the operand expressions of a whole
+ * qdata_agg_operand_prog_compile () - lazily settle the operand expressions of a whole
  *				       aggregate list into one program (expr_compile.h)
  *
- * Only plain accumulating functions participate; the operands of any aggregate the
- * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones, and
- * the index-boundary MIN/MAX whose operand the loop stops fetching once it is_ended) are
- * left out so the unconditional per-row program evaluation cannot change behavior.
- * Roots the expression compiler cannot cover purely are excluded the same way (the
- * compiler is called without fallback roots), so every compiled step is side-effect
- * free.
+ * The program XASL generation compiled for the list (expr_agg_prog_settle ()); the server
+ * compiles none itself.  Only plain accumulating functions participate
+ * (expr_agg_roots ()): the operands of any aggregate the per-row loop may skip are left out
+ * so the unconditional per-row program evaluation cannot change behavior.  Roots the
+ * expression compiler cannot cover purely are excluded the same way (the compiler is
+ * called without fallback roots), so every compiled step is side-effect free.
  *
  * The program evaluates the operands of EVERY participating aggregate before the
  * per-row loop accumulates the first one, whereas the interpreted loop fetches and
@@ -1104,161 +1285,35 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 				val_descr *val_desc_p)
 {
   cubxasl::aggregate_list_node *agg_p;
-  REGU_VARIABLE *roots[128];
-  int *idx = NULL;
-  int n = 0, k;
-  int depth_budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  int *idx = NULL, *bases;
+  int n_aggs = 0, k;
   EXPR_PROG *prog;
-  bool side_effect_covered = false, side_effect_uncovered = false;
 
   agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
 
-  /* collect candidate operands in evaluation order */
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
-      bool participates;
-
-      switch (agg_p->function)
-	{
-	case PT_SUM:
-	case PT_AVG:
-	case PT_MIN:
-	case PT_MAX:
-	case PT_COUNT:
-	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
-	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
-	   * the interpreted path so the program never evaluates an operand the interpreter
-	   * would not.  Nothing is lost: such a list is MIN/MAX-only
-	   * (pt_set_access_spec_for_aggregation ()) over a scan the executor stops after one
-	   * or two rows, where compiling would only cost. */
-	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
-	  break;
-	default:
-	  participates = false;
-	  break;
-	}
-
-      agg_p->operand_prog_base = -1;
-      if (!participates)
-	{
-	  /* an operand the program will not evaluate (GROUP_CONCAT's, say) keeps its place in the
-	   * interpreter's order: see the side-effect rule below the loop */
-	  for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
-	    {
-	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
-	    }
-	  continue;
-	}
-
-      agg_p->operand_prog_base = n;
-      for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
-	{
-	  bool word_operand;
-
-	  if (n >= (int) DIM (roots))
-	    {
-	      return;
-	    }
-	  /* A plain SUM/AVG over a NUMERIC {+,-,*} tree of plain leaves is the shape the accumulate
-	   * loop below already evaluates in CBRD-27178's word domain and adds to SUM_ACC without a
-	   * DB_VALUE (qdata_agg_expr_eval_numeric () -> numeric_sum_acc_add_expr_val ()); develop
-	   * applies the same test when it marks REGU_VARIABLE_AGG_OPERAND.  Compiling it instead
-	   * would pack a DB_VALUE per arithmetic step, coerce it to the result domain per row and
-	   * unpack it again at the accumulator, which made exactly this aggregate slower than
-	   * develop (review 2026-09-23); a word root inside the program was measured slower than
-	   * the loop's own branch as well (the program's dispatch on top of the same walk).  So the
-	   * operand stays out of the program (root -1) and the loop's word branch takes it.  The
-	   * other operands of the list keep the program, its leaf sharing and the filter values. */
-	  word_operand = ((agg_p->function == PT_SUM || agg_p->function == PT_AVG) && agg_p->option != Q_DISTINCT
-			  && operand->next == NULL && operand->value.type == TYPE_INARITH
-			  && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_NUMERIC
-			  && fetch_is_agg_expr_shape (&operand->value, depth_budget));
-	  /* The same for an operand that is only the cast the parser wraps a SUM/AVG argument in
-	   * (SUM (int_col) is a BIGINT, so the argument comes as CAST_WRAP (int_col AS BIGINT)):
-	   * develop marks it REGU_VARIABLE_AGG_OPERAND and its fused register path reads the
-	   * integer straight through the wrap (fetch.c).  The compiler used to decline such a
-	   * root, leaving it there; now that the wrap compiles, keep it there on purpose -- a cast
-	   * kernel would cost a DB_VALUE slot and a forced cast per row where the loop reads a
-	   * word, and that shape has not been measured against the loop. */
-	  if (!word_operand && operand->value.type == TYPE_INARITH
-	      && operand->value.value.arithptr->opcode == T_CAST_WRAP
-	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND))
-	    {
-	      word_operand = true;
-	    }
-	  /* And for a DOUBLE tree with a division that develop's fused register path takes
-	   * (fetch_peek_arith (), REGU_VARIABLE_AGG_OPERAND): that path divides doubles with its
-	   * own zero test (right == 0.0, fetch_agg_expr_eval_dbl ()) while the program has no
-	   * DOUBLE division kernel and its generic step goes through qdata_arith_dbval ()'s
-	   * DBL_EPSILON test, so SUM (d / x) over x = 1e-20 raised "divide by zero" where develop
-	   * returns a value (review 2026-10-15).  Only this shape differs: the INT trees and the
-	   * DOUBLE {+,-,*} trees compute the same in the fused registers, the kernels and the
-	   * interpreter, and keep the program (its leaf sharing and shared accumulators). */
-	  if (!word_operand && operand->value.type == TYPE_INARITH
-	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND)
-	      && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_DOUBLE
-	      && fetch_is_agg_expr_shape (&operand->value, depth_budget)
-	      && qdata_agg_operand_has_div (&operand->value))
-	    {
-	      word_operand = true;
-	    }
-	  if (word_operand)
-	    {
-	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
-	    }
-	  else
-	    {
-	      side_effect_covered |= expr_regu_has_side_effect (&operand->value);
-	    }
-	  roots[n++] = word_operand ? NULL : &operand->value;
-	}
+      n_aggs++;
     }
-
-  if (n == 0)
+  bases = (int *) malloc (sizeof (int) * n_aggs);
+  if (bases == NULL)
     {
       return;
     }
-  if (side_effect_covered && side_effect_uncovered)
+  for (k = 0; k < n_aggs; k++)
     {
-      /* The program evaluates its operands before the loop, so a serial or a session variable in
-       * a compiled operand would be consumed before one in an operand the loop still fetches in
-       * list order: MAX (s.NEXT_VALUE * 1), GROUP_CONCAT (s.NEXT_VALUE) gave 5 / '2,4,6' where
-       * the interpreter gives 6 / '1,3,5' (review 2026-10-15).  The same rule as the projection
-       * list's (expr_prog_compile_roots_impl ()): when side effects would end up on both sides
-       * of the program, the whole list stays interpreted. */
-      return;
+      bases[k] = -1;
     }
 
-  idx = (int *) malloc (sizeof (int) * n);
-  if (idx == NULL)
+  /* the roots, and the program XASL generation compiled for them */
+  prog = expr_agg_prog_settle (thread_p, agg_list_p, val_desc_p, &idx, bases);
+  for (agg_p = agg_list_p, k = 0; agg_p != NULL; agg_p = agg_p->next, k++)
     {
-      return;
+      agg_p->operand_prog_base = bases[k];
     }
-
-  /* wired-only programs are wanted here: even when every operand is a plain
-   * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
-   * scan), the accumulate kernels below still skip the per-row operand vector, its
-   * deep copy and the accumulate dispatch */
-  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx,
-				  agg_list_p->operand_prog_share_spec);
+  free_and_init (bases);
   if (prog == NULL)
     {
-      free_and_init (idx);
-      return;
-    }
-
-  /* an aggregate whose every operand was excluded keeps its base but reads -1 entries */
-  for (k = 0; k < n; k++)
-    {
-      if (idx[k] >= 0)
-	{
-	  break;
-	}
-    }
-  if (k == n)
-    {
-      expr_prog_free (prog);
-      free_and_init (idx);
       return;
     }
 
@@ -1293,48 +1348,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
   EXPR_PROG *operand_prog = NULL;
-  bool compiled_now = false;
   DB_VALUE stack_values[AGG_MAX_OPERANDS];
   int n_values = 0;
 
   if (agg_list_p != NULL)
     {
-      if (agg_list_p->operand_prog_state == 0)
-	{
-	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
-	  compiled_now = true;
-	}
-      if (agg_list_p->operand_prog_state == 1)
-	{
-	  operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
-	  if (!expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
-	    {
-	      /* the scan filter whose slots it reads was recompiled: recompile */
-	      expr_prog_free (operand_prog);
-	      free_and_init (agg_list_p->operand_prog_idx);
-	      agg_list_p->operand_prog = NULL;
-	      agg_list_p->operand_prog_state = 0;
-	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
-	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
-	      compiled_now = true;
-	    }
-	}
-      if (operand_prog != NULL)
-	{
-	  /* The program says which
-	   * operands are one and the same cell: let SUM/AVG over them share an accumulator.
-	   * Derived once per execution -- qdata_link_shared_accumulators () reset the links
-	   * at execution start -- from the program of THIS execution, never from a program a
-	   * later row may replace.  A hash GROUP BY entry created before this row keeps its
-	   * own links and accumulates such a pair separately (correct, just not shared). */
-	  unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
-
-	  if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
-	    {
-	      qdata_link_shared_accumulators_by_cell (agg_list_p, val_desc_p);
-	      agg_list_p->operand_prog_link_stamp = stamp;
-	    }
-	}
+      operand_prog = qdata_agg_operand_prog_ensure (thread_p, agg_list_p, val_desc_p);
       /* every participating operand of the row is evaluated here, before any aggregate
        * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
        * precedence this implies on a row that fails twice */
@@ -2906,6 +2925,7 @@ qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals, 
 
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
+  key->in_slab = false;
   key->compares = compares;
   return key;
 }
@@ -2922,6 +2942,15 @@ qdata_free_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
   if (key == NULL)
     {
+      return;
+    }
+  if (key->in_slab)
+    {
+      /* its block goes with the value (qdata_free_agg_hvalue ()): the values' own memory only */
+      for (i = 0; i < key->val_count; i++)
+	{
+	  pr_clear_value (key->values[i]);
+	}
       return;
     }
 
@@ -2985,6 +3014,8 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
     }
 
   value->func_count = func_cnt;
+  value->batch_slot = -1;
+  value->slab = NULL;
   /* alloc DB_VALUEs */
   for (i = 0; i < func_cnt; i++)
     {
@@ -3023,6 +3054,8 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
   return value;
 }
 
+static void qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value);
+
 /*
  * qdata_free_agg_hkey () - free hash aggregate key
  *   thread_p(in): thread
@@ -3035,6 +3068,11 @@ qdata_free_agg_hvalue (cubthread::entry *thread_p, aggregate_hash_value *value)
 
   if (value == NULL)
     {
+      return;
+    }
+  if (value->slab != NULL)
+    {
+      qdata_slab_release (thread_p, value);
       return;
     }
 
@@ -3127,6 +3165,219 @@ qdata_get_agg_hvalue_size (aggregate_hash_value *value, bool ret_delta)
   return size;
 }
 
+/* ---------------------------------------------------------------------------------------- */
+/* the groups' slab (query_aggregate.hpp) */
+
+/* The blocks come from the engine's fixed-size record heap (db_create_fixed_heap (), fixed_alloc.c): a
+ * FreelistHeap over a ZoneHeap -- block_size records bumped out of QDATA_SLAB_CHUNK-byte arenas, a freed
+ * block's first word linking the free list (heaplayers freesllist.h), everything returned at destroy.  That
+ * is what a slab of its own did (CBRD-27361 review); the free-list link still overwrites the key header at the
+ * block's start, so a key is released before its value (qdata_slab_release ()).  The heap takes a SpinLock
+ * per alloc and free: once per group, not per row. */
+#define QDATA_SLAB_CHUNK (256 * 1024)
+
+struct agg_group_slab
+{
+  size_t block_size;
+  int n_keys;
+  int n_funcs;
+  int inline_cap;
+  size_t off_keyptrs, off_keyvals, off_value, off_accs, off_accvals, off_tuple;
+  HL_HEAPID heap;		/* the blocks (db_fixed_alloc ()) */
+};
+
+agg_group_slab *
+qdata_slab_create (cubthread::entry *thread_p, int n_keys, int n_funcs, int inline_cap)
+{
+  agg_group_slab *slab = (agg_group_slab *) db_private_alloc (thread_p, sizeof (agg_group_slab));
+  size_t off;
+
+  if (slab == NULL)
+    {
+      return NULL;
+    }
+  memset (slab, 0, sizeof (*slab));
+  slab->n_keys = n_keys;
+  slab->n_funcs = n_funcs;
+  slab->inline_cap = DB_ALIGN (MAX (inline_cap, 0), MAX_ALIGNMENT);
+  off = DB_ALIGN (sizeof (aggregate_hash_key), MAX_ALIGNMENT);
+  slab->off_keyptrs = off;
+  off += DB_ALIGN (sizeof (DB_VALUE *) * n_keys, MAX_ALIGNMENT);
+  slab->off_keyvals = off;
+  off += DB_ALIGN (sizeof (DB_VALUE) * n_keys, MAX_ALIGNMENT);
+  slab->off_value = off;
+  off += DB_ALIGN (sizeof (aggregate_hash_value), MAX_ALIGNMENT);
+  slab->off_accs = off;
+  off += DB_ALIGN (sizeof (cubxasl::aggregate_accumulator) * n_funcs, MAX_ALIGNMENT);
+  slab->off_accvals = off;
+  off += DB_ALIGN (sizeof (DB_VALUE) * 2 * n_funcs, MAX_ALIGNMENT);
+  slab->off_tuple = off;
+  off += slab->inline_cap;
+  slab->block_size = DB_ALIGN (off, MAX_ALIGNMENT);
+  slab->heap = db_create_fixed_heap ((int) slab->block_size, MAX (1, (int) (QDATA_SLAB_CHUNK / slab->block_size)));
+  if (slab->heap == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) QDATA_SLAB_CHUNK);
+      db_private_free_and_init (thread_p, slab);
+      return NULL;
+    }
+  return slab;
+}
+
+void
+qdata_slab_destroy (cubthread::entry *thread_p, agg_group_slab *slab)
+{
+  if (slab == NULL)
+    {
+      return;
+    }
+  db_destroy_fixed_heap (slab->heap);
+  db_private_free_and_init (thread_p, slab);
+}
+
+static char *
+qdata_slab_block (agg_group_slab *slab)
+{
+  char *p = (char *) db_fixed_alloc (slab->heap, slab->block_size);
+
+  if (p == NULL)
+    {
+      /* the heap sets no error of its own */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, slab->block_size);
+    }
+  return p;
+}
+
+/*
+ * qdata_slab_new_group () - a new group's key (a copy of key) and value (as qdata_alloc_agg_hvalue () sets it up)
+ *			     in one block; a first tuple of tuple_size bytes fits the block or is allocated alone
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY / the copy's error
+ */
+int
+qdata_slab_new_group (cubthread::entry *thread_p, agg_group_slab *slab, aggregate_hash_key *key,
+		      cubxasl::aggregate_list_node *g_agg_list, int tuple_size, aggregate_hash_key **out_key,
+		      aggregate_hash_value **out_value)
+{
+  char *b = qdata_slab_block (slab);
+  aggregate_hash_key *k;
+  aggregate_hash_value *v;
+  DB_VALUE *kv, *av;
+  cubxasl::aggregate_list_node *agg_p;
+  int i;
+
+  if (b == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  k = (aggregate_hash_key *) b;
+  k->values = (DB_VALUE **) (b + slab->off_keyptrs);
+  kv = (DB_VALUE *) (b + slab->off_keyvals);
+  k->val_count = key->val_count;
+  k->free_values = false;
+  k->in_slab = true;
+  k->compares = key->compares;	/* the context's key comparisons, as qdata_copy_agg_hkey () carries them */
+  for (i = 0; i < key->val_count; i++)
+    {
+      k->values[i] = &kv[i];
+      /* pr_clone_value () reports nothing: a copy that could not allocate (mr_setval_string () and the like) is left
+       * a NULL of the key's domain with ER_OUT_OF_VIRTUAL_MEMORY set, so that pair is the failure here -- the error
+       * alone is not (an earlier one may still be in the slot) */
+      pr_clone_value (key->values[i], &kv[i]);
+      if (DB_IS_NULL (&kv[i]) && !DB_IS_NULL (key->values[i]) && er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  while (i >= 0)
+	    {
+	      pr_clear_value (&kv[i--]);
+	    }
+	  db_fixed_free (slab->heap, b);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  v = (aggregate_hash_value *) (b + slab->off_value);
+  memset (v, 0, sizeof (*v));
+  v->slab = slab;
+  v->batch_slot = -1;
+  v->func_count = slab->n_funcs;
+  v->accumulators = (slab->n_funcs > 0) ? (cubxasl::aggregate_accumulator *) (b + slab->off_accs) : NULL;
+  av = (DB_VALUE *) (b + slab->off_accvals);
+  for (i = 0; i < slab->n_funcs; i++)
+    {
+      memset (&v->accumulators[i], 0, sizeof (v->accumulators[i]));
+      v->accumulators[i].value = &av[2 * i];
+      v->accumulators[i].value2 = &av[2 * i + 1];
+      db_make_null (v->accumulators[i].value);
+      db_make_null (v->accumulators[i].value2);
+      v->accumulators[i].sum_acc.is_active = false;
+      v->accumulators[i].shared_from = 0;
+    }
+  for (i = 0, agg_p = g_agg_list; agg_p != NULL && i < slab->n_funcs; agg_p = agg_p->next, i++)
+    {
+      v->accumulators[i].shared_from = agg_p->accumulator.shared_from;
+      if (agg_p->function == PT_GROUPBY_NUM)
+	{
+	  continue;
+	}
+      v->accumulators[i].curr_cnt = 0;
+      if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
+	{
+	  db_make_bigint (v->accumulators[i].value, 0);
+	}
+    }
+  v->tuple_count = 0;
+  v->first_tuple = QFILE_TUPLE_RECORD_INITIALIZER;
+  if (tuple_size > 0)
+    {
+      char *tpl = (tuple_size <= slab->inline_cap) ? b + slab->off_tuple
+		  : (char *) db_private_alloc (thread_p, tuple_size);
+
+      if (tpl == NULL)
+	{
+	  qdata_free_agg_hkey (thread_p, k);
+	  db_fixed_free (slab->heap, b);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      v->first_tuple.tpl = tpl;
+      v->first_tuple.size = tuple_size;
+    }
+  *out_key = k;
+  *out_value = v;
+  return NO_ERROR;
+}
+
+/* a group's block back to its slab: what its values hold of their own freed (the key's values were cleared by
+ * qdata_free_agg_hkey () before), a first tuple allocated alone freed.
+ *
+ * The order is a contract: the key first (qdata_free_agg_hkey ()), then the value (here).  The heap's free list
+ * writes its link into the block's first word, which is the key's header (val_count, free_values, in_slab): a
+ * value given back before its key leaves qdata_free_agg_hkey () reading the link bytes as the header -- in_slab
+ * false -- and taking the block's own memory to db_private_free (), a pointer inside the heap.  Every pair goes
+ * through qdata_free_agg_hentry () or releases in that order. */
+static void
+qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value)
+{
+  agg_group_slab *slab = value->slab;
+  char *b = (char *) value - slab->off_value;
+  int i;
+
+  /* the heap does not show its free list; the header the link overwrites stands in for it: a block already given
+   * back reads the link where a live block reads its key count and in_slab */
+  assert (((aggregate_hash_key *) b)->in_slab && ((aggregate_hash_key *) b)->val_count == slab->n_keys);
+  for (i = 0; i < value->func_count; i++)
+    {
+      pr_clear_value (value->accumulators[i].value);
+      pr_clear_value (value->accumulators[i].value2);
+    }
+  if (value->first_tuple.tpl != NULL && value->first_tuple.tpl != b + slab->off_tuple)
+    {
+      db_private_free (thread_p, value->first_tuple.tpl);
+    }
+  value->first_tuple.tpl = NULL;
+  value->first_tuple.size = 0;
+  db_fixed_free (slab->heap, b);
+}
+
 /*
  * qdata_free_agg_hentry () - free key-value pair of hash entry
  *   returns: error code or NO_ERROR
@@ -3141,7 +3392,8 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
   aggregate_hash_value *hvalue = (aggregate_hash_value *) data;
   cubthread::entry *thread_p = (cubthread::entry *) args;
 
-  /* free key */
+  /* the key first, then the value: a pair in one slab block gives the block back with the value, and the free-list
+   * link then overwrites the key's header (qdata_slab_release ()) -- the order is not to be swapped */
   qdata_free_agg_hkey (thread_p, hkey);
 
   /* free accumulators */
@@ -3152,10 +3404,89 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
 }
 
 /*
+ * qdata_key_sketch_add () - note a GROUP BY key in a distinct-key sketch (HyperLogLog: a register per hash prefix
+ *			      keeps the longest run of leading zeros after it)
+ */
+void
+qdata_key_sketch_add (unsigned char *regs, const aggregate_hash_key *key)
+{
+  qdata_key_sketch_add_hashed (regs, qdata_hash_agg_hkey (key, 0xffffffffu));
+}
+
+/* the same with the key's full-range hash, qdata_hash_agg_hkey (key, 0xffffffffu), computed by the caller (which
+ * looks the key up in the table with it too: qdata_hash_agg_hkey_bucket ()) */
+void
+qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
+{
+  unsigned int w;
+  unsigned char rank;
+
+  /* the key's hash mixed again: an integer key's is little more than the integer */
+  h ^= h >> 16;
+  h *= 0x7feb352du;
+  h ^= h >> 15;
+  h *= 0x846ca68bu;
+  h ^= h >> 16;
+  w = h << 10;
+  /* 1 + the leading zeros of the 22 bits after the prefix, 23 when all are zero */
+  rank = (w == 0) ? 23 : (unsigned char) (__builtin_clz (w) + 1);
+  if (regs[h >> 22] < rank)
+    {
+      regs[h >> 22] = rank;
+    }
+}
+
+void
+qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other)
+{
+  int i;
+
+  for (i = 0; i < QDATA_KEY_SKETCH_REGS; i++)
+    {
+      if (regs[i] < other[i])
+	{
+	  regs[i] = other[i];
+	}
+    }
+}
+
+/* the distinct keys a sketch saw, about: the harmonic mean of the registers, linear counting while few are set */
+double
+qdata_key_sketch_estimate (const unsigned char *regs)
+{
+  const double m = QDATA_KEY_SKETCH_REGS;
+  double sum = 0, est;
+  int i, zeros = 0;
+
+  for (i = 0; i < QDATA_KEY_SKETCH_REGS; i++)
+    {
+      sum += ldexp (1.0, - (int) regs[i]);
+      zeros += (regs[i] == 0);
+    }
+  est = (0.7213 / (1 + 1.079 / m)) * m * m / sum;
+  if (est <= 2.5 * m && zeros > 0)
+    {
+      est = m * log (m / zeros);
+    }
+  else if (est > 4294967296.0 / 30)
+    {
+      est = -4294967296.0 * log (1 - est / 4294967296.0);
+    }
+  return est;
+}
+
+/*
  * qdata_hash_agg_hkey () - compute hash of aggregate key
  *   returns: hash value
  *   key(in): key
  *   ht_size(in): hash table size (in buckets)
+ *
+ * Keys the comparison finds equal hash alike, but for a JSON key and a string of a collation with expansions: a
+ * FLOAT, DOUBLE or MONETARY -0 hashes as +0 (qdata_hash_scan_value ()).  The hash merge of the GROUP BY leftovers
+ * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal, and goes out without the sort that
+ * brings a -0 group and a +0 group together.  A JSON key hashes its text while its comparison takes a scalar's value
+ * (true as 'true'), and a collation with expansions hashes the weights its comparison skips
+ * (lang_mht2str_utf8_exp ()), so the merge leaves those keys to the sort (qexec_gby_keys_hash_as_compared ()).
  */
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
@@ -3168,10 +3499,26 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = ROTL32 (hash_val, 13);
-      hash_val ^= mht_get_hash_number (ht_size, ckey->values[i]);
+      hash_val ^= qdata_hash_scan_value (ckey->values[i], ht_size);
     }
 
   return hash_val;
+}
+
+/*
+ * qdata_hash_agg_hkey_bucket () - the hash table's bucket of an aggregate key: its full-range hash modulo the size
+ *   returns: bucket
+ *   key(in): key
+ *   ht_size(in): hash table size (in buckets)
+ *
+ * The table (qexec_alloc_agg_hash_context ()) is registered with this one so that the bucket is a function of
+ * the one hash the row loop computes per key (mht_get_hash ()); the table itself calls it when it inserts and
+ * when it rehashes.
+ */
+unsigned int
+qdata_hash_agg_hkey_bucket (const void *key, unsigned int ht_size)
+{
+  return qdata_hash_agg_hkey (key, 0xffffffffu) % ht_size;
 }
 
 /*
@@ -3206,8 +3553,9 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
-       * regu's, which types the partial list's column): they hash alike exactly when they compare equal. Exception to
-       * deciding before the rows: keys whose domains leave a value's type to the data compare by their values */
+       * regu's, which types the partial list's column): they hash alike when they compare equal, but for JSON and
+       * a collation with expansions (qdata_hash_agg_hkey ()). Exception to deciding before the rows: keys whose
+       * domains leave a value's type to the data compare by their values */
       result = ckey1->compares != NULL ? domain_compare_in_domain (ckey1->compares[i], ckey1->values[i],
 	       ckey2->values[i], 0, 1)
 	       : tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
@@ -3440,7 +3788,9 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
   /* add to list file */
   if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {
-      qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+      /* a page that cannot be had fails the entry: a parallel merge pairs a group's tuple and its partial entry by
+       * their order in two lists (qexec_gby_px_finish ()), so a lost entry would shift every group after it */
+      error = qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
     }
   else
     {
@@ -3576,6 +3926,36 @@ end:
  *   key_dom(in): key domains
  *   acc_dom(in): accumulator domains
  */
+int
+qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
+				aggregate_hash_key *key, tp_domain **key_dom, bool copy)
+{
+  QFILE_TUPLE_WALK walk;
+  bool is_null;
+  int i, rc = NO_ERROR;
+
+  /* copy false: the values point into the tuple and last as long as it stays fixed -- enough for a key that is only
+   * hashed (a split choosing the key's partition); a key kept past the tuple is copied.
+   * The walk sizes the NULL bitmap by the tuple's column count -- the list's type_cnt (key columns, three per
+   * aggregate, the tuple count), not the key's: past 32 columns the bitmap takes another word and the key
+   * columns sit further in */
+  qfile_tuple_walk_init (&walk, tuple, hdr_size, type_cnt);
+  for (i = 0; i < key->val_count; i++)
+    {
+      (void) pr_clear_value (key->values[i]);
+      rc = qfile_tuple_walk_read_value (&walk, key_dom[i], key->values[i], copy, &is_null);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      if (is_null)
+	{
+	  db_make_null (key->values[i]);
+	}
+    }
+  return NO_ERROR;
+}
+
 SCAN_CODE
 qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
 				 aggregate_hash_key *key, aggregate_hash_value *value, tp_domain **key_dom,
