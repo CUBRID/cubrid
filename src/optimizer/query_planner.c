@@ -7104,19 +7104,22 @@ qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
  *   so the steps order all the plans of an info alike, whatever order they are generated in. The values are those
  *   of all the scans of a plan (qo_plan_tie_keys ()):
  *     1. fewer sorts: a plan that skips the ORDER BY or GROUP BY sort
- *     2. more covering index scans
- *     3. more key range terms, then more key filter terms: the indexes read fewer keys
- *     4. fewer index pages (a sequential scan has none)
- *     5. the lower exact cost
- *     6. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
+ *     2. for a plan of several scans (a join), the lower exact cost: the joins are told apart by cost, as they were
+ *        before, and the next steps only between joins of one cost (which inner index a join probes)
+ *     3. more covering index scans
+ *     4. more key range terms, then more key filter terms: the indexes read fewer keys
+ *     5. fewer index pages (a sequential scan has none)
+ *     6. the lower exact cost
+ *     7. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
  *        creation does not matter
- *     7. the plan type, then the scan or join method of the plan under its sorts
+ *     8. the plan type, then the scan or join method of the plan under its sorts
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
 {
   QO_TIE_KEYS a_keys, b_keys;
   QO_PLAN *a_top = a, *b_top = b;
+  double a_join_cost, b_join_cost;
   int a_val, b_val, i, c;
 
 #define QO_TIE_PREFER_LESS(x, y) \
@@ -7127,20 +7130,31 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
   qo_plan_tie_keys (a, &a_keys);
   qo_plan_tie_keys (b, &b_keys);
 
-  /* 1-4. sorts, covering scans, index terms and index pages */
+  /* 1. sorts */
   QO_TIE_PREFER_LESS (a_keys.sorts, b_keys.sorts);
+
+  /* 2. a plan of several scans by its exact cost first: the sums of its scans stand for a join poorly (taken first,
+   *    they turn many join orders whose costs differ by less than the bucket), and a plan of one scan has 0 here */
+  a_join_cost = (a_keys.n > 1) ? a_cost : 0.0;
+  b_join_cost = (b_keys.n > 1) ? b_cost : 0.0;
+  if (a_join_cost != b_join_cost && !QO_COST_EQ (a_join_cost, b_join_cost))
+    {
+      return (a_join_cost < b_join_cost) ? PLAN_COMP_LT : PLAN_COMP_GT;
+    }
+
+  /* 3-5. covering scans, index terms and index pages */
   QO_TIE_PREFER_LESS (b_keys.covering, a_keys.covering);
   QO_TIE_PREFER_LESS (b_keys.range_terms, a_keys.range_terms);
   QO_TIE_PREFER_LESS (b_keys.filter_terms, a_keys.filter_terms);
   QO_TIE_PREFER_LESS (a_keys.index_pages, b_keys.index_pages);
 
-  /* 5. the exact cost; QO_INFINITY equals itself */
+  /* 6. the exact cost; QO_INFINITY equals itself */
   if (a_cost != b_cost && !QO_COST_EQ (a_cost, b_cost))
     {
       return (a_cost < b_cost) ? PLAN_COMP_LT : PLAN_COMP_GT;
     }
 
-  /* 6. the aliases in join order, then the index names */
+  /* 7. the aliases in join order, then the index names */
   for (i = 0; i < a_keys.n && i < b_keys.n; i++)
     {
       c = strcmp (QO_NODE_NAME (a_keys.nodes[i]) != NULL ? QO_NODE_NAME (a_keys.nodes[i]) : "",
@@ -7154,7 +7168,7 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
       QO_TIE_PREFER_LESS (c, 0);
     }
 
-  /* 7. the plan type and method under the sorts (-1 for a plan that has none) */
+  /* 8. the plan type and method under the sorts (-1 for a plan that has none) */
   while (a_top->plan_type == QO_PLANTYPE_SORT && a_top->plan_un.sort.subplan != NULL)
     {
       a_top = a_top->plan_un.sort.subplan;
