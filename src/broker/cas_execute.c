@@ -1339,8 +1339,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       int result_cache_lifetime;
       char include_column_info;
 
-      if (db_check_single_query (session) == NO_ERROR
-	  && !column_types_vary (srv_handle->q_result, client_version))
+      if (db_check_single_query (session) == NO_ERROR && !column_types_vary (srv_handle->q_result, client_version))
 	{
 	  include_column_info = 0;
 	}
@@ -1691,8 +1690,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       int result_cache_lifetime;
       char include_column_info;
 
-      if (db_check_single_query (session) == NO_ERROR
-	  && !column_types_vary (&srv_handle->q_result[0], client_version))
+      if (db_check_single_query (session) == NO_ERROR && !column_types_vary (&srv_handle->q_result[0], client_version))
 	{
 	  include_column_info = 0;
 	}
