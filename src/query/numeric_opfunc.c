@@ -4193,6 +4193,45 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 }
 
 /*
+ * float_numeric_normalize_for_sort() - Normalize a NUMERIC value for a sort key
+ *   return: the decimal exponent e of the value as 0.M x 10^e, offset by DB_MAX_NUMERIC_SCALE
+ *           so that it is 1 at the least, or 0 for a zero value
+ *   num(in)       : original numeric value
+ *   scale(in)     : scale of the input
+ *   mantissa(out) : M, the value made DB_MAX_NUMERIC_PRECISION digits long (size: DB_NUMERIC_BUF_SIZE)
+ *
+ * Note:
+ *   - Equivalent numeric values (e.g., 1.0 and 1.00) result in one exponent and mantissa.
+ *   - The exponent then the mantissa, compared as unsigned, order the values by magnitude.
+ */
+int
+float_numeric_normalize_for_sort (DB_C_NUMERIC num, int scale, uint8_t * mantissa)
+{
+  uint64_t word_buf[NUMERIC_AS_WORDS] = { 0 };
+  int digits;
+
+  numeric_bytes_to_words (num, DB_NUMERIC_BUF_SIZE, word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
+  if ((word_buf[0] | word_buf[1] | word_buf[2]) == 0)
+    {
+      memset (mantissa, 0, DB_NUMERIC_BUF_SIZE);
+      return 0;
+    }
+
+  digits = float_numeric_get_decimal_digit (word_buf, NUMERIC_AS_WORDS);
+
+  /* multiply by 10 up to DB_MAX_NUMERIC_PRECISION(40) digits, so 10^39 <= M < 10^40 */
+  if (digits < DB_MAX_NUMERIC_PRECISION)
+    {
+      (void) float_numeric_mul_normalize (word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
+					  DB_MAX_NUMERIC_PRECISION - digits);
+    }
+
+  numeric_words_to_bytes (word_buf, NUMERIC_AS_WORDS, mantissa);
+
+  return digits - scale + DB_MAX_NUMERIC_SCALE;
+}
+
+/*
  * numeric_sum_acc_load_dbv () - load a NUMERIC value and activate the accumulator
  *   acc(in/out) : accumulator; activated
  *   dbv(in)     : NUMERIC value to load
@@ -4480,6 +4519,63 @@ numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
 
   dbv_scale = db_get_numeric_scale (dbv, NULL);
   numeric_agg_expr_make (out, ((uint128_t) words[1] << 64) | words[2], dbv_scale, numeric_is_negative (dbv));
+  return true;
+}
+
+/*
+ * numeric_agg_expr_from_disk () - unpack a NUMERIC attribute's record bytes into an agg-expr value
+ *   return: true on success, false when the coefficient does not fit uint128
+ *   disk(in): the attribute's first byte in the record (the 3-byte header)
+ *   avail(in): bytes readable from disk, or -1 when the caller does not know
+ *   out(out): the agg-expr value
+ *
+ * The same reading mr_data_readval_numeric () makes -- the total size and the value's
+ * sign in header[0], the precision and the scale's sign in header[1], the scale in
+ * header[2], then the low (size - 3) bytes of the big-endian magnitude -- without the
+ * 17-byte DB_VALUE in between: a page batch (expr_batch.c) loads a NUMERIC column
+ * straight from the records into the word domain the aggregate accumulator takes.
+ */
+bool
+numeric_agg_expr_from_disk (const unsigned char *disk, int avail, NUMERIC_AGG_EXPR_VAL * out)
+{
+  int size, nbytes, i, scale;
+  bool is_negative, is_negative_scale;
+  uint128_t coefficient = 0;
+
+  if (disk == NULL || (avail >= 0 && avail < NUMERIC_HEADER_SIZE))
+    {
+      return false;
+    }
+  size = (disk[0] & 0x7F);
+  if (size < NUMERIC_HEADER_SIZE || (avail >= 0 && size > avail))
+    {
+      return false;
+    }
+  nbytes = size - NUMERIC_HEADER_SIZE;
+  if (nbytes > DB_NUMERIC_BUF_SIZE)
+    {
+      return false;
+    }
+  is_negative = (disk[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+  is_negative_scale = (disk[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+  scale = is_negative_scale ? -((int) disk[2]) : (int) disk[2];
+
+  /* the magnitude is big-endian; a 17-byte payload whose top byte is set exceeds uint128 */
+  disk += NUMERIC_HEADER_SIZE;
+  if (nbytes == DB_NUMERIC_BUF_SIZE)
+    {
+      if (disk[0] != 0)
+	{
+	  return false;
+	}
+      disk++;
+      nbytes--;
+    }
+  for (i = 0; i < nbytes; i++)
+    {
+      coefficient = (coefficient << 8) | (uint128_t) disk[i];
+    }
+  numeric_agg_expr_make (out, coefficient, scale, is_negative);
   return true;
 }
 

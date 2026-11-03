@@ -24,6 +24,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <float.h>
 
 #include "optimizer.h"
 
@@ -42,6 +43,7 @@
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
 static XASL_NODE *make_scan_proc (QO_ENV * env);
+static SORT_LIST *copy_merge_sort_list (PARSER_CONTEXT * parser, SORT_LIST * list);
 static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list,
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
@@ -169,6 +171,44 @@ make_fetch_proc (QO_ENV * env, QO_PLAN * plan)
 }
 
 /*
+ * copy_merge_sort_list () - copy a merge input orderby_list entry by entry
+ *   return: copied list, NULL on error
+ *   parser(in):
+ *   list(in): orderby_list of a merge join input
+ *
+ * Note: pt_to_sort_list () would set s_nulls, and the copy must match orderby_list exactly to be covered.
+ */
+static SORT_LIST *
+copy_merge_sort_list (PARSER_CONTEXT * parser, SORT_LIST * list)
+{
+  SORT_LIST *head = NULL, *tail = NULL, *copy;
+
+  for (; list != NULL; list = list->next)
+    {
+      copy = ptqo_single_orderby (parser);
+      if (copy == NULL)
+	{
+	  return NULL;
+	}
+
+      *copy = *list;
+      copy->next = NULL;
+
+      if (tail == NULL)
+	{
+	  head = copy;
+	}
+      else
+	{
+	  tail->next = copy;
+	}
+      tail = copy;
+    }
+
+  return head;
+}
+
+/*
  * make_mergelist_proc () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -199,7 +239,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   PARSER_CONTEXT *parser = NULL;
   QFILE_LIST_MERGE_INFO *ls_merge;
   PT_NODE *outer_attr, *inner_attr;
-  int i, left_epos, rght_epos, cnt, seg_idx, ncols;
+  int i, k, left_epos, rght_epos, cnt, seg_idx, ncols;
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
   SORT_LIST *order, *prev_order;
   QO_TERM *term;
@@ -259,8 +299,28 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
 
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
-  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
+  /* expression columns in the elists are consumed in bitset order, so a key-order permutation needs none */
+  assert (plan->plan_un.join.nordered_terms == 0 || (left_elist == NULL && rght_elist == NULL));
+
+  for (k = 0;; k++)
     {
+      if (plan->plan_un.join.nordered_terms > 0)
+	{
+	  if (k >= plan->plan_un.join.nordered_terms)
+	    {
+	      break;
+	    }
+	  i = plan->plan_un.join.ordered_terms[k];
+	}
+      else
+	{
+	  i = (k == 0) ? bitset_iterate (&(plan->plan_un.join.join_terms), &bi) : bitset_next_member (&bi);
+	  if (i == -1)
+	    {
+	      break;
+	    }
+	}
+
       term = QO_ENV_TERM (env, i);
 
       if (ls_merge->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
@@ -396,6 +456,24 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   /* CBRD-27583: the merge keys sort in the domains XASL generation decided for their list columns */
   pt_set_sort_list_domains (left->orderby_list, left, NULL);
   pt_set_sort_list_domains (rght->orderby_list, rght, NULL);
+
+  /* the input index scan already delivers this order; the list file records it and its sort is skipped */
+  if (plan->plan_un.join.outer_sorted)
+    {
+      left->after_iscan_list = copy_merge_sort_list (parser, left->orderby_list);
+      if (left->after_iscan_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  if (plan->plan_un.join.inner_sorted)
+    {
+      rght->after_iscan_list = copy_merge_sort_list (parser, rght->orderby_list);
+      if (rght->after_iscan_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
 
   left_elen = bitset_cardinality (left_exprs);
   left_nlen = pt_length_of_list (left_list) - left_elen;
@@ -3322,6 +3400,48 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
   return NULL;
 }
 
+/* a covered group by skip with fewer rows per group runs serially: measured on 1M rows (CBRD-27664), 4 workers
+ * lose at 1 row per group, tie at 2-3 and win from 5 */
+#define QO_PARALLEL_GROUPBY_SKIP_MIN_ROWS_PER_GROUP 3.0
+
+/*
+ * qo_groupby_skip_rows_per_group () - rows per group of a group by skip scan, from the index statistics
+ *   return: the table's rows over the keys of the index prefix ending at the last GROUP BY column,
+ *	     or DBL_MAX when the statistics do not tell
+ *   plan(in): the group by skip scan
+ *   select(in): its query
+ */
+double
+qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select)
+{
+  QO_ENV *env = plan->info->env;
+  QO_INDEX_ENTRY *index_entry = plan->plan_un.scan.index->head;
+  QO_ATTR_CUM_STATS *cum_stats = &plan->plan_un.scan.index->cum_stats;
+  PT_NODE *group;
+  int prefix_len = 0;
+  int i;
+
+  for (group = select->info.query.q.select.group_by; group != NULL; group = group->next)
+    {
+      for (i = prefix_len; i < index_entry->nsegs; i++)
+	{
+	  if (index_entry->seg_idxs[i] != -1
+	      && pt_name_equal (QO_ENV_PARSER (env), QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entry->seg_idxs[i])),
+				group->info.sort_spec.expr))
+	    {
+	      prefix_len = i + 1;
+	      break;
+	    }
+	}
+    }
+
+  if (prefix_len == 0 || prefix_len > cum_stats->pkeys_size || cum_stats->pkeys[prefix_len - 1] <= 0)
+    {
+      return DBL_MAX;
+    }
+  return (double) QO_NODE_NCARD (plan->plan_un.scan.node) / (double) cum_stats->pkeys[prefix_len - 1];
+}
+
 /*
  * qo_apply_parallel_index_scan_threshold () - Decide whether parallel index
  *                                             scan is worthwhile for the
@@ -3365,7 +3485,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
       return;
     }
 
-  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+  /* an index read for its GROUP BY order alone (no range) is a group by skip that may run in parallel (CBRD-27664):
+   * the checker decides that (scan_check_parallel_scan_possible ()) */
+  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+      && driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
     {
       return;
     }
@@ -3408,6 +3531,16 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   cum_stats = &index_entry->cum_stats;
   if (!cum_stats->is_indexed || cum_stats->pages <= 0)
     {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  if (qo_plan_skip_groupby (driving) && qo_is_index_covering_scan (driving)
+      && qo_groupby_skip_rows_per_group (driving, select) < QO_PARALLEL_GROUPBY_SKIP_MIN_ROWS_PER_GROUP)
+    {
+      /* each group costs the leader a partial row to merge (CBRD-27664): with few rows per group that outweighs the
+       * workers' covered scan, while a serial scan aggregates in the B-tree. A non-covered scan's heap reads still pay
+       * for the workers. */
       spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
       return;
     }
@@ -3579,6 +3712,11 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 bool
 qo_plan_skip_groupby (QO_PLAN * plan)
 {
+  /* a join skips the GROUP BY in the order of its driving scan (CBRD-27685), which nested loops keep */
+  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      plan = plan->plan_un.join.outer;
+    }
   return (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
 }
@@ -3791,11 +3929,11 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   if (nterms <= 0 && nkfterms <= 0 && bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
       if (qo_is_filter_index (index_entryp) || qo_is_index_loose_scan (plan) || qo_is_iscan_from_groupby (plan)
-	  || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan)
+	  || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan) || plan->order != QO_UNORDERED
 	  || PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)))
 	{
 	  /* Do not return if: 1. filtered index. 2. skip group by, skip order by or skip analytic sort 3. loose scan.
-	   * 4. scan for b-tree node info or key info. */
+	   * 4. scan for b-tree node info or key info. 5. full scan for the key order. */
 	  ;
 	}
       else

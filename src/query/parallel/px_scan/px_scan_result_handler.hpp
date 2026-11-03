@@ -69,6 +69,10 @@ namespace parallel_scan
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
       void set_trace_handler (trace_handler *trace_handler_p);
+      /* a page batch's hash GROUP BY node (qexec_batch_gby_consume ()): the list a dump of this worker's table
+       * goes to, and this worker's copy of the table's state brought in line after the node changed it */
+      QFILE_LIST_ID *gby_list ();
+      void gby_sync ();
       void set_orig_vd (VAL_DESCR *orig_vd);
 
     private:
@@ -98,6 +102,11 @@ namespace parallel_scan
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
       AGGREGATE_HASH_STATE hgby_state = HS_NONE;	/* furthest hash state of the workers that hashed rows */
+      /* GROUP BY skip (CBRD-27664): workers aggregate by key record and hand their runs of partial aggregates to the
+       * leader, which merges them in key order; no row reaches the worker lists */
+      bool gby_skip = false;
+      std::vector<QFILE_LIST_ID *> gby_runs;
+      INT64 gby_rows = 0;
       trace_handler *trace_handler_p;
       VAL_DESCR *orig_vd = nullptr;	/* leader's: flushes the leader's top-N heap at the merge */
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
