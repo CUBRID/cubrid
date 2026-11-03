@@ -2664,7 +2664,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private static final Pattern patternExecutePrepared =
             Pattern.compile(
-                    "^(?:\\s++|" + regexBlockComment + "|" + regexLineComment + ")*+" + "execute\\b",
+                    "^(?:\\s++|"
+                            + regexBlockComment
+                            + "|"
+                            + regexLineComment
+                            + ")*+"
+                            + "execute\\b",
                     Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     private static final int ID_LEN_MAX = 222; // see User Manual
