@@ -53,6 +53,7 @@ struct qo_unnest_info
   PT_NODE *outer_spec;		/* the one enclosing spec the ON names; the lifted spec joins right after its chain */
   bool is_anti;			/* ANTI rather than SEMI */
   bool is_in_form;		/* an IN form, whose on_cond starts with a synthesized equality */
+  bool is_derived;		/* the subquery FROM holds several tables: the inner is a derived table over them */
 };
 
 struct spec_id_info
@@ -164,6 +165,7 @@ void qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * se
 /* qo_auto_parameterize is defined in parser.h */
 void qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 void qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+void qo_auto_parameterize_constant_select_list (PARSER_CONTEXT * parser, PT_NODE * select);
 
 /* macros */
 #define QO_CHECK_AND_REDUCE_EQUALITY_TERMS(parser, node, where) \
