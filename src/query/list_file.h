@@ -176,9 +176,6 @@ extern void qfile_free_sort_list (THREAD_ENTRY * thread_p, SORT_LIST * sort_list
 /* Alloc routines */
 extern SORT_LIST *qfile_allocate_sort_list (THREAD_ENTRY * thread_p, int cnt);
 
-/* sort_list related routines */
-extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list, SORT_LIST * covered_list);
-
 /* Sorting related routines */
 extern SORT_STATUS qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * info, RECDES * key,
 					QFILE_LIST_SCAN_ID * input_scan, QFILE_TUPLE_RECORD * tplrec);
