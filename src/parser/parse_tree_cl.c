@@ -13501,7 +13501,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index]))
 	{
 	  domain = parser->host_var_expected_domains[index];
-	  if (pt_host_var_is_char_typed (domain) && parser->host_var_compiled_domains != NULL
+	  if (pt_host_var_is_char_typed (parser, index) && parser->host_var_compiled_domains != NULL
 	      && parser->host_var_compiled_domains[index] != NULL
 	      && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[index]) == DB_TYPE_VARCHAR)
 	    {
@@ -13541,7 +13541,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
     {
       typed = true;
       domain = parser->host_var_expected_domains[index];
-      if (pt_host_var_is_char_typed (domain))
+      if (pt_host_var_is_char_typed (parser, index))
 	{
 	  /* the type the derived bind gives, as the regu takes it (pt_make_regu_hostvar) */
 	  domain = pt_host_var_sent_domain (parser, index, (TP_DOMAIN *) domain);

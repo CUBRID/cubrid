@@ -1512,13 +1512,13 @@ db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
     {
       TP_DOMAIN *expected = parser->host_var_expected_domains[i];
       if (pt_host_var_is_context_typed (expected) && !pt_host_var_is_leave_typed (expected)
-	  && !pt_host_var_is_char_typed (expected))
+	  && !pt_host_var_is_char_typed (parser, i))
 	{
 	  continue;
 	}
       if (parser->host_var_compiled_domains[i] == NULL)
 	{
-	  parser->host_var_compiled_domains[i] = pt_host_var_is_char_typed (expected)
+	  parser->host_var_compiled_domains[i] = pt_host_var_is_char_typed (parser, i)
 	    && !pt_host_var_is_leave_typed (expected)
 	    ? pt_host_var_sent_domain (parser, i, expected) : pt_host_var_value_domain (parser, i);
 	}
@@ -1537,7 +1537,7 @@ db_has_untyped_host_var (const PARSER_CONTEXT * parser)
     {
       if ((!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
 	   || pt_host_var_is_leave_typed (parser->host_var_expected_domains[i])
-	   || pt_host_var_is_char_typed (parser->host_var_expected_domains[i]))
+	   || pt_host_var_is_char_typed (parser, i))
 	  && (parser->host_var_compiled_domains == NULL || parser->host_var_compiled_domains[i] == NULL))
 	{
 	  return true;
@@ -4509,7 +4509,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
       /* a VARCHAR value bound to a CHAR(n) host variable keeps its original value once the cast
        * accepts it, as pt_set_host_variables does; re-initializing the cast value's domain here left a NULL. */
-      keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR;
+      keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR
+	&& !pt_host_var_is_assignment (session->parser, i);
       db_make_null (&char_cast);
       if (tp_value_cast_preserve_domain (hv, keep_varchar ? &char_cast : hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{

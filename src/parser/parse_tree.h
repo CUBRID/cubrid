@@ -594,8 +594,11 @@ struct trace_json_t;
 /* CBRD-27583: a position that took its bind domain (host_var_bind_domains): the client's bind converts its value into
  * it, and the compilation planned it so (pt_take_host_var_bind_domains) */
 #define PT_HOST_VAR_BIND_DOMAIN 0x2000
+/* a position every occurrence of which is a value stored into a column (pt_classify_host_var_positions): the client
+ * converts its value into the column's domain, a CHAR padded, so its plan is that domain's */
+#define PT_HOST_VAR_ASSIGNMENT 0x4000
 /* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
-#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 15
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)

@@ -5117,15 +5117,15 @@ pt_host_var_position_domain (PARSER_CONTEXT * parser, int index)
 	{
 	  return compiled;
 	}
-      return pt_host_var_is_char_typed (expected) && compiled != NULL && TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR
-	? compiled : expected;
+      return pt_host_var_is_char_typed (parser, index) && compiled != NULL
+	&& TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR ? compiled : expected;
     }
   if (pt_is_derived_host_var (parser, index))
     {
       /* shortcut: a context-typed user position of another type than CHAR casts its value before the compilation
        * sees it, not before the derived bind does - plan from the bound type if such a derived CHAR position appears */
       TP_DOMAIN *expected = parser->host_var_expected_domains[index];
-      return pt_host_var_is_char_typed (expected) ? pt_host_var_sent_domain (parser, index, expected) : expected;
+      return pt_host_var_is_char_typed (parser, index) ? pt_host_var_sent_domain (parser, index, expected) : expected;
     }
   return NULL;
 }
@@ -5173,7 +5173,8 @@ struct pt_host_var_position_walk
 #endif
   bool assign;			/* the first pass of the compilation: the first node of a position decides its domain */
   int *kinds;			/* the classification before type checking (pt_classify_host_var_positions): [host_var_count]
-				 * a bit per PT_HOST_VAR_CLASS of the position's occurrences; NULL in the other passes */
+				 * a bit per PT_HOST_VAR_CLASS of the position's occurrences, the bit 4 for a value stored
+				 * into a column (pt_host_var_is_stored_value); NULL in the other passes */
   int error;
 };
 
@@ -5435,7 +5436,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
 	    {
 	      parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
 	    }
-	  else if (pt_host_var_is_char_typed (domain))
+	  else if (pt_host_var_is_char_typed (parser, i))
 	    {
 	      parser->host_var_compiled_domains[i] = pt_host_var_sent_domain (parser, i, domain);
 	    }
@@ -5545,6 +5546,25 @@ pt_in_merge_delete_condition (const PT_HOST_VAR_POSITION_WALK * walk)
   return false;
 }
 
+/* whether a host variable occurrence is a value stored into a column: an INSERT / MERGE VALUES element, the right
+ * side of an UPDATE / MERGE / ON DUPLICATE KEY UPDATE assignment (the kind 4 of pt_classify_host_var_positions) */
+static bool
+pt_host_var_is_stored_value (const PT_NODE * hv, const PT_NODE * parent, const PT_NODE * grandparent)
+{
+  if (parent == NULL || grandparent == NULL)
+    {
+      return false;
+    }
+  if (parent->node_type == PT_NODE_LIST)
+    {
+      return parent->info.node_list.list_type == PT_IS_VALUE
+	&& (grandparent->node_type == PT_INSERT || grandparent->node_type == PT_MERGE);
+    }
+  return parent->node_type == PT_EXPR && parent->info.expr.op == PT_ASSIGN && parent->info.expr.arg2 == hv
+    && (grandparent->node_type == PT_UPDATE || grandparent->node_type == PT_INSERT
+	|| grandparent->node_type == PT_MERGE);
+}
+
 /* pre walker of pt_assign_host_var_positions */
 static PT_NODE *
 pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -5567,6 +5587,7 @@ pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
       && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count && walk->kinds != NULL)
     {
       walk->kinds[node->info.host_var.index] |= 1 << (pt_in_merge_delete_condition (walk) ? 0
+						      : pt_host_var_is_stored_value (node, parent, grandparent) ? 4
 						      : pt_host_var_occurrence_class (parser, node, parent,
 										      grandparent) >> 10);
     }
@@ -5746,12 +5767,13 @@ pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (int i = 0; walk.error == NO_ERROR && i < parser->host_var_count; i++)
     {
-      /* the kinds seen are one bit each: exactly one, and not the kind 0 */
+      /* the kinds seen are one bit each: exactly one, and not the kind 0; only stored values: an assignment position */
       const int kinds = walk.kinds[i];
       const int kind = kinds == 1 << 1 ? PT_HOST_VAR_CLASS_AGNOSTIC : kinds == 1 << 2 ? PT_HOST_VAR_CLASS_COMPARE
 	: kinds == 1 << 3 ? PT_HOST_VAR_CLASS_NVL_ARG : 0;
-      classes[i] = (classes[i] & ~(PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES)) | kind
-	| (kind == PT_HOST_VAR_CLASS_NVL_ARG ? PT_HOST_VAR_NULL_MATCHES : 0);
+      classes[i] = (classes[i] & ~(PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES | PT_HOST_VAR_ASSIGNMENT))
+	| kind | (kind == PT_HOST_VAR_CLASS_NVL_ARG ? PT_HOST_VAR_NULL_MATCHES : 0)
+	| (kinds == 1 << 4 ? PT_HOST_VAR_ASSIGNMENT : 0);
       if (kind == PT_HOST_VAR_CLASS_AGNOSTIC && parser->host_variables != NULL)
 	{
 	  pt_set_agnostic_host_variable (&parser->host_variables[i], &parser->host_variables[i]);

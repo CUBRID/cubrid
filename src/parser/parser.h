@@ -182,7 +182,8 @@ extern "C"
   extern int pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern bool pt_host_var_is_context_typed (const TP_DOMAIN * expected);
   extern bool pt_host_var_is_leave_typed (const TP_DOMAIN * expected);
-  extern bool pt_host_var_is_char_typed (const TP_DOMAIN * expected);
+  extern bool pt_host_var_is_assignment (const PARSER_CONTEXT * parser, int index);
+  extern bool pt_host_var_is_char_typed (const PARSER_CONTEXT * parser, int index);
   extern int pt_host_var_leave_collation (DB_TYPE type, int collation);
   extern DB_VALUE *pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node);
