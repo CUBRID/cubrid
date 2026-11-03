@@ -3271,6 +3271,154 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+/* the memory the attribute caches an index scan keeps for the partitions it left may take (CBRD-27866); past it the
+ * caches are bound to the class of each partition again, as without keeping them */
+#define SCAN_PARTITION_KEPT_CACHE_LIMIT (4 * 1024 * 1024)
+
+/*
+ * scan_switch_index_attr_caches () - move the attribute caches of a started index scan to another partition
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   isidp(in/out): the index scan
+ *   cls_oid(in): the partition the scan moves to
+ *   park(in/out), kept(in/out), kept_bytes(in/out), caches_kept(out): as scan_switch_index_partition ()
+ *
+ * Note: the caches the scan holds go to park, or are ended when they are bound to the server-wide class
+ *	 representation cache. The partition's kept caches are then swapped in, or the caches are started on it:
+ *	 with a class representation of their own while the kept caches stay under SCAN_PARTITION_KEPT_CACHE_LIMIT,
+ *	 to be kept when the scan leaves, otherwise from the server-wide cache. regu variables point at the caches
+ *	 themselves and the partition switch resets the value pointers they cache, so only the contents move.
+ */
+static int
+scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OID * cls_oid,
+			       PARTITION_SCAN_CACHE * park, PARTITION_SCAN_CACHE ** kept, size_t * kept_bytes,
+			       bool * caches_kept)
+{
+  HEAP_CACHE_ATTRINFO *caches[4];
+  SCAN_ATTRS *attrs[4];
+  int k, error = NO_ERROR;
+
+  caches[0] = (isidp->range_pred.regu_list != NULL) ? isidp->range_attrs.attr_cache : NULL;
+  attrs[0] = &isidp->range_attrs;
+  caches[1] = (isidp->key_pred.regu_list != NULL) ? isidp->key_attrs.attr_cache : NULL;
+  attrs[1] = &isidp->key_attrs;
+  caches[2] = isidp->pred_attrs.attr_cache;
+  attrs[2] = &isidp->pred_attrs;
+  caches[3] = isidp->rest_attrs.attr_cache;
+  attrs[3] = &isidp->rest_attrs;
+
+  if (park == NULL && *kept == NULL && *kept_bytes >= SCAN_PARTITION_KEPT_CACHE_LIMIT)
+    {
+      /* nothing is kept: bind the caches to the class of the partition, keeping their value arrays */
+      for (k = 0; k < 4 && error == NO_ERROR; k++)
+	{
+	  if (caches[k] != NULL)
+	    {
+	      error = heap_attrinfo_switch_class (thread_p, cls_oid, caches[k]);
+	    }
+	}
+      return error;
+    }
+
+  /* take the caches off the partition the scan leaves */
+  for (k = 0; k < 4; k++)
+    {
+      if (caches[k] == NULL || caches[k]->num_values == -1)
+	{
+	  continue;
+	}
+      if (park != NULL && caches[k]->last_cacheindex < 0)
+	{
+	  heap_attrinfo_park (thread_p, caches[k]);
+	  park->attrs[k] = *caches[k];
+	  park->parked = true;
+	  /* the contents moved to park */
+	  caches[k]->num_values = -1;
+	  caches[k]->values = NULL;
+	  caches[k]->last_classrepr = NULL;
+	  caches[k]->read_classrepr = NULL;
+	}
+      else
+	{
+	  heap_attrinfo_end (thread_p, caches[k]);
+	}
+    }
+
+  /* put them on the partition the scan moves to */
+  if (*kept != NULL && (*kept)->parked)
+    {
+      for (k = 0; k < 4; k++)
+	{
+	  if (caches[k] != NULL && (*kept)->attrs[k].num_values != -1)
+	    {
+	      *caches[k] = (*kept)->attrs[k];
+	      (*kept)->attrs[k].num_values = -1;
+	    }
+	  else if (caches[k] != NULL && attrs[k]->num_attrs == 0)
+	    {
+	      /* an empty cache, as heap_attrinfo_start () leaves it */
+	      caches[k]->num_values = -1;
+	    }
+	  else if (caches[k] != NULL)
+	    {
+	      caches[k]->num_values = -1;
+	      error =
+		heap_attrinfo_start_private (thread_p, cls_oid, attrs[k]->num_attrs, attrs[k]->attr_ids, caches[k]);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+      (*kept)->parked = false;
+      *caches_kept = true;
+      return NO_ERROR;
+    }
+
+  if (*kept == NULL && *kept_bytes < SCAN_PARTITION_KEPT_CACHE_LIMIT)
+    {
+      *kept = (PARTITION_SCAN_CACHE *) malloc (sizeof (PARTITION_SCAN_CACHE));
+      if (*kept != NULL)
+	{
+	  for (k = 0; k < 4; k++)
+	    {
+	      (*kept)->attrs[k].num_values = -1;
+	    }
+	  (*kept)->parked = false;
+	  *kept_bytes += sizeof (PARTITION_SCAN_CACHE);
+	}
+    }
+
+  for (k = 0; k < 4; k++)
+    {
+      if (caches[k] == NULL)
+	{
+	  continue;
+	}
+      caches[k]->num_values = -1;
+      if (*kept != NULL)
+	{
+	  error = heap_attrinfo_start_private (thread_p, cls_oid, attrs[k]->num_attrs, attrs[k]->attr_ids, caches[k]);
+	  *kept_bytes += heap_attrinfo_kept_size (caches[k]);
+	}
+      else
+	{
+	  error = heap_attrinfo_start (thread_p, cls_oid, attrs[k]->num_attrs, attrs[k]->attr_ids, caches[k]);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* as scan_start_scan () arms the predicate cache */
+  eval_mark_first_term_attrs (isidp->scan_pred.pred_expr, isidp->pred_attrs.attr_cache);
+  eval_disable_lazy_read (isidp->pred_attrs.attr_cache);
+
+  *caches_kept = (*kept != NULL);
+  return NO_ERROR;
+}
+
 /*
  * scan_switch_index_partition () - move an index scan of a partitioned class to another partition
  *   return: NO_ERROR, or error code
@@ -3282,17 +3430,26 @@ exit_on_error:
  *		       page on the first switch to the partition and kept for the next ones
  *   btid_int_cached(in/out): whether btid_int is read
  *   lock_held(in): the scan already holds the IS_LOCK of the partition (it was started on it before)
+ *   park(in/out): where the attribute caches are kept for the partition the scan leaves, or NULL: they are bound
+ *		   to the server-wide class representation cache and are released
+ *   kept(in/out): the caches kept for the partition the scan moves to; allocated here on the first switch to it
+ *		   while the partitions' kept caches take less than SCAN_PARTITION_KEPT_CACHE_LIMIT
+ *   kept_bytes(in/out): the memory the partitions' kept caches take
  *   started(out): the scan is started on the partition; otherwise the caller starts it (scan_start_scan ())
+ *   caches_kept(out): the attribute caches are the partition's kept ones (kept), to be parked when it leaves
  *
  * Note: the partitions of a class have the same index columns and attributes, so what scan_open_index_scan () set up
  *	 for the index (the key attributes, the OID buffer, the key copy buffer, the covering list) stays as it is, and
- *	 a started scan keeps its heap scan cache and attribute caches, which only take the partition's heap and class
- *	 representation. A scan walked per outer row switches partitions for every outer key, and closing and opening
- *	 it again costs more than the B+tree probe itself (CBRD-27866). The caller resets its block as for a new key.
+ *	 a started scan keeps its heap scan cache, which only takes the partition's heap. Its attribute caches are kept
+ *	 for each partition with a class representation of their own (heap_attrinfo_start_private ()) and are swapped
+ *	 in when the scan comes back, instead of being bound to the class representation again. A scan walked per outer
+ *	 row switches partitions for every outer key, and closing and opening it again costs more than the B+tree probe
+ *	 itself (CBRD-27866). The caller resets its block as for a new key.
  */
 int
 scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * cls_oid, HFID * hfid,
-			     BTID_INT * btid_int, bool * btid_int_cached, bool lock_held, bool * started)
+			     BTID_INT * btid_int, bool * btid_int_cached, bool lock_held, PARTITION_SCAN_CACHE * park,
+			     PARTITION_SCAN_CACHE ** kept, size_t * kept_bytes, bool * started, bool * caches_kept)
 {
   INDX_SCAN_ID *isidp = &scan_id->s.isid;
   BTREE_SCAN *BTS = &isidp->bt_scan;
@@ -3301,6 +3458,7 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
 
   assert (scan_id->type == S_INDX_SCAN);
 
+  *caches_kept = false;
   *started = (scan_id->status == S_STARTED && isidp->scancache_inited && isidp->caches_inited);
 
   if (!*btid_int_cached)
@@ -3362,21 +3520,9 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
       (void) scan_init_iss (isidp);
 
       error = heap_scancache_switch_class (thread_p, &isidp->scan_cache, hfid, cls_oid, lock_held);
-      if (error == NO_ERROR && isidp->range_pred.regu_list != NULL)
-	{
-	  error = heap_attrinfo_switch_class (thread_p, cls_oid, isidp->range_attrs.attr_cache);
-	}
-      if (error == NO_ERROR && isidp->key_pred.regu_list != NULL)
-	{
-	  error = heap_attrinfo_switch_class (thread_p, cls_oid, isidp->key_attrs.attr_cache);
-	}
       if (error == NO_ERROR)
 	{
-	  error = heap_attrinfo_switch_class (thread_p, cls_oid, isidp->pred_attrs.attr_cache);
-	}
-      if (error == NO_ERROR)
-	{
-	  error = heap_attrinfo_switch_class (thread_p, cls_oid, isidp->rest_attrs.attr_cache);
+	  error = scan_switch_index_attr_caches (thread_p, isidp, cls_oid, park, kept, kept_bytes, caches_kept);
 	}
       if (error != NO_ERROR)
 	{

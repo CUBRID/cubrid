@@ -831,6 +831,7 @@ static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * clas
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
 static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static bool qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static void qexec_free_partition_scan_caches (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec);
 static bool qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec);
 
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -2074,6 +2075,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 
 	  if (p->parts != NULL)
 	    {
+	      qexec_free_partition_scan_caches (thread_p, p);
 	      free (p->parts);
 	      p->parts = NULL;
 	      p->curent = NULL;
@@ -11376,6 +11378,7 @@ exit_on_error:
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->parts != NULL)
     {
       /* reset pruning info */
+      qexec_free_partition_scan_caches (thread_p, curr_spec);
       free (curr_spec->parts);
       curr_spec->parts = NULL;
       curr_spec->curent = NULL;
@@ -11961,6 +11964,38 @@ qexec_settle_per_row_walk (XASL_NODE * xasl)
 	  XASL_CLEAR_FLAG (xptr, XASL_NL_FOLLOWING_JOIN);
 	}
     }
+}
+
+/*
+ * qexec_free_partition_scan_caches () - end the attribute caches an index scan kept for the partitions of a spec
+ *   return: void
+ *   thread_p(in):
+ *   spec(in): the partitioned spec, before its partitions are freed
+ */
+static void
+qexec_free_partition_scan_caches (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
+{
+  PARTITION_SPEC_TYPE *part;
+  int k;
+
+  for (part = spec->parts; part != NULL; part = part->next)
+    {
+      if (part->scan_cache == NULL)
+	{
+	  continue;
+	}
+      for (k = 0; k < 4; k++)
+	{
+	  if (part->scan_cache->attrs[k].num_values != -1)
+	    {
+	      heap_attrinfo_end (thread_p, &part->scan_cache->attrs[k]);
+	    }
+	}
+      free_and_init (part->scan_cache);
+    }
+
+  spec->attr_cache_part = NULL;
+  spec->part_scan_cache_bytes = 0;
 }
 
 /*
@@ -12974,6 +13009,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   int error = NO_ERROR;
   bool fast_switch = false;
   bool started = false;
+  bool caches_kept = false;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
@@ -12998,6 +13034,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       scan_end_scan (thread_p, &spec->s_id);
       scan_close_scan (thread_p, &spec->s_id);
+      /* the attribute caches are ended below and started from the server-wide class representation cache */
+      spec->attr_cache_part = NULL;
     }
 
   /* we also need to reset caches for attributes */
@@ -13252,9 +13290,14 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      if (fast_switch && spec->curent != NULL)
 		{
 		  spec->indexptr->btid = btid;
+		  PARTITION_SCAN_CACHE *park =
+		    (spec->attr_cache_part != NULL) ? spec->attr_cache_part->scan_cache : NULL;
+
 		  error = scan_switch_index_partition (thread_p, &spec->s_id, &class_oid, &class_hfid,
 						       &spec->curent->btid_int, &spec->curent->btid_int_cached,
-						       spec->curent->scan_locked, &started);
+						       spec->curent->scan_locked, park, &spec->curent->scan_cache,
+						       &spec->part_scan_cache_bytes, &started, &caches_kept);
+		  spec->attr_cache_part = caches_kept ? spec->curent : NULL;
 		  if (error != NO_ERROR)
 		    {
 		      return S_ERROR;
@@ -13266,6 +13309,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		  /* back to the root class: open it as any scan */
 		  scan_end_scan (thread_p, &spec->s_id);
 		  scan_close_scan (thread_p, &spec->s_id);
+		  spec->attr_cache_part = NULL;
 		  fast_switch = false;
 		}
 

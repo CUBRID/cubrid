@@ -504,6 +504,10 @@ extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, 
 				const ATTR_ID * attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_start_private (THREAD_ENTRY * thread_p, const OID * class_oid, int requested_num_attrs,
+					const ATTR_ID * attrids, HEAP_CACHE_ATTRINFO * attr_info);
+extern void heap_attrinfo_park (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
+extern size_t heap_attrinfo_kept_size (const HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 					HEAP_CACHE_ATTRINFO * attr_info);
