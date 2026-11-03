@@ -6003,9 +6003,11 @@ int
 au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 {
   DB_OBJECT *trigger_owner_obj = NULL;
+  TR_TRIGGER *trigger = NULL;
   DB_OBJECT *target_class_obj = NULL;
   SM_CLASS *target_class = NULL;
   DB_VALUE value;
+  DB_VALUE name_value;
   const char *trigger_old_name = NULL;
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
@@ -6032,14 +6034,15 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
    * so if the owner of class, serial, trigger changes, the unique_name must also change.
    */
 
-  error = obj_get (trigger_mop, TR_ATT_UNIQUE_NAME, &value);
+  db_make_null (&name_value);
+  error = obj_get (trigger_mop, TR_ATT_UNIQUE_NAME, &name_value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
     }
 
-  if (!IS_STRING (&value) || (trigger_old_name = db_get_string (&value)) == NULL)
+  if (!IS_STRING (&name_value) || (trigger_old_name = db_get_string (&name_value)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_TR_TRIGGER_NOT_FOUND, "");
       goto end;
@@ -6113,9 +6116,17 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 	{
 	  assert (false);
 	}
+      goto end;
+    }
+
+  trigger = tr_map_trigger (trigger_mop, false);
+  if (trigger != NULL && trigger->class_mop == NULL)
+    {
+      tr_mark_user_triggers_modified ();
     }
 
 end:
+  pr_clear_value (&name_value);
   AU_ENABLE (save);
 
   return error;
@@ -6176,6 +6187,14 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
     }
 
   error = au_change_trigger_owner (trigger_mop, owner_mop);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_make_error (return_val, error);
+      return;
+    }
+
+  error = locator_flush_instance (trigger_mop);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
