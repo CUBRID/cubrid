@@ -576,6 +576,9 @@ enum param_id
 
   PRM_ID_PLAN_CACHE_BIND_VARIANTS,
 
+  /* hash join: the runtime filter one input's keys make for the other input's outermost scan */
+  PRM_ID_HASH_JOIN_RUNTIME_FILTER,
+
   PRM_ID_HA_WRITESET_HISTORY_SIZE,
 
   PRM_ID_HA_WRITESET_TRACE_LEVEL,
