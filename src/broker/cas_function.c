@@ -2629,3 +2629,27 @@ fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   return FN_KEEP_CONN;
 }
+
+/* UPLOAD_RELEASE: token [, token ...], uploads the driver discarded before an execute bound them */
+FN_RETURN
+fn_stream_upload_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  int i;
+
+  if (argc < 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  for (i = 0; i < argc; i++)
+    {
+      net_arg_get_bigint (&token, argv[i]);
+      hm_internal_lob_upload_release ((INT64) token);
+    }
+  net_buf_cp_int (net_buf, 0, NULL);
+
+  return FN_KEEP_CONN;
+}

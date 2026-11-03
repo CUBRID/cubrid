@@ -679,6 +679,16 @@ hm_srv_handle_set_internal_lob_uploads (T_SRV_HANDLE * srv_handle, const INT64 *
   return 0;
 }
 
+/* The driver discarded this upload: release it unless an open statement still binds it. */
+void
+hm_internal_lob_upload_release (INT64 token)
+{
+  if (token > 0 && !srv_handle_internal_lob_upload_shared (0, token))
+    {
+      (void) internal_lob_upload_release_from_server (token);
+    }
+}
+
 /* A token can be bound by more than one open statement (one Clob object bound twice): the last one releases it. */
 static void
 srv_handle_release_internal_lob_uploads (int h_id, T_SRV_HANDLE * srv_handle)

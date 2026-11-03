@@ -181,6 +181,7 @@ extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
 extern void hm_srv_handle_free (int h_id);
 extern void hm_srv_handle_free_all (bool free_holdable);
 extern int hm_srv_handle_set_internal_lob_uploads (T_SRV_HANDLE * srv_handle, const INT64 * tokens, int count);
+extern void hm_internal_lob_upload_release (INT64 token);
 extern void hm_srv_handle_qresult_end_all (bool end_holdable);
 extern bool hm_has_result_tied_to_tran (void);
 extern T_SRV_HANDLE *hm_find_srv_handle (int h_id);
