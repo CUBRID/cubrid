@@ -121,6 +121,8 @@ typedef enum
 #define DEFAULT_IN_SELECTIVITY (double) 0.01
 #define DEFAULT_RANGE_SELECTIVITY (double) 0.1
 
+#define QO_MJOIN_MAX_SORT_TERMS	16	/* m-join terms considered for following an index key order */
+
 typedef enum PRED_CLASS
 {
   PC_ATTR,
@@ -223,6 +225,12 @@ struct qo_plan
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
       BITSET hash_terms;	/* hash_terms for hash list scan */
+      bool outer_sorted;	/* m-join: outer index scan already yields the merge order */
+      bool inner_sorted;
+      bool outer_sort_uncharged;	/* m-join: input re-sorted although qo_sort_cost () charged nothing for it */
+      bool inner_sort_uncharged;
+      int nordered_terms;	/* m-join: 0 compares join_terms in bitset order, else ordered_terms */
+      int ordered_terms[QO_MJOIN_MAX_SORT_TERMS];	/* join term indexes in the sorted input's key order */
     } join;
 
     struct
@@ -240,9 +248,13 @@ struct qo_plan
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
+  bool parallel_driven;		/* costed as run in parallel (CBRD-27474): a nested loop whose driving scan the
+				   executor splits among workers, inherited along the chain (qo_nljoin_cost ()),
+				   or a hash join whose build/probe runs in parallel (qo_hjoin_cost ()) */
   bool use_iscan_descending;
   bool need_final_sort;
-  bool skip_groupby;		/* qo_top_plan_new () judged that this join plan delivers its rows already grouped */
+  bool groupby_skip_join;	/* a join that skips the GROUP BY in its driving scan's order (CBRD-27685); the scan's
+				   index is marked only when this plan is chosen (qo_planner_search ()) */
 
   /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
    * first. Used as the next join level's driving row count and for the plan dump. */
@@ -468,6 +480,9 @@ struct qo_planner
 
   /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
   bool can_apply_limit_card;
+
+  /* Cached result of qo_groupby_limit_groups(env): the groups a GROUP BY stops at, or 0 */
+  double groupby_limit_groups;
 };
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
