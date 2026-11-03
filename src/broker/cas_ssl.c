@@ -205,8 +205,12 @@ cas_init_ssl (int sd)
    * read gets; it stays set for the whole SSL session, which the plaintext path bounds per read as well. */
   cas_ssl_set_io_timeout (sd, NET_DEFAULT_TIMEOUT);
 
-  errno = 0;			/* so the SSL_ERROR_SYSCALL branch below reads SSL_accept ()'s errno, not an earlier call's */
-  err_code = SSL_accept (ssl);
+  do
+    {
+      errno = 0;		/* so the SSL_ERROR_SYSCALL branch below reads SSL_accept ()'s errno, not an earlier call's */
+      err_code = SSL_accept (ssl);
+    }
+  while (err_code <= 0 && cas_ssl_interrupted_by_signal (err_code));
   if (err_code <= 0)		/* 0 is a failed handshake too */
     {
       int saved_errno = errno;
@@ -235,7 +239,7 @@ cas_init_ssl (int sd)
 	}
       else if (saved_errno == EINTR)
 	{
-	  /* SIGUSR1 (query cancel) is ignored outside request processing, so only SIGTERM/SIGINT interrupts this */
+	  /* any other signal makes the loop above call SSL_accept () again */
 	  cas_log_write_and_end (0, true, "SSL: Accept failed - interrupted by a signal to shut down the CAS");
 	}
       else if (ssl_error == SSL_ERROR_SYSCALL && saved_errno != 0)
@@ -511,14 +515,17 @@ cas_ssl_set_io_timeout (int sd, int timeout_sec)
 }
 
 /*
- * cas_ssl_interrupted_by_signal () - whether SSL_read ()/SSL_write () failed only because a signal other than a
- *                                    shutdown request interrupted it, so that it is to be called again as it was
+ * cas_ssl_interrupted_by_signal () - whether SSL_accept ()/SSL_read ()/SSL_write () failed only because a signal
+ *                                    other than a shutdown request interrupted it, so that it is to be called again
+ *                                    as it was
  *   return:
- *   ret(in): what SSL_read ()/SSL_write () returned, with errno cleared before the call
+ *   ret(in): what SSL_accept ()/SSL_read ()/SSL_write () returned, with errno cleared before the call
  *
  * The I/O timeout set in cas_init_ssl () makes a blocking read or write fail with EINTR on any signal, SA_RESTART or
- * not, and the socket BIO reports that as "retry". The query cancel signal (SIGUSR1) must not end the session, so it
- * is retried as the plaintext path retries its poll; a shutdown signal still ends the read or write.
+ * not, and on Linux also when the CAS is stopped and continued (SIGSTOP, SIGCONT), with no handler at all; the socket
+ * BIO reports that as "retry". The query cancel signal (SIGUSR1) must not end the session, nor a debugger or a
+ * container pause a handshake, so it is retried as the plaintext path retries its poll; a shutdown signal still ends
+ * the call.
  */
 static bool
 cas_ssl_interrupted_by_signal (int ret)
