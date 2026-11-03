@@ -431,7 +431,21 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 
   /* the internal procedure of a PL/CSQL block action belongs to the trigger owner */
   error = tr_change_block_procedure_owner (trigger_mop, owner_mop);
-  if (error != NO_ERROR)
+  if (error == ER_SP_COMPILE_ERROR)
+    {
+      /* report it as a compile error of the action, as when the trigger is created */
+      char *compile_msg = strdup (er_msg ());
+      if (compile_msg == NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, strlen (er_msg ()) + 1);
+	  goto end;
+	}
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_old_name, compile_msg);
+      free_and_init (compile_msg);
+      goto end;
+    }
+  else if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
