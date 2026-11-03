@@ -102,7 +102,7 @@ extern "C"
 #define ERROR_INFO_SET_WITH_MSG(ERR_CODE, ERR_INDICATOR, ERR_MSG)\
 	error_info_set_with_msg(ERR_CODE, ERR_INDICATOR, ERR_MSG, false, __FILE__, __LINE__)
 #define NET_BUF_ERR_SET(NET_BUF)\
-	err_msg_set(NET_BUF, __FILE__, __LINE__)
+	err_msg_set(NET_BUF)
 
   typedef struct t_error_info T_ERROR_INFO;
   struct t_error_info
@@ -118,7 +118,7 @@ extern "C"
   typedef struct t_net_buf T_NET_BUF;
 
   extern int is_error_info_set (void);
-  extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
+  extern void err_msg_set (T_NET_BUF * net_buf);
   extern int error_info_set (int err_number, int err_indicator, const char *file, int line);
   extern int error_info_set_force (int err_number, int err_indicator, const char *file, int line);
   extern int error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg, bool force,

@@ -24,6 +24,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <float.h>
 
 #include "optimizer.h"
 
@@ -42,13 +43,14 @@
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
 static XASL_NODE *make_scan_proc (QO_ENV * env);
+static SORT_LIST *copy_merge_sort_list (PARSER_CONTEXT * parser, SORT_LIST * list);
 static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list,
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
 				      PROJECTION_INFO * projection_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
-static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
+static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist, int parallelism);
 
 static XASL_NODE *check_merge_xasl (QO_ENV * env, XASL_NODE * xasl);
 static XASL_NODE *check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl);
@@ -59,6 +61,7 @@ static XASL_NODE *init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE
 
 static XASL_NODE *add_access_spec (QO_ENV *, XASL_NODE *, QO_PLAN *);
 static XASL_NODE *add_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * scan);
+static bool scan_chain_has_scan_blocks (XASL_NODE * xasl);
 static XASL_NODE *add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * proc);
 static XASL_NODE *add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub);
 static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
@@ -78,7 +81,7 @@ static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset, bool c
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
 				XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl);
-static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *, XASL_NODE *, XASL_NODE *);
+static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *, XASL_NODE *, XASL_NODE *, int);
 static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl);
 
 static int is_normal_access_term (QO_TERM *);
@@ -168,6 +171,44 @@ make_fetch_proc (QO_ENV * env, QO_PLAN * plan)
 }
 
 /*
+ * copy_merge_sort_list () - copy a merge input orderby_list entry by entry
+ *   return: copied list, NULL on error
+ *   parser(in):
+ *   list(in): orderby_list of a merge join input
+ *
+ * Note: pt_to_sort_list () would set s_nulls, and the copy must match orderby_list exactly to be covered.
+ */
+static SORT_LIST *
+copy_merge_sort_list (PARSER_CONTEXT * parser, SORT_LIST * list)
+{
+  SORT_LIST *head = NULL, *tail = NULL, *copy;
+
+  for (; list != NULL; list = list->next)
+    {
+      copy = ptqo_single_orderby (parser);
+      if (copy == NULL)
+	{
+	  return NULL;
+	}
+
+      *copy = *list;
+      copy->next = NULL;
+
+      if (tail == NULL)
+	{
+	  head = copy;
+	}
+      else
+	{
+	  tail->next = copy;
+	}
+      tail = copy;
+    }
+
+  return head;
+}
+
+/*
  * make_mergelist_proc () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -198,7 +239,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   PARSER_CONTEXT *parser = NULL;
   QFILE_LIST_MERGE_INFO *ls_merge;
   PT_NODE *outer_attr, *inner_attr;
-  int i, left_epos, rght_epos, cnt, seg_idx, ncols;
+  int i, k, left_epos, rght_epos, cnt, seg_idx, ncols;
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
   SORT_LIST *order, *prev_order;
   QO_TERM *term;
@@ -258,8 +299,28 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
 
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
-  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
+  /* expression columns in the elists are consumed in bitset order, so a key-order permutation needs none */
+  assert (plan->plan_un.join.nordered_terms == 0 || (left_elist == NULL && rght_elist == NULL));
+
+  for (k = 0;; k++)
     {
+      if (plan->plan_un.join.nordered_terms > 0)
+	{
+	  if (k >= plan->plan_un.join.nordered_terms)
+	    {
+	      break;
+	    }
+	  i = plan->plan_un.join.ordered_terms[k];
+	}
+      else
+	{
+	  i = (k == 0) ? bitset_iterate (&(plan->plan_un.join.join_terms), &bi) : bitset_next_member (&bi);
+	  if (i == -1)
+	    {
+	      break;
+	    }
+	}
+
       term = QO_ENV_TERM (env, i);
 
       if (ls_merge->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
@@ -392,6 +453,27 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
       cnt++;
     }				/* for (i = ... ) */
   assert (cnt == ncols);
+  /* CBRD-27583: the merge keys sort in the domains XASL generation decided for their list columns */
+  pt_set_sort_list_domains (left->orderby_list, left, NULL);
+  pt_set_sort_list_domains (rght->orderby_list, rght, NULL);
+
+  /* the input index scan already delivers this order; the list file records it and its sort is skipped */
+  if (plan->plan_un.join.outer_sorted)
+    {
+      left->after_iscan_list = copy_merge_sort_list (parser, left->orderby_list);
+      if (left->after_iscan_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  if (plan->plan_un.join.inner_sorted)
+    {
+      rght->after_iscan_list = copy_merge_sort_list (parser, rght->orderby_list);
+      if (rght->after_iscan_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
 
   left_elen = bitset_cardinality (left_exprs);
   left_nlen = pt_length_of_list (left_list) - left_elen;
@@ -666,6 +748,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      regu->value.value.pos_descr.pos_no += outer_info->expr_count;
 	    }
+	  pt_set_list_position_domains (proc->outer.regu_list_pred, outer_name_val_list, outer_xasl, NULL);
 	}
 
       /* proc->inner.regu_list_pred */
@@ -709,6 +792,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      regu->value.value.pos_descr.pos_no += inner_info->expr_count;
 	    }
+	  pt_set_list_position_domains (proc->inner.regu_list_pred, inner_name_val_list, inner_xasl, NULL);
 	}
 
       /* During/after-join predicates reference columns from both inputs.
@@ -859,11 +943,20 @@ error_exit:
  *   env(in): The optimizer environment
  *   namelist(in): The list of names to use as input to and output from this
  *		   node
+ *   parallelism(in): The parallelism of the new node; a temp list build inherits it from the enclosing xasl
  */
 static XASL_NODE *
-make_buildlist_proc (QO_ENV * env, PT_NODE * namelist)
+make_buildlist_proc (QO_ENV * env, PT_NODE * namelist, int parallelism)
 {
-  return pt_skeleton_buildlist_proc (QO_ENV_PARSER (env), namelist);
+  XASL_NODE *xasl;
+
+  xasl = pt_skeleton_buildlist_proc (QO_ENV_PARSER (env), namelist);
+  if (xasl != NULL)
+    {
+      xasl->parallelism = parallelism;
+    }
+
+  return xasl;
 }
 
 /*
@@ -951,7 +1044,7 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
     {
       /* replace the user limit only once the merged node exists: on failure the caller carries on
          without our limit, and the user's KEYLIMIT must survive that */
-      REGU_VARIABLE *merged = pt_make_regu_arith (key_infop->key_limit_u, regu_one, NULL, T_LEAST, dom_bigint);
+      REGU_VARIABLE *merged = pt_make_key_limit_arith (key_infop->key_limit_u, regu_one, T_LEAST, dom_bigint);
 
       if (merged == NULL)
 	{
@@ -970,6 +1063,42 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
 }
 
 /*
+ * scan_chain_has_scan_blocks () - whether a scan of the chain reads a partitioned table or a class hierarchy
+ *   return:
+ *   xasl(in): the scans that follow an NL inner in its scan chain
+ *
+ * The executor scans such a table one scan block (partition or class) at a time and, for every block,
+ * runs the scans before it again from the outer (qexec_next_scan_block_iterations ()). An inner before
+ * it then sees each outer row once per block, so its key repeats even when unique, and memoize must be
+ * left to the run-time check. A SEMI / ANTI inner sweeps its partitions within one probe and is not
+ * split into blocks. A partitioned outer or inner does not repeat the rows: the outer's blocks hold
+ * different rows, and a partitioned inner renews its memo for every block of its own.
+ */
+static bool
+scan_chain_has_scan_blocks (XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  for (; xasl != NULL; xasl = xasl->scan_ptr)
+    {
+      if (XASL_IS_NL_SEMI_OR_ANTI (xasl))
+	{
+	  continue;
+	}
+
+      for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->next != NULL || spec->pruning_type == DB_PARTITIONED_CLASS)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * mark_access_as_semi_anti_join () - mark an inner scan proc's access spec as a
  *      single-fetch NL semi/anti inner and tag the xasl with the semi/anti flag.
  *   return: void
@@ -983,6 +1112,7 @@ mark_access_as_semi_anti_join (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_JOI
   ACCESS_SPEC_TYPE *access;
   bool key_limit_ok;
 
+  assert (join_type == PT_JOIN_SEMI || join_type == PT_JOIN_ANTI);
   XASL_SET_FLAG (xasl, (join_type == PT_JOIN_SEMI) ? XASL_NL_SEMIJOIN : XASL_NL_ANTIJOIN);
 
   /* A key limit of 1 is only sound when nothing above the btree can reject the first key: the
@@ -1400,6 +1530,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       bool free_upper_bound = false;
 
       xasl->orderby_list = pt_to_orderby (parser, query->info.query.order_by, query);
+      pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
       XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
 
       xasl->orderby_limit = NULL;
@@ -2235,6 +2366,31 @@ make_outer_instnum (QO_ENV * env, QO_PLAN * outer, QO_PLAN * plan)
 }
 
 /*
+ * mark_following_joins () - tag the scan procs after a NL semi/anti inner as following joins
+ *   return: void
+ *   sa_scan(in): the semi/anti inner scan proc; the scans of the joins above it in the plan already hang
+ *		  off its scan_ptr (gen_inner () attaches them)
+ *
+ * Note: the scan block iterator stops above the first semi/anti inner of a scan chain, so every scan
+ *	 after it is driven per outer row like the inner itself: rewound for each row that reaches it and
+ *	 walking its own partitions within that row (CBRD-27493). A semi/anti inner further down keeps its
+ *	 own flag and its own partition walk.
+ */
+static void
+mark_following_joins (XASL_NODE * sa_scan)
+{
+  XASL_NODE *xp;
+
+  for (xp = sa_scan->scan_ptr; xp != NULL; xp = xp->scan_ptr)
+    {
+      if (!XASL_IS_NL_SEMI_OR_ANTI (xp))
+	{
+	  XASL_SET_FLAG (xp, XASL_NL_FOLLOWING_JOIN);
+	}
+    }
+}
+
+/*
  * gen_outer () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -2298,8 +2454,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
        */
       bitset_union (&predset, &(plan->plan_un.join.join_terms));
 
-      /* outer join could have terms classed as AFTER JOIN TERM; setting after join terms to merged list scan */
-      if (IS_OUTER_JOIN_TYPE (join_type))
+      /* outer and anti joins could have terms classed as AFTER JOIN TERM;
+       * setting after join terms to merged list scan
+       */
+      if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (plan->plan_un.join.inner) == PT_JOIN_ANTI)
 	{
 	  bitset_union (&predset, &(plan->plan_un.join.during_join_terms));
 	  bitset_union (&predset, &(plan->plan_un.join.after_join_terms));
@@ -2377,9 +2535,15 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  else
 	    {
-	      listfile = make_buildlist_proc (env, namelist);
+	      listfile = make_buildlist_proc (env, namelist, xasl->parallelism);
 	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
+	      if (listfile != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
+		{
+		  /* the file keeps one row per distinct value of the columns it carries, which are the ones
+		   * the rest of the query reads from this side (make_namelist_from_projected_segs () above) */
+		  listfile->option = Q_DISTINCT;
+		}
 	    }
 
 	  xasl = add_uncorrelated (env, xasl, listfile);
@@ -2396,6 +2560,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	{
 	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
 	  xasl = add_sort_spec (env, xasl, plan, NULL, true /* add instnum pred */ );
+	  if (xasl != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
+	    {
+	      /* xasl is the list file this plan fills: a hash/merge join input, or the one gen_inner () scans */
+	      xasl->option = Q_DISTINCT;
+	    }
 	}
       break;
 
@@ -2491,21 +2660,25 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   * by single scan due to key filtering, and null records can be returned
 	   * by scan_handle_single_scan. It might lead to making a wrong result.
 	   */
-	  scan = gen_inner (env, inner, &predset, &new_subqueries, inner_scans, fetches);
+	  scan = gen_inner (env, inner, &predset, &new_subqueries, inner_scans, fetches, xasl->parallelism);
 	  if (scan)
 	    {
 	      if (IS_OUTER_JOIN_TYPE (join_type))
 		{
 		  mark_access_as_outer_join (parser, scan);
 		}
-	      else
+	      else if (join_type == JOIN_INNER && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE)
 		{
 		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
-		  PT_JOIN_TYPE sa_type = qo_plan_semi_anti_join_type (inner);
-		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
-		    {
-		      mark_access_as_semi_anti_join (parser, scan, sa_type);
-		    }
+		  mark_access_as_semi_anti_join (parser, scan, qo_plan_semi_anti_join_type (inner));
+		  mark_following_joins (scan);
+		}
+
+	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
+	      if (!scan_chain_has_scan_blocks (scan->scan_ptr)
+		  && qo_nl_inner_memoize_is_useless (outer, inner, &predset))
+		{
+		  XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
 		}
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
@@ -2629,8 +2802,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
-	    left_xasl = make_buildlist_proc (env, left_list);
-	    left_xasl->parallelism = xasl->parallelism;
+	    left_xasl = make_buildlist_proc (env, left_list, xasl->parallelism);
 	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -2643,8 +2815,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
-	    rght_xasl = make_buildlist_proc (env, rght_list);
-	    rght_xasl->parallelism = xasl->parallelism;
+	    rght_xasl = make_buildlist_proc (env, rght_list, xasl->parallelism);
 	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -2971,12 +3142,11 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   final_info = &projection_info.final;
 
   /* outer_xasl */
-  outer_xasl = make_buildlist_proc (env, outer_info->expr_name_list);
+  outer_xasl = make_buildlist_proc (env, outer_info->expr_name_list, parallelism);
   if (outer_xasl == NULL)
     {
       goto error_exit;
     }
-  outer_xasl->parallelism = parallelism;
 
   outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl);
   if (outer_xasl == NULL)
@@ -2986,12 +3156,11 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   outer_xasl->orderby_list = NULL;
 
   /* inner_xasl */
-  inner_xasl = make_buildlist_proc (env, inner_info->expr_name_list);
+  inner_xasl = make_buildlist_proc (env, inner_info->expr_name_list, parallelism);
   if (inner_xasl == NULL)
     {
       goto error_exit;
     }
-  inner_xasl->parallelism = parallelism;
 
   inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl);
   if (inner_xasl == NULL)
@@ -3058,10 +3227,11 @@ error_exit:
  *		      scan_ptr list
  *   fetches(in): A list of fetch procs to be run every time plan produces
  *		  a new row
+ *   parallelism(in): The enclosing xasl's parallelism, inherited by a temp list build
  */
 static XASL_NODE *
 gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, XASL_NODE * inner_scans,
-	   XASL_NODE * fetches)
+	   XASL_NODE * fetches, int parallelism)
 {
   XASL_NODE *scan, *listfile, *fetch;
   PT_NODE *namelist;
@@ -3108,7 +3278,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
        * Now proceed on with inner generation, passing the augmented
        * list of fetch procs.
        */
-      scan = gen_inner (env, plan->plan_un.follow.head, &EMPTY_SET, &EMPTY_SET, inner_scans, fetch);
+      scan = gen_inner (env, plan->plan_un.follow.head, &EMPTY_SET, &EMPTY_SET, inner_scans, fetch, parallelism);
       break;
 #else
       /* Fall through */
@@ -3122,11 +3292,11 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
        * that file.
        */
     case QO_PLANTYPE_SORT:
-      /* check for sort type */
-      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP);
+      /* check for sort type: SORT_DISTINCT is a SEMI JOIN inner read once with the duplicates removed */
+      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP || plan->plan_un.sort.sort_type == SORT_DISTINCT);
 
       namelist = make_namelist_from_projected_segs (env, plan);
-      listfile = make_buildlist_proc (env, namelist);
+      listfile = make_buildlist_proc (env, namelist, parallelism);
       listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile);
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
@@ -3230,6 +3400,48 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
   return NULL;
 }
 
+/* a covered group by skip with fewer rows per group runs serially: measured on 1M rows (CBRD-27664), 4 workers
+ * lose at 1 row per group, tie at 2-3 and win from 5 */
+#define QO_PARALLEL_GROUPBY_SKIP_MIN_ROWS_PER_GROUP 3.0
+
+/*
+ * qo_groupby_skip_rows_per_group () - rows per group of a group by skip scan, from the index statistics
+ *   return: the table's rows over the keys of the index prefix ending at the last GROUP BY column,
+ *	     or DBL_MAX when the statistics do not tell
+ *   plan(in): the group by skip scan
+ *   select(in): its query
+ */
+double
+qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select)
+{
+  QO_ENV *env = plan->info->env;
+  QO_INDEX_ENTRY *index_entry = plan->plan_un.scan.index->head;
+  QO_ATTR_CUM_STATS *cum_stats = &plan->plan_un.scan.index->cum_stats;
+  PT_NODE *group;
+  int prefix_len = 0;
+  int i;
+
+  for (group = select->info.query.q.select.group_by; group != NULL; group = group->next)
+    {
+      for (i = prefix_len; i < index_entry->nsegs; i++)
+	{
+	  if (index_entry->seg_idxs[i] != -1
+	      && pt_name_equal (QO_ENV_PARSER (env), QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entry->seg_idxs[i])),
+				group->info.sort_spec.expr))
+	    {
+	      prefix_len = i + 1;
+	      break;
+	    }
+	}
+    }
+
+  if (prefix_len == 0 || prefix_len > cum_stats->pkeys_size || cum_stats->pkeys[prefix_len - 1] <= 0)
+    {
+      return DBL_MAX;
+    }
+  return (double) QO_NODE_NCARD (plan->plan_un.scan.node) / (double) cum_stats->pkeys[prefix_len - 1];
+}
+
 /*
  * qo_apply_parallel_index_scan_threshold () - Decide whether parallel index
  *                                             scan is worthwhile for the
@@ -3273,7 +3485,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
       return;
     }
 
-  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+  /* an index read for its GROUP BY order alone (no range) is a group by skip that may run in parallel (CBRD-27664):
+   * the checker decides that (scan_check_parallel_scan_possible ()) */
+  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+      && driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
     {
       return;
     }
@@ -3316,6 +3531,16 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   cum_stats = &index_entry->cum_stats;
   if (!cum_stats->is_indexed || cum_stats->pages <= 0)
     {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  if (qo_plan_skip_groupby (driving) && qo_is_index_covering_scan (driving)
+      && qo_groupby_skip_rows_per_group (driving, select) < QO_PARALLEL_GROUPBY_SKIP_MIN_ROWS_PER_GROUP)
+    {
+      /* each group costs the leader a partial row to merge (CBRD-27664): with few rows per group that outweighs the
+       * workers' covered scan, while a serial scan aggregates in the B-tree. A non-covered scan's heap reads still pay
+       * for the workers. */
       spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
       return;
     }
@@ -3487,6 +3712,11 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 bool
 qo_plan_skip_groupby (QO_PLAN * plan)
 {
+  /* a join skips the GROUP BY in the order of its driving scan (CBRD-27685), which nested loops keep */
+  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      plan = plan->plan_un.join.outer;
+    }
   return (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
 }
@@ -3699,11 +3929,11 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   if (nterms <= 0 && nkfterms <= 0 && bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
       if (qo_is_filter_index (index_entryp) || qo_is_index_loose_scan (plan) || qo_is_iscan_from_groupby (plan)
-	  || qo_is_iscan_from_orderby (plan)
+	  || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan) || plan->order != QO_UNORDERED
 	  || PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)))
 	{
-	  /* Do not return if: 1. filtered index. 2. skip group by or skip order by 3. loose scan. 4. scan for b-tree
-	   * node info or key info. */
+	  /* Do not return if: 1. filtered index. 2. skip group by, skip order by or skip analytic sort 3. loose scan.
+	   * 4. scan for b-tree node info or key info. 5. full scan for the key order. */
 	  ;
 	}
       else
@@ -4193,12 +4423,11 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_key_limit_arith (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4217,12 +4446,11 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_key_limit_arith (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4236,12 +4464,11 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_key_limit_arith (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;
@@ -4325,7 +4552,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
       break;
 
     case QO_PLANTYPE_JOIN:
-      /* only allow inner joins */
+      /* Preserve eligibility for ordinary inner joins and first-match SEMI/ANTI joins. */
       if (plan->plan_un.join.join_type != JOIN_INNER)
 	{
 	  return NULL;
@@ -4369,7 +4596,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
   ptr = upper->next;
   while (ptr)
     {
-      limit_infop->upper = pt_make_regu_arith (limit_infop->upper, ptr->var_p, NULL, T_LEAST, dom_bigint);
+      limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, ptr->var_p, T_LEAST, dom_bigint);
       if (!limit_infop->upper)
 	{
 	  regu_ptr_list_free (upper);
@@ -4389,7 +4616,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
       ptr = lower->next;
       while (ptr)
 	{
-	  limit_infop->lower = pt_make_regu_arith (limit_infop->lower, ptr->var_p, NULL, T_GREATEST, dom_bigint);
+	  limit_infop->lower = pt_make_key_limit_arith (limit_infop->lower, ptr->var_p, T_GREATEST, dom_bigint);
 	  if (!limit_infop->lower)
 	    {
 	      regu_ptr_list_free (lower);
@@ -4456,7 +4683,7 @@ qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_no
   ptr = upper->next;
   while (ptr)
     {
-      limit_infop->upper = pt_make_regu_arith (limit_infop->upper, ptr->var_p, NULL, T_LEAST, dom_bigint);
+      limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, ptr->var_p, T_LEAST, dom_bigint);
       if (!limit_infop->upper)
 	{
 	  regu_ptr_list_free (upper);
@@ -4566,6 +4793,11 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
     }
 
   if (query->info.query.orderby_for == NULL)
+    {
+      return false;
+    }
+
+  if (query->info.query.q.select.connect_by != NULL)
     {
       return false;
     }
@@ -4894,7 +5126,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	{
 	  for (j = 0; j < index_entryp->nsegs; j++)
 	    {
-	      if ((index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i])))
+	      if (index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i]))
 		{
 		  pos = j;
 		  break;
@@ -4960,7 +5192,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	{
 	  for (j = 0; j < index_entryp->nsegs; j++)
 	    {
-	      if ((index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i])))
+	      if (index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i]))
 		{
 		  pos = j;
 		  break;
@@ -5272,7 +5504,8 @@ qo_check_join_for_multi_range_opt (QO_PLAN * plan)
   bool can_optimize = true;
 
   /* verify that this is a valid join for multi range optimization */
-  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN || plan->plan_un.join.join_type != JOIN_INNER
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN
+      || plan->plan_un.join.join_type != JOIN_INNER
       || plan->plan_un.join.join_method == QO_JOINMETHOD_MERGE_JOIN
       || plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
     {
@@ -5287,6 +5520,10 @@ qo_check_join_for_multi_range_opt (QO_PLAN * plan)
   if (((QO_ENV_PT_TREE (plan->info->env))->info.query.q.select.hint & PT_HINT_NO_MULTI_RANGE_OPT) != 0)
     {
       /* NO_MULTI_RANGE_OPT was hinted */
+      return false;
+    }
+  if ((QO_ENV_PT_TREE (plan->info->env))->info.query.q.select.connect_by != NULL)
+    {
       return false;
     }
 
@@ -5751,7 +5988,7 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
 
   statement->info.query.order_by = new_order_by;
 
-  listfile = make_buildlist_proc (env, node_list);
+  listfile = make_buildlist_proc (env, node_list, xasl->parallelism);
   listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
   listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 
@@ -6307,7 +6544,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
    * The terms remaining in pred_set are evaluated by the parent list scan.
    * Each removed term is evaluated exactly once in the probe, and never by the parent. */
   bitset_difference (pred_set, &plan->plan_un.join.join_terms);
-  if (IS_OUTER_JOIN_TYPE (join_type))
+  if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner_plan) == PT_JOIN_ANTI)
     {
       bitset_difference (pred_set, &plan->plan_un.join.during_join_terms);
     }
@@ -6494,7 +6731,20 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
   final_info = &projection_info->final;
 
   /* join_type */
-  merge_info->join_type = plan->plan_un.join.join_type;
+  switch (qo_plan_semi_anti_join_type (inner_plan))
+    {
+    case PT_JOIN_SEMI:
+      merge_info->join_type = JOIN_SEMI;
+      break;
+
+    case PT_JOIN_ANTI:
+      merge_info->join_type = JOIN_ANTI;
+      break;
+
+    default:
+      merge_info->join_type = plan->plan_un.join.join_type;
+      break;
+    }
 
   /* ls_column_cnt */
   merge_info->ls_column_cnt = bitset_cardinality (&plan->plan_un.join.join_terms);

@@ -28,6 +28,7 @@
 #include "dbtype.h"
 #include "object_primitive.h"
 #include "xasl.h"
+#include "query_executor.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -178,6 +179,11 @@ namespace cubxasl
     dest->rhs = spawner::spawn (src->rhs);
     dest->rel_op = src->rel_op;
     dest->type = src->type;
+    dest->compare = src->compare;
+    dest->bound_coercion = src->bound_coercion;
+    dest->prune_side = src->prune_side;
+    dest->prune_domain = src->prune_domain;
+    dest->prune = src->prune;
 
     return er_errid ();
   }
@@ -195,6 +201,11 @@ namespace cubxasl
     dest->eq_flag = src->eq_flag;
     dest->rel_op = src->rel_op;
     dest->item_type = src->item_type;
+    dest->compare_row = src->compare_row;
+    dest->compare = src->compare;
+    dest->prune_domain = src->prune_domain;
+    dest->prune_element = src->prune_element;
+    dest->prune = src->prune;
 
     return er_errid ();
   }
@@ -276,7 +287,10 @@ namespace cubxasl
     dest->type = src->type;
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    dest->original_domain = dest->domain;
+    dest->original_domain =
+	    src->original_domain == src->domain ? dest->domain : tp_domain_copy (src->original_domain, true);
+    dest->conv = src->conv;
+    dest->conv_mode = src->conv_mode;
     dest->vfetch_to = spawn (src->vfetch_to);
 
     /* TODO: unsupported */
@@ -332,7 +346,7 @@ namespace cubxasl
 	return er_errid ();
 
       case TYPE_FUNC:
-	dest->value.funcp = spawn (dest->value.funcp);
+	dest->value.funcp = spawn (src->value.funcp);
 	break;
 
       case TYPE_REGUVAL_LIST:
@@ -397,13 +411,18 @@ namespace cubxasl
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    dest->original_domain = dest->domain;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);
     dest->thirdptr = spawn (src->thirdptr);
     dest->opcode = src->opcode;
     dest->misc_operand = src->misc_operand;
+    memcpy (dest->conv, src->conv, sizeof (dest->conv));
+    memcpy (dest->conv_type, src->conv_type, sizeof (dest->conv_type));
+    dest->fails = src->fails;
+    /* the unpack's decisions are immutable and live in the leader's unpack arena, after every worker */
+    dest->decided = src->decided;
+    dest->result_conv = src->result_conv;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)
@@ -563,7 +582,6 @@ namespace cubxasl
       }
 
     dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
-    dest->original_domain = dest->dom;
     dest->pos_no = src->pos_no;
 
     return er_errid ();
@@ -893,15 +911,16 @@ namespace cubxasl
 
     /* ref: xqmgr_execute_query */
     assert_release_error (find (src->dbval_ptr, src->dbval_cnt) == nullptr);
-    dest->dbval_ptr = alloc (src->dbval_ptr, src->dbval_cnt);
-    if (dest->dbval_ptr != nullptr)
+    DB_VALUE *values = alloc (src->dbval_ptr, src->dbval_cnt);
+    if (values != nullptr)
       {
 	for (int i = 0; i < src->dbval_cnt; i++)
 	  {
 	    /* always returns NO_ERROR */
-	    pr_clone_value (&src->dbval_ptr[i], &dest->dbval_ptr[i]);
+	    pr_clone_value (&src->dbval_ptr[i], &values[i]);
 	  }
       }
+    dest->dbval_ptr = values;
 
     dest->dbval_cnt = src->dbval_cnt;
     dest->sys_datetime = src->sys_datetime;
