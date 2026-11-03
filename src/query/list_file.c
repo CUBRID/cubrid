@@ -847,43 +847,6 @@ qfile_get_sort_list_size (SORT_LIST * sort_list_p)
 }
 
 /*
- * qfile_is_sort_list_covered () -
- *   return: true or false
- *   covering_list(in): covering sort item list pointer
- *   covered_list(in): covered sort item list pointer
- *
- * Note: if covering_list covers covered_list returns true.
- *       otherwise, returns false.
- */
-bool
-qfile_is_sort_list_covered (SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
-{
-  SORT_LIST *s1, *s2;
-
-  if (covered_list_p == NULL)
-    {
-      return false;
-    }
-
-  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
-    {
-      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
-	{
-	  return false;
-	}
-    }
-
-  if (s1 == NULL && s2)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-
-/*
  * qfile_compare_tuple_values () -
  *   return: NO_ERROR or error code
  *   tpl1(in): First tuple value
