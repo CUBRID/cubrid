@@ -76,7 +76,8 @@ public class PlcsqlRuntimeError extends RuntimeException {
                             "%s\n  ...%s",
                             MSG_SP_EXECUTE_ERROR, msg.substring(MSG_SP_EXECUTE_ERROR.length()));
         } else if (line == -1 && column == -1) {
-            nestedMsg = String.format("%s\n  %s", MSG_SP_EXECUTE_ERROR, msg);
+            // the position is unknown, e.g., in a package spec member without its implementation
+            nestedMsg = String.format("%s\n  (line ?, column ?) %s", MSG_SP_EXECUTE_ERROR, msg);
         } else {
             nestedMsg =
                     String.format(
