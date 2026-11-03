@@ -402,6 +402,13 @@ namespace cubload
    *    matches one of them is not dragged into another. Walk the list here too, or an
    *    element matching any domain but the first would be cast when it has nowhere to go.
    *
+   *    The cast is explicit, where fallback_convert () asks for an implicit one unless the
+   *    target is a character type. The two are not the same question. That one assigns to
+   *    a column; this one is the coercion INSERT performs on an element while it builds
+   *    the collection, and that coercion takes a string into a BIT element - an implicit
+   *    one refuses it, since TP_IMPLICIT_COERCION_NOT_ALLOWED () bars a character string
+   *    from a target that is not character, date, numeric or enum.
+   *
    *    A cast that does not work leaves the value alone on purpose: set_add_element ()
    *    then refuses it and reports what it refused, which is the message the loader has
    *    always printed for an element the collection cannot hold.
