@@ -114,8 +114,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-/* The children of one parent key that the lock and re-check kept, held from the key's range scan until they are acted
- * on: in a list file of the current query, or in memory where there is no query to own one. */
+/* the kept children of one parent key, held for the second phase: a list file of the current query, or memory */
 typedef struct locator_kept_children LOCATOR_KEPT_CHILDREN;
 struct locator_kept_children
 {
@@ -4447,7 +4446,7 @@ locator_kept_clear (THREAD_ENTRY * thread_p, LOCATOR_KEPT_CHILDREN * kept)
 }
 
 /*
- * locator_kept_add () - add the children one batch of the key's range scan kept to the held ones
+ * locator_kept_add () - hold the children one batch kept
  *
  * return: NO_ERROR or error code
  */
