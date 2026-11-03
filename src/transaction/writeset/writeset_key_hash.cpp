@@ -432,7 +432,7 @@ wset_canonical_numeric (DB_VALUE *v, DB_VALUE *scratch, char *text)
     }
 
   /* zero has no sign and no fraction */
-  if (negative && !(int_end - p == 1 && *p == '0' && frac_end == int_end))
+  if (negative && ! (int_end - p == 1 && *p == '0' && frac_end == int_end))
     {
       *out++ = '-';
     }
