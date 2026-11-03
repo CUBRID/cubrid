@@ -69,6 +69,7 @@ typedef struct bt_load_provider BT_LOAD_PROVIDER;
 typedef enum bt_load_page_log_mode
 {
   BT_LOAD_LOG_INLINE = 0,	/* the writer appends the record itself: the transaction thread */
+  BT_LOAD_LOG_BY_LEADER,	/* a shard worker makes the record and mails it; the leader appends it */
   BT_LOAD_LOG_NO_REDO		/* no content redo (loaddb --no-logging-index); the pre-commit barrier flushes */
 } BT_LOAD_PAGE_LOG_MODE;
 

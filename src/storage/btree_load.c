@@ -217,6 +217,17 @@ struct bt_load_vpid_pool
 };
 // *INDENT-ON*
 
+/* A log record a shard worker made for the leader to append: the content redo of a finished page, or a vacuum
+ * notification (vpid NULL) */
+typedef struct bt_load_mail BT_LOAD_MAIL;
+struct bt_load_mail
+{
+  VPID vpid;
+  LOG_PRIOR_NODE *node;
+};
+#define BT_LOAD_MAIL_PER_WORKER 4	/* mailbox capacity per shard worker */
+#define BT_LOAD_MAIL_BATCH 16	/* records the leader takes out per visit */
+
 typedef struct bt_load_worker_slot BT_LOAD_WORKER_SLOT;
 struct bt_load_worker_slot
 {
@@ -245,6 +256,10 @@ struct bt_load_provider
   int first_error;
     cuberr::er_message * first_error_msg;	/* Error context of the worker whose failure set first_error; the leader takes
 						 * it once every worker is done. */
+  BT_LOAD_MAIL *mails;		/* ring of records waiting for the leader (BT_LOAD_LOG_BY_LEADER) */
+  int mail_capacity;
+  int mail_head;
+  int mail_count;
   BT_LOAD_SPAN *main_inline_spans;
   BT_LOAD_SPAN *main_inline_current;
   BT_LOAD_SPAN *ovf_inline_spans;
@@ -340,6 +355,11 @@ static int btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID 
 			   BT_LOAD_PAGE_LOG_MODE mode);
 static int bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
 			     BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length);
+static LOG_PRIOR_NODE *bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
+					       LOG_RCVINDEX rcvindex, int offset, int length);
+static int bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const VPID * vpid,
+				       LOG_PRIOR_NODE * node);
+static int bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new, bool ovf_dir);
 static int bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
@@ -2657,7 +2677,7 @@ end:
 /*
  * btree_log_page () - Save the contents of a b+tree page: the whole page as RVBT_COPYPAGE
  *   return: error code
- *   load_args(in): the load whose page it is
+ *   load_args(in): the load whose page it is (its provider and shard slot, for the BY_LEADER mail)
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
@@ -2673,7 +2693,7 @@ btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAG
 /*
  * bt_load_log_page () - Save the contents of a finished page
  *   return: error code
- *   load_args(in): the load whose page it is
+ *   load_args(in): the load whose page it is (its provider and shard slot, for the BY_LEADER mail)
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
@@ -2683,11 +2703,16 @@ btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAG
  *   length(in): bytes the record carries from the start of the page
  *
  * Note: This function logs the contents (unless NO_REDO) and frees the page after setting the dirty bit.
+ *       BY_LEADER: the record is made here, by the shard worker, and the leader appends it from the mailbox
+ *       (bt_load_provider_drain_mail ()); the page keeps the allocation's LSA until then, and a flush in between
+ *       is harmless because the redo rewrites the same content.
  */
 static int
 bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
 		  BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length)
 {
+  LOG_PRIOR_NODE *node = NULL;
+  VPID vpid;
 
   if (mode == BT_LOAD_LOG_INLINE)
     {
@@ -2697,6 +2722,17 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
       addr.pgptr = page_ptr;
       addr.offset = offset;
       log_append_redo_data (thread_p, rcvindex, &addr, length, page_ptr);
+    }
+  else if (mode == BT_LOAD_LOG_BY_LEADER)
+    {
+      assert (load_args->provider != NULL && load_args->worker_idx >= 0);
+      node = bt_load_make_page_redo (thread_p, vfid, page_ptr, rcvindex, offset, length);
+      if (node == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  return er_errid ();
+	}
+      pgbuf_get_vpid (page_ptr, &vpid);
     }
   /*
    * NO_REDO: no-logging index pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
@@ -2724,8 +2760,6 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
       er_stack_push ();
       if (pgbuf_flush_with_wal (thread_p, page_ptr) == NULL)
 	{
-	  VPID vpid;
-
 	  pgbuf_get_vpid (page_ptr, &vpid);
 	  _er_log_debug (ARG_FILE_LINE,
 			 "DEBUG_BTREE: no-logging index write-through flush failed for vpid(%d, %d) (error = %d); "
@@ -2734,7 +2768,180 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
       er_stack_pop ();
     }
   pgbuf_unfix_and_init (thread_p, page_ptr);
+  if (node != NULL)
+    {
+      return bt_load_provider_post_mail (load_args->provider, load_args->worker_idx, &vpid, node);
+    }
   return NO_ERROR;
+}
+
+/*
+ * bt_load_make_page_redo () - Make the content redo record of a page without appending it
+ *   return: the record, or NULL with an error set
+ *   page_ptr(in): the page, still fixed: the record takes its position from it
+ *   rcvindex(in), offset(in), length(in): as bt_load_log_page ()
+ *
+ * Note: The making (copy, compression, TDE mark) uses only the calling thread's buffers; the appending
+ *       (prior_lsa_next_record ()) is the transaction thread's.
+ */
+static LOG_PRIOR_NODE *
+bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, LOG_RCVINDEX rcvindex,
+			int offset, int length)
+{
+  LOG_DATA_ADDR addr;
+  LOG_CRUMB crumb;
+  LOG_PRIOR_NODE *node;
+
+  addr.vfid = vfid;
+  addr.pgptr = page_ptr;
+  addr.offset = offset;
+  crumb.length = length;
+  crumb.data = page_ptr;
+  /* prior_lsa_alloc_and_copy_data () takes no LOG_REDO_DATA */
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_REDO_DATA, rcvindex, &addr, 0, NULL, 1, &crumb);
+  if (node == NULL)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	}
+      return NULL;
+    }
+  /* the TDE mark, as the inline append makes it */
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex) && pgbuf_get_tde_algorithm (page_ptr) != TDE_ALGORITHM_NONE
+      && prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
+    {
+      logpb_free_prior_node (node);
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	}
+      return NULL;
+    }
+  return node;
+}
+
+/*
+ * bt_load_provider_post_mail () - Hand a record to the leader; waits while the mailbox is full
+ *   return: error code (the build failed elsewhere: the record is dropped and an error set)
+ *   vpid(in): the page the record belongs to, NULL for a record without a page
+ *   node(in): the record; the leader owns it from here on
+ */
+static int
+bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const VPID * vpid, LOG_PRIOR_NODE * node)
+{
+  BT_LOAD_MAIL *mail;
+
+  pthread_mutex_lock (&provider->mtx);
+  while (provider->mail_count == provider->mail_capacity && provider->first_error == NO_ERROR)
+    {
+      pthread_cond_wait (&provider->cond_worker[worker_idx], &provider->mtx);
+    }
+  if (provider->first_error != NO_ERROR)
+    {
+      pthread_mutex_unlock (&provider->mtx);
+      logpb_free_prior_node (node);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+      return ER_BTREE_LOAD_FAILED;
+    }
+  mail = &provider->mails[(provider->mail_head + provider->mail_count) % provider->mail_capacity];
+  if (vpid != NULL)
+    {
+      mail->vpid = *vpid;
+    }
+  else
+    {
+      VPID_SET_NULL (&mail->vpid);
+    }
+  mail->node = node;
+  provider->mail_count++;
+  pthread_cond_signal (&provider->cond_main);
+  pthread_mutex_unlock (&provider->mtx);
+  return NO_ERROR;
+}
+
+/*
+ * bt_load_provider_drain_mail () - The leader appends every mailed record and stamps its page
+ *   return: error code
+ *
+ * Note: Called without the provider mutex. On error the remaining records are dropped; the build fails.
+ */
+static int
+bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider)
+{
+  BT_LOAD_MAIL batch[BT_LOAD_MAIL_BATCH];
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  int n, i, error = NO_ERROR;
+  bool failed;
+
+  /* prior_lsa_next_record () skips the checks of log_append_* */
+  assert (tdes != NULL && LOG_ISTRAN_ACTIVE (tdes));
+
+  for (;;)
+    {
+      pthread_mutex_lock (&provider->mtx);
+      n = MIN (provider->mail_count, BT_LOAD_MAIL_BATCH);
+      for (i = 0; i < n; i++)
+	{
+	  batch[i] = provider->mails[(provider->mail_head + i) % provider->mail_capacity];
+	}
+      provider->mail_head = (provider->mail_head + n) % provider->mail_capacity;
+      provider->mail_count -= n;
+      failed = provider->first_error != NO_ERROR;
+      if (n > 0)
+	{
+	  /* room for the workers waiting on a full mailbox */
+	  for (i = 0; i < provider->n_workers; i++)
+	    {
+	      pthread_cond_broadcast (&provider->cond_worker[i]);
+	    }
+	}
+      pthread_mutex_unlock (&provider->mtx);
+      if (n == 0)
+	{
+	  return NO_ERROR;
+	}
+
+      for (i = 0; i < n; i++)
+	{
+	  PAGE_PTR page = NULL;
+	  LOG_LSA start_lsa;
+
+	  if (error != NO_ERROR || failed || log_is_no_logging ())
+	    {
+	      /* the build failed: its file goes away with the rollback, nothing of it needs a log record; or the
+	       * server runs with no_logging, where log_append_* appends no record either */
+	      logpb_free_prior_node (batch[i].node);
+	      continue;
+	    }
+	  if (!VPID_ISNULL (&batch[i].vpid))
+	    {
+	      page = pgbuf_fix (thread_p, &batch[i].vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  if (error == NO_ERROR)
+		    {
+		      error = ER_BTREE_LOAD_FAILED;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		    }
+		  logpb_free_prior_node (batch[i].node);
+		  continue;
+		}
+	    }
+	  start_lsa = prior_lsa_next_record (thread_p, batch[i].node, tdes);
+	  if (page != NULL)
+	    {
+	      pgbuf_set_lsa (thread_p, page, &start_lsa);
+	      pgbuf_set_dirty (thread_p, page, DONT_FREE);
+	      pgbuf_unfix_and_init (thread_p, page);
+	    }
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 }
 
 static int
@@ -2996,6 +3203,10 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->n_workers = n_workers;
   provider->slots = (BT_LOAD_WORKER_SLOT *) calloc ((size_t) n_workers, sizeof (*provider->slots));
   provider->cond_worker = (pthread_cond_t *) malloc ((size_t) n_workers * sizeof (*provider->cond_worker));
+  provider->mail_capacity = n_workers * BT_LOAD_MAIL_PER_WORKER;
+  provider->mails = (BT_LOAD_MAIL *) malloc ((size_t) provider->mail_capacity * sizeof (*provider->mails));
+  provider->mail_head = 0;
+  provider->mail_count = 0;
   provider->first_error = NO_ERROR;
   provider->first_error_msg = new cuberr::er_message (bt_load_er_message_logging);
   provider->main_inline_spans = NULL;
@@ -3007,7 +3218,8 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->consumed_pages = 0;
   provider->consumed_ovf_pages = 0;
   provider->returned_pages = 0;
-  if (provider->slots == NULL || provider->cond_worker == NULL || provider->first_error_msg == NULL)
+  if (provider->slots == NULL || provider->cond_worker == NULL || provider->mails == NULL
+      || provider->first_error_msg == NULL)
     {
       if (provider->slots != NULL)
 	{
@@ -3017,9 +3229,14 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
 	{
 	  free_and_init (provider->cond_worker);
 	}
+      if (provider->mails != NULL)
+	{
+	  free_and_init (provider->mails);
+	}
       delete provider->first_error_msg;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) n_workers * (sizeof (BT_LOAD_WORKER_SLOT) + sizeof (pthread_cond_t)));
+	      (size_t) n_workers * (sizeof (BT_LOAD_WORKER_SLOT) + sizeof (pthread_cond_t))
+	      + (size_t) provider->mail_capacity * sizeof (BT_LOAD_MAIL));
       delete provider;
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -3067,7 +3284,28 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
       const VFID *vfid;
       int error;
 
+      /* the mailed records first: a worker on a full mailbox waits, and the leader's page requests come after */
+      error = bt_load_provider_drain_mail (thread_p, provider);
+      if (error != NO_ERROR)
+	{
+	  pthread_mutex_lock (&provider->mtx);
+	  if (provider->first_error == NO_ERROR)
+	    {
+	      provider->first_error = error;
+	      provider->first_error_msg->swap (cuberr::context::get_thread_local_error ());
+	    }
+	  for (int i = 0; i < provider->n_workers; i++)
+	    {
+	      pthread_cond_broadcast (&provider->cond_worker[i]);
+	    }
+	  pthread_mutex_unlock (&provider->mtx);
+	}
+
       pthread_mutex_lock (&provider->mtx);
+      if (provider->mail_count > 0)
+	{
+	  all_done = false;
+	}
       for (int i = 0; i < provider->n_workers; i++)
 	{
 	  BT_LOAD_SLOT_STATE state = provider->slots[i].state;
@@ -3095,7 +3333,11 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
 	}
       if (selected < 0)
 	{
-	  pthread_cond_wait (&provider->cond_main, &provider->mtx);
+	  if (provider->mail_count == 0)
+	    {
+	      /* a record mailed after the drain above would have signaled before this wait: drain it first */
+	      pthread_cond_wait (&provider->cond_main, &provider->mtx);
+	    }
 	  pthread_mutex_unlock (&provider->mtx);
 	  continue;
 	}
@@ -3461,6 +3703,13 @@ bt_load_provider_close (BT_LOAD_PROVIDER * provider)
       pthread_cond_destroy (&provider->cond_worker[i]);
     }
   free_and_init (provider->slots);
+  /* records still mailed belong to a failed build; nobody appends them */
+  assert (provider->mail_count == 0 || provider->first_error != NO_ERROR);
+  for (int i = 0; i < provider->mail_count; i++)
+    {
+      logpb_free_prior_node (provider->mails[(provider->mail_head + i) % provider->mail_capacity].node);
+    }
+  free_and_init (provider->mails);
   free_and_init (provider->main_pool.vpids);
   free_and_init (provider->ovf_pool.vpids);
   bt_load_free_spans (provider->main_inline_spans);
@@ -3577,6 +3826,10 @@ bt_load_new_page_main_inline (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BT
   return bt_load_init_claimed_page (thread_p, load_args, header, node_level, vpid_new, page_new);
 }
 
+/*
+ * bt_load_parallel_enabled () - Whether the shard workers put the leaves themselves (the leader logs for them,
+ *                               or nothing is logged)
+ */
 bool
 bt_load_parallel_enabled (const LOAD_ARGS * load_args)
 {
@@ -5322,9 +5575,10 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
   load_args->vacuum_payload_size = 0;
-  /* Only the no-logging build has the shard put, and its workers write no content redo either. */
-  assert (src->page_log_mode == BT_LOAD_LOG_NO_REDO);
-  load_args->page_log_mode = BT_LOAD_LOG_NO_REDO;
+  /* A shard worker does not append to the log itself: the no-logging build writes no content redo, and a logged
+   * build has the worker mail the redo of its pages to the leader. */
+  assert (src->page_log_mode != BT_LOAD_LOG_BY_LEADER);
+  load_args->page_log_mode = (src->page_log_mode == BT_LOAD_LOG_NO_REDO) ? BT_LOAD_LOG_NO_REDO : BT_LOAD_LOG_BY_LEADER;
   /* CBRD-24094: the overflow OID directory state is per-chain, hence per-worker; ovf_dir itself is a property of the index and
    * is inherited from the leader. */
   VPID_SET_NULL (&load_args->ovf_dir_vpid);
