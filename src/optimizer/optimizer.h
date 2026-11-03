@@ -201,6 +201,7 @@ extern int qo_plan_get_cost_fn (const char *);
 extern PT_NODE *qo_plan_iscan_sort_list (QO_PLAN *);
 extern bool qo_plan_skip_orderby (QO_PLAN * plan);
 extern bool qo_plan_skip_groupby (QO_PLAN * plan);
+extern double qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select);
 extern bool qo_is_index_covering_scan (QO_PLAN * plan);
 extern bool qo_is_index_iss_scan (QO_PLAN * plan);
 extern bool qo_is_index_loose_scan (QO_PLAN * plan);
