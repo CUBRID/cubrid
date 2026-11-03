@@ -2106,6 +2106,66 @@ histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success)
   *success = true;
 }
 
+/*
+ * histogram_get_group_size_selectivity () - fraction of the groups of GROUP BY attr with at least min_rows rows
+ *   attr(in)        : the GROUP BY column (PT_NAME or a path chain ending in one)
+ *   min_rows(in)    : the least group size counted
+ *   scale(in)       : how much smaller (< 1) or larger the groups are than the column's value counts, for the rows
+ *                     the filters and joins keep
+ *   selectivity(out): the fraction of the distinct values whose group has min_rows rows or more
+ *   success(out)    : false when the node is not a column or carries no histogram
+ *
+ * Note: A group of GROUP BY attr is the rows of one value. An MCV knows its count. A bucket knows only the
+ *   average count of its values, and its counts are taken as geometric with that average, the same model the
+ *   caller uses without a histogram.
+ */
+void
+histogram_get_group_size_selectivity (PT_NODE *attr, double min_rows, double scale, double *selectivity,
+				      bool *success)
+{
+  assert (selectivity != NULL);
+
+  *success = false;
+
+  hist::HistogramReader reader;
+  if (!histogram_init_reader_from_lhs (attr, reader))
+    {
+      return;
+    }
+
+  const double total_rows = static_cast<double> (reader.total_rows ());
+  const double distinct = static_cast<double> (reader.mcv_count ()) + static_cast<double> (reader.nonmcv_distinct ());
+  if (total_rows <= 0.0 || distinct <= 0.0 || scale <= 0.0)
+    {
+      return;
+    }
+
+  double groups = 0.0;
+  for (std::uint32_t i = 0; i < reader.mcv_count (); i++)
+    {
+      /* the count is the frequency times the rows, an integer up to the rounding of the frequency */
+      if (reader.mcv_freq (i) * total_rows * scale + 0.5 >= min_rows)
+	{
+	  groups += 1.0;
+	}
+    }
+
+  for (std::uint32_t i = 0; i < reader.bucket_count (); i++)
+    {
+      const double ndv = static_cast<double> (reader.bucket_approx_ndv (i));
+      if (ndv <= 0.0)
+	{
+	  continue;
+	}
+      const double mean = static_cast<double> (reader.bucket_rows (i)) * scale / ndv;
+      const double r = 1.0 - 1.0 / std::max (mean, 1.0);
+      groups += ndv * ((min_rows <= 1.0) ? 1.0 : std::pow (r, std::ceil (min_rows) - 1.0));
+    }
+
+  *selectivity = std::min (std::max (groups / distinct, 0.0), 1.0);
+  *success = true;
+}
+
 void
 histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
 {
@@ -2869,7 +2929,8 @@ bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
  *   (column op ?) in either argument order, and hand back its column and host-variable nodes.
  *   Both the fingerprint walk and the predicate-candidate walk must agree on what counts as
  *   such a predicate; keeping the test here prevents the two from drifting apart.
- * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}
+ * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}; the column may
+ *                  be the argument of a SUM, AVG, MIN or MAX in HAVING
  * node (in)      : expression node to test
  * out_name (out) : the column node (end of a path expression), NULL if not matched
  * out_hv (out)   : the host-variable node, NULL if not matched
@@ -2945,6 +3006,27 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
   return false;
 }
 
+/* the column a host variable is compared with through this operand: the column itself, or the column that a
+ * SUM, AVG, MIN or MAX of HAVING aggregates (CBRD-27811: HAVING prices those with the column's histogram) */
+static PT_NODE *
+histogram_hv_operand_column (PT_NODE *operand)
+{
+  if (operand != NULL && operand->node_type == PT_FUNCTION)
+    {
+      const FUNC_CODE func = operand->info.function.function_type;
+
+      if ((func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
+	  || operand->info.function.arg_list == NULL || operand->info.function.arg_list->next != NULL)
+	{
+	  return NULL;
+	}
+      operand = operand->info.function.arg_list;
+    }
+
+  operand = pt_get_end_path_node (operand);
+  return (operand != NULL && operand->node_type == PT_NAME) ? operand : NULL;
+}
+
 static bool
 histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv,
 			      bool *out_reversed)
@@ -2973,11 +3055,11 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
       return false;
     }
 
-  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
+  PT_NODE *a1 = node->info.expr.arg1;
   PT_NODE *a2 = node->info.expr.arg2;
 
-  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR
-      && histogram_is_user_host_var (parser, a2))
+  if (a2 != NULL && a2->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a2)
+      && (a1 = histogram_hv_operand_column (a1)) != NULL)
     {
       if (out_name != NULL)
 	{
@@ -2991,7 +3073,7 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
     }
 
   if (a1 != NULL && a1->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a1)
-      && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
+      && (a2 = histogram_hv_operand_column (a2)) != NULL)
     {
       if (out_name != NULL)
 	{
@@ -3748,7 +3830,9 @@ bind_target_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continu
 
   if (histogram_split_hv_predicate (parser, node, &name, NULL, NULL))
     {
-      bind_target_add (ctx, name, node->info.expr.op == PT_EQ);
+      /* an aggregate equal to a value does not pin the column's rows */
+      bind_target_add (ctx, name, node->info.expr.op == PT_EQ && node->info.expr.arg1->node_type != PT_FUNCTION
+		       && node->info.expr.arg2->node_type != PT_FUNCTION);
     }
   return node;
 }

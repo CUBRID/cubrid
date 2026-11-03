@@ -239,6 +239,9 @@ void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool
 				      double fallback_sel, double *selectivity, bool *success);
 /* distinct value count of the column the node resolves to (MCV entries + non-MCV distinct) */
 void histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success);
+/* fraction of the groups of GROUP BY attr that hold min_rows rows or more, the value counts scaled by scale */
+void histogram_get_group_size_selectivity (PT_NODE *attr, double min_rows, double scale, double *selectivity,
+    bool *success);
 /* the row count the column's histogram was built from, for callers that combine two probes and
  * need the same one-row floor the single probes apply. Returns false when the column has no
  * usable histogram. */
