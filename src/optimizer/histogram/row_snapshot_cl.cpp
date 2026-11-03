@@ -33,6 +33,7 @@
 #include "db_session.h"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "execute_statement.h"
 #include "histogram_cl.hpp"
 #include "intl_support.h"
 #include "object_domain.h"
@@ -42,6 +43,7 @@
 #include "schema_manager.h"
 #include "set_object.h"
 #include "system_parameter.h"
+#include "transaction_cl.h"
 #include "xasl_generation.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -507,7 +509,7 @@ row_snapshot_columns (SM_CLASS *class_)
 
 ROW_SNAPSHOT *
 row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, const ROW_SNAPSHOT_FILTER *filters,
-		   int n_filters, int max_rows, bool scan)
+		   int n_filters, int max_rows, bool scan, double n_card, int *error)
 {
   /* the read is a statement on the same class with the same filters: planning it must not read
    * again. The client runs one statement at a time, so a plain flag will do. */
@@ -521,9 +523,11 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   char *saved_dump_filename;
   FILE *saved_dump_fp;
   struct xasl_supp_info *saved_supp_info;
-  bool saved_dump_fp_open, indexed = false, usable = true;
-  int saved_level, stmt, pos, c, f, n = 0;
+  bool saved_dump_fp_open, saved_trigger_involved, indexed = false, usable = true;
+  int saved_level, saved_wait, stmt, pos, c, f, n = 0, err = NO_ERROR;
+  double scanned = scan ? n_card : -1.0, limit;
 
+  *error = NO_ERROR;
   if (in_read || classop == NULL || class_ == NULL || columns == NULL || n_filters <= 0 || max_rows <= 0)
     {
       return NULL;
@@ -557,8 +561,16 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
 	{
 	  return NULL;
 	}
-      /* one indexed filter column is enough: the scan goes through it and the others filter */
-      indexed = indexed || row_snapshot_column_indexed (class_, columns->attr_ids[filters[f].column]);
+      /* one indexed filter column is enough: the scan goes through it and the others filter.
+       * It goes through the rows the most selective of them gives, as the statistics expect them */
+      if (row_snapshot_column_indexed (class_, columns->attr_ids[filters[f].column]))
+	{
+	  indexed = true;
+	  if (scanned < 0 || n_card * filters[f].selectivity < scanned)
+	    {
+	      scanned = n_card * filters[f].selectivity;
+	    }
+	}
       query += (f == 0) ? "[" : " AND [";
       query += name;
       query += "] IN (";
@@ -572,6 +584,18 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   if (!indexed && !scan)
     {
       /* without an index the read scans the whole table at every compile */
+      return NULL;
+    }
+  /* LIMIT stops the read at the rows that pass every filter, not at the rows it goes through: an
+   * indexed filter that selects many rows beside a selective one without an index would read its
+   * whole range at every compile. A hinted scan of a small class goes through all of it. */
+  limit = (double) ROW_SNAPSHOT_SCAN_RATIO * max_rows;
+  if (scan && limit < ROW_SNAPSHOT_HINT_SCAN_ROWS)
+    {
+      limit = ROW_SNAPSHOT_HINT_SCAN_ROWS;
+    }
+  if (scanned > limit)
+    {
       return NULL;
     }
   /* bound, so every read of a class with as many filter values shares one cached plan */
@@ -589,7 +613,12 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
    * subquery read would then be missing from the cached plan, which a DROP or a grown table no
    * longer invalidates. The read itself runs at level 1, optimized, executed and
    * not dumped, whatever the statement's level: a plan-only level (2, the one a driver asks for to
-   * show a plan) would not execute it, and the plan it shows would not be the one run. */
+   * show a plan) would not execute it, and the plan it shows would not be the one run.
+   * Executing it takes IS on the class where the compile took SCH_S only, so it does not wait for
+   * a lock: a class another transaction holds X on keeps the estimate, where waiting would hold
+   * the compile up to lock_timeout and could deadlock it. And it leaves do_Trigger_involved alone:
+   * executing a statement clears it, and an INSERT the trigger action being compiled runs would
+   * then set LAST_INSERT_ID as if outside a trigger. */
   er_stack_push ();
   saved_supp_info = pt_detach_xasl_supp_info ();
   if (saved_supp_info == NULL)
@@ -606,8 +635,15 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   query_Plan_dump_fp_open = false;
   qo_get_optimization_param (&saved_level, QO_PARAM_LEVEL);
   qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 1);
+  saved_trigger_involved = do_Trigger_involved;
+  saved_wait = TM_TRAN_WAIT_MSECS ();
+  if (saved_wait != 0)
+    {
+      /* it returns the previous wait, not an error: a failed request sets one */
+      (void) tran_reset_wait_times (0);
+    }
 
-  session = db_open_buffer_local (query.c_str ());
+  session = (er_errid () == NO_ERROR) ? db_open_buffer_local (query.c_str ()) : NULL;
   if (session != NULL)
     {
       stmt = db_compile_statement_local (session);
@@ -682,12 +718,45 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
       db_close_session_local (session);
     }
 
+  /* a failure that aborted the transaction or lost the server is not the read's alone: the server
+   * has rolled the transaction back, and the statement has to report it */
+  err = usable ? NO_ERROR : er_errid ();
+  if (saved_wait != 0)
+    {
+      /* on its own error level, so that the read's error stays the one reported */
+      er_stack_push ();
+      (void) tran_reset_wait_times (saved_wait);
+      if (er_errid () != NO_ERROR && err == NO_ERROR)
+	{
+	  /* the transaction is left without lock waits only when the server is gone */
+	  usable = false;
+	  err = er_errid ();
+	  er_stack_pop_and_keep_error ();
+	}
+      else
+	{
+	  er_stack_pop ();
+	}
+    }
+  if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (err) && !ER_IS_SERVER_DOWN_ERROR (err))
+    {
+      err = NO_ERROR;
+    }
+  do_Trigger_involved = saved_trigger_involved;
   qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_level);
   query_Plan_dump_filename = saved_dump_filename;
   query_Plan_dump_fp = saved_dump_fp;
   query_Plan_dump_fp_open = saved_dump_fp_open;
   pt_attach_xasl_supp_info (saved_supp_info);
-  er_stack_pop ();
+  if (err != NO_ERROR)
+    {
+      er_stack_pop_and_keep_error ();
+      *error = err;
+    }
+  else
+    {
+      er_stack_pop ();
+    }
   in_read = false;
 
   if (!usable || n == 0)

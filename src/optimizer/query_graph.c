@@ -8539,7 +8539,7 @@ static void
 qo_row_snapshot_apply (QO_ENV * env)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
-  int n, t, f, n_filters, column, other, max_rows;
+  int n, t, f, n_filters, column, other, max_rows, error = NO_ERROR;
   QO_NODE *node;
   QO_TERM *term;
   BITSET_ITERATOR iter;
@@ -8644,15 +8644,21 @@ qo_row_snapshot_apply (QO_ENV * env)
 	    {
 	      ok = false;
 	    }
+	  else
+	    {
+	      /* how many rows the read goes through, when it goes through this filter's index */
+	      filters[f - 1].selectivity = QO_TERM_SELECTIVITY (term);
+	    }
 	}
       if (ok)
 	{
-	  /* NULL without an index on a filter column, past max_rows rows or with none: the
-	   * histograms keep the estimate. Hinted ROW_SNAPSHOT, a class the statistics count as small
-	   * is read without the index too. */
+	  /* NULL without an index on a filter column, with an index range expected too large, past
+	   * max_rows rows or with none: the histograms keep the estimate. Hinted ROW_SNAPSHOT, a class
+	   * the statistics count as small is read without the index too. */
 	  snapshots[n] = row_snapshot_read (QO_NODE_INFO (node)->info[0].mop, QO_NODE_INFO (node)->info[0].smclass,
 					    columns, filters, f, max_rows, (hint & PT_HINT_ROW_SNAPSHOT)
-					    && QO_NODE_NCARD (node) <= ROW_SNAPSHOT_HINT_SCAN_ROWS);
+					    && QO_NODE_NCARD (node) <= ROW_SNAPSHOT_HINT_SCAN_ROWS,
+					    (double) QO_NODE_NCARD (node), &error);
 	}
       for (t = 0; t < f; t++)
 	{
@@ -8660,6 +8666,13 @@ qo_row_snapshot_apply (QO_ENV * env)
 	}
       free_and_init (filters);
       row_snapshot_free (columns);
+      if (error != NO_ERROR)
+	{
+	  /* the read lost the transaction (rolled back by the server) or the server: the statement
+	   * fails with that error, as its own execution would have */
+	  PT_ERRORc (parser, QO_ENV_PT_TREE (env), er_msg ());
+	  break;
+	}
       if (snapshots[n] == NULL)
 	{
 	  continue;

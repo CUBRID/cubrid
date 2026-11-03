@@ -27,10 +27,14 @@
  * rows' keys, through the other column's histogram. Nothing is stored.
  *
  * The read goes through an index (a filter column has to lead one) and stops past
- * row_snapshot_max_rows rows, so it costs the same whatever the size of the table, and a filter
- * that selects more rows keeps the histogram estimate. The rows are the ones the statement's
- * transaction sees when it is compiled; a plan already cached is not compiled again for new rows,
- * as it is not for new statistics.
+ * row_snapshot_max_rows rows passing every filter; it is not made when the statistics expect the
+ * index to give more than ROW_SNAPSHOT_SCAN_RATIO times that many (an indexed filter that selects
+ * many rows beside a selective one without an index), so its cost does not grow with the table.
+ * A filter that selects more rows keeps the histogram estimate. It does not wait for a lock: a
+ * class another transaction has locked keeps the estimate, and the compile neither waits nor
+ * deadlocks where it took only SCH_S before. The rows are the ones the statement's transaction
+ * sees when it is compiled; a plan already cached is not compiled again for new rows, as it is
+ * not for new statistics.
  */
 
 #ifndef _ROW_SNAPSHOT_CL_HPP_
@@ -65,6 +69,7 @@ struct row_snapshot_filter
   int n_values;
   DB_VALUE **values;		/* malloc'd; the values themselves stay owned by the statement */
   DB_VALUE *elements;		/* malloc'd peeks of the elements of a folded IN set, or NULL */
+  double selectivity;		/* the optimizer's estimate of the share of rows it passes */
 };
 typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 
@@ -75,17 +80,24 @@ extern int row_snapshot_max_rows (void);
 /* a statement hinted ROW_SNAPSHOT also reads a class without an index on the filter column when
  * the statistics count at most this many rows: the hint takes them to be current */
 #define ROW_SNAPSHOT_HINT_SCAN_ROWS 1000
+/* a read is not made when the statistics expect its index range to hold more than this many times
+ * max_rows rows */
+#define ROW_SNAPSHOT_SCAN_RATIO 10
 
 /* the columns of a user class that a read can return, with no rows: what the filters resolve
  * their columns against. NULL for a system class or a class with none. */
 extern ROW_SNAPSHOT *row_snapshot_columns (SM_CLASS *class_);
 
-/* read the rows of classop that pass every filter, at most max_rows of them. NULL when no filter
- * column leads an index of the class (the read would scan the table) and scan is false, when more
- * rows pass, or on any failure; the error and the plan dump of the statement being planned are
- * left as they were. */
+/* read the rows of classop that pass every filter, at most max_rows of them; n_card is the rows
+ * the statistics count. NULL when no filter column leads an index of the class (the read would
+ * scan the table) and scan is false, when the rows the read would go through are expected past
+ * ROW_SNAPSHOT_SCAN_RATIO * max_rows, when more rows pass, or on any failure; the error and the
+ * plan dump of the statement being planned are left as they were. *error is NO_ERROR then, except
+ * when the transaction was aborted or the server is gone: that error is left set for the caller
+ * to fail the statement with. */
 extern ROW_SNAPSHOT *row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns,
-					const ROW_SNAPSHOT_FILTER *filters, int n_filters, int max_rows, bool scan);
+					const ROW_SNAPSHOT_FILTER *filters, int n_filters, int max_rows, bool scan,
+					double n_card, int *error);
 
 extern void row_snapshot_free (ROW_SNAPSHOT *snapshot);
 
