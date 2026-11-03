@@ -47,6 +47,12 @@ struct la_task
   LOG_LSA dependency_seq;	/* dependency ordering key in the master's commit_seq space, decoded from the
 				 * LOG_DUMMY_WSET_LABEL right before the commit; the gate waits for the transaction
 				 * at this LSA to finish. null = no dependency */
+
+  /* Monotonic timestamps used only for parallel-apply statistics. */
+  UINT64 created_ns;		/* coordinator completed the task */
+  UINT64 pending_begin_ns;	/* dependency wait began; 0 when the task never waited for its dependency */
+  UINT64 ready_ns;		/* dependency was satisfied; worker-capacity wait begins here */
+  UINT64 queue_enter_ns;	/* task entered the shared worker queue */
 };
 
 #endif /* _LOG_APPLIER_TASK_HPP_ */

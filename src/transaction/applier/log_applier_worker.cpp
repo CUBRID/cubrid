@@ -37,6 +37,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -60,6 +61,16 @@ static int la_worker_context_init (LA_APPLY_WORKER_CONTEXT *context, int db_page
 static void la_worker_context_final (LA_APPLY_WORKER_CONTEXT *context);
 static int la_init_recdes_pool (LA_APPLY_WORKER_CONTEXT *context, int page_size, int num_recdes);
 static void la_clear_recdes_pool (LA_APPLY_WORKER_CONTEXT *context);
+
+static UINT64
+la_worker_clock_ns (void)
+{
+  struct timespec ts;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+
+  return (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
+}
 
 /*
  * la_worker_start() - reset the worker slots and start one thread per slot
@@ -325,6 +336,9 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 
       worker->busy = true;
 
+      la_result_init (&result, &task, context->worker_idx);
+      result.dequeue_ns = la_worker_clock_ns ();
+
       /* A task without replicated items (an empty commit) is not traced: it applies nothing and would only
        * add lines. */
       trace_task = (trace_level >= 1 && task.has_items);
@@ -338,8 +352,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 			 (size_t) context->worker_idx, (unsigned long long) task.seq);
 	}
 
-      la_result_init (&result, &task, context->worker_idx);
-
+      result.apply_begin_ns = la_worker_clock_ns ();
       la_Worker_config.run_task (context, &task, trace_level, worker_applied_item_count, &result);
 
       if (trace_task)

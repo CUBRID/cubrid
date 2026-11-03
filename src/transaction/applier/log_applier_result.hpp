@@ -67,6 +67,16 @@ struct la_result
   UINT64 busy_usec;		/* time the worker spent applying the task, flushing and committing included */
   struct timeval apply_end_time;	/* when the worker finished the task */
 
+  /* Monotonic timestamps copied from the task and completed by worker/coordinator. */
+  UINT64 created_ns;
+  UINT64 pending_begin_ns;
+  UINT64 ready_ns;
+  UINT64 queue_enter_ns;
+  UINT64 dequeue_ns;
+  UINT64 apply_begin_ns;
+  UINT64 apply_end_ns;
+  UINT64 collected_ns;
+
   /* statistics only: summed into la_Info at retire */
   LA_STATS stats;
 
@@ -94,6 +104,10 @@ la_result_init (LA_RESULT *result, const LA_TASK *task, int worker_idx)
   result->log_record_time = task->log_record_time;
   result->has_items = task->has_items;
   result->worker_idx = worker_idx;
+  result->created_ns = task->created_ns;
+  result->pending_begin_ns = task->pending_begin_ns;
+  result->ready_ns = task->ready_ns;
+  result->queue_enter_ns = task->queue_enter_ns;
 }
 
 #endif /* _LOG_APPLIER_RESULT_HPP_ */

@@ -31,5 +31,6 @@ extern bool la_task_queue_is_full (void);
 extern int la_task_queue_pop (LA_TASK *task);
 extern void la_task_queue_signal_shutdown (void);
 extern int la_task_queue_get_count (void);
+extern int la_task_queue_get_max_count (void);
 
 #endif /* _LOG_APPLIER_TASK_QUEUE_HPP_ */

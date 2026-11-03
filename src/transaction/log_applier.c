@@ -86,6 +86,7 @@
 #include "log_applier_pending.hpp"
 #include "log_applier_stat.hpp"
 #include "log_applier_debug.hpp"
+#include "log_applier_coordinator.hpp"
 
 #if defined(AIX)
 #include <procinfo.h>
@@ -426,15 +427,6 @@ struct la_ha_apply_info
   DB_DATETIME start_time;
 };
 
-/* how a task left the coordinator's schedule decision; the value is the status= field of the
- * "[WSET] reader schedule" trace */
-typedef enum
-{
-  LA_SCHED_DISPATCHED = 0,	/* dispatched as soon as it was read */
-  LA_SCHED_RELEASED = 1,	/* dispatched from the pending list */
-  LA_SCHED_PARKED = 2		/* parked in the pending list */
-} LA_SCHED_STATUS;
-
 /* Global variable for LA */
 LA_INFO la_Info;
 
@@ -590,10 +582,6 @@ static int la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * appl
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static LA_APPLY *la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa);
-static int la_coordinator_submit_task (LA_TASK * task);
-#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
-static int la_coordinator_run_alone (LA_TASK * task);
-#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
 static int la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final);
 static bool la_coordinator_set_commit_dependency (LA_TASK * task);
 static int la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
@@ -623,8 +611,6 @@ static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_l
 static int la_commit_transaction (unsigned long long applied_item_count, const LOG_LSA * commit_lsa);
 static int la_find_last_deleted_arv_num (void);
 
-static bool la_coordinator_drain_complete (void);
-
 static bool la_restart_on_bulk_flush_error (int errid);
 static char *la_get_hostname_from_log_path (char *log_path);
 
@@ -636,30 +622,19 @@ static void la_get_adaptive_time_commit_interval (int *time_commit_interval, int
 static int la_flush_repl_items (bool immediate, LA_STATS * stats);
 
 /* run by the coordinator */
-static int la_coordinator_init_resources (void);
+static int la_coordinator_initialize_resources (void);
 static int la_start_apply_workers (void);
 static void la_stop_apply_workers (void);
 static void la_free_unretired_fragments (void);
 static void la_free_pending_fragment (const LA_TASK * task, void *arg);
 static int la_coordinator_commit_apply_info (void);
-static int la_coordinator_collect_and_retire (void);
-static int la_coordinator_collect_results (void);
-static int la_coordinator_retire_results (void);
 static void la_coordinator_release_apply_slot (LA_INFLIGHT_ENTRY * entry);
-static void la_coordinator_advance_committed_lsa (void);
 static void la_coordinator_add_result_stats (const LA_RESULT * result);
 static int la_coordinator_store_apply_info_at_interval (void);
-static int la_coordinator_record_result (const LA_RESULT * result);
-static int la_coordinator_complete_without_task (const LOG_LSA * lsa);
-static int la_coordinator_pop_result (LA_RESULT * result);
-#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
-static int la_coordinator_wait_until_retired (void);
-#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
-static int la_coordinator_wait_for_inflight_slot (void);
-static int la_coordinator_wait_for_commit_order_slot (void);
-static int la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status);
-static void la_coordinator_trace_schedule (const LA_TASK * task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
-static int la_coordinator_drain_ready (void);
+static int la_coordinator_before_dispatch (void *context, const LA_TASK * task);
+static void la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG_LSA * frontier);
+static int la_coordinator_store_progress (void *context);
+static bool la_coordinator_shutdown_requested (void *context);
 
 /* run on an apply worker thread; the first two are handed to the workers as callbacks */
 static void la_request_shutdown (void);
@@ -712,416 +687,18 @@ la_force_shutdown (void)
   return (la_applier_need_shutdown || la_applier_shutdown_by_signal) ? true : false;
 }
 
-/*
- * la_coordinator_drain_ready() - dispatch the parked tasks the gate now lets pass
- *   return: NO_ERROR, or an error from dispatching
- *
- * Note:
- *   Called after the frontier moves (results collected, or a commit with nothing to apply completed)
- *   and before a new commit is dispatched, so a newly read commit never overtakes a parked one that
- *   is already ready. Stops when the task queue is full; the ready tasks left stay parked in order
- *   and go out on the next call.
- */
 static int
-la_coordinator_drain_ready (void)
+la_coordinator_before_dispatch (void *context, const LA_TASK * task)
 {
-  LA_TASK task;
-  int error;
+  (void) context;
+  assert (task != NULL);
 
-  while (!la_task_queue_is_full () && la_pending_pop_ready (&task))
+  if (!task->has_items || LSA_LE (&task->commit_lsa, &la_Info.last_committed_lsa))
     {
-      error = la_coordinator_enqueue_task (&task, LA_SCHED_RELEASED);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      return NO_ERROR;
     }
 
-  return NO_ERROR;
-}
-
-/*
- * la_coordinator_wait_for_commit_order_slot() - hold the coordinator at a task boundary until the ring frees a slot
- *   return: NO_ERROR, or an error from collecting results, or ER_FAILED on shutdown
- *
- * Note:
- *   While the commit-order ring is full the coordinator stops reading the log and only collects results.
- *   A slot frees when the oldest commit on the ring finishes. That commit always passes the gate, since
- *   every commit before it is applied and its label lies at or below the commit read before it
- *   (la_gate_bound_dependency), so the wait ends while the workers run.
- */
-static int
-la_coordinator_wait_for_commit_order_slot (void)
-{
-  int error;
-
-  while (la_gate_order_get_count () >= la_Info.commit_order_capacity)
-    {
-      if (la_applier_need_shutdown)
-	{
-	  return ER_FAILED;
-	}
-
-      error = la_coordinator_collect_and_retire ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      if (la_gate_order_get_count () >= la_Info.commit_order_capacity)
-	{
-	  (void) la_result_queue_wait_for_result (100);
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * la_coordinator_enqueue_task() - put a task that passed the gate on the task queue the workers take from
- *   return: NO_ERROR, or an error from waiting for an in-flight slot, the in-flight list or the task queue
- *   task_in(in): the task; copied
- *   sched_status(in): LA_SCHED_DISPATCHED or LA_SCHED_RELEASED, for the schedule trace
- *
- * Note:
- *   Before pushing the task on the task queue, the coordinator writes the task into the in-flight list, the
- *   ledger it later matches results against and retires in order. That entry gives the task the sequence number
- *   the worker and retire traces report.
- */
-static int
-la_coordinator_enqueue_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status)
-{
-  LA_TASK task;
-  UINT64 dispatch_seq = 0;
-  int error;
-
-  assert (task_in != NULL);
-
-  task = *task_in;
-
-  /* Every applier on this node writes to the same database, and only the one holding the dbname lock may write.
-   * The coordinator takes it here, before a task that writes is put on the task queue; the workers never take it.
-   * It is released only when no queued task is left running, so after a release it is taken again here. */
-  if (task.has_items && LSA_GT (&task.commit_lsa, &la_Info.last_committed_lsa))
-    {
-      error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  error = la_coordinator_wait_for_inflight_slot ();
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = la_inflight_push (task.apply, task.tranid, task.rectype, &dispatch_seq);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  task.seq = dispatch_seq;
-
-  /* commits only, like commit_read_count; a serial fragment is a task too but no commit */
-  if (sched_status == LA_SCHED_DISPATCHED && task.has_items && task.rectype == LOG_COMMIT)
-    {
-      la_stat_count_dispatch_direct ();
-    }
-  la_coordinator_trace_schedule (&task, sched_status, dispatch_seq);
-
-  return la_task_queue_push (&task);
-}
-
-/*
- * la_coordinator_trace_schedule() - write the schedule decision for a task to the [WSET] trace
- *   task(in): the scheduled task
- *   sched_status(in): how the task left the schedule decision
- *   dispatch_seq(in): dispatch sequence, or UINT64_MAX for a parked task that has none yet
- *
- * Note:
- *   A parked task gets a second line with LA_SCHED_RELEASED once it is dispatched; pair the two
- *   by trid and commit_lsa.
- */
-static void
-la_coordinator_trace_schedule (const LA_TASK * task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq)
-{
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) < 1)
-    {
-      return;
-    }
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "[WSET] reader schedule trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d "
-		 "status=%d dispatch=%llu\n",
-		 task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset, task->rectype,
-		 (long long) task->dependency_seq.pageid, (int) task->dependency_seq.offset, (int) sched_status,
-		 (unsigned long long) dispatch_seq);
-}
-
-/*
- * la_coordinator_drain_complete() - whether every commit the coordinator has read is applied and retired
- *   return: true when the pending list, the in-flight list and the commit-order ring are all empty
- *
- * Note:
- *   Each list holds a commit at a different stage: waiting for its dependency, handed to a worker but not
- *   retired, or above the frontier. A commit is finished only when it has left all three.
- */
-static bool
-la_coordinator_drain_complete (void)
-{
-  return (la_pending_is_empty () && la_inflight_get_count () == 0 && la_gate_order_get_count () == 0);
-}
-
-/*
- * la_coordinator_collect_and_retire() - take the finished results, then retire what the frontier has passed
- *   return: NO_ERROR, or an error from collecting or retiring
- *
- * Note:
- *   Called at the top of the coordinator's main loop, while it waits for a commit-order slot, and once
- *   more when the main loop ends.
- */
-static int
-la_coordinator_collect_and_retire (void)
-{
-  int error;
-
-  error = la_coordinator_collect_results ();
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return la_coordinator_retire_results ();
-}
-
-/*
- * la_coordinator_collect_results() - take the finished results and release the parked tasks they unblock
- *   return: NO_ERROR, or an error from recording a result or dispatching
- */
-static int
-la_coordinator_collect_results (void)
-{
-  LA_RESULT result;
-  int error;
-
-  while (la_result_queue_try_pop (&result) == NO_ERROR)
-    {
-      error = la_coordinator_record_result (&result);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  la_gate_advance_frontier ();
-
-  return la_coordinator_drain_ready ();
-}
-
-/*
- * la_coordinator_record_result() - attach a worker's result to its in-flight entry and report it to the gate
- *   return: NO_ERROR, or an error when no dispatch entry matches
- *   result(in): result taken from the result queue
- *
- * Note:
- *   A successful result of a commit or a serial fragment (LOG_SYSOP_END) is marked completed in the gate at
- *   once, not when it retires, so the tasks that depend on it can pass the gate without waiting for retire.
- *   A failed result is not marked: a transaction that depends on it must not run on top of a missing change,
- *   and retire stops the applier at the failure.
- */
-static int
-la_coordinator_record_result (const LA_RESULT * result)
-{
-  int error;
-
-  error = la_inflight_attach_result (result);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (result->error == NO_ERROR && (result->rectype == LOG_COMMIT || result->rectype == LOG_SYSOP_END))
-    {
-      la_gate_mark_completed (&result->commit_lsa);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * la_coordinator_complete_without_task() - mark a labeled SYSOP_END with nothing to apply as completed in the gate
- *   return: NO_ERROR, or an error from waiting for a slot, the commit-order ring or releasing parked tasks
- *   lsa(in): LSA of the SYSOP_END
- *
- * Note:
- *   The master labels a system operation that carries replicated items, such as a serial update, and later
- *   transactions may name its SYSOP_END as their dependency. The slave normally applies it as a serial fragment
- *   task, and the task's result marks the SYSOP_END completed in the gate. When the slave has no items for it,
- *   no task is made, and the transactions that depend on it would stay parked forever; so the SYSOP_END is put
- *   in commit order and marked completed here instead, and the parked tasks it unblocks are put on the task queue.
- *   Like a task's, it is passed by the frontier only after every commit before it is applied.
- */
-static int
-la_coordinator_complete_without_task (const LOG_LSA * lsa)
-{
-  int error;
-
-  error = la_coordinator_wait_for_commit_order_slot ();
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  la_gate_set_initial_frontier (&la_Info.committed_lsa);
-
-  error = la_gate_order_push (lsa);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  la_gate_mark_completed (lsa);
-  la_gate_advance_frontier ();
-
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-    {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] reader complete_without_task lsa=%lld|%d\n", (long long) lsa->pageid,
-		     (int) lsa->offset);
-    }
-
-  return la_coordinator_drain_ready ();
-}
-
-/*
- * la_coordinator_pop_result() - take the oldest result, waiting until one arrives or the applier is told to stop
- *   return: NO_ERROR when a result was taken, ER_FAILED on shutdown
- *   result(out): the dequeued result
- *
- * Note:
- *   Waits in 100 ms steps and checks la_applier_need_shutdown between them. A worker that stops on an error,
- *   the last worker that fails to start and SIGTERM only set that flag; when no worker is left, the result
- *   this wait is for never arrives, so an untimed wait would never end.
- */
-static int
-la_coordinator_pop_result (LA_RESULT * result)
-{
-  while (true)
-    {
-      if (la_result_queue_try_pop (result) == NO_ERROR)
-	{
-	  return NO_ERROR;
-	}
-
-      if (la_applier_need_shutdown)
-	{
-	  return ER_FAILED;
-	}
-
-      (void) la_result_queue_wait_for_result (100);
-    }
-}
-
-#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
-/*
- * la_coordinator_wait_until_retired() - wait until every task put on the task queue has finished and been retired
- *   return: NO_ERROR, the error of a failed task or of storing the apply info, or ER_FAILED on shutdown
- *
- * Note:
- *   Takes each worker result as it arrives and retires the finished tasks in the order they were queued (the
- *   transaction's items are freed and committed_lsa advances), until no queued task is left.
- *   la_coordinator_run_alone uses it to run a task with no other task running.
- */
-static int
-la_coordinator_wait_until_retired (void)
-{
-  LA_RESULT result;
-  int error;
-
-  while (la_inflight_get_count () > 0)
-    {
-      error = la_coordinator_pop_result (&result);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = la_coordinator_record_result (&result);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      la_gate_advance_frontier ();
-
-      error = la_coordinator_retire_results ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  return NO_ERROR;
-}
-#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
-
-/*
- * la_coordinator_wait_for_inflight_slot() - wait for a free in-flight slot before handing over a task
- *   return: NO_ERROR, or an error from collecting or retiring results, or ER_FAILED on shutdown
- *
- * Note:
- *   Entries retire only from the head, so while the oldest task is still running, the finished tasks behind
- *   it pile up in the in-flight list. Results are taken and retired here until that task finishes. Parked
- *   tasks are not dispatched here, since this can be called from la_coordinator_drain_ready.
- *
- *   The finished tasks at the head of the list are retired before waiting. la_coordinator_collect_results takes
- *   every result and then releases parked tasks before la_coordinator_retire_results runs, so the list can be
- *   full of finished tasks with no task left running; a new result then never comes. The commit-order ring
- *   normally fills first, but the list is in dispatch order and empties at retire while the ring is in commit
- *   order and empties as the frontier passes, so the list alone can be full.
- */
-static int
-la_coordinator_wait_for_inflight_slot (void)
-{
-  LA_RESULT result;
-  int error;
-
-  while (la_inflight_get_count () >= la_inflight_get_capacity ())
-    {
-      error = la_coordinator_retire_results ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      if (la_inflight_get_count () < la_inflight_get_capacity ())
-	{
-	  break;
-	}
-
-      error = la_coordinator_pop_result (&result);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = la_coordinator_record_result (&result);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      la_gate_advance_frontier ();
-
-      error = la_coordinator_retire_results ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  return NO_ERROR;
+  return la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
 }
 
 /*
@@ -1154,29 +731,20 @@ la_coordinator_release_apply_slot (LA_INFLIGHT_ENTRY * entry)
   entry->apply->tranid = 0;
 }
 
-/*
- * la_coordinator_advance_committed_lsa() - move committed_lsa up to the gate's frontier
- *
- * Note:
- *   committed_lsa promises that every commit at or below it is applied, so it follows the frontier, not the
- *   retired entry, and never moves back. Before the frontier is set it keeps its restart value.
- */
 static void
-la_coordinator_advance_committed_lsa (void)
+la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG_LSA * frontier)
 {
-  LOG_LSA frontier;
+  (void) context;
+  assert (entry != NULL);
+  assert (frontier != NULL);
+  assert (LSA_GE (frontier, &la_Info.committed_lsa));
 
-  if (!la_gate_get_frontier (&frontier))
+  la_coordinator_release_apply_slot (entry);
+  if (LSA_GT (frontier, &la_Info.committed_lsa))
     {
-      return;
+      LSA_COPY (&la_Info.committed_lsa, frontier);
     }
-
-  assert (LSA_GE (&frontier, &la_Info.committed_lsa));
-
-  if (LSA_GT (&frontier, &la_Info.committed_lsa))
-    {
-      LSA_COPY (&la_Info.committed_lsa, &frontier);
-    }
+  la_coordinator_add_result_stats (&entry->result);
 }
 
 /*
@@ -1241,59 +809,20 @@ la_coordinator_store_apply_info_at_interval (void)
   return la_coordinator_commit_apply_info ();
 }
 
-/*
- * la_coordinator_retire_results() - retire the finished tasks at the head of the in-flight list
- *   return: NO_ERROR, the error of a failed task, or an error from storing the apply info
- *
- * Note:
- *   Stops at the oldest entry that has no result yet, even if later ones have finished. Tasks are queued
- *   out of commit order (a parked task goes later), so committed_lsa follows the gate's frontier
- *   instead of the retired entry.
- */
 static int
-la_coordinator_retire_results (void)
+la_coordinator_store_progress (void *context)
 {
-  LA_INFLIGHT_ENTRY *entry;
-  LA_RESULT *result;
-  int error;
+  (void) context;
 
-  while ((entry = la_inflight_peek ()) != NULL && entry->result_ready)
-    {
-      result = &entry->result;
+  return la_coordinator_store_apply_info_at_interval ();
+}
 
-      if (result->error != NO_ERROR)
-	{
-	  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "[WSET] coordinator result trid=%d commit_lsa=%lld|%d type=%d worker=%d error=%d\n",
-			     result->tranid, (long long) result->commit_lsa.pageid, (int) result->commit_lsa.offset,
-			     result->rectype, result->worker_idx, result->error);
-	    }
-	  return result->error;
-	}
+static bool
+la_coordinator_shutdown_requested (void *context)
+{
+  (void) context;
 
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] coordinator retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
-			 result->tranid, (long long) result->commit_lsa.pageid, (int) result->commit_lsa.offset,
-			 result->rectype, result->worker_idx, (unsigned long long) entry->seq);
-	}
-
-      la_coordinator_release_apply_slot (entry);
-      la_coordinator_advance_committed_lsa ();
-      la_coordinator_add_result_stats (result);
-      la_inflight_pop ();
-
-      error = la_coordinator_store_apply_info_at_interval ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  return NO_ERROR;
+  return la_applier_need_shutdown;
 }
 
 /*
@@ -1340,17 +869,20 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
   gettimeofday (&begin, NULL);
   if (task->has_items)
     {
-      la_stat_worker_begin (context->worker_idx, task, &begin);
+      la_stat_worker_begin (context->worker_idx, task, &begin, result->apply_begin_ns);
     }
 
   la_apply_worker_apply_task (context, task, trace_level, worker_applied_item_count, result);
 
+  result->apply_end_ns = la_clock_ns ();
   gettimeofday (&result->apply_end_time, NULL);
-  result->busy_usec = (UINT64) (((INT64) result->apply_end_time.tv_sec - (INT64) begin.tv_sec) * 1000000LL
-				+ ((INT64) result->apply_end_time.tv_usec - (INT64) begin.tv_usec));
+  if (result->apply_end_ns >= result->apply_begin_ns)
+    {
+      result->busy_usec = (result->apply_end_ns - result->apply_begin_ns) / 1000ULL;
+    }
   if (task->has_items)
     {
-      la_stat_worker_end (context->worker_idx);
+      la_stat_worker_end (context->worker_idx, result->apply_end_ns);
     }
 }
 
@@ -1524,7 +1056,7 @@ la_apply_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, con
 }
 
 /*
- * la_coordinator_init_resources() - create the structures the coordinator owns before any worker exists
+ * la_coordinator_initialize_resources() - configure the coordinator before any worker exists
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *
  * Note:
@@ -1534,27 +1066,27 @@ la_apply_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, con
  *   respects that limit.
  */
 static int
-la_coordinator_init_resources (void)
+la_coordinator_initialize_resources (void)
 {
-  int error;
+  LA_COORDINATOR_CONFIG config;
 
   la_Info.commit_order_capacity = LA_COMMIT_ORDER_CAPACITY (la_Info.worker_count);
 
-  la_task_queue_init ();
+  config.commit_order_capacity = la_Info.commit_order_capacity;
+  config.worker_count = la_Info.worker_count;
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  config.run_each_task_alone = false;
+#else
+  config.run_each_task_alone = true;
+#endif
+  config.restart_lsa = &la_Info.committed_lsa;
+  config.before_dispatch = la_coordinator_before_dispatch;
+  config.retire_entry = la_coordinator_retire_entry;
+  config.store_progress = la_coordinator_store_progress;
+  config.shutdown_requested = la_coordinator_shutdown_requested;
+  config.context = NULL;
 
-  error = la_result_queue_init (la_Info.commit_order_capacity);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = la_inflight_init (la_Info.commit_order_capacity);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return la_gate_init (la_Info.commit_order_capacity);
+  return la_coordinator_initialize (&config);
 }
 
 /*
@@ -1562,7 +1094,7 @@ la_coordinator_init_resources (void)
  *   return: NO_ERROR, or ER_FAILED when a thread cannot be created
  *
  * Note:
- *   The coordinator's resources must already exist (la_coordinator_init_resources). The coordinator does
+ *   The coordinator's resources must already exist (la_coordinator_initialize_resources). The coordinator does
  *   not wait for the workers to open their sessions: tasks queue up until a worker takes them, and a
  *   worker that cannot start steps out on its own (see log_applier_worker.cpp).
  */
@@ -7777,133 +7309,6 @@ static int la_wset_label_trid = NULL_TRANID;
 static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
 
 /*
- * la_coordinator_submit_task() - put a task read from the log on the commit-order ring and queue it
- *   return: NO_ERROR or error code
- *   task(in): COMMIT or SYSOP_END task with its dependency set
- *
- * Note:
- *   With the commit-order ring full the coordinator first waits here, collecting results. Every task is
- *   recorded on the ring whether or not it can run now. A task whose dependency is not applied yet is
- *   parked, and so is one whose dependency is applied when the task queue has no room; the next collect
- *   queues it. Older ready tasks are drained first so a newcomer never passes a parked task that was
- *   ready before it.
- *
- *   With a single worker every task is put on the task queue at once, so the worker takes them from the FIFO
- *   queue in commit order and nothing is parked: a parked task would let a later independent one pass it, and
- *   one worker is meant to apply the log in commit order. The queue cannot be full here, because the
- *   in-flight list has the same capacity as the queue and la_coordinator_enqueue_task waits for room in it.
- *   Without MULTI_CONN_TO_A_SERVER the worker uses this process's client, which the coordinator also uses to
- *   store the apply info, so each task runs alone: the coordinator waits until it is retired.
- */
-static int
-la_coordinator_submit_task (LA_TASK * task)
-{
-  LOG_LSA label;
-  int error;
-
-  assert (task != NULL);
-
-  error = la_coordinator_wait_for_commit_order_slot ();
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  la_gate_set_initial_frontier (&la_Info.committed_lsa);
-
-  /* the master's restart floor is no commit; it becomes the latest commit read before this one */
-  LSA_COPY (&label, &task->dependency_seq);
-  if (la_gate_bound_dependency (&task->dependency_seq) && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-    {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
-		     "dependency=%lld|%d\n", task->tranid, (long long) task->commit_lsa.pageid,
-		     (int) task->commit_lsa.offset, (long long) label.pageid, (int) label.offset,
-		     (long long) task->dependency_seq.pageid, (int) task->dependency_seq.offset);
-    }
-
-  error = la_gate_order_push (&task->commit_lsa);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (la_Info.worker_count == 1)
-    {
-      /* nothing is ever parked with one worker, so the FIFO queue alone carries the commit order */
-      assert (la_pending_is_empty ());
-#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
-      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
-#else
-      /* the worker shares this thread's client: run each task alone so that the two never use it at once */
-      return la_coordinator_run_alone (task);
-#endif
-    }
-
-  error = la_coordinator_drain_ready ();
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (la_gate_is_satisfied (&task->dependency_seq) && !la_task_queue_is_full ())
-    {
-      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
-    }
-
-  error = la_pending_push (task);
-  if (error == NO_ERROR && task->has_items && task->rectype == LOG_COMMIT)
-    {
-      la_stat_count_dispatch_parked ();
-    }
-  la_coordinator_trace_schedule (task, LA_SCHED_PARKED, UINT64_MAX);
-  return error;
-}
-
-#if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
-/*
- * la_coordinator_run_alone() - run a task with no other task running
- *   return: NO_ERROR, or an error from queuing the task or waiting for the tasks to retire
- *   task(in): COMMIT or SYSOP_END task, already on the commit-order ring
- *
- * Note:
- *   Without MULTI_CONN_TO_A_SERVER the one worker uses this process's client, which the coordinator also uses
- *   to store the apply info, so the two must never use it at once. Every queued task is waited for, the task
- *   is queued, and it is waited for too, so the next commit is read only after it has retired.
- */
-static int
-la_coordinator_run_alone (LA_TASK * task)
-{
-  int error;
-
-  assert (task != NULL);
-
-  do
-    {
-      error = la_coordinator_drain_ready ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = la_coordinator_wait_until_retired ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  while (!la_pending_is_empty ());
-
-  error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return la_coordinator_wait_until_retired ();
-}
-#endif /* !CS_MODE || !MULTI_CONN_TO_A_SERVER */
-
-/*
  * la_coordinator_process_sysop_end() - handle a LOG_SYSOP_END record read from the log
  *   return: NO_ERROR or error code
  *   lrec(in): the LOG_SYSOP_END record header
@@ -10285,7 +9690,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   /* init la_Info */
   la_init (log_path, max_mem_size);
 
-  error = la_coordinator_init_resources ();
+  error = la_coordinator_initialize_resources ();
   if (error != NO_ERROR)
     {
       la_shutdown ();

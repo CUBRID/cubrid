@@ -50,9 +50,11 @@ extern void la_stat_reset (void);
 extern void la_stat_count_commit_read (void);
 extern void la_stat_count_dispatch_direct (void);
 extern void la_stat_count_dispatch_parked (void);
+extern void la_stat_note_result_collected (const LA_RESULT *result);
 
-extern void la_stat_worker_begin (int worker_idx, const LA_TASK *task, const struct timeval *begin);
-extern void la_stat_worker_end (int worker_idx);
+extern void la_stat_worker_begin (int worker_idx, const LA_TASK *task, const struct timeval *begin,
+				  UINT64 begin_ns);
+extern void la_stat_worker_end (int worker_idx, UINT64 end_ns);
 extern void la_stat_add_result (const LA_RESULT *result);
 extern void la_stat_note_error (LA_STATS *stats, int error);
 

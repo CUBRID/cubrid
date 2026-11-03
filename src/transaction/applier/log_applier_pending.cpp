@@ -35,6 +35,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <time.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -48,6 +49,16 @@ struct la_pending_node
 
 static LA_PENDING_NODE *la_Pending_head = NULL;
 static LA_PENDING_NODE *la_Pending_tail = NULL;
+static int la_Pending_count = 0;
+static int la_Pending_max_count = 0;
+
+void
+la_pending_reset (void)
+{
+  assert (la_Pending_head == NULL && la_Pending_tail == NULL);
+  la_Pending_count = 0;
+  la_Pending_max_count = 0;
+}
 
 /*
  * la_pending_push() - park a transaction whose predecessor is not applied yet
@@ -82,7 +93,32 @@ la_pending_push (const LA_TASK *task)
       la_Pending_tail = node;
     }
 
+  la_Pending_count++;
+  la_Pending_max_count = MAX (la_Pending_max_count, la_Pending_count);
+
   return NO_ERROR;
+}
+
+/*
+ * la_pending_mark_ready() - timestamp parked tasks whose dependency has become satisfied
+ *   now_ns(in): current CLOCK_MONOTONIC time
+ *
+ * Note:
+ *   This is separate from pop: a ready task may remain parked while the task queue is full. Recording
+ *   readiness here keeps dependency wait separate from worker-capacity wait.
+ */
+void
+la_pending_mark_ready (UINT64 now_ns)
+{
+  LA_PENDING_NODE *node;
+
+  for (node = la_Pending_head; node != NULL; node = node->next)
+    {
+      if (node->task.ready_ns == 0 && la_gate_is_satisfied (&node->task.dependency_seq))
+	{
+	  node->task.ready_ns = now_ns;
+	}
+    }
 }
 
 /*
@@ -104,9 +140,17 @@ la_pending_pop_ready (LA_TASK *task)
 
   for (cur = la_Pending_head; cur != NULL; prev = cur, cur = cur->next)
     {
-      if (la_gate_is_satisfied (&cur->task.dependency_seq) == false)
+      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_seq) == false)
 	{
 	  continue;
+	}
+
+      if (cur->task.ready_ns == 0)
+	{
+	  /* Defensive fallback for callers that did not mark readiness before popping. */
+	  struct timespec ts;
+	  clock_gettime (CLOCK_MONOTONIC, &ts);
+	  cur->task.ready_ns = (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
 	}
 
       if (prev == NULL)
@@ -124,6 +168,8 @@ la_pending_pop_ready (LA_TASK *task)
 
       *task = cur->task;
       free_and_init (cur);
+      assert (la_Pending_count > 0);
+      la_Pending_count--;
 
       return true;
     }
@@ -150,6 +196,8 @@ la_pending_clear (void)
       node = la_Pending_head;
       la_Pending_head = node->next;
       free_and_init (node);
+      assert (la_Pending_count > 0);
+      la_Pending_count--;
     }
   la_Pending_tail = NULL;
 }
@@ -161,6 +209,18 @@ bool
 la_pending_is_empty (void)
 {
   return la_Pending_head == NULL;
+}
+
+int
+la_pending_get_count (void)
+{
+  return la_Pending_count;
+}
+
+int
+la_pending_get_max_count (void)
+{
+  return la_Pending_max_count;
 }
 
 /*

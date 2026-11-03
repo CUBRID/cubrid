@@ -45,6 +45,7 @@ struct la_task_queue
   int head;
   int tail;
   int count;
+  int max_count;
 };
 
 static LA_TASK_QUEUE la_Shared_task_queue;
@@ -66,6 +67,7 @@ la_task_queue_init (void)
   la_Shared_task_queue.head = 0;
   la_Shared_task_queue.tail = 0;
   la_Shared_task_queue.count = 0;
+  la_Shared_task_queue.max_count = 0;
   la_Shared_task_shutdown = false;
 }
 
@@ -106,6 +108,7 @@ la_task_queue_push (const LA_TASK *task)
   la_Shared_task_queue.tasks[la_Shared_task_queue.tail] = *task;
   la_Shared_task_queue.tail = (la_Shared_task_queue.tail + 1) % LA_TASK_QUEUE_CAPACITY;
   la_Shared_task_queue.count++;
+  la_Shared_task_queue.max_count = MAX (la_Shared_task_queue.max_count, la_Shared_task_queue.count);
 
   pthread_cond_signal (&la_Shared_task_not_empty);
   pthread_mutex_unlock (&la_Shared_task_mutex);
@@ -197,5 +200,11 @@ int
 la_task_queue_get_count (void)
 {
   return la_Shared_task_queue.count;
+}
+
+int
+la_task_queue_get_max_count (void)
+{
+  return la_Shared_task_queue.max_count;
 }
 

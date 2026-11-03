@@ -31,6 +31,7 @@
 #include "log_applier_worker.hpp"	/* LA_MAX_WORKER_COUNT */
 #include "log_applier_inflight.hpp"
 #include "log_applier_pending.hpp"
+#include "log_applier_task_queue.hpp"
 #include "log_record.hpp"		/* LOG_COMMIT */
 
 #include "db.h"
@@ -66,6 +67,8 @@ struct la_worker_stat
   UINT64 applied_task_count;
   UINT64 applied_row_count;
   UINT64 busy_usec;
+  UINT64 queue_wait_usec;
+  UINT64 error_count;
   LOG_LSA last_applied_commit_lsa;
   time_t last_applied_master_commit_time;
   struct timeval last_applied_time;
@@ -87,6 +90,22 @@ struct la_apply_stat
   UINT64 commit_read_count;	/* commits with replicated items read from the log */
   UINT64 dispatch_direct_count;	/* tasks with items handed to a worker as soon as they were read */
   UINT64 dispatch_parked_count;	/* tasks with items parked first because their dependency was not applied */
+  UINT64 task_count;
+  UINT64 dependency_wait_count;
+  UINT64 dependency_wait_usec;
+  UINT64 worker_wait_count;
+  UINT64 worker_wait_usec;
+  UINT64 queue_wait_usec;
+  UINT64 result_collect_wait_usec;
+  UINT64 total_task_usec;
+  UINT64 total_worker_busy_usec;
+  UINT64 out_of_order_completion_count;
+  UINT64 run_start_ns;
+  UINT64 last_concurrency_change_ns;
+  UINT64 concurrency_usec[LA_MAX_WORKER_COUNT + 1];
+  int running_worker_count;
+  int max_running_worker_count;
+  LOG_LSA max_completed_lsa;
   LA_WORKER_STAT workers[LA_MAX_WORKER_COUNT];
 };
 
@@ -100,9 +119,33 @@ static LA_WORKER_LIVE la_Worker_live[LA_MAX_WORKER_COUNT];
 static pthread_mutex_t la_Worker_live_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void la_stat_make_time (DB_VALUE *value, time_t sec, int msec);
-static void la_stat_count_pending (const LA_TASK *task, void *arg);
 static int la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute);
 static void la_stat_sprint_time (char *buf, int buf_size, DB_VALUE *value);
+static UINT64 la_stat_clock_ns (void);
+static void la_stat_account_concurrency (UINT64 now_ns);
+
+static UINT64
+la_stat_clock_ns (void)
+{
+  struct timespec ts;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+
+  return (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
+}
+
+static void
+la_stat_account_concurrency (UINT64 now_ns)
+{
+  if (now_ns >= la_Apply_stat.last_concurrency_change_ns
+      && la_Apply_stat.running_worker_count >= 0
+      && la_Apply_stat.running_worker_count <= LA_MAX_WORKER_COUNT)
+    {
+      la_Apply_stat.concurrency_usec[la_Apply_stat.running_worker_count]
+	+= (now_ns - la_Apply_stat.last_concurrency_change_ns) / 1000ULL;
+    }
+  la_Apply_stat.last_concurrency_change_ns = now_ns;
+}
 
 /*
  * la_stat_reset() - start the statistics of an applier run from 0
@@ -113,6 +156,9 @@ void
 la_stat_reset (void)
 {
   memset (&la_Apply_stat, 0, sizeof (la_Apply_stat));
+  la_Apply_stat.run_start_ns = la_stat_clock_ns ();
+  la_Apply_stat.last_concurrency_change_ns = la_Apply_stat.run_start_ns;
+  LSA_SET_NULL (&la_Apply_stat.max_completed_lsa);
 
   pthread_mutex_lock (&la_Worker_live_lock);
   memset (la_Worker_live, 0, sizeof (la_Worker_live));
@@ -146,18 +192,69 @@ la_stat_count_dispatch_parked (void)
   la_Apply_stat.dispatch_parked_count++;
 }
 
+void
+la_stat_note_result_collected (const LA_RESULT *result)
+{
+  assert (result != NULL);
+
+  la_Apply_stat.task_count++;
+
+  if (result->pending_begin_ns != 0 && result->ready_ns >= result->pending_begin_ns)
+    {
+      la_Apply_stat.dependency_wait_count++;
+      la_Apply_stat.dependency_wait_usec += (result->ready_ns - result->pending_begin_ns) / 1000ULL;
+    }
+  if (result->ready_ns != 0 && result->dequeue_ns >= result->ready_ns)
+    {
+      la_Apply_stat.worker_wait_count++;
+      la_Apply_stat.worker_wait_usec += (result->dequeue_ns - result->ready_ns) / 1000ULL;
+    }
+  if (result->queue_enter_ns != 0 && result->dequeue_ns >= result->queue_enter_ns)
+    {
+      la_Apply_stat.queue_wait_usec += (result->dequeue_ns - result->queue_enter_ns) / 1000ULL;
+    }
+  if (result->apply_end_ns != 0 && result->collected_ns >= result->apply_end_ns)
+    {
+      la_Apply_stat.result_collect_wait_usec += (result->collected_ns - result->apply_end_ns) / 1000ULL;
+    }
+  if (result->created_ns != 0 && result->collected_ns >= result->created_ns)
+    {
+      la_Apply_stat.total_task_usec += (result->collected_ns - result->created_ns) / 1000ULL;
+    }
+
+  if (result->has_items)
+    {
+      la_Apply_stat.total_worker_busy_usec += result->busy_usec;
+    }
+  if (!LSA_ISNULL (&la_Apply_stat.max_completed_lsa)
+      && LSA_LT (&result->commit_lsa, &la_Apply_stat.max_completed_lsa))
+    {
+      la_Apply_stat.out_of_order_completion_count++;
+    }
+  if (LSA_ISNULL (&la_Apply_stat.max_completed_lsa)
+      || LSA_GT (&result->commit_lsa, &la_Apply_stat.max_completed_lsa))
+    {
+      LSA_COPY (&la_Apply_stat.max_completed_lsa, &result->commit_lsa);
+    }
+}
+
 /*
  * la_stat_worker_begin() - show a task with items as the worker's current task
  *   worker_idx(in): the worker
  *   task(in): the task it begins
  *   begin(in): when it began
+ *   begin_ns(in): the same event on CLOCK_MONOTONIC
  */
 void
-la_stat_worker_begin (int worker_idx, const LA_TASK *task, const struct timeval *begin)
+la_stat_worker_begin (int worker_idx, const LA_TASK *task, const struct timeval *begin, UINT64 begin_ns)
 {
   assert (worker_idx >= 0 && worker_idx < LA_MAX_WORKER_COUNT);
 
   pthread_mutex_lock (&la_Worker_live_lock);
+  la_stat_account_concurrency (begin_ns);
+  la_Apply_stat.running_worker_count++;
+  la_Apply_stat.max_running_worker_count = MAX (la_Apply_stat.max_running_worker_count,
+						la_Apply_stat.running_worker_count);
   la_Worker_live[worker_idx].applying = true;
   LSA_COPY (&la_Worker_live[worker_idx].commit_lsa, &task->commit_lsa);
   la_Worker_live[worker_idx].master_commit_time = task->log_record_time;
@@ -168,13 +265,17 @@ la_stat_worker_begin (int worker_idx, const LA_TASK *task, const struct timeval 
 /*
  * la_stat_worker_end() - the worker has no current task any more
  *   worker_idx(in): the worker
+ *   end_ns(in): completion on CLOCK_MONOTONIC
  */
 void
-la_stat_worker_end (int worker_idx)
+la_stat_worker_end (int worker_idx, UINT64 end_ns)
 {
   assert (worker_idx >= 0 && worker_idx < LA_MAX_WORKER_COUNT);
 
   pthread_mutex_lock (&la_Worker_live_lock);
+  la_stat_account_concurrency (end_ns);
+  assert (la_Apply_stat.running_worker_count > 0);
+  la_Apply_stat.running_worker_count--;
   la_Worker_live[worker_idx].applying = false;
   pthread_mutex_unlock (&la_Worker_live_lock);
 }
@@ -200,6 +301,14 @@ la_stat_add_result (const LA_RESULT *result)
   worker->applied_row_count += result->stats.insert_counter + result->stats.update_counter
 			       + result->stats.delete_counter + result->stats.schema_counter;
   worker->busy_usec += result->busy_usec;
+  if (result->queue_enter_ns != 0 && result->dequeue_ns >= result->queue_enter_ns)
+    {
+      worker->queue_wait_usec += (result->dequeue_ns - result->queue_enter_ns) / 1000ULL;
+    }
+  if (result->error != NO_ERROR || result->stats.last_error_code != NO_ERROR)
+    {
+      worker->error_count++;
+    }
 
   /* a serial fragment has no master commit time; the last applied transaction stays the last commit */
   if (result->rectype == LOG_COMMIT)
@@ -248,12 +357,6 @@ la_stat_make_time (DB_VALUE *value, time_t sec, int msec)
 
   db_localdatetime_msec (&sec, msec, &datetime);
   db_make_datetime (value, &datetime);
-}
-
-static void
-la_stat_count_pending (const LA_TASK *task, void *arg)
-{
-  (* (int *) arg)++;
 }
 
 /*
@@ -319,15 +422,21 @@ la_stat_init_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 
       snprintf (query_buf, sizeof (query_buf),
 		"INSERT INTO %s (db_name, copied_log_path, start_time, last_update_time, worker_count, apply_state, "
-		"commit_read_count, dispatch_direct_count, dispatch_parked_count, inflight_count, pending_count) "
-		"VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0) ;", CT_HA_APPLY_STAT_NAME);
+		"commit_read_count, dispatch_direct_count, dispatch_parked_count, inflight_count, pending_count, "
+		"task_count, dependency_wait_count, dependency_wait_usec, worker_wait_count, worker_wait_usec, "
+		"queue_wait_usec, result_collect_wait_usec, total_task_usec, total_worker_busy_usec, "
+		"out_of_order_completion_count, running_worker_count, max_running_worker_count, "
+		"max_task_queue_count, max_pending_count, observation_usec, concurrency_usec) "
+		"VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '') ;",
+		CT_HA_APPLY_STAT_NAME);
       res = execute (query_buf, 6, &in_value[0], true);
     }
 
   /* the worker rows take worker_idx where the applier row took worker_count, and no state */
   snprintf (query_buf, sizeof (query_buf),
 	    "INSERT INTO %s (db_name, copied_log_path, worker_idx, start_time, last_update_time, state, "
-	    "applied_task_count, applied_row_count, busy_usec) VALUES (?, ?, ?, ?, ?, 'idle', 0, 0, 0) ;",
+	    "applied_task_count, applied_row_count, busy_usec, queue_wait_usec, error_count) "
+	    "VALUES (?, ?, ?, ?, ?, 'idle', 0, 0, 0, 0, 0) ;",
 	    CT_HA_APPLY_WORKER_STAT_NAME);
   for (w = 0; w < applier->worker_count && res >= 0; w++)
     {
@@ -431,18 +540,23 @@ la_stat_store (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 static int
 la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execute)
 {
-#define LA_APPLY_VALUE_COUNT    11
-#define LA_WORKER_VALUE_COUNT   18
-  DB_VALUE in_value[LA_WORKER_VALUE_COUNT];
+#define LA_APPLY_VALUE_COUNT    27
+#define LA_WORKER_VALUE_COUNT   20
+  DB_VALUE in_value[LA_APPLY_VALUE_COUNT];
   char query_buf[LA_STAT_QUERY_BUF_SIZE];
+  char concurrency_buf[1024];
   const char *prefix_name = applier->db_name;
   const char *state;
   struct timeval now;
+  UINT64 now_ns;
+  UINT64 observation_usec;
+  int running_worker_count;
+  int max_running_worker_count;
   LA_WORKER_LIVE live;
   LA_WORKER_STAT *worker;
   int pending_count = 0;
   int res = NO_ERROR;
-  int idx, i, w;
+  int idx, i, w, used;
 
   if (!la_Apply_stat.enabled)
     {
@@ -450,13 +564,33 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
     }
 
   gettimeofday (&now, NULL);
-  la_pending_foreach (la_stat_count_pending, &pending_count);
+  now_ns = la_stat_clock_ns ();
+  pthread_mutex_lock (&la_Worker_live_lock);
+  la_stat_account_concurrency (now_ns);
+  used = 0;
+  concurrency_buf[0] = '\0';
+  for (i = 0; i <= applier->worker_count && used < (int) sizeof (concurrency_buf); i++)
+    {
+      used += snprintf (concurrency_buf + used, sizeof (concurrency_buf) - (size_t) used,
+			"%s%d:%llu", i == 0 ? "" : ",", i,
+			(unsigned long long) la_Apply_stat.concurrency_usec[i]);
+    }
+  running_worker_count = la_Apply_stat.running_worker_count;
+  max_running_worker_count = la_Apply_stat.max_running_worker_count;
+  pthread_mutex_unlock (&la_Worker_live_lock);
+  observation_usec = (now_ns >= la_Apply_stat.run_start_ns) ? (now_ns - la_Apply_stat.run_start_ns) / 1000ULL : 0;
+  pending_count = la_pending_get_count ();
   state = applier->apply_state;
 
   snprintf (query_buf, sizeof (query_buf),
 	    "UPDATE %s SET last_update_time = ?, worker_count = ?, apply_state = ?, done_hold_since = ?, "
 	    "commit_read_count = ?, dispatch_direct_count = ?, dispatch_parked_count = ?, inflight_count = ?, "
-	    "pending_count = ? WHERE db_name = ? AND copied_log_path = ? ;", CT_HA_APPLY_STAT_NAME);
+	    "pending_count = ?, task_count = ?, dependency_wait_count = ?, dependency_wait_usec = ?, "
+	    "worker_wait_count = ?, worker_wait_usec = ?, queue_wait_usec = ?, result_collect_wait_usec = ?, "
+	    "total_task_usec = ?, total_worker_busy_usec = ?, out_of_order_completion_count = ?, "
+	    "running_worker_count = ?, max_running_worker_count = ?, max_task_queue_count = ?, max_pending_count = ?, "
+	    "observation_usec = ?, concurrency_usec = ? WHERE db_name = ? AND copied_log_path = ? ;",
+	    CT_HA_APPLY_STAT_NAME);
 
   idx = 0;
   la_stat_make_time (&in_value[idx++], now.tv_sec, (int) (now.tv_usec / 1000));
@@ -468,6 +602,23 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
   db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.dispatch_parked_count);
   db_make_int (&in_value[idx++], la_inflight_get_count ());
   db_make_int (&in_value[idx++], pending_count);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.task_count);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.dependency_wait_count);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.dependency_wait_usec);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.worker_wait_count);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.worker_wait_usec);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.queue_wait_usec);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.result_collect_wait_usec);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.total_task_usec);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.total_worker_busy_usec);
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) la_Apply_stat.out_of_order_completion_count);
+  db_make_int (&in_value[idx++], running_worker_count);
+  db_make_int (&in_value[idx++], max_running_worker_count);
+  db_make_int (&in_value[idx++], la_task_queue_get_max_count ());
+  db_make_int (&in_value[idx++], la_pending_get_max_count ());
+  db_make_bigint (&in_value[idx++], (DB_BIGINT) observation_usec);
+  db_make_varchar (&in_value[idx++], 1024, concurrency_buf, strlen (concurrency_buf), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
   db_make_varchar (&in_value[idx++], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_varchar (&in_value[idx++], 4096, applier->copied_log_path, strlen (applier->copied_log_path), LANG_SYS_CODESET,
 		   LANG_SYS_COLLATION);
@@ -481,7 +632,8 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
 
   snprintf (query_buf, sizeof (query_buf),
 	    "UPDATE %s SET last_update_time = ?, state = ?, applied_task_count = ?, applied_row_count = ?, "
-	    "busy_usec = ?, applying_commit_lsa_pageid = ?, applying_commit_lsa_offset = ?, "
+	    "busy_usec = ?, queue_wait_usec = ?, error_count = ?, applying_commit_lsa_pageid = ?, "
+	    "applying_commit_lsa_offset = ?, "
 	    "applying_master_commit_time = ?, applying_since = ?, last_applied_commit_lsa_pageid = ?, "
 	    "last_applied_commit_lsa_offset = ?, last_applied_master_commit_time = ?, last_applied_time = ?, "
 	    "last_error_code = ?, last_error_time = ? WHERE db_name = ? AND copied_log_path = ? AND worker_idx = ? ;",
@@ -509,6 +661,8 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
       db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->applied_task_count);
       db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->applied_row_count);
       db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->busy_usec);
+      db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->queue_wait_usec);
+      db_make_bigint (&in_value[idx++], (DB_BIGINT) worker->error_count);
       if (live.applying)
 	{
 	  db_make_bigint (&in_value[idx++], live.commit_lsa.pageid);
@@ -613,10 +767,10 @@ void
 la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool verbose)
 {
 #define LA_IN_VALUE_COUNT       2
-#define LA_APPLY_OUT_COUNT      10
-#define LA_WORKER_OUT_COUNT     11
+#define LA_APPLY_OUT_COUNT      26
+#define LA_WORKER_OUT_COUNT     13
   DB_VALUE in_value[LA_IN_VALUE_COUNT];
-  DB_VALUE out_value[LA_WORKER_OUT_COUNT];
+  DB_VALUE out_value[LA_APPLY_OUT_COUNT];
   char query_buf[LA_STAT_QUERY_BUF_SIZE];
   char timebuf[256];
   char lsabuf[64];
@@ -624,6 +778,7 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
   DB_QUERY_RESULT *result = NULL;
   DB_QUERY_ERROR query_error;
   INT64 direct, parked;
+  INT64 observation_usec, total_busy_usec;
   int res, pos, i;
 
   printf ("\n *** Parallel Apply Info. *** \n");
@@ -640,7 +795,11 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
 
   snprintf (query_buf, sizeof (query_buf),
 	    "SELECT start_time, last_update_time, worker_count, apply_state, done_hold_since, commit_read_count, "
-	    "dispatch_direct_count, dispatch_parked_count, inflight_count, pending_count "
+	    "dispatch_direct_count, dispatch_parked_count, inflight_count, pending_count, task_count, "
+	    "dependency_wait_count, dependency_wait_usec, worker_wait_count, worker_wait_usec, queue_wait_usec, "
+	    "result_collect_wait_usec, total_task_usec, total_worker_busy_usec, out_of_order_completion_count, "
+	    "running_worker_count, max_running_worker_count, max_task_queue_count, max_pending_count, "
+	    "observation_usec, concurrency_usec "
 	    "FROM %s WHERE db_name = ? AND copied_log_path = ? ;", CT_HA_APPLY_STAT_NAME);
 
   res = db_execute_with_values (query_buf, &result, &query_error, LA_IN_VALUE_COUNT, &in_value[0]);
@@ -670,12 +829,33 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
 	  (direct + parked) > 0 ? (double) parked * 100.0 / (double) (direct + parked) : 0.0);
   printf ("%-30s : %d / %d\n", "In flight / pending", db_get_int (&out_value[8]), db_get_int (&out_value[9]));
 
+  observation_usec = db_get_bigint (&out_value[24]);
+  total_busy_usec = db_get_bigint (&out_value[18]);
+  printf ("%-30s : %.2f\n", "Average parallelism",
+	  observation_usec > 0 ? (double) total_busy_usec / (double) observation_usec : 0.0);
+  printf ("%-30s : %.1f%%\n", "Worker utilization",
+	  observation_usec > 0 && db_get_int (&out_value[2]) > 0
+	    ? (double) total_busy_usec * 100.0 / ((double) observation_usec * db_get_int (&out_value[2])) : 0.0);
+  printf ("%-30s : %d / %d\n", "Workers running / maximum", db_get_int (&out_value[20]),
+	  db_get_int (&out_value[21]));
+
   if (verbose)
     {
       la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[4]);
       printf ("%-30s : %s\n", "Holding DONE since", timebuf);
       la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[1]);
       printf ("%-30s : %s\n", "Last update time", timebuf);
+      printf ("%-30s : %lld / %lld us\n", "Dependency waits",
+	      (long long) db_get_bigint (&out_value[11]), (long long) db_get_bigint (&out_value[12]));
+      printf ("%-30s : %lld / %lld us\n", "Worker waits",
+	      (long long) db_get_bigint (&out_value[13]), (long long) db_get_bigint (&out_value[14]));
+      printf ("%-30s : %lld us\n", "Worker queue residence", (long long) db_get_bigint (&out_value[15]));
+      printf ("%-30s : %lld us\n", "Result collection delay", (long long) db_get_bigint (&out_value[16]));
+      printf ("%-30s : %lld\n", "Out-of-order completions", (long long) db_get_bigint (&out_value[19]));
+      printf ("%-30s : %d / %d\n", "Max task queue / pending", db_get_int (&out_value[22]),
+	      db_get_int (&out_value[23]));
+      printf ("%-30s : %s\n", "Concurrency usec",
+	      DB_IS_NULL (&out_value[25]) ? "-" : db_get_string (&out_value[25]));
     }
 
   for (i = 0; i < LA_APPLY_OUT_COUNT; i++)
@@ -689,9 +869,9 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
     }
 
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT worker_idx, state, applied_task_count, applied_row_count, busy_usec, applying_commit_lsa_pageid, "
-	    "applying_commit_lsa_offset, last_applied_commit_lsa_pageid, last_applied_commit_lsa_offset, "
-	    "last_applied_time, last_error_code "
+	    "SELECT worker_idx, state, applied_task_count, applied_row_count, busy_usec, "
+	    "queue_wait_usec, error_count, applying_commit_lsa_pageid, applying_commit_lsa_offset, "
+	    "last_applied_commit_lsa_pageid, last_applied_commit_lsa_offset, last_applied_time, last_error_code "
 	    "FROM %s WHERE db_name = ? AND copied_log_path = ? ORDER BY worker_idx ;", CT_HA_APPLY_WORKER_STAT_NAME);
 
   res = db_execute_with_values (query_buf, &result, &query_error, LA_IN_VALUE_COUNT, &in_value[0]);
@@ -701,8 +881,9 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
       return;
     }
 
-  printf ("\n%-6s %-8s %12s %12s %12s %-18s %-18s %-30s %s\n", "Worker", "State", "Tasks", "Rows", "Busy(ms)",
-	  "Applying LSA", "Last applied LSA", "Last applied time", "Last error");
+  printf ("\n%-6s %-8s %12s %12s %12s %12s %8s %-18s %-18s %-30s %s\n", "Worker", "State", "Tasks",
+	  "Rows", "Busy(ms)", "Queue(ms)", "Errors", "Applying LSA", "Last applied LSA", "Last applied time",
+	  "Last error");
 
   for (pos = db_query_first_tuple (result); pos == DB_CURSOR_SUCCESS; pos = db_query_next_tuple (result))
     {
@@ -711,37 +892,39 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
 	  break;
 	}
 
-      if (DB_IS_NULL (&out_value[5]))
+      if (DB_IS_NULL (&out_value[7]))
 	{
 	  snprintf (lsabuf, sizeof (lsabuf), "-");
 	}
       else
 	{
-	  snprintf (lsabuf, sizeof (lsabuf), "%lld|%d", (long long) db_get_bigint (&out_value[5]),
-		    db_get_int (&out_value[6]));
+	  snprintf (lsabuf, sizeof (lsabuf), "%lld|%d", (long long) db_get_bigint (&out_value[7]),
+		    db_get_int (&out_value[8]));
 	}
-      if (DB_IS_NULL (&out_value[7]))
+      if (DB_IS_NULL (&out_value[9]))
 	{
 	  snprintf (lsabuf2, sizeof (lsabuf2), "-");
 	}
       else
 	{
-	  snprintf (lsabuf2, sizeof (lsabuf2), "%lld|%d", (long long) db_get_bigint (&out_value[7]),
-		    db_get_int (&out_value[8]));
+	  snprintf (lsabuf2, sizeof (lsabuf2), "%lld|%d", (long long) db_get_bigint (&out_value[9]),
+		    db_get_int (&out_value[10]));
 	}
-      la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[9]);
+      la_stat_sprint_time (timebuf, sizeof (timebuf), &out_value[11]);
 
-      printf ("%-6d %-8s %12lld %12lld %12lld %-18s %-18s %-30s ", db_get_int (&out_value[0]),
+      printf ("%-6d %-8s %12lld %12lld %12lld %12lld %8lld %-18s %-18s %-30s ", db_get_int (&out_value[0]),
 	      DB_IS_NULL (&out_value[1]) ? "-" : db_get_string (&out_value[1]),
 	      (long long) db_get_bigint (&out_value[2]), (long long) db_get_bigint (&out_value[3]),
-	      (long long) db_get_bigint (&out_value[4]) / 1000, lsabuf, lsabuf2, timebuf);
-      if (DB_IS_NULL (&out_value[10]))
+	      (long long) db_get_bigint (&out_value[4]) / 1000,
+	      (long long) db_get_bigint (&out_value[5]) / 1000, (long long) db_get_bigint (&out_value[6]), lsabuf,
+	      lsabuf2, timebuf);
+      if (DB_IS_NULL (&out_value[12]))
 	{
 	  printf ("-\n");
 	}
       else
 	{
-	  printf ("%d\n", db_get_int (&out_value[10]));
+	  printf ("%d\n", db_get_int (&out_value[12]));
 	}
 
       for (i = 0; i < LA_WORKER_OUT_COUNT; i++)

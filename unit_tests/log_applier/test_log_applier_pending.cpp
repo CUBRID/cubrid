@@ -40,8 +40,31 @@ static void
 test_reset (const LOG_LSA *restart_lsa)
 {
   la_pending_clear ();
+  la_pending_reset ();
   REQUIRE (la_gate_init (8) == NO_ERROR);
   la_gate_set_initial_frontier (restart_lsa);
+}
+
+TEST_CASE ("pending list records dependency readiness before worker queue capacity is available",
+	   "[log_applier_pending]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20);
+  LA_TASK task = test_task (1, test_lsa (30), l20);
+  LA_TASK out;
+
+  test_reset (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  task.pending_begin_ns = 100;
+  REQUIRE (la_pending_push (&task) == NO_ERROR);
+
+  la_pending_mark_ready (200);
+  REQUIRE_FALSE (la_pending_pop_ready (&out));
+
+  la_gate_mark_completed (&l20);
+  la_gate_advance_frontier ();
+  la_pending_mark_ready (300);
+  REQUIRE (la_pending_pop_ready (&out));
+  REQUIRE (out.ready_ns == 300);
 }
 
 TEST_CASE ("pending list releases ready tasks in parking order without waiting for an earlier blocked one",

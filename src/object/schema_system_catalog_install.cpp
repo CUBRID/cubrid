@@ -1214,7 +1214,23 @@ namespace cubschema
       {"dispatch_direct_count", "bigint"},
       {"dispatch_parked_count", "bigint"},
       {"inflight_count", "integer"},
-      {"pending_count", "integer"}
+      {"pending_count", "integer"},
+      {"task_count", "bigint"},
+      {"dependency_wait_count", "bigint"},
+      {"dependency_wait_usec", "bigint"},
+      {"worker_wait_count", "bigint"},
+      {"worker_wait_usec", "bigint"},
+      {"queue_wait_usec", "bigint"},
+      {"result_collect_wait_usec", "bigint"},
+      {"total_task_usec", "bigint"},
+      {"total_worker_busy_usec", "bigint"},
+      {"out_of_order_completion_count", "bigint"},
+      {"running_worker_count", "integer"},
+      {"max_running_worker_count", "integer"},
+      {"max_task_queue_count", "integer"},
+      {"max_pending_count", "integer"},
+      {"observation_usec", "bigint"},
+      {"concurrency_usec", format_varchar (1024)}
     },
 // constraints
     {
@@ -1247,6 +1263,8 @@ namespace cubschema
       {"applied_task_count", "bigint"},
       {"applied_row_count", "bigint"},
       {"busy_usec", "bigint"},
+      {"queue_wait_usec", "bigint"},
+      {"error_count", "bigint"},
       {"applying_commit_lsa_pageid", "bigint"},
       {"applying_commit_lsa_offset", "integer"},
       {"applying_master_commit_time", "datetime"},

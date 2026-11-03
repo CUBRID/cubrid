@@ -22,14 +22,17 @@ project (test_log_applier)
 # state in file statics and are not exported from cubridcs, so their sources are compiled into the test; cubridcs
 # supplies the error manager and the other client runtime they call. The worker module is compiled in too: its
 # sub-client calls (db_restart_sub, db_shutdown_sub) need a server, and test_log_applier_worker.cpp defines them
-# in place of cubridcs's. The coordinator itself needs a server connection and is not unit tested here.
+# in place of cubridcs's. Coordinator effects on the legacy applier state are callbacks, so its scheduling can be
+# tested without a server connection.
 set (TEST_LOG_APPLIER_SRC
   test_main.cpp
+  test_log_applier_coordinator.cpp
   test_log_applier_inflight.cpp
   test_log_applier_gate.cpp
   test_log_applier_pending.cpp
   test_log_applier_queues.cpp
   test_log_applier_worker.cpp
+  ${APPLIER_DIR}/log_applier_coordinator.cpp
   ${APPLIER_DIR}/log_applier_inflight.cpp
   ${APPLIER_DIR}/log_applier_gate.cpp
   ${APPLIER_DIR}/log_applier_pending.cpp
