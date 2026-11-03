@@ -590,6 +590,12 @@ namespace cubmethod
     int num_bind = get_num_markers ();
     assert (num_bind == (int) bind_values.size ());
 
+    if (sp_check_statement_allowed (m_sp_stmt_category, CUBRID_STMT_CALL) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
     prepare_call_info &call_info = m_prepare_call_info;
     // set host variables
     if (num_bind > 0)
@@ -917,7 +923,8 @@ namespace cubmethod
       }
 
     m_is_prepared = true;
-    m_sp_stmt_category = SP_STMT_OTHER;
+    m_sp_stmt_category = sp_stmt_category_of (db_get_statement (m_session, stmt_id - 1),
+			 (PT_NODE_TYPE) db_get_statement_type (m_session, stmt_id));
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
 

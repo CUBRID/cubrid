@@ -23,6 +23,7 @@
 #include "sp_context_rules.hpp"
 
 #include "error_manager.h"
+#include "parser.h"
 
 int sp_In_sql_depth = 0;
 int sp_In_trigger_depth = 0;
@@ -34,6 +35,11 @@ bool sp_Sa_query_request = false;
 sp_stmt_category
 sp_stmt_category_of (const PT_NODE *statement, PT_NODE_TYPE stmt_type)
 {
+  if (pt_is_ddl_node_type (stmt_type))
+    {
+      return SP_STMT_DDL;
+    }
+
   switch (stmt_type)
     {
     case PT_COMMIT_WORK:
@@ -52,41 +58,6 @@ sp_stmt_category_of (const PT_NODE *statement, PT_NODE_TYPE stmt_type)
     case PT_SET_SESSION_VARIABLES:
       /* SET @v only holds a value in the session, outside the transaction */
       return SP_STMT_OTHER;
-
-    case PT_ALTER:
-    case PT_ALTER_INDEX:
-    case PT_ALTER_SERIAL:
-    case PT_ALTER_STORED_PROCEDURE:
-    case PT_ALTER_TRIGGER:
-    case PT_ALTER_USER:
-    case PT_CREATE_ENTITY:
-    case PT_CREATE_INDEX:
-    case PT_CREATE_SERIAL:
-    case PT_CREATE_STORED_PROCEDURE:
-    case PT_CREATE_TRIGGER:
-    case PT_CREATE_USER:
-    case PT_DROP:
-    case PT_DROP_INDEX:
-    case PT_DROP_SERIAL:
-    case PT_DROP_STORED_PROCEDURE:
-    case PT_DROP_TRIGGER:
-    case PT_DROP_USER:
-    case PT_GRANT:
-    case PT_RENAME:
-    case PT_REVOKE:
-    case PT_REMOVE_TRIGGER:
-    case PT_RENAME_TRIGGER:
-    case PT_UPDATE_STATS:
-    case PT_CREATE_SERVER:
-    case PT_DROP_SERVER:
-    case PT_RENAME_SERVER:
-    case PT_ALTER_SERVER:
-    case PT_TRUNCATE:
-    case PT_ALTER_SYNONYM:
-    case PT_CREATE_SYNONYM:
-    case PT_DROP_SYNONYM:
-    case PT_RENAME_SYNONYM:
-      return SP_STMT_DDL;
 
     case PT_METHOD_CALL:
       if (statement != NULL && statement->node_type == PT_EXECUTE_PREPARE)
@@ -145,6 +116,20 @@ sp_stmt_entry_name (sp_stmt_category stmt_category, int stmt_type)
       return "PREPARE TO COMMIT";
     case CUBRID_STMT_ATTACH:
       return "ATTACH";
+    case PT_SET_XACTION:
+      return "SET TRANSACTION";
+    case CUBRID_STMT_SET_SYS_PARAMS:
+      return "SET SYSTEM PARAMETERS";
+    case CUBRID_STMT_SET_OPT_LVL:
+      return "SET OPTIMIZATION";
+    case CUBRID_STMT_SET_TRIGGER:
+      return "SET TRIGGER";
+    case CUBRID_STMT_SET_NAMES:
+      return "SET NAMES";
+    case CUBRID_STMT_SET_TIMEZONE:
+      return "SET TIME ZONE";
+    case CUBRID_STMT_CALL:
+      return "CALL ... ON CLASS";
     default:
       return stmt_category == SP_STMT_DDL ? "DDL" : "the statement";
     }

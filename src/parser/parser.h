@@ -491,6 +491,7 @@ extern "C"
 
   extern PT_NODE *pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
+  extern bool pt_is_ddl_node_type (PT_NODE_TYPE node_type);
   extern int pt_is_ddl_statement (const PT_NODE * node);
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
