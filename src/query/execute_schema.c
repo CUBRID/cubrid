@@ -283,6 +283,8 @@ static int build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 				  PT_NODE * attr_old_name, PT_NODE * constraints,
 				  SM_ATTR_PROP_CHG * attr_chg_properties);
 
+static void build_attr_flag_change_property (int *prop, bool was_set, bool is_unspecified, bool is_requested);
+
 static int build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 				      SM_ATTR_PROP_CHG * attr_chg_properties);
 static int build_att_coll_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
@@ -12111,6 +12113,40 @@ exit:
 }
 
 /*
+ * build_attr_flag_change_property() - Builds the change property of an attribute flag (INVISIBLE, STORAGE option)
+ *   return: none
+ *   prop(out): change property to build
+ *   was_set(in): the flag is set on the existing attribute
+ *   is_unspecified(in): the new attribute definition does not mention the flag's clause
+ *   is_requested(in): the new attribute definition sets the flag
+ *
+ */
+static void
+build_attr_flag_change_property (int *prop, bool was_set, bool is_unspecified, bool is_requested)
+{
+  *prop = 0;
+  if (was_set)
+    {
+      *prop |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (is_unspecified)
+    {
+      *prop |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (is_requested)
+    {
+      /* PRESENT_NEW without PRESENT_OLD becomes GAINED in the consolidate loop of build_attr_change_map */
+      *prop |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (*prop & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /* the flag was set and the new definition clears it: the attribute lost it */
+      *prop |= ATT_CHG_PROPERTY_LOST;
+      *prop &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+}
+
+/*
  * build_attr_change_map() - This builds a map of changes on the attribute
  *   return: Error code
  *   parser(in): Parser context
@@ -12298,85 +12334,23 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   /* constraint CHECK : not supported, just mark as checked */
   attr_chg_properties->p[P_CONSTR_CHECK] = 0;
 
-  /* INVISIBLE COLUMN */
-  attr_chg_properties->p[P_INVISIBLE] = 0;
-  if (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
-    {
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET)
-    {
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_invisible == PT_ATTR_VISIBLE  -> NOW VISIBLE
-       * P_INVISIBLE & PRESENT_OLD          -> WAS INVISIBLE
-       *
-       * it changed from invisible to visible.
-       * This means the attribute has lost its invisible state
-       */
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* INVISIBLE COLUMN: lost when the new definition says VISIBLE */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_INVISIBLE],
+				   (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN) != 0,
+				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET,
+				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE);
 
-  /* STORAGE PREFER_INLINE */
-  attr_chg_properties->p[P_OOS_PREFER_INLINE] = 0;
-  if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
-    {
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
-    {
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_OOS_PREFER_INLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_storage == PT_ATTR_STORAGE_DEFAULT/PREFER_OUTLINE -> NOW size-order OOS
-       * P_OOS_PREFER_INLINE & PRESENT_OLD                      -> WAS prefer-inline
-       *
-       * it changed from prefer-inline to default/prefer-outline; the attribute lost its prefer-inline state
-       */
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* STORAGE PREFER_INLINE: lost when the new definition sets another STORAGE option */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_PREFER_INLINE],
+				   (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE) != 0,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE);
 
-  /* STORAGE FORCE_OUTLINE */
-  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] = 0;
-  if (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
-    {
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
-    {
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_OOS_FORCE_OUTLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_storage != PT_ATTR_STORAGE_FORCE_OUTLINE -> NOW not force-outline
-       * P_OOS_FORCE_OUTLINE & PRESENT_OLD             -> WAS force-outline
-       */
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* STORAGE FORCE_OUTLINE: lost when the new definition sets another STORAGE option */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_FORCE_OUTLINE],
+				   (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE);
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)
