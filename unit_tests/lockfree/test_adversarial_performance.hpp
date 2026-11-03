@@ -16,20 +16,12 @@
  *
  */
 
-#include "schema_information_schema_definition.hpp"
+#ifndef _TEST_ADVERSARIAL_PERFORMANCE_HPP_
+#define _TEST_ADVERSARIAL_PERFORMANCE_HPP_
 
-namespace cubschema
+namespace test_lockfree
 {
-  information_schema_definition::information_schema_definition (const std::string &n, const attr_vec_type &attrs,
-      const cstr_vec_type &cts,
-      const authorization &au,
-      row_init_type ri)
-    : name {n}
-    , attributes {attrs}
-    , constraints {cts}
-    , auth {au}
-    , row_initializer {ri}
-  {
-    //
-  }
+  int test_adversarial_performance ();
 }
+
+#endif // !_TEST_ADVERSARIAL_PERFORMANCE_HPP_

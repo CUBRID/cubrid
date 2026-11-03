@@ -101,13 +101,26 @@ namespace parallel_index_scan
   }
 
   void
+  leaf_slot_walker::release_leaf (THREAD_ENTRY *thread_p)
+  {
+    if (m_page == nullptr)
+      {
+	return;
+      }
+    if (m_input_handler != nullptr)
+      {
+	m_input_handler->release_leaf (thread_p, m_page);
+      }
+    else
+      {
+	pgbuf_unfix_and_init (thread_p, m_page);
+      }
+  }
+
+  void
   leaf_slot_walker::cleanup_on_reset (THREAD_ENTRY *thread_p)
   {
-    if (m_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_page);
-	m_page = nullptr;
-      }
+    release_leaf (thread_p);
     if (m_slot_key_valid && m_slot_clear_key)
       {
 	pr_clear_value (&m_slot_key);
@@ -566,12 +579,7 @@ namespace parallel_index_scan
 	      {
 		pr_clear_value (&key);
 	      }
-	    if (m_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_page);
-		m_page = nullptr;
-	      }
-	    m_input_handler->signal_chain_ended (m_current_range_idx);
+	    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
 	    return S_ERROR;
 	  }
 
@@ -587,12 +595,7 @@ namespace parallel_index_scan
 	      {
 		pr_clear_value (&key);
 	      }
-	    if (m_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_page);
-		m_page = nullptr;
-	      }
-	    m_input_handler->signal_chain_ended (m_current_range_idx);
+	    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
 	    return S_ERROR;
 	  }
 
@@ -604,12 +607,7 @@ namespace parallel_index_scan
 	      }
 	    if (past_upper)
 	      {
-		if (m_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_page);
-		    m_page = nullptr;
-		  }
-		m_input_handler->signal_chain_ended (m_current_range_idx);
+		m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
 		return S_END;
 	      }
 	    continue;
@@ -678,12 +676,7 @@ namespace parallel_index_scan
 		  }
 		if (ev_res == V_ERROR)
 		  {
-		    if (m_page != nullptr)
-		      {
-			pgbuf_unfix (thread_p, m_page);
-			m_page = nullptr;
-		      }
-		    m_input_handler->signal_chain_ended (m_current_range_idx);
+		    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
 		    return S_ERROR;
 		  }
 		continue;
@@ -709,12 +702,7 @@ namespace parallel_index_scan
 	      {
 		pr_clear_value (&key);
 	      }
-	    if (m_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_page);
-		m_page = nullptr;
-	      }
-	    m_input_handler->signal_chain_ended (m_current_range_idx);
+	    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
 	    return S_ERROR;
 	  }
 
@@ -738,12 +726,8 @@ namespace parallel_index_scan
 	/* S_END from drain — advance to next slot. */
       }
 
-    /* Page exhausted; chain-walk naturally — do NOT signal chain_ended (leaf_ended stays false so next fetch fixes m_current_leaf_vpid). */
-    if (m_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_page);
-	m_page = nullptr;
-      }
+    /* Page exhausted; chain-walk naturally — do NOT signal chain_ended (leaf_ended stays false so next fetch fixes m_current_leaf_vpid).
+     * Keep m_page: the dispatcher releases it, or set_page does once the next leaf is fixed. */
     return S_END;
   }
 }

@@ -2197,12 +2197,30 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      && node->info.query.q.select.list->type_enum == PT_TYPE_STAR)
 	    {
 	      PT_NODE *next = node->info.query.q.select.list->next;
+	      int star_pos = node->info.query.q.select.list->buffer_pos;
 
 	      /* To consider 'select *, xxx ...', release "*" node only. */
 	      node->info.query.q.select.list->next = NULL;
 	      parser_free_node (parser, node->info.query.q.select.list);
 
 	      node->info.query.q.select.list = pt_resolve_star (parser, node->info.query.q.select.from, NULL);
+
+	      if (parser->flag.is_parsing_static_sql)
+		{
+		  PT_NODE *spec;
+
+		  /* the columns of a derived table or a CTE are written in the text, but those of a class can change */
+		  for (spec = node->info.query.q.select.from; spec != NULL && !PT_SPEC_IS_ENTITY (spec);
+		       spec = spec->next)
+		    {
+		      ;
+		    }
+		  if (spec != NULL)
+		    {
+		      pt_record_static_sql_star (parser, PT_SS_STAR_ALL, star_pos, node->info.query.q.select.list,
+						 true);
+		    }
+		}
 
 	      if (next != NULL)
 		{
@@ -2293,11 +2311,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else
 			{
 			  /* STEP 2-2-2) recreate select_list */
+			  PT_NODE *star_attrs;
+
 			  if (PT_SPEC_IS_ENTITY (spec))
 			    {
-			      resolved_attrs =
-				parser_append_node (attr->next,
-						    pt_resolve_star (parser, node->info.query.q.select.from, attr));
+			      star_attrs = pt_resolve_star (parser, node->info.query.q.select.from, attr);
+			      if (parser->flag.is_parsing_static_sql)
+				{
+				  pt_record_static_sql_star (parser, PT_SS_STAR_QUALIFIED, attr->buffer_pos, star_attrs,
+							     false);
+				}
 			    }
 			  else
 			    {
@@ -2305,10 +2328,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				{
 				  as_attr->info.name.resolved = range_var->info.name.original;
 				}
-			      resolved_attrs =
-				parser_append_node (attr->next,
-						    parser_copy_tree_list (parser, spec->info.spec.as_attr_list));
+			      star_attrs = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
 			    }
+			  resolved_attrs = parser_append_node (attr->next, star_attrs);
 
 			  if (prev_attr == NULL)
 			    {
@@ -3151,6 +3173,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       if (!node->info.insert.attr_list)
 	{
 	  node->info.insert.attr_list = pt_resolve_star (parser, node->info.insert.spec, NULL);
+
+	  if (parser->flag.is_parsing_static_sql && node->info.insert.spec->info.spec.entity_name != NULL)
+	    {
+	      pt_record_static_sql_star (parser, PT_SS_INSERT_COLUMNS,
+					 node->info.insert.spec->info.spec.entity_name->buffer_pos,
+					 node->info.insert.attr_list, false);
+	    }
 	}
 
       fill_in_insert_default_function_arguments (parser, node);
@@ -3253,6 +3282,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      if (!node->info.merge.insert.attr_list)
 		{
 		  node->info.merge.insert.attr_list = pt_resolve_star (parser, node->info.merge.into, NULL);
+		  if (parser->flag.is_parsing_static_sql)
+		    {
+		      pt_record_static_sql_star (parser, PT_SS_MERGE_INSERT_COLUMNS, -1,
+						 node->info.merge.insert.attr_list, false);
+		    }
 		}
 	      /* resolve DEFAULT clauses */
 	      if (node->info.merge.into->info.spec.entity_name)
@@ -3420,6 +3454,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  /* find the type of the method here */
 	  if (!pt_resolve_method_type (parser, node) && (node->info.method_call.call_or_expr != PT_IS_CALL_STMT))
 	    {
+	      if (PT_IS_HOSTVAR (node->info.method_call.on_call_target) && parser->flag.set_host_var == 0)
+		{
+		  /* m () ON ?: the class to look the method up in is that of the object bound at execute */
+		  parser->flag.needs_bound_hostvar = 1;
+		}
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_DOESNT_EXIST,
 			  node->info.method_call.method_name->info.name.original);
 	      break;
@@ -10267,6 +10306,11 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else if (obj_param->node_type == PT_HOST_VAR)
     {
+      if (parser->flag.set_host_var == 0)
+	{
+	  /* compiled before the values are bound: the object to update is known only at execute */
+	  parser->flag.needs_bound_hostvar = 1;
+	}
       val = pt_value_to_db (parser, obj_param);
     }
 
@@ -11753,6 +11797,11 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
       /* if derived from a set expression, it better have a set type */
       if (!pt_is_set_type (derived_table))
 	{
+	  if (PT_IS_HOSTVAR (derived_table) && parser->flag.set_host_var == 0)
+	    {
+	      /* TABLE (?): the collection type is known only from the value bound at execute */
+	      parser->flag.needs_bound_hostvar = 1;
+	    }
 	  PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MUST_BE_SET_MSET_SEQ,
 		      pt_short_print (parser, derived_table));
 	  return;
@@ -12148,6 +12197,32 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 
   parser->host_variables = larger_host_variables;
   parser->host_var_expected_domains = larger_host_var_expected_domains;
+
+  /* keep the end of the replaced name or path expression in the source text
+   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) */
+  {
+    bool was_null = (parser->static_sql_host_var_end == NULL);
+    int *larger_host_var_end = (int *) realloc (parser->static_sql_host_var_end, count_to_realloc * sizeof (int));
+
+    if (larger_host_var_end != NULL)
+      {
+	if (was_null)
+	  {
+	    for (int i = 0; i < parser->host_var_count; i++)
+	      {
+		larger_host_var_end[i] = -1;
+	      }
+	  }
+	larger_host_var_end[parser->host_var_count] = name_node->buffer_pos;
+	parser->static_sql_host_var_end = larger_host_var_end;
+      }
+    else
+      {
+	/* the text edits can not be made; the rewritten query will be printed from the tree */
+	free_and_init (parser->static_sql_host_var_end);
+	parser->static_sql_edit_status = -1;
+      }
+  }
 
   db_make_null (&parser->host_variables[parser->host_var_count]);
   parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);

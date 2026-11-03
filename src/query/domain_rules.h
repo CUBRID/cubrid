@@ -482,6 +482,7 @@ DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, c
  *   type's cmpval as tp_value_compare's total order answers: no comparison is decided. A string compares byte by
  *   byte instead (mht_compare_dbvalues_are_identical): keys equal only under a case-insensitive collation can give
  *   different results.
+ *   A TIMESTAMPTZ and a DATETIMETZ also need the same zone (CBRD-27804): one instant in two zones casts differently.
  *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
  */
 bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2);

@@ -1792,11 +1792,14 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_SP_TCL_DDL_IN_QUERY                      -1390
-#define ER_SP_TCL_DDL_IN_TRIGGER                    -1391
-#define ER_SP_DML_IN_QUERY                          -1392
+#define ER_SES_SESSION_SECRET_MISMATCH              -1390
+#define ER_SES_SESSION_NOT_ATTACHED                 -1391
 
-#define ER_LAST_ERROR                               -1393
+#define ER_SP_TCL_DDL_IN_QUERY                      -1392
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1393
+#define ER_SP_DML_IN_QUERY                          -1394
+
+#define ER_LAST_ERROR                               -1395
 
 
 /*
