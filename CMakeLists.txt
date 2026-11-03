@@ -100,23 +100,6 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
-# Define a function to read the actual Git directory and HEAD for Git Worktrees
-function(set_git_dir_from_worktree git_dir head_file)
-    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
-    string(REGEX MATCH "gitdir: (.*)/worktrees/(.*)\n" _ ${git_dir_content})
-    set(${git_dir} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-    set(${head_file} "${CMAKE_MATCH_1}/worktrees/${CMAKE_MATCH_2}/HEAD" PARENT_SCOPE)
-endfunction()
-
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
-    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
-        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
-        set(HEAD_FILE "${GIT_DIR}/HEAD")
-    else() # Git Worktree
-        set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
-    endif()
-endif()
-
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
@@ -166,8 +149,8 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       message(FATAL_ERROR "Could not get hash information from Git")
     endif(git_result)
     set(CUBRID_HASH_TAG -${commit_hash})
-    # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file("${HEAD_FILE}" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
+    include(TrackGitRevision)
+    cubrid_watch_git_revision()
   else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
     set(CUBRID_EXTRA_VERSION 0)
   endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
@@ -178,7 +161,6 @@ set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRI
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
-# TODO: remove #if defined (VERSION_STRING) in src/base/release_string.c
 set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
 # BUILD_NUMBER (digital only version string) for legacy codes
 set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
@@ -602,8 +584,9 @@ endif(UNIX)
 
 
 configure_file(cmake/config.h.cmake config.h)
-# TODO: merge version.h into config.h ?
+# Common configuration must not contain the per-commit build identity.
 configure_file(cmake/version.h.cmake version.h)
+configure_file(cmake/build_version.h.cmake build_version.h)
 
 if(MULTI_CONN_TO_A_SERVER)
   add_definitions(-DMULTI_CONN_TO_A_SERVER)
