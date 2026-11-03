@@ -2446,6 +2446,17 @@ try_again:
 
   assert (bufptr == bufptr->iopage_buffer->bcb);
 
+  if (fetch_mode == NEW_PAGE)
+    {
+      /* the buffer still holds the previous contents, which may be the decrypted contents of an encrypted page: of
+       * the victimized page, or of this page before it was deallocated. clear them so that they are not written with
+       * the new page. clear the tde bits too, so that the tde algorithm of the new page is always set and logged.
+       * the write latch keeps the page from being flushed meanwhile. */
+      assert (request_mode == PGBUF_LATCH_WRITE);
+      memset (bufptr->iopage_buffer->iopage.page, 0, DB_PAGESIZE);
+      bufptr->iopage_buffer->iopage.prv.pflag = 0;
+    }
+
   /* In case of NO_ERROR, bufptr->mutex has been released. */
 
   /* Dirty Pages Table Registration Pass */
@@ -15399,18 +15410,8 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 
   PGBUF_BCB_LOCK (bcb);
 
-#if !defined(NDEBUG)
-  if (bcb->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
-    {
-      tde_er_log ("pgbuf_dealloc_page(): clear tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
-		  VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
-    }
-#endif /* !NDEBUG */
-
-  /* set unknown type */
+  /* set unknown type. keep the tde bits: the page keeps its contents, so it must still be encrypted when flushed. */
   bcb->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
-  /* clear page flags (now only tde algorithm) */
-  bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 
   /* set dirty and mark to move to the bottom of lru */
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
@@ -15434,8 +15435,8 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 int
 pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  /* keep the tde bits, as pgbuf_dealloc_page does */
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
-  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
