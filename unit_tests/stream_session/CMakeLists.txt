@@ -23,6 +23,7 @@ project (test_stream_session)
 set (TEST_STREAM_SESSION_SOURCES
   ${COMMUNICATION_DIR}/stream_session.cpp
   ${COMMUNICATION_DIR}/stream_handle.cpp
+  ${COMMUNICATION_DIR}/stream_client.c
   test_stream_session.cpp
   )
 
