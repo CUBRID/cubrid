@@ -228,6 +228,7 @@ static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, N
 static bool is_pt_name_in_group_having (PT_NODE * node);
 
 static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
+static bool is_group_having_alias_resolved (PT_NODE * node);
 
 static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							      int *continue_walk);
@@ -9172,6 +9173,18 @@ is_pt_name_deferred_for_static_sql (PT_NODE * node)
 }
 
 /*
+ * is_group_having_alias_resolved () - check if the node is a query already done by
+ *                                     pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE
+ *   return:
+ *   node(in):
+ */
+static bool
+is_group_having_alias_resolved (PT_NODE * node)
+{
+  return PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved;
+}
+
+/*
  * pt_parameterize_deferred_name_for_static_sql () - convert a name deferred by name binding of a static SQL,
  *                                                   which is not resolved as an alias either, to a host variable
  *   return:
@@ -9187,9 +9200,8 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 {
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+  if (is_group_having_alias_resolved (node))
     {
-      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
       *continue_walk = PT_LIST_WALK;
       return node;
     }
@@ -9521,9 +9533,8 @@ pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *ch
       return node;
     }
 
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+  if (is_group_having_alias_resolved (node))
     {
-      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
       *continue_walk = PT_LIST_WALK;
       return node;
     }
