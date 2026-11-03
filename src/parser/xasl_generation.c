@@ -33513,6 +33513,7 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 {
   PT_NODE *new_node = NULL;
   PT_NODE *groupby = groupby_list;
+  PT_NODE *save_next = NULL;
   QPROC_DB_VALUE_LIST db_list = vallist->valp;
 
   if (pt_has_error (parser))
@@ -33521,7 +33522,15 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
     }
 
   int is_pseudocolumn = 0;
+
+  /* save and cut-off node link */
+  save_next = node->next;
+  node->next = NULL;
+
   (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+
+  /* restore node link */
+  node->next = save_next;
 
   if (!is_pseudocolumn && (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
     {
