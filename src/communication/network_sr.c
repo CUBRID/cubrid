@@ -38,7 +38,6 @@
 #include "connection_sr.h"
 #include "critical_section.h"
 #include "event_log.h"
-#include "internal_lob_file.hpp"
 #include "log_impl.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
@@ -677,18 +676,6 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_OOS_STATS];
   req_p->processing_function = soos_stats;
 
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_STREAM_OPEN];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sinternal_lob_stream_open;
-
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_STREAM_READ];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sinternal_lob_stream_read;
-
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_STREAM_CLOSE];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sinternal_lob_stream_close;
-
   req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sinternal_lob_upload_release;
@@ -1100,8 +1087,6 @@ net_server_conn_down (THREAD_ENTRY * thread_p, int tran_index)
   assert (thread_p && tran_index != NULL_TRAN_INDEX);
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);
-
-  internal_lob_stream_purge_tran (tran_index);
 
   (void) xboot_unregister_client (thread_p, tran_index);
   session_remove_query_entry_all (thread_p);
