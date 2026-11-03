@@ -338,6 +338,8 @@ static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, i
 
 static int btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
 			   BT_LOAD_PAGE_LOG_MODE mode);
+static int bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
+			     BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new, bool ovf_dir);
 static int bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
@@ -2653,19 +2655,38 @@ end:
 }
 
 /*
- * btree_log_page () - Save the contents of the buffer
+ * btree_log_page () - Save the contents of a b+tree page: the whole page as RVBT_COPYPAGE
  *   return: error code
  *   load_args(in): the load whose page it is
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
  *   mode(in): how the content redo is made, see BT_LOAD_PAGE_LOG_MODE
- *
- * Note: This function logs the contents (unless NO_REDO) and frees the page after setting the dirty bit.
  */
 static int
 btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
 		BT_LOAD_PAGE_LOG_MODE mode)
+{
+  return bt_load_log_page (thread_p, load_args, vfid, page_ptr, mode, RVBT_COPYPAGE, -1, DB_PAGESIZE);
+}
+
+/*
+ * bt_load_log_page () - Save the contents of a finished page
+ *   return: error code
+ *   load_args(in): the load whose page it is
+ *   vfid(in):
+ *   page_ptr(in): pointer to the page buffer to be saved; consumed and
+ *                 unfixed on both success and failure
+ *   mode(in): how the content redo is made, see BT_LOAD_PAGE_LOG_MODE
+ *   rcvindex(in): the redo record, RVBT_COPYPAGE or RVOVF_NEWPAGE_INSERT
+ *   offset(in): offset of the record in the page
+ *   length(in): bytes the record carries from the start of the page
+ *
+ * Note: This function logs the contents (unless NO_REDO) and frees the page after setting the dirty bit.
+ */
+static int
+bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
+		  BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length)
 {
 
   if (mode == BT_LOAD_LOG_INLINE)
@@ -2674,8 +2695,8 @@ btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAG
 
       addr.vfid = vfid;
       addr.pgptr = page_ptr;
-      addr.offset = -1;
-      log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
+      addr.offset = offset;
+      log_append_redo_data (thread_p, rcvindex, &addr, length, page_ptr);
     }
   /*
    * NO_REDO: no-logging index pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
@@ -5165,7 +5186,9 @@ bt_load_store_overflow_key (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, cons
 	  }
 	copy_length = MIN (capacity, length);
 	memcpy (target, data, (size_t) copy_length);
-	error = btree_log_page (thread_p, load_args, &load_args->btid->ovfid, page, load_args->page_log_mode);
+	/* the record overflow_insert () makes: the redo of RVBT_COPYPAGE would turn the page into a b+tree page */
+	error = bt_load_log_page (thread_p, load_args, &load_args->btid->ovfid, page, load_args->page_log_mode,
+				  RVOVF_NEWPAGE_INSERT, 0, (int) (target - (char *) page) + copy_length);
 	if (error != NO_ERROR)
 	  {
 	    goto end;
