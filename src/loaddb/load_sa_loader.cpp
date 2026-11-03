@@ -2361,7 +2361,10 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	   * and ldr_int_elem () has its own path for a digit string too long for a BIGINT, so
 	   * the message or the code a bad argument reports can move.
 	   */
-	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val));
+	  int conv_err = (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val);
+
+	  ENSURE_ERR_SET (conv_err);
+	  CHECK_ERR (err, conv_err);
 	}
       else if (type == LDR_OID || type == LDR_CLASS_OID)
 	{
@@ -2374,7 +2377,10 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	   * ldr_act_class_attr () does. obj_desc_set () coerces the value against the
 	   * attribute domain once construct_instance () applies it.
 	   */
-	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val));
+	  int conv_err = (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val);
+
+	  ENSURE_ERR_SET (conv_err);
+	  CHECK_ERR (err, conv_err);
 	}
       else
 	{
