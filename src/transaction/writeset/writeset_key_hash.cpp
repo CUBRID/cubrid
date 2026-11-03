@@ -143,7 +143,9 @@ wset_string_hash (const VFID *index_vfid, DB_VALUE *v, UINT64 *hash_out)
  * return: NO_ERROR, or an error code on failure
  *
  * Note: Strings the index compares as equal pack to the same bytes. The collation pseudo key (mht2str) gives
- *       collation-equal strings one value, and the 0xC5 tag keeps it apart from a packed value of another type.
+ *       collation-equal strings one value, except under a collation with expansions, whose compare skips zero
+ *       weights the pseudo key folds in: there the weights the compare looks at are hashed into the value
+ *       (lang_uca_weight_key). The 0xC5 tag keeps it apart from a packed value of another type.
  */
 static int
 wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned char *s, int size,
@@ -151,7 +153,10 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
 {
   bool strip_space = (type == DB_TYPE_CHAR || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE));
   unsigned char *copy = NULL;
+  unsigned char *weights = NULL;
+  int weights_size = 0;
   unsigned int pseudo;
+  int error;
   int i;
 
   if (lc->codeset == INTL_CODESET_BINARY)
@@ -187,7 +192,31 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
       size--;
     }
 
-  pseudo = lc->mht2str (lc, s, size);
+  /* a collation with expansions compares by its full UCA weights, which its pseudo key does not follow
+   * (lang_uca_weight_key); the weights the compare looks at are hashed instead */
+  error = lang_uca_weight_key (lc, s, size, &weights, &weights_size);
+  if (error != NO_ERROR)
+    {
+      if (copy != NULL)
+	{
+	  free_and_init (copy);
+	}
+      return error;
+    }
+  if (weights != NULL)
+    {
+      /* FNV-1a over the weight sequence, in the 4 bytes the pseudo key takes */
+      pseudo = 2166136261u;
+      for (i = 0; i < weights_size; i++)
+	{
+	  pseudo = (pseudo ^ weights[i]) * 16777619u;
+	}
+      free_and_init (weights);
+    }
+  else
+    {
+      pseudo = lc->mht2str (lc, s, size);
+    }
 
   if (copy != NULL)
     {
