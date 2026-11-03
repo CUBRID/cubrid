@@ -7292,8 +7292,9 @@ qo_find_func_index_seg (QO_ENV * env, QO_NODE * nodep, const char *expr_str)
   for (i = 0; i < env->nsegs; i++)
     {
       seg = QO_ENV_SEG (env, i);
+      /* segment names are copies of expr_str, so strcmp skips the costly casecmp on the usual match */
       if (seg != NULL && QO_SEG_FUNC_INDEX (seg) && QO_SEG_HEAD (seg) == nodep && QO_SEG_NAME (seg) != NULL
-	  && !intl_identifier_casecmp (QO_SEG_NAME (seg), expr_str))
+	  && (strcmp (QO_SEG_NAME (seg), expr_str) == 0 || !intl_identifier_casecmp (QO_SEG_NAME (seg), expr_str)))
 	{
 	  return seg;
 	}
@@ -7553,8 +7554,8 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	}
 
       /* join and subquery terms are evaluated from the raw argument, not from the routed result */
-      seg = qo_find_func_index_seg (env, nodep, expr_str);
-      for (i = 0; i < env->nterms && seg != NULL; i++)
+      seg = NULL;
+      for (i = 0; i < env->nterms; i++)
 	{
 	  qo_termp = QO_ENV_TERM (env, i);
 	  if (bitset_is_empty (&(QO_TERM_SUBQUERIES (qo_termp)))
@@ -7563,6 +7564,14 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	      continue;
 	    }
 
+	  if (seg == NULL)
+	    {
+	      seg = qo_find_func_index_seg (env, nodep, expr_str);
+	      if (seg == NULL)
+		{
+		  break;
+		}
+	    }
 	  if (BITSET_MEMBER (QO_TERM_SEGS (qo_termp), QO_SEG_IDX (seg)))
 	    {
 	      return false;
