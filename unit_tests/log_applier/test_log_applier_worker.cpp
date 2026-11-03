@@ -132,7 +132,9 @@ namespace
 extern "C" int
 db_restart_sub (int sub_index)
 {
+#if defined (MULTI_CONN_TO_A_SERVER)
   er_init_sub_client_context ();
+#endif
   restart_calls++;
 
   if (sub_index >= blocked_from)
@@ -154,7 +156,9 @@ extern "C" int
 db_shutdown_sub ()
 {
   shutdown_calls++;
+#if defined (MULTI_CONN_TO_A_SERVER)
   er_final_sub_client_context ();
+#endif
   return NO_ERROR;
 }
 
