@@ -82,6 +82,7 @@
 #include "network_interface_cl.h"
 #include "internal_lob_marker.h"
 #include "internal_lob_stream_kind.h"
+#include "stream_session.hpp"
 #include "query_replace.h"
 
 
@@ -4806,17 +4807,18 @@ static int
 dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, DB_BIGINT byte_length,
 		       int max_col_size, DB_VALUE * content, char **buf)
 {
-  /* [리뷰] CAS가 마커로 서버 커서를 열어 드라이버용 VARCHAR/VARBIT 값으로 바꾼다.
+  /* [리뷰] CAS가 마커로 서버 다운로드를 열어 드라이버용 VARCHAR/VARBIT 값으로 바꾼다.
    * 1MiB씩 읽어도 버퍼는 읽을 길이 전체 크기다. max_col_size(setMaxFieldSize)로 먼저 자르고,
    * 자른 길이가 상한(1GiB/128MiB)을 넘을 때만 거부한다.
-   * open 실패면 close를 건너뛰고, read 실패면 close 뒤 버퍼를 푼다. */
+   * 끝까지 읽으면 서버가 핸들을 놓고, 잘라서 멈추면 여기서 놓는다. */
   DB_BIGINT size = byte_length;
   DB_BIGINT max_bytes = (db_value_type (marker) == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION
     : DB_MAX_VARBIT_PRECISION / 8;
   DB_BIGINT done = 0;
-  INT64 token = 0;
+  INT64 handle = 0;
   int nread = 0;
-  int err_code;
+  int reply_flags = 0;
+  int err_code = NO_ERROR;
 
   *buf = NULL;
   /* JDBC setMaxFieldSize asks for at most max_col_size bytes: cut first, so only what is sent is read */
@@ -4838,13 +4840,25 @@ dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, 
       return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
     }
 
-  err_code = internal_lob_stream_open_from_server (locator, locator_len, 0, &token);
   while (err_code == NO_ERROR && done < size)
     {
-      nread = 0;
-      err_code = internal_lob_stream_read_from_server (token, *buf + done,
-						       (int) MIN (size - done, INTERNAL_LOB_STREAM_MAX_CHUNK), &nread);
-      if (err_code == NO_ERROR && nread <= 0)
+      int want = (int) MIN (size - done, STREAM_READ_MAX_CHUNK);
+
+      /* the open brings the first piece; the server releases the handle at eof */
+      if (done == 0)
+	{
+	  err_code = internal_lob_read_from_open (locator, locator_len, 0, want, STREAM_FLAG_RELEASE_AT_EOF, &handle,
+						  *buf, &nread, &reply_flags);
+	}
+      else
+	{
+	  err_code = stream_from_read (handle, *buf + done, want, STREAM_FLAG_RELEASE_AT_EOF, &nread, &reply_flags);
+	}
+      if (reply_flags & STREAM_FLAG_RELEASED)
+	{
+	  handle = 0;
+	}
+      if (err_code == NO_ERROR && (nread <= 0 || ((reply_flags & STREAM_FLAG_EOF) && done + nread < size)))
 	{
 	  /* shorter than its marker says */
 	  err_code = ER_OBJ_INVALID_ARGUMENTS;
@@ -4855,9 +4869,10 @@ dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, 
 	  done += nread;
 	}
     }
-  if (token != 0)
+  /* still open when max_col_size cut the value */
+  if (handle != 0)
     {
-      (void) internal_lob_stream_close_from_server (token);
+      (void) stream_from_release (handle);
     }
   if (err_code != NO_ERROR)
     {

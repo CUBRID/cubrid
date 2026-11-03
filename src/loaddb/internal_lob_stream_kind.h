@@ -59,6 +59,13 @@
  * payload of a value is sent from its end toward offset 0, the order the reverse chunk writer consumes. */
 #define INTERNAL_LOB_LOAD_STREAM_FRAME_HEADER_SIZE (OR_INT64_SIZE)
 
+/* Download: the stored bytes of one value, read forward from an offset.  The source is opened under the
+ * transaction's snapshot and, in a server, with an IS lock on the locator's class until the transaction ends.
+ *   open config: version (int), reserved 0 (int), start offset (int64), locator text (the rest, no NUL) */
+#define STREAM_KIND_INTERNAL_LOB_READ 4
+#define INTERNAL_LOB_READ_CONFIG_VERSION 1
+#define INTERNAL_LOB_READ_CONFIG_HEADER_SIZE (OR_INT_SIZE * 2 + OR_INT64_SIZE)
+
 enum INTERNAL_LOB_STREAM_TYPE
 {
   INTERNAL_LOB_STREAM_TYPE_BLOB = 0,

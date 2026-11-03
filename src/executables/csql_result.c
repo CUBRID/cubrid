@@ -36,6 +36,7 @@
 #include "network.h"
 #include "network_interface_cl.h"
 #include "object_primitive.h"
+#include "stream_session.hpp"
 #include "porting.h"
 #include "transaction_cl.h"
 
@@ -582,9 +583,9 @@ fprint_internal_lob_stream_blob_bits (FILE * pf, const char *data, int data_len,
 static int
 fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * csql_arg, int max_chars, int justify)
 {
-  /* [리뷰] 스트림 마커를 서버 커서로 1MiB 이하 조각씩 읽어 바로 파일에 쓴다.
+  /* [리뷰] 스트림 마커를 서버 다운로드로 1MiB 이하 조각씩 읽어 바로 파일에 쓴다.
    * max_chars>0이면 CLOB은 바이트, BLOB은 hex 자리·비트 수로 자른다.
-   * 커서는 열었으면 exit 경로에서 반드시 닫는다(stream_opened). */
+   * 끝까지 읽으면 서버가 핸들을 놓고, 잘라서 멈추면 exit 경로에서 놓는다(stream_handle). */
   char lob_type = '\0';
   const char *locator = NULL;
   int locator_len = 0;
@@ -596,7 +597,7 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
   DB_BIGINT total_nibbles = 0;
   bool blob_as_binary_literal = false;
   char *buffer = NULL;
-  int buffer_size = INTERNAL_LOB_READ_MAX_CHUNK;
+  int buffer_size = STREAM_READ_MAX_CHUNK;
   bool plain_output = csql_arg->plain_output;
   /* the delimiter and enclosure options only exist for the query and loaddb output styles; the
    * other styles quote strings the way csql_db_value_as_string () does */
@@ -604,8 +605,8 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
   char column_enclosure = query_style_output ? csql_arg->column_enclosure : '\'';
   bool change_single_quote = (bool) (query_style_output && csql_arg->column_enclosure == '\'');
   int error = CSQL_SUCCESS;
-  INT64 stream_token = 0;
-  bool stream_opened = false;
+  INT64 stream_handle = 0;
+  int reply_flags = 0;
   DB_BIGINT width;
 #if !defined(WINDOWS)
   SIGNAL_HANDLER_FUNCTION pipe_save = NULL;
@@ -696,13 +697,6 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
       pipe_save = os_set_signal_handler (SIGPIPE, SIG_IGN);
       pipe_ignored = true;
 #endif /* !WINDOWS */
-
-      if (internal_lob_stream_open_from_server (locator, locator_len, 0, &stream_token) != NO_ERROR)
-	{
-	  error = CSQL_FAILURE;
-	  goto exit;
-	}
-      stream_opened = true;
     }
 
   while (offset < data_len)
@@ -710,14 +704,25 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
       DB_BIGINT remaining = data_len - offset;
       int request_size = (remaining > (DB_BIGINT) buffer_size) ? buffer_size : (int) remaining;
       int nread = 0;
+      int rc;
       int i;
 
-      if (internal_lob_stream_read_from_server (stream_token, buffer, request_size, &nread) != NO_ERROR)
+      /* the open brings the first piece; the server releases the handle at eof */
+      if (offset == 0)
 	{
-	  error = CSQL_FAILURE;
-	  goto exit;
+	  rc = internal_lob_read_from_open (locator, locator_len, 0, request_size, STREAM_FLAG_RELEASE_AT_EOF,
+					    &stream_handle, buffer, &nread, &reply_flags);
 	}
-      if (nread <= 0 || nread > request_size || offset + nread > data_len)
+      else
+	{
+	  rc = stream_from_read (stream_handle, buffer, request_size, STREAM_FLAG_RELEASE_AT_EOF, &nread, &reply_flags);
+	}
+      if (reply_flags & STREAM_FLAG_RELEASED)
+	{
+	  stream_handle = 0;
+	}
+      if (rc != NO_ERROR || nread <= 0 || nread > request_size || offset + nread > data_len
+	  || ((reply_flags & STREAM_FLAG_EOF) && offset + nread < data_len))
 	{
 	  error = CSQL_FAILURE;
 	  goto exit;
@@ -766,9 +771,10 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
     }
 
 exit:
-  if (stream_opened)
+  /* still open when the output was cut or failed */
+  if (stream_handle != 0)
     {
-      if (internal_lob_stream_close_from_server (stream_token) != NO_ERROR && error == CSQL_SUCCESS)
+      if (stream_from_release (stream_handle) != NO_ERROR && error == CSQL_SUCCESS)
 	{
 	  error = CSQL_FAILURE;
 	}

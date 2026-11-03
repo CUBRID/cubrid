@@ -59,6 +59,7 @@
 #include "db_value_printer.hpp"
 #include "network_interface_cl.h"
 #include "printer.hpp"
+#include "stream_session.hpp"
 
 #include "message_catalog.h"
 #include "string_opfunc.h"
@@ -801,7 +802,7 @@ static int
 internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int key_len, DB_BIGINT data_len,
 					  DB_BIGINT bit_length)
 {
-  /* [리뷰] 커서 하나로 앞에서 끝까지 1MiB씩 읽어 LZ4 블록으로 쓴다(전체 적재 없음).
+  /* [리뷰] 다운로드 하나로 앞에서 끝까지 1MiB씩 읽어 LZ4 블록으로 쓴다(전체 적재 없음).
    * stored_len은 압축 뒤에야 알아 고정폭으로 예약했다가 fseeko로 패치한다.
    * 실패하면 ftruncate로 엔트리를 잘라 뒤 엔트리를 읽을 수 있게 한다. */
   char *buffer = NULL;
@@ -813,8 +814,10 @@ internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int ke
   int buffer_size = INTERNAL_LOB_SIDECAR_BLOCK_SIZE;
   int comp_capacity = 0;
   int error = NO_ERROR;
-  INT64 stream_token = 0;
-  bool stream_opened = false;
+  INT64 stream_handle = 0;
+  int reply_flags = 0;
+  int request_size = 0;
+  int nread = 0;
 
   if (internal_lob_unload_fp == NULL)
     {
@@ -856,14 +859,20 @@ internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int ke
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      /* One forward-only server cursor for the whole value (the same path csql streams with).  Reading by
-       * offset instead made the server re-walk the chain from its start on every block, i.e. O(size^2). */
-      error = internal_lob_stream_open_from_server (key, key_len, 0, &stream_token);
+      /* One forward-only download for the whole value (the same path csql streams with).  Reading by
+       * offset instead made the server re-walk the chain from its start on every block, i.e. O(size^2).
+       * The open brings the first block, and the server releases the handle at eof. */
+      request_size = buffer_size;
+      error = internal_lob_read_from_open (key, key_len, 0, request_size, STREAM_FLAG_RELEASE_AT_EOF, &stream_handle,
+					   buffer, &nread, &reply_flags);
+      if (reply_flags & STREAM_FLAG_RELEASED)
+	{
+	  stream_handle = 0;
+	}
       if (error != NO_ERROR)
 	{
 	  goto exit_before_lock;
 	}
-      stream_opened = true;
     }
 
   pthread_mutex_lock (&internal_lob_unload_lock);
@@ -894,17 +903,25 @@ internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int ke
 
   while (offset < data_len)
     {
-      DB_BIGINT remaining = data_len - offset;
-      int request_size = (remaining > (DB_BIGINT) buffer_size) ? buffer_size : (int) remaining;
-      int nread = 0;
-
-      error = internal_lob_stream_read_from_server (stream_token, buffer, request_size, &nread);
-      if (error != NO_ERROR)
+      if (offset > 0)
 	{
-	  goto exit;
+	  DB_BIGINT remaining = data_len - offset;
+
+	  request_size = (remaining > (DB_BIGINT) buffer_size) ? buffer_size : (int) remaining;
+	  error = stream_from_read (stream_handle, buffer, request_size, STREAM_FLAG_RELEASE_AT_EOF, &nread,
+				    &reply_flags);
+	  if (reply_flags & STREAM_FLAG_RELEASED)
+	    {
+	      stream_handle = 0;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
-      /* [리뷰] nread 0도 오류로 본다. 커서가 EOF 전에 0바이트를 줄 수 있는지 대조. */
-      if (nread <= 0 || nread > request_size || offset + nread > data_len)
+      /* the core gives 0 bytes only with eof, so 0 or an eof short of data_len is a value shorter than its locator */
+      if (nread <= 0 || nread > request_size || offset + nread > data_len
+	  || ((reply_flags & STREAM_FLAG_EOF) && offset + nread < data_len))
 	{
 	  error = ER_FAILED;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -952,9 +969,9 @@ exit:
     }
   pthread_mutex_unlock (&internal_lob_unload_lock);
 exit_before_lock:
-  if (stream_opened)
+  if (stream_handle != 0)
     {
-      (void) internal_lob_stream_close_from_server (stream_token);
+      (void) stream_from_release (stream_handle);
     }
   if (buffer != NULL)
     {
