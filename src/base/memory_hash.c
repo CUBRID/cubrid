@@ -611,14 +611,15 @@ mht_valhash (const void *key, const unsigned int ht_size)
 
 	    /*
 	     * calculate hash without normalization if:
-	     *   - fixed numeric (is_float_numeric == false), or
-	     *   - float numeric (is_float_numeric == true) with:
-	     *     * scale is 0, or
-	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
-	     *   for float numeric with positive scale, trailing zero check is required
-	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     *   - scale is 0, or
+	     *   - precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
+	     *   for positive scale, trailing zero check is required even when precision is
+	     *   DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     * unlike mht_get_hash_number (), a fixed numeric is normalized too: the keys of one table here
+	     * (e.g. the host variables of a query cache entry) are not cast to one precision and scale
+	     * first, so 1.0 and 1.00 must hash alike.
 	     */
-	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	    if (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
 		hash = mht_1str_pseudo_key (db_get_numeric (val), DB_NUMERIC_BUF_SIZE);
 	      }
