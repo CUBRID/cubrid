@@ -161,12 +161,7 @@ extern int internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LO
 				   INTERNAL_LOB_READER &reader);
 extern int internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count);
 extern int internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos_buffer dest, int &nread);
-extern int xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, INT64 start_offset,
-				      INT64 *token);
-extern int xinternal_lob_stream_read (THREAD_ENTRY *thread_p, INT64 token, char *buf, int count, int *nread);
-extern int xinternal_lob_stream_close (THREAD_ENTRY *thread_p, INT64 token);
 extern int xinternal_lob_upload_release (THREAD_ENTRY *thread_p, INT64 token);
-extern void internal_lob_stream_purge_tran (int tran_index);
 /* outcome_out (optional): what oos_delete did with the chain, see oos_delete_outcome. */
 extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator,
 				oos_delete_outcome *outcome_out = NULL);

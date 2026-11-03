@@ -39,7 +39,6 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "server_support.h"
-#include "internal_lob_file.hpp"
 #include "session.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
@@ -47,20 +46,19 @@
 #include "memory_wrapper.hpp"
 
 /*
- * tran_server_end_streams - Drop the stream session and reader cursors of the ending transaction.
+ * tran_server_end_streams - Drop the stream session and download handles of the ending transaction.
  *
  *   An open stream session belongs to a statement that never reached END, and is dropped while its savepoint is
- *   still valid.  Reader cursors go with their transaction so an abandoned one is not held until the connection
+ *   still valid.  Download handles go with their transaction so an abandoned one is not held until the connection
  *   drops, which with pooled broker->server connections may be never.
  */
 static void
 tran_server_end_streams (THREAD_ENTRY * thread_p)
 {
-  /* [리뷰] 커밋·롤백 모든 종료 경로의 백스톱. 스트림 세션과 읽기 커서를 버린다.
+  /* [리뷰] 커밋·롤백 모든 종료 경로의 백스톱. 스트림 세션과 다운로드 핸들을 버린다.
    * 세션 abort가 세이브포인트로 되돌릴 수 있게 트랜잭션 종료 전에 부른다.
    * TT_LOADDB 워커의 배치 커밋은 연결의 스트림을 건드리지 않는다. */
   session_abort_stream_session (thread_p);
-  internal_lob_stream_purge_tran (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   /* while the transaction is still there for a source to close in */
   session_end_tran_stream_handles (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
