@@ -786,6 +786,9 @@ qo_has_aggregate_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 {
   int *found = (int *) arg;
 
+  /* a subquery stops the walk below itself only: what comes after it is walked again */
+  *continue_walk = PT_CONTINUE_WALK;
+
   if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
       *continue_walk = PT_LIST_WALK;
@@ -878,6 +881,79 @@ qo_having_row_compare (PT_NODE * attr, DB_VALUE * value, bool is_ge, bool includ
 }
 
 /*
+ * qo_having_column () - the aggregated column of SUM, AVG, MIN or MAX (x) with the histogram on it
+ *   return: the name node of the column's segment, which carries the histogram, or NULL
+ *
+ * Note: The attribute name in HAVING is not annotated; the histogram is on its segment's name.
+ */
+static PT_NODE *
+qo_having_column (QO_HAVING_ENV * henv, PT_NODE * agg)
+{
+  PT_NODE *attr, *dummy;
+  FUNC_CODE func = agg->info.function.function_type;
+  QO_NODE *node;
+  QO_SEGMENT *seg;
+
+  if (func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
+    {
+      return NULL;
+    }
+  if (func != PT_MIN && func != PT_MAX && agg->info.function.all_or_distinct == PT_DISTINCT)
+    {
+      return NULL;
+    }
+
+  attr = agg->info.function.arg_list;
+  if (attr == NULL || attr->next != NULL || qo_classify (attr) != PC_ATTR || attr->node_type == PT_EXPR)
+    {
+      return NULL;
+    }
+  attr = pt_get_end_path_node (attr);
+
+  node = lookup_node (attr, henv->env, &dummy);
+  if (node == NULL || (seg = lookup_seg (node, attr, henv->env)) == NULL || QO_SEG_PT_NODE (seg) == NULL
+      || QO_SEG_PT_NODE (seg)->info.name.histogram == NULL)
+    {
+      return NULL;
+    }
+
+  return QO_SEG_PT_NODE (seg);
+}
+
+/*
+ * qo_having_group_size () - average number of rows in a group, 1 when unknown
+ */
+static double
+qo_having_group_size (QO_HAVING_ENV * henv)
+{
+  return (henv->group_size > 1.0) ? henv->group_size : 1.0;
+}
+
+/*
+ * qo_having_has_value () - fraction of the groups whose aggregate is not NULL
+ *
+ * Note: The aggregate of a group whose x is all NULL is NULL and fails every comparison, the negated ones too.
+ *   With the group sizes geometric (see qo_having_compare ()), the chance that every row of a group is NULL is
+ *   n (1 - r) / (1 - r n), n = the NULL fraction of x. COUNT (*) is never NULL.
+ */
+static double
+qo_having_has_value (QO_HAVING_ENV * henv, PT_NODE * agg)
+{
+  PT_NODE *column;
+  double nullfrac, r;
+
+  if (agg->info.function.function_type == PT_COUNT_STAR || (column = qo_having_column (henv, agg)) == NULL)
+    {
+      return 1.0;
+    }
+
+  nullfrac = MIN (MAX (column->info.name.null_frequency, 0.0), 1.0);
+  r = 1.0 - 1.0 / qo_having_group_size (henv);
+
+  return MAX (1.0 - nullfrac * (1.0 - r) / (1.0 - r * nullfrac), 0.0);
+}
+
+/*
  * qo_having_compare () - selectivity of "aggregate op value" over the groups
  *   return: selectivity, or -1.0 if the aggregate cannot be priced
  *   henv(in): what HAVING is estimated against
@@ -887,31 +963,32 @@ qo_having_row_compare (PT_NODE * attr, DB_VALUE * value, bool is_ge, bool includ
  *   include_equal(in): >= or <=
  *
  * Note: The aggregate is mapped to a predicate on the aggregated column and estimated with its histogram.
- *   With p = selectivity of "x op c":
+ *   With p = selectivity of "x op c" over the non-NULL rows, and only the groups with a value counted
+ *   (qo_having_has_value ()):
  *     SUM (x) op c : x op c / group_size (the average row of the group)
  *     AVG (x) op c : p
- *     MAX (x) > c, MIN (x) < c : at least one row of the group satisfies x op c
- *     MAX (x) < c, MIN (x) > c : every row of the group satisfies x op c
+ *     MAX (x) > c, MIN (x) < c : at least one row of the group satisfies x op c, the rows taken as independent
+ *     MAX (x) < c, MIN (x) > c : every row of the group satisfies x op c, taken as p. Independent rows would make
+ *       it far smaller, but the rows of a group often move together (the first or last date of a user), and then
+ *       it is p; p does not go below that, the independent value can go below it by the size of the group.
  *   COUNT (*) op c is the group size op c: from the histogram of the GROUP BY column when there is one, otherwise
  *   from the average group size, and not at all when that is unknown.
  */
 static double
 qo_having_compare (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * value, bool is_ge, bool include_equal)
 {
-  PT_NODE *attr, *dummy;
+  PT_NODE *column;
   FUNC_CODE func;
-  QO_NODE *node;
-  QO_SEGMENT *seg;
   DB_VALUE threshold;
   double p, r, nullfrac, has_value, value_size, group_size;
   bool success = false;
 
-  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that every
-   * row of a group satisfies a predicate of selectivity s is s (1 - r) / (1 - r s), r = 1 - 1 / group_size.
-   * Using the average size as the size of every group instead (s ^ group_size) underestimates it many times when
-   * the sizes vary, since small groups pass far more often. */
-  group_size = (henv->group_size > 0.0) ? henv->group_size : 1.0;
-  r = 1.0 - 1.0 / MAX (group_size, 1.0);
+  /* The group sizes are unknown besides their average; taken as geometric with that mean, the chance that any
+   * row of a group satisfies a predicate of selectivity s is 1 - (1 - s) (1 - r) / (1 - r (1 - s)),
+   * r = 1 - 1 / group_size. Using the average size as the size of every group instead overestimates it when
+   * the sizes vary, since small groups pass far less often. */
+  group_size = qo_having_group_size (henv);
+  r = 1.0 - 1.0 / group_size;
 
   func = agg->info.function.function_type;
   if (func == PT_COUNT_STAR)
@@ -952,39 +1029,20 @@ qo_having_compare (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * value, bool i
       return is_ge ? p : 1.0 - p;
     }
 
-  if (func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
-    {
-      return -1.0;
-    }
-  if (func != PT_MIN && func != PT_MAX && agg->info.function.all_or_distinct == PT_DISTINCT)
-    {
-      return -1.0;
-    }
-
-  attr = agg->info.function.arg_list;
-  if (attr == NULL || attr->next != NULL || qo_classify (attr) != PC_ATTR || attr->node_type == PT_EXPR)
-    {
-      return -1.0;
-    }
-  attr = pt_get_end_path_node (attr);
-
-  /* the attribute name in HAVING is not annotated; the histogram is on its segment's name */
-  node = lookup_node (attr, henv->env, &dummy);
-  if (node == NULL || (seg = lookup_seg (node, attr, henv->env)) == NULL || QO_SEG_PT_NODE (seg) == NULL
-      || QO_SEG_PT_NODE (seg)->info.name.histogram == NULL)
+  column = qo_having_column (henv, agg);
+  if (column == NULL)
     {
       return -1.0;
     }
 
-  nullfrac = MIN (MAX (QO_SEG_PT_NODE (seg)->info.name.null_frequency, 0.0), 1.0);
-
-  /* the aggregate of a group whose x is all NULL is NULL and fails the comparison; the others aggregate their
-   * non-NULL rows only, which is what the histogram selectivity is conditioned on */
-  has_value = 1.0 - nullfrac * (1.0 - r) / (1.0 - r * nullfrac);
+  /* the groups with a value aggregate their non-NULL rows only, which is what the histogram selectivity is
+   * conditioned on */
+  has_value = qo_having_has_value (henv, agg);
   if (has_value <= 0.0)
     {
       return 0.0;
     }
+  nullfrac = MIN (MAX (column->info.name.null_frequency, 0.0), 1.0);
   value_size = MAX (group_size * (1.0 - nullfrac) / has_value, 1.0);
   r = 1.0 - 1.0 / value_size;
 
@@ -999,7 +1057,7 @@ qo_having_compare (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * value, bool i
       value = &threshold;
     }
 
-  p = qo_having_row_compare (QO_SEG_PT_NODE (seg), value, is_ge, include_equal);
+  p = qo_having_row_compare (column, value, is_ge, include_equal);
   if (p < 0.0)
     {
       return -1.0;
@@ -1008,10 +1066,6 @@ qo_having_compare (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * value, bool i
   if ((func == PT_MAX && is_ge) || (func == PT_MIN && !is_ge))
     {
       p = 1.0 - (1.0 - p) * (1.0 - r) / (1.0 - r * (1.0 - p));
-    }
-  else if (func == PT_MAX || func == PT_MIN)
-    {
-      p = p * (1.0 - r) / (1.0 - r * p);
     }
 
   return MIN (MAX (p * has_value, 0.0), 1.0);
@@ -1040,13 +1094,14 @@ qo_having_equal (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * value)
  *   return: selectivity, or -1.0 if the aggregate cannot be priced
  *   low, high(in): the bounds, NULL for an open end
  *
- * Note: P (low <= agg <= high) = P (agg >= low) + P (agg <= high) - 1 for low <= high.
+ * Note: P (low <= agg <= high) = P (agg >= low) + P (agg <= high) - P (agg is not NULL) for low <= high.
  */
 static double
 qo_having_between (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * low, bool low_equal, DB_VALUE * high,
 		   bool high_equal)
 {
-  double lp = 1.0, hp = 1.0;
+  double has_value = qo_having_has_value (henv, agg);
+  double lp = has_value, hp = has_value;
 
   if (low != NULL && (lp = qo_having_compare (henv, agg, low, true, low_equal)) < 0.0)
     {
@@ -1057,65 +1112,8 @@ qo_having_between (QO_HAVING_ENV * henv, PT_NODE * agg, DB_VALUE * low, bool low
       return -1.0;
     }
 
-  return MAX (lp + hp - 1.0, 0.0);
-}
-
-/*
- * qo_having_range () - selectivity of "aggregate RANGE (...)" over the groups, the ranges summed
- */
-static double
-qo_having_range (QO_HAVING_ENV * henv, PT_NODE * agg, PT_NODE * range)
-{
-  PARSER_CONTEXT *parser = QO_ENV_PARSER (henv->env);
-  PT_NODE *item;
-  DB_VALUE *v1, *v2;
-  double p, total = 0.0;
-
-  for (item = range; item != NULL; item = item->or_next)
-    {
-      if (item->node_type != PT_EXPR)
-	{
-	  return -1.0;
-	}
-      v1 = qo_having_value (parser, item->info.expr.arg1);
-      v2 = qo_having_value (parser, item->info.expr.arg2);
-      switch (item->info.expr.op)
-	{
-	case PT_BETWEEN_EQ_NA:
-	  p = (v1 != NULL) ? qo_having_equal (henv, agg, v1) : -1.0;
-	  break;
-	case PT_BETWEEN_GE_LE:
-	case PT_BETWEEN_GE_LT:
-	case PT_BETWEEN_GT_LE:
-	case PT_BETWEEN_GT_LT:
-	  p = (v1 != NULL && v2 != NULL)
-	    ? qo_having_between (henv, agg, v1, item->info.expr.op == PT_BETWEEN_GE_LE
-				 || item->info.expr.op == PT_BETWEEN_GE_LT, v2, item->info.expr.op == PT_BETWEEN_GE_LE
-				 || item->info.expr.op == PT_BETWEEN_GT_LE) : -1.0;
-	  break;
-	case PT_BETWEEN_GE_INF:
-	case PT_BETWEEN_GT_INF:
-	  p = (v1 != NULL) ? qo_having_between (henv, agg, v1, item->info.expr.op == PT_BETWEEN_GE_INF, NULL, false)
-	    : -1.0;
-	  break;
-	case PT_BETWEEN_INF_LE:
-	case PT_BETWEEN_INF_LT:
-	  /* the one bound of an open low end is in arg1 as well */
-	  p = (v1 != NULL) ? qo_having_between (henv, agg, NULL, false, v1, item->info.expr.op == PT_BETWEEN_INF_LE)
-	    : -1.0;
-	  break;
-	default:
-	  p = -1.0;
-	  break;
-	}
-      if (p < 0.0)
-	{
-	  return -1.0;
-	}
-      total += p;
-    }
-
-  return MIN (total, 1.0);
+  /* the two bounds together cover the groups with a value, not every group */
+  return MAX (lp + hp - has_value, 0.0);
 }
 
 /*
@@ -1125,9 +1123,10 @@ static double
 qo_having_in (QO_HAVING_ENV * henv, PT_NODE * agg, PT_NODE * list)
 {
   DB_SET *set;
-  DB_VALUE elem;
+  DB_VALUE elem, prev;
   double p, total = 0.0;
-  int i, size;
+  int i, j, size;
+  bool repeated;
 
   if (list == NULL || list->node_type != PT_VALUE || qo_classify (list) != PC_SET
       || (set = db_get_set (&list->info.value.db_value)) == NULL || (size = db_set_size (set)) <= 0)
@@ -1141,7 +1140,17 @@ qo_having_in (QO_HAVING_ENV * henv, PT_NODE * agg, PT_NODE * list)
 	{
 	  return -1.0;
 	}
-      p = DB_IS_NULL (&elem) ? 0.0 : qo_having_equal (henv, agg, &elem);
+      /* a value listed twice is counted once, as the WHERE estimate does */
+      repeated = false;
+      for (j = 0; j < i && !repeated; j++)
+	{
+	  if (db_set_get (set, j, &prev) == NO_ERROR)
+	    {
+	      repeated = (tp_value_compare (&elem, &prev, 1, 0) == DB_EQ);
+	      pr_clear_value (&prev);
+	    }
+	}
+      p = (DB_IS_NULL (&elem) || repeated) ? 0.0 : qo_having_equal (henv, agg, &elem);
       pr_clear_value (&elem);
       if (p < 0.0)
 	{
@@ -1194,7 +1203,8 @@ qo_having_aggregate_term (QO_HAVING_ENV * henv, PT_NODE * pred)
       if (op == PT_EQ || op == PT_NE)
 	{
 	  p = qo_having_equal (henv, agg, value);
-	  return (p < 0.0 || op == PT_EQ) ? p : 1.0 - p;
+	  /* <>, NOT BETWEEN and NOT IN fail on a NULL aggregate too */
+	  return (p < 0.0 || op == PT_EQ) ? p : MAX (qo_having_has_value (henv, agg) - p, 0.0);
 	}
       return qo_having_compare (henv, agg, value, (op == PT_GT || op == PT_GE), (op == PT_GE || op == PT_LE));
 
@@ -1215,14 +1225,7 @@ qo_having_aggregate_term (QO_HAVING_ENV * henv, PT_NODE * pred)
 	  }
 	p = qo_having_between (henv, agg, low, true, high, true);
       }
-      return (p < 0.0 || op == PT_BETWEEN) ? p : 1.0 - p;
-
-    case PT_RANGE:
-      if (!pt_is_aggregate_function (parser, agg))
-	{
-	  return -1.0;
-	}
-      return qo_having_range (henv, agg, other);
+      return (p < 0.0 || op == PT_BETWEEN) ? p : MAX (qo_having_has_value (henv, agg) - p, 0.0);
 
     case PT_IS_IN:
     case PT_IS_NOT_IN:
@@ -1231,9 +1234,10 @@ qo_having_aggregate_term (QO_HAVING_ENV * henv, PT_NODE * pred)
 	  return -1.0;
 	}
       p = qo_having_in (henv, agg, other);
-      return (p < 0.0 || op == PT_IS_IN) ? p : 1.0 - p;
+      return (p < 0.0 || op == PT_IS_IN) ? p : MAX (qo_having_has_value (henv, agg) - p, 0.0);
 
     default:
+      /* PT_RANGE is made over a column only (qo_convert_to_range), never over an aggregate */
       return -1.0;
     }
 }
@@ -1265,7 +1269,8 @@ qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
   (void) parser_walk_tree (QO_ENV_PARSER (henv->env), pred, qo_has_aggregate_pre, &found, NULL, NULL);
   if (found & QO_HAVING_HAS_GROUPBY_NUM)
     {
-      /* GROUPBY_NUM () is the LIMIT of the groups, which caps the estimate on its own */
+      /* GROUPBY_NUM () numbers the groups instead of filtering them: one a LIMIT was rewritten into is capped by
+       * that LIMIT (the derived table's limit cap), one written in HAVING is not estimated */
       p = 1.0;
     }
   else if (!(found & QO_HAVING_HAS_AGGREGATE))
@@ -1324,10 +1329,11 @@ qo_having_pred_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
  *   henv(in): what HAVING is estimated against
  *   having(in): HAVING conjuncts
  *
- * Note: A predicate without an aggregate is estimated as a WHERE term. A comparison, BETWEEN, IN or RANGE of an
+ * Note: A predicate without an aggregate is estimated as a WHERE term. A comparison, BETWEEN or IN of an
  *   aggregate with constants is estimated by qo_having_aggregate_term () from the histograms; any other aggregate
  *   predicate takes QO_HAVING_DEFAULT_SELECTIVITY. AND, OR and NOT combine as in WHERE. A predicate with
- *   GROUPBY_NUM () is a LIMIT on the groups and is left to the LIMIT handling.
+ *   GROUPBY_NUM () is not estimated: one a LIMIT was rewritten into is capped by that LIMIT, one written in HAVING
+ *   is not.
  */
 static double
 qo_having_selectivity (QO_HAVING_ENV * henv, PT_NODE * having)
@@ -1344,11 +1350,38 @@ qo_having_selectivity (QO_HAVING_ENV * henv, PT_NODE * having)
 }
 
 /*
+ * qo_having_seg_filtered () - is the segment filtered by a term on it alone
+ */
+static bool
+qo_having_seg_filtered (QO_ENV * env, QO_SEGMENT * seg)
+{
+  QO_TERM *term;
+  int i;
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (QO_TERM_CLASS (term) == QO_TC_SARG && bitset_cardinality (&QO_TERM_SEGS (term)) == 1
+	  && BITSET_MEMBER (QO_TERM_SEGS (term), QO_SEG_IDX (seg)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_having_env_init () - what HAVING of the plan is estimated against
  *   group_size(in): average number of rows in a group, 0 when unknown
+ *   whole_group_size(in): average number of rows in a group before the filters, 0 when unknown
+ *
+ * Note: The filters and joins are taken to thin every group alike, which group_size says. A filter on the single
+ *   GROUP BY column alone does not: it drops whole groups and leaves the others whole, so their size is the one
+ *   before the filters.
  */
 static void
-qo_having_env_init (QO_HAVING_ENV * henv, QO_PLAN * plan, double group_size)
+qo_having_env_init (QO_HAVING_ENV * henv, QO_PLAN * plan, double group_size, double whole_group_size)
 {
   PT_NODE *tree = QO_ENV_PT_TREE (plan->info->env);
   PT_NODE *group_by, *attr, *dummy;
@@ -1371,13 +1404,18 @@ qo_having_env_init (QO_HAVING_ENV * henv, QO_PLAN * plan, double group_size)
     }
   attr = pt_get_end_path_node (attr);
   node = lookup_node (attr, henv->env, &dummy);
-  if (node == NULL || (seg = lookup_seg (node, attr, henv->env)) == NULL || QO_SEG_PT_NODE (seg) == NULL
-      || QO_SEG_PT_NODE (seg)->info.name.histogram == NULL)
+  if (node == NULL || (seg = lookup_seg (node, attr, henv->env)) == NULL || QO_SEG_PT_NODE (seg) == NULL)
     {
       return;
     }
 
-  if (!histogram_get_total_rows (QO_SEG_PT_NODE (seg), &rows) || rows <= 0.0)
+  if (whole_group_size > 0.0 && qo_having_seg_filtered (henv->env, seg))
+    {
+      henv->group_size = whole_group_size;
+    }
+
+  if (QO_SEG_PT_NODE (seg)->info.name.histogram == NULL || !histogram_get_total_rows (QO_SEG_PT_NODE (seg), &rows)
+      || rows <= 0.0)
     {
       return;
     }
@@ -1388,7 +1426,7 @@ qo_having_env_init (QO_HAVING_ENV * henv, QO_PLAN * plan, double group_size)
     }
 
   henv->group_attr = QO_SEG_PT_NODE (seg);
-  henv->group_scale = group_size / (rows / ndv);
+  henv->group_scale = henv->group_size / (rows / ndv);
 }
 
 /*
@@ -1440,7 +1478,7 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
       estimate_rows = expected_nrows;
       if (having != NULL)
 	{
-	  qo_having_env_init (&henv, plan, 0.0);
+	  qo_having_env_init (&henv, plan, 0.0, 0.0);
 	  estimate_rows = MAX (expected_nrows * qo_having_selectivity (&henv, having), 1.0);
 	}
 
@@ -1467,7 +1505,7 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
   if (having != NULL && estimate_ndv > 0)
     {
       /* only the groups that pass HAVING are returned */
-      qo_having_env_init (&henv, plan, expected_nrows / estimate_ndv);
+      qo_having_env_init (&henv, plan, expected_nrows / estimate_ndv, (group_ndv > 0) ? total_nrows / group_ndv : 0.0);
       estimate_ndv = MAX ((INT64) (estimate_ndv * qo_having_selectivity (&henv, having)), 1);
     }
 

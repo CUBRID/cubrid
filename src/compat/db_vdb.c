@@ -303,6 +303,13 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
   replan = histogram_bind_watch_check (parser, statement, ws, hinted ? BIND_WATCH_HINT_BAND : BIND_WATCH_BAND, &usable);
   if (!usable)
     {
+      if (statement->flag.hv_pred_plan_unpeeked)
+	{
+	  /* the plan was chosen with unbound markers on predicates the planner prices with a value but
+	   * the fingerprint cannot watch -- COUNT (*) > ? or SUM (x) > ? in HAVING (CBRD-27811): price
+	   * them once with the first values, as every unpeeked plan is */
+	  return BIND_WATCH_REPLAN;
+	}
       /* nothing in this statement is priced by a histogram, and that cannot change while this
        * plan lives -- the plan is invalidated together with the statistics */
       return BIND_WATCH_STOP;

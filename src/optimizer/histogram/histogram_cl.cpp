@@ -2930,7 +2930,7 @@ bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
  *   Both the fingerprint walk and the predicate-candidate walk must agree on what counts as
  *   such a predicate; keeping the test here prevents the two from drifting apart.
  * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}; the column may
- *                  be the argument of a SUM, AVG, MIN or MAX in HAVING
+ *                  be the argument of an AVG, MIN or MAX in HAVING
  * node (in)      : expression node to test
  * out_name (out) : the column node (end of a path expression), NULL if not matched
  * out_hv (out)   : the host-variable node, NULL if not matched
@@ -3006,8 +3006,39 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
   return false;
 }
 
-/* the column a host variable is compared with through this operand: the column itself, or the column that a
- * SUM, AVG, MIN or MAX of HAVING aggregates (CBRD-27811: HAVING prices those with the column's histogram) */
+/* is this a HAVING aggregate the planner prices with a value (CBRD-27811): COUNT (*), MIN, MAX, or SUM and AVG
+ * without DISTINCT, the others over a single column */
+static bool
+histogram_is_priced_aggregate (const PT_NODE *operand)
+{
+  if (operand == NULL || operand->node_type != PT_FUNCTION)
+    {
+      return false;
+    }
+
+  const FUNC_CODE func = operand->info.function.function_type;
+  if (func == PT_COUNT_STAR)
+    {
+      return true;
+    }
+  if (func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
+    {
+      return false;
+    }
+  if ((func == PT_SUM || func == PT_AVG) && operand->info.function.all_or_distinct == PT_DISTINCT)
+    {
+      return false;
+    }
+
+  const PT_NODE *arg = operand->info.function.arg_list;
+  return arg != NULL && arg->next == NULL && pt_get_end_path_node ((PT_NODE *) arg) != NULL
+	 && pt_get_end_path_node ((PT_NODE *) arg)->node_type == PT_NAME;
+}
+
+/* the column a host variable is compared with through this operand: the column itself, or the column that an
+ * AVG, MIN or MAX of HAVING aggregates, which the planner prices as the column compared with the value. SUM is
+ * priced as the column compared with the value over the group size, which the fingerprint cannot see, and
+ * COUNT (*) has no column: they get the first-execution replan only (histogram_is_having_hv_predicate ()). */
 static PT_NODE *
 histogram_hv_operand_column (PT_NODE *operand)
 {
@@ -3015,8 +3046,7 @@ histogram_hv_operand_column (PT_NODE *operand)
     {
       const FUNC_CODE func = operand->info.function.function_type;
 
-      if ((func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
-	  || operand->info.function.arg_list == NULL || operand->info.function.arg_list->next != NULL)
+      if ((func != PT_AVG && func != PT_MIN && func != PT_MAX) || !histogram_is_priced_aggregate (operand))
 	{
 	  return NULL;
 	}
@@ -3098,6 +3128,43 @@ struct hv_pred_ctx
   bool found;
 };
 
+/* a HAVING aggregate the planner prices with a value, compared with a user host variable: COUNT (*) > ?,
+ * SUM (x) <= ?, MAX (x) BETWEEN ? AND ? and the like (CBRD-27811). Planned with unbound markers, the planner
+ * takes a default for it, so the first execution must replan under the values. */
+static bool
+histogram_is_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  PT_NODE *a1 = node->info.expr.arg1;
+  PT_NODE *a2 = node->info.expr.arg2;
+
+  switch (node->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LT:
+    case PT_LE:
+      return (histogram_is_priced_aggregate (a1) && histogram_is_user_host_var (parser, a2))
+	     || (histogram_is_priced_aggregate (a2) && histogram_is_user_host_var (parser, a1));
+
+    case PT_BETWEEN:
+    case PT_NOT_BETWEEN:
+      return histogram_is_priced_aggregate (a1) && a2 != NULL && a2->node_type == PT_EXPR
+	     && a2->info.expr.op == PT_BETWEEN_AND
+	     && (histogram_is_user_host_var (parser, a2->info.expr.arg1)
+		 || histogram_is_user_host_var (parser, a2->info.expr.arg2));
+
+    default:
+      return false;
+    }
+}
+
 /* structural check only (no value fetch): is there a (column op ?) predicate that the
  * bind-sensitive planner could price? Used at plan generation, where host variables carry
  * no execution values, to mark a plan as chosen under unbound markers. */
@@ -3107,7 +3174,7 @@ hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
   hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
 
   if (histogram_split_hv_predicate (parser, node, NULL, NULL, NULL)
-      || histogram_split_hv_range (parser, node, NULL))
+      || histogram_split_hv_range (parser, node, NULL) || histogram_is_having_hv_predicate (parser, node))
     {
       ctx->found = true;
       *continue_walk = PT_STOP_WALK;
