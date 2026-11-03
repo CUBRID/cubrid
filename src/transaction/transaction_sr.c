@@ -61,6 +61,8 @@ tran_server_end_streams (THREAD_ENTRY * thread_p)
    * TT_LOADDB 워커의 배치 커밋은 연결의 스트림을 건드리지 않는다. */
   session_abort_stream_session (thread_p);
   internal_lob_stream_purge_tran (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  /* while the transaction is still there for a source to close in */
+  session_end_tran_stream_handles (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 /*

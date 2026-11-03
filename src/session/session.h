@@ -39,6 +39,7 @@
 // forward definitions
 struct xasl_cache_ent;
 class stream_session;
+class stream_handle_table;
 
 extern void session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
@@ -99,6 +100,8 @@ extern bool session_has_stream_session (THREAD_ENTRY * thread_p);
 extern void session_end_stream_session (THREAD_ENTRY * thread_p);
 extern bool session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p);
 extern void session_abort_stream_session (THREAD_ENTRY * thread_p);
+extern stream_handle_table *session_get_stream_handles (THREAD_ENTRY * thread_p);
+extern void session_end_tran_stream_handles (THREAD_ENTRY * thread_p, int tran_index);
 extern int session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID * class_oid,
 					     DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
 extern int session_internal_lob_upload_begin (THREAD_ENTRY * thread_p, DB_TYPE type, DB_BIGINT data_length,

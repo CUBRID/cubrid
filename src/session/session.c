@@ -34,6 +34,7 @@
 #include "system.h"
 #include "session.h"
 #include "stream_session.hpp"
+#include "stream_handle.hpp"
 #include "internal_lob_stream_kind.h"
 #include "internal_lob_dml_session.hpp"
 #include "internal_lob_upload.hpp"
@@ -147,6 +148,7 @@ struct session_state
 
   load_session *load_session_p;
   stream_session *stream_session_p;
+  stream_handle_table *stream_handles_p;
   internal_lob_upload_store *internal_lob_upload_store_p;
   PL_SESSION *pl_session_p;
 
@@ -252,11 +254,13 @@ static void session_control_daemon_destroy ();
 session_state::session_state ()
 {
   pthread_mutex_init (&mutex, NULL);
+  stream_handles_p = new stream_handle_table ();
 }
 
 session_state::~session_state ()
 {
   pthread_mutex_destroy (&mutex);
+  delete stream_handles_p;
 }
 // *INDENT-ON*
 
@@ -273,6 +277,8 @@ session_state_alloc (void)
   if (state != NULL)
     {
       pthread_mutex_init (&state->mutex, NULL);
+      /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
+      state->stream_handles_p = new stream_handle_table ();
     }
   return (void *) state;
 }
@@ -288,6 +294,7 @@ session_state_free (void *st)
   if (st != NULL)
     {
       pthread_mutex_destroy (&((SESSION_STATE *) st)->mutex);
+      delete ((SESSION_STATE *) st)->stream_handles_p;
       free (st);
       return NO_ERROR;
     }
@@ -3452,6 +3459,57 @@ session_abort_stream_session (THREAD_ENTRY * thread_p)
 #endif /* not SERVER_MODE */
 }
 
+#if !defined (SERVER_MODE)
+/* SA has one client and no connection: one table for the process, so a transaction end purges it without a
+ * session lookup that could set an error inside the commit. Never freed, as it may hold handles at exit. */
+static stream_handle_table *
+session_sa_stream_handles (void)
+{
+  static stream_handle_table *table = new stream_handle_table ();
+
+  return table;
+}
+#endif /* !SERVER_MODE */
+
+/*
+ * session_get_stream_handles () - The handles this session's client holds between stream requests
+ *   return: the session's table, or NULL with an error set
+ */
+stream_handle_table *
+session_get_stream_handles (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  return state_p != NULL ? state_p->stream_handles_p : NULL;
+#else /* SERVER_MODE */
+  (void) thread_p;
+  return session_sa_stream_handles ();
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * session_end_tran_stream_handles () - Release the STREAM_SCOPE_TRAN handles of an ending transaction
+ *   tran_index(in): the transaction that ends
+ *
+ * Every transaction end comes through here, including those on threads with no
+ * session; they hold no handles and are passed over without an error.
+ */
+void
+session_end_tran_stream_handles (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return;
+    }
+
+  thread_p->conn_entry->session_p->stream_handles_p->end_tran (thread_p, tran_index);
+#else /* SERVER_MODE */
+  session_sa_stream_handles ()->end_tran (thread_p, tran_index);
+#endif /* !SERVER_MODE */
+}
+
 bool
 session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p)
 {
@@ -3686,6 +3744,8 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
       delete session->stream_session_p;
       session->stream_session_p = NULL;
     }
+
+  session->stream_handles_p->clear (thread_p);
 #endif
 }
 
