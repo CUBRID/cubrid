@@ -540,10 +540,10 @@ struct cte_proc_node
  * Macros for buildlist block
  */
 
-/* BUILDLIST_PROC_NODE.g_first_tuple */
-#define XASL_G_FIRST_TUPLE_NONE     0	/* nowhere: the first row is aggregated like the others */
-#define XASL_G_FIRST_TUPLE_KEEP     1	/* in its hash entry: the output reads more of the row than the keys */
-#define XASL_G_FIRST_TUPLE_OUTPUT   2	/* in the list as it is: WITH ROLLUP sorts every group's first row */
+/* BUILDLIST_PROC_NODE.g_first_tuple; KEEP and OUTPUT keep the values of the former g_output_first_tuple */
+#define XASL_G_FIRST_TUPLE_KEEP     0	/* in its hash entry: the output reads more of the row than the keys */
+#define XASL_G_FIRST_TUPLE_OUTPUT   1	/* in the list as it is: WITH ROLLUP sorts every group's first row */
+#define XASL_G_FIRST_TUPLE_NONE     2	/* nowhere: the first row is aggregated like the others */
 
 #define XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE   0x01
 #define XASL_G_GRBYNUM_FLAG_SCAN_CHECK      0x02
