@@ -643,7 +643,6 @@ static int pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, 
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
-static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p);
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
@@ -32205,44 +32204,6 @@ error_return:
       parser_free_tree (parser, new_order_by);
     }
   return NULL;
-}
-
-/*
- * pt_is_sort_list_covered () - same as qfile_is_sort_list_covered ()
- *   return: true or false
- *   parser (in) : parser context
- *   covering_list(in): covering sort item list pointer
- *   covered_list(in): covered sort item list pointer
- *
- * Note: if covering_list covers covered_list returns true.
- *       otherwise, returns false.
- */
-static bool
-pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
-{
-  SORT_LIST *s1, *s2;
-
-  if (covered_list_p == NULL)
-    {
-      return false;
-    }
-
-  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
-    {
-      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
-	{
-	  return false;
-	}
-    }
-
-  if (s1 == NULL && s2)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
 }
 
 /*
