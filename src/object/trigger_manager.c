@@ -4172,6 +4172,8 @@ drop_block_procedure (TR_TRIGGER * trigger)
 
   if (error == ER_SP_NOT_EXIST)
     {
+      /* the procedure may be left under another name, so the missing name is logged */
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, trigger->block_sp_name);
       er_clear ();
       error = NO_ERROR;
     }
