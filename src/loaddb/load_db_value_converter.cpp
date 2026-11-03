@@ -1132,7 +1132,18 @@ namespace cubload
 	new_len--;
       }
 
-    assert (new_len > 0);
+    if (new_len == 0)
+      {
+	/*
+	 * An empty reference, ^E''. Nothing names a file, and the rest of this function
+	 * has no input: it reads the type from str[0] and the size, the locator and the
+	 * meta data from what follows. The column takes a null, which is what the
+	 * standalone loader has always stored for it.
+	 */
+	db_make_null (val);
+	return NO_ERROR;
+      }
+
     assert (str[0] == 'B' || str[0] == 'C');
 
     if (str[0] == 'B')
