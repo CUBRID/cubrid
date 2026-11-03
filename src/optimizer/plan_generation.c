@@ -2474,7 +2474,7 @@ mark_following_joins (XASL_NODE * sa_scan)
  *	 iterator runs every scan before it again from the outer for each partition. Driven per outer row
  *	 like a following join, it walks its partitions within the row instead, and its memo spans the walk
  *	 (CBRD-27866). The scans after it are driven per outer row too, so a class hierarchy (spec->next),
- *	 which only the iterator moves to its next class, keeps the iterator, and so does an outer join.
+ *	 which only the iterator moves to its next class, keeps the iterator (qo_nl_inner_partitions_walk_per_row ()).
  */
 static bool
 nl_inner_can_walk_partitions_per_row (XASL_NODE * scan)
@@ -2491,7 +2491,7 @@ nl_inner_can_walk_partitions_per_row (XASL_NODE * scan)
     {
       for (spec = xp->spec_list; spec != NULL; spec = spec->next)
 	{
-	  if (spec->next != NULL || spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	  if (spec->next != NULL)
 	    {
 	      return false;
 	    }
@@ -2609,26 +2609,6 @@ nl_inner_prunes_per_row (QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
   bitset_delset (&scan_terms);
 
   return prunes;
-}
-
-/*
- * nl_inner_scan_locks_rows () - whether the inner scans of the query lock the rows they read
- *   return: bool
- *   env(in):
- *
- * Note: a scan that locks its rows has no memo (qexec_execute_mainblock_internal ()) and opens each partition again
- *	 to lock it (qexec_can_switch_index_partition ()), so walked per outer row it switches its scan to every
- *	 partition for every outer row. Such a partitioned inner is walked per row only when it prunes per row
- *	 (CBRD-27866).
- */
-static bool
-nl_inner_scan_locks_rows (QO_ENV * env)
-{
-  PT_NODE *tree = QO_ENV_PT_TREE (env);
-
-  return (tree == NULL || !PT_IS_SELECT (tree)
-	  || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE
-				       | PT_SELECT_INFO_IS_MERGE_QUERY));
 }
 
 /*
@@ -2915,19 +2895,20 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  mark_access_as_semi_anti_join (parser, scan, qo_plan_semi_anti_join_type (inner));
 		  mark_following_joins (scan);
 		}
-	      else if (join_type == JOIN_INNER && nl_inner_can_walk_partitions_per_row (scan))
-		{
-		  bool prunes = nl_inner_prunes_per_row (outer, inner, &predset);
 
-		  if (prunes || !nl_inner_scan_locks_rows (env))
+	      if (nl_inner_can_walk_partitions_per_row (scan))
+		{
+		  /* a partitioned inner walks its partitions per outer row (CBRD-27866): a SEMI / ANTI inner and the
+		   * scans after it are driven per outer row already, and an outer join returns its NULL row once */
+		  if (!XASL_IS_NL_SEMI_OR_ANTI (scan))
 		    {
 		      XASL_SET_FLAG (scan, XASL_NL_FOLLOWING_JOIN);
-		      XASL_SET_FLAG (scan, XASL_NL_PER_ROW_PARTITIONS);
 		      mark_following_joins (scan);
-		      if (prunes)
-			{
-			  ACCESS_SPEC_SET_FLAG (scan->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW);
-			}
+		    }
+		  XASL_SET_FLAG (scan, XASL_NL_PER_ROW_PARTITIONS);
+		  if (nl_inner_prunes_per_row (outer, inner, &predset))
+		    {
+		      ACCESS_SPEC_SET_FLAG (scan->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW);
 		    }
 		}
 

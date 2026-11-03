@@ -11951,9 +11951,9 @@ qexec_free_partition_scan_caches (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * sp
  *   spec(in): the partitioned spec
  *   xasl(in): its scan proc
  *
- * Note: only a plain serial index scan of a select, walked per outer row (CBRD-27866). Index skip scan, loose index
- *	 scan and multiple range optimization keep state for the index of one partition, and a locking scan decides
- *	 its row locks per class when it is opened.
+ * Note: only a plain serial index scan walked per outer row (CBRD-27866). Index skip scan, loose index scan and
+ *	 multiple range optimization keep state for the index of one partition. A locking scan decides per class
+ *	 whether its row locks end with the statement, which the switch decides again (scan_set_upddel_target ()).
  */
 static bool
 qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
@@ -11961,7 +11961,6 @@ qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
   return (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && spec->type == TARGET_CLASS
 	  && spec->access == ACCESS_METHOD_INDEX && spec->indexptr != NULL && spec->s_id.type == S_INDX_SCAN
 	  && spec->s_id.status != S_CLOSED && spec->s_id.s.isid.bt_attr_ids != NULL
-	  && spec->s_id.scan_op_type == S_SELECT && !spec->s_id.mvcc_select_lock_needed
 	  && !spec->indexptr->use_iss && spec->indexptr->ils_prefix_len == 0 && !spec->s_id.s.isid.multi_range_opt.use);
 }
 
@@ -12016,6 +12015,15 @@ qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   for (first = spec->parts; first != NULL && spec->row_pruning != NULL && first->row_pruned; first = first->next)
     {
       ;
+    }
+
+  if (first == NULL && spec->parts != NULL
+      && (spec->single_fetch == QPROC_NO_SINGLE_OUTER || XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN)))
+    {
+      /* no partition can hold the row's key, but an outer join returns its NULL row and an ANTI inner lets the
+       * row through only once a partition is scanned and comes up empty */
+      first = spec->parts;
+      first->row_pruned = false;
     }
 
   if (first != NULL && first == spec->curent && spec->s_id.status == S_STARTED)
@@ -12433,6 +12441,12 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       memoize_scan =
 	qexec_execute_nljoin_with_memoize (thread_p, &memoize_success, xasl, xasl_state, ignore, next_scan_fnc);
 
+      if (memoize_success && xasl->spec_list != NULL)
+	{
+	  /* the memo answered the row: a re-entry for it must find the latch the answer set, not open the
+	   * partition the rewind left for a miss (CBRD-27866) */
+	  xasl->spec_list->row_rewind_pending = false;
+	}
       if (memoize_scan != S_SUCCESS || memoize_success)
 	{
 	  return memoize_scan;
@@ -12473,7 +12487,19 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   /* execute scan */
   do
     {
+      if (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	{
+	  /* an outer join walks the partitions of the row: the last one returns the NULL row when no partition
+	   * had a row (CBRD-27866) */
+	  xasl->curr_spec->s_id.single_fetch =
+	    qexec_row_partition_has_next (xasl->curr_spec) ? QPROC_NO_SINGLE_INNER : QPROC_NO_SINGLE_OUTER;
+	}
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+      if (sc_scan == S_SUCCESS && QEXEC_IS_DEFERRED_PARTITION_WALK (xasl)
+	  && xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	{
+	  xasl->curr_spec->s_id.single_fetched = true;
+	}
       if (sc_scan == S_END && xasl->memoize_storage
 	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
 	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL))
@@ -12500,6 +12526,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493). A deferred walk
 	   * stops on its last partition and leaves it open for the next row to reuse (CBRD-27866). */
 	  SCAN_CODE sb_scan = S_END;
+	  bool row_fetched = xasl->curr_spec->s_id.single_fetched;
+
 	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
 	    {
 	      sb_scan = qexec_next_scan_block (thread_p, xasl);
@@ -12510,6 +12538,11 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	  if (sb_scan == S_SUCCESS)
 	    {
+	      /* the switch starts the scan afresh: an outer join remembers a row of an earlier partition */
+	      if (xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+		{
+		  xasl->curr_spec->s_id.single_fetched = row_fetched;
+		}
 	      continue;
 	    }
 
@@ -12530,7 +12563,18 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  && xasl->curr_spec->parts != NULL && !xasl->curr_spec->s_id.single_fetched)
 	{
 	  ACCESS_SPEC_TYPE *sa_curr_spec = xasl->curr_spec;
-	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	  SCAN_CODE sb_scan = S_END;
+
+	  /* a deferred walk stops on its last partition and leaves it open for the next row to reuse (CBRD-27866);
+	   * the latch keeps a re-entry for this row from scanning it again */
+	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
+	    {
+	      sb_scan = qexec_next_scan_block (thread_p, xasl);
+	    }
+	  else
+	    {
+	      sa_curr_spec->s_id.single_fetched = true;
+	    }
 	  if (sb_scan == S_ERROR)
 	    {
 	      return S_ERROR;
@@ -12552,7 +12596,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
 	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	    {
-	      /* curr_spec is NULL now (the last partition's scan was closed); latch the spec we scanned */
+	      /* curr_spec is NULL now (the last partition's scan was closed) unless a deferred walk stopped on it;
+	       * latch the spec we scanned */
 	      sa_curr_spec->s_id.single_fetched = true;
 	      sa_curr_spec->s_id.qualified_block = true;
 	      return qexec_execute_sa_anti_survive (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
@@ -12990,6 +13035,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
+  /* the range filter a locking scan evaluates again (MVCC reevaluation) reads the range attribute cache */
+  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_range);
+  qexec_reset_pred_expr (spec->where_range);
 
   if (spec->curent == NULL)
     {

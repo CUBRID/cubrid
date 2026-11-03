@@ -4913,8 +4913,12 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	}
       else if (IS_OUTER_JOIN_TYPE (join_type))
 	{
-	  /* for outer join, if inner plan is a scan of classes in hierarchy */
-	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node))
+	  /* for outer join, if inner plan is a scan of classes in hierarchy: the scan block iterator would return
+	   * the NULL row of each class. A partitioned table is walked per outer row instead, which returns it once
+	   * after the last partition (CBRD-27866), unless a class hierarchy scan of the query could follow it, which
+	   * only the iterator moves to its next class (gen_inner ()). */
+	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
+	      && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node))
 	    {
 	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
 	    }
@@ -5558,6 +5562,40 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
     }
 
   return MIN (rows, calls);
+}
+
+/*
+ * qo_nl_inner_partitions_walk_per_row () - whether a nested-loop inner scan of the node walks its partitions per
+ *	outer row
+ *   return: bool
+ *   node(in): the inner node
+ *
+ * Note: a partitioned table, the only class of its node, is walked per outer row (plan_generation.c,
+ *	 nl_inner_can_walk_partitions_per_row ()) unless a class hierarchy scan follows it, which only the scan block
+ *	 iterator moves to its next class: so when the query reads no class hierarchy (CBRD-27866).
+ */
+bool
+qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
+{
+  QO_ENV *env = QO_NODE_ENV (node);
+  int i;
+
+  if (!QO_NODE_IS_CLASS_PARTITIONED (node) || QO_NODE_INFO_N (node) != 1)
+    {
+      return false;
+    }
+
+  for (i = 0; i < env->nnodes; i++)
+    {
+      QO_NODE *other = QO_ENV_NODE (env, i);
+
+      if (QO_NODE_INFO (other) != NULL && QO_NODE_INFO_N (other) > 1)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
@@ -13110,13 +13148,14 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
   if (nodep != NULL && QO_NODE_IS_CLASS_HIERARCHY (nodep))
     {
       /* Class hierarchies are split into scan blocks which cannot be used for index joins. However, if the class
-       * hierarchy is a partitioning hierarchy, we can use an index join for inner joins
+       * hierarchy is a partitioning hierarchy, we can use an index join for inner joins, and for outer joins when
+       * the partitions are walked per outer row, which returns the NULL row once (CBRD-27866)
        */
       if (!QO_NODE_IS_CLASS_PARTITIONED (nodep))
 	{
 	  return 0;
 	}
-      else if (join_type != JOIN_INNER)
+      else if (join_type != JOIN_INNER && !qo_nl_inner_partitions_walk_per_row (nodep))
 	{
 	  return 0;
 	}
