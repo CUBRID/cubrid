@@ -20918,6 +20918,36 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 	}
     }
 
+  while (!bts->end_scan && bts->force_restart_from_root)
+    {
+      /* Descending scan could not latch the previous leaf and returned without a key, its leaf released: reading the
+       * current position here would make a row of the released leaf's slot 0. Locate again as btree_range_scan does,
+       * from the start if no key was found yet, else from the last consumed key. */
+      assert (bts->use_desc_index);
+      btree_log_if_enabled ("Notification: descending key info scan had to be interrupted and restarted from root.\n");
+      if (bts->C_page != NULL)
+	{
+	  /* The btree_range_scan_resume() function assumes that cur_key is decompressed.
+	   * Decompress it before doing pgbuf_unfix() on C_page. */
+	  btree_check_decompress_key (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	}
+      if (!bts->is_scan_started)
+	{
+	  error_code = btree_range_scan_start (thread_p, bts);
+	}
+      else
+	{
+	  error_code = btree_range_scan_resume (thread_p, bts);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
   if (bts->end_scan)
     {
       /* Reached the end of leaf level */
