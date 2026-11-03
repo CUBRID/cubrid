@@ -35,6 +35,7 @@
 #include "session.h"
 
 #include "boot_sr.h"
+#include "crypt_opfunc.h"
 #include "jansson.h"
 #include "critical_section.h"
 #include "error_manager.h"
@@ -54,6 +55,8 @@
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
+
+#include <openssl/crypto.h>
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -114,6 +117,8 @@ struct session_state
   SESSION_STATE *next;		/* used in hash table */
   pthread_mutex_t mutex;	/* state mutex */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
+
+  char secret[SESSION_SECRET_SIZE];	/* random per session; only its holder can reattach */
 
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
@@ -311,6 +316,7 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
+  memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
   return NO_ERROR;
 }
@@ -629,18 +635,22 @@ session_states_finalize (THREAD_ENTRY * thread_p)
  * session_state_create () - Create a sessions state with the specified id
  *   return: NO_ERROR or error code
  *   session_id (in) : the session id
+ *   secret (out) : the new session's secret
  *
  * Note: This function creates and adds a sessions state object to the
  *       sessions state memory hash. This function should be called when a
  *	 session starts.
  */
 int
-session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
+session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id, char *secret)
 {
   SESSION_STATE *session_p = NULL;
   SESSION_ID next_session_id;
+  int error;
 
-  assert (id != NULL);
+  assert (id != NULL && secret != NULL);
+
+  *id = DB_EMPTY_SESSION;
 
 #if defined (SERVER_MODE)
   if (thread_p && thread_p->conn_entry && thread_p->conn_entry->session_p)
@@ -674,6 +684,13 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
     }
 #endif
 
+  /* after detaching the previous session, so that a failure does not leave it on the connection */
+  error = crypt_generate_random_bytes (thread_p, secret, SESSION_SECRET_SIZE);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   /* create search key */
   next_session_id = ATOMIC_INC_32 (&sessions.last_session_id, 1);
   *id = next_session_id;
@@ -690,6 +707,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
+
+  memcpy (session_p->secret, secret, SESSION_SECRET_SIZE);
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
@@ -757,20 +776,20 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
     }
 
 #if defined (SERVER_MODE)
+  /* the id comes from the request; only the connection the session is attached to may end it */
+  if (thread_p->conn_entry == NULL || thread_p->conn_entry->session_p != session_p)
+    {
+      pthread_mutex_unlock (&session_p->mutex);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_NOT_ATTACHED, 1, id);
+      return ER_SES_SESSION_NOT_ATTACHED;
+    }
+
   assert (session_p->ref_count > 0);
 
-  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
-      && thread_p->conn_entry->session_p == session_p)
-    {
-      thread_p->conn_entry->session_p = NULL;
-      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+  thread_p->conn_entry->session_p = NULL;
+  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
 
-      session_state_decrease_ref_count (thread_p, session_p);
-    }
-  else
-    {
-      /* do we accept this case?? if we don't, add safe-guard here. */
-    }
+  session_state_decrease_ref_count (thread_p, session_p);
 
   logtb_set_current_user_active (thread_p, false);
 
@@ -806,9 +825,10 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
  *			      exists and update the timeout for it
  *   return	    : NO_ERROR or error code
  *   id(in) : the identifier for the session
+ *   secret(in) : the secret the session was created with
  */
 int
-session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
+session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char *secret)
 {
   SESSION_STATE *session_p = NULL;
   int error = NO_ERROR;
@@ -855,6 +875,13 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
+    }
+
+  if (CRYPTO_memcmp (session_p->secret, secret, SESSION_SECRET_SIZE) != 0)
+    {
+      pthread_mutex_unlock (&session_p->mutex);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_SECRET_MISMATCH, 1, id);
+      return ER_SES_SESSION_SECRET_MISMATCH;
     }
 
   /* update session active time */

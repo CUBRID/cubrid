@@ -1322,7 +1322,10 @@ $ LOADDB
 1300 ログの回復: %1$sフェーズが終了しました。
 1301 ログの回復：%1$sの進行状況：（%2$lld/%3$lld）、%4$.2fパーセント、経過時間：%5$.2f（s）、推定残り時間：%6$.2f （s）。
 
-1302 ラストエラー
+1302 The secret of session %1$u does not match.
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
