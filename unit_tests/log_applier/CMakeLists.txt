@@ -32,6 +32,7 @@ set (TEST_LOG_APPLIER_SRC
   test_log_applier_pending.cpp
   test_log_applier_queues.cpp
   test_log_applier_worker.cpp
+  test_log_applier_wset_label.cpp
   ${APPLIER_DIR}/log_applier_coordinator.cpp
   ${APPLIER_DIR}/log_applier_inflight.cpp
   ${APPLIER_DIR}/log_applier_gate.cpp
@@ -40,6 +41,7 @@ set (TEST_LOG_APPLIER_SRC
   ${APPLIER_DIR}/log_applier_result_queue.cpp
   ${APPLIER_DIR}/log_applier_worker.cpp
   ${APPLIER_DIR}/log_applier_worker_context.cpp
+  ${APPLIER_DIR}/log_applier_wset_label.cpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(

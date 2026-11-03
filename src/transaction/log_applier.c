@@ -77,6 +77,7 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 #include "log_applier_worker.hpp"
+#include "log_applier_wset_label.hpp"
 #include "log_applier_task.hpp"
 #include "log_applier_result.hpp"
 #include "log_applier_task_queue.hpp"
@@ -7308,18 +7309,6 @@ la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
   return fragment;
 }
 
-/* Label holder: carries the master's dependency from a LOG_DUMMY_WSET_LABEL record to the record it
- * labels. The master writes the label immediately before the transaction's LOG_COMMIT, or before a
- * labeled LOG_SYSOP_END, inside the same prior_lsa_mutex section, so no other record comes between
- * them:
- *     ... -> LOG_DUMMY_WSET_LABEL (dependency) -> LOG_COMMIT or LOG_SYSOP_END (same trid) -> ...
- * The label is kept here when it is read, and the next LOG_COMMIT or LOG_SYSOP_END with the same trid
- * takes it into its task. A commit with no matching label has no dependency (NULL) unless it has
- * replicated items; then it waits for every earlier commit.
- * Only the coordinator reads the log, so the holder needs no lock. */
-static int la_wset_label_trid = NULL_TRANID;
-static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
-
 /*
  * la_coordinator_process_sysop_end() - handle a LOG_SYSOP_END record read from the log
  *   return: NO_ERROR or error code
@@ -7341,7 +7330,7 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
     {
       LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
 
-      if (la_wset_label_trid == lrec->trid && sysop_apply != NULL && sysop_apply->head != NULL)
+      if (la_wset_label_matches (lrec->trid) && sysop_apply != NULL && sysop_apply->head != NULL)
 	{
 	  LA_APPLY *fragment = la_detach_sysop_fragment (sysop_apply, final);
 	  LA_TASK task;
@@ -7358,14 +7347,10 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	  task.log_record_time = 0;
 	  task.apply = fragment;
 	  task.has_items = true;
-	  LSA_COPY (&task.dependency_seq, &la_wset_label_dependency_seq);
+	  (void) la_wset_label_take (lrec->trid, &task.dependency_seq);
 
 	  /* The outer transaction's final commit must wait for this fragment to commit first. */
 	  LSA_COPY (&sysop_apply->last_sysop_fragment_lsa, final);
-
-	  /* consume the label holder; it belonged to this fragment, not to the outer commit */
-	  la_wset_label_trid = NULL_TRANID;
-	  LSA_SET_NULL (&la_wset_label_dependency_seq);
 
 	  if (la_Info.status == LA_STATUS_IDLE)
 	    {
@@ -7386,12 +7371,11 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	}
 
       /* without this the outer commit, whose dependency is this LSA, would wait forever */
-      labeled = (la_wset_label_trid == lrec->trid);
+      labeled = la_wset_label_matches (lrec->trid);
       if (labeled)
 	{
 	  /* the label belonged to this SYSOP_END; a later unlabeled SYSOP_END of the trid must not match it again */
-	  la_wset_label_trid = NULL_TRANID;
-	  LSA_SET_NULL (&la_wset_label_dependency_seq);
+	  (void) la_wset_label_take (lrec->trid, NULL);
 
 	  error = la_coordinator_complete_without_task (final);
 	  if (error != NO_ERROR)
@@ -7456,18 +7440,10 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 static bool
 la_coordinator_set_commit_dependency (LA_TASK * task)
 {
-  bool has_label = (la_wset_label_trid == task->tranid);
+  bool has_label;
   LOG_LSA previous_lsa;
 
-  if (has_label)
-    {
-      LSA_COPY (&task->dependency_seq, &la_wset_label_dependency_seq);
-      la_wset_label_trid = NULL_TRANID;
-    }
-  else
-    {
-      LSA_SET_NULL (&task->dependency_seq);
-    }
+  has_label = la_wset_label_take (task->tranid, &task->dependency_seq);
 
   if (task->apply != NULL && !LSA_ISNULL (&task->apply->last_sysop_fragment_lsa))
     {
@@ -7725,23 +7701,27 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
     case LOG_DUMMY_WSET_LABEL:
       /* keep the label in the holder; the next LOG_COMMIT or LOG_SYSOP_END of the same trid takes it.
        * A label that cannot be read is read again: the error leaves final_lsa on this record. */
-      error = la_get_wset_label (pg_ptr, final, &la_wset_label_dependency_seq);
-      if (error != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to read LOG_DUMMY_WSET_LABEL");
-	  return error;
-	}
-      la_wset_label_trid = lrec->trid;
-      LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
-		    (long long) la_wset_label_dependency_seq.pageid, (int) la_wset_label_dependency_seq.offset,
-		    (long long) final->pageid, (int) final->offset);
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] reader label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
-			 lrec->trid, (long long) final->pageid, (int) final->offset,
-			 (long long) la_wset_label_dependency_seq.pageid, (int) la_wset_label_dependency_seq.offset);
-	}
+      {
+	LOG_LSA dependency_seq;
+
+	error = la_get_wset_label (pg_ptr, final, &dependency_seq);
+	if (error != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to read LOG_DUMMY_WSET_LABEL");
+	    return error;
+	  }
+	la_wset_label_store (lrec->trid, &dependency_seq);
+	LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
+		      (long long) dependency_seq.pageid, (int) dependency_seq.offset,
+		      (long long) final->pageid, (int) final->offset);
+	if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
+	  {
+	    _er_log_debug (ARG_FILE_LINE,
+			   "[WSET] reader label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
+			   lrec->trid, (long long) final->pageid, (int) final->offset,
+			   (long long) dependency_seq.pageid, (int) dependency_seq.offset);
+	  }
+      }
       break;
 
     default:
