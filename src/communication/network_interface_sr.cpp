@@ -11315,9 +11315,9 @@ ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
 }
 
 void
-ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session)
+ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session, int closing_tran_index)
 {
-  session_destroy_attached_sessions (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session, closing_tran_index);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
