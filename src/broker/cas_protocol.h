@@ -127,6 +127,14 @@ extern "C"
  * 옛 서버는 이 바이트를 -1로 채워 1로 읽히므로 V13 이상 드라이버만 읽는다. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
 
+/* The optional trailing flags byte of the bundled stream requests and replies. A
+ * driver that does not send it gets the unbundled behavior. */
+#define CAS_STREAM_FLAG_FINAL			0x01	/* INIT, SEND_DATA: end the stream with this chunk */
+#define CAS_STREAM_FLAG_RELEASE_AT_EOF		0x01	/* READ_OPEN, READ: release the handle at eof */
+#define CAS_STREAM_FLAG_AUTO_COMMIT		0x02	/* READ_OPEN, READ: what RELEASE's auto-commit byte says */
+#define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
+#define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
+
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
 
@@ -241,7 +249,7 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
-    /* PROTOCOL_V13; a driver checks for it before opening a stream */
+    /* PROTOCOL_V13 names the whole family, 45-51; a driver checks it once before sending any of them */
     CAS_FC_STREAM_SEND_DATA = 45,
     CAS_FC_STREAM_END = 46,
     /* Open and give up, for a consumer whose client half is the driver itself.
@@ -249,10 +257,10 @@ extern "C"
      * the failure the server can see closes it. */
     CAS_FC_STREAM_INIT = 47,
     CAS_FC_STREAM_ABORT = 48,
-    /* PROTOCOL_V14: read cursor over an internal LOB locator sent in a BLOB/CLOB column */
-    CAS_FC_LOB_STREAM_OPEN = 49,
-    CAS_FC_LOB_STREAM_READ = 50,
-    CAS_FC_LOB_STREAM_CLOSE = 51,
+    /* Server->client: a download is a handle the client reads until eof and then releases. */
+    CAS_FC_STREAM_READ_OPEN = 49,
+    CAS_FC_STREAM_READ = 50,
+    CAS_FC_STREAM_RELEASE = 51,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -264,13 +272,10 @@ extern "C"
   };
   typedef enum t_cas_func_code T_CAS_FUNC_CODE;
 
-/* Largest payload one CAS_FC_LOB_STREAM_READ may ask for.  Both sides bound the request by it so a driver cannot
- * make CAS allocate an arbitrary buffer. */
-#define INTERNAL_LOB_STREAM_MAX_CHUNK (1024 * 1024)
-
 /* Leading byte of every BLOB/CLOB column sent to a PROTOCOL_V14 driver.  It says whether the payload is a
- * reference to stored content or the content itself; the column type alone cannot distinguish them, because a
- * scalar function result (CHAR_TO_CLOB('x')) is a LOB value with no storage behind it. */
+ * reference to stored content (read with CAS_FC_STREAM_READ_*) or the content itself; the column type alone
+ * cannot distinguish them, because a scalar function result (CHAR_TO_CLOB('x')) is a LOB value with no storage
+ * behind it. */
 /* [리뷰] 참조는 [REF][INT64 바이트 길이][로케이터], 내용은 [INLINE][바이트]로 보낸다.
  * 드라이버는 연결 버전이 아니라 이 바이트로 판단한다. 드라이버와 서버는 함께 올린다. */
 #define INTERNAL_LOB_WIRE_INLINE ((char) 0)
@@ -292,10 +297,8 @@ extern "C"
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
-				 * QC/X1 query cancel; client->server byte-stream transport
-				 * (CAS_FC_STREAM_*) */
-    PROTOCOL_V14 = 14,		/* internal LOB read streaming: the column carries a locator, not the content
-				 * (CAS_FC_LOB_STREAM_*) */
+				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*, 45-51) */
+    PROTOCOL_V14 = 14,		/* a BLOB/CLOB column leads with INTERNAL_LOB_WIRE_REF / _INLINE */
     CURRENT_PROTOCOL = PROTOCOL_V14
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;

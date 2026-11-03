@@ -1194,9 +1194,9 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   srv_handle = hm_find_srv_handle (srv_h_id);
-  if (auto_commit_mode == TRUE && !ux_lob_read_cursor_is_open ())
+  if (auto_commit_mode == TRUE)
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "close_req_handle srv_h_id %d", srv_h_id);
@@ -2550,60 +2550,81 @@ fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   return FN_KEEP_CONN;
 }
 
+/* READ_OPEN: kind, config [, first_max, flags]. With the optional pair the first piece comes back with the handle. */
 FN_RETURN
-fn_lob_stream_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  char *locator = NULL;
-  int locator_len = 0;
-  DB_BIGINT start_offset = 0;
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  int first_max = 0;
+  char flags = 0;
 
-  if (argc != 2)
+  if (argc != 2 && argc != 4)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
-  net_arg_get_str (&locator, &locator_len, argv[0]);
-  net_arg_get_bigint (&start_offset, argv[1]);
-  (void) ux_lob_stream_open (locator, locator_len, start_offset, net_buf);
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  if (argc == 4)
+    {
+      net_arg_get_int (&first_max, argv[2]);
+      net_arg_get_char (flags, argv[3]);
+    }
+
+  ux_stream_read_open (stream_kind, config, config_len, argc == 4, first_max, flags, net_buf, req_info);
+
   return FN_KEEP_CONN;
 }
 
+/* READ: handle, max [, flags] */
 FN_RETURN
-fn_lob_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  DB_BIGINT token = 0;
-  int size = 0;
+  DB_BIGINT handle = 0;
+  int max = 0;
+  char flags = 0;
 
-  if (argc != 2)
+  if (argc < 2 || argc > 3)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
-  net_arg_get_bigint (&token, argv[0]);
-  net_arg_get_int (&size, argv[1]);
-  (void) ux_lob_stream_read (token, size, net_buf);
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_int (&max, argv[1]);
+  if (argc > 2)
+    {
+      net_arg_get_char (flags, argv[2]);
+    }
+
+  ux_stream_read ((INT64) handle, max, flags, net_buf, req_info);
+
   return FN_KEEP_CONN;
 }
 
+/* RELEASE: handle, auto_commit */
 FN_RETURN
-fn_lob_stream_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  DB_BIGINT token = 0;
+  DB_BIGINT handle = 0;
   char auto_commit_mode = FALSE;
 
-  if (argc < 1 || argc > 2)
+  if (argc != 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
-  net_arg_get_bigint (&token, argv[0]);
-  if (argc > 1)
-    {
-      net_arg_get_char (auto_commit_mode, argv[1]);
-    }
-  (void) ux_lob_stream_close (token, auto_commit_mode, net_buf, req_info);
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+  ux_stream_release ((INT64) handle, auto_commit_mode == TRUE, net_buf, req_info);
+
   return FN_KEEP_CONN;
 }

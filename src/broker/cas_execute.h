@@ -101,10 +101,11 @@ extern int ux_stream_init (int stream_kind, char *config, int config_len, T_NET_
 extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf);
 extern int ux_stream_end (T_NET_BUF * net_buf);
 extern int ux_stream_abort (T_NET_BUF * net_buf);
-extern int ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf);
-extern int ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf);
-extern int ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-extern bool ux_lob_read_cursor_is_open (void);
+extern int ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max,
+				char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern void ux_stream_result_set_commit (T_REQ_INFO * req_info);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

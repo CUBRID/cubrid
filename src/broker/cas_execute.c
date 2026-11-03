@@ -82,6 +82,7 @@
 #include "network_interface_cl.h"
 #include "internal_lob_marker.h"
 #include "internal_lob_stream_kind.h"
+#include "stream_client.h"
 #include "stream_session.hpp"
 #include "query_replace.h"
 
@@ -345,19 +346,6 @@ static char database_name[MAX_HA_DBINFO_LENGTH] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
-
-/* internal LOB read cursors open in this transaction; the server drops them all when it ends */
-/* [리뷰] CAS 프로세스 전역 카운트다(한 CAS가 한 연결만 서비스한다는 전제).
- * 서버가 트랜잭션 끝에 커서를 모두 버리므로 트랜잭션을 끝내는 곳에서 0으로 맞춘다. */
-static int lob_Read_cursor_count = 0;
-
-/* In auto commit a statement ends the transaction at once, success or failure, and so drops the open LOB read
- * cursors as an explicit COMMIT does; only the end of a result set waits for the last cursor to close. */
-bool
-ux_lob_read_cursor_is_open (void)
-{
-  return lob_Read_cursor_count > 0;
-}
 
 int
 ux_check_connection (void)
@@ -628,7 +616,6 @@ ux_database_shutdown (bool request_server)
   cas_default_lock_timeout = -1;
 
   ux_stream_reset ();
-  lob_Read_cursor_count = 0;
 }
 
 /*
@@ -1027,7 +1014,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     {
       err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
     }
-  lob_Read_cursor_count = 0;
 
   if (err_code >= 0)
     {
@@ -2184,7 +2170,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (auto_commit_mode == TRUE)
 	{
 	  db_commit_transaction ();
-	  lob_Read_cursor_count = 0;
 	}
       logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_commit" : "");
       logddl_write ();
@@ -2238,7 +2223,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (auto_commit_mode == TRUE)
 	{
 	  db_abort_transaction ();
-	  lob_Read_cursor_count = 0;
 	}
       logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
       logddl_write ();
@@ -2548,7 +2532,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
 	  db_commit_transaction ();
-	  lob_Read_cursor_count = 0;
 	}
       continue;
 
@@ -2612,7 +2595,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
 	  db_abort_transaction ();
-	  lob_Read_cursor_count = 0;
 	}
 
       if (err_code == ER_INTERRUPTED)
@@ -4760,7 +4742,7 @@ dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locato
  * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V14.
  *
  * A leading discriminator byte tells, per value, whether it is a reference to stored content (pulled later with
- * CAS_FC_LOB_STREAM_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
+ * CAS_FC_STREAM_READ_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
  *
  *   [INTERNAL_LOB_WIRE_REF]    INT64 byte length, then the locator
  *   [INTERNAL_LOB_WIRE_INLINE] the content itself
@@ -5845,10 +5827,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
-	      if (!ux_lob_read_cursor_is_open ())
-		{
-		  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-		}
+	      ux_stream_result_set_commit (req_info);
 	    }
 
 
@@ -5931,10 +5910,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
-	      if (!ux_lob_read_cursor_is_open ())
-		{
-		  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-		}
+	      ux_stream_result_set_commit (req_info);
 	    }
 	  break;
 	}
@@ -5950,10 +5926,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
-	      if (!ux_lob_read_cursor_is_open ())
-		{
-		  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-		}
+	      ux_stream_result_set_commit (req_info);
 	    }
 	  break;
 	}
@@ -11294,6 +11267,21 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 }
 
 /*
+ * ux_stream_result_set_commit () - Owe the auto-commit a finished result set pays
+ *
+ * A download reads in its transaction the way an open result set does, so while one is open the commit waits for
+ * the last release (ux_stream_settle_release).
+ */
+void
+ux_stream_result_set_commit (T_REQ_INFO * req_info)
+{
+  if (!stream_from_holds_download ())
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+}
+
+/*
  * ux_stream_reset () - Drop the stream state this connection was carrying
  *
  * Called where the server-side session is known to be gone, so the next client the CAS process serves does not
@@ -11324,17 +11312,16 @@ ux_stream_is_open (void)
  * ones that end the whole transaction are admitted (a COMMIT rolls back, see
  * ux_end_tran).
  *
- * The internal LOB read cursor (CAS_FC_LOB_STREAM_*) is admitted as well. It is
- * not a statement: it runs nothing, writes nothing and ends nothing, and it
- * touches neither the open stream nor its transaction boundary. A driver may
- * also need it in the middle of a stream -- copying a stored LOB into an INSERT
- * reads the source through its locator while sending the bytes up the stream.
+ * The download family (CAS_FC_STREAM_READ_*) is admitted as well. It is not a
+ * statement: it runs nothing, writes nothing and ends nothing. A driver may also
+ * need it in the middle of a stream -- copying a stored LOB into an INSERT reads
+ * the source through its locator while sending the bytes up the stream.
  */
 bool
 ux_stream_admits_request (int func_code)
 {
-  /* [리뷰] 스트림이 열린 동안 받는 요청: 그 스트림, 트랜잭션 종료, LOB 읽기 커서.
-   * 읽기 커서는 문장이 아니고 스트림 중간에 필요할 수 있어 허용한다. */
+  /* [리뷰] 스트림이 열린 동안 받는 요청: 그 스트림, 트랜잭션 종료, 다운로드(읽기).
+   * 다운로드는 문장이 아니고 스트림 중간에 필요할 수 있어 허용한다. */
   if (!stream_from_is_open ())
     {
       return true;
@@ -11345,13 +11332,13 @@ ux_stream_admits_request (int func_code)
     case CAS_FC_STREAM_SEND_DATA:
     case CAS_FC_STREAM_END:
     case CAS_FC_STREAM_ABORT:
+    case CAS_FC_STREAM_READ_OPEN:
+    case CAS_FC_STREAM_READ:
+    case CAS_FC_STREAM_RELEASE:
     case CAS_FC_END_TRAN:
     case CAS_FC_CHECK_CAS:
     case CAS_FC_END_SESSION:
     case CAS_FC_CON_CLOSE:
-    case CAS_FC_LOB_STREAM_OPEN:
-    case CAS_FC_LOB_STREAM_READ:
-    case CAS_FC_LOB_STREAM_CLOSE:
       return true;
 
     default:
@@ -11474,46 +11461,153 @@ ux_stream_abort (T_NET_BUF * net_buf)
   return 0;
 }
 
-/* Internal LOB read streaming: the driver pulls a locator's bytes (see dbval_to_net_buf) through these calls,
- * a thin pass-through to the server read cursor; CAS holds no LOB bytes of its own. */
-int
-ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf)
+static int
+ux_stream_error (int err_code, T_NET_BUF * net_buf)
 {
-  INT64 token = 0;
-  int err_code;
-
-  err_code = internal_lob_stream_open_from_server (locator, locator_len, (INT64) start_offset, &token);
-  if (err_code != NO_ERROR)
-    {
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
-    }
-  lob_Read_cursor_count++;
-
-  net_buf_cp_int (net_buf, 0, NULL);
-  net_buf_cp_bigint (net_buf, (DB_BIGINT) token, NULL);
-  return 0;
+  errors_in_transaction++;
+  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+  return err_code;
 }
 
-int
-ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf)
+/*
+ * ux_stream_settle_release () - Pay the auto-commit a download deferred, if its release was the last tie
+ *   err_code(in): the error the request ended with, or 0
+ *
+ * As a commit, a failed read included: a read writes nothing, and what the commit carries is the work of
+ * statements the client was told had finished. Not while an upload is open: its debt stays for END, or for the
+ * next commit the connection makes. A transaction the server already rolled back owes nothing, and the rollback
+ * is what brings this connection in line with it.
+ */
+static void
+ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
 {
-  /* [리뷰] CAS는 LOB 바이트를 보관하지 않는 얇은 통과 경로다. 요청 크기는 1MiB 이하(서버 상한과 같음).
-   * 서버가 요청보다 많이 돌려주면(nread > size) 내부 오류로 끊는다. */
+  if (!auto_commit)
+    {
+      return;
+    }
+
+  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code) || ER_IS_SERVER_DOWN_ERROR (err_code))
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+      return;
+    }
+
+  if (!stream_from_holds_download () && !stream_from_is_open () && !hm_has_result_tied_to_tran ())
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+}
+
+/* what a read request asked of the core, and what the core's reply means to the driver */
+static int
+ux_stream_server_read_flags (char flags)
+{
+  return (flags & CAS_STREAM_FLAG_RELEASE_AT_EOF) ? STREAM_FLAG_RELEASE_AT_EOF : 0;
+}
+
+static int
+ux_stream_driver_read_flags (int reply_flags)
+{
+  return ((reply_flags & STREAM_FLAG_EOF) ? CAS_STREAM_FLAG_EOF : 0)
+    | ((reply_flags & STREAM_FLAG_RELEASED) ? CAS_STREAM_FLAG_RELEASED : 0);
+}
+
+/*
+ * ux_stream_read_open () - Open a download the driver asked for
+ *   bundled(in): the driver sent first_max and flags; the first piece and its flags go back with the handle
+ *   first_max(in), flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
+ */
+int
+ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max, char flags,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  INT64 handle = 0;
   char *buffer = NULL;
   int nread = 0;
-  int err_code;
+  int reply_flags = 0;
 
-  if (size <= 0 || size > INTERNAL_LOB_STREAM_MAX_CHUNK)
+  if (bundled && first_max < 0)
     {
       err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
+  first_max = bundled ? MIN (first_max, STREAM_READ_MAX_CHUNK) : 0;
 
-  buffer = (char *) MALLOC (size);
+  /* the client library runs the kind's authorize in stream_from_read_open () */
+  err_code = stream_kind_client_check_driver_open (stream_kind);
+  if (err_code < 0)
+    {
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  if (first_max > 0)
+    {
+      buffer = (char *) MALLOC (first_max);
+      if (buffer == NULL)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return err_code;
+	}
+    }
+
+  err_code = stream_from_read_open (stream_kind, config, config_len, first_max, ux_stream_server_read_flags (flags),
+				    &handle, buffer, &nread, &reply_flags);
+  if (err_code < 0)
+    {
+      FREE_MEM (buffer);
+      /* the open may have started the transaction it failed in */
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, err_code, req_info);
+      return ux_stream_error (err_code, net_buf);
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_bigint (net_buf, handle, NULL);
+  if (bundled)
+    {
+      net_buf_cp_int (net_buf, nread, NULL);
+      net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
+      if (nread > 0)
+	{
+	  net_buf_cp_str (net_buf, buffer, nread);
+	}
+    }
+  FREE_MEM (buffer);
+
+  /* a value read in one call left no handle, so nothing ties the transaction it was read in */
+  if (reply_flags & STREAM_FLAG_RELEASED)
+    {
+      ux_stream_settle_release ((flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, 0, req_info);
+    }
+
+  return 0;
+}
+
+/*
+ * ux_stream_read () - Read the next piece of a download
+ *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT; 0 for a driver that sent none
+ */
+int
+ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  char *buffer;
+  int nread = 0;
+  int reply_flags = 0;
+  bool auto_commit = (flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0;
+
+  if (max <= 0)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+  max = MIN (max, STREAM_READ_MAX_CHUNK);
+
+  buffer = (char *) MALLOC (max);
   if (buffer == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -11521,75 +11615,49 @@ ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf)
       return err_code;
     }
 
-  err_code = internal_lob_stream_read_from_server ((INT64) token, buffer, size, &nread);
-  if (err_code != NO_ERROR)
+  err_code = stream_from_read (handle, buffer, max, ux_stream_server_read_flags (flags), &nread, &reply_flags);
+  if ((reply_flags & STREAM_FLAG_RELEASED) || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code))
     {
-      /* the server drops a cursor whose read failed */
-      if (err_code != ER_OBJ_INVALID_ARGUMENTS && lob_Read_cursor_count > 0)
-	{
-	  lob_Read_cursor_count--;
-	}
-      FREE_MEM (buffer);
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
+      ux_stream_settle_release (auto_commit, err_code, req_info);
     }
-
-  if (nread < 0 || nread > size)
+  if (err_code < 0)
     {
       FREE_MEM (buffer);
-      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
+      return ux_stream_error (err_code, net_buf);
     }
 
   net_buf_cp_int (net_buf, 0, NULL);
   net_buf_cp_int (net_buf, nread, NULL);
+  net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
   if (nread > 0)
     {
       net_buf_cp_str (net_buf, buffer, nread);
     }
-
   FREE_MEM (buffer);
+
   return 0;
 }
 
+/*
+ * ux_stream_release () - Release a download the driver holds
+ *
+ * Download handles only: a staged upload belongs to the statement handles that bound it, and the CAS releases
+ * it itself. A handle the CAS does not hold is released already, which is not an error.
+ */
 int
-ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  int err_code;
+  int err_code = NO_ERROR;
 
-  err_code = internal_lob_stream_close_from_server ((INT64) token);
-  if (err_code == ER_OBJ_INVALID_ARGUMENTS)
+  if (stream_from_holds_handle (handle))
     {
-      /* the cursor already went with its transaction or a failed read */
-      er_clear ();
-      err_code = NO_ERROR;
-    }
-  else if (lob_Read_cursor_count > 0)
-    {
-      /* a failed close leaves no server cursor either */
-      lob_Read_cursor_count--;
+      err_code = stream_from_release (handle);
+      ux_stream_settle_release (auto_commit, err_code, req_info);
     }
 
-  /* in auto-commit the last cursor closed ends the transaction its open began, unless that would also end
-   * a stream session or a result set the client still fetches or updates */
-  /* [리뷰] 결과 집합 끝에서 미룬 자동커밋은 마지막 읽기 커서를 닫을 때 한다(M1).
-   * 스트림이나 커밋에 묶인 결과 집합이 남아 있으면 그것이 끝날 때까지 미룬다.
-   * 드라이버가 auto_commit_mode를 안 보내면 이 경로는 커밋하지 않는다. */
-  if (auto_commit_mode == TRUE && lob_Read_cursor_count == 0 && !stream_from_is_open ()
-      && !hm_has_result_tied_to_tran ())
+  if (err_code < 0)
     {
-      req_info->need_auto_commit = (err_code != NO_ERROR) ? TRAN_AUTOROLLBACK : TRAN_AUTOCOMMIT;
-    }
-
-  if (err_code != NO_ERROR)
-    {
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
+      return ux_stream_error (err_code, net_buf);
     }
 
   net_buf_cp_int (net_buf, 0, NULL);
