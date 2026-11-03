@@ -232,6 +232,7 @@ static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
 static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							      int *continue_walk);
 static PT_NODE *pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_clear_group_having_marks (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -9240,6 +9241,37 @@ pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NOD
 }
 
 /*
+ * pt_clear_group_having_marks () - clear the marks which are meaningful only in a pt_resolve_names () pass:
+ *                                  PT_NAME_INFO_IN_GROUP_HAVING of names and group_having_alias_resolved of queries
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_clear_group_having_marks (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      node->info.query.flag.group_having_alias_resolved = 0;
+    }
+
+  return node;
+}
+
+/*
  * pt_mark_pt_name () -
  *   return:
  *   parser(in):
@@ -9605,6 +9637,9 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	{
 	  return NULL;
 	}
+
+      /* the marks must not be left for another pt_resolve_names () on this tree or its copy */
+      statement = parser_walk_tree (parser, statement, pt_clear_group_having_marks, NULL, NULL, NULL);
 
       /*
        * The process converts natural join to inner/outer join.
