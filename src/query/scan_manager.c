@@ -1309,31 +1309,35 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 
   cmp_1 = cmp_2 = cmp_3 = cmp_4 = ROP_NA;
 
+  /* remove empty key ranges (e.g. a NULL bound) first; they match no key, and merging one would swallow the other
+   * range. Keep one if all are empty. */
+  cur_n = 0;
+  while (key_cnt > 1 && cur_n < key_cnt)
+    {
+      curp = key_vals + cur_n;
+      if (curp->range == NA_NA)
+	{
+	  pr_clear_value (&curp->key1);
+	  pr_clear_value (&curp->key2);
+	  memmove (curp, curp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - cur_n - 1));
+	  key_cnt--;
+	}
+      else
+	{
+	  cur_n++;
+	}
+    }
+
   curp = key_vals;
   cur_n = 0;
   while (key_cnt > 1 && cur_n < key_cnt - 1)
     {
-      if (curp->range == NA_NA)
-	{
-	  /* an empty key range (e.g. a NULL bound) matches no key; merging it would swallow the other one */
-	  curp++;
-	  cur_n++;
-	  continue;
-	}
-
       range_to_rop (&cur_op1, &cur_op2, curp->range);
 
       nextp = curp + 1;
       next_n = cur_n + 1;
       while (next_n < key_cnt)
 	{
-	  if (nextp->range == NA_NA)
-	    {
-	      nextp++;
-	      next_n++;
-	      continue;
-	    }
-
 	  range_to_rop (&next_op1, &next_op2, nextp->range);
 
 	  /* check if the two key ranges are mergable */
