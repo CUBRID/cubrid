@@ -1183,9 +1183,17 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       /* File stuffs */
 
     case S_CMD_READ:		/* read a file */
-      csql_read_file (argument);
-      /* the buffer lines no longer match the input lines */
-      csql_Edit_start_line_no = 0;
+      {
+	/* the file is appended to the buffer; the buffer is unchanged if it cannot be read */
+	size_t old_len = strlen (csql_edit_contents_get ());
+
+	csql_read_file (argument);
+	if (strlen (csql_edit_contents_get ()) != old_len)
+	  {
+	    /* the buffer lines no longer match the input lines */
+	    csql_Edit_start_line_no = 0;
+	  }
+      }
       break;
 
     case S_CMD_WRITE:		/* write to a file */
@@ -1216,12 +1224,27 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_EDIT:		/* invoke system editor */
-      /* the buffer lines no longer match the input lines */
-      csql_Edit_start_line_no = 0;
-      if (csql_invoke_system_editor ((argument[0] == '\0') ? NULL : argument) != CSQL_SUCCESS)
-	{
-	  return DO_CMD_FAILURE;
-	}
+      {
+	/* the editor may fail before or after it replaces the buffer */
+	char *old_contents = strdup (csql_edit_contents_get ());
+	int error = csql_invoke_system_editor ((argument[0] == '\0') ? NULL : argument);
+
+	if (old_contents == NULL || strcmp (old_contents, csql_edit_contents_get ()) != 0)
+	  {
+	    /* the buffer lines no longer match the input lines */
+	    csql_Edit_start_line_no = 0;
+	  }
+
+	if (old_contents != NULL)
+	  {
+	    free_and_init (old_contents);
+	  }
+
+	if (error != CSQL_SUCCESS)
+	  {
+	    return DO_CMD_FAILURE;
+	  }
+      }
       break;
 
     case S_CMD_LIST:		/* display buffer */
