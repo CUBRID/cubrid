@@ -216,6 +216,19 @@ namespace parallel_scan
     return !is_flag_set (flags, CANNOT_PARALLEL_SCAN) && !is_flag_set (flags, CANNOT_RUN_IN_WORKER);
   }
 
+  /* the list keeps the scan order as its result order: the planner dropped ORDER BY, or the executor skips its sort
+   * because after_iscan_list covers it. GROUP BY and DISTINCT sort anyway. */
+  static bool
+  is_scan_order_result (XASL_NODE *arg)
+  {
+    if (arg->type != BUILDLIST_PROC || arg->after_iscan_list == nullptr || arg->proc.buildlist.groupby_list != nullptr
+	|| arg->option == Q_DISTINCT)
+      {
+	return false;
+      }
+    return arg->orderby_list == nullptr || qfile_is_sort_list_covered (arg->after_iscan_list, arg->orderby_list);
+  }
+
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
   {
@@ -1230,8 +1243,10 @@ namespace parallel_scan
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
-    /* a groupby skip that runs in parallel keeps the group order its ORDER BY skipped: the leader merges in key order */
-    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST) && !is_groupby_skip_parallel (arg);
+    /* a groupby skip that runs in parallel keeps the group order its ORDER BY skipped: the leader merges in key order;
+     * otherwise the list keeps the scan order when ORDER BY was skipped or its sort is skipped at run time */
+    const bool block_all_specs = (XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST) && !is_groupby_skip_parallel (arg))
+				 || is_scan_order_result (arg);
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
