@@ -163,8 +163,7 @@ wset_order_publish_commit_keys (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
 	      tdes->wset_hashes.size (), tdes->wset_overflow ? 1 : 0);
 
-  wset_stat_count_commit (tdes->wset_overflow,
-			  tdes->wset_fallback_reason == WSET_FALLBACK_TRANSACTION_LIMIT);
+  wset_stat_count_commit (tdes->wset_overflow, (WSET_FALLBACK_REASON) tdes->wset_fallback_reason);
   wset_history_publish_keys (tdes, 0, tdes->wset_hashes.size (), commit_lsa);
 }
 

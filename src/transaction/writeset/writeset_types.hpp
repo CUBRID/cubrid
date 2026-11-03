@@ -46,6 +46,13 @@ typedef enum
   LOG_WSET_KIND_REF = 1
 } LOG_WSET_KIND;
 
+typedef enum
+{
+  WSET_FALLBACK_TRANSACTION_LIMIT = 0,
+  WSET_FALLBACK_STATEMENT_REPLICATION = 1,
+  WSET_FALLBACK_NAN_KEY = 2
+} WSET_FALLBACK_REASON;
+
 typedef struct wset_entry LOG_WSET_ENTRY;
 struct wset_entry
 {

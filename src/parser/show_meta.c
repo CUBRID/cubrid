@@ -745,6 +745,7 @@ metadata_of_writeset_status (void)
     {"Commit_fallback_count", "bigint"},
     {"Fallback_key_limit_count", "bigint"},
     {"Fallback_statement_count", "bigint"},
+    {"Fallback_nan_count", "bigint"},
     {"Conflict_ref_count", "bigint"},
     {"Conflict_write_count", "bigint"},
     {"Clear_capacity_count", "bigint"},

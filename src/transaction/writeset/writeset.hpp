@@ -36,13 +36,6 @@ typedef struct log_tdes LOG_TDES;
 /* forward declaration of value domain (defined in object_domain.h) */
 struct tp_domain;
 
-typedef enum
-{
-  WSET_FALLBACK_TRANSACTION_LIMIT = 0,
-  WSET_FALLBACK_STATEMENT_REPLICATION = 1,
-  WSET_FALLBACK_NAN_KEY = 2
-} WSET_FALLBACK_REASON;
-
 extern int wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
 			       DB_VALUE *key);
 extern int wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid, const VFID *index_vfid,

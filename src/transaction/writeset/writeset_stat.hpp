@@ -31,6 +31,7 @@
 
 #include "dbtype.h"		/* DB_VALUE */
 #include "thread_compat.hpp"	/* THREAD_ENTRY */
+#include "writeset_types.hpp"	/* WSET_FALLBACK_REASON */
 
 extern void wset_stat_start (void);
 
@@ -40,7 +41,7 @@ extern void wset_stat_count_publish (bool is_ref);
 extern void wset_stat_count_history_clear (void);
 extern void wset_stat_count_clear_capacity (void);
 extern void wset_stat_count_conflict (bool from_ref);
-extern void wset_stat_count_commit (bool fallback, bool key_limit);
+extern void wset_stat_count_commit (bool fallback, WSET_FALLBACK_REASON reason);
 
 /* SHOW WRITESET STATUS: the writeset statistics of this server, counted since it started */
 extern int wset_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values, int arg_cnt,
