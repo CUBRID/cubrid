@@ -30,6 +30,7 @@
 #define CATCH_CONFIG_NO_POSIX_SIGNALS
 #include "catch2/catch.hpp"
 
+#include "stream_client.h"
 #include "stream_handle.hpp"
 #include "stream_session.hpp"
 
@@ -209,6 +210,29 @@ namespace
     return new fake_source (std::string (config, (size_t) config_len));
   }
 
+  int test_Authorized = 0;
+
+  int
+  authorize_all (const char *config, int config_len)
+  {
+    (void) config;
+    (void) config_len;
+
+    test_Authorized++;
+    return NO_ERROR;
+  }
+
+  int
+  authorize_none (const char *config, int config_len)
+  {
+    (void) config;
+    (void) config_len;
+
+    test_Authorized++;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+    return ER_AU_SELECT_FAILURE;
+  }
+
   const int KIND_A = STREAM_KIND_MIN;		/* upload whose END finishes the statement */
   const int KIND_STAGED = STREAM_KIND_MIN + 1;	/* upload that stages a value for a later statement */
   const int KIND_UNREGISTERED = STREAM_KIND_MIN + 2;
@@ -240,17 +264,22 @@ namespace
 	{
 	  stream_kind_desc staged = { STREAM_UPLOAD, make_fake<'B'>, NULL, false, true, STREAM_SCOPE_OWNER };
 	  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, make_source, false, false, STREAM_SCOPE_TRAN };
+	  stream_kind_client_desc download_client = { true, authorize_all };
+	  stream_kind_client_desc staged_client = { false, authorize_none };
 
 	  REQUIRE (stream_kind_register (KIND_A, upload_desc (make_fake<'A'>, true)) == NO_ERROR);
 	  REQUIRE (stream_kind_register (KIND_STAGED, staged) == NO_ERROR);
 	  REQUIRE (stream_kind_register (KIND_REFUSING, upload_desc (refuse, true)) == NO_ERROR);
 	  REQUIRE (stream_kind_register (KIND_DOWNLOAD, download) == NO_ERROR);
+	  REQUIRE (stream_kind_client_register (KIND_DOWNLOAD, download_client) == NO_ERROR);
+	  REQUIRE (stream_kind_client_register (KIND_STAGED, staged_client) == NO_ERROR);
 	  registered = true;
 	}
 
       test_Last_error = NO_ERROR;
       test_Factory_calls = 0;
       test_Closed = 0;
+      test_Authorized = 0;
     }
   };
 
@@ -421,6 +450,29 @@ TEST_CASE_METHOD (registry_fixture, "a kind opened in the wrong direction is ref
   CHECK (error_code == ER_STREAM_SESSION_ERROR);
 
   CHECK (test_Factory_calls == 0);
+}
+
+TEST_CASE_METHOD (registry_fixture, "the client half answers who may open a kind", "[stream_session]")
+{
+  stream_kind_client_desc unchecked = { true, NULL };
+
+  /* a driver-openable kind has to say who may open it */
+  CHECK (stream_kind_client_register (KIND_UNREGISTERED, unchecked) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_kind_client_check_driver_open (KIND_UNREGISTERED) == ER_STREAM_SESSION_ERROR);
+
+  CHECK (stream_kind_client_check_driver_open (KIND_DOWNLOAD) == NO_ERROR);
+  CHECK (stream_kind_client_check_driver_open (KIND_STAGED) == ER_STREAM_SESSION_ERROR);
+  /* a kind that no client half names -- COPY's, opened by its statement -- is not a driver's to open */
+  CHECK (stream_kind_client_check_driver_open (KIND_A) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_kind_client_check_driver_open (STREAM_KIND_MAX) == ER_STREAM_SESSION_ERROR);
+
+  CHECK (stream_kind_client_authorize (KIND_DOWNLOAD, "x", 1) == NO_ERROR);
+  CHECK (stream_kind_client_authorize (KIND_STAGED, "x", 1) == ER_AU_SELECT_FAILURE);
+  CHECK (test_Authorized == 2);
+
+  /* the question was never answered, so it is not taken as yes */
+  CHECK (stream_kind_client_authorize (KIND_A, "x", 1) == ER_STREAM_SESSION_ERROR);
+  CHECK (test_Authorized == 2);
 }
 
 TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued", "[stream_handle]")

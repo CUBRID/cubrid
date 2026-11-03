@@ -85,6 +85,7 @@
 #include "compile_context.h"
 #include "load_session.hpp"
 #include "stream_session.hpp"
+#include "stream_handle.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -13090,6 +13091,217 @@ sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
       session->abort (thread_p);
       delete session;
       (void) session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * stream_send_read_reply () - The reply of READ_OPEN and READ, with the bytes as its data
+ *   reply format: nread (int), error_code (int), flags (int) [, padding (int), handle (int64) for READ_OPEN]
+ */
+static void
+stream_send_read_reply (THREAD_ENTRY *thread_p, unsigned int rid, int error_code, char *buf, int nread,
+			int reply_flags, const INT64 *handle)
+{
+  OR_ALIGNED_BUF (4 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      nread = 0;
+    }
+
+  /* net_client_request2 () reads the first int as the size of the data that follows */
+  ptr = or_pack_int (reply, nread);
+  ptr = or_pack_int (ptr, error_code);
+  ptr = or_pack_int (ptr, reply_flags);
+  if (handle != NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+      ptr = or_pack_int64 (ptr, *handle);
+    }
+
+  auto deleter = [buf]() noexcept
+  {
+    if (buf != NULL)
+      {
+	free (buf);
+      }
+  };
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size; the deleter frees buf either way */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply), nread > 0 ? buf : NULL,
+				     nread, std::move (deleter));
+}
+
+/*
+ * stream_read_buffer () - The buffer a read fills: the core's, bounded by STREAM_READ_MAX_CHUNK
+ *   return: NULL when nothing is to be read, or on an allocation failure (with *error_code set)
+ */
+static char *
+stream_read_buffer (int max, int *error_code)
+{
+  char *buf;
+
+  if (max <= 0)
+    {
+      return NULL;
+    }
+
+  buf = (char *) malloc ((size_t) stream_read_bound (max));
+  if (buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) stream_read_bound (max));
+      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return buf;
+}
+
+/*
+ * sstream_read_open () - Open a server->client byte stream, with its first piece in the same call
+ *   request format: stream_kind (int), first_max (int), flags (int), config blob (rest)
+ *   reply format: nread (int), error_code (int), flags (int), padding (int), handle (int64); data: the bytes
+ */
+void
+sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  const int header_size = 3 * OR_INT_SIZE;
+  char *ptr = request;
+  int stream_kind = 0;
+  int first_max = 0;
+  int flags = 0;
+  int error_code = NO_ERROR;
+  int nread = 0;
+  int reply_flags = 0;
+  INT64 handle = 0;
+  char *buf = NULL;
+  stream_handle_table *handles;
+
+  if (reqlen < header_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, &handle);
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &stream_kind);
+  ptr = or_unpack_int (ptr, &first_max);
+  ptr = or_unpack_int (ptr, &flags);
+
+  handles = session_get_stream_handles (thread_p);
+  if (handles == NULL)
+    {
+      error_code = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  else
+    {
+      /* Before the factory runs: a transaction's first snapshot holds vacuum back until the transaction ends, so
+       * what the source can see now stays for as long as its handle can live. */
+      (void) logtb_get_mvcc_snapshot (thread_p);
+
+      buf = stream_read_buffer (first_max, &error_code);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = stream_download_open (thread_p, *handles, stream_kind, ptr, reqlen - header_size,
+					     LOG_FIND_THREAD_TRAN_INDEX (thread_p), first_max, flags, buf, &nread,
+					     &reply_flags, &handle);
+	}
+    }
+
+  stream_send_read_reply (thread_p, rid, error_code, buf, nread, reply_flags, &handle);
+}
+
+/*
+ * sstream_read () - Read the next piece of an open download
+ *   request format: handle (int64), max (int), flags (int)
+ *   reply format: nread (int), error_code (int), flags (int); data: the bytes
+ */
+void
+sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  INT64 handle = 0;
+  int max = 0;
+  int flags = 0;
+  int error_code = NO_ERROR;
+  int nread = 0;
+  int reply_flags = 0;
+  char *buf = NULL;
+  stream_handle_table *handles;
+
+  if (reqlen < OR_BIGINT_SIZE + 2 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, NULL);
+      return;
+    }
+
+  ptr = or_unpack_int64 (ptr, &handle);
+  ptr = or_unpack_int (ptr, &max);
+  ptr = or_unpack_int (ptr, &flags);
+
+  handles = session_get_stream_handles (thread_p);
+  if (handles == NULL)
+    {
+      error_code = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  else
+    {
+      buf = stream_read_buffer (max, &error_code);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = stream_download_read (thread_p, *handles, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p), max,
+					     flags, buf, &nread, &reply_flags);
+	}
+    }
+
+  stream_send_read_reply (thread_p, rid, error_code, buf, nread, reply_flags, NULL);
+}
+
+/*
+ * sstream_release () - Release a handle the client held, of either direction
+ *   request format: handle (int64)
+ *   reply format: error_code (int)
+ *
+ * A handle the session no longer has is released already -- a purge may have
+ * run first -- so that is not an error.
+ */
+void
+sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 handle = 0;
+  int error_code = NO_ERROR;
+  stream_handle_table *handles;
+
+  if (reqlen < OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      (void) or_unpack_int64 (request, &handle);
+
+      handles = session_get_stream_handles (thread_p);
+      if (handles == NULL)
+	{
+	  error_code = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+      else
+	{
+	  handles->release (thread_p, handle);
+	}
     }
 
   if (error_code != NO_ERROR)

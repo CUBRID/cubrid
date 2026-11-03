@@ -257,6 +257,9 @@ extern void sstream_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read_open (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_release (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
