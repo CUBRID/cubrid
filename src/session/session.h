@@ -120,5 +120,5 @@ extern void session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
-extern void session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session);
+extern void session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session, int closing_tran_index);
 #endif /* _SESSION_H_ */

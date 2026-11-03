@@ -3796,7 +3796,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 }
 
 void
-session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
+session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, int closing_tran_index)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3821,7 +3821,15 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
       session->stream_session_p = NULL;
     }
 
-  session->stream_handles_p->clear (thread_p);
+  /* A reconnecting client keeps its session, so a closing connection releases only its own transaction's handles. */
+  if (closing_tran_index != NULL_TRAN_INDEX)
+    {
+      session->stream_handles_p->end_tran (thread_p, closing_tran_index);
+    }
+  else
+    {
+      session->stream_handles_p->clear (thread_p);
+    }
 #endif
 }
 
@@ -3836,6 +3844,6 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
   /* Session-state uninit path: no concurrent worker can reach this session, so
    * interrupt and destroy in one shot. */
   session_interrupt_attached_threads (thread_p, session);
-  session_destroy_attached_sessions (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session, NULL_TRAN_INDEX);
 #endif
 }

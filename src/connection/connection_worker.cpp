@@ -1068,7 +1068,7 @@ namespace cubconn::connection
      * session down any earlier could free it under an in-flight sstream_* request. */
     if (ctx->m_conn->session_p != NULL)
       {
-	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p);
+	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p, tran_index);
       }
 
     m_events.remove_descriptor (ctx->m_conn->fd);
