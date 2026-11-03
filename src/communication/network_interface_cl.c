@@ -12737,6 +12737,87 @@ internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, i
 #endif /* CS_MODE */
 }
 
+/* The client half of STREAM_KIND_INTERNAL_LOB_READ. A driver may open it; authorize checks only that the config
+ * names a locator -- the server takes the class lock, and a privilege check is not made here. */
+static int
+internal_lob_read_authorize (const char *config, int config_len)
+{
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  int locator_len = config_len - INTERNAL_LOB_READ_CONFIG_HEADER_SIZE;
+  int consumed = 0;
+
+  if (config == NULL || locator_len <= 0
+      || !internal_lob_marker_parse_locator_fields (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator_len,
+						    &fields, &consumed) || consumed != locator_len)
+    {
+      return stream_session_set_error ("invalid internal LOB read configuration");
+    }
+
+  return NO_ERROR;
+}
+
+// *INDENT-OFF*
+namespace
+{
+  struct internal_lob_read_client_registrar
+  {
+    internal_lob_read_client_registrar ()
+    {
+      stream_kind_client_desc desc = { true, internal_lob_read_authorize };
+
+      if (stream_kind_client_register (STREAM_KIND_INTERNAL_LOB_READ, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  };
+
+  internal_lob_read_client_registrar internal_lob_read_client_registrar_instance;
+}
+// *INDENT-ON*
+
+/*
+ * internal_lob_read_from_open () - Open a download of one stored internal LOB value
+ *   return: error code
+ *   locator(in), locator_len(in): the locator text, without a NUL
+ *   start_offset(in): bytes the server skips first
+ *   first_max, flags, handle, buf, nread, reply_flags: as stream_from_read_open ()
+ */
+int
+internal_lob_read_from_open (const char *locator, int locator_len, INT64 start_offset, int first_max, int flags,
+			     INT64 * handle, char *buf, int *nread, int *reply_flags)
+{
+  char *config;
+  int config_len;
+  int error;
+
+  *handle = 0;
+  *nread = 0;
+  *reply_flags = 0;
+
+  if (locator == NULL || locator_len <= 0 || locator_len > INT_MAX - INTERNAL_LOB_READ_CONFIG_HEADER_SIZE)
+    {
+      return stream_session_set_error ("invalid internal LOB read configuration");
+    }
+
+  config_len = INTERNAL_LOB_READ_CONFIG_HEADER_SIZE + locator_len;
+  config = (char *) malloc ((size_t) config_len);
+  if (config == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) config_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  OR_PUT_INT (config, INTERNAL_LOB_READ_CONFIG_VERSION);
+  OR_PUT_INT (config + OR_INT_SIZE, 0);
+  OR_PUT_INT64 (config + OR_INT_SIZE * 2, &start_offset);
+  memcpy (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator, (size_t) locator_len);
+
+  error = stream_from_read_open (STREAM_KIND_INTERNAL_LOB_READ, config, config_len, first_max, flags, handle, buf,
+				 nread, reply_flags);
+  free_and_init (config);
+  return error;
+}
+
 /*
  * file_clean_invalid_file -
  *
