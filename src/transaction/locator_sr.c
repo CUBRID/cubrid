@@ -4142,6 +4142,16 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 		  goto error;
 		}
 	    }
+
+	  /* the class representation and the pruning context only lead to the index to search: release them for this
+	   * key, or each key but the last leaves the cache entry of its referenced class fixed */
+	  if (clear_pcontext == true)
+	    {
+	      partition_clear_pruning_context (&pcontext);
+	      clear_pcontext = false;
+	    }
+	  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+
 	  /* a NULL btid: no partition can hold the key */
 	  ret = BTID_IS_NULL (&local_btid) ? BTREE_KEY_NOTFOUND
 	    : xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, key_dbvalue, &part_oid, &unique_oid, true);
