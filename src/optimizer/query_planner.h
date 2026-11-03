@@ -481,6 +481,10 @@ struct qo_planner
   /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
   bool can_apply_limit_card;
 
+  /* Cached result of qo_plan_cmp_by_rules(planner): qo_plan_cmp() leaves the plans to the rules of
+   * qo_plan_cmp_limit(); set once in qo_alloc_planner */
+  bool plan_cmp_by_rules;
+
   /* Cached result of qo_groupby_limit_groups(env): the groups a GROUP BY stops at, or 0 */
   double groupby_limit_groups;
 };

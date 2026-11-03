@@ -188,7 +188,8 @@ enum
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
-/* The band of qo_plan_cmp_limit () (two plans of a LIMIT query): inside it rules, not costs, pick the plan. */
+/* The band of qo_plan_cmp_limit () (two plans of a LIMIT query or of a query that qo_plan_cmp_by_rules () leaves to
+ * the rules): inside it rules, not costs, pick the plan. */
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
@@ -401,6 +402,7 @@ static double qo_parallel_cost_divisor (QO_PLAN * join);
 static double qo_join_input_factor (QO_PLAN * input, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_limit (QO_PLAN *, QO_PLAN *);
+static bool qo_plan_cmp_by_rules (QO_PLANNER *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_parallel_drive (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
 static QO_PLAN *qo_find_best_parallel_driving_plan_on_info (QO_INFO *);
 static bool qo_plan_drives_groupby_skip_only (QO_PLAN * plan);
@@ -7191,6 +7193,51 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
 }
 
 /*
+ * qo_plan_cmp_by_rules () - whether qo_plan_cmp () leaves the plans of a query to the band and rules of
+ *			     qo_plan_cmp_limit (), as it does those of a LIMIT query
+ *   return: true for a query with an INST_NUM () (ROWNUM) predicate or a filter index it names
+ *   planner(in): with the terms and nodes of its env
+ *
+ * Note: An INST_NUM () predicate stops the scans early as a LIMIT does, which their costs do not show either. A filter
+ *   index is a candidate only when the query names it (USING INDEX, USE or FORCE INDEX), and then whether or not the
+ *   query implies its filter (qo_search_planner ()); forced, it costs nothing (qo_iscan_cost ()). The rules weigh it
+ *   against the other indexes as they did, so the query returns the rows it did (CBRD-27146).
+ */
+static bool
+qo_plan_cmp_by_rules (QO_PLANNER * planner)
+{
+  QO_NODE_INDEX *node_index;
+  QO_INDEX_ENTRY *index_entry;
+  int i, j;
+
+  for (i = 0; i < (signed) planner->T; i++)
+    {
+      if (QO_TERM_CLASS (&planner->term[i]) == QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  /* a term of no node with an INST_NUM () (qo_analyze_term ()) */
+	  return true;
+	}
+    }
+
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node_index = QO_NODE_INDEXES (&planner->node[i]);
+      for (j = 0; node_index != NULL && j < QO_NI_N (node_index); j++)
+	{
+	  index_entry = QO_NI_ENTRY (node_index, j)->head;
+	  /* named or forced; an ignored one (force < 0) is no candidate */
+	  if (index_entry->constraints != NULL && index_entry->constraints->filter_predicate != NULL
+	      && index_entry->force >= 0)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_plan_cmp () - compare two plans of an info
  *   return: one of {PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}: PLAN_COMP_LT if a is the better plan
  *   a(in):
@@ -7198,10 +7245,10 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
  *
  * Note: Two plans of a LIMIT query go to qo_plan_cmp_limit (): a scan does not cost less for stopping at the LIMIT
  *   (qo_sscan_cost (), qo_iscan_cost ()), and its rules keep the plans that do stop early (an ORDER BY or GROUP BY
- *   skip, a SORT-LIMIT, a multi range optimization). Any other two plans are compared by cost, and two plans whose
- *   costs fall into the same bucket of QO_COST_BUCKET_RATIO by qo_plan_tie_cmp (). Neither step looks at a relation
- *   between the two plans, so the comparison is a total order: the plan kept does not depend on the order the plans
- *   are generated in (CBRD-27146).
+ *   skip, a SORT-LIMIT, a multi range optimization). So do two plans of a query that qo_plan_cmp_by_rules () leaves to
+ *   the rules. Any other two plans are compared by cost, and two plans whose costs fall into the same bucket of
+ *   QO_COST_BUCKET_RATIO by qo_plan_tie_cmp (). Neither step looks at a relation between the two plans, so the
+ *   comparison is a total order: the plan kept does not depend on the order the plans are generated in (CBRD-27146).
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
@@ -7213,7 +7260,8 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_EQ;
     }
 
-  if (QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+  if ((QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+      || (a->info != NULL && a->info->planner != NULL && a->info->planner->plan_cmp_by_rules))
     {
       return qo_plan_cmp_limit (a, b);
     }
@@ -7231,13 +7279,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 }
 
 /*
- * qo_plan_cmp_limit () - compare two plans of a LIMIT query
+ * qo_plan_cmp_limit () - compare two plans of a LIMIT query, or of a query that qo_plan_cmp_by_rules () leaves to
+ *			  the rules
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
  *   b(in):
  *
- * Note: Inside the band of RBO_CHECK_COST and RBO_CHECK_LIMIT_RATIO the rules pick the plan, because the scan costs
- *   do not account for the LIMIT (qo_plan_cmp ()).
+ * Note: Inside the band of RBO_CHECK_COST and RBO_CHECK_LIMIT_RATIO (RBO_CHECK_RATIO without a LIMIT) the rules pick
+ *   the plan, because the scan costs do not account for the LIMIT or the INST_NUM (), and a filter index the query
+ *   names is a candidate whether or not the query implies its filter (qo_plan_cmp_by_rules ()).
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_cmp_limit (QO_PLAN * a, QO_PLAN * b)
@@ -10994,6 +11044,7 @@ qo_alloc_planner (QO_ENV * env)
 
   planner->cleanup_needed = true;
   planner->can_apply_limit_card = qo_can_apply_limit_card (env);
+  planner->plan_cmp_by_rules = qo_plan_cmp_by_rules (planner);
   planner->groupby_limit_groups = qo_groupby_limit_groups (env);
 
   return planner;
