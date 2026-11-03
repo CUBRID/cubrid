@@ -485,6 +485,7 @@ static PT_NODE *mq_collect_shared_derived_pre (PARSER_CONTEXT * parser, PT_NODE 
 static PT_NODE *mq_collect_shared_derived_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_find_unshareable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec);
+static bool mq_is_cached_from_spec (PT_NODE * query, PT_NODE * spec, bool is_operand);
 static bool mq_has_named_columns_first (PT_NODE * spec);
 static bool mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep);
 static void mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -10093,6 +10094,42 @@ mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec)
 }
 
 /*
+ * mq_is_cached_from_spec () - is spec in the FROM clause of a set operation operand with QUERY_CACHE
+ *   return: true if found
+ *   query(in):
+ *   spec(in):
+ *   is_operand(in): query is an operand of a set operation
+ *
+ * Note: such an operand is executed apart before the statement, and the statement takes its result from the result
+ *	 cache without executing it
+ */
+static bool
+mq_is_cached_from_spec (PT_NODE * query, PT_NODE * spec, bool is_operand)
+{
+  if (query == NULL)
+    {
+      return false;
+    }
+
+  if (is_operand && (query->info.query.hint & PT_HINT_QUERY_CACHE))
+    {
+      return mq_is_top_level_from_spec (query, spec);
+    }
+
+  switch (query->node_type)
+    {
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      return (mq_is_cached_from_spec (query->info.query.q.union_.arg1, spec, true)
+	      || mq_is_cached_from_spec (query->info.query.q.union_.arg2, spec, true));
+
+    default:
+      return false;
+    }
+}
+
+/*
  * mq_has_named_columns_first () - are the columns of a derived spec the named columns followed by hidden columns only
  *   return: true if so
  *   spec(in): derived spec whose derived table is a SELECT
@@ -10305,7 +10342,8 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
  *	 was pushed into one of its references or if it can give a different result at each evaluation. A reference
  *	 joins the group if it comes after the representative and uses only columns of the representative. A reference
  *	 in a correlated subquery does not join the group, since the workers of a parallel scan run such a subquery on a
- *	 copy of the XASL in which the representative is not built.
+ *	 copy of the XASL in which the representative is not built. A view is not shared either if the representative is
+ *	 in a set operation operand with QUERY_CACHE.
  */
 static void
 mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -10364,6 +10402,12 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       rep = group[rep_idx];
       derived = rep->info.spec.derived_table;
+
+      /* the representative would not be executed in an operand that the result cache substitutes */
+      if (mq_is_cached_from_spec (statement, rep, false))
+	{
+	  continue;
+	}
 
       if (!PT_IS_SELECT (derived) || derived->info.query.correlation_level != 0 || !mq_has_named_columns_first (rep))
 	{
