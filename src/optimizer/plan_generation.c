@@ -1860,17 +1860,11 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
       prev = NULL;		/* init */
       for (curr = pred_list; curr; curr = curr->next)
 	{
-	  cmp = pointer->info.pointer.pred_order - curr->info.pointer.pred_order;
-
-	  if (cmp == 0)
-	    {			/* same selectivity, re-compare rank */
-	      cmp = curr->info.pointer.sel - pointer->info.pointer.sel;
-	    }
-
-	  if (cmp == 0)
-	    {			/* same selectivity, re-compare rank */
-	      cmp = curr->info.pointer.rank - pointer->info.pointer.rank;
-	    }
+	  /* CBRD-27127: the scan cost orders a scan's terms with the same comparison (qo_scan_filter_cpu) */
+	  cmp =
+	    qo_compare_pred_eval_order (pointer->info.pointer.pred_order, pointer->info.pointer.sel,
+					pointer->info.pointer.rank, curr->info.pointer.pred_order,
+					curr->info.pointer.sel, curr->info.pointer.rank);
 
 	  if (cmp <= 0)
 	    {

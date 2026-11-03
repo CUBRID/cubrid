@@ -655,6 +655,12 @@ struct qo_term
   int rank;
 
   /*
+   * CBRD-27127: what evaluating this term once costs, as a multiple of one integer comparison
+   * (qo_expr_eval_cost). The scan cost adds it per row the term is evaluated on.
+   */
+  double eval_cost;
+
+  /*
    * The expression that gave rise to this term.  This is either a
    * conjunct from the conjunctive normal form of the query's search
    * condition, or a "manufactured" term spawned by a path term.
@@ -742,6 +748,7 @@ struct qo_term
 #define QO_TERM_SEGS(t)		(t)->segments
 #define QO_TERM_SELECTIVITY(t)	(t)->selectivity
 #define QO_TERM_RANK(t)		(t)->rank
+#define QO_TERM_EVAL_COST(t)	(t)->eval_cost
 #define QO_TERM_HEAD(t)		(t)->head
 #define QO_TERM_TAIL(t)		(t)->tail
 #define QO_TERM_IDX(t)		(t)->idx

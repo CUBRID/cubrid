@@ -108,6 +108,11 @@
  * Until that factor exists this value also stands in for the missing correlation, so a tuned
  * value absorbs both roles. */
 #define ISCAN_OID_ACCESS_OVERHEAD (prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID))
+/* CBRD-27127: one integer comparison's share of the per-tuple CPU price (cost_cpu_operator); the scan cost
+ * multiplies the terms' evaluation cost (QO_TERM_EVAL_COST, in comparisons) by it and by QO_CPU_WEIGHT */
+#define QO_COST_CPU_OPERATOR ((double) prm_get_float_value (PRM_ID_COST_CPU_OPERATOR))
+/* the terms qo_scan_filter_cpu () orders as the evaluator will; a scan with more keeps its bitset order */
+#define QO_SCAN_FILTER_MAX_ORDERED 32
 /* Per-extra-row iscan heap-fetch cost: charges (heap_rows - 1) * ratio, so a single-row
  * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
  * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
@@ -2095,6 +2100,108 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node)
 
 
 /*
+ * qo_compare_pred_eval_order () - CBRD-27127: the order the evaluator runs two terms of a conjunction in:
+ *				   pred_order, then selectivity, then rank (make_pred_from_bitset)
+ *   return: <= 0 when the new term goes before the current one
+ *   new_pred_order, new_sel, new_rank(in): the term being placed
+ *   cur_pred_order, cur_sel, cur_rank(in): a term already in the list
+ */
+double
+qo_compare_pred_eval_order (int new_pred_order, double new_sel, int new_rank, int cur_pred_order, double cur_sel,
+			    int cur_rank)
+{
+  double cmp;
+
+  cmp = new_pred_order - cur_pred_order;
+  if (cmp == 0)
+    {
+      /* same order, compare selectivity */
+      cmp = cur_sel - new_sel;
+    }
+  if (cmp == 0)
+    {
+      /* same selectivity, compare rank */
+      cmp = cur_rank - new_rank;
+    }
+
+  return cmp;
+}
+
+/*
+ * qo_scan_filter_cpu () - CBRD-27127: the cost of evaluating a scan's filter terms on one row, in integer
+ *			   comparisons: each term's evaluation cost weighted by the share of the rows that reach it
+ *   return: sum over the terms in evaluation order of eval_cost (t) * product of the selectivities before t
+ *   env(in): optimizer environment
+ *   terms(in): the filter terms (a scan's sarged terms or key filter terms)
+ *
+ * Note: The evaluator stops a conjunction at the first false term, so a later term runs only on the rows the
+ *	 earlier ones pass. The terms are placed in the order make_pred_from_bitset () gives them to the XASL,
+ *	 with its comparison (qo_compare_pred_eval_order).
+ */
+static double
+qo_scan_filter_cpu (QO_ENV * env, BITSET * terms)
+{
+  QO_TERM *ordered[QO_SCAN_FILTER_MAX_ORDERED];
+  QO_TERM *term;
+  BITSET_ITERATOR iter;
+  double cost = 0.0, pass = 1.0;
+  int n = 0, t, i, j;
+
+  for (t = bitset_iterate (terms, &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+      if (QO_IS_FAKE_TERM (term) || QO_TERM_PT_EXPR (term) == NULL)
+	{
+	  continue;
+	}
+      if (n == QO_SCAN_FILTER_MAX_ORDERED)
+	{
+	  /* past the ordered part the terms are priced in bitset order, after all the ordered ones */
+	  cost += pass * QO_TERM_EVAL_COST (term);
+	  pass *= QO_TERM_SELECTIVITY (term);
+	  continue;
+	}
+
+      /* insert before the first term it does not follow, as make_pred_from_bitset () does */
+      for (i = 0; i < n; i++)
+	{
+	  if (qo_compare_pred_eval_order (QO_TERM_PRED_ORDER (term), QO_TERM_SELECTIVITY (term), QO_TERM_RANK (term),
+					  QO_TERM_PRED_ORDER (ordered[i]), QO_TERM_SELECTIVITY (ordered[i]),
+					  QO_TERM_RANK (ordered[i])) <= 0)
+	    {
+	      break;
+	    }
+	}
+      for (j = n; j > i; j--)
+	{
+	  ordered[j] = ordered[j - 1];
+	}
+      ordered[i] = term;
+      n++;
+    }
+
+  if (n == 0)
+    {
+      return cost;
+    }
+
+  /* the terms past the ordered part were priced as if they came first; price the ordered ones ahead of them */
+  {
+    double ordered_cost = 0.0, ordered_pass = 1.0;
+
+    for (i = 0; i < n; i++)
+      {
+	ordered_cost += ordered_pass * QO_TERM_EVAL_COST (ordered[i]);
+	ordered_pass *= QO_TERM_SELECTIVITY (ordered[i]);
+      }
+    /* the rest run on the rows the ordered terms pass */
+    cost = ordered_cost + ordered_pass * cost;
+  }
+
+  return cost;
+}
+
+/*
  * qo_sscan_cost () -
  *   return:
  *   planp(in):
@@ -2113,7 +2220,11 @@ qo_sscan_cost (QO_PLAN * planp)
     }
   else
     {
-      planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
+      /* CBRD-27127: every row also runs the filter terms the scan evaluates */
+      planp->variable_cpu_cost =
+	(double) QO_NODE_NCARD (nodep) * (1.0 + QO_COST_CPU_OPERATOR *
+					  qo_scan_filter_cpu (QO_NODE_ENV (nodep),
+							      &(planp->sarged_terms))) * (double) QO_CPU_WEIGHT;
     }
   /* a heap scan reads its pages in order: sequential unit price */
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep) * QO_COST_SEQ_PAGE;
@@ -2704,7 +2815,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
   double iss_leaves = 0.0, first_leaf = 0.0;
-  double descent_cpu;
+  double descent_cpu, filter_cpu;
   double object_IO, index_IO;
   double heap_sel;
   QO_TERM *termp;
@@ -2968,7 +3079,12 @@ qo_iscan_cost (QO_PLAN * planp)
    * itself stays a page count up to here because qo_mackert_lohman_pages () reasons in
    * pages; the price is applied once, at the end. */
   planp->fixed_io_cost = (index_IO + first_leaf) * QO_COST_RANDOM_PAGE;
-  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
+  /* CBRD-27127: the key filter terms run on every leaf row of the range, the other filter terms on the rows that
+   * pass it (on the heap, or on the leaf for a covering scan) */
+  filter_cpu =
+    leaf_access * qo_scan_filter_cpu (QO_NODE_ENV (nodep), &(planp->plan_un.scan.kf_terms))
+    + (double) QO_NODE_NCARD (nodep) * heap_sel * qo_scan_filter_cpu (QO_NODE_ENV (nodep), &(planp->sarged_terms));
+  planp->variable_cpu_cost = (leaf_access + heap_access + QO_COST_CPU_OPERATOR * filter_cpu) * (double) QO_CPU_WEIGHT;
   planp->iscan_descent_cpu = descent_cpu;
   planp->variable_io_cost = object_IO * QO_COST_RANDOM_PAGE;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
@@ -8224,7 +8340,9 @@ qo_plan_dump_cost_params (FILE * output)
 {
   static const PARAM_ID cost_prm[] = {
     PRM_ID_COST_SEQ_PAGE, PRM_ID_COST_RANDOM_PAGE, PRM_ID_COST_CPU_TUPLES_PER_PAGE,
-    PRM_ID_COST_EFFECTIVE_CACHE_PAGES, PRM_ID_COST_HEAP_FETCH_PER_OID
+    PRM_ID_COST_EFFECTIVE_CACHE_PAGES, PRM_ID_COST_HEAP_FETCH_PER_OID,
+    PRM_ID_COST_CPU_OPERATOR, PRM_ID_COST_FILTER_RANGE, PRM_ID_COST_FILTER_LIKE_PREFIX,
+    PRM_ID_COST_FILTER_LIKE_GENERIC, PRM_ID_COST_FILTER_REGEXP, PRM_ID_COST_FILTER_FUNC
   };
   bool tuned = false;
   size_t i;
@@ -8248,10 +8366,17 @@ qo_plan_dump_cost_params (FILE * output)
 
   fprintf (output,
 	   "\nCost parameters: cost_seq_page %g, cost_random_page %g, cost_cpu_tuples_per_page %d,"
-	   " cost_effective_cache_pages %d, cost_heap_fetch_per_oid %d\n", QO_COST_SEQ_PAGE, QO_COST_RANDOM_PAGE,
+	   " cost_effective_cache_pages %d, cost_heap_fetch_per_oid %d,"
+	   " cost_cpu_operator %g, cost_filter_range %g, cost_filter_like_prefix %g, cost_filter_like_generic %g,"
+	   " cost_filter_regexp %g, cost_filter_func %g\n", QO_COST_SEQ_PAGE, QO_COST_RANDOM_PAGE,
 	   prm_get_integer_value (PRM_ID_COST_CPU_TUPLES_PER_PAGE),
 	   prm_get_integer_value (PRM_ID_COST_EFFECTIVE_CACHE_PAGES),
-	   prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID));
+	   prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID), QO_COST_CPU_OPERATOR,
+	   (double) prm_get_float_value (PRM_ID_COST_FILTER_RANGE),
+	   (double) prm_get_float_value (PRM_ID_COST_FILTER_LIKE_PREFIX),
+	   (double) prm_get_float_value (PRM_ID_COST_FILTER_LIKE_GENERIC),
+	   (double) prm_get_float_value (PRM_ID_COST_FILTER_REGEXP),
+	   (double) prm_get_float_value (PRM_ID_COST_FILTER_FUNC));
 }
 
 /*
