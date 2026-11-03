@@ -684,7 +684,7 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
 				 bool min_max_optimzied_scan);
 extern int scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * cls_oid, HFID * hfid,
-					BTID_INT * btid_int, bool * btid_int_cached);
+					BTID_INT * btid_int, bool * btid_int_cached, bool lock_held, bool * started);
 extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 					  /* fields of SCAN_ID */
 					  val_list_node * val_list, val_descr * vd,

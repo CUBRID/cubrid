@@ -12973,6 +12973,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 {
   int error = NO_ERROR;
   bool fast_switch = false;
+  bool started = false;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
@@ -12993,9 +12994,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   fast_switch = qexec_can_switch_index_partition (spec, xasl);
 
   /* close current scan and open a new one on the next partition */
-  scan_end_scan (thread_p, &spec->s_id);
   if (!fast_switch)
     {
+      scan_end_scan (thread_p, &spec->s_id);
       scan_close_scan (thread_p, &spec->s_id);
     }
 
@@ -13248,6 +13249,26 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
 	      bool iscan_oid_order = spec->s_id.s.isid.iscan_oid_order;
 
+	      if (fast_switch && spec->curent != NULL)
+		{
+		  spec->indexptr->btid = btid;
+		  error = scan_switch_index_partition (thread_p, &spec->s_id, &class_oid, &class_hfid,
+						       &spec->curent->btid_int, &spec->curent->btid_int_cached,
+						       spec->curent->scan_locked, &started);
+		  if (error != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  break;
+		}
+	      if (fast_switch)
+		{
+		  /* back to the root class: open it as any scan */
+		  scan_end_scan (thread_p, &spec->s_id);
+		  scan_close_scan (thread_p, &spec->s_id);
+		  fast_switch = false;
+		}
+
 	      /* clear caches */
 	      if (isidp->caches_inited)
 		{
@@ -13271,23 +13292,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      spec->s_id.s.isid.scancache_inited = false;
 
 	      spec->indexptr->btid = btid;
-
-	      if (fast_switch && spec->curent != NULL)
-		{
-		  error = scan_switch_index_partition (thread_p, &spec->s_id, &class_oid, &class_hfid,
-						       &spec->curent->btid_int, &spec->curent->btid_int_cached);
-		  if (error != NO_ERROR)
-		    {
-		      return S_ERROR;
-		    }
-		  break;
-		}
-	      if (fast_switch)
-		{
-		  /* back to the root class: open it as any scan */
-		  scan_close_scan (thread_p, &spec->s_id);
-		  fast_switch = false;
-		}
 
 	      error =
 		scan_open_index_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
@@ -13386,15 +13390,22 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
-  error = scan_start_scan (thread_p, &spec->s_id);
-  if (error != NO_ERROR)
+  if (!started)
     {
-      return S_ERROR;
+      error = scan_start_scan (thread_p, &spec->s_id);
+      if (error != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
     }
 
-  if (fast_switch && scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR)
+  if (fast_switch)
     {
-      return S_ERROR;
+      spec->curent->scan_locked = true;
+      if (scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR)
+	{
+	  return S_ERROR;
+	}
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();

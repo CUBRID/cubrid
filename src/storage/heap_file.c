@@ -6977,6 +6977,70 @@ heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 }
 
 /*
+ * heap_scancache_switch_class () - point a query scan cache at the heap of another class
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_cache(in/out): a scan cache started by heap_scancache_start () for a query scan
+ *   hfid(in): the heap of the class
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   lock_held(in): the scan already holds the IS_LOCK of the class (a partition it switched to before)
+ *
+ * Note: as heap_scancache_end () and heap_scancache_start () would, keeping what does not depend on the heap
+ *	 (the snapshot, the work area, the index statistics) (CBRD-27866).
+ */
+int
+heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
+			     const OID * class_oid, bool lock_held)
+{
+  if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN || scan_cache->local_cache_handle != NULL
+      || scan_cache->partition_list != NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (scan_cache->cache_last_fix_page == true && scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+
+  if (!lock_held)
+    {
+      int granted;
+#if defined(SERVER_MODE)
+      THREAD_ENTRY *main_thread_p = NULL;
+      if (thread_p->m_px_orig_thread_entry != NULL)
+	{
+	  main_thread_p = thread_get_main_thread (thread_p);
+	  pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
+#if defined(SERVER_MODE)
+      if (main_thread_p != NULL)
+	{
+	  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      if (granted != LK_GRANTED)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+    }
+
+  scan_cache->node.class_oid = *class_oid;
+  scan_cache->node.hfid = *hfid;
+  scan_cache->node.classname = NULL;
+  scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  heap_scancache_reset_insert_hint (scan_cache);
+
+  return NO_ERROR;
+}
+
+/*
  * heap_scancache_end_when_scan_will_resume () -
  *   return:
  *   scan_cache(in):
@@ -11027,6 +11091,72 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
    */
   attr_info->num_values = -1;
 
+}
+
+/*
+ * heap_attrinfo_switch_class () - point an attribute cache at another class with the same attributes
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   attr_info(in/out): an attribute cache started by heap_attrinfo_start ()
+ *
+ * Note: the partitions of a table have the same attributes, so the cache keeps its attribute ids and its value
+ *	 array and takes the class representation of the other partition, as heap_attrinfo_end () and
+ *	 heap_attrinfo_start () would without freeing and allocating the values (CBRD-27866).
+ */
+int
+heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  HEAP_ATTRVALUE *value;
+  int i;
+
+  if (attr_info->num_values == -1)
+    {
+      /* an empty cache (no attributes): nothing is bound to the class */
+      return NO_ERROR;
+    }
+
+  (void) heap_attrinfo_clear_dbvalues (attr_info);
+  (void) heap_attrinfo_recache (thread_p, NULL_REPRID, attr_info);
+  if (attr_info->last_classrepr != NULL)
+    {
+      heap_classrepr_free_and_init (attr_info->last_classrepr, &attr_info->last_cacheindex);
+    }
+
+  attr_info->class_oid = *class_oid;
+  attr_info->last_cacheindex = -1;
+  attr_info->read_cacheindex = -1;
+  attr_info->read_classrepr = NULL;
+  OID_SET_NULL (&attr_info->inst_oid);
+  attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+      value->state = HEAP_UNINIT_ATTRVALUE;
+      value->do_increment = 0;
+      value->last_attrepr = NULL;
+      value->read_attrepr = NULL;
+      value->rd_attrepr = NULL;
+    }
+
+  attr_info->last_classrepr =
+    heap_classrepr_get (thread_p, &attr_info->class_oid, NULL, NULL_REPRID, &attr_info->last_cacheindex);
+  if (attr_info->last_classrepr == NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      ASSERT_ERROR ();
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*

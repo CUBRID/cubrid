@@ -954,6 +954,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
       spec[i].pos = pos;
       spec[i].row_pruned = false;
       spec[i].btid_int_cached = false;
+      spec[i].scan_locked = false;
 
       if (i == cnt - 1)
 	{
