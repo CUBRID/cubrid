@@ -1652,6 +1652,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitException_decl(Exception_declContext ctx) {
 
+        // transient code. TODO: remove this ban when implementing package exception
+        if (topLevelStmt != CREATE_SP
+                && symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN + 1) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx),
+                    "declaring a package exception is not supported yet");
+        }
+
         if (ctx.COMMENT() != null) {
             if (topLevelStmt != CREATE_PKG_SPEC
                     || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
@@ -3429,6 +3437,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private Decl previsitConstant_decl(Constant_declContext ctx) {
 
+        // transient code. TODO: remove this ban when implementing package constant
+        if (topLevelStmt != CREATE_SP
+                && symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN + 1) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), "declaring a package constant is not supported yet");
+        }
+
         if (ctx.COMMENT() != null) {
             if (topLevelStmt != CREATE_PKG_SPEC
                     || symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
@@ -3459,6 +3474,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private Decl previsitVariable_decl(Variable_declContext ctx) {
+
+        // transient code. TODO: remove this ban when implementing package variable
+        if (topLevelStmt != CREATE_SP
+                && symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN + 1) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), "declaring a package variable is not supported yet");
+        }
 
         if (ctx.COMMENT() != null) {
             if (topLevelStmt != CREATE_PKG_SPEC
@@ -3492,6 +3514,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // return the declaration to hide until its visit, or null if it is the body of a cursor
     // declared in the package spec, which must stay visible as the spec one
     private Decl previsitCursor_decl(Cursor_declContext ctx) {
+
+        // transient code. TODO: remove this ban when implementing package cursor
+        if (topLevelStmt != CREATE_SP
+                && symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN + 1) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), "declaring a package cursor is not supported yet");
+        }
 
         if (ctx.COMMENT() != null) {
             if (topLevelStmt != CREATE_PKG_SPEC
