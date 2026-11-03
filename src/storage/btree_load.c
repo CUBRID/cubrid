@@ -126,23 +126,14 @@ struct load_args
   /*
    * The fields below serve the parallel shard build (shard_put).  An ordinary CREATE INDEX
    * still maintains some of them, but only as write-only bookkeeping: it leaves provider == NULL, worker_idx == -1,
-   * new_page_fn == bt_load_new_page_serial and px_outcome == BT_PX_NOT_ATTEMPTED, keeps the vacuum_* queue empty (a
-   * worker_idx < 0 caller appends its notification directly instead of queueing it), and never has the report_*
-   * values consumed, because only bt_load_px_join_finalize () reads them.  Code that runs on both paths must
-   * therefore not depend on any of these carrying a meaningful value.
+   * new_page_fn == bt_load_new_page_serial and px_outcome == BT_PX_NOT_ATTEMPTED, and never has the report_* values
+   * consumed, because only bt_load_px_join_finalize () reads them.  Code that runs on both paths must therefore not
+   * depend on any of these carrying a meaningful value.
    */
 
   /* Build transaction's MVCCID, captured before the sort.  Only asserted non-null (SERVER_MODE), on both paths;
    * it exists because shard workers put records under the leader's transaction descriptor. */
   MVCCID build_mvccid;
-
-  /* MVCC vacuum notifications queued by a shard worker (worker_idx >= 0), which shares the leader's transaction
-   * descriptor and therefore cannot append to its log stream itself; the leader drains them after the join.  The
-   * transaction thread (worker_idx < 0) appends directly, so on the ordinary path this queue stays empty. */
-  BT_LOAD_VACUUM_ITEM *vacuum_items;
-  size_t vacuum_count;
-  size_t vacuum_capacity;
-  size_t vacuum_payload_size;
 
   SORT_ARGS *sort_args;		/* Leader's sort arguments; read by the parallel join to build the non-leaf levels. */
   BT_LOAD_PROVIDER *provider;	/* Shared page provider of the parallel build; NULL on the ordinary path. */
@@ -440,8 +431,6 @@ static int bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * 
 					   int *sp_success);
 static int bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
 				     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
-static int bt_load_append_vacuum_notifications (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
-static void bt_load_clear_vacuum_notifications (LOAD_ARGS * load_args);
 
 static void bt_load_key_clear (BTREE_KEY * key);
 static void bt_load_clear_keys (LOAD_ARGS * load_args);
@@ -1367,9 +1356,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   VPID_SET_NULL (&load_args->report_first_leaf_vpid);
   VPID_SET_NULL (&load_args->report_last_leaf_vpid);
   VPID_SET_NULL (&load_args->vpid_last_leaf);
-  load_args->vacuum_items = NULL;
-  load_args->vacuum_count = 0;
-  load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
   /* The no-logging build writes no content redo at all; only it puts the leaves with the shard workers. */
   if (eligible_no_redo)
@@ -1395,7 +1381,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->page_log_mode = BT_LOAD_LOG_INLINE;
   load_args->shard_put = false;
 #endif
-  load_args->vacuum_payload_size = 0;
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -1607,12 +1592,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       is_sysop_started = log_check_system_op_is_started (thread_p);
     }
 #endif /* SERVER_MODE */
-
-  if (bt_load_append_vacuum_notifications (thread_p, load_args) != NO_ERROR)
-    {
-      goto error;
-    }
-  bt_load_clear_vacuum_notifications (load_args);
 
 #if !defined (SERVER_MODE)
   bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
@@ -1830,7 +1809,6 @@ error:
     }
   free_and_init (load_args->ovf_dir_entries);
   bt_load_clear_keys (load_args);
-  bt_load_clear_vacuum_notifications (load_args);
 
   pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
   pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
@@ -5093,106 +5071,46 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 
       if (load_args->worker_idx < 0)
 	{
-	  /* Transaction thread (serial build, or the px leader's own put): append directly, as the
-	   * pre-parallel code did -- no queue, no memory cap.  Only shard workers must queue below: they
-	   * share the leader's transaction descriptor and cannot append to its log stream themselves. */
+	  /* the transaction thread (serial build, or the px leader's own put) appends directly */
 	  log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
 				 notify_vacuum_rv_data_length, *notify_vacuum_rv_data);
-	  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
-	  return NO_ERROR;
-	}
-      size_t new_capacity = load_args->vacuum_capacity == 0 ? 16 : load_args->vacuum_capacity * 2;
-      size_t reserved_size;
-      BT_LOAD_VACUUM_ITEM *new_items;
-      char *data;
-
-      if (load_args->vacuum_count == load_args->vacuum_capacity)
-	{
-	  if (new_capacity < load_args->vacuum_capacity || new_capacity > SIZE_MAX / sizeof (*new_items))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZE_MAX);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
 	}
       else
 	{
-	  new_capacity = load_args->vacuum_capacity;
-	}
+	  /* a shard worker shares the leader's transaction descriptor and cannot append to its log stream: it
+	   * makes the record and mails it to the leader */
+	  LOG_DATA_ADDR addr;
+	  LOG_CRUMB crumb;
+	  LOG_PRIOR_NODE *node;
 
-      reserved_size = new_capacity * sizeof (*new_items);
-      if ((size_t) notify_vacuum_rv_data_length > BT_LOAD_VACUUM_SLOT_LIMIT
-	  || load_args->vacuum_payload_size > BT_LOAD_VACUUM_SLOT_LIMIT - (size_t) notify_vacuum_rv_data_length
-	  || reserved_size > BT_LOAD_VACUUM_SLOT_LIMIT
-	  || load_args->vacuum_payload_size + (size_t) notify_vacuum_rv_data_length
-	  > BT_LOAD_VACUUM_SLOT_LIMIT - reserved_size)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BT_LOAD_NOTIFY_VACUUM_LIMIT, 1, (int) BT_LOAD_VACUUM_SLOT_LIMIT);
-	  return ER_BT_LOAD_NOTIFY_VACUUM_LIMIT;
-	}
-
-      if (new_capacity != load_args->vacuum_capacity)
-	{
-	  new_items = (BT_LOAD_VACUUM_ITEM *) realloc (load_args->vacuum_items, reserved_size);
-	  if (new_items == NULL)
+	  addr.vfid = &load_args->btid->sys_btid->vfid;
+	  addr.pgptr = NULL;
+	  addr.offset = -1;
+	  crumb.data = *notify_vacuum_rv_data;
+	  crumb.length = notify_vacuum_rv_data_length;
+	  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_IS_MVCC_OPERATION (RVBT_MVCC_NOTIFY_VACUUM)
+						  ? LOG_MVCC_UNDO_DATA : LOG_UNDO_DATA, RVBT_MVCC_NOTIFY_VACUUM, &addr,
+						  1, &crumb, 0, NULL);
+	  if (node == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, reserved_size);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      /* e.g. no MVCCID, which only a release build lets pass with a notification */
+	      ret = er_errid ();
+	      if (ret == NO_ERROR)
+		{
+		  ret = ER_BTREE_LOAD_FAILED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+		}
+	      return ret;
 	    }
-	  load_args->vacuum_items = new_items;
-	  load_args->vacuum_capacity = new_capacity;
+	  ret = bt_load_provider_post_mail (load_args->provider, load_args->worker_idx, NULL, node);
+	  if (ret != NO_ERROR)
+	    {
+	      return ret;
+	    }
 	}
-
-      data = (char *) malloc ((size_t) notify_vacuum_rv_data_length);
-      if (data == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, notify_vacuum_rv_data_length);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      memcpy (data, *notify_vacuum_rv_data, (size_t) notify_vacuum_rv_data_length);
-      load_args->vacuum_items[load_args->vacuum_count].data = data;
-      load_args->vacuum_items[load_args->vacuum_count].length = notify_vacuum_rv_data_length;
-      load_args->vacuum_count++;
-      load_args->vacuum_payload_size += (size_t) notify_vacuum_rv_data_length;
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
     }
 
-  return NO_ERROR;
-}
-
-static void
-bt_load_clear_vacuum_notifications (LOAD_ARGS * load_args)
-{
-  size_t i;
-
-  for (i = 0; i < load_args->vacuum_count; i++)
-    {
-      free (load_args->vacuum_items[i].data);
-    }
-  free (load_args->vacuum_items);
-  load_args->vacuum_items = NULL;
-  load_args->vacuum_count = 0;
-  load_args->vacuum_capacity = 0;
-  load_args->vacuum_payload_size = 0;
-}
-
-static int
-bt_load_append_vacuum_notifications (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
-{
-  size_t i;
-  for (i = 0; i < load_args->vacuum_count; i++)
-    {
-      int error_before = er_errid ();
-      if (error_before != NO_ERROR)
-	{
-	  return error_before;
-	}
-      log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
-			     load_args->vacuum_items[i].length, load_args->vacuum_items[i].data);
-      if (er_errid () != NO_ERROR)
-	{
-	  return er_errid ();
-	}
-    }
   return NO_ERROR;
 }
 
@@ -5571,10 +5489,6 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
   load_args->report_overflow_key_count = 0;
   load_args->report_first_error = NO_ERROR;
   load_args->report_published = false;
-  load_args->vacuum_items = NULL;
-  load_args->vacuum_count = 0;
-  load_args->vacuum_capacity = 0;
-  load_args->vacuum_payload_size = 0;
   /* A shard worker does not append to the log itself: the no-logging build writes no content redo, and a logged
    * build has the worker mail the redo of its pages to the leader. */
   assert (src->page_log_mode != BT_LOAD_LOG_BY_LEADER);
@@ -5618,7 +5532,6 @@ bt_load_free_shard_load_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   os_free_and_init (load_args->ovf_recdes.data);
   free_and_init (load_args->ovf_dir_entries);
   bt_load_clear_keys (load_args);
-  bt_load_clear_vacuum_notifications (load_args);
   free_and_init (load_args);
 }
 
@@ -5831,11 +5744,6 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
 	  return ER_FAILED;
 	}
       local_max_key_len = MAX (local_max_key_len, shard_load_args[i]->report_local_max_key_len);
-      if (bt_load_append_vacuum_notifications (thread_p, shard_load_args[i]) != NO_ERROR)
-	{
-	  return er_errid ();
-	}
-      bt_load_clear_vacuum_notifications (shard_load_args[i]);
     }
 
   main_load_args->provider = provider;

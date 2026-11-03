@@ -4349,10 +4349,10 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
     {
       error = bt_load_worker_close_shard (thread_p, load_args);
     }
-  /* The build's first failure (e.g. the dedicated vacuum-notification-limit error of a no-logging build) reaches the
-   * leader through the page provider: bt_load_worker_epilogue () keeps that worker's error context, and the leader
-   * takes it in its own thread once every worker is done.  Writing it into the leader's context from here would race
-   * with the leader, which serves page refills and may push and pop its error stack meanwhile. */
+  /* The build's first failure reaches the leader through the page provider: bt_load_worker_epilogue () keeps that
+   * worker's error context, and the leader takes it in its own thread once every worker is done.  Writing it into the
+   * leader's context from here would race with the leader, which serves page refills and may push and pop its error
+   * stack meanwhile. */
   error = bt_load_worker_epilogue (thread_p, load_args, error);
   thread_p->pop_resource_tracks ();
 

@@ -53,15 +53,6 @@ class ftab_set;
 
 /* Types and constants shared by the b+tree bulk load path (btree_load.c and btree_sort.c) */
 
-#define BT_LOAD_VACUUM_SLOT_LIMIT ((size_t) 64 * 1024 * 1024)
-
-typedef struct bt_load_vacuum_item BT_LOAD_VACUUM_ITEM;
-struct bt_load_vacuum_item
-{
-  char *data;
-  int length;
-};
-
 typedef struct load_args LOAD_ARGS;
 typedef struct bt_load_provider BT_LOAD_PROVIDER;
 
