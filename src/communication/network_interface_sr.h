@@ -35,9 +35,28 @@
 #include "log_writer.h"
 #include "method_scan.hpp"
 #include "thread_compat.hpp"
+#include "tsc_timer.h"
 
 // forward definitions
 struct qfile_list_id;
+struct execution_info;
+
+/* What an execution logs about itself, as sqmgr_execute_query () does: slow query trace, many ioreads, extend pages */
+typedef struct net_exec_log NET_EXEC_LOG;
+struct net_exec_log
+{
+  int trace_level;
+  int trace_slow_msec;
+  int trace_ioreads;
+  UINT64 *base_stats;
+  TSC_TICKS start_tick;
+};
+
+extern int net_exec_log_start (THREAD_ENTRY * thread_p, NET_EXEC_LOG * exec_log);
+extern void net_exec_log_error (THREAD_ENTRY * thread_p, const struct execution_info *info, int error_code);
+extern int net_exec_log_end (THREAD_ENTRY * thread_p, NET_EXEC_LOG * exec_log, struct execution_info *info,
+			     char **queryinfo_string, int *queryinfo_string_length);
+extern void net_exec_log_free (NET_EXEC_LOG * exec_log);
 
 extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
 extern int server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

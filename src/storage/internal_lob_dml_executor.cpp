@@ -23,6 +23,7 @@
 #include "cache_time.h"
 #include "error_manager.h"
 #include "internal_lob_dml_session.hpp"
+#include "network_interface_sr.h"
 #include "query_list.h"
 #include "query_manager.h"
 #include "stream_to_xasl.h"
@@ -93,9 +94,22 @@ class internal_lob_xasl_dml_context : public internal_lob_dml_staging_context
       QUERY_ID query_id = NULL_QUERY_ID;
       QFILE_LIST_ID *list_id = NULL;
       void *dbval_data = m_dbval_data.empty () ? NULL : m_dbval_data.data ();
+      NET_EXEC_LOG exec_log;
+      EXECUTION_INFO info;
+      char *queryinfo_string = NULL;
+      int queryinfo_string_length = 0;
       int error = NO_ERROR;
 
       assert (m_xasl_entry != NULL);
+      info = m_xasl_entry->sql_info;
+
+      /* logged as sqmgr_execute_query () logs; the time and stats cover this execution, not the transfer */
+      error = net_exec_log_start (thread_p, &exec_log);
+      if (error != NO_ERROR)
+	{
+	  net_exec_log_free (&exec_log);
+	  return error;
+	}
       if (m_xclone.xasl == NULL)
 	{
 	  /* fix_xasl () dropped the uncached clone of the INIT thread */
@@ -109,10 +123,18 @@ class internal_lob_xasl_dml_context : public internal_lob_dml_staging_context
 					      m_dbval_count, dbval_data, &m_query_flag, &m_client_cache_time,
 					      &server_cache_time, m_query_timeout);
 	}
-      release_xasl (thread_p);
       if (list_id == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
+	  net_exec_log_error (thread_p, &info, error);
+	}
+      /* the entry owns the logged texts, so it is unfixed only after */
+      (void) net_exec_log_end (thread_p, &exec_log, &info, &queryinfo_string, &queryinfo_string_length);
+      free_and_init (queryinfo_string);
+      net_exec_log_free (&exec_log);
+      release_xasl (thread_p);
+      if (list_id == NULL)
+	{
 	  return error;
 	}
 

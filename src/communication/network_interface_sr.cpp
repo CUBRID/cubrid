@@ -5863,20 +5863,11 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
   bool has_updated;
 
-  int response_time = 0;
-
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-
   int queryinfo_string_length = 0;
   char *queryinfo_string = NULL;
 
-  UINT64 *base_stats = NULL;
-  UINT64 *current_stats = NULL;
-  UINT64 *diff_stats = NULL;
-  char *sql_id = NULL;
+  NET_EXEC_LOG exec_log;
   int error_code = NO_ERROR, all_error_code = NO_ERROR;
-  int trace_level, trace_slow_msec, trace_ioreads;
   bool tran_abort = false, has_xasl_entry = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
@@ -5887,35 +5878,10 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   TRAN_STATE tran_state;
   bool is_tran_auto_commit;
 
-  trace_level = prm_get_integer_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN);
-  trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
-  trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
-
-  if (trace_slow_msec >= 0 || trace_ioreads > 0)
+  if (net_exec_log_start (thread_p, &exec_log) != NO_ERROR)
     {
-      perfmon_start_watch (thread_p);
-
-      base_stats = perfmon_allocate_values ();
-      if (base_stats == NULL)
-	{
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  return;
-	}
-      if (trace_level != TRACE_LOG_LEVEL_OFF)
-	{
-	  xperfmon_server_copy_stats (thread_p, base_stats, false);
-	}
-      else
-	{
-	  xperfmon_server_copy_stats_for_trace (thread_p, base_stats);
-	}
-
-      tsc_getticks (&start_tick);
-
-      if (trace_slow_msec >= 0)
-	{
-	  thread_p->event_stats.trace_slow_query = true;
-	}
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
     }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6005,25 +5971,7 @@ null_list:
 
       if (error_code != NO_ERROR)
 	{
-	  if (info.sql_hash_text != NULL)
-	    {
-	      if (qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text, strlen (info.sql_hash_text)) != NO_ERROR)
-		{
-		  sql_id = NULL;
-		}
-	    }
-
-	  if (error_code != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
-	    {
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, error_code,
-		      sql_id ? sql_id : "(UNKNOWN SQL_ID)",
-		      info.sql_user_text ? info.sql_user_text : "(UNKNOWN USER_TEXT)");
-	    }
-
-	  if (sql_id != NULL)
-	    {
-	      free_and_init (sql_id);
-	    }
+	  net_exec_log_error (thread_p, &info, error_code);
 	}
 
       tran_abort = need_to_abort_tran (thread_p, &error_code);
@@ -6121,67 +6069,10 @@ null_list:
    * the case will cause defects. */
   if (tran_abort == false)
     {
-      if (trace_slow_msec >= 0 || trace_ioreads > 0)
+      if (net_exec_log_end (thread_p, &exec_log, &info, &queryinfo_string, &queryinfo_string_length) != NO_ERROR)
 	{
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
-
-	  if (base_stats == NULL)
-	    {
-	      base_stats = perfmon_allocate_values ();
-	      if (base_stats == NULL)
-		{
-		  css_send_abort_to_client (thread_p->conn_entry, rid);
-		  return;
-		}
-	    }
-
-	  current_stats = perfmon_allocate_values ();
-	  if (current_stats == NULL)
-	    {
-	      css_send_abort_to_client (thread_p->conn_entry, rid);
-	      goto exit;
-	    }
-	  diff_stats = perfmon_allocate_values ();
-	  if (diff_stats == NULL)
-	    {
-	      css_send_abort_to_client (thread_p->conn_entry, rid);
-	      goto exit;
-	    }
-
-	  if (trace_level != TRACE_LOG_LEVEL_OFF)
-	    {
-	      bool need_pgbuf_stat = (trace_level == TRACE_LOG_LEVEL_DETAIL && response_time >= trace_slow_msec);
-
-	      xperfmon_server_copy_stats (thread_p, current_stats, need_pgbuf_stat);
-	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, need_pgbuf_stat);
-	    }
-	  else
-	    {
-	      xperfmon_server_copy_stats_for_trace (thread_p, current_stats);
-	      perfmon_calc_diff_stats_for_trace (diff_stats, current_stats, base_stats);
-	    }
-
-	  if (response_time >= trace_slow_msec)
-	    {
-	      queryinfo_string = (char *) malloc (QUERY_INFO_BUF_SIZE);
-	      queryinfo_string_length =
-		      trace_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string, trace_level);
-	    }
-
-	  if (trace_ioreads > 0
-	      && diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] >= (UINT64) trace_ioreads)
-	    {
-	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
-	    }
-
-	  perfmon_stop_watch (thread_p);
-	}
-
-      if (thread_p->event_stats.extend_pages > 0)
-	{
-	  event_log_extend_pages (thread_p, &info);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  goto exit;
 	}
     }
 
@@ -6278,17 +6169,163 @@ exit:
     {
       free_and_init (p_net_Deferred_end_queries);
     }
-  if (base_stats != NULL)
+  net_exec_log_free (&exec_log);
+}
+
+/*
+ * net_exec_log_start () - Start what an execution logs about itself: the slow query trace and many ioreads take
+ *			   their base stats and start time here
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
+ */
+int
+net_exec_log_start (THREAD_ENTRY *thread_p, NET_EXEC_LOG *exec_log)
+{
+  exec_log->trace_level = prm_get_integer_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN);
+  exec_log->trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
+  exec_log->trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
+  exec_log->base_stats = NULL;
+
+  if (exec_log->trace_slow_msec >= 0 || exec_log->trace_ioreads > 0)
     {
-      free_and_init (base_stats);
+      perfmon_start_watch (thread_p);
+
+      exec_log->base_stats = perfmon_allocate_values ();
+      if (exec_log->base_stats == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (exec_log->trace_level != TRACE_LOG_LEVEL_OFF)
+	{
+	  xperfmon_server_copy_stats (thread_p, exec_log->base_stats, false);
+	}
+      else
+	{
+	  xperfmon_server_copy_stats_for_trace (thread_p, exec_log->base_stats);
+	}
+
+      tsc_getticks (&exec_log->start_tick);
+
+      if (exec_log->trace_slow_msec >= 0)
+	{
+	  thread_p->event_stats.trace_slow_query = true;
+	}
     }
-  if (current_stats != NULL)
+
+  return NO_ERROR;
+}
+
+/*
+ * net_exec_log_error () - Report a failed execution with its SQL id and user text (ER_QUERY_EXECUTION_ERROR)
+ */
+void
+net_exec_log_error (THREAD_ENTRY *thread_p, const EXECUTION_INFO *info, int error_code)
+{
+  char *sql_id = NULL;
+
+  if (info->sql_hash_text != NULL)
     {
+      if (qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text, strlen (info->sql_hash_text)) != NO_ERROR)
+	{
+	  sql_id = NULL;
+	}
+    }
+
+  if (error_code != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, error_code,
+	      sql_id ? sql_id : "(UNKNOWN SQL_ID)", info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)");
+    }
+
+  if (sql_id != NULL)
+    {
+      free_and_init (sql_id);
+    }
+}
+
+/*
+ * net_exec_log_end () - Write the slow query trace, many ioreads and volume extension logs of the execution
+ *			 net_exec_log_start () started
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
+ *   queryinfo_string(out): the slow query text for the client, if one was logged; the caller frees it
+ */
+int
+net_exec_log_end (THREAD_ENTRY *thread_p, NET_EXEC_LOG *exec_log, EXECUTION_INFO *info, char **queryinfo_string,
+		  int *queryinfo_string_length)
+{
+  TSC_TICKS end_tick;
+  TSCTIMEVAL tv_diff;
+  int response_time;
+  UINT64 *current_stats;
+  UINT64 *diff_stats;
+
+  if (exec_log->trace_slow_msec >= 0 || exec_log->trace_ioreads > 0)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, exec_log->start_tick);
+      response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
+
+      current_stats = perfmon_allocate_values ();
+      if (current_stats == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      diff_stats = perfmon_allocate_values ();
+      if (diff_stats == NULL)
+	{
+	  free_and_init (current_stats);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      if (exec_log->trace_level != TRACE_LOG_LEVEL_OFF)
+	{
+	  bool need_pgbuf_stat = (exec_log->trace_level == TRACE_LOG_LEVEL_DETAIL
+				  && response_time >= exec_log->trace_slow_msec);
+
+	  xperfmon_server_copy_stats (thread_p, current_stats, need_pgbuf_stat);
+	  perfmon_calc_diff_stats (diff_stats, current_stats, exec_log->base_stats, need_pgbuf_stat);
+	}
+      else
+	{
+	  xperfmon_server_copy_stats_for_trace (thread_p, current_stats);
+	  perfmon_calc_diff_stats_for_trace (diff_stats, current_stats, exec_log->base_stats);
+	}
+
+      if (response_time >= exec_log->trace_slow_msec)
+	{
+	  *queryinfo_string = (char *) malloc (QUERY_INFO_BUF_SIZE);
+	  *queryinfo_string_length =
+		  trace_log_slow_query (thread_p, info, response_time, diff_stats, *queryinfo_string,
+					exec_log->trace_level);
+	}
+
+      if (exec_log->trace_ioreads > 0
+	  && diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] >= (UINT64) exec_log->trace_ioreads)
+	{
+	  event_log_many_ioreads (thread_p, info, response_time, diff_stats);
+	}
+
+      perfmon_stop_watch (thread_p);
       free_and_init (current_stats);
-    }
-  if (diff_stats != NULL)
-    {
       free_and_init (diff_stats);
+    }
+
+  if (thread_p->event_stats.extend_pages > 0)
+    {
+      event_log_extend_pages (thread_p, info);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * net_exec_log_free () - Free what net_exec_log_start () allocated
+ */
+void
+net_exec_log_free (NET_EXEC_LOG *exec_log)
+{
+  if (exec_log->base_stats != NULL)
+    {
+      free_and_init (exec_log->base_stats);
     }
 }
 
