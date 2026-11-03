@@ -194,9 +194,12 @@ enum
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
 
-/* qo_plan_cmp () does not tell apart by cost two plans whose costs fall into the same bucket of this ratio (the cost
- * model is not that exact); qo_plan_tie_cmp () picks one of them. */
-#define QO_COST_BUCKET_RATIO 1.01
+/* The share of its cost that a plan of one scan gains in qo_plan_pref_cost () for a covering index scan, and loses for
+ * each sort it does not skip: the cost model is not exact enough to tell such a plan from one that costs less by less. */
+#define QO_PLAN_PREFER_SHARE 0.01
+/* qo_plan_cmp () ties two plans whose costs fall into one cell of this ratio: finer than any cost difference the model
+ * means, coarser than the rounding of its arithmetic. */
+#define QO_COST_CELL_RATIO (1.0 + 1e-6)
 #define QO_TIE_MAX_NODES 64	/* scans of a plan whose aliases and indexes qo_plan_tie_cmp () compares */
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
@@ -7001,21 +7004,62 @@ qo_plan_cmp_cost (QO_PLAN * plan)
 }
 
 /*
- * qo_cost_bucket () - the bucket of QO_COST_BUCKET_RATIO that a plan cost falls into
- *   return: the bucket number, which grows with the cost; 0 for any cost up to 1
- *   cost(in):
+ * qo_plan_pref_cost () - the cost qo_plan_cmp () ranks a plan by
+ *   return: qo_plan_cmp_cost (); for a plan of one scan, with the shares of QO_PLAN_PREFER_SHARE its covering index
+ *	     scan gains and its sorts lose
+ *   plan(in):
+ *
+ * Note: A plan of one scan that covers the query or skips the ORDER BY or GROUP BY sort thus wins over one that costs
+ *   less by less than about that share. A share of the cost, not an amount, keeps the choice when all the costs grow
+ *   alike (more rows, other cost parameters). It is taken of the magnitude, so that a cost below zero (an analytic
+ *   index scan less the sort it saves) gains as well, and QO_INFINITY (qo_worst_cost ()) stays infinite. A join is
+ *   ranked by its cost alone: shares for its scans turn many join orders whose costs differ by less than them (JOB).
  */
 static double
-qo_cost_bucket (double cost)
+qo_plan_pref_cost (QO_PLAN * plan)
+{
+  double cost = qo_plan_cmp_cost (plan);
+  double weight = 1.0;
+
+  while (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.subplan != NULL)
+    {
+      weight *= 1.0 + QO_PLAN_PREFER_SHARE;
+      plan = plan->plan_un.sort.subplan;
+    }
+
+  if (plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return cost;
+    }
+
+  if (plan->plan_un.scan.index != NULL && qo_is_index_covering_scan (plan))
+    {
+      weight *= 1.0 - QO_PLAN_PREFER_SHARE;
+    }
+
+  /* weight is above 0 and below 2 */
+  return (cost < 0.0) ? cost * (2.0 - weight) : cost * weight;
+}
+
+/*
+ * qo_cost_cell () - the cell of QO_COST_CELL_RATIO that a cost falls into
+ *   return: the cell number, which grows with the cost
+ *   cost(in):
+ *
+ * Note: Two costs of one cell tie. A cell is a value of one cost, unlike a window around the other (QO_COST_EQ ()),
+ *   so the ties are transitive: three costs a chain of windows apart do not tie a with b and b with c but not a with c.
+ */
+static double
+qo_cost_cell (double cost)
 {
   if (!(cost > 1.0))
     {
-      /* below one page the buckets would only split noise */
-      return 0.0;
+      /* up to 1 the cells keep the width they have at 1, as QO_COST_EQ () takes MAX (1.0, ...) */
+      return floor ((cost - 1.0) / (QO_COST_CELL_RATIO - 1.0));
     }
 
-  /* QO_INFINITY (a worst plan) falls into the infinite bucket */
-  return floor (log (cost) / log (QO_COST_BUCKET_RATIO)) + 1.0;
+  /* QO_INFINITY falls into the infinite cell */
+  return floor (log (cost) / log (QO_COST_CELL_RATIO));
 }
 
 /* the values of a plan that qo_plan_tie_cmp () compares, gathered over all its scans */
@@ -7095,33 +7139,27 @@ qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
 }
 
 /*
- * qo_plan_tie_cmp () - compare two plans whose costs fall into the same bucket
+ * qo_plan_tie_cmp () - compare two plans whose costs tie
  *   return: PLAN_COMP_LT if a is preferred, PLAN_COMP_GT if b is, PLAN_COMP_EQ if neither
  *   a(in):
- *   a_cost(in): qo_plan_cmp_cost (a)
  *   b(in):
- *   b_cost(in): qo_plan_cmp_cost (b)
  *
  * Note: Each step compares a value of one plan with the same value of the other, never a relation between the two,
  *   so the steps order all the plans of an info alike, whatever order they are generated in. The values are those
  *   of all the scans of a plan (qo_plan_tie_keys ()):
  *     1. fewer sorts: a plan that skips the ORDER BY or GROUP BY sort
- *     2. for a plan of several scans (a join), the lower exact cost: the joins are told apart by cost, as they were
- *        before, and the next steps only between joins of one cost (which inner index a join probes)
- *     3. more covering index scans
- *     4. more key range terms, then more key filter terms: the indexes read fewer keys
- *     5. fewer index pages (a sequential scan has none)
- *     6. the lower exact cost
- *     7. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
+ *     2. more covering index scans
+ *     3. more key range terms, then more key filter terms: the indexes read fewer keys
+ *     4. fewer index pages (a sequential scan has none): of two joins of one cost, the one whose inner index is smaller
+ *     5. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
  *        creation does not matter
- *     8. the plan type, then the scan or join method of the plan under its sorts
+ *     6. the plan type, then the scan or join method of the plan under its sorts
  */
 static QO_PLAN_COMPARE_RESULT
-qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
+qo_plan_tie_cmp (QO_PLAN * a, QO_PLAN * b)
 {
   QO_TIE_KEYS a_keys, b_keys;
   QO_PLAN *a_top = a, *b_top = b;
-  double a_join_cost, b_join_cost;
   int a_val, b_val, i, c;
 
 #define QO_TIE_PREFER_LESS(x, y) \
@@ -7135,28 +7173,13 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
   /* 1. sorts */
   QO_TIE_PREFER_LESS (a_keys.sorts, b_keys.sorts);
 
-  /* 2. a plan of several scans by its exact cost first: the sums of its scans stand for a join poorly (taken first,
-   *    they turn many join orders whose costs differ by less than the bucket), and a plan of one scan has 0 here */
-  a_join_cost = (a_keys.n > 1) ? a_cost : 0.0;
-  b_join_cost = (b_keys.n > 1) ? b_cost : 0.0;
-  if (a_join_cost != b_join_cost && !QO_COST_EQ (a_join_cost, b_join_cost))
-    {
-      return (a_join_cost < b_join_cost) ? PLAN_COMP_LT : PLAN_COMP_GT;
-    }
-
-  /* 3-5. covering scans, index terms and index pages */
+  /* 2-4. covering scans, index terms and index pages */
   QO_TIE_PREFER_LESS (b_keys.covering, a_keys.covering);
   QO_TIE_PREFER_LESS (b_keys.range_terms, a_keys.range_terms);
   QO_TIE_PREFER_LESS (b_keys.filter_terms, a_keys.filter_terms);
   QO_TIE_PREFER_LESS (a_keys.index_pages, b_keys.index_pages);
 
-  /* 6. the exact cost; QO_INFINITY equals itself */
-  if (a_cost != b_cost && !QO_COST_EQ (a_cost, b_cost))
-    {
-      return (a_cost < b_cost) ? PLAN_COMP_LT : PLAN_COMP_GT;
-    }
-
-  /* 7. the aliases in join order, then the index names */
+  /* 5. the aliases in join order, then the index names */
   for (i = 0; i < a_keys.n && i < b_keys.n; i++)
     {
       c = strcmp (QO_NODE_NAME (a_keys.nodes[i]) != NULL ? QO_NODE_NAME (a_keys.nodes[i]) : "",
@@ -7170,7 +7193,7 @@ qo_plan_tie_cmp (QO_PLAN * a, double a_cost, QO_PLAN * b, double b_cost)
       QO_TIE_PREFER_LESS (c, 0);
     }
 
-  /* 8. the plan type and method under the sorts (-1 for a plan that has none) */
+  /* 6. the plan type and method under the sorts (-1 for a plan that has none) */
   while (a_top->plan_type == QO_PLANTYPE_SORT && a_top->plan_un.sort.subplan != NULL)
     {
       a_top = a_top->plan_un.sort.subplan;
@@ -7246,14 +7269,14 @@ qo_plan_cmp_by_rules (QO_PLANNER * planner)
  * Note: Two plans of a LIMIT query go to qo_plan_cmp_limit (): a scan does not cost less for stopping at the LIMIT
  *   (qo_sscan_cost (), qo_iscan_cost ()), and its rules keep the plans that do stop early (an ORDER BY or GROUP BY
  *   skip, a SORT-LIMIT, a multi range optimization). So do two plans of a query that qo_plan_cmp_by_rules () leaves to
- *   the rules. Any other two plans are compared by cost, and two plans whose costs fall into the same bucket of
- *   QO_COST_BUCKET_RATIO by qo_plan_tie_cmp (). Neither step looks at a relation between the two plans, so the
- *   comparison is a total order: the plan kept does not depend on the order the plans are generated in (CBRD-27146).
+ *   the rules. Any other two plans are ranked by qo_plan_pref_cost (), and two plans whose costs fall into one cell of
+ *   QO_COST_CELL_RATIO by qo_plan_tie_cmp (). Both steps compare values of one plan, never a relation between the
+ *   two, so the comparison is a total order: the plan kept does not depend on the order the plans are generated in.
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 {
-  double a_cost, b_cost, a_bucket, b_bucket;
+  double a_cell, b_cell;
 
   if (a == b)
     {
@@ -7266,16 +7289,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       return qo_plan_cmp_limit (a, b);
     }
 
-  a_cost = qo_plan_cmp_cost (a);
-  b_cost = qo_plan_cmp_cost (b);
-  a_bucket = qo_cost_bucket (a_cost);
-  b_bucket = qo_cost_bucket (b_cost);
-  if (a_bucket != b_bucket)
+  a_cell = qo_cost_cell (qo_plan_pref_cost (a));
+  b_cell = qo_cost_cell (qo_plan_pref_cost (b));
+  if (a_cell != b_cell)
     {
-      return (a_bucket < b_bucket) ? PLAN_COMP_LT : PLAN_COMP_GT;
+      return (a_cell < b_cell) ? PLAN_COMP_LT : PLAN_COMP_GT;
     }
 
-  return qo_plan_tie_cmp (a, a_cost, b, b_cost);
+  return qo_plan_tie_cmp (a, b);
 }
 
 /*
@@ -9036,9 +9057,9 @@ qo_plan_cmp_parallel_drive (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp
     }
 
   /* only a decision taken on cost: qo_plan_cmp () also prefers a dearer plan on other grounds
-   * (an order-by skip under a LIMIT by the rules of qo_plan_cmp_limit (), a covering index within
-   * a cost bucket by qo_plan_tie_cmp ()), and keeping the cheaper one beside it would let
-   * qo_find_best_plan_on_planvec (), which compares cost alone, overturn that */
+   * (an order-by skip under a LIMIT by the rules of qo_plan_cmp_limit (), a covering index or a
+   * sort skip within a share of the cost by qo_plan_pref_cost ()), and keeping the cheaper one
+   * beside it would let qo_find_best_plan_on_planvec (), which compares cost alone, overturn that */
   a_cost = a->fixed_cpu_cost + a->fixed_io_cost + a->variable_cpu_cost + a->variable_io_cost;
   b_cost = b->fixed_cpu_cost + b->fixed_io_cost + b->variable_cpu_cost + b->variable_io_cost;
   if ((cmp == PLAN_COMP_LT) ? (a_cost >= b_cost) : (b_cost >= a_cost))
