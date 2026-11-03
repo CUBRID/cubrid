@@ -13337,16 +13337,74 @@ end:
   return success;
 }
 
+/*
+ * heap_attrvalue_copy_lob () - copy the external LOB of a BLOB/CLOB attribute value into the class's LOB path
+ *   return: NO_ERROR or ER_FAILED
+ *   thread_p(in): thread entry
+ *   class_oid(in): class the value is being written for
+ *   value(in/out): attribute value whose dbvalue holds a non-NULL ELO
+ *   pr_type(in): BLOB or CLOB primitive type of the attribute
+ *
+ * Note: On success, the dbvalue owns the new ELO. The value is marked HEAP_WRITTEN_LOB_ATTRVALUE even when
+ *       db_elo_copy_with_prefix fails.
+ */
+static int
+heap_attrvalue_copy_lob (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_ATTRVALUE * value,
+			 const PR_TYPE * pr_type)
+{
+  DB_VALUE *dbvalue = &value->dbvalue;
+  DB_ELO dest_elo, *elo_p;
+  char *save_meta_data, *new_meta_data;
+  HFID hfid;
+  char lob_path_prefix[PATH_MAX];
+  int rv;
+
+  elo_p = db_get_elo (dbvalue);
+
+  if (heap_get_class_name (thread_p, class_oid, &new_meta_data) != NO_ERROR || new_meta_data == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* an instance of the class is being transformed, so its heap must exist. */
+  if (heap_get_class_hfid (thread_p, class_oid, &hfid, NULL) != NO_ERROR)
+    {
+      free_and_init (new_meta_data);
+      return ER_FAILED;
+    }
+  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
+  save_meta_data = elo_p->meta_data;
+  elo_p->meta_data = new_meta_data;
+  rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
+
+  free_and_init (elo_p->meta_data);
+  elo_p->meta_data = save_meta_data;
+
+  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
+   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
+   * elo again. Otherwize it will generate 2 copies. */
+  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
+
+  if (rv < 0)
+    {
+      return ER_FAILED;
+    }
+
+  pr_clear_value (dbvalue);
+  db_make_elo (dbvalue, pr_type->id, &dest_elo);
+  dbvalue->need_clear = true;
+
+  return NO_ERROR;
+}
+
 static SCAN_CODE
 heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value, OID class_oid, int lob_create_flag,
 				 RECDES * recdes)
 {
   DB_VALUE *dbvalue;
   const PR_TYPE *pr_type;
-  DB_ELO dest_elo, *elo_p;
-  char *save_meta_data, *new_meta_data;
+  DB_ELO *elo_p;
   int length;
-  int rv;
   OR_BUF buf;
 
   pr_type = value->last_attrepr->domain->type;
@@ -13372,42 +13430,10 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
 	  return S_SUCCESS;
 	}
 
-      if (heap_get_class_name (thread_p, &class_oid, &new_meta_data) != NO_ERROR || new_meta_data == NULL)
+      if (heap_attrvalue_copy_lob (thread_p, &class_oid, value, pr_type) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
-      {
-	HFID hfid;
-	char lob_path_prefix[PATH_MAX];
-
-	/* an instance of the class is being transformed, so its heap must exist. */
-	if (heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
-	  {
-	    free_and_init (new_meta_data);
-	    return S_ERROR;
-	  }
-	snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
-	save_meta_data = elo_p->meta_data;
-	elo_p->meta_data = new_meta_data;
-	rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
-      }
-
-      free_and_init (elo_p->meta_data);
-      elo_p->meta_data = save_meta_data;
-
-      /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
-       * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
-       * elo again. Otherwize it will generate 2 copies. */
-      value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
-
-      if (rv < 0)
-	{
-	  return S_ERROR;
-	}
-
-      pr_clear_value (dbvalue);
-      db_make_elo (dbvalue, pr_type->id, &dest_elo);
-      dbvalue->need_clear = true;
     }
 
   length = pr_type->get_disk_size_of_value (dbvalue);
@@ -13903,10 +13929,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
   const PR_TYPE *pr_type;
-  DB_ELO dest_elo, *elo_p;
-  char *save_meta_data, *new_meta_data;
+  DB_ELO *elo_p;
   int length;
-  int rv;
 
   using namespace oos_log;
 
@@ -13997,45 +14021,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      return S_SUCCESS;
 	    }
 
-	  if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR
-	      || new_meta_data == NULL)
+	  if (heap_attrvalue_copy_lob (thread_p, &attr_info->class_oid, value, pr_type) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
-
-	  {
-	    HFID hfid;
-	    char lob_path_prefix[PATH_MAX];
-
-	    /* an instance of the class is being transformed, so its heap must exist. */
-	    if (heap_get_class_hfid (thread_p, &attr_info->class_oid, &hfid, NULL) != NO_ERROR)
-	      {
-		free_and_init (new_meta_data);
-		return S_ERROR;
-	      }
-
-	    snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
-	    save_meta_data = elo_p->meta_data;
-	    elo_p->meta_data = new_meta_data;
-	    rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
-	  }
-
-	  free_and_init (elo_p->meta_data);
-	  elo_p->meta_data = save_meta_data;
-
-	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
-	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
-	   * elo again. Otherwize it will generate 2 copies. */
-	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
-
-	  if (rv < 0)
-	    {
-	      return S_ERROR;
-	    }
-
-	  pr_clear_value (dbvalue);
-	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
-	  dbvalue->need_clear = true;
 	}
 
       /*
