@@ -101,6 +101,8 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
  * bind-sensitive planner could price. Used at plan generation to flag a plan built with
  * unbound host-variable markers so the first execution replans under the real values. */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
+/* true if HAVING compares an aggregate the planner prices with a value against a host variable (CBRD-27811) */
+bool histogram_stmt_has_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /*===========================================================================*/
 /* bind-value plans (per-predicate fingerprint)

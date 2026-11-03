@@ -3182,6 +3182,28 @@ hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
   return node;
 }
 
+static PT_NODE *
+having_hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
+
+  if (histogram_is_having_hv_predicate (parser, node))
+    {
+      ctx->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+bool
+histogram_stmt_has_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  hv_pred_ctx ctx;
+  ctx.found = false;
+  (void) parser_walk_tree (parser, statement, having_hv_pred_walk, &ctx, NULL, NULL);
+  return ctx.found;
+}
+
 bool
 histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
