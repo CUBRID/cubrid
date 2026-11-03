@@ -953,6 +953,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
       HFID_COPY (&spec[i].hfid, &pinfo->partitions[pos + 1].class_hfid);
       spec[i].pos = pos;
       spec[i].row_pruned = false;
+      spec[i].btid_int_cached = false;
 
       if (i == cnt - 1)
 	{

@@ -1246,6 +1246,8 @@ struct partition_spec_node
   PARTITION_SPEC_TYPE *next;	/* next partition */
   int pos;			/* position among the class's partitions (pruningset_to_spec_list ()) */
   bool row_pruned;		/* left out for the current outer row (partition_prune_spec_for_row ()) */
+  bool btid_int_cached;		/* btid_int is read from the partition's root page (scan_switch_index_partition ()) */
+  BTID_INT btid_int;		/* the B+tree header of btid, for an index scan switched to this partition */
   SCAN_STATS scan_stats;
   const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
 };

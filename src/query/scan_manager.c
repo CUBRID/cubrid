@@ -3272,6 +3272,98 @@ exit_on_error:
 }
 
 /*
+ * scan_switch_index_partition () - move an index scan of a partitioned class to another partition
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_id(in/out): an index scan opened by scan_open_index_scan () and ended by scan_end_scan ()
+ *   cls_oid(in): the partition
+ *   hfid(in): its heap
+ *   btid_int(in/out): the header of the partition's B+tree, which indx_info->btid already holds; read from its root
+ *		       page on the first switch to the partition and kept for the next ones
+ *   btid_int_cached(in/out): whether btid_int is read
+ *
+ * Note: the partitions of a class have the same index columns, so what scan_open_index_scan () set up for the index
+ *	 (the key attributes, the OID buffer, the key copy buffer, the covering list) stays as it is, and only what
+ *	 belongs to the partition changes. A scan walked per outer row switches partitions for every outer key, and
+ *	 closing and opening it again costs more than the B+tree probe itself (CBRD-27866). The caller starts the scan
+ *	 and resets its block as for a new key.
+ */
+int
+scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * cls_oid, HFID * hfid,
+			     BTID_INT * btid_int, bool * btid_int_cached)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  BTREE_SCAN *BTS = &isidp->bt_scan;
+
+  assert (scan_id->type == S_INDX_SCAN);
+
+  if (!*btid_int_cached)
+    {
+      BTID *btid = &isidp->indx_info->btid;
+      VPID root_vpid;
+      PAGE_PTR root;
+      BTREE_ROOT_HEADER *root_header;
+
+      root_vpid.pageid = btid->root_pageid;
+      root_vpid.volid = btid->vfid.volid;
+      root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (root == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return ER_FAILED;
+	}
+
+      root_header = btree_get_root_header (thread_p, root);
+      if (root_header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, root);
+	  return ER_FAILED;
+	}
+
+      btid_int->sys_btid = btid;
+      btid_int->key_type = NULL;
+      if (btree_glean_root_header_info (thread_p, root_header, btid_int, true) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, root);
+	  return ER_FAILED;
+	}
+      pgbuf_unfix_and_init (thread_p, root);
+
+      /* the search keys were decided against the key domain of the index, as scan_open_index_scan () checks */
+      if (isidp->indx_info->key_type == NULL
+	  || !tp_domain_match (isidp->indx_info->key_type, btid_int->key_type, TP_EXACT_MATCH))
+	{
+	  (void) domain_unresolved_error (-1, TP_DOMAIN_TYPE (btid_int->key_type));
+	  return ER_FAILED;
+	}
+
+      *btid_int_cached = true;
+    }
+
+  BTREE_INIT_SCAN (BTS);
+  BTS->btid_int = *btid_int;
+  BTS->btid_int.sys_btid = &isidp->indx_info->btid;
+  BTS->is_btid_int_valid = true;
+
+  scan_init_scan_id (scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type, scan_id->fixed,
+		     scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval, scan_id->val_list, scan_id->vd);
+
+  COPY_OID (&isidp->cls_oid, cls_oid);
+  isidp->hfid = *hfid;		/* bitwise copy */
+  isidp->scancache_inited = false;
+  isidp->curr_keyno = -1;
+  isidp->curr_oidno = -1;
+  isidp->one_range = false;
+  if (isidp->oid_list != NULL)
+    {
+      isidp->oid_list->oid_cnt = 0;
+      isidp->curr_oidp = isidp->oid_list->oidp;
+    }
+
+  return scan_init_index_key_limit (thread_p, isidp, &isidp->indx_info->key_info, scan_id->vd);
+}
+
+/*
  * scan_open_index_key_info_scan () - Opens a scan for index key info
  *
  * return		   : Error code.

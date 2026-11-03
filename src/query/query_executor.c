@@ -830,6 +830,7 @@ static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * clas
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
 static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static bool qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
 static bool qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec);
 
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -11963,6 +11964,27 @@ qexec_settle_per_row_walk (XASL_NODE * xasl)
 }
 
 /*
+ * qexec_can_switch_index_partition () - whether qexec_init_next_partition () may move an open index scan to the next
+ *					 partition without closing it
+ *   return: bool
+ *   spec(in): the partitioned spec
+ *   xasl(in): its scan proc
+ *
+ * Note: only a plain serial index scan of a select, walked per outer row (CBRD-27866). Index skip scan, loose index
+ *	 scan and multiple range optimization keep state for the index of one partition, and a locking scan decides
+ *	 its row locks per class when it is opened.
+ */
+static bool
+qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
+{
+  return (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && spec->type == TARGET_CLASS
+	  && spec->access == ACCESS_METHOD_INDEX && spec->indexptr != NULL && spec->s_id.type == S_INDX_SCAN
+	  && spec->s_id.status != S_CLOSED && spec->s_id.s.isid.bt_attr_ids != NULL
+	  && spec->s_id.scan_op_type == S_SELECT && !spec->s_id.mvcc_select_lock_needed
+	  && !spec->indexptr->use_iss && spec->indexptr->ils_prefix_len == 0 && !spec->s_id.s.isid.multi_range_opt.use);
+}
+
+/*
  * qexec_row_partition_has_next () - whether the partition walk of an outer row has a partition after the current one
  *   return: bool
  *   spec(in): a partitioned spec walked per outer row
@@ -12950,6 +12972,7 @@ static SCAN_CODE
 qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
 {
   int error = NO_ERROR;
+  bool fast_switch = false;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
@@ -12965,9 +12988,16 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
+  /* an index scan walked per outer row keeps what it set up for the index and switches only its partition
+   * (scan_switch_index_partition ()); any other scan is closed and opened again on the next partition */
+  fast_switch = qexec_can_switch_index_partition (spec, xasl);
+
   /* close current scan and open a new one on the next partition */
   scan_end_scan (thread_p, &spec->s_id);
-  scan_close_scan (thread_p, &spec->s_id);
+  if (!fast_switch)
+    {
+      scan_close_scan (thread_p, &spec->s_id);
+    }
 
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
@@ -13242,6 +13272,23 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 	      spec->indexptr->btid = btid;
 
+	      if (fast_switch && spec->curent != NULL)
+		{
+		  error = scan_switch_index_partition (thread_p, &spec->s_id, &class_oid, &class_hfid,
+						       &spec->curent->btid_int, &spec->curent->btid_int_cached);
+		  if (error != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  break;
+		}
+	      if (fast_switch)
+		{
+		  /* back to the root class: open it as any scan */
+		  scan_close_scan (thread_p, &spec->s_id);
+		  fast_switch = false;
+		}
+
 	      error =
 		scan_open_index_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
 				      spec->s_id.upddel_target_scan,
@@ -13341,6 +13388,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
   error = scan_start_scan (thread_p, &spec->s_id);
   if (error != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  if (fast_switch && scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR)
     {
       return S_ERROR;
     }
