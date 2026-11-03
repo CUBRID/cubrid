@@ -12875,10 +12875,11 @@ heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
 /*
  * heap_attrinfo_can_share_string () - CBRD-27847: whether an attribute takes a string or bit string value as it is,
  *   sharing the value's buffer: the value is of the attribute's domain - precision and collation, as the match
- *   heap_attrinfo_set tries first (TP_EXACT_MATCH), and the codeset -, fits its precision, and owns no buffer.
- *   The cast would only copy such a value: the same codeset is copied as it is, and a CHAR shorter than its precision
- *   is padded the way writing it pads it. A value that owns its buffer is cast into a copy: its holder may clear it
- *   before the record is written (locator_mvcc_reev_cond_assigns clears it right after the assignment).
+ *   heap_attrinfo_set tries first (TP_EXACT_MATCH), and the codeset -, fits its precision (a CHAR or BIT fills it),
+ *   and owns no buffer. The cast would only copy such a value: the same codeset is copied as it is, and a full CHAR
+ *   or BIT is padded by neither the cast nor writing it, which pad a shorter one differently (the cast with the
+ *   codeset's pad character, writing with a space). A value that owns its buffer is cast into a copy: its holder may
+ *   clear it before the record is written (locator_mvcc_reev_cond_assigns clears it right after the assignment).
  *   return: true to share the value's buffer
  *   value(in): a value, not NULL, of the attribute's type
  *   domain(in): the attribute's domain
@@ -12901,25 +12902,27 @@ heap_attrinfo_can_share_string (const DB_VALUE * value, const TP_DOMAIN * domain
       return false;
     }
 
-  /* the value's precision as tp_domain_resolve_value makes it: an unset or oversized variable one is the maximum */
+  /* the value's precision as tp_domain_resolve_value makes it - an unset variable one is the maximum -, but for an
+   * oversized one, which the shared setval refuses (ER_INVALID_PRECISION) where the cast stores the value */
   precision = db_value_precision (value);
-  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+  if ((type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+      && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE))
     {
-      const int max_precision = (type == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION;
-
-      if (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE || precision > max_precision)
-	{
-	  precision = max_precision;
-	}
+      precision = (type == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION;
     }
   if (precision != domain->precision)
     {
       return false;
     }
 
-  /* and the value fits it, whatever its precision says: a character string's size in bytes bounds its length in
+  /* and the value fits it, whatever its precision says. A CHAR or BIT fills it: one read from a list tuple, a record
+   * or a plan comes padded, with its precision as its length. A VARCHAR's size in bytes bounds its length in
    * characters, which is counted only when the size does not decide; a bit string's length is in bits */
-  if (TP_IS_CHAR_TYPE (type) && db_get_string_size (value) <= precision)
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      return db_get_string_length (value) == precision;
+    }
+  if (type == DB_TYPE_VARCHAR && db_get_string_size (value) <= precision)
     {
       return true;
     }
@@ -12933,6 +12936,9 @@ heap_attrinfo_can_share_string (const DB_VALUE * value, const TP_DOMAIN * domain
  *   the match it tries first - but for a string the attribute can share (heap_attrinfo_can_share_string), which the
  *   cast would only copy
  *   return: NO_ERROR, or the conversion's error
+ *   attr_val(in): the value; a string the attribute shares is borrowed, not copied: its buffer must stay as it is
+ *		   until the record is built (locator_attribute_info_force), so a value read through the scan cache that
+ *		   the force rereads the old record with is copied first
  *   domain(in): the attribute's domain the XASL streams, of the catalog's type (a client builds a collection's,
  *		 MONETARY's or an object's domain that tp_domain_match does not find the catalog's)
  *   value_type(in), conv(in): the plan's - the type the value comes in and its converter into domain's type, which a
