@@ -5273,12 +5273,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
-      if (tdes->first_save_entry != NULL)
-	{
-	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
-	  tdes->first_save_entry = NULL;
-	}
-
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
       if (is_local_tran)
@@ -5300,6 +5294,15 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
+	  /* Free the saved spaces only after the commit record is appended. Until then, a crash makes this transaction
+	   * a loser whose undo needs those bytes. Any change that uses them is logged after this commit record, so a
+	   * crash that keeps the change keeps the commit record too. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
+
 	  if (retain_lock != true)
 	    {
 	      lock_unlock_all (thread_p);
@@ -5311,6 +5314,12 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
       else
 	{
 	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc. */
+	  /* LOG_2PC_COMMIT_DECISION is already flushed, so restart recovery commits this transaction. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
 	}
     }
   else
