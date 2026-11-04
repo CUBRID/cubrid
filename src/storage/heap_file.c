@@ -8397,30 +8397,38 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		    && LSA_EQ (&check.prev_version_lsa, &mvcc_header.prev_version_lsa));
 	  }
 #endif
-	  if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+	  /* MVCC_IS_HEADER_ALL_VISIBLE () with OR_MVCC_FLAG_HAS_SIDECAR in its mask: an all-visible row without refs
+	   * runs no test of its own for the flag */
+	  if (MVCC_IS_FLAG_SET (&mvcc_header,
+				OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_HAS_SIDECAR)
+	      || MVCC_GET_INSID (&mvcc_header) != MVCCID_ALL_VISIBLE)
 	    {
-	      MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
-
-	      if (res == TOO_OLD_FOR_SNAPSHOT)
+	      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
 		{
-		  /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
-		  continue;
-		}
-	      if (res != SNAPSHOT_SATISFIED)
-		{
-		  if (LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header)))
-		    {
-		      /* inserted after the snapshot, nothing older to show: the row path's S_DOESNT_EXIST */
-		      continue;
-		    }
-		  /* its visible version is a previous one, in the log */
+		  /* its slots may hold refs, which the batch decoders would read as values: the row path resolves
+		   * them, and its visibility too */
 		  is_exception = true;
 		}
-	    }
-	  if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
-	    {
-	      /* its slots may hold refs, which the batch decoders would read as values: the row path resolves them */
-	      is_exception = true;
+	      else if (snapshot != NULL)
+		{
+		  MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
+
+		  if (res == TOO_OLD_FOR_SNAPSHOT)
+		    {
+		      /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
+		      continue;
+		    }
+		  if (res != SNAPSHOT_SATISFIED)
+		    {
+		      if (LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header)))
+			{
+			  /* inserted after the snapshot, nothing older to show: the row path's S_DOESNT_EXIST */
+			  continue;
+			}
+		      /* its visible version is a previous one, in the log */
+		      is_exception = true;
+		    }
+		}
 	    }
 	  if (!is_exception && n_repids > 0)
 	    {
