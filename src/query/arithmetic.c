@@ -2540,7 +2540,9 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else			/* double */
 	{
-	  bi2 = (DB_BIGINT) db_get_double (value2);
+	  /* a place past the BIGINT range keeps every digit or clears every digit; NaN keeps them */
+	  bi2 = (!(d2 < (double) DB_BIGINT_MAX) ? DB_BIGINT_MAX
+		 : d2 <= (double) DB_BIGINT_MIN ? DB_BIGINT_MIN : (DB_BIGINT) d2);
 	}
 
       if (numeric_db_value_round_to_place (value1, bi2, true, result))
