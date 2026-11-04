@@ -199,6 +199,47 @@ set_tests_properties(test_oos_storage_format_guard
   PROPERTIES FIXTURES_REQUIRED OOS_FORMAT_GUARD_DB TIMEOUT 120
 )
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+add_test(NAME oos_setup_concurrent_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosconcurdb
+)
+set_tests_properties(oos_setup_concurrent_db
+  PROPERTIES FIXTURES_SETUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
+
+add_test(NAME oos_cleanup_concurrent_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosconcurdb
+)
+set_tests_properties(oos_cleanup_concurrent_db
+  PROPERTIES FIXTURES_CLEANUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
+add_test(NAME test_oos_concurrent_insert
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert.py"
+    oosconcurdb "${CMAKE_CURRENT_BINARY_DIR}/concurrent-insert" --sessions 8 --rows 1500 --rounds 3
+)
+set_tests_properties(test_oos_concurrent_insert
+  PROPERTIES FIXTURES_REQUIRED OOS_CONCURRENT_DB TIMEOUT 600
+)
+
+add_test(NAME test_oos_concurrent_insert_driver
+  COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert_driver.py"
+)
+set_tests_properties(test_oos_concurrent_insert_driver PROPERTIES TIMEOUT 30)
+
 # =============================================================================
 # Register SA_MODE tests
 # =============================================================================
