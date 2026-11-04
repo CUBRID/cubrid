@@ -312,7 +312,7 @@ add_test(NAME test_oos_real_vacuum_latch_timeout
 )
 set_tests_properties(
   test_oos_real_vacuum_latch_timeout
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 300
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 480
     ENVIRONMENT "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000"
 )
 
