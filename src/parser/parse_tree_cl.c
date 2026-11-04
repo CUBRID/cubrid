@@ -13497,6 +13497,17 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 
   if (index < parser->host_var_count)
     {
+      const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
+      if (parser->host_var_expected_domains != NULL
+	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index])
+	  && !pt_host_var_is_leave_typed (parser->host_var_expected_domains[index])
+	  && !pt_host_var_is_char_typed (parser, index)
+	  && !(format_class & (PT_HOST_VAR_BIND_DOMAIN | PT_HOST_VAR_FORMAT_POSITION | PT_HOST_VAR_ELT_POSITION)))
+	{
+	  /* the text and the schema give its domain, and every value is cast into it: no token */
+	  *out = '\0';
+	  return;
+	}
       if (parser->host_var_expected_domains != NULL
 	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index]))
 	{
