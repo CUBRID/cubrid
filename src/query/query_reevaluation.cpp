@@ -143,6 +143,7 @@ namespace cubquery
     , copyarea (NULL)
     , vd (NULL)
     , new_recdes (NULL)
+    , caller_builds_record (false)
   {
   }
 

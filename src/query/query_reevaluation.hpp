@@ -100,6 +100,7 @@ namespace cubquery
     lc_copy_area *copyarea;	/* used to build the tuple to be stored to disk after reevaluation */
     val_descr *vd;		/* values descriptor */
     recdes *new_recdes;		/* record descriptor after assignment reevaluation */
+    bool caller_builds_record;	/* redo the assignments into curr_attrinfo with no new_recdes: the caller builds it */
 
     mvcc_update_reev_data ();
   };

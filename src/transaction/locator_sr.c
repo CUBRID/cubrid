@@ -7679,12 +7679,12 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	   * Reevaluate the predicate and the assignments against the last version: locator_mvcc_reev_cond_assigns ()
 	   * rebuilds attr_info, which the record below is built from.  The snapshot stays on the scan cache, unlike
 	   * in the branch below: it tells which versions need reevaluating. */
-	  mvcc_reev_data->upddel_reev_data->new_recdes = &new_recdes;
+	  mvcc_reev_data->upddel_reev_data->caller_builds_record = true;
 	  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY,
 							      NULL_CHN, mvcc_reev_data, LOG_ERROR_IF_DELETED,
 							      LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
-	  /* new_recdes is this call's; the reevaluation data outlives it */
-	  mvcc_reev_data->upddel_reev_data->new_recdes = NULL;
+	  /* the reevaluation data is the statement's, and locator_update_force () wants the record built */
+	  mvcc_reev_data->upddel_reev_data->caller_builds_record = false;
 	  if (scan == S_SUCCESS && mvcc_reev_data->filter_result == V_FALSE)
 	    {
 	      /* the last version no longer satisfies the predicate; the lock was given back with the verdict */
@@ -13960,7 +13960,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	}
     }
 
-  if (mvcc_reev_data->new_recdes == NULL)
+  if (mvcc_reev_data->new_recdes == NULL && !mvcc_reev_data->caller_builds_record)
     {
       /* Seems that the caller wants to reevaluate only the condition */
       goto end;
@@ -14038,6 +14038,11 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	      ev_res = V_ERROR;
 	      goto end;
 	    }
+	}
+
+      if (mvcc_reev_data->caller_builds_record)
+	{
+	  goto end;
 	}
 
       /* TO DO - reuse already allocated area */
