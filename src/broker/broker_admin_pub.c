@@ -4329,10 +4329,10 @@ get_upper_str (char *upper_str, int size, const char *value)
  *           regular file or others may have read it, or if the missing certificate cannot be created
  *
  * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
- * With MANAGE_SSL_CERT, defined for the utilities that start a broker and link broker_ssl_cert.c with OpenSSL, unlike
- * broker_changer, creates the key and the certificate if both are missing, refuses a key or a certificate without
- * the other, and sets admin_warn_msg if they were created or if the certificate is for a private key shipped with
- * CUBRID. Any other unreadable file is left to the CAS, which reports it on SSL connection.
+ * With MANAGE_SSL_CERT, defined for cubrid_broker and cubrid_gateway, which link broker_ssl_cert.c with OpenSSL unlike
+ * broker_changer and libbrokeradmin, creates the key and the certificate if both are missing, refuses a key or a
+ * certificate without the other, and sets admin_warn_msg if they were created or if the certificate is for a private
+ * key shipped with CUBRID. Any other unreadable file is left to the CAS, which reports it on SSL connection.
  *
  * The private key must be a regular file owned by the broker user or root. If it is owned by the broker user, which
  * may be root, group and others must have no access to it. If it is owned by root and the broker runs as another

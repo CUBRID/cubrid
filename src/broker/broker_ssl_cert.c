@@ -21,8 +21,8 @@
  *
  * CUBRID ships no certificate, so a broker with SSL=ON creates a private key and a self-signed certificate for its
  * host when it starts without one. A certificate for a private key that earlier releases shipped, which is public,
- * is told apart. Only the utilities that start a broker (cubrid_broker, cubrid_gateway, libbrokeradmin) build this
- * file, so that the others do not link OpenSSL. Not for Windows.
+ * is told apart. Only cubrid_broker and cubrid_gateway build this file, so that the others do not link OpenSSL;
+ * CUBRID Manager starts brokers with cubrid_broker on Linux. Not for Windows.
  */
 
 #ident "$Id$"
