@@ -518,6 +518,7 @@ struct css_conn_entry
   void assign_tran_index (int tran_index);
   bool claim_tran_index (int tran_index);
   void release_tran_index (void);
+  int get_lost_tran_index (void);
 
   // request count manipulation
   void add_pending_request ();

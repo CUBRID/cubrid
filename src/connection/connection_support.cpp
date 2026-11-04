@@ -78,6 +78,10 @@
 #include "network_interface_cl.h"
 #endif
 
+#if defined (SERVER_MODE)
+#include "log_impl.h"
+#endif /* SERVER_MODE */
+
 #include "storage_common.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "heap_file.h"
@@ -2958,11 +2962,44 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
    assign_tran_index (NULL_TRAN_INDEX);
  }
 
+ /*
+  * css_conn_entry::get_lost_tran_index () - the index the server assigned this connection, once its
+  *   transaction has moved to another connection (2PC attach); NULL_TRAN_INDEX otherwise.
+  */
+ int
+ css_conn_entry::get_lost_tran_index (void)
+ {
+#if defined (SERVER_MODE)
+   int tran_index = owned_tran_index;
+
+   if (tran_index != NULL_TRAN_INDEX && get_tran_index () == NULL_TRAN_INDEX)
+     {
+       return tran_index;
+     }
+#endif /* SERVER_MODE */
+   return NULL_TRAN_INDEX;
+ }
+
  int
  css_conn_entry::get_tran_index ()
  {
 #if defined (SERVER_MODE)
-   return owned_tran_index;
+   int tran_index = owned_tran_index;
+   LOG_TDES *tdes;
+
+   if (tran_index == NULL_TRAN_INDEX)
+     {
+       return NULL_TRAN_INDEX;
+     }
+
+   /* the index counts only while its transaction still belongs to this connection: a 2PC attach
+    * moves it to another connection, which may end it and leave the index to a new client */
+   tdes = LOG_FIND_TDES (tran_index);
+   if (tdes == NULL || tdes->client_id != client_id)
+     {
+       return NULL_TRAN_INDEX;
+     }
+   return tran_index;
 #else
    assert (transaction_id != LOG_SYSTEM_TRAN_INDEX);
    return transaction_id;
