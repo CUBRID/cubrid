@@ -1954,7 +1954,7 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
  * reload_moved_block_trigger() - Reads a trigger again when the procedure of its PL/CSQL block action is gone.
  *    return: error code
  *    trigger(in/out): trigger structure
- *    moved(out): true if the procedure has moved and the action is to be run again
+ *    moved(out): true if the trigger was read again and the action is to be run again
  *
  * Note:
  *    The procedure is named after the trigger owner, so changing the owner renames it.
@@ -1965,11 +1965,13 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
  *    An error raised inside the block is then not taken for a moved procedure.
  *    The error of the failed call is kept here. The caller clears it when the procedure has moved.
  *    An error in reading the trigger again replaces it and is returned.
+ *    Reading the trigger again frees the cached action, so the action is run again from the trigger read again
+ *    even when its procedure keeps the name, for example when the lookup itself failed.
  */
 static int
 reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved)
 {
-  char *old_sp_name;
+  TR_ACTIVITY *old_action;
   int save;
   int error = NO_ERROR;
 
@@ -1980,21 +1982,17 @@ reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved)
       return NO_ERROR;
     }
 
-  old_sp_name = strdup (trigger->block_sp_name);
-  if (old_sp_name == NULL)
-    {
-      return NO_ERROR;
-    }
-
   er_stack_push ();
 
   AU_SAVE_AND_DISABLE (save);
 
   /* an error raised inside the block may say the same, while the procedure itself is still there */
-  if (jsp_find_stored_procedure (old_sp_name, DB_AUTH_NONE) == NULL)
+  if (jsp_find_stored_procedure (trigger->block_sp_name, DB_AUTH_NONE) == NULL)
     {
+      /* the new structure is made before the old one is freed, so a new action never takes the old address */
+      old_action = trigger->action;
       error = validate_trigger (trigger);
-      if (error == NO_ERROR && trigger->block_sp_name != NULL && strcmp (old_sp_name, trigger->block_sp_name) != 0)
+      if (error == NO_ERROR && trigger->action != old_action)
 	{
 	  *moved = true;
 	}
@@ -2009,8 +2007,6 @@ reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved)
     {
       er_stack_pop ();
     }
-
-  free_and_init (old_sp_name);
 
   return error;
 }
