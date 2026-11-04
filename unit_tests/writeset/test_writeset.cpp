@@ -1163,6 +1163,61 @@ TEST_CASE ("a string key under an expansion collation hashes like its compare", 
   }
 }
 
+TEST_CASE ("a string key under a loaded single-level collation hashes like its compare", "[writeset]")
+{
+  /* a loaded collation without expansions compares one weight per code point, so a space, a NUL and any code
+   * point whose weight is 0 are the same key at one position: the hash must agree with the compare in both
+   * directions (needs the de_DE locale loaded by CUBRID; otherwise the collations are not loaded and we only warn) */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 208, 1);
+  const char *names[] = { "utf8_gen_ai_ci", "utf8_gen_ci", "utf8_gen", "utf8_de_exp" };
+
+  for (const char *name : names)
+    {
+      LANG_COLLATION *coll = lang_get_collation_by_name (name);
+
+      if (coll == NULL)
+	{
+	  WARN (name << " not loaded");
+	  continue;
+	}
+      INFO (name << " exp_num=" << coll->coll.uca_exp_num << " contr=" << coll->coll.count_contr
+	    << " w[space]=" << (coll->coll.weights ? coll->coll.weights[0x20] : 0)
+	    << " w[NUL]=" << (coll->coll.weights ? coll->coll.weights[0] : 0)
+	    << " w[U+0301]=" << (coll->coll.weights && coll->coll.w_count > 0x301 ? coll->coll.weights[0x301] : 999));
+
+      auto hash_of = [&] (const char *text, int size)
+      {
+	DB_VALUE value;
+	UINT64 hash;
+
+	REQUIRE (db_make_varchar (&value, 20, text, size, INTL_CODESET_UTF8, coll->coll.coll_id) == NO_ERROR);
+	hash = write_key_hash (&class_oid, &value);
+	pr_clear_value (&value);
+	return hash;
+      };
+      auto cmp = [&] (const char *a, int sa, const char *b, int sb)
+      {
+	return coll->fastcmp (coll, (const unsigned char *) a, sa, (const unsigned char *) b, sb, false);
+      };
+      const char space[] = "a b";
+      const char nul[] = { 'a', '\0', 'b' };
+      const char accent[] = "a\xcc\x81" "b";	/* a + U+0301 combining acute + b */
+
+      {
+	int c1 = cmp (space, 3, nul, 3), c2 = cmp (space, 3, accent, 4), c3 = cmp (nul, 3, accent, 4);
+	bool h1 = hash_of (space, 3) == hash_of (nul, 3);
+	bool h2 = hash_of (space, 3) == hash_of (accent, 4);
+	bool h3 = hash_of (nul, 3) == hash_of (accent, 4);
+	INFO ("compare space/nul=" << c1 << " space/accent=" << c2 << " nul/accent=" << c3
+	      << " | same hash space/nul=" << h1 << " space/accent=" << h2 << " nul/accent=" << h3);
+	CHECK ((c1 == 0) == h1);
+	CHECK ((c2 == 0) == h2);
+	CHECK ((c3 == 0) == h3);
+      }
+    }
+}
+
 TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
 {
   ws_history_guard history;
