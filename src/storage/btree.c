@@ -1377,10 +1377,16 @@ STATIC_INLINE int btree_integral_search_key_init (const BTID_INT * btid, const T
 STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_integral_search_key_compare (const BTREE_INTEGRAL_SEARCH_KEY * search_key,
 									 const char *image)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int btree_leaf_record_key_offset (const BTID_INT * btid, RECDES * rec) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_leaf_record_key_image (const BTID_INT * btid, RECDES * rec, int size)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_non_leaf_record_key_image (RECDES * rec, NON_LEAF_REC * non_leaf_rec, int size)
   __attribute__ ((ALWAYS_INLINE));
+#if !defined(NDEBUG)
+static void btree_integral_search_key_check (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec,
+					     BTREE_NODE_TYPE node_type, DB_VALUE * key, const DOMAIN_KEY_BOUND * bound,
+					     const DOMAIN_COMPARE * compares, DB_VALUE_COMPARE_RESULT c);
+#endif
 static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
 static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
@@ -4692,40 +4698,11 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
       leaf_rec = (LEAF_REC *) rec_header;
       leaf_rec->key_len = -1;
 
-      rc = or_advance (&buf, OR_OID_SIZE);	/* skip instance oid */
+      /* skip the first object's OID, class OID and MVCCIDs */
+      rc = or_advance (&buf, btree_leaf_record_key_offset (btid, rec));
       if (rc != NO_ERROR)
 	{
 	  return rc;
-	}
-
-      if (BTREE_IS_UNIQUE (btid->unique_pk))
-	{
-	  if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_CLASS_OID))
-	    {
-	      rc = or_advance (&buf, OR_OID_SIZE);	/* skip class oid */
-	      if (rc != NO_ERROR)
-		{
-		  return rc;
-		}
-	    }
-	}
-
-      if (btree_record_object_is_flagged (rec->data, BTREE_OID_HAS_MVCC_INSID))
-	{
-	  rc = or_advance (&buf, OR_MVCCID_SIZE);	/* skip insert mvccid */
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-	}
-
-      if (btree_record_object_is_flagged (rec->data, BTREE_OID_HAS_MVCC_DELID))
-	{
-	  rc = or_advance (&buf, OR_MVCCID_SIZE);	/* skip delete mvccid */
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
 	}
 
       if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY))
@@ -5408,24 +5385,20 @@ btree_integral_search_key_compare (const BTREE_INTEGRAL_SEARCH_KEY * search_key,
 }
 
 /*
- * btree_leaf_record_key_image () - CBRD-27862: the key image of a leaf record where
- *				    btree_read_record_without_decompression reads the key: after the first object's
- *				    OID, its class OID (where a unique index's record has one) and its insert and
- *				    delete MVCCIDs
- *   return: the image; NULL for a key kept in overflow pages or a record shorter than the image
+ * btree_leaf_record_key_offset () - where a leaf record's key starts: after the first object's OID, its class OID
+ *				     (where a unique index's record has one) and its insert and delete MVCCIDs, as
+ *				     btree_write_record_header writes them
+ *   return: the offset of the key (of its overflow VPID for a key kept in overflow pages)
  *   btid(in): B-tree info
  *   rec(in): leaf record
- *   size(in): the size of the image
+ *
+ * Note: btree_read_record_without_decompression and btree_leaf_record_key_image (CBRD-27862) both find the key here.
  */
-STATIC_INLINE const char *
-btree_leaf_record_key_image (const BTID_INT * btid, RECDES * rec, int size)
+STATIC_INLINE int
+btree_leaf_record_key_offset (const BTID_INT * btid, RECDES * rec)
 {
   int offset = OR_OID_SIZE;
 
-  if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY))
-    {
-      return NULL;
-    }
   if (BTREE_IS_UNIQUE (btid->unique_pk) && btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_CLASS_OID))
     {
       offset += OR_OID_SIZE;
@@ -5438,6 +5411,29 @@ btree_leaf_record_key_image (const BTID_INT * btid, RECDES * rec, int size)
     {
       offset += OR_MVCCID_SIZE;
     }
+
+  return offset;
+}
+
+/*
+ * btree_leaf_record_key_image () - CBRD-27862: the key image of a leaf record, where
+ *				    btree_read_record_without_decompression reads the key (btree_leaf_record_key_offset)
+ *   return: the image; NULL for a key kept in overflow pages or a record shorter than the image
+ *   btid(in): B-tree info
+ *   rec(in): leaf record
+ *   size(in): the size of the image
+ */
+STATIC_INLINE const char *
+btree_leaf_record_key_image (const BTID_INT * btid, RECDES * rec, int size)
+{
+  int offset;
+
+  if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY))
+    {
+      return NULL;
+    }
+
+  offset = btree_leaf_record_key_offset (btid, rec);
 
   return (offset + size <= rec->length) ? rec->data + offset : NULL;
 }
@@ -5462,6 +5458,49 @@ btree_non_leaf_record_key_image (RECDES * rec, NON_LEAF_REC * non_leaf_rec, int 
 
   return rec->data + NON_LEAF_RECORD_SIZE;
 }
+
+#if !defined(NDEBUG)
+/*
+ * btree_integral_search_key_check () - CBRD-27862: assert that comparing a record's key image answers as comparing
+ *					the key read into a DB_VALUE does (btree_compare_bound_key)
+ *   return: void
+ *   thread_p(in): thread entry
+ *   btid(in): B-tree info
+ *   rec(in): leaf or non-leaf record
+ *   node_type(in): the record's node type
+ *   key(in): search key
+ *   bound(in): how the key compares; NULL for a key of the index's own domain
+ *   compares(in): the bound's comparison with the node's keys
+ *   c(in): btree_integral_search_key_compare's answer
+ */
+static void
+btree_integral_search_key_check (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, BTREE_NODE_TYPE node_type,
+				 DB_VALUE * key, const DOMAIN_KEY_BOUND * bound, const DOMAIN_COMPARE * compares,
+				 DB_VALUE_COMPARE_RESULT c)
+{
+  DB_VALUE rec_key;
+  bool clear_key;
+  int offset;
+  int start_col = 0;
+  LEAF_REC leaf_rec;
+  NON_LEAF_REC non_leaf_rec;
+  void *rec_header = (node_type == BTREE_LEAF_NODE) ? (void *) &leaf_rec : (void *) &non_leaf_rec;
+  DB_VALUE_COMPARE_RESULT expected;
+
+  btree_init_temp_key_value (&clear_key, &rec_key);
+  if (btree_read_record_without_decompression (thread_p, btid, rec, &rec_key, rec_header, node_type, &clear_key,
+					       &offset, PEEK_KEY_VALUE) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  expected = btree_compare_bound_key (btid, key, bound, compares, &rec_key, &start_col);
+  btree_clear_key_value (&clear_key, &rec_key);
+
+  assert (c == expected);
+}
+#endif /* !NDEBUG */
 
 /*
  * btree_search_nonleaf_page () -
@@ -5569,6 +5608,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       if (key_image != NULL)
 	{
 	  c = btree_integral_search_key_compare (&integral_key, key_image);
+#if !defined(NDEBUG)
+	  btree_integral_search_key_check (thread_p, btid, &rec, BTREE_NON_LEAF_NODE, key, bound,
+					   bound != NULL ? bound->nonleaf_compares : NULL, (DB_VALUE_COMPARE_RESULT) c);
+#endif
 	}
       else
 	{
@@ -5967,6 +6010,11 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  /* Compare searched key with current middle key's image. */
 	  c = btree_integral_search_key_compare (&integral_key, key_image);
 	  is_record_read = true;
+#if !defined(NDEBUG)
+	  btree_integral_search_key_check (thread_p, btid, &rec, BTREE_LEAF_NODE, key, search_key->bound,
+					   search_key->bound != NULL ? search_key->bound->compares : NULL,
+					   (DB_VALUE_COMPARE_RESULT) c);
+#endif
 	}
       else
 	{
