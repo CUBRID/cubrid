@@ -7068,6 +7068,7 @@ struct qo_tie_keys
 {
   int sorts;			/* sort plans: ORDER BY, GROUP BY or merge input sorts it does not skip */
   int covering;			/* covering index scans */
+  int unique_equi;		/* scans by a unique index whose columns all have equality terms: one row at most */
   int range_terms;		/* key range terms of the index scans */
   int filter_terms;		/* key filter terms of the index scans */
   double index_pages;		/* pages of the indexes scanned */
@@ -7100,6 +7101,7 @@ qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
       if (index != NULL)
 	{
 	  keys->covering += qo_is_index_covering_scan (plan) ? 1 : 0;
+	  keys->unique_equi += qo_is_all_unique_index_columns_are_equi_terms (plan) ? 1 : 0;
 	  keys->range_terms += bitset_cardinality (&plan->plan_un.scan.terms);
 	  keys->filter_terms += bitset_cardinality (&plan->plan_un.scan.kf_terms);
 	  keys->index_pages += index->cum_stats.pages;
@@ -7149,11 +7151,13 @@ qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
  *   of all the scans of a plan (qo_plan_tie_keys ()):
  *     1. fewer sorts: a plan that skips the ORDER BY or GROUP BY sort
  *     2. more covering index scans
- *     3. more key range terms, then more key filter terms: the indexes read fewer keys
- *     4. fewer index pages (a sequential scan has none): of two joins of one cost, the one whose inner index is smaller
- *     5. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
+ *     3. more scans by a unique index whose columns all have equality terms, which read one row at most (an empty
+ *        table costs every index scan alike)
+ *     4. more key range terms, then more key filter terms: the indexes read fewer keys
+ *     5. fewer index pages (a sequential scan has none): of two joins of one cost, the one whose inner index is smaller
+ *     6. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
  *        creation does not matter
- *     6. the plan type, then the scan or join method of the plan under its sorts
+ *     7. the plan type, then the scan or join method of the plan under its sorts
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_tie_cmp (QO_PLAN * a, QO_PLAN * b)
@@ -7173,13 +7177,14 @@ qo_plan_tie_cmp (QO_PLAN * a, QO_PLAN * b)
   /* 1. sorts */
   QO_TIE_PREFER_LESS (a_keys.sorts, b_keys.sorts);
 
-  /* 2-4. covering scans, index terms and index pages */
+  /* 2-5. covering scans, unique scans of one row, index terms and index pages */
   QO_TIE_PREFER_LESS (b_keys.covering, a_keys.covering);
+  QO_TIE_PREFER_LESS (b_keys.unique_equi, a_keys.unique_equi);
   QO_TIE_PREFER_LESS (b_keys.range_terms, a_keys.range_terms);
   QO_TIE_PREFER_LESS (b_keys.filter_terms, a_keys.filter_terms);
   QO_TIE_PREFER_LESS (a_keys.index_pages, b_keys.index_pages);
 
-  /* 5. the aliases in join order, then the index names */
+  /* 6. the aliases in join order, then the index names */
   for (i = 0; i < a_keys.n && i < b_keys.n; i++)
     {
       c = strcmp (QO_NODE_NAME (a_keys.nodes[i]) != NULL ? QO_NODE_NAME (a_keys.nodes[i]) : "",
@@ -7193,7 +7198,7 @@ qo_plan_tie_cmp (QO_PLAN * a, QO_PLAN * b)
       QO_TIE_PREFER_LESS (c, 0);
     }
 
-  /* 6. the plan type and method under the sorts (-1 for a plan that has none) */
+  /* 7. the plan type and method under the sorts (-1 for a plan that has none) */
   while (a_top->plan_type == QO_PLANTYPE_SORT && a_top->plan_un.sort.subplan != NULL)
     {
       a_top = a_top->plan_un.sort.subplan;
