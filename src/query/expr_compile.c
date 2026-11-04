@@ -3766,7 +3766,7 @@ expr_pred_runs (const PRED_EXPR * pr, EXPR_RUNS_WHAT what)
 	default:
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       /* a term this file does not know: not one to evaluate twice, nor to run under the held page */
       return true;
