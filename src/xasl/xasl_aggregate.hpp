@@ -156,6 +156,11 @@ namespace cubxasl
     unsigned long long operand_prog_link_stamp;	/* head only: the execution (query id) whose first
 						 * evaluation derived the cell-based accumulator links
 						 * (qdata_link_shared_accumulators_by_cell ()) */
+    /* head only, CBRD-27361: the operand program XASL generation compiled for the list
+     * (expr_agg_prog_image_at_generation ()), set by the unpack; the first evaluation binds it instead of
+     * compiling.  NULL: none was written; size 0: the operands keep their interpreted fetch. */
+    const char *operand_prog_image;
+    int operand_prog_image_size;
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {
