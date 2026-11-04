@@ -73,6 +73,7 @@ admin_log_write (const char *log_file, const char *msg)
     }
 }
 
+/* log_file is NULL for a start or on that failed, which cubrid_broker.log does not record */
 static void
 admin_print_and_log_warn_msg (const char *log_file)
 {
@@ -88,7 +89,10 @@ admin_print_and_log_warn_msg (const char *log_file)
 	  msg += strlen (prefix);
 	}
       util_log_write_warnstr ("%s\n", msg);
-      admin_log_write (log_file, admin_warn_msg);
+      if (log_file != NULL)
+	{
+	  admin_log_write (log_file, admin_warn_msg);
+	}
     }
 }
 
@@ -178,6 +182,8 @@ main (int argc, char **argv)
 	  if (admin_start_cmd
 	      (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file) < 0)
 	    {
+	      /* say so if the start created the SSL key and certificate before it failed: they are kept */
+	      admin_print_and_log_warn_msg (NULL);
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      return -1;
 	    }
@@ -269,6 +275,8 @@ main (int argc, char **argv)
 	}
       if (admin_on_cmd (master_shm_id, argv[2]) < 0)
 	{
+	  /* say so if the on created the SSL key and certificate before it failed: they are kept */
+	  admin_print_and_log_warn_msg (NULL);
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
