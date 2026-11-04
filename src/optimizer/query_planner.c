@@ -446,6 +446,8 @@ static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 static int qo_query_serial_level (QO_ENV * env);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 							   int *continue_walk);
+static PT_NODE *qo_check_hjoin_term_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+							  int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -18495,6 +18497,52 @@ qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tr
 }
 
 /*
+ * qo_check_hjoin_term_parallel_eligibility () - parser_walk_tree callback looking for a node of
+ *   a join term that may not run inside a parallel hash join worker
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: a session variable and a serial are shared by the workers without a lock.
+ */
+static PT_NODE *
+qo_check_hjoin_term_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (tree == NULL)
+    {
+      return tree;
+    }
+
+  if (tree->node_type == PT_METHOD_CALL)
+    {
+      return qo_check_method_call_parallel_eligibility (parser, tree, arg, continue_walk);
+    }
+
+  if (tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	case PT_NEXT_VALUE:
+	case PT_CURRENT_VALUE:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  return tree;
+}
+
+/*
  * qo_check_hjoin_for_parallel_opt() -
  *   return: One of the following QO_PLAN_PARALLEL_OPT_USE values:
  *           - PLAN_PARALLEL_OPT_USE: Parallel hash join is enabled by hint.
@@ -18514,7 +18562,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
 
-  bool has_ineligible_method_call = false;
+  bool has_ineligible_node = false;
   BITSET *term_sets[3];
   int set_index;
 
@@ -18567,7 +18615,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
     }
 
   /* during/after join terms become the join predicates the parallel hash join workers
-   * evaluate per row, so both sets must hold only parallel-eligible method calls.
+   * evaluate per row, so both sets must hold only parallel-eligible nodes.
    * The plan's sarged_terms must be checked as well: for an inner join the residual
    * (non-equi) join terms are never classified as during/after join terms but stay in
    * sarged_terms, and qo_init_projection_info () moves any of them whose columns both
@@ -18607,10 +18655,10 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 	      continue;
 	    }
 
-	  (void) parser_walk_tree (parser, expr, qo_check_method_call_parallel_eligibility,
-				   &has_ineligible_method_call, NULL, NULL);
+	  (void) parser_walk_tree (parser, expr, qo_check_hjoin_term_parallel_eligibility, &has_ineligible_node, NULL,
+				   NULL);
 
-	  if (has_ineligible_method_call)
+	  if (has_ineligible_node)
 	    {
 	      return PLAN_PARALLEL_OPT_CANNOT_USE;
 	    }
