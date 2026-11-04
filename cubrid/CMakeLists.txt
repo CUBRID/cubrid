@@ -557,6 +557,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
+  ${STORAGE_DIR}/sidecar.cpp
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/statistics_ndv.c
@@ -571,6 +572,7 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/sidecar.hpp
   ${STORAGE_DIR}/vpid.hpp
 )
 

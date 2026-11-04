@@ -67,6 +67,7 @@
 #include "xserver_interface.h"
 #include "catalog_class.h"
 #include "es_posix.h"
+#include "sidecar.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -14173,7 +14174,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       local_record = recdes[i].get_recdes ();
       // Loop until we insert all records.
 
-      if (heap_is_big_length (local_record.length))
+      // a record the Sidecar policy must see is planned in heap_insert_logical with no page held, not in the batch
+      if (heap_is_big_length (local_record.length) || sidecar_record_needs_policy (&local_record))
 	{
 	  scan_cache->cache_last_fix_page = false;
 	  // We insert other records normally.

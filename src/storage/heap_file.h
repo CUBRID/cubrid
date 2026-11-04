@@ -163,6 +163,7 @@ struct heap_scancache
     int insert_hint_l1_pos;	/* position of insert_hint_vpid in the bestspace L1 arrays, -1 if unknown;
 				 * lets bestspace::update_freespace skip the sweep over all shards */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
+    struct sidecar_cursor *sc_cursor;	/* the Sidecar store page this scan keeps fixed; NULL when none */
 
     void start_area ();
     void end_area ();
@@ -320,12 +321,15 @@ struct heap_operation_context
   bool use_bulk_logging;	// note - currently for bulk insert only
 
   bool do_supplemental_log;	/* flag for whether do supplemental logging or do not */
-  LOG_LSA supp_undo_lsa;	/* lsa of the log that contains undo or redo image and it is used 
+  bool sidecar_store_op;	/* a write of the Sidecar module to a store, which its own hooks let through */
+  LOG_LSA supp_undo_lsa;	/* lsa of the log that contains undo or redo image and it is used
 				 * in supplemental log for INSERT/UPDATE/DELETE */
   LOG_LSA supp_redo_lsa;
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
+
+  struct sidecar_plan *sc_plan;	/* the Sidecar write plan of this operation; NULL unless a plan hook made one */
 };
 
 enum
@@ -394,7 +398,7 @@ struct heap_get_context
 
 /* Forward definition. */
 struct mvcc_reev_data;
-extern int mvcc_header_size_lookup[8];
+extern int mvcc_header_size_lookup[OR_MVCC_FLAG_MASK + 1];
 
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE

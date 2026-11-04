@@ -81,6 +81,7 @@
 #include "px_parallel.hpp"
 #include "ftab_set.hpp"
 #include "bit.h"		/* bit64_is_set */
+#include "sidecar.hpp"
 
 #include <set>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -1017,6 +1018,11 @@ heap_scan_pb_latch_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_p
   if (scan_cache != NULL && scan_cache->page_latch == PGBUF_LATCH_WRITE)
     {
       page_latch_mode = PGBUF_LATCH_WRITE;
+    }
+
+  if (scan_cache != NULL && unlikely (scan_cache->sc_cursor != NULL))
+    {
+      sidecar_cursor_release (thread_p, scan_cache);
     }
 
   if (pg_watcher != NULL)
@@ -6536,6 +6542,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  scan_cache->sc_cursor = NULL;
   if (copy_to_local_cache && is_queryscan)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
@@ -6571,6 +6578,7 @@ exit_on_error:
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  scan_cache->sc_cursor = NULL;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -6863,6 +6871,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  scan_cache->sc_cursor = NULL;
 
   return NO_ERROR;
 }
@@ -6920,6 +6929,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
       scan_cache->local_cache_handle = NULL;
       VPID_SET_NULL (&scan_cache->local_cache_vpid);
       scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+      scan_cache->sc_cursor = NULL;
     }
 
   HFID_SET_NULL (&scan_cache->node.hfid);
@@ -8406,6 +8416,11 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		  /* its visible version is a previous one, in the log */
 		  is_exception = true;
 		}
+	    }
+	  if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
+	    {
+	      /* its slots may hold refs, which the batch decoders would read as values: the row path resolves them */
+	      is_exception = true;
 	    }
 	  if (!is_exception && n_repids > 0)
 	    {
@@ -11100,6 +11115,8 @@ heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEA
 
   layout->offset_size = OR_GET_OFFSET_SIZE (obj);
   layout->var_table = obj + OR_HEADER_SIZE (obj);
+  layout->trailer_end =
+    unlikely (sidecar_record_has_refs (recdes)) ? CAST_BUFLEN (obj + recdes->length - layout->var_table) : 0;
   layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
   layout->bound_bits =
     OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
@@ -11630,8 +11647,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	{
 	  heap_attrvalue_point_fixed (layout, attrepr, &raw, value->rd_disk_size);
 	}
-      else
+      else if (likely (layout->trailer_end == 0) || !sidecar_point_variable (layout, attr_info, attrepr, &raw))
 	{
+	  /* tested here, not in heap_attrvalue_point_variable (): a call there costs that leaf its frame, and a
+	   * test after it keeps layout and attr_info alive across it */
 	  heap_attrvalue_point_variable (layout, attr_info, attrepr, &raw);
 	}
     }
@@ -11705,6 +11724,10 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 		{
 		  /* The variable attribute is bound. Find its location through the variable offset attribute table. */
 		  disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location));
+		  if (unlikely (sidecar_record_has_refs (recdes)))
+		    {
+		      disk_data = sidecar_midxkey_point (attr_info, recdes, att, disk_data);
+		    }
 		}
 	    }
 	}
@@ -13568,6 +13591,10 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	{
 	  status =
 	    heap_attrinfo_transform_fixed_to_disk (thread_p, attr_info, buf, i, incremented_attrids, bitmap_bound);
+	}
+      else if (unlikely (attr_info->values[i].state == HEAP_KEPT_REF_ATTRVALUE))
+	{
+	  status = sidecar_write_kept_ref (attr_info, i, buf, &ptr_varvals, offset_size, header_size);
 	}
       else
 	{
@@ -15441,7 +15468,9 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
       if (direction == HEAP_DIRECTION_RIGHT || direction == HEAP_DIRECTION_BOTH)
 	{
 	  scan = spage_next_record (pgptr, &right_slotid, prefetch->recdes, COPY);
-	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME)
+	  /* a record with refs is left to its own fetch, which expands it */
+	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME
+	      && !sidecar_record_has_refs (prefetch->recdes))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -15469,7 +15498,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
 	{
 	  scan = spage_previous_record (pgptr, &left_slotid, prefetch->recdes, COPY);
 	  if (scan == S_SUCCESS && left_slotid != HEAP_HEADER_AND_CHAIN_SLOTID
-	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME)
+	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME && !sidecar_record_has_refs (prefetch->recdes))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -17661,6 +17690,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       assert_release (false);
       return ER_FAILED;
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (&rebuild_record);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
@@ -17757,6 +17787,7 @@ heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLO
       assert_release (false);
       return ER_FAILED;
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (&rebuild_record);
 
   /* Success. */
   return NO_ERROR;
@@ -20369,6 +20400,10 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	{
 	  db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
 	}
+      if (unlikely (scan == S_SUCCESS && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
+	{
+	  scan = sidecar_on_fetch (thread_p, scan_cache, recdes);
+	}
       break;
 
     case REC_BIGONE:
@@ -21307,6 +21342,8 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->time_track = NULL;
 
   context->do_supplemental_log = false;
+  context->sidecar_store_op = false;
+  context->sc_plan = NULL;
 }
 
 /*
@@ -21643,7 +21680,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  /* set MVCC INSID if necessary */
 	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 	    {
-	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
+	      MVCC_SET_VERSION_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
 	      record_size += OR_MVCCID_SIZE;
 	    }
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
@@ -21655,7 +21692,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
 	  /* strip MVCC information */
 	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
-	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+	  MVCC_CLEAR_VERSION_FLAG_BITS (&mvcc_rec_header);
 	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 
 	  /* compute new record size */
@@ -21797,7 +21834,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  /* set MVCC INSID if necessary */
 	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 	    {
-	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
+	      MVCC_SET_VERSION_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
 	      record_size += OR_MVCCID_SIZE;
 	    }
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
@@ -21809,7 +21846,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
 	  /* strip MVCC information */
 	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
-	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+	  MVCC_CLEAR_VERSION_FLAG_BITS (&mvcc_rec_header);
 	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 
 	  /* compute new record size */
@@ -22399,6 +22436,7 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       OID_SET_NULL (&context->res_oid);
       return ER_FAILED;
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (context->recdes_p);
 
   /* all ok */
   return NO_ERROR;
@@ -22792,6 +22830,15 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       != S_SUCCESS)
     {
       return ER_FAILED;
+    }
+
+  if (unlikely (sidecar_record_has_refs (&forward_recdes)))
+    {
+      rc = sidecar_plan_delete (thread_p, context, &forward_recdes);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -23955,6 +24002,15 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       goto exit;
     }
 
+  if (unlikely (sidecar_record_has_refs (&forward_recdes)))
+    {
+      rc = sidecar_plan_update (thread_p, context, &forward_recdes);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
@@ -24484,6 +24540,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
     {
       spage_update_record_type (thread_p, page_p, slot_id, recdes_p->type);
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (recdes_p);
 
   /* mark as dirty */
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
@@ -24694,8 +24751,22 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid)
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
+      if (unlikely (sidecar_insert_needs_plan (context)))
+	{
+	  rc = sidecar_plan_insert (thread_p, context);
+	  if (rc == NO_ERROR)
+	    {
+	      rc = sidecar_apply_plan (thread_p, context);
+	    }
+	  if (rc != NO_ERROR)
+	    {
+	      sidecar_op_end (thread_p, context, rc);
+	      return rc;
+	    }
+	}
       if (heap_insert_adjust_recdes_header (thread_p, context, is_mvcc_class) != NO_ERROR)
 	{
+	  sidecar_op_end (thread_p, context, ER_FAILED);
 	  return ER_FAILED;
 	}
     }
@@ -24745,6 +24816,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
       /* make sure we have IX_LOCK on class see [NOTE-1] */
       if (lock_object (thread_p, &context->class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
+	  sidecar_op_end (thread_p, context, ER_FAILED);
 	  return ER_FAILED;
 	}
     }
@@ -24752,6 +24824,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   /* get insert location (includes locking) */
   if (heap_get_insert_location_with_lock (thread_p, context, home_hint_p) != NO_ERROR)
     {
+      sidecar_op_end (thread_p, context, ER_FAILED);
       return ER_FAILED;
     }
 
@@ -24862,6 +24935,7 @@ error:
 
   /* all ok */
   heap_unfix_watchers (thread_p, context);
+  sidecar_op_end (thread_p, context, rc);
 
   return rc;
 }
@@ -24992,6 +25066,15 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
+  if (unlikely (sidecar_delete_needs_plan (context)))
+    {
+      rc = sidecar_plan_delete (thread_p, context, &context->home_recdes);
+      if (rc != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   if (check_supplemental_log (thread_p, &context->class_oid) == true)
@@ -25069,6 +25152,7 @@ error:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+  sidecar_op_end (thread_p, context, rc);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_DELETE_END (&context->class_oid, (rc != NO_ERROR));
@@ -25224,6 +25308,14 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    */
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
     {
+      if (unlikely (sidecar_update_needs_plan (context)))
+	{
+	  rc = sidecar_plan_update (thread_p, context, &context->home_recdes);
+	  if (rc != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
       rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_class);
       if (rc != NO_ERROR)
 	{
@@ -25344,6 +25436,7 @@ exit:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+  sidecar_op_end (thread_p, context, rc);
 
   context->recdes_p = client_recdes_p;
   serial_row_write_end (thread_p, &serial_write);
@@ -26918,6 +27011,12 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    }
 	}
 
+      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
+	{
+	  /* a record with refs takes the full path, whose exit expands it */
+	  shortcut_visible = false;
+	}
+
       if (shortcut_visible)
 	{
 	  if (ispeeking == PEEK)
@@ -27070,6 +27169,11 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   /* Fall through to exit. */
 
 exit:
+  /* both the heap path and the log path end here */
+  if (unlikely (scan == S_SUCCESS && context->recdes_p != NULL && sidecar_record_has_refs (context->recdes_p)))
+    {
+      scan = sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
+    }
   return scan;
 }
 
@@ -27243,6 +27347,10 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   /* Fall through to exit. */
 
 exit:
+  if (unlikely (scan == S_SUCCESS && sidecar_record_has_refs (context->recdes_p)))
+    {
+      return sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
+    }
 
   return scan;
 }

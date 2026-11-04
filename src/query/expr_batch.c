@@ -77,6 +77,7 @@
 #include "language_support.h"
 #include "regu_var.hpp"
 #include "set_object.h"
+#include "sidecar_format.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl.h"
@@ -4217,6 +4218,8 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	{
 	  return eb_fallback (plan, "a record of another representation");
 	}
+      /* the collector ends a chunk before a record with refs (heap_page_collect_visible ()) */
+      assert (!sidecar_record_has_refs (recdes));
       repid = OR_GET_MVCC_REPID (recdes->data);
       while (ix < plan->n_reprs && plan->repids[ix] != repid)
 	{
