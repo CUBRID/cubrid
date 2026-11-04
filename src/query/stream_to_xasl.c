@@ -3442,7 +3442,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     (AGGREGATE_HASH_CONTEXT *) stx_alloc_struct (thread_p, sizeof (*stx_build_list_proc->agg_hash_context));
   std::memset (stx_build_list_proc->agg_hash_context, 0, sizeof (*stx_build_list_proc->agg_hash_context));
 
-  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_first_tuple);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4834,6 +4834,8 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
     }
 
   ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  ptr = or_unpack_int (ptr, &insert_info->remote_odku_val_start);
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku_bound);
   if (insert_info->remote_num_odku == 0)
     {
       insert_info->remote_odku_cols = NULL;

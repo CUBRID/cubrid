@@ -345,7 +345,7 @@ struct buildlist_proc_node
   int g_grbynum_flag;		/* stop or continue grouping? */
   bool g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
   int g_hash_eligible;		/* eligible for hash aggregate evaluation */
-  int g_output_first_tuple;	/* output first tuple of each group */
+  int g_first_tuple;		/* XASL_G_FIRST_TUPLE_*: where a hash GROUP BY keeps each group's first row */
   int g_hkey_size;		/* group by key size */
   int g_func_count;		/* aggregate function count */
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -470,8 +470,11 @@ struct insert_proc_node
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
-  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL, or NULL for a value bound per row
+				 * from the source row (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
+  int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
+  int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
   TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
   int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
 				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
@@ -552,6 +555,11 @@ struct cte_proc_node
 /*
  * Macros for buildlist block
  */
+
+/* BUILDLIST_PROC_NODE.g_first_tuple; KEEP and OUTPUT keep the values of the former g_output_first_tuple */
+#define XASL_G_FIRST_TUPLE_KEEP     0	/* in its hash entry: the output reads more of the row than the keys */
+#define XASL_G_FIRST_TUPLE_OUTPUT   1	/* in the list as it is: WITH ROLLUP sorts every group's first row */
+#define XASL_G_FIRST_TUPLE_NONE     2	/* nowhere: the first row is aggregated like the others */
 
 #define XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE   0x01
 #define XASL_G_GRBYNUM_FLAG_SCAN_CHECK      0x02
