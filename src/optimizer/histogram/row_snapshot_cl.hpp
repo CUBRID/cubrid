@@ -78,9 +78,9 @@ struct row_snapshot_filter
 };
 typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 
-/* row_snapshot_max_rows; 0 = the feature is off */
+/* row_snapshot_max_rows; 0 (the default) = read only for a statement hinted ROW_SNAPSHOT */
 extern int row_snapshot_max_rows (void);
-/* the limit of a statement hinted ROW_SNAPSHOT while row_snapshot_max_rows is 0: its default */
+/* the limit of a statement hinted ROW_SNAPSHOT while row_snapshot_max_rows is 0 */
 #define ROW_SNAPSHOT_HINT_MAX_ROWS 100
 /* a statement hinted ROW_SNAPSHOT also reads a class without an index on the filter column when
  * the statistics count at most this many rows: the hint takes them to be current */

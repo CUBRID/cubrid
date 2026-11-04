@@ -5732,16 +5732,17 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   /* row snapshot (CBRD-27478): the most rows the optimizer reads from a table for the constant
    * filters of a node joined by an equality while it plans -- a filter that selects more keeps
-   * the histogram estimate; 0 turns the reading off. In the query string of a SELECT because it
-   * changes plans; the cache key of a server-side UPDATE / DELETE carries the ROW_SNAPSHOT /
-   * NO_ROW_SNAPSHOT hints but not this parameter, as for every PRM_FOR_QRY_STRING parameter. */
+   * the histogram estimate; 0, the default, reads only for a statement hinted ROW_SNAPSHOT. In
+   * the query string of a SELECT because it changes plans; the cache key of a server-side UPDATE /
+   * DELETE carries the ROW_SNAPSHOT / NO_ROW_SNAPSHOT hints but not this parameter, as for every
+   * PRM_FOR_QRY_STRING parameter. */
   {PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
    PRM_NAME_ROW_SNAPSHOT_MAX_ROWS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 100}},
-   {false, {.i = 100}},
+   {false, {.i = 0}},
+   {false, {.i = 0}},
    {false, {.i = 10000}},
    {false, {.i = 0}},
    (char *) NULL,
