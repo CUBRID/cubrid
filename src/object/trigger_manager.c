@@ -206,7 +206,7 @@ static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, c
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
-static bool reload_moved_block_trigger (TR_TRIGGER * trigger);
+static int reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved);
 static bool trigger_activity_in_use (TR_TRIGGER * trigger);
 static int follow_reloaded_block_trigger (TR_TRIGGER * trigger, TR_ACTIVITY ** act, bool * skip);
 
@@ -1952,8 +1952,9 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
 
 /*
  * reload_moved_block_trigger() - Reads a trigger again when the procedure of its PL/CSQL block action is gone.
- *    return: true if the procedure has moved and the action is to be run again
+ *    return: error code
  *    trigger(in/out): trigger structure
+ *    moved(out): true if the procedure has moved and the action is to be run again
  *
  * Note:
  *    The procedure is named after the trigger owner, so changing the owner renames it.
@@ -1963,23 +1964,26 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
  *    Nothing is done while the procedure under the cached name exists.
  *    An error raised inside the block is then not taken for a moved procedure.
  *    The error of the failed call is kept here. The caller clears it when the procedure has moved.
+ *    An error in reading the trigger again replaces it and is returned.
  */
-static bool
-reload_moved_block_trigger (TR_TRIGGER * trigger)
+static int
+reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved)
 {
   char *old_sp_name;
-  bool moved = false;
   int save;
+  int error = NO_ERROR;
+
+  *moved = false;
 
   if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger_activity_in_use (trigger))
     {
-      return false;
+      return NO_ERROR;
     }
 
   old_sp_name = strdup (trigger->block_sp_name);
   if (old_sp_name == NULL)
     {
-      return false;
+      return NO_ERROR;
     }
 
   er_stack_push ();
@@ -1987,18 +1991,28 @@ reload_moved_block_trigger (TR_TRIGGER * trigger)
   AU_SAVE_AND_DISABLE (save);
 
   /* an error raised inside the block may say the same, while the procedure itself is still there */
-  if (jsp_find_stored_procedure (old_sp_name, DB_AUTH_NONE) == NULL && validate_trigger (trigger) == NO_ERROR
-      && trigger->block_sp_name != NULL && strcmp (old_sp_name, trigger->block_sp_name) != 0)
+  if (jsp_find_stored_procedure (old_sp_name, DB_AUTH_NONE) == NULL)
     {
-      moved = true;
+      error = validate_trigger (trigger);
+      if (error == NO_ERROR && trigger->block_sp_name != NULL && strcmp (old_sp_name, trigger->block_sp_name) != 0)
+	{
+	  *moved = true;
+	}
     }
   AU_RESTORE (save);
 
-  er_stack_pop ();
+  if (error != NO_ERROR)
+    {
+      er_stack_pop_and_keep_error ();
+    }
+  else
+    {
+      er_stack_pop ();
+    }
 
   free_and_init (old_sp_name);
 
-  return moved;
+  return error;
 }
 
 /*
@@ -4716,13 +4730,23 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  if (error == NO_ERROR && act->parser == NULL)
 	    {
 	      /* compiling a call to a procedure that has moved would fail before it runs */
-	      if (!reloaded && reload_moved_block_trigger (trigger))
+	      if (!reloaded)
 		{
-		  reloaded = true;
-		  error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
-		  if (error != NO_ERROR || skip_reloaded)
+		  bool moved = false;
+
+		  error = reload_moved_block_trigger (trigger, &moved);
+		  if (error != NO_ERROR)
 		    {
 		      break;
+		    }
+		  if (moved)
+		    {
+		      reloaded = true;
+		      error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
+		      if (error != NO_ERROR || skip_reloaded)
+			{
+			  break;
+			}
 		    }
 		}
 
@@ -4770,18 +4794,25 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	       * the owner of a PL/CSQL block action may have been changed
 	       * by another transaction or by the action itself
 	       */
-	      if (pt_status < 0 && !reloaded && er_errid () == ER_SP_NOT_EXIST && reload_moved_block_trigger (trigger))
+	      if (pt_status < 0 && !reloaded && er_errid () == ER_SP_NOT_EXIST)
 		{
-		  reloaded = true;
-		  er_clear ();
+		  bool moved = false;
 
-		  error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
-		  if (error != NO_ERROR || skip_reloaded)
+		  /* an error in reading the trigger again is reported below in place of the failed call */
+		  (void) reload_moved_block_trigger (trigger, &moved);
+		  if (moved)
 		    {
-		      break;
-		    }
+		      reloaded = true;
+		      er_clear ();
 
-		  goto compile_stmt_again;
+		      error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
+		      if (error != NO_ERROR || skip_reloaded)
+			{
+			  break;
+			}
+
+		      goto compile_stmt_again;
+		    }
 		}
 
 	      /*
