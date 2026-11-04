@@ -6974,6 +6974,8 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 
       if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	{
+	  /* the FHSID has no valid files; free it so that qexec_hash_join_scan_clear does not destroy them */
+	  db_private_free_and_init (thread_p, hash_scan->file.hash_table);
 	  goto exit_on_error;
 	}
 

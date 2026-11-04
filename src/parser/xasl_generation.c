@@ -16833,8 +16833,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->g_with_rollup = 0;
 	}
 
-      /* set index scan order */
-      xasl->iscan_oid_order = ((orderby_skip) ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
+      /* set index scan order: a skipped ORDER BY or GROUP BY reads the rows in index order (the index decides a
+       * skipped GROUP BY: groupby_skip above is false when a sort plan tops the scan) */
+      xasl->iscan_oid_order = ((orderby_skip || (xasl->spec_list != NULL && xasl->spec_list->indexptr != NULL
+						 && xasl->spec_list->indexptr->groupby_skip))
+			       ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
 
       /* save single tuple info */
       if (select_node->info.query.flag.single_tuple == 1)
@@ -27507,6 +27510,9 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	  AGGREGATE_TYPE *agg_list =
 	    (xasl_src->type ==
 	     BUILDVALUE_PROC) ? xasl_src->proc.buildvalue.agg_list : xasl_src->proc.buildlist.g_agg_list;
+	  PRED_EXPR *having_pred =
+	    (xasl_src->type ==
+	     BUILDVALUE_PROC) ? xasl_src->proc.buildvalue.having_pred : xasl_src->proc.buildlist.g_having_pred;
 	  while (agg_list)
 	    {
 	      regu_var_list_p = agg_list->operands;
@@ -27526,6 +27532,13 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      agg_list = agg_list->next;
 	    }
 
+	  /* HAVING can compare with outer columns, so its correlated values are part of the key too. */
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) having_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  cnt += ret;
 	}
       break;
     case SQ_TYPE_PRED:
@@ -27638,6 +27651,13 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    {
 	      cnt += ret;
 	    }
+	  /* IF, CASE, DECODE and a predicate used as a value keep their condition here, not in the operands. */
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  cnt += ret;
 	  break;
 	case TYPE_FUNC:
 	  if (regu_src->value.funcp->operand)
