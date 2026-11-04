@@ -15503,10 +15503,14 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (i = 1, j = 0; i < list.count; i++)
 	{
 	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
-	      && list.edits[i].host_var_index == list.edits[j].host_var_index
-	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	      && list.edits[i].host_var_index == list.edits[j].host_var_index)
 	    {
-	      continue;
+	      /* a host variable edit has the text made from its index (see pt_collect_static_sql_edits_pre ()) */
+	      assert (list.edits[i].host_var_index < 0 || strcmp (list.edits[i].text, list.edits[j].text) == 0);
+	      if (list.edits[i].host_var_index >= 0 || strcmp (list.edits[i].text, list.edits[j].text) == 0)
+		{
+		  continue;
+		}
 	    }
 	  list.edits[++j] = list.edits[i];
 	}
