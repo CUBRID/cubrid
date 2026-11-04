@@ -699,6 +699,50 @@ pt_init_xasl_supp_info ()
   xasl_Supp_info.includes_tde_class = 0;
 }
 
+/*
+ * pt_detach_xasl_supp_info () - take what the XASL generation of a statement has gathered so far (the classes its
+ *				  plan references, their locks and pages, TDE) out of the way of a statement compiled in
+ *				  the middle of it, whose XASL generation starts by clearing it
+ *   return: the gathered information, for pt_attach_xasl_supp_info (); NULL when out of memory
+ */
+struct xasl_supp_info *
+pt_detach_xasl_supp_info (void)
+{
+  XASL_SUPP_INFO *saved;
+
+  saved = (XASL_SUPP_INFO *) malloc (sizeof (XASL_SUPP_INFO));
+  if (saved == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_SUPP_INFO));
+      return NULL;
+    }
+  *saved = xasl_Supp_info;
+  xasl_Supp_info.query_list = NULL;
+  xasl_Supp_info.class_oid_list = NULL;
+  xasl_Supp_info.class_locks = NULL;
+  xasl_Supp_info.tcard_list = NULL;
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  xasl_Supp_info.includes_tde_class = 0;
+  return saved;
+}
+
+/*
+ * pt_attach_xasl_supp_info () - give back what pt_detach_xasl_supp_info () took, dropping what the statement compiled
+ *				  in between left
+ *   return: void
+ *   saved(in): a non-NULL result of pt_detach_xasl_supp_info (); freed. Each non-NULL detach takes exactly one
+ *		attach, before the statement's own XASL generation goes on. A NULL detach took nothing: then compile
+ *		no statement in between and do not call this (it would clear the lists, then dereference NULL)
+ */
+void
+pt_attach_xasl_supp_info (struct xasl_supp_info *saved)
+{
+  /* the query list of the statement in between belongs to its parser, already freed */
+  pt_init_xasl_supp_info ();
+  xasl_Supp_info = *saved;
+  free_and_init (saved);
+}
+
 
 /*
  * pt_make_connect_by_proc () - makes the XASL of the CONNECT BY node
@@ -21389,6 +21433,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   /* Check for join, path expr, and index optimizations */
   plan = qo_optimize_query (parser, select_node);
 
+  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
+   * failed the statement: there is no plan to retry for */
+  if (!plan && pt_has_error (parser)
+      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || er_errid () == ER_INTERRUPTED))
+    {
+      return NULL;
+    }
+
   /* optimization fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
@@ -22788,17 +22841,18 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 
 /*
  * pt_fill_remote_odku_assigns () - Fill the ON DUPLICATE KEY UPDATE text the remote INSERT carries.
- *   The left-hand side is the remote column name -- a remote target gets no name resolution, so what
- *   the user wrote is the column -- and the right-hand side is printed with the flags the other text
- *   push paths use, so the same value cannot come out two ways. Which right-hand sides may arrive is
- *   the gate's decision, not this loop's: whatever it admitted is printed as it stands.
+ *   The left-hand side is the remote column name, as the user wrote it. A constant on the right-hand side is
+ *   printed with the flags the other text push paths use, so the same value cannot come out two ways. A value
+ *   bound from the source row (is_dblink_odku_value) is not printed: its text is left NULL, which the sink
+ *   sends as "?". Which right-hand sides may arrive is the gate's decision, not this loop's.
  *   return: true on success. false after PT_ERROR; the caller returns NULL.
  *   parser(in): parser context. custom_print is saved across the printing and restored on every return.
  *   statement(in): PT_INSERT node
  *   insert(out): remote_odku_cols, remote_odku_exprs, remote_num_odku. NULL and 0 when there is no clause.
+ *   num_bound(out): the number of values left NULL
  */
 static bool
-pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert)
+pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert, int *num_bound)
 {
   PT_NODE *assign;
   int n, i;
@@ -22806,6 +22860,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
   unsigned int save_custom_print;
   bool ok;
 
+  *num_bound = 0;
   if (statement->info.insert.odku_assignments == NULL)
     {
       insert->remote_odku_cols = NULL;
@@ -22833,9 +22888,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
     {
       PARSER_VARCHAR *printed;
 
-      /* the gate admits only an assignment to a plain name, and a remote target gets no local check on
-       * the clause, so nothing stands between that test and this one -- reaching here otherwise means a
-       * plan built wrong */
+      /* the gate admits only an assignment to a plain name -- reaching here otherwise means a plan built wrong */
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN || assign->info.expr.arg1 == NULL
 	  || assign->info.expr.arg2 == NULL || assign->info.expr.arg1->node_type != PT_NAME)
 	{
@@ -22851,6 +22904,21 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
       if (cols[i] == NULL || cols[i][0] == '\0')
 	{
 	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE column has no resolvable name");
+	  ok = false;
+	  break;
+	}
+
+      if (assign->info.expr.arg2->flag.is_dblink_odku_value)
+	{
+	  exprs[i] = NULL;
+	  (*num_bound)++;
+	  continue;
+	}
+
+      /* A column not marked would be printed as the user wrote it and read by the remote as its own column. */
+      if (assign->info.expr.arg2->node_type == PT_NAME)
+	{
+	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE value is a column the plan does not bind");
 	  ok = false;
 	  break;
 	}
@@ -22984,6 +23052,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *server_node = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
   PT_NODE *entity_name = NULL;
+  int num_odku_bound = 0;
 
   assert (parser != NULL && statement != NULL);
 
@@ -23025,7 +23094,20 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = into_spec->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
+  if (entity_name == NULL && PT_SPEC_IS_DERIVED (into_spec)
+      && into_spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
+    {
+      /* a target resolved with its columns keeps its name in the derived dblink table, already qualified */
+      insert->sink.is_remote = true;
+      insert->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
+      insert->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
+      insert->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+      insert->sink.table_name = into_spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+    }
+  else
+    {
+      pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
+    }
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -23034,8 +23116,8 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* num_vals drives the val_list read loop in the executor. Count only the visible projection
    * (EXCLUDE_HIDDEN_COLUMNS), matching the canonical local INSERT SELECT path: an ORDER BY / GROUP BY
    * key that is not in the select list adds a hidden sort column to val_list, which must not be sent
-   * to the remote. The executor reads the leading num_vals (visible) columns and ignores the hidden
-   * trailing ones. */
+   * to the remote. The executor reads the leading num_vals (visible) columns, then the bound ODKU values
+   * from remote_odku_val_start, and ignores the other hidden columns. */
   insert->num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
   insert->num_default_expr = 0;
   insert->att_id = NULL;
@@ -23101,9 +23183,39 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       insert->remote_num_attrs = 0;
     }
 
-  if (!pt_fill_remote_odku_assigns (parser, statement, insert))
+  if (!pt_fill_remote_odku_assigns (parser, statement, insert, &num_odku_bound))
     {
       return NULL;
+    }
+
+  /* The bound ODKU values are read from their copies in the source row. Semantic check appended them to the
+   * select list as hidden columns, so hidden sort keys may come before them, and those of a merged view after.
+   * Find where they start, and check that they are as many as the values and lie together. */
+  insert->remote_odku_val_start = insert->num_vals;
+  insert->remote_num_odku_bound = num_odku_bound;
+  if (num_odku_bound > 0)
+    {
+      PT_NODE *item;
+      int pos, start = -1, last = -1, num_marked = 0;
+
+      for (item = pt_get_select_list (parser, aptr_statement), pos = 0; item != NULL; item = item->next, pos++)
+	{
+	  if (item->flag.is_dblink_odku_value)
+	    {
+	      if (start < 0)
+		{
+		  start = pos;
+		}
+	      last = pos;
+	      num_marked++;
+	    }
+	}
+      if (num_marked != num_odku_bound || last - start + 1 != num_marked || start < insert->num_vals)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: the source row does not carry the bound ODKU values");
+	  return NULL;
+	}
+      insert->remote_odku_val_start = start;
     }
 
   /* the statement kind the sink sends: REPLACE INTO when the statement asked for it, INSERT INTO
@@ -24580,7 +24692,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
     PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_SCAN |
-    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL | PT_HINT_ROW_SNAPSHOT |
+    PT_HINT_NO_ROW_SNAPSHOT;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
