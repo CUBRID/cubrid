@@ -13309,6 +13309,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	      if (!resolve_whole)
 		{
+		  if (parser->host_var_classified == node)
+		    {
+		      /* CBRD-27583: a remote DML resolves no names here, so its positions are classified on their own */
+		      parser->host_var_classified = NULL;
+		      node = pt_classify_host_var_positions (parser, node, NULL, NULL);
+		    }
 		  break;
 		}
 	    }
