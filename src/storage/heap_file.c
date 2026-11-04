@@ -24548,7 +24548,13 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
     {
       spage_update_record_type (thread_p, page_p, slot_id, recdes_p->type);
     }
-  SIDECAR_ASSERT_RECORD_FORMAT (recdes_p);
+#if !defined (NDEBUG)
+  /* the redo of RVHF_UPDATE_BESTSPACE_ENTRIES writes the bestspace storage record of a page that holds no rows */
+  if (!heap_page_is_bestspace (thread_p, page_p))
+    {
+      SIDECAR_ASSERT_RECORD_FORMAT (recdes_p);
+    }
+#endif /* !NDEBUG */
 
   /* mark as dirty */
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
