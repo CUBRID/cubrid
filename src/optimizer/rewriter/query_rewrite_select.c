@@ -4522,7 +4522,15 @@ qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
   (void) parser_walk_tree (parser, arg2, qo_hq_classify_arg_walker, &c2, NULL, NULL);
   if (c1.has_prior == c2.has_prior)
     {
-      return false;
+      if (c1.has_prior || c1.has_name == c2.has_name)
+	{
+	  return false;
+	}
+
+      /* a column side paired with a constant is a build key too */
+      (void) parser_walk_tree (parser, c1.has_name ? arg1 : arg2, qo_hq_cast_walker, &found, NULL, NULL);
+
+      return found;
     }
 
   /* TODO: a NUMERIC PRIOR key hashes as DOUBLE; drop the DOUBLE cases once it hashes exactly */
