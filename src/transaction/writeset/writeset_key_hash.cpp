@@ -194,7 +194,7 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
 
   /* a collation with expansions compares by its full UCA weights, which its pseudo key does not follow
    * (lang_uca_weight_key); the weights the compare looks at are hashed instead */
-  error = lang_uca_weight_key (lc, s, size, &weights, &weights_size);
+  error = lang_uca_weight_key (lc, s, size, strip_space, &weights, &weights_size);
   if (error != NO_ERROR)
     {
       if (copy != NULL)

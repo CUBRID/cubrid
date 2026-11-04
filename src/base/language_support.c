@@ -4124,20 +4124,23 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
  *   lang_coll(in): collation
  *   str(in): string
  *   size(in): string size in bytes
+ *   ignore_trailing_space(in): the ignore_trailing_space the compare is called with
  *   key_out(out): a malloc'ed byte sequence the caller frees, or NULL when the collation does not compare by
  *		   full UCA weights (expansions)
  *   key_size_out(out): size of that sequence
  *
  * Note: Two strings this collation compares as equal get the same sequence, and only those. The compare walks
- *	 the collation elements of both strings level by level, up to the collation strength, and skips every
- *	 zero weight (unless its character is a space), including those left at the end of a string; so the
- *	 sequence holds, per level, every weight the compare does not skip, each as 0x01 and two bytes, with a
- *	 0x00 after each level. The collation pseudo key (lang_mht2str_utf8_exp) is not fit for this: it folds
- *	 the zero weights in too, so 'ae' and 'æ' (one expansion) get different pseudo keys.
+ *	 the collation elements of both strings level by level, up to the collation strength, and skips a zero
+ *	 weight (unless its character is a space) that a non-zero weight follows; zero weights left at the end
+ *	 of a string (a space's among them) are skipped only with ignore_trailing_space, otherwise the string
+ *	 that still has them is the greater one. So the sequence holds, per level, every weight the compare does
+ *	 not skip, each as 0x01 and two bytes, then one 0x02 for each other zero weight left at the end unless
+ *	 ignore_trailing_space, then 0x00. The collation pseudo key (lang_mht2str_utf8_exp) is not fit for this: it folds every zero weight
+ *	 in, so 'ae' and 'æ' (one expansion) get different pseudo keys.
  */
 int
 lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size,
-		     unsigned char **key_out, int *key_size_out)
+		     const bool ignore_trailing_space, unsigned char **key_out, int *key_size_out)
 {
   const COLL_DATA *coll_data = &(lang_coll->coll);
   const unsigned char *str_end = str + size;
@@ -4173,6 +4176,8 @@ lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str,
       unsigned int cp_contr = 0;
       int num_ce = 0;
       int ce_index = 0;
+      int trailing_zero = 0;
+      int last_weight_end = out;
 
       for (;;)
 	{
@@ -4204,16 +4209,37 @@ lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str,
 	  ce_index++;
 	  num_ce--;
 
-	  /* the compare ignores zero weights (unless character is space) */
+	  /* the compare ignores zero weights (unless character is space) that a weight follows */
 	  if (w == 0 && *cur != ASCII_SPACE)
 	    {
+	      trailing_zero++;
 	      continue;
 	    }
+	  trailing_zero = 0;
 
 	  assert (out + 3 <= key_capacity);
 	  key[out++] = 0x01;
 	  key[out++] = (unsigned char) ((w >> 8) & 0xff);
 	  key[out++] = (unsigned char) (w & 0xff);
+	  if (w != 0)
+	    {
+	      last_weight_end = out;
+	    }
+	}
+
+      /* zero weights at the end of the string, a space's among them: skipped when trailing spaces are ignored,
+       * otherwise the string that has them is the greater one */
+      if (ignore_trailing_space)
+	{
+	  out = last_weight_end;
+	}
+      else
+	{
+	  assert (out + trailing_zero <= key_capacity);
+	  while (trailing_zero-- > 0)
+	    {
+	      key[out++] = 0x02;
+	    }
 	}
 
       assert (out + 1 <= key_capacity);
