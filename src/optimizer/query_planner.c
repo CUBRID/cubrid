@@ -16091,7 +16091,9 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 		  continue;
 		}
 
-	      if (pt_expr->or_next)
+	      /* a disjunction does not reject NULL keys: an or_next chain, or a factor pt_cnf () kept whole
+	       * as a PT_OR tree */
+	      if (pt_expr->or_next || (pt_expr->node_type == PT_EXPR && pt_expr->info.expr.op == PT_OR))
 		{
 		  BITSET_CLEAR (expr_segments);
 

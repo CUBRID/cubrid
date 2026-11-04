@@ -633,6 +633,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   bool common_found;
   int num_markers;
   int lhs_count, rhs_count;
+  PT_NODE *rest = NULL;
 
   if (!node || node->node_type != PT_EXPR)
     {
@@ -642,6 +643,15 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  *continue_walk = PT_CONTINUE_WALK;
 	}
       return node;
+    }
+
+  if (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR)
+    {
+      /* the cases below build a new list in place of node; a node already in a CNF list -- a CASE
+       * condition converted again by pt_do_cnf (), whose factors are not isolated as the WHERE's are --
+       * keeps the rest of that list after it */
+      rest = node->next;
+      node->next = NULL;
     }
 
   switch (node->info.expr.op)
@@ -977,6 +987,11 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       list = node;
       break;
     }				/* switch (node->info.expr.op) */
+
+  if (rest != NULL)
+    {
+      list = parser_append_node (rest, list);
+    }
 
   /* return CNF/DNF list */
   return list;
