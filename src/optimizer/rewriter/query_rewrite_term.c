@@ -3248,6 +3248,21 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
 }
 
 /*
+ * qo_range_has_null_bound () - check if a bound of a range spec is a NULL value
+ *   return: true if the lower or the upper bound is a NULL value
+ *   lv(in): lower bound value, NULL for -INF
+ *   uv(in): upper bound value, NULL for +INF
+ *
+ * Note: a range with a NULL bound is UNKNOWN for every row. Its NULL must not be compared as the smallest value,
+ *       or the range absorbs or bounds the other range specs.
+ */
+static bool
+qo_range_has_null_bound (DB_VALUE * lv, DB_VALUE * uv)
+{
+  return (lv != NULL && DB_IS_NULL (lv)) || (uv != NULL && DB_IS_NULL (uv));
+}
+
+/*
  * qo_range_optype_rank () -
  *   return:
  *   op(in):
@@ -3437,6 +3452,13 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      /* PT_BETWEEN_GE_LE, PT_BETWEEN_GE_LT, PT_BETWEEN_GT_LE, or PT_BETWEEN_GT_LT */
 	      s_lv = pt_value_to_db (parser, sibling->info.expr.arg1);
 	      s_uv = pt_value_to_db (parser, sibling->info.expr.arg2);
+	    }
+
+	  if (qo_range_has_null_bound (r_lv, r_uv) || qo_range_has_null_bound (s_lv, s_uv))
+	    {
+	      /* a range with a NULL bound is UNKNOWN; keep it as it is */
+	      current = current->or_next;
+	      continue;
 	    }
 
 	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_EMPTY_RANGE);
@@ -3914,9 +3936,9 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 	  r_uv = pt_value_to_db (parser, range->info.expr.arg2);
 	}
 
-      if (DB_IS_NULL (r_lv) && DB_IS_NULL (r_uv))
+      if ((DB_IS_NULL (r_lv) && DB_IS_NULL (r_uv)) || qo_range_has_null_bound (r_lv, r_uv))
 	{
-	  /* if both are null, this expr is false. */
+	  /* if a bound is null, this expr is false. */
 	  prev = prev ? prev->or_next : range;
 	  dont_remove_sibling = true;
 	  continue;
@@ -3982,9 +4004,9 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 	      s_uv = pt_value_to_db (parser, sibling->info.expr.arg2);
 	    }
 
-	  if (DB_IS_NULL (s_lv) && DB_IS_NULL (s_uv))
+	  if ((DB_IS_NULL (s_lv) && DB_IS_NULL (s_uv)) || qo_range_has_null_bound (s_lv, s_uv))
 	    {
-	      /* if both are null, this expr is false. */
+	      /* if a bound is null, this expr is false. */
 	      PT_EXPR_INFO_SET_FLAG (sibling, PT_EXPR_INFO_EMPTY_RANGE);
 	      dont_remove_sibling = true;
 	      continue;
