@@ -631,8 +631,10 @@ extern "C"
   extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE num_op,
 					      bool is_gby_num);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
-  extern void pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
-  extern void pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern PT_NODE *pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement,
+						PT_NODE_WALK_FUNCTION post, void *post_arg);
+  extern PT_NODE *pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement,
+						  PT_NODE_WALK_FUNCTION pre, void *pre_arg);
   extern TP_DOMAIN *pt_host_var_value_domain (PARSER_CONTEXT * parser, int index);
   extern TP_DOMAIN *pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected);
   extern bool pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index);

@@ -5565,34 +5565,22 @@ pt_host_var_is_stored_value (const PT_NODE * hv, const PT_NODE * parent, const P
 	|| grandparent->node_type == PT_MERGE);
 }
 
-/* pre walker of pt_assign_host_var_positions */
-static PT_NODE *
-pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+/* the visit of one host variable occurrence by pt_assign_host_var_positions_pre (out of line: the walker's frame stays
+ * small for the other nodes) */
+static void __attribute__ ((noinline))
+pt_visit_host_var_occurrence (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * parent,
+			      PT_HOST_VAR_POSITION_WALK * walk, int *continue_walk)
 {
-  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
-
-  if (walk->error != NO_ERROR)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-  if (walk->depth > 0 && (walk->open[walk->depth - 1]->next == node || walk->open[walk->depth - 1]->or_next == node))
-    {
-      /* the walk visits a node's list successor before it leaves the node: the node is done, not the parent */
-      walk->depth--;
-    }
-  PT_NODE *parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
   PT_NODE *grandparent = walk->depth > 1 ? walk->open[walk->depth - 2] : NULL;
-  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-      && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count && walk->kinds != NULL)
+  const int index = node->info.host_var.index;
+
+  if (index >= 0 && index < parser->host_var_count && walk->kinds != NULL)
     {
-      walk->kinds[node->info.host_var.index] |= 1 << (pt_in_merge_delete_condition (walk) ? 0
-						      : pt_host_var_is_stored_value (node, parent, grandparent) ? 4
-						      : pt_host_var_occurrence_class (parser, node, parent,
-										      grandparent) >> 10);
+      walk->kinds[index] |= 1 << (pt_in_merge_delete_condition (walk) ? 0
+				  : pt_host_var_is_stored_value (node, parent, grandparent) ? 4
+				  : pt_host_var_occurrence_class (parser, node, parent, grandparent) >> 10);
     }
-  else if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-	   && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count)
+  else if (index >= 0 && index < parser->host_var_count)
     {
       pt_check_host_var_occurrence (parser, node, parent, grandparent);
       /* the arrays grow at the first host variable met: a statement without one (an EXECUTE, whose parser holds the
@@ -5602,21 +5590,56 @@ pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
 					 parser->host_var_count + parser->auto_param_count) != NO_ERROR)
 	{
 	  walk->error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  *continue_walk = PT_STOP_WALK;
-	  return node;
 	}
-      walk->error = pt_assign_host_var_position (parser, node, parent, grandparent, walk);
+      else
+	{
+	  walk->error = pt_assign_host_var_position (parser, node, parent, grandparent, walk);
+	}
     }
-  else if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-	   && pt_is_derived_host_var (parser, node->info.host_var.index))
+  else if (pt_is_derived_host_var (parser, index))
     {
       pt_check_host_var_occurrence (parser, node, parent, grandparent);
     }
-  else if (node->node_type == PT_NAME && walk->assign && walk->depth > 0 && parser->host_var_compiled_domains != NULL
+  if (walk->error != NO_ERROR)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+}
+
+/* pre walker of pt_assign_host_var_positions */
+static PT_NODE *
+pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+  PT_NODE *parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
+
+  if (parent != NULL && (parent->next == node || parent->or_next == node))
+    {
+      /* the walk visits a node's list successor before it leaves the node: the node is done, not the parent */
+      walk->depth--;
+      parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
+    }
+  if (node->node_type == PT_HOST_VAR)
+    {
+      if (node->info.host_var.var_type == PT_HOST_IN)
+	{
+	  pt_visit_host_var_occurrence (parser, node, parent, walk, continue_walk);
+	  if (walk->error != NO_ERROR)
+	    {
+	      return node;
+	    }
+	}
+    }
+  else if (node->node_type == PT_NAME && walk->assign && parent != NULL && parser->host_var_compiled_domains != NULL
 	   && (walk->open[0]->node_type == PT_MERGE || walk->open[0]->node_type == PT_UPDATE
 	       || walk->open[0]->node_type == PT_DELETE))
     {
       walk->error = pt_derive_column_host_var_position (parser, node, walk);
+      if (walk->error != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
     }
   if (walk->depth == walk->capacity)
     {
@@ -5644,13 +5667,50 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
     {
       walk->depth--;
     }
-  if (walk->kinds == NULL && parser->host_var_format_classes != NULL && node->node_type == PT_EXPR
+  if (node->node_type == PT_EXPR && walk->kinds == NULL && parser->host_var_format_classes != NULL
       && (node->info.expr.op == PT_NVL || node->info.expr.op == PT_IFNULL || node->info.expr.op == PT_COALESCE
 	  || node->info.expr.op == PT_NVL2))
     {
       pt_check_null_takes_plan (parser, node, walk->assign);
     }
   return node;
+}
+
+/* a walk another pass makes over the whole statement (its pre and post walkers, either NULL), which also walks the
+ * positions: the host walker runs first before a node, last after it */
+typedef struct pt_position_host_walk PT_POSITION_HOST_WALK;
+struct pt_position_host_walk
+{
+  PT_HOST_VAR_POSITION_WALK *walk;
+  PT_NODE_WALK_FUNCTION pre;
+  void *pre_arg;
+  PT_NODE_WALK_FUNCTION post;
+  void *post_arg;
+};
+
+static PT_NODE *
+pt_position_host_walk_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_POSITION_HOST_WALK *both = (PT_POSITION_HOST_WALK *) arg;
+
+  if (both->pre != NULL)
+    {
+      node = both->pre (parser, node, both->pre_arg, continue_walk);
+      if (*continue_walk == PT_STOP_WALK)
+	{
+	  return node;
+	}
+    }
+  return pt_assign_host_var_positions_pre (parser, node, both->walk, continue_walk);
+}
+
+static PT_NODE *
+pt_position_host_walk_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_POSITION_HOST_WALK *both = (PT_POSITION_HOST_WALK *) arg;
+
+  node = pt_assign_host_var_positions_post (parser, node, both->walk, continue_walk);
+  return both->post != NULL ? both->post (parser, node, both->post_arg, continue_walk) : node;
 }
 
 /*
@@ -5663,10 +5723,11 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
  *   same positions, cache hits included: the hash text is printed after the translation. Without typed values (a
  *   PREPARE) only context-typed nodes derive; a value-typed position stays untyped and no plan is made. A later
  *   translation in the same compilation (a SELECT built from the translated statement) reuses the positions and makes
- *   none, but for one every execution translates (host_var_derive_later).
+ *   none, but for one every execution translates (host_var_derive_later). The walk is post's (NULL for none), a pass
+ *   over the whole translated statement: the compiled statement's class prefetch.
  */
-void
-pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+PT_NODE *
+pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE_WALK_FUNCTION post, void *post_arg)
 {
   PT_HOST_VAR_POSITION_WALK walk;
 
@@ -5674,7 +5735,7 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement == NULL || parser->host_var_count <= 0 || parser->host_variables == NULL
       || parser->host_var_expected_domains == NULL || pt_has_error (parser) || parser->flag.is_parsing_static_sql)
     {
-      return;
+      return post != NULL ? parser_walk_tree (parser, statement, NULL, NULL, post, post_arg) : statement;
     }
 
   walk.open = NULL;
@@ -5686,15 +5747,15 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (walk.seen == NULL)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      return;
+      return statement;
     }
 #if !defined (NDEBUG)
   walk.checked = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
   assert (walk.checked != NULL);
 #endif
 
-  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
-			   pt_assign_host_var_positions_post, &walk);
+  PT_POSITION_HOST_WALK both = { &walk, NULL, NULL, post, post_arg };
+  statement = parser_walk_tree (parser, statement, pt_position_host_walk_pre, &both, pt_position_host_walk_post, &both);
 
 #if !defined (NDEBUG)
   /* a typed position all of whose nodes need one domain has the domain type checking gave it (a value-typed first node
@@ -5727,6 +5788,7 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
     }
+  return statement;
 }
 
 /*
@@ -5736,17 +5798,18 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   host_var_format_classes, any other none. An AGNOSTIC position is the
  *   INTEGER of whether its value is NULL (type checking gives it that type; its bound value becomes NULL or 1 here
  *   and at every bind); an NVL_ARG one starts with PT_HOST_VAR_NULL_MATCHES, which its nodes clear
- *   (pt_check_null_takes_plan). A later translation reuses the classes.
+ *   (pt_check_null_takes_plan). A later translation reuses the classes. The walk is the one pt_resolve_names makes
+ *   over the whole statement before it binds names (pre, its pre walker).
  */
-void
-pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+PT_NODE *
+pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE_WALK_FUNCTION pre, void *pre_arg)
 {
   PT_HOST_VAR_POSITION_WALK walk;
 
   if (statement == NULL || parser->host_var_count <= 0 || parser->host_var_derived_from != NULL
       || parser->flag.is_parsing_static_sql)
     {
-      return;
+      return parser_walk_tree (parser, statement, pre, pre_arg, NULL, NULL);
     }
   int *classes = pt_host_var_format_classes (parser);
   walk.open = NULL;
@@ -5759,11 +5822,11 @@ pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* no class: every NULL keeps a signature of its own */
       free (walk.kinds);
-      return;
+      return parser_walk_tree (parser, statement, pre, pre_arg, NULL, NULL);
     }
 
-  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
-			   pt_assign_host_var_positions_post, &walk);
+  PT_POSITION_HOST_WALK both = { &walk, pre, pre_arg, NULL, NULL };
+  statement = parser_walk_tree (parser, statement, pt_position_host_walk_pre, &both, pt_position_host_walk_post, &both);
 
   for (int i = 0; walk.error == NO_ERROR && i < parser->host_var_count; i++)
     {
@@ -5781,6 +5844,7 @@ pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   free (walk.kinds);
   free (walk.open);
+  return statement;
 }
 
 /* walker of pt_has_session_variable: sets *(bool *) arg at a session variable read or assignment */

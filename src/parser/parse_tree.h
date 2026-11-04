@@ -4052,6 +4052,10 @@ struct parser_context
 					 * translation's type checking gave a node of it (pt_preset_hostvar's writes,
 					 * not a rule cast's target or an AGNOSTIC position's INTEGER), which the bind
 					 * casts the bound value into; NULL for none */
+  PT_NODE *host_var_classified;	/* the statement whose name resolution classifies its positions
+				 * (pt_classify_host_var_positions), while it compiles */
+  PT_NODE *host_var_assigned_later;	/* the statement whose class prefetch assigns its positions after its
+					 * translation (pt_assign_host_var_positions), while it compiles */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
@@ -4155,6 +4159,8 @@ struct parser_context
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
+    unsigned host_var_assign_failed:1;	/* CBRD-27583: the positions of the compiled statement failed after its
+					 * translation (pt_assign_host_var_positions): a semantic error */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned is_verifying_static_sql_text:1;	/* compile the edited text of a PL/CSQL static SQL without preparing it, so that
 						 * the verification leaves no XASL cache entry (see make_static_sql_text ()) */
