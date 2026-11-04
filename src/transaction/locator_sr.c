@@ -4196,6 +4196,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
     }
 
 error:
+  /* the key of a multi-column foreign key can own a buffer (heap_attrvalue_get_key) when an error leaves the loop */
+  pr_clear_value (&dbvalue);
   if (clear_pcontext == true)
     {
       partition_clear_pruning_context (&pcontext);
