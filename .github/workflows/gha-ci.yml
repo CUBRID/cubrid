@@ -123,7 +123,7 @@ env:
         awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
       elif [ -f "$1/summary.info" ]; then
-        awk '/\t:NOK:[0-9]+$/ {f++; next} /\t:OK:[0-9]+$/ {s++}
+        awk '/\t:NOK:-?[0-9]+$/ {f++; next} /\t:OK:-?[0-9]+$/ {s++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=0\n", s + f, s, f}' "$1/summary.info"
       else
         echo "found=no exec=0 pass=0 fail=0 skip=0"
@@ -1612,7 +1612,7 @@ jobs:
               cat "$2/failed.list"
               rm -f "$2/failed.list" "$2/failed.idx"
             elif [ -f "$1/summary.info" ]; then
-              { grep -E $'\t:NOK:[0-9]+$' "$1/summary.info" || :; } | sed -e 's/^TestCase: //' -e $'s/\t:NOK:.*$//'
+              { grep -E $'\t:NOK:-?[0-9]+$' "$1/summary.info" || :; } | sed -e 's/^TestCase: //' -e $'s/\t:NOK:.*$//'
             fi
           }
           rc=0
@@ -1683,6 +1683,7 @@ jobs:
               *)        v_same="FAIL nobody recorded a provenance" ;;
             esac
             v_this="OK"; [ "$brid" = "$GITHUB_RUN_ID" ] || v_this="reused"
+            [ -n "$brid" ] || v_this="FAIL plan found no usable $(attr "$suite" build) build"
             v_tcread="OK"; [ "$tcread_n" -eq "$planned" ] || v_tcread="FAIL"
             case "$tc_reason" in
               ok)       v_tcsame="OK all the same" ;;
@@ -1824,6 +1825,7 @@ jobs:
             fault() { echo "::error::$suite: $1"; srb=1; }
             # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
             hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
+            [ -n "$brid" ] || fault "plan found no usable $(attr "$suite" build) build, so no shard could mount one. See the plan job's warning"
             [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
             [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
             [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
@@ -1868,8 +1870,10 @@ jobs:
             echo "### Artifacts"
             echo
             line="[Run directory]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
-            blog="builds/$BUILD_NS/$SHA/debug/build.log"
-            [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
+            for mode in $(for s in $SUITES_RUN; do attr "$s" build; done | sort -u); do
+              blog="builds/$BUILD_NS/$SHA/$mode/build.log"
+              if [ -f "$CI_ROOT/$blog" ]; then line="$line · [$mode build log]($ARTIFACT_URL_BASE/$blog)"; fi
+            done
             echo "$line"
             echo
             echo "Internal network only. The run directory is pruned 30 days after the run."
