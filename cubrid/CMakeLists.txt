@@ -127,6 +127,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
+  ${BASE_DIR}/sidecar_format.c
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c

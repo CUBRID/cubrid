@@ -79,6 +79,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/sha1.c
+  ${BASE_DIR}/sidecar_format.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
