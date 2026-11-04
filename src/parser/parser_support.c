@@ -12784,18 +12784,95 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
-/* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
+/* true iff an ON DUPLICATE KEY UPDATE value is a qualified column, <qualifier>.<column>, by shape alone. It is
+ * the only kind of value bound per row rather than printed. Whether the qualifier names a table of the source
+ * SELECT is for the gate to check. The shape is the clause as written, so this answers only before name
+ * resolution, which turns a qualified column into a PT_NAME. */
+bool
+pt_dblink_odku_value_is_bound (PT_NODE * value)
+{
+  return (value != NULL && value->node_type == PT_DOT_ && value->info.dot.arg1 != NULL
+	  && value->info.dot.arg1->node_type == PT_NAME && value->info.dot.arg2 != NULL
+	  && value->info.dot.arg2->node_type == PT_NAME);
+}
+
+/* the name a FROM or INTO spec is qualified with: its alias when one is declared, otherwise the table name. The
+ * gate runs before name resolution, so this is read off the tree as written. */
+static const char *
+pt_dblink_odku_spec_name (PT_NODE * spec)
+{
+  if (spec == NULL || spec->node_type != PT_SPEC)
+    {
+      return NULL;
+    }
+  if (spec->info.spec.range_var != NULL && spec->info.spec.range_var->node_type == PT_NAME)
+    {
+      return spec->info.spec.range_var->info.name.original;
+    }
+  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME)
+    {
+      return spec->info.spec.entity_name->info.name.original;
+    }
+  return NULL;
+}
+
+/* true iff a bound ODKU value (pt_dblink_odku_value_is_bound) names a table of the source SELECT, and not the
+ * target. Such a column is the source row's value, as it is for a local ODKU. A qualifier that names the
+ * target would read the remote row, which only the remote has. When both carry the name, which one is meant
+ * is not clear, so that is refused too. */
+static bool
+pt_dblink_odku_value_names_source (PT_NODE * node, PT_NODE * value)
+{
+  PT_NODE *subq, *spec;
+  const char *qualifier, *name;
+
+  qualifier = value->info.dot.arg1->info.name.original;
+  if (qualifier == NULL)
+    {
+      return false;
+    }
+
+  name = pt_dblink_odku_spec_name (node->info.insert.spec);
+  if (name != NULL && intl_identifier_casecmp (qualifier, name) == 0)
+    {
+      return false;
+    }
+
+  /* semantic check appends the copies to one select list, which a set operation does not have */
+  subq = pt_get_subquery_of_insert_select (node);
+  if (subq == NULL || subq->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      name = pt_dblink_odku_spec_name (spec);
+      if (name != NULL && intl_identifier_casecmp (qualifier, name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/* true iff every ON DUPLICATE KEY UPDATE assignment can go to the remote. A value goes out as statement text
+ * or is bound per row:
+ *   - a literal the remote reads the same way is printed into the statement
+ *   - a column of the source SELECT, qualified with the name of a table in its FROM, is bound per row
  *
- * Each value is printed into the statement as written, so only a literal the remote reads the same way is
- * accepted.  Keeping a local table out of the clause is not this test's job: pt_convert_dblink_dml_query ()
- * refuses one whatever this test answers, so widening it cannot let a local table through.
+ * Anything else, an expression over source columns included, is refused. A computed value belongs in the
+ * source SELECT, as a derived table column. Keeping a local table out of the clause is not this test's job:
+ * pt_convert_dblink_dml_query () refuses one whatever this test answers, so widening it cannot let a local
+ * table through.
  */
 static bool
-pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
+pt_dblink_odku_assigns_are_sendable (PT_NODE * node)
 {
   PT_NODE *assign, *lhs, *rhs;
 
-  for (assign = assignments; assign != NULL; assign = assign->next)
+  for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
     {
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
 	{
@@ -12809,8 +12886,17 @@ pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
 	  return false;
 	}
 
-      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
       rhs = assign->info.expr.arg2;
+      if (pt_dblink_odku_value_is_bound (rhs))
+	{
+	  if (!pt_dblink_odku_value_names_source (node, rhs))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
       if (rhs != NULL && rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_UNARY_MINUS)
 	{
 	  rhs = rhs->info.expr.arg1;
@@ -12869,11 +12955,10 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
    * dblink_dml_open prepares; the values travel the same way.
    *
-   * ON DUPLICATE KEY UPDATE rides along when every assignment can be written out. One that cannot
+   * ON DUPLICATE KEY UPDATE rides along when every assignment can be printed or bound. One that cannot
    * keeps the whole statement out of the sink, and it falls through to the mixed local/remote
    * rejection. */
-  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
-      && pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && pt_dblink_odku_assigns_are_sendable (node))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
@@ -13558,10 +13643,10 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
        * statement refused for its SELECT source would otherwise be named as the cause. A source that also
        * reads another server is refused whatever the clause holds. */
       if (node->info.insert.odku_assignments != NULL && snl->distinct_cnt == 1
-	  && !pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
+	  && !pt_dblink_odku_assigns_are_sendable (node))
 	{
-	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only literal values in "
-		    "ON DUPLICATE KEY UPDATE");
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only constants and qualified "
+		    "source columns in ON DUPLICATE KEY UPDATE");
 	  return;
 	}
       break;
