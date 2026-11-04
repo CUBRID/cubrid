@@ -1,0 +1,1008 @@
+{
+  "schema_version": 1,
+  "model": "SidecarHistory",
+  "assumptions": [
+    "The source supplies immutable complete before and after values before retiring live chunks.",
+    "One source transaction has monotonically numbered operations and at most one rollback to the savepoint before RollbackAt.",
+    "WAL append and one-record-prefix flush are separate atomic actions; crash discards only the volatile suffix.",
+    "A fragment record is written atomically; torn records and checksum collisions are outside this model.",
+    "Every registered consumer starts at the beginning and keeps its durable cursor; consumer membership is fixed.",
+    "The historical enumerator has an independent stable scan cursor and logical event sequence; its crash and network delivery failures are outside source/replica process crash budgets.",
+    "Source recovery scans retained WAL before archive deletion resumes, aborting an uncommitted source transaction.",
+    "The source retains the entire transaction dependency interval until every registered consumer passes its events.",
+    "Replica local commit atomically persists all uncancelled operations of one source transaction and its progress; per-operation fragments and the assembled transaction batch remain volatile until that commit.",
+    "Crashes have explicit finite admission budgets; durable storage, decoding, recovery, and registered consumers are weakly fair and remain available afterward."
+  ],
+  "cases": [
+    {
+      "id": "safe",
+      "config": "Safe.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete",
+        "HistoryReadExact",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic"
+      ],
+      "properties": [
+        "EventuallyDrained"
+      ],
+      "controls_property": null,
+      "scenario": "safe",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "safe_decode",
+      "config": "SafeDecode.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete",
+        "HistoryReadExact",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic"
+      ],
+      "properties": [
+        "EventuallyDrained"
+      ],
+      "controls_property": null,
+      "scenario": "safe_decode",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_writer",
+      "config": "UnsafeWriter.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryImagesComplete"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete"
+      ],
+      "properties": [],
+      "controls_property": "HistoryImagesComplete",
+      "scenario": "unsafe_writer",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_writer_reader",
+      "config": "UnsafeWriterReader.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryReadExact"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryReadExact"
+      ],
+      "properties": [],
+      "controls_property": "HistoryReadExact",
+      "scenario": "unsafe_writer_reader",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_decoder_swapped",
+      "config": "UnsafeDecoderSwapped.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryReadExact"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryReadExact"
+      ],
+      "properties": [],
+      "controls_property": "HistoryReadExact",
+      "scenario": "unsafe_decoder_swapped",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_decoder_missing",
+      "config": "UnsafeDecoderMissing.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryReadExact"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryReadExact"
+      ],
+      "properties": [],
+      "controls_property": "HistoryReadExact",
+      "scenario": "unsafe_decoder_missing",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_decoder_reordered",
+      "config": "UnsafeDecoderReordered.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryReadExact"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryReadExact"
+      ],
+      "properties": [],
+      "controls_property": "HistoryReadExact",
+      "scenario": "unsafe_decoder_reordered",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_history_reader",
+      "config": "WitnessHistoryReader.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoHistoryReaderResult"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 2,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoHistoryReaderResult"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_history_reader",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "safe_batch",
+      "config": "SafeBatch.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxOps": 3,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete",
+        "HistoryReadExact",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic"
+      ],
+      "properties": [
+        "EventuallyDrained"
+      ],
+      "controls_property": null,
+      "scenario": "safe_batch",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_partial_transaction",
+      "config": "UnsafePartialTransaction.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "ReplicaTransactionAtomic"
+      },
+      "bounds": {
+        "MaxOps": 3,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic"
+      ],
+      "properties": [],
+      "controls_property": "ReplicaTransactionAtomic",
+      "scenario": "unsafe_partial_transaction",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_transaction_batch",
+      "config": "WitnessTransactionBatch.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoTwoOperationReplicaCommit"
+      },
+      "bounds": {
+        "MaxOps": 3,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoTwoOperationReplicaCommit"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_transaction_batch",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "chart_safe",
+      "config": "ChartSafe.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 1,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 1
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete",
+        "HistoryReadExact",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic"
+      ],
+      "properties": [
+        "EventuallyDrained"
+      ],
+      "controls_property": null,
+      "scenario": "chart_safe",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "chart_unsafe",
+      "config": "ChartUnsafe.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "RetainedDependencies"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 1,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 1
+      },
+      "invariants": [
+        "TypeOK",
+        "RetainedDependencies"
+      ],
+      "properties": [],
+      "controls_property": "RetainedDependencies",
+      "scenario": "chart_unsafe",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_cancel_dependency",
+      "config": "UnsafeCancelDependency.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "CancellationMetadataRetained"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "CancellationMetadataRetained"
+      ],
+      "properties": [],
+      "controls_property": "CancellationMetadataRetained",
+      "scenario": "unsafe_cancel_dependency",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_cancel_after_prune",
+      "config": "UnsafeCancelAfterPrune.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryImagesComplete"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete"
+      ],
+      "properties": [],
+      "controls_property": "HistoryImagesComplete",
+      "scenario": "unsafe_cancel_after_prune",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "qualification",
+      "config": "Qualification.cfg",
+      "matrix": [
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxOps": 3,
+        "Parts": 2,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete",
+        "HistoryReadExact",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic"
+      ],
+      "properties": [
+        "EventuallyDrained"
+      ],
+      "controls_property": null,
+      "scenario": "qualification",
+      "timeout_seconds": 600
+    },
+    {
+      "id": "unsafe_incomplete_image",
+      "config": "UnsafeIncompleteImage.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryImagesComplete"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete"
+      ],
+      "properties": [],
+      "controls_property": "HistoryImagesComplete",
+      "scenario": "unsafe_incomplete_image",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_cancelled_history",
+      "config": "UnsafeCancelledHistory.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "HistoryImagesComplete"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "HistoryImagesComplete"
+      ],
+      "properties": [],
+      "controls_property": "HistoryImagesComplete",
+      "scenario": "unsafe_cancelled_history",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_early_ack",
+      "config": "UnsafeEarlyAck.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "DurableAcknowledgement"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "DurableAcknowledgement"
+      ],
+      "properties": [],
+      "controls_property": "DurableAcknowledgement",
+      "scenario": "unsafe_early_ack",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_first_pin",
+      "config": "UnsafeFirstPin.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "RetainedDependencies"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "RetainedDependencies"
+      ],
+      "properties": [],
+      "controls_property": "RetainedDependencies",
+      "scenario": "unsafe_first_pin",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_handoff",
+      "config": "UnsafeHandoff.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "RetainedDependencies"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "RetainedDependencies"
+      ],
+      "properties": [],
+      "controls_property": "RetainedDependencies",
+      "scenario": "unsafe_handoff",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_restart",
+      "config": "UnsafeRestart.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "RetainedDependencies"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "RetainedDependencies"
+      ],
+      "properties": [],
+      "controls_property": "RetainedDependencies",
+      "scenario": "unsafe_restart",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_manifest_watermark",
+      "config": "UnsafeManifestWatermark.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "RetainedDependencies"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "RetainedDependencies"
+      ],
+      "properties": [],
+      "controls_property": "RetainedDependencies",
+      "scenario": "unsafe_manifest_watermark",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_replica_atomicity",
+      "config": "UnsafeReplicaAtomicity.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "ReplicaCommittedPrefix"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "ReplicaCommittedPrefix"
+      ],
+      "properties": [],
+      "controls_property": "ReplicaCommittedPrefix",
+      "scenario": "unsafe_replica_atomicity",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_replica_retry",
+      "config": "UnsafeReplicaRetry.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "ReplicaAtMostOnce"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "TypeOK",
+        "ReplicaAtMostOnce"
+      ],
+      "properties": [],
+      "controls_property": "ReplicaAtMostOnce",
+      "scenario": "unsafe_replica_retry",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "unsafe_fair_livelock",
+      "config": "UnsafeFairLivelock.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "temporal_violation",
+        "name": "EventuallyDrained"
+      },
+      "bounds": {
+        "MaxOps": 1,
+        "Parts": 1,
+        "RollbackAt": 0,
+        "SourceCrashes": 0,
+        "ReplicaCrashes": 0,
+        "Consumers": 1
+      },
+      "invariants": [
+        "TypeOK"
+      ],
+      "properties": [
+        "EventuallyDrained"
+      ],
+      "controls_property": "EventuallyDrained",
+      "scenario": "unsafe_fair_livelock",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_liveness",
+      "config": "WitnessLiveness.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoDrainAntecedent"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoDrainAntecedent"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_liveness",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_rollback_commit",
+      "config": "WitnessRollbackCommit.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoRollbackCommit"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoRollbackCommit"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_rollback_commit",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_fragments",
+      "config": "WitnessFragments.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoMultipleFragments"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 2,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoMultipleFragments"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_fragments",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_archive_construction",
+      "config": "WitnessArchiveConstruction.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoArchiveDuringConstruction"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoArchiveDuringConstruction"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_archive_construction",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_archive_restart",
+      "config": "WitnessArchiveRestart.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoArchiveAfterRestart"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoArchiveAfterRestart"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_archive_restart",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_replica_crash_before",
+      "config": "WitnessReplicaCrashBefore.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoReplicaCrashBeforeCommit"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoReplicaCrashBeforeCommit"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_replica_crash_before",
+      "timeout_seconds": 300
+    },
+    {
+      "id": "witness_replica_crash_after",
+      "config": "WitnessReplicaCrashAfter.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoReplicaCrashAfterCommit"
+      },
+      "bounds": {
+        "MaxOps": 2,
+        "Parts": 1,
+        "RollbackAt": 1,
+        "SourceCrashes": 1,
+        "ReplicaCrashes": 1,
+        "Consumers": 2
+      },
+      "invariants": [
+        "NoReplicaCrashAfterCommit"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "witness_replica_crash_after",
+      "timeout_seconds": 300
+    }
+  ]
+}

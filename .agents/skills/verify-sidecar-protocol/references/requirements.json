@@ -1,0 +1,589 @@
+{
+  "schema_version": 1,
+  "families": {
+    "lifetime": {
+      "properties": [
+        "VisibleValueComplete",
+        "HotReuse",
+        "FreshIdentity",
+        "ViewStable",
+        "OwnerCorrect",
+        "NoUnownedAfterDrain",
+        "RollbackPrefixRestored",
+        "EventuallyAcquired",
+        "EventuallyDrained"
+      ],
+      "scenarios": [
+        "waiting-under-held-row-lock",
+        "replacement-replacement-hot-savepoint-continue",
+        "replacement-replacement-delete-savepoint-continue",
+        "cancel-published-statement",
+        "abort-closes-unmaterialized-view",
+        "old-snapshot-blocks-collection",
+        "collection-after-snapshot-release",
+        "pending-cleanup-after-snapshot-release-and-writers-finish",
+        "complete-drain-after-snapshot-release",
+        "cancel-preserves-prior-successful-statement",
+        "savepoint-preserves-first-successful-statement"
+      ],
+      "witnesses": [
+        "waiting-under-held-row-lock",
+        "replacement-replacement-hot-savepoint-continue",
+        "replacement-replacement-delete-savepoint-continue",
+        "cancel-published-statement",
+        "abort-closes-unmaterialized-view",
+        "old-snapshot-blocks-collection",
+        "pending-cleanup-after-snapshot-release-and-writers-finish",
+        "complete-drain-after-snapshot-release",
+        "cancel-preserves-prior-successful-statement",
+        "savepoint-preserves-first-successful-statement"
+      ],
+      "safe_cases": {
+        "safe": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "None",
+            "KeepSnapshot": true,
+            "UseViews": true,
+            "MaxOps": 4,
+            "WriterCount": 2,
+            "Savepoint": true,
+            "AllowCancel": false,
+            "AllowAbort": false
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "VisibleValueComplete",
+            "HotReuse",
+            "FreshIdentity",
+            "ViewStable",
+            "OwnerCorrect",
+            "NoUnownedAfterDrain",
+            "RollbackPrefixRestored"
+          ],
+          "properties": [
+            "EventuallyAcquired",
+            "EventuallyDrained"
+          ]
+        },
+        "safe_cancel_abort": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "None",
+            "KeepSnapshot": true,
+            "UseViews": true,
+            "MaxOps": 2,
+            "WriterCount": 1,
+            "Savepoint": false,
+            "AllowCancel": true,
+            "AllowAbort": true
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "VisibleValueComplete",
+            "HotReuse",
+            "FreshIdentity",
+            "ViewStable",
+            "OwnerCorrect",
+            "NoUnownedAfterDrain",
+            "RollbackPrefixRestored"
+          ],
+          "properties": [
+            "EventuallyAcquired",
+            "EventuallyDrained"
+          ]
+        },
+        "qualify_five": {
+          "matrix": [
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "None",
+            "KeepSnapshot": true,
+            "UseViews": true,
+            "MaxOps": 5,
+            "WriterCount": 2,
+            "Savepoint": true,
+            "AllowCancel": false,
+            "AllowAbort": false
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "VisibleValueComplete",
+            "HotReuse",
+            "FreshIdentity",
+            "ViewStable",
+            "OwnerCorrect",
+            "NoUnownedAfterDrain",
+            "RollbackPrefixRestored"
+          ],
+          "properties": [
+            "EventuallyAcquired",
+            "EventuallyDrained"
+          ]
+        },
+        "qualify_rollback": {
+          "matrix": [
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "None",
+            "KeepSnapshot": true,
+            "UseViews": false,
+            "MaxOps": 3,
+            "WriterCount": 2,
+            "Savepoint": true,
+            "AllowCancel": true,
+            "AllowAbort": true
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "VisibleValueComplete",
+            "HotReuse",
+            "FreshIdentity",
+            "ViewStable",
+            "OwnerCorrect",
+            "NoUnownedAfterDrain",
+            "RollbackPrefixRestored"
+          ],
+          "properties": [
+            "EventuallyAcquired",
+            "EventuallyDrained"
+          ]
+        }
+      }
+    },
+    "history": {
+      "properties": [
+        "HistoryImagesComplete",
+        "HistoryReadExact",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "ReplicaCommittedPrefix",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic",
+        "EventuallyDrained"
+      ],
+      "scenarios": [
+        "witness_history_reader",
+        "witness_transaction_batch",
+        "witness_liveness",
+        "witness_rollback_commit",
+        "witness_fragments",
+        "witness_archive_construction",
+        "witness_archive_restart",
+        "witness_replica_crash_before",
+        "witness_replica_crash_after",
+        "unsafe_cancel_dependency",
+        "unsafe_cancel_after_prune"
+      ],
+      "witnesses": [
+        "witness_history_reader",
+        "witness_transaction_batch",
+        "witness_liveness",
+        "witness_rollback_commit",
+        "witness_fragments",
+        "witness_archive_construction",
+        "witness_archive_restart",
+        "witness_replica_crash_before",
+        "witness_replica_crash_after"
+      ],
+      "safe_cases": {
+        "safe": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 2,
+            "Parts": 1,
+            "RollbackAt": 1,
+            "SourceCrashes": 1,
+            "ReplicaCrashes": 1,
+            "Consumers": 2
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "HistoryImagesComplete",
+            "HistoryReadExact",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "ReplicaCommittedPrefix",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyDrained"
+          ]
+        },
+        "safe_decode": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 1,
+            "Parts": 2,
+            "RollbackAt": 0,
+            "SourceCrashes": 0,
+            "ReplicaCrashes": 0,
+            "Consumers": 2
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "HistoryImagesComplete",
+            "HistoryReadExact",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "ReplicaCommittedPrefix",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyDrained"
+          ]
+        },
+        "safe_batch": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 3,
+            "Parts": 1,
+            "RollbackAt": 1,
+            "SourceCrashes": 1,
+            "ReplicaCrashes": 1,
+            "Consumers": 2
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "HistoryImagesComplete",
+            "HistoryReadExact",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "ReplicaCommittedPrefix",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyDrained"
+          ]
+        },
+        "chart_safe": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 1,
+            "Parts": 1,
+            "RollbackAt": 0,
+            "SourceCrashes": 0,
+            "ReplicaCrashes": 0,
+            "Consumers": 1
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "HistoryImagesComplete",
+            "HistoryReadExact",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "ReplicaCommittedPrefix",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyDrained"
+          ]
+        },
+        "qualification": {
+          "matrix": [
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 3,
+            "Parts": 2,
+            "RollbackAt": 1,
+            "SourceCrashes": 1,
+            "ReplicaCrashes": 1,
+            "Consumers": 2
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "HistoryImagesComplete",
+            "HistoryReadExact",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "ReplicaCommittedPrefix",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyDrained"
+          ]
+        }
+      }
+    },
+    "undo": {
+      "properties": [
+        "UndoSlotSafe",
+        "UndoBytesSafe",
+        "UndoPageSafe",
+        "CommittedPreserved",
+        "RecoveryAvailable",
+        "RecoveryFinishes"
+      ],
+      "scenarios": [
+        "invalid-undo-slot",
+        "invalid-undo-bytes",
+        "invalid-undo-page",
+        "invalid-undo-clobber",
+        "missing-or-prematurely-released-protection",
+        "recovery-availability-assumption",
+        "Recovery",
+        "BeforeEnd",
+        "EndLost",
+        "EndCovered",
+        "Shared",
+        "durable-loser-before-delete-undo"
+      ],
+      "witnesses": [
+        "Recovery",
+        "BeforeEnd",
+        "EndLost",
+        "EndCovered",
+        "Shared",
+        "durable-loser-before-delete-undo"
+      ],
+      "safe_cases": {
+        "safe": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "Policy": "reservation",
+            "MaxSlots": 2,
+            "Capacity": 3
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "RecoveryAvailable",
+            "UndoSlotSafe",
+            "UndoBytesSafe",
+            "UndoPageSafe",
+            "CommittedPreserved"
+          ],
+          "properties": [
+            "RecoveryFinishes"
+          ]
+        },
+        "safeLatch": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "Policy": "latch",
+            "MaxSlots": 2,
+            "Capacity": 3
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "RecoveryAvailable",
+            "UndoSlotSafe",
+            "UndoBytesSafe",
+            "UndoPageSafe",
+            "CommittedPreserved"
+          ],
+          "properties": [
+            "RecoveryFinishes"
+          ]
+        },
+        "larger": {
+          "matrix": [
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "Policy": "reservation",
+            "MaxSlots": 3,
+            "Capacity": 4
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "RecoveryAvailable",
+            "UndoSlotSafe",
+            "UndoBytesSafe",
+            "UndoPageSafe",
+            "CommittedPreserved"
+          ],
+          "properties": [
+            "RecoveryFinishes"
+          ]
+        }
+      }
+    },
+    "boundary": {
+      "properties": [
+        "PublishedReady",
+        "HistoryImagesComplete",
+        "SavepointPrefix",
+        "CancellationAgreement",
+        "CommitReady",
+        "DurableAcknowledgement",
+        "RetainedDependencies",
+        "CancellationMetadataRetained",
+        "GCRecoverySafe",
+        "ArchiveRecoverySafe",
+        "SnapshotSafe",
+        "ReplicaCommittedPrefix",
+        "HistoryReadExact",
+        "ReplicaAtMostOnce",
+        "ReplicaTransactionAtomic",
+        "EventuallyApplied",
+        "CancellationChunksRestored",
+        "AbortRestored"
+      ],
+      "scenarios": [
+        "pendingWitness",
+        "cancelCommitWitness",
+        "abortRecoveryWitness",
+        "commitRecoveryWitness",
+        "firstPinWitness",
+        "snapshotWitness",
+        "replicaRetryWitness",
+        "replicaAfterWitness",
+        "stagedWitness",
+        "two-surviving-operations-staged",
+        "two-surviving-operations-committed",
+        "recovery-finishes-before-abort-restoration",
+        "published-parent-crash-abort-restored",
+        "savepoint-rollback-finishes-before-chunk-restoration",
+        "published-savepoint-operation-rollback-restored"
+      ],
+      "witnesses": [
+        "pendingWitness",
+        "cancelCommitWitness",
+        "abortRecoveryWitness",
+        "commitRecoveryWitness",
+        "firstPinWitness",
+        "snapshotWitness",
+        "replicaRetryWitness",
+        "replicaAfterWitness",
+        "stagedWitness",
+        "two-surviving-operations-staged",
+        "two-surviving-operations-committed",
+        "published-parent-crash-abort-restored",
+        "published-savepoint-operation-rollback-restored"
+      ],
+      "safe_cases": {
+        "safe": {
+          "matrix": [
+            "quick",
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 3,
+            "Parts": 1,
+            "SourceCrashes": 1,
+            "ReplicaCrashes": 1
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "PublishedReady",
+            "HistoryImagesComplete",
+            "SavepointPrefix",
+            "CancellationChunksRestored",
+            "AbortRestored",
+            "CancellationAgreement",
+            "CommitReady",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "GCRecoverySafe",
+            "ArchiveRecoverySafe",
+            "SnapshotSafe",
+            "ReplicaCommittedPrefix",
+            "HistoryReadExact",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyApplied"
+          ]
+        },
+        "qualification": {
+          "matrix": [
+            "qualification"
+          ],
+          "constants": {
+            "Fault": "none",
+            "MaxOps": 3,
+            "Parts": 2,
+            "SourceCrashes": 1,
+            "ReplicaCrashes": 1
+          },
+          "specification": "Spec",
+          "invariants": [
+            "TypeOK",
+            "PublishedReady",
+            "HistoryImagesComplete",
+            "SavepointPrefix",
+            "CancellationChunksRestored",
+            "AbortRestored",
+            "CancellationAgreement",
+            "CommitReady",
+            "DurableAcknowledgement",
+            "RetainedDependencies",
+            "CancellationMetadataRetained",
+            "GCRecoverySafe",
+            "ArchiveRecoverySafe",
+            "SnapshotSafe",
+            "ReplicaCommittedPrefix",
+            "HistoryReadExact",
+            "ReplicaAtMostOnce",
+            "ReplicaTransactionAtomic"
+          ],
+          "properties": [
+            "EventuallyApplied"
+          ]
+        }
+      }
+    }
+  }
+}

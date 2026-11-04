@@ -1,0 +1,505 @@
+{
+  "schema_version": 1,
+  "model": "SidecarUndo",
+  "assumptions": [
+    "One fixed-address deleted image and at most one competing insert.",
+    "The delete log record is durable before the modified page can survive a crash.",
+    "Recovery removes a durable losing competitor before deletion undo. The necessity and engine ordering are unproved.",
+    "A dirty competitor insert survives a crash only if its log record is durable.",
+    "The proposed latch or reservation blocks deallocation before end append. Page deallocation after end append and its WAL and restart semantics are excluded.",
+    "Both reservation and latch policies are proposed guards, not established engine behavior."
+  ],
+  "cases": [
+    {
+      "id": "safe",
+      "config": "Safe.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "RecoveryAvailable",
+        "UndoSlotSafe",
+        "UndoBytesSafe",
+        "UndoPageSafe",
+        "CommittedPreserved"
+      ],
+      "properties": [
+        "RecoveryFinishes"
+      ],
+      "controls_property": null,
+      "scenario": "undo-after-delete",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "safeLatch",
+      "config": "SafeLatch.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "RecoveryAvailable",
+        "UndoSlotSafe",
+        "UndoBytesSafe",
+        "UndoPageSafe",
+        "CommittedPreserved"
+      ],
+      "properties": [
+        "RecoveryFinishes"
+      ],
+      "controls_property": null,
+      "scenario": "undo-after-delete",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "larger",
+      "config": "Larger.cfg",
+      "matrix": [
+        "qualification"
+      ],
+      "purpose": "safe",
+      "expect": {
+        "kind": "complete"
+      },
+      "bounds": {
+        "MaxSlots": 3,
+        "Capacity": 4
+      },
+      "invariants": [
+        "TypeOK",
+        "RecoveryAvailable",
+        "UndoSlotSafe",
+        "UndoBytesSafe",
+        "UndoPageSafe",
+        "CommittedPreserved"
+      ],
+      "properties": [
+        "RecoveryFinishes"
+      ],
+      "controls_property": null,
+      "scenario": "undo-after-delete",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeSlot",
+      "config": "UnsafeSlot.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoSlotSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoSlotSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoSlotSafe",
+      "scenario": "invalid-undo-slot",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeBytes",
+      "config": "UnsafeBytes.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoBytesSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoBytesSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoBytesSafe",
+      "scenario": "invalid-undo-bytes",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafePage",
+      "config": "UnsafePage.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoPageSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoPageSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoPageSafe",
+      "scenario": "invalid-undo-page",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeClobber",
+      "config": "UnsafeClobber.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "CommittedPreserved"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "CommittedPreserved"
+      ],
+      "properties": [],
+      "controls_property": "CommittedPreserved",
+      "scenario": "invalid-undo-clobber",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeLivelock",
+      "config": "UnsafeLivelock.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "temporal_violation",
+        "name": "RecoveryFinishes"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "RecoveryAvailable"
+      ],
+      "properties": [
+        "RecoveryFinishes"
+      ],
+      "controls_property": "RecoveryFinishes",
+      "scenario": "weak-fairness-livelock",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "witnessRecovery",
+      "config": "WitnessRecovery.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoRecoveryWitness"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "NoRecoveryWitness"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "Recovery",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "witnessBeforeEnd",
+      "config": "WitnessBeforeEnd.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoBeforeEndWitness"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "NoBeforeEndWitness"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "BeforeEnd",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "witnessEndLost",
+      "config": "WitnessEndLost.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoEndLostWitness"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "NoEndLostWitness"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "EndLost",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "witnessEndCovered",
+      "config": "WitnessEndCovered.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoEndCoveredWitness"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "NoEndCoveredWitness"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "EndCovered",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "witnessShared",
+      "config": "WitnessShared.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoSharedWitness"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "NoSharedWitness"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "Shared",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "witnessLoserUndo",
+      "config": "WitnessLoserUndo.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "witness",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "NoLoserUndoWitness"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "NoLoserUndoWitness"
+      ],
+      "properties": [],
+      "controls_property": null,
+      "scenario": "durable-loser-before-delete-undo",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeNoLatch",
+      "config": "UnsafeNoLatch.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoSlotSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoSlotSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoSlotSafe",
+      "scenario": "missing-or-prematurely-released-protection",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeNoReservation",
+      "config": "UnsafeNoReservation.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoSlotSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoSlotSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoSlotSafe",
+      "scenario": "missing-or-prematurely-released-protection",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeDropLatch",
+      "config": "UnsafeDropLatch.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoSlotSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoSlotSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoSlotSafe",
+      "scenario": "missing-or-prematurely-released-protection",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeDropReservation",
+      "config": "UnsafeDropReservation.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "UndoSlotSafe"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "UndoSlotSafe"
+      ],
+      "properties": [],
+      "controls_property": "UndoSlotSafe",
+      "scenario": "missing-or-prematurely-released-protection",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "unsafeUnavailable",
+      "config": "UnsafeUnavailable.cfg",
+      "matrix": [
+        "quick",
+        "qualification"
+      ],
+      "purpose": "unsafe",
+      "expect": {
+        "kind": "invariant_violation",
+        "name": "RecoveryAvailable"
+      },
+      "bounds": {
+        "MaxSlots": 2,
+        "Capacity": 3
+      },
+      "invariants": [
+        "TypeOK",
+        "RecoveryAvailable"
+      ],
+      "properties": [],
+      "controls_property": "RecoveryAvailable",
+      "scenario": "recovery-availability-assumption",
+      "timeout_seconds": 120
+    }
+  ]
+}
