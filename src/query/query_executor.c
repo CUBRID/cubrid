@@ -664,7 +664,7 @@ static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 				    const HFID * class_hfid, ATTR_ID attrid, int n_increment, int pruning_type);
 static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-				      bool transient, bool * joined);
+				      bool * joined);
 static int qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd, OID * oid,
 						 SELUPD_LIST * selupd, OID * class_oid, HFID * class_hfid,
 						 DB_CLASS_PARTITION_TYPE * needs_pruning, bool * found);
@@ -20260,13 +20260,11 @@ qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree
  *   xasl_state(in)     :
- *   transient(in): the row locks taken here end with the caller's scope
  *   joined(out): the increments went with the transaction instead of committing on their own
  * Note: This routine executes update for a selected tuple
  */
 static int
-qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool transient,
-			   bool * joined)
+qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * joined)
 {
   SELUPD_LIST *list = NULL, *selupd = NULL;
   REGU_VARLIST_LIST outptr = NULL;
@@ -20298,6 +20296,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     int m_attrid;
     int m_n_increment;
     DB_CLASS_PARTITION_TYPE m_ptype;
+    bool m_ours = false;	/* its last version is the transaction's, as the single-table branch reads it */
 
     incr_info () = default;
     incr_info (const incr_info & other) = default;
@@ -20424,11 +20423,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		  scan_cache_inited = true;
 		  COPY_OID (&last_cached_class_oid, &crt_incr_info.m_class_oid);
 		}
-	      /* need to handle reevaluation */
+	      /* need to handle reevaluation; a last version visible to the snapshot leaves filter_result as it was */
+	      p_mvcc_reev_data->filter_result = V_TRUE;
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED, transient, true);
+							     LOG_WARNING_IF_DELETED, false, true);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -20479,7 +20479,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		{
 		  /* one tuple successfully reevaluated, do not clear list file */
 		  clear_list_id = false;
-		  joins_transaction = joins_transaction || p_mvcc_reev_data->last_version_is_ours;
+		  crt_incr_info.m_ours = p_mvcc_reev_data->last_version_is_ours;
+		  joins_transaction = joins_transaction || crt_incr_info.m_ours;
 		}
 	    }
 	  else
@@ -20572,6 +20573,20 @@ exit:
     {
       /* Release subtransaction MVCCID. */
       logtb_complete_sub_mvcc (thread_p, tdes);
+    }
+
+  if (p_mvcc_reev_data != NULL && !*joined)
+    {
+      /* A target not ours took one request here, or none under a class lock that covers it.  Given back here, not
+       * by a statement scope, whose counts a click counter nested in another statement could not give back. */
+      for (size_t i = 0; i < all_incr_info.size (); i++)
+	{
+	  if (!all_incr_info[i].m_ours)
+	    {
+	      lock_unlock_object_donot_move_to_non2pl (thread_p, &all_incr_info[i].m_oid,
+						       &all_incr_info[i].m_class_oid, X_LOCK);
+	    }
+	}
     }
 
   if (err != NO_ERROR)
@@ -21542,7 +21557,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool empty_result = false;
   bool scan_immediately_stop = false;
   bool selupd_transient_scope = false;
-  bool selupd_outermost = false;
   bool selupd_joined = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
@@ -21795,8 +21809,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
 	    {
-	      /* Reevaluate at select since can't reevaluate in execute_selupd_list. */
-	      selupd_outermost = lock_transient_scope_start (thread_p);
+	      /* Reevaluate at select since can't reevaluate in execute_selupd_list.  Nested in another statement, the
+	       * scan's row locks are kept to commit; see lock_transient_scope_start (). */
+	      lock_transient_scope_start (thread_p);
 	      selupd_transient_scope = true;
 	      force_select_lock = true;
 	    }
@@ -22534,22 +22549,19 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->selected_upd_list->wait_msecs);
 		}
 
-	      if (!selupd_transient_scope)
-		{
-		  /* qexec_execute_selupd_list () takes the row locks itself */
-		  selupd_outermost = lock_transient_scope_start (thread_p);
-		  selupd_transient_scope = true;
-		}
-	      error = qexec_execute_selupd_list (thread_p, xasl, xasl_state, selupd_outermost, &selupd_joined);
+	      error = qexec_execute_selupd_list (thread_p, xasl, xasl_state, &selupd_joined);
 	      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 		{
 		  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 		}
 
-	      /* Increments that went with the transaction keep their row locks to commit.  Given back, a writer could
-	       * take one and wait on us, and after a rollback to a savepoint we would wait on that writer. */
-	      lock_transient_scope_end (thread_p, !selupd_joined);
-	      selupd_transient_scope = false;
+	      if (selupd_transient_scope)
+		{
+		  /* Increments that went with the transaction keep their row locks to commit.  Given back, a writer
+		   * could take one and wait on us, and after a rollback to a savepoint we would wait on that writer. */
+		  lock_transient_scope_end (thread_p, !selupd_joined);
+		  selupd_transient_scope = false;
+		}
 
 	      if (error != NO_ERROR)
 		{
