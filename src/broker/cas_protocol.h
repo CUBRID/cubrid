@@ -135,7 +135,7 @@ extern "C"
 #define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
 #define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
 
-/* tokens one UPLOAD_RELEASE may carry; a session never has more uploads pending */
+/* tokens one UPLOAD_RELEASE or UPLOAD_HOLD may carry; a session never has more uploads pending */
 #define CAS_STREAM_UPLOAD_RELEASE_MAX		1024
 
 #define CAS_INFO_SIZE			(4)
@@ -252,7 +252,7 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
-    /* PROTOCOL_V13 names the whole family, 45-52; a driver checks it once before sending any of them */
+    /* PROTOCOL_V13 names the whole family, 45-53; a driver checks it once before sending any of them */
     CAS_FC_STREAM_SEND_DATA = 45,
     CAS_FC_STREAM_END = 46,
     /* Open and give up, for a consumer whose client half is the driver itself.
@@ -266,6 +266,8 @@ extern "C"
     CAS_FC_STREAM_RELEASE = 51,
     /* Drop uploads the driver discarded before an execute bound them; one an open statement binds stays. */
     CAS_FC_STREAM_UPLOAD_RELEASE = 52,
+    /* The statement handle holds these uploads before it executes, so closing another statement keeps them. */
+    CAS_FC_STREAM_UPLOAD_HOLD = 53,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -302,7 +304,7 @@ extern "C"
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
-				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*, 45-52) */
+				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*, 45-53) */
     PROTOCOL_V14 = 14,		/* a BLOB/CLOB column leads with INTERNAL_LOB_WIRE_REF / _INLINE */
     CURRENT_PROTOCOL = PROTOCOL_V14
   };

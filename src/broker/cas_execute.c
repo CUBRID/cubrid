@@ -11316,7 +11316,7 @@ ux_stream_is_open (void)
  * statement: it runs nothing, writes nothing and ends nothing. A driver may also
  * need it in the middle of a stream -- copying a stored LOB into an INSERT reads
  * the source through its locator while sending the bytes up the stream.
- * UPLOAD_RELEASE is admitted too: it drops only uploads no open statement binds.
+ * UPLOAD_RELEASE and UPLOAD_HOLD are admitted too: they only drop or mark uploads, running nothing.
  */
 bool
 ux_stream_admits_request (int func_code)
@@ -11337,6 +11337,7 @@ ux_stream_admits_request (int func_code)
     case CAS_FC_STREAM_READ:
     case CAS_FC_STREAM_RELEASE:
     case CAS_FC_STREAM_UPLOAD_RELEASE:
+    case CAS_FC_STREAM_UPLOAD_HOLD:
     case CAS_FC_END_TRAN:
     case CAS_FC_CHECK_CAS:
     case CAS_FC_END_SESSION:

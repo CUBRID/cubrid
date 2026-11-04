@@ -124,7 +124,8 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_stream_read_open */
   fn_proxy_client_not_supported,	/* fn_stream_read */
   fn_proxy_client_not_supported,	/* fn_stream_release */
-  fn_proxy_client_not_supported	/* fn_stream_upload_release */
+  fn_proxy_client_not_supported,	/* fn_stream_upload_release */
+  fn_proxy_client_not_supported	/* fn_stream_upload_hold */
 };
 
 
@@ -180,7 +181,8 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_stream_read_open */
   fn_proxy_cas_relay_only,	/* fn_stream_read */
   fn_proxy_cas_relay_only,	/* fn_stream_release */
-  fn_proxy_cas_relay_only	/* fn_stream_upload_release */
+  fn_proxy_cas_relay_only,	/* fn_stream_upload_release */
+  fn_proxy_cas_relay_only	/* fn_stream_upload_hold */
 };
 
 

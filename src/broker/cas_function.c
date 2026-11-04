@@ -2662,3 +2662,52 @@ fn_stream_upload_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net
 
   return FN_KEEP_CONN;
 }
+
+/* UPLOAD_HOLD: srv_h_id, token [, token ...], uploads a statement binds before it executes */
+FN_RETURN
+fn_stream_upload_hold (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  INT64 tokens[CAS_STREAM_UPLOAD_RELEASE_MAX];
+  T_SRV_HANDLE *srv_handle;
+  DB_BIGINT token = 0;
+  int srv_h_id = 0, i, size;
+
+  if (argc < 2 || argc - 1 > CAS_STREAM_UPLOAD_RELEASE_MAX)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  for (i = 0; i < argc; i++)
+    {
+      NET_ARG_GET_SIZE (size, argv[i]);
+      if (size != (i == 0 ? NET_SIZE_INT : NET_SIZE_BIGINT))
+	{
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return FN_KEEP_CONN;
+	}
+    }
+
+  net_arg_get_int (&srv_h_id, argv[0]);
+  srv_handle = hm_find_srv_handle (srv_h_id);
+  if (srv_handle == NULL)
+    {
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  for (i = 1; i < argc; i++)
+    {
+      net_arg_get_bigint (&token, argv[i]);
+      tokens[i - 1] = (INT64) token;
+    }
+  if (hm_srv_handle_hold_internal_lob_uploads (srv_handle, tokens, argc - 1) < 0)
+    {
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_buf_cp_int (net_buf, 0, NULL);
+
+  return FN_KEEP_CONN;
+}
