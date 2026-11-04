@@ -71,6 +71,8 @@ static int count_and_or (PARSER_CONTEXT * parser, const PT_NODE * node);
 static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static bool pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_find_name_id_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_name_id_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_tag_term_with_id (PARSER_CONTEXT * parser, PT_NODE * term, UINTPTR id, UINTPTR join_spec,
@@ -577,6 +579,69 @@ pt_calculate_similarity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+/* the column a factor reads, for pt_cnf_over_one_column () */
+typedef struct cnf_column_info CNF_COLUMN_INFO;
+struct cnf_column_info
+{
+  PT_NODE *column;		/* the first column met */
+  bool several;			/* another column, or a subquery, was met */
+};
+
+/*
+ * pt_cnf_column_pre () - note the columns a factor reads
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): CNF_COLUMN_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  CNF_COLUMN_INFO *info = (CNF_COLUMN_INFO *) arg;
+
+  if (info->several || PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      info->several = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      if (info->column == NULL)
+	{
+	  info->column = node;
+	}
+      else if (!pt_name_equal (parser, info->column, node))
+	{
+	  info->several = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_cnf_over_one_column () - does an OR factor read a single column?
+ *   return: true when every name in the factor is the same column
+ *   parser(in):
+ *   node(in): a PT_OR node whose operands are CNF lists
+ */
+static bool
+pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  CNF_COLUMN_INFO info;
+
+  info.column = NULL;
+  info.several = false;
+  (void) parser_walk_tree (parser, node->info.expr.arg1, pt_cnf_column_pre, &info, NULL, NULL);
+  (void) parser_walk_tree (parser, node->info.expr.arg2, pt_cnf_column_pre, &info, NULL, NULL);
+
+  return info.column != NULL && !info.several;
+}
+
 /*
  * pt_cnf_or_list_to_tree () - turn a CNF disjunction chained through or_next into a PT_OR tree
  *   return: the tree, or node itself when it has no or_next
@@ -824,9 +889,12 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
        * (A and B) or (C and D) into (A or C) and (A or D) and (B or C) and (B or D) multiplies the
        * factor out, evaluates every literal once per product it lands in, and leaves the optimizer
        * multiplying correlated products as if independent.  The factor stays whole instead, and
-       * qo_extract_or_restrictions () derives from it the restrictions a scan or an index can use */
-      if (*mode == TRANSFORM_CNF_OR_COMPACT || lhs->next != NULL || rhs->next != NULL || PT_IS_OR_TREE (lhs)
-	  || PT_IS_OR_TREE (rhs))
+       * qo_extract_or_restrictions () derives from it the restrictions a scan or an index can use.
+       * A factor over one column is still distributed: its clauses are ranges of that column, which
+       * qo_convert_to_range () and the range intersection fold back into one exact key range */
+      if (*mode == TRANSFORM_CNF_OR_COMPACT
+	  || ((lhs->next != NULL || rhs->next != NULL || PT_IS_OR_TREE (lhs) || PT_IS_OR_TREE (rhs))
+	      && !pt_cnf_over_one_column (parser, node)))
 	{
 	  arg1 = arg2 = NULL;	/* init */
 
