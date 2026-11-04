@@ -241,6 +241,17 @@ extern int db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_
 			   DB_VALUE * trimmed_string);
 extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, const DB_VALUE * pad_length,
 			  const DB_VALUE * pad_charset, DB_VALUE * padded_string);
+extern int qstr_like_match (const char *tar, int tar_length, const char *pattern, int pattern_length,
+			    INTL_CODESET codeset, int coll_id);
+/* The matcher for a LIKE without an ESCAPE under one (codeset, collation), chosen once with
+ * qstr_like_match_resolve (): the byte-lockstep instance qstr_eval_like () would dispatch to for every call when
+ * the collation is eligible for one (the generic loop stands in for a pattern it declines), qstr_like_match ()
+ * itself otherwise.  Calling the matcher decides what qstr_like_match () decides for the same arguments; a caller
+ * that matches many strings under one collation (the page batch's LIKE leaf) skips the collation lookup, the pad
+ * character and the dispatch per call. */
+typedef int (*QSTR_LIKE_MATCH_FN) (const char *tar, int tar_length, const char *pattern, int pattern_length,
+				   INTL_CODESET codeset, int coll_id);
+extern QSTR_LIKE_MATCH_FN qstr_like_match_resolve (INTL_CODESET codeset, int coll_id);
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
 
