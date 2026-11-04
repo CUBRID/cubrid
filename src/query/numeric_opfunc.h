@@ -247,6 +247,7 @@ struct numeric_agg_expr_val
 
 extern bool numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out);
 extern bool numeric_agg_expr_from_int_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out);
+extern bool numeric_agg_expr_from_disk (const unsigned char *disk, int avail, NUMERIC_AGG_EXPR_VAL * out);
 extern bool numeric_agg_expr_mul (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right,
 				  NUMERIC_AGG_EXPR_VAL * out);
 extern bool numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right,

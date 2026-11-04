@@ -296,6 +296,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/expr_batch.c
   ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
@@ -586,11 +587,13 @@ set(XASL_HEADERS
 set(HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
 )
 set(HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp
