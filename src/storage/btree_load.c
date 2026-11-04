@@ -250,6 +250,7 @@ struct bt_load_provider
   pthread_mutex_t mtx;
   pthread_cond_t *cond_worker;
   pthread_cond_t cond_main;
+  pthread_cond_t cond_mail;	/* the workers waiting on a full mailbox (bt_load_provider_post_mail ()) */
   int first_error;
     cuberr::er_message * first_error_msg;	/* Error context of the worker whose failure set first_error; the leader takes
 						 * it once every worker is done. */
@@ -354,9 +355,9 @@ static int bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFI
 			     BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length);
 static LOG_PRIOR_NODE *bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
 					       LOG_RCVINDEX rcvindex, int offset, int length);
-static int bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const VPID * vpid,
-				       LOG_PRIOR_NODE * node);
+static int bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, const VPID * vpid, LOG_PRIOR_NODE * node);
 static int bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider);
+static void bt_load_provider_fail_locked (BT_LOAD_PROVIDER * provider, int error);
 static void bt_load_free_prior_chain (LOG_PRIOR_NODE * node);
 static int bt_load_mail_chain_flush (LOAD_ARGS * load_args);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
@@ -2761,7 +2762,7 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
   pgbuf_unfix_and_init (thread_p, page_ptr);
   if (node != NULL)
     {
-      return bt_load_provider_post_mail (load_args->provider, load_args->worker_idx, &vpid, node);
+      return bt_load_provider_post_mail (load_args->provider, &vpid, node);
     }
   return NO_ERROR;
 }
@@ -2819,14 +2820,14 @@ bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
  *   node(in): the record, or the chain; the leader owns it from here on
  */
 static int
-bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const VPID * vpid, LOG_PRIOR_NODE * node)
+bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, const VPID * vpid, LOG_PRIOR_NODE * node)
 {
   BT_LOAD_MAIL *mail;
 
   pthread_mutex_lock (&provider->mtx);
   while (provider->mail_count == provider->mail_capacity && provider->first_error == NO_ERROR)
     {
-      pthread_cond_wait (&provider->cond_worker[worker_idx], &provider->mtx);
+      pthread_cond_wait (&provider->cond_mail, &provider->mtx);
     }
   if (provider->first_error != NO_ERROR)
     {
@@ -2883,7 +2884,7 @@ bt_load_mail_chain_flush (LOAD_ARGS * load_args)
   load_args->mail_chain = NULL;
   load_args->mail_chain_tail = NULL;
   load_args->mail_chain_count = 0;
-  return bt_load_provider_post_mail (load_args->provider, load_args->worker_idx, NULL, chain);
+  return bt_load_provider_post_mail (load_args->provider, NULL, chain);
 }
 
 /*
@@ -2892,6 +2893,7 @@ bt_load_mail_chain_flush (LOAD_ARGS * load_args)
  *   return: error code
  *
  * Note: Called without the provider mutex. On error the remaining records are dropped; the build fails.
+ *       One visit takes the mails found on entry, so that the page requests of the workers get their turn.
  */
 static int
 bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider)
@@ -2899,6 +2901,7 @@ bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provide
   BT_LOAD_MAIL batch[BT_LOAD_MAIL_BATCH];
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   int n, i, error = NO_ERROR;
+  int remaining = -1;		/* mails of this visit still in the mailbox */
   bool failed;
 
   /* prior_lsa_next_record () skips the checks of log_append_* */
@@ -2907,21 +2910,24 @@ bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provide
   for (;;)
     {
       pthread_mutex_lock (&provider->mtx);
-      n = MIN (provider->mail_count, BT_LOAD_MAIL_BATCH);
+      if (remaining < 0)
+	{
+	  /* the mails found now; those that arrive meanwhile wait for the next visit, behind the page requests */
+	  remaining = provider->mail_count;
+	}
+      n = MIN (remaining, BT_LOAD_MAIL_BATCH);
       for (i = 0; i < n; i++)
 	{
 	  batch[i] = provider->mails[(provider->mail_head + i) % provider->mail_capacity];
 	}
       provider->mail_head = (provider->mail_head + n) % provider->mail_capacity;
       provider->mail_count -= n;
+      remaining -= n;
       failed = provider->first_error != NO_ERROR;
       if (n > 0)
 	{
 	  /* room for the workers waiting on a full mailbox */
-	  for (i = 0; i < provider->n_workers; i++)
-	    {
-	      pthread_cond_broadcast (&provider->cond_worker[i]);
-	    }
+	  pthread_cond_broadcast (&provider->cond_mail);
 	}
       pthread_mutex_unlock (&provider->mtx);
       if (n == 0)
@@ -3281,6 +3287,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
     }
   pthread_mutex_init (&provider->mtx, NULL);
   pthread_cond_init (&provider->cond_main, NULL);
+  pthread_cond_init (&provider->cond_mail, NULL);
   for (int i = 0; i < n_workers; i++)
     {
       pthread_cond_init (&provider->cond_worker[i], NULL);
@@ -3308,6 +3315,28 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   return NO_ERROR;
 }
 
+/*
+ * bt_load_provider_fail_locked () - Latch the build's first failure and wake every waiting worker
+ *   error(in): the failure, with its context in the calling thread; NO_ERROR only wakes
+ *
+ * Note: Called with the provider mutex held. The first failure keeps its error context for the leader, which takes
+ *       it once every worker is done (bt_load_provider_service_loop ()).
+ */
+static void
+bt_load_provider_fail_locked (BT_LOAD_PROVIDER * provider, int error)
+{
+  if (error != NO_ERROR && provider->first_error == NO_ERROR)
+    {
+      provider->first_error = error;
+      provider->first_error_msg->swap (cuberr::context::get_thread_local_error ());
+    }
+  for (int i = 0; i < provider->n_workers; i++)
+    {
+      pthread_cond_broadcast (&provider->cond_worker[i]);
+    }
+  pthread_cond_broadcast (&provider->cond_mail);
+}
+
 int
 bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider)
 {
@@ -3328,15 +3357,7 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
       if (error != NO_ERROR)
 	{
 	  pthread_mutex_lock (&provider->mtx);
-	  if (provider->first_error == NO_ERROR)
-	    {
-	      provider->first_error = error;
-	      provider->first_error_msg->swap (cuberr::context::get_thread_local_error ());
-	    }
-	  for (int i = 0; i < provider->n_workers; i++)
-	    {
-	      pthread_cond_broadcast (&provider->cond_worker[i]);
-	    }
+	  bt_load_provider_fail_locked (provider, error);
 	  pthread_mutex_unlock (&provider->mtx);
 	}
 
@@ -3388,10 +3409,7 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
 	    {
 	      provider->slots[selected].state = BT_LOAD_SLOT_IDLE;
 	    }
-	  for (int i = 0; i < provider->n_workers; i++)
-	    {
-	      pthread_cond_broadcast (&provider->cond_worker[i]);
-	    }
+	  bt_load_provider_fail_locked (provider, NO_ERROR);
 	  pthread_mutex_unlock (&provider->mtx);
 	  continue;
 	}
@@ -3419,18 +3437,11 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
 	  bt_load_free_ledger_entry (ledger_entry);
 	  free_and_init (vpids);
 	  pthread_mutex_lock (&provider->mtx);
-	  if (provider->first_error == NO_ERROR)
-	    {
-	      provider->first_error = error;
-	    }
 	  if (provider->slots[selected].state == BT_LOAD_SLOT_ALLOCATING)
 	    {
 	      provider->slots[selected].state = BT_LOAD_SLOT_IDLE;
 	    }
-	  for (int i = 0; i < provider->n_workers; i++)
-	    {
-	      pthread_cond_broadcast (&provider->cond_worker[i]);
-	    }
+	  bt_load_provider_fail_locked (provider, error);
 	  pthread_mutex_unlock (&provider->mtx);
 	  continue;
 	}
@@ -3443,10 +3454,7 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
 	    {
 	      provider->slots[selected].state = BT_LOAD_SLOT_IDLE;
 	    }
-	  for (int i = 0; i < provider->n_workers; i++)
-	    {
-	      pthread_cond_broadcast (&provider->cond_worker[i]);
-	    }
+	  bt_load_provider_fail_locked (provider, NO_ERROR);
 	  pthread_mutex_unlock (&provider->mtx);
 	  log_sysop_abort (thread_p);
 	  bt_load_free_ledger_entry (ledger_entry);
@@ -3757,6 +3765,7 @@ bt_load_provider_close (BT_LOAD_PROVIDER * provider)
   free_and_init (provider->cond_worker);
   delete provider->first_error_msg;
   pthread_cond_destroy (&provider->cond_main);
+  pthread_cond_destroy (&provider->cond_mail);
   pthread_mutex_destroy (&provider->mtx);
   delete provider;
 }
@@ -5677,16 +5686,7 @@ bt_load_worker_epilogue (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int err
   else
     {
       slot->state = BT_LOAD_SLOT_ERROR;
-      if (provider->first_error == NO_ERROR)
-	{
-	  provider->first_error = error;
-	  /* The build's first failure: keep its error context for the leader (bt_load_provider_service_loop ()). */
-	  provider->first_error_msg->swap (cuberr::context::get_thread_local_error ());
-	}
-      for (int i = 0; i < provider->n_workers; i++)
-	{
-	  pthread_cond_broadcast (&provider->cond_worker[i]);
-	}
+      bt_load_provider_fail_locked (provider, error);
     }
   load_args->report_published = true;
   pthread_cond_signal (&provider->cond_main);
@@ -5843,7 +5843,7 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
       error = bt_load_patch_seam (thread_p, main_load_args, shard_load_args[i - 1], shard_load_args[i]);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto end;
 	}
     }
 
@@ -5852,7 +5852,8 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
   main_load_args->vpid_last_leaf = shard_load_args[n_shards - 1]->report_last_leaf_vpid;
   if (report_n_keys > INT_MAX)
     {
-      return ER_FAILED;
+      error = ER_FAILED;
+      goto end;
     }
   n_keys = (int) report_n_keys;
   main_load_args->n_keys = n_keys;
@@ -5871,8 +5872,15 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
    * sort run, so the shards cannot count them; report_n_nulls counts the records of the runs that have a null
    * column, another set.
    */
-  return btree_build_nleafs (thread_p, main_load_args, main_load_args->sort_args->n_nulls,
-			     main_load_args->sort_args->n_oids, n_keys);
+  error = btree_build_nleafs (thread_p, main_load_args, main_load_args->sort_args->n_nulls,
+			      main_load_args->sort_args->n_oids, n_keys);
+
+end:
+  /* the shard put closes the provider once this returns: the main load args let go of it, and of the page source
+   * that takes from it, here */
+  main_load_args->provider = NULL;
+  main_load_args->new_page_fn = bt_load_new_page_serial;
+  return error;
 }
 
 
