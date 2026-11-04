@@ -135,6 +135,9 @@ extern "C"
 #define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
 #define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
 
+/* tokens one UPLOAD_RELEASE may carry; a session never has more uploads pending */
+#define CAS_STREAM_UPLOAD_RELEASE_MAX		1024
+
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
 
