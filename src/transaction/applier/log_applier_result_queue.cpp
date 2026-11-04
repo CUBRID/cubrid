@@ -163,9 +163,6 @@ la_result_queue_try_pop (LA_RESULT *result)
  * la_result_queue_wait_for_result() - wait at most timeout_msec for a worker to queue a result, without dequeuing it
  *   return: true when a result is queued or the queue is shutting down, false on timeout
  *   timeout_msec(in): longest time to wait
- *
- *   TODO: Use std::condition_variable::wait_for instead of building an absolute deadline for
- *         pthread_cond_timedwait, together with moving this module off pthread mutexes and conditions.
  */
 bool
 la_result_queue_wait_for_result (int timeout_msec)

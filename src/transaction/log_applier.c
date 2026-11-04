@@ -6064,7 +6064,6 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   class_oid = ws_oid (classop);
 
-  /* TODO: initialize the worker authorization context so replication apply can run as the intended owner. */
   AU_SAVE_AND_DISABLE (au_save);
 
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
