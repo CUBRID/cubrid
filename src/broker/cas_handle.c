@@ -679,6 +679,24 @@ hm_srv_handle_set_internal_lob_uploads (T_SRV_HANDLE * srv_handle, const INT64 *
   return 0;
 }
 
+/* A transaction end frees these handles for good (statement pooling off): release their uploads as closing each
+ * would. Freed one by one, the last holder releases a shared token; one a surviving handle binds stays. */
+void
+hm_srv_handle_release_uploads_for_free_all (bool free_holdable)
+{
+  int i;
+
+  for (i = 0; i < max_handle_id; i++)
+    {
+      T_SRV_HANDLE *srv_handle = srv_handle_table[i];
+
+      if (srv_handle != NULL && (!srv_handle->is_holdable || free_holdable))
+	{
+	  srv_handle_release_internal_lob_uploads (i + 1, srv_handle);
+	}
+    }
+}
+
 /* The driver discarded this upload: release it unless an open statement still binds it. */
 void
 hm_internal_lob_upload_release (INT64 token)
