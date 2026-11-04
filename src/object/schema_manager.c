@@ -11571,7 +11571,8 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	{
 	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      /* as before, recache the constraints when the class has a foreign key */
+	      /* The attribute copies this rebuild used to replace are gone. It is kept so that a class
+	       * with a foreign key still ends with a rebuilt constraint cache. */
 	      class_->recache_constraints = 1;
 	      break;
 	    }
