@@ -1357,7 +1357,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   VPID_SET_NULL (&load_args->report_last_leaf_vpid);
   VPID_SET_NULL (&load_args->vpid_last_leaf);
 #if defined (SERVER_MODE)
-  /* The no-logging build writes no content redo at all; only it puts the leaves with the shard workers. */
+  /* The no-logging build writes no content redo at all; a logged build lets the shard workers put the leaves and
+   * mails their content redo to the leader, unless index_build_parallel_leaf is off. */
   if (eligible_no_redo)
     {
       load_args->page_log_mode = BT_LOAD_LOG_NO_REDO;
@@ -1366,7 +1367,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   else
     {
       load_args->page_log_mode = BT_LOAD_LOG_INLINE;
-      load_args->shard_put = false;
+      load_args->shard_put = prm_get_bool_value (PRM_ID_INDEX_BUILD_PARALLEL_LEAF);
     }
   /* Do NOT open a build sysop here. For SERVER_MODE, the topop rmutex must not be held across
    * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
@@ -2505,8 +2506,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
    *****************************************/
 
   /*
-   * Reconcile unused provider pages before publishing the root.  file_alloc_multiple/file_dealloc may touch the
-   * sticky root while the index file is still being built; the final root copy must be the last page mutation.
+   * Reconcile unused provider pages before publishing the root: the non-leaf build above took its pages from the
+   * provider too, so what is left is known only now, and whether the overflow key file is destroyed (below) has to
+   * be settled before the root header is built.
    */
   if (load_args->provider != NULL)
     {
@@ -5776,8 +5778,9 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
   main_load_args->report_overflow_key_count = overflow_key_count;
 
   /*
-   * Fully-null keys never enter the final sort run. SORT_ARGS totals, which already include partial-null records,
-   * remain authoritative for root/global statistics; report_n_nulls is the checked construct-shard subtotal.
+   * The root statistics take the SORT_ARGS totals.  Its n_nulls counts the fully-null keys, which never enter a
+   * sort run, so the shards cannot count them; report_n_nulls counts the records of the runs that have a null
+   * column, another set.
    */
   return btree_build_nleafs (thread_p, main_load_args, main_load_args->sort_args->n_nulls,
 			     main_load_args->sort_args->n_oids, n_keys);
