@@ -231,9 +231,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return slot;
     }
 
-    public List<String> codeLines = new ArrayList<>(); // no LinkedList : frequent access by indexes
-    public StringBuilder codeRangeMarkers = new StringBuilder();
-
     public String buildCodeLines(Unit unit) {
 
         javaTypesUsed.add("com.cubrid.jsp.Server");
@@ -251,13 +248,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         unitClassName = unit.getClassName();
         CodeToResolve ctr = visit(unit);
+
+        List<String> codeLines = new ArrayList<>(); // no LinkedList : frequent access by indexes
+        StringBuilder codeRangeMarkers = new StringBuilder();
         ctr.resolve(0, codeLines, codeRangeMarkers);
 
-        codeLines.add(
+        String crmlDef =
                 "  private static List<CodeRangeMarker> codeRangeMarkerList = buildCodeRangeMarkerList(\""
                         + codeRangeMarkers
-                        + "\");");
-        codeLines.add("}");
+                        + "\");";
+        int i;
+        for (i = 0; i < codeLines.size(); i++) {
+            if (codeLines.get(i).startsWith("public class ")) {
+                // replace the next line with the CRML definition
+                codeLines.set(i + 1, crmlDef);
+                break;
+            }
+        }
+        assert i < codeLines.size();
 
         return String.join("\n", codeLines);
     }
@@ -307,6 +315,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+IMPORTS'%",
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
+                "  // line for codeRangeMarkerList definition",
                 "  %'+GET-CONNECTION'%",
                 "  %'+DCC-INIT-DECL'%",
                 "  %'+DECLARATIONS'%",
@@ -314,7 +323,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+OPT-INITIALIZER'%",
                 "  %'+DCC-INIT-RELEASE'%",
                 "  %'+RECORD-DEFS'%",
-                "  %'+RECORD-ASSIGN-FUNCS'%"
+                "  %'+RECORD-ASSIGN-FUNCS'%",
+                "}"
             };
 
     private String[] getRecordDefs() {
@@ -437,10 +447,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+IMPORTS'%",
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
+                "  // line for codeRangeMarkerList definition",
                 "  %'+GET-CONNECTION'%",
                 "  %'+METHODS'%",
                 "  %'+RECORD-DEFS'%",
-                "  %'+RECORD-ASSIGN-FUNCS'%"
+                "  %'+RECORD-ASSIGN-FUNCS'%",
+                "}"
             };
 
     @Override

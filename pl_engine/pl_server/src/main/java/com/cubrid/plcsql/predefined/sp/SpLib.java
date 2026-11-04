@@ -121,10 +121,10 @@ public class SpLib {
             if (cause == null) {
                 // unlikely
                 throw new SQL_ERROR(
-                        "error while initializing a package instance of " + method.getName());
+                        "error while initializing the package instance of " + method.getName());
             } else {
                 throw new SQL_ERROR(
-                        "error while initializing the package of "
+                        "error while initializing the package instance of "
                                 + method.getName()
                                 + ": "
                                 + cause.getMessage());
@@ -134,7 +134,7 @@ public class SpLib {
             // and the cause of the failure is not available any more
             Server.log(e);
             throw new SQL_ERROR(
-                    "the package of "
+                    "the package instance of "
                             + method.getName()
                             + " failed to be initialized earlier in this session");
         } catch (InvocationTargetException e) {
