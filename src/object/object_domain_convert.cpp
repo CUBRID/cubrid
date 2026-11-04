@@ -3214,6 +3214,29 @@ tp_value_convert_varchar_to_varchar (const DB_VALUE *src, DB_VALUE *target, cons
   return status;
 }
 
+/*
+ * tp_value_convert_char_prefix_to_varchar () - CBRD-27583: INDEX_PREFIX's prefix of a CHAR, shorter than its
+ *   precision, into a VARCHAR of its bytes, as the column cast relabelled it in place before (tp_can_steal_string);
+ *   the CHAR to VARCHAR converter would pad it to its precision. Delete it when CBRD-27694 makes INDEX_PREFIX of a
+ *   CHAR return a VARCHAR.
+ */
+static TP_DOMAIN_STATUS
+tp_value_convert_char_prefix_to_varchar (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+    date_conversion_error *error)
+{
+  DB_VALUE prefix;
+
+  db_make_varchar (&prefix, DB_DEFAULT_PRECISION, db_get_string (src), db_get_string_size (src),
+		   db_get_string_codeset (src), db_get_string_collation (src));
+  return tp_value_convert_varchar_to_varchar (&prefix, target, desired_domain, error);
+}
+
+TP_VALUE_CONVERTER
+domain_char_prefix_converter (void)
+{
+  return tp_value_convert_char_prefix_to_varchar;
+}
+
 static TP_DOMAIN_STATUS
 tp_value_convert_date_to_varchar (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				  date_conversion_error *error)
@@ -7345,14 +7368,12 @@ tp_value_convert_json_scalar_to_clob (const DB_VALUE *src, DB_VALUE *target, con
   return status;
 }
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_oid_to_oid (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *, date_conversion_error *)
 {
   pr_clone_value (src, target);
   return DOMAIN_COMPATIBLE;
 }
-#endif /* !defined (SERVER_MODE) */
 
 /*
  * tp_value_convert_enumeration_name_to_double () - an ENUM added to a string without plus_as_concat: its name, then
@@ -7476,8 +7497,8 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  * collection targets, which coerce the elements implicitly.
  *
  * The whole policy, one character per pair, read from this switch by calling it for every (src, dst, mode) at run
- * time (SA build; the server build differs in the six object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
- * VOBJ <- OBJECT, OID <- OID, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
+ * time (SA build; the server build differs in the five object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
+ * VOBJ <- OBJECT, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
  * indexable as well as readable. When a case changes, change its character.
  *
  *    .  the pair does not convert in any mode     =  the same type: nullptr, nothing to convert
@@ -8341,13 +8362,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
     case DB_TYPE_OID:
       switch (src)
 	{
-#if !defined (SERVER_MODE)
 	case DB_TYPE_OID:
+	  /* CBRD-27583: the server too, as tp_value_cast_internal clones an OID into an OID domain */
 	  return tp_value_convert_oid_to_oid;
-#else /* !defined (SERVER_MODE) */
-	case DB_TYPE_OID:
-	  return tp_value_convert_incompatible;
-#endif /* !defined (SERVER_MODE) */
 	default:
 	  break;
 	}
@@ -8448,4 +8465,18 @@ tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMA
     default:
       return tp_value_convert_incompatible;
     }
+}
+
+/*
+ * tp_value_numeric_fit_converter () - the converter of a NUMERIC into a NUMERIC domain (its precision and scale)
+ *   return: the converter
+ *
+ * The same for every target, as converters are keyed on the types: a caller that parsed a NUMERIC fits it without a
+ * lookup (tp_value_cast_internal's string to NUMERIC path).
+ */
+TP_VALUE_CONVERTER
+tp_value_numeric_fit_converter (void)
+{
+  static const TP_VALUE_CONVERTER fit = tp_value_find_converter<DOMAIN_CONVERT_ASSIGN> (DB_TYPE_NUMERIC, DB_TYPE_NUMERIC);
+  return fit;
 }

@@ -775,7 +775,6 @@ struct qo_term
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
 #define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
 #define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
-#define QO_TERM_READS_NULL_PADDED   32768	/* reads a node an outer join evaluated before it fills with NULL */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -1004,6 +1003,10 @@ struct qo_env
    * overridden with the environment variable CUBRID_QO_DUMP_LEVEL.
    */
   bool dump_enable;
+
+  /* what the executor runs serially in this query block whatever the plan (qo_query_serial_level ()):
+   * -1 not computed yet, else a QO_SERIAL_* value */
+  int serial_level;
 
   /*
    * Controls whether the plan is dumped.  There are situations like

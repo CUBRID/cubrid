@@ -72,7 +72,7 @@ static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 
-PAGEID oid_Next_tempid = NULL_PAGEID;
+CUB_THREAD_LOCAL PAGEID oid_Next_tempid = NULL_PAGEID;
 
 /* ROOT_CLASS OID values. Set during restart/initialization.*/
 OID *oid_Root_class_oid = &oid_Root_class;

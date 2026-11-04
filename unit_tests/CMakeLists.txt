@@ -41,6 +41,7 @@ option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
+option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 
 message("  unit_tests/...")
 
@@ -73,13 +74,10 @@ if (UNIT_TESTS OR UNIT_TEST_STRING_BUFFER)
   add_subdirectory(string_buffer)
 endif()
 
-#[[
-TODO compilation fails
 if (UNIT_TESTS OR UNIT_TEST_LOCKFREE)
   message("    lockfree")
   add_subdirectory(lockfree)
 endif (UNIT_TESTS OR UNIT_TEST_LOCKFREE)
-]]
 
 # Separate from lockfree/ only while that module does not compile; folds into it once it does.
 if (UNIT_TESTS OR UNIT_TEST_LOG_PRIOR_INFLIGHT)
@@ -121,6 +119,11 @@ if (UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
   message("    json_builder")
   add_subdirectory(json_builder)
 endif(UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
+
+if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
+  message("    radix_sort")
+  add_subdirectory(radix_sort)
+endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
 
 #[[
 TODO compilation fails
