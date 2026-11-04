@@ -55,8 +55,9 @@ sp_stmt_category_of (const PT_NODE *statement, PT_NODE_TYPE stmt_type)
     case PT_SET_TIMEZONE:
       return SP_STMT_TCL;
 
+    /* SET @v and SET TRACE do not change how the outer statement runs */
     case PT_SET_SESSION_VARIABLES:
-      /* SET @v only holds a value in the session, outside the transaction */
+    case PT_QUERY_TRACE:
       return SP_STMT_OTHER;
 
     case PT_METHOD_CALL:

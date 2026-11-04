@@ -39,7 +39,7 @@
 enum sp_stmt_category
 {
   SP_STMT_OTHER,
-  SP_STMT_TCL,			/* COMMIT, ROLLBACK, SAVEPOINT, 2PC (PREPARE TO COMMIT, ATTACH), SET (except SET @var) */
+  SP_STMT_TCL,			/* COMMIT, ROLLBACK, SAVEPOINT, 2PC, SET (except SET @var, SET TRACE) */
   SP_STMT_DDL,			/* including a method call (ON CLASS or the target as the first argument) */
   SP_STMT_DML
 };

@@ -7891,7 +7891,7 @@ mq_check_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
-  PT_NODE *from, *flat;
+  PT_NODE *from, *flat, *using_spec, *entity;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
@@ -7908,6 +7908,18 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   if (merge_statement->info.merge.insert.value_clauses)
     {
       auth = (DB_AUTH) (auth | DB_AUTH_INSERT);
+    }
+
+  using_spec = merge_statement->info.merge.using_clause;
+  if (using_spec != NULL && !PT_SPEC_IS_DERIVED (using_spec))
+    {
+      for (entity = using_spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	{
+	  if (mq_translatable_class (parser, entity))
+	    {
+	      mq_mark_sp_call (parser, mq_fetch_subqueries (parser, entity));
+	    }
+	}
     }
 
   merge_statement = mq_translate_tree (parser, merge_statement, from, NULL, auth);
