@@ -13309,14 +13309,33 @@ locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 }
 
 /*
- * locator_object_is_ours () - Whether the object's last version was inserted by this transaction, still active
+ * locator_version_is_ours () - Whether a version was inserted by this transaction, still active
+ *   return: the answer; also true where no MVCC version can tell, in SA mode and for a class without MVCC, whose rows
+ *	     a transaction changes in place
+ *   thread_p(in): thread entry
+ *   class_oid(in): class of the object
+ *   header(in): the version's MVCC header
+ */
+static bool
+locator_version_is_ours (THREAD_ENTRY * thread_p, const OID * class_oid, const MVCC_REC_HEADER * header)
+{
+#if defined (SERVER_MODE)
+  return (mvcc_is_mvcc_disabled_class (class_oid)
+	  || (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (header)
+	      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (header))));
+#else /* SERVER_MODE */
+  return true;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * locator_object_is_ours () - Whether the object's last version is this transaction's; see locator_version_is_ours ()
  *   return: error code
  *   thread_p(in): thread entry
  *   oid(in): object identifier
  *   class_oid(in): class of the object
  *   class_hfid(in): heap of the class
- *   is_ours(out): the answer; also true where no MVCC version can tell, in SA mode and for a class without MVCC,
- *		   whose rows a transaction changes in place
+ *   is_ours(out): the answer; also true for a row that cannot be read, the side that keeps its lock to commit
  */
 int
 locator_object_is_ours (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, const HFID * class_hfid,
@@ -13348,8 +13367,7 @@ locator_object_is_ours (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
     }
   if (scan == S_SUCCESS)
     {
-      *is_ours = (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&header)
-		  && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&header)));
+      *is_ours = locator_version_is_ours (thread_p, class_oid, &header);
     }
   else if (scan == S_ERROR)
     {
@@ -13583,6 +13601,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  scan = S_ERROR;
 	  goto exit;
 	}
+      mvcc_reev_data->last_version_is_ours = locator_version_is_ours (thread_p, class_oid, &mvcc_header);
 
       if (scan_cache->mvcc_snapshot)
 	{

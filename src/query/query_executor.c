@@ -20479,21 +20479,22 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		{
 		  /* one tuple successfully reevaluated, do not clear list file */
 		  clear_list_id = false;
+		  joins_transaction = joins_transaction || p_mvcc_reev_data->last_version_is_ours;
 		}
 	    }
 	  else
 	    {
 	      /* the object being incremented must be exclusively held by the current transaction. */
 	      assert (lock_has_xlock_or_self_lock (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid));
-	    }
 
-	  if (!joins_transaction)
-	    {
-	      err = locator_object_is_ours (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
-					    &crt_incr_info.m_class_hfid, &joins_transaction);
-	      if (err != NO_ERROR)
+	      if (!joins_transaction)
 		{
-		  goto exit_on_error;
+		  err = locator_object_is_ours (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
+						&crt_incr_info.m_class_hfid, &joins_transaction);
+		  if (err != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		}
 	    }
 
