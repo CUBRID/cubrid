@@ -1246,9 +1246,15 @@ ldr_class_name (LDR_CONTEXT *context)
 	{
 	  name = db_get_class_name (context->cls);
 	}
+      else
+	{
+	  /* A validation run resolves no class object; the cached name is all it has. */
+	  name = context->class_name;
+	}
     }
 
-  return name;
+  /* Never NULL: every caller hands this straight to er_set () or fprintf () as a %s. */
+  return (name != NULL) ? name : "";
 }
 
 /*
@@ -2337,6 +2343,46 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
        */
       goto error_exit;
     }
+
+  /*
+   * A collection on a %constructor line is refused here, and said so. Its braces and
+   * elements do not line up with the slots the way an attribute's do.
+   *
+   * The slot taken at error_exit below is the whole cost of it: process_values () drops
+   * the trailing brace in this mode and ldr_act_elem () drops the elements, so the
+   * collection takes exactly what any other value takes. Refuse it here rather than
+   * leaving it to the count check at the end of the line.
+   *
+   * Refuse it before the validation-only bail-out below, because this is the shape of
+   * the line rather than the value in it, and --data-file-check-only answers "will
+   * this file load".
+   *
+   * Only a run whose whole job is to check says it there. An ordinary load walks the
+   * file twice - once to check the syntax, once to load - and the second walk names
+   * the attribute and its domain, which a validation walk cannot: it resolves no
+   * class, so it builds no attribute descriptors. Saying it on both walks would
+   * print the same refusal twice, the first time without the names.
+   */
+  if (type == LDR_COLLECTION)
+    {
+      if (!context->validation_only || (context->args != NULL && context->args->syntax_check))
+	{
+	  TP_DOMAIN *att_domain = NULL;
+
+	  if (!context->validation_only && context->attrs != NULL
+	      && context->attrs[context->next_attr].att != NULL)
+	    {
+	      att_domain = context->attrs[context->next_attr].att->domain;
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_SET, 3, ldr_attr_name (context),
+		  ldr_class_name (context), (att_domain != NULL) ? att_domain->type->name : "");
+	  CHECK_ERR (err, ER_LDR_UNEXPECTED_SET);
+	}
+
+      goto error_exit;
+    }
+
   CHECK_VALIDATION_ONLY (context);
 
   attdesc = &context->attrs[context->next_attr];
@@ -2349,69 +2395,49 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
    */
   db_value_clear (&attdesc->ctor_val);
 
-  /*
-   * A collection on a %constructor line is refused here, and said so. Its braces and
-   * elements do not line up with the slots the way an attribute's do.
-   *
-   * The slot taken at error_exit below is the whole cost of it: process_values () drops
-   * the trailing brace in this mode and ldr_act_elem () drops the elements, so the
-   * collection takes exactly what any other value takes. Refuse it here rather than
-   * leaving it to the count check at the end of the line.
-   */
-  if (type == LDR_COLLECTION)
+  if (context->next_attr >= context->arg_index)
     {
-      TP_DOMAIN *att_domain = (attdesc->att != NULL) ? attdesc->att->domain : NULL;
+      /*
+       * A constructor argument. Arguments carry no domain of their own, so
+       * they take their natural type and db_send_argarray () coerces them
+       * positionally against the method signature.
+       *
+       * TODO CBRD-21654 send this through ldr_convert_elem_value () as well. It is the
+       * last caller that hands every type to elem_converter [], and it is what keeps the
+       * standalone copies of the date, time, bit string, float, double and integer
+       * conversions alive. The slot's conv_att is already NULL, which the shared table
+       * takes - ldr_str_elem () passes NULL to it today. Measure first: ldr_float_elem ()
+       * and ldr_bstr_elem () read GET_DOMAIN () to name a type and to pick a cast target,
+       * and ldr_int_elem () has its own path for a digit string too long for a BIGINT, so
+       * the message or the code a bad argument reports can move.
+       */
+      int conv_err = (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_SET, 3, ldr_attr_name (context),
-	      ldr_class_name (context), (att_domain != NULL) ? att_domain->type->name : "");
-      CHECK_ERR (err, ER_LDR_UNEXPECTED_SET);
+      ENSURE_ERR_SET (conv_err);
+      CHECK_ERR (err, conv_err);
+    }
+  else if (type == LDR_OID || type == LDR_CLASS_OID)
+    {
+      /*
+       * An object reference. It is the standalone loader's own business and the
+       * shared table has no entry for it, so it would come back a domain conflict
+       * from ldr_convert_value (). An ordinary attribute reaches the reference
+       * through store[type].handler in ldr_store_value (); a %constructor line
+       * does not go through that, so name the element converter here the way
+       * ldr_act_class_attr () does. obj_desc_set () coerces the value against the
+       * attribute domain once construct_instance () applies it.
+       */
+      int conv_err = (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val);
+
+      ENSURE_ERR_SET (conv_err);
+      CHECK_ERR (err, conv_err);
     }
   else
     {
-      if (context->next_attr >= context->arg_index)
-	{
-	  /*
-	   * A constructor argument. Arguments carry no domain of their own, so
-	   * they take their natural type and db_send_argarray () coerces them
-	   * positionally against the method signature.
-	   *
-	   * TODO CBRD-21654 send this through ldr_convert_elem_value () as well. It is the
-	   * last caller that hands every type to elem_converter [], and it is what keeps the
-	   * standalone copies of the date, time, bit string, float, double and integer
-	   * conversions alive. The slot's conv_att is already NULL, which the shared table
-	   * takes - ldr_str_elem () passes NULL to it today. Measure first: ldr_float_elem ()
-	   * and ldr_bstr_elem () read GET_DOMAIN () to name a type and to pick a cast target,
-	   * and ldr_int_elem () has its own path for a digit string too long for a BIGINT, so
-	   * the message or the code a bad argument reports can move.
-	   */
-	  int conv_err = (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val);
-
-	  ENSURE_ERR_SET (conv_err);
-	  CHECK_ERR (err, conv_err);
-	}
-      else if (type == LDR_OID || type == LDR_CLASS_OID)
-	{
-	  /*
-	   * An object reference. It is the standalone loader's own business and the
-	   * shared table has no entry for it, so it would come back a domain conflict
-	   * from ldr_convert_value (). An ordinary attribute reaches the reference
-	   * through store[type].handler in ldr_store_value (); a %constructor line
-	   * does not go through that, so name the element converter here the way
-	   * ldr_act_class_attr () does. obj_desc_set () coerces the value against the
-	   * attribute domain once construct_instance () applies it.
-	   */
-	  int conv_err = (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val);
-
-	  ENSURE_ERR_SET (conv_err);
-	  CHECK_ERR (err, conv_err);
-	}
-      else
-	{
-	  /* An attribute of the instance, so the attribute domain applies. */
-	  CHECK_ERR (err,
-		     ldr_convert_value (context, str, len, attdesc, type, attdesc->store[type].name_attr,
-					&attdesc->ctor_val));
-	}
+      /* An attribute of the instance, so the attribute domain applies. */
+      CHECK_ERR (err,
+		 ldr_convert_value (context, str, len, attdesc, type, attdesc->store[type].name_attr,
+				    &attdesc->ctor_val));
     }
 
 error_exit:
@@ -4666,8 +4692,15 @@ ldr_finish_context (LDR_CONTEXT *context)
 	    }
 	  if (context->args->verbose)
 	    {
+	      /*
+	       * Without the class name on a validation walk. The name is known there now -
+	       * ldr_act_init_context () keeps it so a message can say which class refused a
+	       * line - but this counting line has always come out bare on that walk, and
+	       * callers filter it by that shape.
+	       */
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_COUNT),
-		       (context->class_name ? context->class_name : ""), context->inst_total);
+		       (!context->validation_only && context->class_name != NULL) ? context->class_name : "",
+		       context->inst_total);
 	    }
 	}
     }
@@ -4781,26 +4814,30 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	  ldr_abort ();
 	  goto error_exit;
 	}
+      /*
+       * Cache the class name. This will be used if we have a periodic
+       * commit and need to refresh the class
+       * This is a temporary fix, we will have to cache all the class
+       * names that we deal with, and refetch the classes and locks
+       * after a periodic commit.
+       *
+       * A validation run keeps it too. It resolves no class object, so this is the
+       * only name it has to put in a message.
+       */
+      context->class_name = (char *) malloc (len + 1);
+      if (context->class_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_abort ();
+	  goto error_exit;
+	}
+      memcpy (context->class_name, class_name, len);
+      context->class_name[len] = '\0';
+
       if (!context->validation_only)
 	{
 	  context->cls = class_mop;
-	  /*
-	   * Cache the class name. This will be used if we have a periodic
-	   * commit and need to refresh the class
-	   * This is a temporary fix, we will have to cache all the class
-	   * names that we deal with, and refetch the classes and locks
-	   * after a periodic commit.
-	   */
-	  context->class_name = (char *) malloc (len + 1);
-	  if (context->class_name == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-	      CHECK_CONTEXT_VALIDITY (context, true);
-	      ldr_abort ();
-	      goto error_exit;
-	    }
-	  memcpy (context->class_name, class_name, len);
-	  context->class_name[len] = '\0';
 
 	  if (is_internal_class (context->cls))
 	    {
