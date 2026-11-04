@@ -2342,7 +2342,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (parsed_line_no > 0)
 	{
 	  /* add the session command lines that are not in the buffer */
-	  stmt_start_line_no = (type == EDITOR_INPUT) ? csql_edit_contents_get_input_line (parsed_line_no) : parsed_line_no;
+	  stmt_start_line_no =
+	    (type == EDITOR_INPUT) ? csql_edit_contents_get_input_line (parsed_line_no) : parsed_line_no;
 	}
 
       attr_spec = db_get_query_type_list (session, stmt_id);
