@@ -3405,6 +3405,9 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	    {
 	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR))
 		{
+		  /* the cast above only checked the value against CHAR(n): its converted copy is released before the
+		   * original VARCHAR value takes its place, or it leaks on every execution */
+		  pr_clear_value (hv);
 		  pr_clone_value (val, hv);
 		}
 	    }
