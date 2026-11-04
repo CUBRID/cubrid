@@ -230,6 +230,8 @@ void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 /* histogram selectivity evaluation functions */
 void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity,
 				      bool *success);
+/* the sum of the equality estimates of n constants against one column, the histogram opened once */
+void histogram_get_equal_selectivity_sum (PT_NODE *lhs, DB_VALUE **values, int n, double *sum, bool *success);
 void histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge, bool include_equal,
 				     double *selectivity,
 				     bool *success);

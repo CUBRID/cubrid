@@ -699,6 +699,50 @@ pt_init_xasl_supp_info ()
   xasl_Supp_info.includes_tde_class = 0;
 }
 
+/*
+ * pt_detach_xasl_supp_info () - take what the XASL generation of a statement has gathered so far (the classes its
+ *				  plan references, their locks and pages, TDE) out of the way of a statement compiled in
+ *				  the middle of it, whose XASL generation starts by clearing it
+ *   return: the gathered information, for pt_attach_xasl_supp_info (); NULL when out of memory
+ */
+struct xasl_supp_info *
+pt_detach_xasl_supp_info (void)
+{
+  XASL_SUPP_INFO *saved;
+
+  saved = (XASL_SUPP_INFO *) malloc (sizeof (XASL_SUPP_INFO));
+  if (saved == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_SUPP_INFO));
+      return NULL;
+    }
+  *saved = xasl_Supp_info;
+  xasl_Supp_info.query_list = NULL;
+  xasl_Supp_info.class_oid_list = NULL;
+  xasl_Supp_info.class_locks = NULL;
+  xasl_Supp_info.tcard_list = NULL;
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  xasl_Supp_info.includes_tde_class = 0;
+  return saved;
+}
+
+/*
+ * pt_attach_xasl_supp_info () - give back what pt_detach_xasl_supp_info () took, dropping what the statement compiled
+ *				  in between left
+ *   return: void
+ *   saved(in): a non-NULL result of pt_detach_xasl_supp_info (); freed. Each non-NULL detach takes exactly one
+ *		attach, before the statement's own XASL generation goes on. A NULL detach took nothing: then compile
+ *		no statement in between and do not call this (it would clear the lists, then dereference NULL)
+ */
+void
+pt_attach_xasl_supp_info (struct xasl_supp_info *saved)
+{
+  /* the query list of the statement in between belongs to its parser, already freed */
+  pt_init_xasl_supp_info ();
+  xasl_Supp_info = *saved;
+  free_and_init (saved);
+}
+
 
 /*
  * pt_make_connect_by_proc () - makes the XASL of the CONNECT BY node
@@ -21389,6 +21433,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   /* Check for join, path expr, and index optimizations */
   plan = qo_optimize_query (parser, select_node);
 
+  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
+   * failed the statement: there is no plan to retry for */
+  if (!plan && pt_has_error (parser)
+      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || er_errid () == ER_INTERRUPTED))
+    {
+      return NULL;
+    }
+
   /* optimization fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
@@ -24639,7 +24692,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
     PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_SCAN |
-    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL | PT_HINT_ROW_SNAPSHOT |
+    PT_HINT_NO_ROW_SNAPSHOT;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
