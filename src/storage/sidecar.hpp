@@ -37,9 +37,15 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-/* The shortest image the write policy can move a value out of: sidecar_inline_target, or the minimum value size
- * under sidecar_force_external. */
+/* The longest image the write policy lets through untouched: sidecar_inline_target, or less than the minimum value
+ * size under sidecar_force_external.  sidecar_refresh_parameters () keeps it in step with the parameters. */
 extern int sidecar_Policy_min_length;
+
+/* Module lifetime: heap_manager_initialize () and heap_manager_finalize () */
+extern int sidecar_initialize (void);
+extern void sidecar_finalize (void);
+/* after a change of sidecar_inline_target or sidecar_force_external (sysprm_change_parameter_values ()) */
+extern void sidecar_refresh_parameters (void);
 
 /*
  * Writes: heap_insert_logical, heap_update_logical and heap_delete_logical (storage/heap_file.c), so every
@@ -66,10 +72,13 @@ extern SCAN_CODE sidecar_write_kept_ref (HEAP_CACHE_ATTRINFO *attr_info, int val
  * OR_MVCC_FLAG_HAS_SIDECAR reaches them.
  */
 
-/* a fetched record with refs: expands it into an inline record unless the reader may keep it lazy.  Asking the
+/* A fetched record with refs: expands it into an inline record unless the reader may keep it lazy.  Asking the
  * caller to read the row's current version again is a scan code of its own, so the exits hold no out-parameter
- * (an address-taken local grows the frame of every function the exit is inlined into). */
-extern SCAN_CODE sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes);
+ * (an address-taken local grows the frame of every function the exit is inlined into).  The record's class comes
+ * from home_page when the caller still holds it, else from class_oid, else from the scan cache.  Returns S_SUCCESS,
+ * S_DOESNT_FIT with recdes->length = -needed when the caller's area is too small, or S_ERROR. */
+extern SCAN_CODE sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const OID *class_oid,
+				   PAGE_PTR home_page, RECDES *recdes);
 /* a variable attribute of a record with refs: true when its slot holds a ref and raw now points at the value;
  * false leaves the attribute to the ordinary pointer */
 extern bool sidecar_point_variable (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO *attr_info,
@@ -81,6 +90,20 @@ extern char *sidecar_midxkey_point (HEAP_CACHE_ATTRINFO *attr_info, const RECDES
 /* before a scan fixes another hot page: releases the store page its cursor keeps, since nobody fixes a hot page
  * while holding a store page */
 extern void sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache);
+
+/*
+ * Lifecycle and checks
+ */
+
+/* The record in slotid of a heap page is a store record.  Store pages carry the class OID of their hot heap, so
+ * code that finds a page's heap through its class asks this first (heap_rv_undo_insert ()). */
+extern bool sidecar_is_store_record (THREAD_ENTRY *thread_p, PAGE_PTR page, PGSLOTID slotid);
+/* heap_drop_dependent_files () only: unlinks the store of a heap being dropped and postpones its destroy (I-10) */
+/* heap_create_internal (): a new heap may have the VFID of a destroyed one, whose cache entry must go */
+extern void sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid);
+extern int sidecar_store_drop (THREAD_ENTRY *thread_p, const HFID *hfid);
+/* checkdb (heap_check_heap_file ()): both directions of I-2 for a heap with a store, its class or partition */
+extern DISK_ISVALID sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid);
 
 /* A stored hot record has OR_MVCC_FLAG_HAS_SIDECAR exactly when it ends with a trailer, and a header that grows
  * to OR_MVCC_MAX_HEADER_SIZE never makes it REC_BIGONE.  Checked after heap_insert_physical (),

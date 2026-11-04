@@ -91,6 +91,10 @@ typedef enum
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6 = 600003,	/* after (4),(3) before (5) enqueue to daemon */
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7 = 600004,	/* after (6) send decision, before (7) DELETE row */
 
+  /* SIDECAR (storage/sidecar.cpp): defects that only the checkdb verifier can see */
+  FI_TEST_SIDECAR_ORPHAN_STORE_RECORD = 700000,	/* each externalizing INSERT writes one store record no ref names */
+  FI_TEST_SIDECAR_DANGLING_REF = 700001,	/* each externalizing INSERT writes a ref to the wrong slot */
+
   /* etc .... */
 
 } FI_TEST_CODE;

@@ -218,10 +218,29 @@ struct heap_hdr_stats
     VPID pages[cubstorage::bestspace::MAX_SHARD_PAGE_COUNT];
   } bestspace;
 
-  int reserve0;			/* Nothing reserved for future */
-  int reserve1;			/* Nothing reserved for future */
-  int reserve2;			/* Nothing reserved for future */
+  /* The Sidecar link, in the bytes that were reserve0..2.  Every existing heap has zeros here, because
+   * heap_create_internal () zeroes the header and nothing wrote them, so a zero hpgid means no store. */
+  union
+  {
+    HFID store_hfid;		/* in a hot heap: its store */
+    struct
+    {
+      VFID owner_vfid;		/* in a store: the hot heap that owns it */
+      INT32 magic;		/* in a store: HEAP_SIDECAR_STORE_MAGIC, never a page id */
+    } store;
+  } sidecar;
 };
+
+/* negative, so no store_hfid.hpgid of a hot heap equals it */
+#define HEAP_SIDECAR_STORE_MAGIC ((INT32) 0xA51DECA5)
+/* A store record grows only by the 8-byte DELID.  At the 256 B minimum value a page holds at most 57 of them, and
+ * 57 x 8 = 456 B. */
+#define HEAP_SIDECAR_STORE_UNFILL_SPACE 512
+#define HEAP_SIDECAR_IS_STORE(hdr) ((hdr)->sidecar.store.magic == HEAP_SIDECAR_STORE_MAGIC)
+#define HEAP_SIDECAR_HAS_STORE(hdr) (!HEAP_SIDECAR_IS_STORE (hdr) && (hdr)->sidecar.store_hfid.hpgid > 0)
+
+static_assert (sizeof (((HEAP_HDR_STATS *) NULL)->sidecar) == 3 * sizeof (int),
+	       "the Sidecar link takes the place of reserve0..2");
 
 /* Define heap page flags. */
 #define HEAP_PAGE_FLAG_BESTSPACE		  0x00000001
@@ -763,6 +782,11 @@ static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * 
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
+static int heap_drop_dependent_files (THREAD_ENTRY * thread_p, const HFID * hfid);
+static PAGE_PTR heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_LATCH_MODE latch_mode,
+					 HEAP_HDR_STATS ** heap_hdr);
+static void heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr,
+				   const HFID * link);
 
 static int heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_index_info, int n_atts,
 				     int *att_ids, HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, int btid_index,
@@ -3775,8 +3799,12 @@ heap_manager_initialize (void)
 
   /* Initialize class OID->HFID cache */
   ret = heap_initialize_hfid_table ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
-  return ret;
+  return sidecar_initialize ();
 }
 
 /*
@@ -3802,6 +3830,7 @@ heap_manager_finalize (void)
     }
 
   heap_finalize_hfid_table ();
+  sidecar_finalize ();
 
   return ret;
 }
@@ -5006,6 +5035,9 @@ end:
 
   logpb_force_flush_pages (thread_p);
 
+  /* the VFID may be that of a heap that was destroyed, whose store the Sidecar cache still names */
+  sidecar_store_forget (thread_p, &hfid->vfid);
+
   return NO_ERROR;
 
 error:
@@ -5279,6 +5311,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
       if (is_header_page)
 	{
 	  heap_hdr = (HEAP_HDR_STATS *) recdes.data;
+	  /* heap_drop_dependent_files () cleared the Sidecar link of the dropped heap, and a store is never reused */
+	  assert (heap_hdr->sidecar.store_hfid.hpgid == 0);
 	  COPY_OID (&(heap_hdr->class_oid), class_oid);
 
 	  heap_bestspace_clear_candidates (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
@@ -5469,23 +5503,41 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool 
 int
 xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid)
 {
-  VFID vfid;
-  LOG_DATA_ADDR addr;
+  int error_code;
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = -1;
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+  error_code = heap_drop_dependent_files (thread_p, hfid);
+  if (error_code != NO_ERROR)
     {
-      file_postpone_destroy (thread_p, &vfid);
+      return error_code;
     }
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-
   return NO_ERROR;
+}
+
+/*
+ * heap_drop_dependent_files () - Postpone the destroy of the files that live and die with a heap: its overflow file
+ *				  and its Sidecar store
+ *   return: error code
+ *   hfid(in): the heap being dropped
+ *
+ * Note: Both drop paths call it, xheap_destroy () and the mark-deleted branch of xheap_destroy_newly_created (), so
+ *       heap_reuse () never sees a heap with a store link.
+ */
+static int
+heap_drop_dependent_files (THREAD_ENTRY * thread_p, const HFID * hfid)
+{
+  VFID ovf_vfid;
+
+  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    {
+      file_postpone_destroy (thread_p, &ovf_vfid);
+    }
+
+  return sidecar_store_drop (thread_p, hfid);
 }
 
 /*
@@ -5501,7 +5553,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 int
 xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool force)
 {
-  VFID vfid;
   FILE_TYPE file_type;
   int ret;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -5520,9 +5571,10 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+  ret = heap_drop_dependent_files (thread_p, hfid);
+  if (ret != NO_ERROR)
     {
-      file_postpone_destroy (thread_p, &vfid);
+      return ret;
     }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
@@ -6160,6 +6212,293 @@ exit:
   pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
 
   return ovf_vfid;
+}
+
+/*
+ * heap_sidecar_fix_header () - Fix a heap's header page and peek its header
+ *   return: the header page, or NULL with an error set
+ *   hfid(in): the heap
+ *   latch_mode(in): the latch to fix the page with
+ *   heap_hdr(out): the header, in the page
+ */
+static PAGE_PTR
+heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_LATCH_MODE latch_mode,
+			 HEAP_HDR_STATS ** heap_hdr)
+{
+  VPID vpid;
+  RECDES recdes;
+  PAGE_PTR page;
+
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  if (spage_get_record (thread_p, page, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      pgbuf_unfix_and_init (thread_p, page);
+      return NULL;
+    }
+  *heap_hdr = (HEAP_HDR_STATS *) recdes.data;
+  return page;
+}
+
+/*
+ * heap_sidecar_log_link () - Set a hot heap's Sidecar link, logged with RVHF_SIDECAR_LINK
+ *   addr(in): the header page and slot
+ *   heap_hdr(in/out): the header, in the page
+ *   link(in): the store, or zeros for none
+ *
+ * Note: The undo writes back the link alone.  An RVHF_STATS undo would write back the whole header, and so erase a
+ *       change another thread commits meanwhile, such as vacuum removing a page, when a DROP that cleared the link
+ *       aborts.
+ */
+static void
+heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr, const HFID * link)
+{
+  HFID old_link = heap_hdr->sidecar.store_hfid;
+
+  heap_hdr->sidecar.store_hfid = *link;
+  log_append_undoredo_data (thread_p, RVHF_SIDECAR_LINK, addr, sizeof (HFID), sizeof (HFID), &old_link, link);
+  pgbuf_set_dirty (thread_p, addr->pgptr, DONT_FREE);
+}
+
+/*
+ * heap_rv_sidecar_link () - Undo or redo the Sidecar link of a heap header
+ *   return: error code
+ *   rcv(in): the header page, and the link bytes to write
+ */
+int
+heap_rv_sidecar_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  RECDES recdes;
+
+  assert (rcv->length == sizeof (HFID));
+  if (spage_get_record (thread_p, rcv->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  memcpy (&((HEAP_HDR_STATS *) recdes.data)->sidecar.store_hfid, rcv->data, sizeof (HFID));
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * heap_sidecar_get_store () - Read a heap's Sidecar store link
+ *   return: error code
+ *   hfid(in): the heap
+ *   store_hfid(out): its store, or NULL_HFID when it has none or is a store itself
+ *   class_oid(out): the class of the heap; may be NULL
+ *
+ * Note: Fixes only the header page, so the caller holds no data page.
+ */
+int
+heap_sidecar_get_store (THREAD_ENTRY * thread_p, const HFID * hfid, HFID * store_hfid, OID * class_oid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  PAGE_PTR page = heap_sidecar_fix_header (thread_p, hfid, PGBUF_LATCH_READ, &heap_hdr);
+
+  if (page == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      *store_hfid = heap_hdr->sidecar.store_hfid;
+    }
+  else
+    {
+      HFID_SET_NULL (store_hfid);
+    }
+  if (class_oid != NULL)
+    {
+      *class_oid = heap_hdr->class_oid;
+    }
+
+  pgbuf_unfix_and_init (thread_p, page);
+  return NO_ERROR;
+}
+
+/*
+ * heap_sidecar_get_owner () - Read the back-pointer of a Sidecar store
+ *   return: error code
+ *   store_hfid(in): the store
+ *   owner_vfid(out): the hot heap that owns it, or NULL_VFID when the header is not a store's
+ */
+int
+heap_sidecar_get_owner (THREAD_ENTRY * thread_p, const HFID * store_hfid, VFID * owner_vfid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  PAGE_PTR page = heap_sidecar_fix_header (thread_p, store_hfid, PGBUF_LATCH_READ, &heap_hdr);
+
+  if (page == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (HEAP_SIDECAR_IS_STORE (heap_hdr))
+    {
+      *owner_vfid = heap_hdr->sidecar.store.owner_vfid;
+    }
+  else
+    {
+      VFID_SET_NULL (owner_vfid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, page);
+  return NO_ERROR;
+}
+
+/*
+ * heap_sidecar_create_store () - Create the Sidecar store of a heap, unless another transaction did
+ *   return: error code
+ *   hfid(in): the hot heap
+ *   class_oid(in): its class
+ *   with_transaction(in): the store lives and dies with the current transaction, because only it can use the class
+ *   store_hfid(out): the store
+ *
+ * Note: The store is a FILE_HEAP file of the same class, so a partition gets its own.  It is created in a system
+ *       operation under the hot header's write latch, which serializes the creators of one heap.  The caller holds no
+ *       data page (I-7).  The operation commits even if the transaction aborts, since other transactions may have
+ *       stored values in it by then, unless with_transaction says that none can.  Either way it raises the database
+ *       to the Sidecar compatibility level before it ends.
+ */
+int
+heap_sidecar_create_store (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, bool with_transaction,
+			   HFID * store_hfid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  HEAP_HDR_STATS *store_hdr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  LOG_DATA_ADDR store_addr = LOG_DATA_ADDR_INITIALIZER;
+  int error_code;
+
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  addr.pgptr = heap_sidecar_fix_header (thread_p, hfid, PGBUF_LATCH_WRITE, &heap_hdr);
+  if (addr.pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert (!HEAP_SIDECAR_IS_STORE (heap_hdr));
+
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      /* created while this thread waited for the latch */
+      *store_hfid = heap_hdr->sidecar.store_hfid;
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      return NO_ERROR;
+    }
+
+  log_sysop_start (thread_p);
+  log_raise_sidecar_compatibility (thread_p);
+
+  error_code = heap_create_internal (thread_p, store_hfid, class_oid, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  store_addr.vfid = &store_hfid->vfid;
+  store_addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  store_addr.pgptr = heap_sidecar_fix_header (thread_p, store_hfid, PGBUF_LATCH_WRITE, &store_hdr);
+  if (store_addr.pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
+  log_append_undo_data (thread_p, RVHF_STATS, &store_addr, sizeof (*store_hdr), store_hdr);
+  store_hdr->unfill_space = HEAP_SIDECAR_STORE_UNFILL_SPACE;
+  store_hdr->sidecar.store.owner_vfid = hfid->vfid;
+  store_hdr->sidecar.store.magic = HEAP_SIDECAR_STORE_MAGIC;
+  log_append_redo_data (thread_p, RVHF_STATS, &store_addr, sizeof (*store_hdr), store_hdr);
+  pgbuf_set_dirty (thread_p, store_addr.pgptr, FREE);
+  store_addr.pgptr = NULL;
+
+  heap_sidecar_log_link (thread_p, &addr, heap_hdr, store_hfid);
+
+  if (with_transaction)
+    {
+      log_sysop_attach_to_outer (thread_p);
+    }
+  else
+    {
+      log_sysop_commit (thread_p);
+    }
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+  return NO_ERROR;
+
+error:
+  assert (error_code != NO_ERROR);
+  log_sysop_abort (thread_p);
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+  HFID_SET_NULL (store_hfid);
+  return error_code;
+}
+
+/*
+ * heap_sidecar_unlink_store () - Clear a heap's Sidecar store link
+ *   return: error code
+ *   hfid(in): the heap being dropped
+ *   store_hfid(out): the store it linked, or NULL_HFID
+ *
+ * Note: An abort restores the link.
+ */
+int
+heap_sidecar_unlink_store (THREAD_ENTRY * thread_p, const HFID * hfid, HFID * store_hfid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  addr.pgptr = heap_sidecar_fix_header (thread_p, hfid, PGBUF_LATCH_WRITE, &heap_hdr);
+  if (addr.pgptr == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      HFID none;
+
+      *store_hfid = heap_hdr->sidecar.store_hfid;
+      memset (&none, 0, sizeof (none));
+      heap_sidecar_log_link (thread_p, &addr, heap_hdr, &none);
+    }
+  else
+    {
+      HFID_SET_NULL (store_hfid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+  return NO_ERROR;
 }
 
 /*
@@ -15818,6 +16157,11 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
 	{
 	  ASSERT_ERROR ();
 	}
+      if (rv == DISK_VALID)
+	{
+	  /* reports what it finds with an error instead of an assertion, so the fault injection tests can see it */
+	  rv = sidecar_verify_heap (thread_p, hfid);
+	}
       return rv;
     }
   else
@@ -17542,10 +17886,15 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = rcv->offset;
   /* Clear HEAP_RV_FLAG_VACUUM_STATUS_CHANGE */
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+
+  /* A Sidecar store page carries its hot heap's class OID, so the class finds the hot heap: the store's free space
+   * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store. */
+  const bool add_bestpage = LOG_ISRESTARTED () && !sidecar_is_store_record (thread_p, rcv->pgptr, slotid);
+
   (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  if (LOG_ISRESTARTED ())
+  if (add_bestpage)
     {
       HFID hfid = HFID_INITIALIZER;
       OID class_oid = OID_INITIALIZER;
@@ -20385,7 +20734,11 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       else
 	{
 	  scan = spage_get_record (thread_p, page_watcher->pgptr, oid.slotid, recdes, COPY);
-	  pgbuf_ordered_unfix (thread_p, page_watcher);
+	  /* a record with refs is expanded below, which reads the store while the hot page is still fixed (I-7) */
+	  if (likely (scan != S_SUCCESS || !sidecar_record_has_refs (recdes)))
+	    {
+	      pgbuf_ordered_unfix (thread_p, page_watcher);
+	    }
 	}
       db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
       db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], or_chn (recdes));
@@ -20410,7 +20763,13 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	}
       if (unlikely (scan == S_SUCCESS && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
 	{
-	  scan = sidecar_on_fetch (thread_p, scan_cache, recdes);
+	  PAGE_PTR home_page = page_watcher->pgptr != NULL ? page_watcher->pgptr : scan_cache->page_watcher.pgptr;
+
+	  scan = sidecar_on_fetch (thread_p, scan_cache, NULL, home_page, recdes);
+	}
+      if (unlikely (page_watcher->pgptr != NULL))
+	{
+	  pgbuf_ordered_unfix (thread_p, page_watcher);
 	}
       break;
 
@@ -25324,7 +25683,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       if (unlikely (sidecar_update_needs_plan (context)))
 	{
-	  rc = sidecar_plan_update (thread_p, context, &context->home_recdes);
+	  rc = sidecar_plan_update (thread_p, context, context->record_type == REC_HOME ? &context->home_recdes : NULL);
 	  if (rc != NO_ERROR)
 	    {
 	      goto exit;
@@ -27186,7 +27545,8 @@ exit:
   /* both the heap path and the log path end here */
   if (unlikely (scan == S_SUCCESS && context->recdes_p != NULL && sidecar_record_has_refs (context->recdes_p)))
     {
-      scan = sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
+      scan = sidecar_on_fetch (thread_p, context->scan_cache, context->class_oid_p, context->home_page_watcher.pgptr,
+			       context->recdes_p);
     }
   return scan;
 }
@@ -27363,7 +27723,8 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 exit:
   if (unlikely (scan == S_SUCCESS && sidecar_record_has_refs (context->recdes_p)))
     {
-      return sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
+      return sidecar_on_fetch (thread_p, context->scan_cache, context->class_oid_p,
+			       context->home_page_watcher.pgptr, context->recdes_p);
     }
 
   return scan;

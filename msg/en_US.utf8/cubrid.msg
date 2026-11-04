@@ -1502,7 +1502,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
 1389 %1$s cannot be called by the main client thread.
 
-1390 Last Error
+1390 A record of class %1$d|%2$d|%3$d holds a Sidecar ref that the Sidecar module did not write.
+1391 A Sidecar ref names the store record %1$d|%2$d|%3$d of attribute %4$d, which is missing or holds another value.
+1392 %1$s of a row whose values live in the Sidecar store is not supported before Sidecar P1b.
+1393 The live Sidecar store record %1$d|%2$d|%3$d of attribute %4$d is named by %5$d current rows instead of one.
+1394 The Sidecar store %1$d|%2$d of heap %3$d|%4$d is not consistent: %5$s.
+
+1395 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

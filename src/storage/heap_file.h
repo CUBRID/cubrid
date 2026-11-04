@@ -677,6 +677,14 @@ extern bool heap_is_big_length (int length);
 extern int xheap_get_maxslotted_reclength (int &maxslotted_reclength);
 
 extern int heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * class_oid);
+
+/* The Sidecar store link (storage/sidecar.cpp): a hot heap's header names its store, a store's header its owner */
+extern int heap_sidecar_get_store (THREAD_ENTRY * thread_p, const HFID * hfid, HFID * store_hfid, OID * class_oid);
+extern int heap_sidecar_get_owner (THREAD_ENTRY * thread_p, const HFID * store_hfid, VFID * owner_vfid);
+extern int heap_sidecar_create_store (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
+				      bool with_transaction, HFID * store_hfid);
+extern int heap_sidecar_unlink_store (THREAD_ENTRY * thread_p, const HFID * hfid, HFID * store_hfid);
+extern int heap_rv_sidecar_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern bool heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					      ATTR_ID * att_id, int n_att_id);
 extern int heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);

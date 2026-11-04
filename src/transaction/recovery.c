@@ -877,6 +877,12 @@ struct rvfun RV_fun[] = {
    log_rv_undoredo_sysmeta_version,
    NULL,
    NULL},
+  {RVHF_SIDECAR_LINK,
+   "RVHF_SIDECAR_LINK",
+   heap_rv_sidecar_link,
+   heap_rv_sidecar_link,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa},
 };
 
 /*

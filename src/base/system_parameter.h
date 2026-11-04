@@ -579,8 +579,13 @@ enum param_id
   /* hash join: the runtime filter one input's keys make for the other input's outermost scan */
   PRM_ID_HASH_JOIN_RUNTIME_FILTER,
 
+  /* Sidecar: the write policy of large variable values (storage/sidecar.cpp) */
+  PRM_ID_SIDECAR_INLINE_TARGET,
+  PRM_ID_SIDECAR_MIN_VALUE_SIZE,
+  PRM_ID_SIDECAR_FORCE_EXTERNAL,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HASH_JOIN_RUNTIME_FILTER
+  PRM_LAST_ID = PRM_ID_SIDECAR_FORCE_EXTERNAL
 };
 typedef enum param_id PARAM_ID;
 

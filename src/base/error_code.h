@@ -1792,7 +1792,13 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_LAST_ERROR                               -1390
+#define ER_SIDECAR_BAD_REF                          -1390
+#define ER_SIDECAR_DANGLING_REF                     -1391
+#define ER_SIDECAR_NOT_SUPPORTED                    -1392
+#define ER_SIDECAR_ORPHAN_RECORD                    -1393
+#define ER_SIDECAR_STORE_INVALID                    -1394
+
+#define ER_LAST_ERROR                               -1395
 
 
 /*
