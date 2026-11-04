@@ -426,6 +426,7 @@ static PARSER_VARCHAR *pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * 
 static PARSER_VARCHAR *pt_print_showstmt (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p);
+static PT_NODE *pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list);
 static PARSER_VARCHAR *pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_timeout (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -9443,7 +9444,17 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.delete_.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	{
-	  q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	  q = pt_append_nulstring (parser, q, " NO_PARALLEL_HASH_JOIN ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_ROW_SNAPSHOT)
+	{
+	  q = pt_append_nulstring (parser, q, " ROW_SNAPSHOT ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_ROW_SNAPSHOT)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_ROW_SNAPSHOT ");
 	}
 
       q = pt_append_nulstring (parser, q, " */");
@@ -10057,6 +10068,25 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && p->info.spec.remote_server_name != NULL
+		   && (parser->custom_print & PT_SHORT_PRINT))
+	    {
+	      /* A remote DML target takes this shape to get its columns. An error message ends with
+	       * the statement printed short, and there the target is printed as <table>@<server>
+	       * followed by its range variable. As for a local table, the range variable is the
+	       * table name when no alias is written. */
+	      q = pt_append_nulstring (parser, q, p->info.spec.derived_table->info.dblink_table.remote_table_name);
+	      q = pt_append_nulstring (parser, q, "@");
+	      if (p->info.spec.remote_server_name->next)
+		{
+		  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+		  q = pt_append_nulstring (parser, q, ".");
+		}
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name));
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.range_var));
+	      goto print_join_cond;
+	    }
 	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      q = pt_append_varchar (parser, q, r1);
@@ -10143,9 +10173,22 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
+      PT_NODE *as_attr_list = p->info.spec.as_attr_list;
+      PT_NODE *derived_table = p->info.spec.derived_table;
+
+      /* the select list of a derived table can carry hidden columns (e.g. an order-by column added while a subquery
+       * with ORDER BY is merged into it) that the attribute list does not name */
+      if (p->info.spec.derived_table_type == PT_IS_SUBQUERY && derived_table != NULL
+	  && derived_table->node_type == PT_SELECT && derived_table->info.query.q.select.list != NULL
+	  && derived_table->info.query.q.select.list->node_type != PT_NODE_LIST)
+	{
+	  as_attr_list =
+	    pt_pad_attr_list_for_static_sql (parser, as_attr_list, derived_table->info.query.q.select.list);
+	}
+
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
+      r1 = pt_print_bytes_l (parser, as_attr_list);
       q = pt_append_nulstring (parser, q, " (");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -13730,8 +13773,10 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
 
-  /* do not check attribute list for dblink */
-  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+  /* Walk the INSERT column list for a local target, and for a dblink target in the derived dblink table shape,
+   * which carries its columns. */
+  if (p->info.insert.spec && (p->info.insert.spec->info.spec.remote_server_name == NULL
+			      || PT_SPEC_IS_DERIVED (p->info.insert.spec)))
     {
       PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
     }
@@ -15425,6 +15470,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_ROW_SNAPSHOT)
+	    {
+	      q = pt_append_nulstring (parser, q, "ROW_SNAPSHOT ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_ROW_SNAPSHOT)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_ROW_SNAPSHOT ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
 	    {
 	      q = pt_append_nulstring (parser, q, "PARALLEL");
@@ -16678,7 +16733,17 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.update.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	{
-	  b = pt_append_nulstring (parser, b, "NO_PARALLEL_HASH_JOIN ");
+	  b = pt_append_nulstring (parser, b, " NO_PARALLEL_HASH_JOIN ");
+	}
+
+      if (p->info.update.hint & PT_HINT_ROW_SNAPSHOT)
+	{
+	  b = pt_append_nulstring (parser, b, " ROW_SNAPSHOT ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_ROW_SNAPSHOT)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_ROW_SNAPSHOT ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");
@@ -18347,6 +18412,62 @@ pt_name_list_has_name (PT_NODE * name_list, const char *name)
 }
 
 /*
+ * pt_pad_attr_list_for_static_sql () - pad the attribute list printed for a CTE or a derived table with generated
+ *                                      names so that it covers every column of the select list, hidden ones too
+ *   return: attr_list, or a padded copy of it
+ *   parser(in):
+ *   attr_list(in): the attribute list (PT_NAME list) to print
+ *   select_list(in): the select list of the CTE or the derived table
+ *
+ * Note: rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
+ *       from scratch at runtime; that re-parse derives the exposed column count directly from how many items
+ *       the attribute list prints. A rewrite/optimization applied after the attribute list was computed (e.g.
+ *       adding a hidden order-by carry column while merging a ROWNUM-filtered outer query with an ORDER BY inner
+ *       subquery) can grow the actual select list past the attribute list's length, so pad a local copy here
+ *       instead of printing an attribute list/select list pair that a fresh parse would reject as mismatched.
+ */
+static PT_NODE *
+pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list)
+{
+  PT_NODE *padded_list;
+  PT_NODE *extra = NULL;
+  int actual_cnt, declared_cnt;
+  int version;
+  int i;
+
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      return attr_list;
+    }
+
+  actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+  declared_cnt = pt_length_of_list (attr_list);
+  if (actual_cnt <= declared_cnt)
+    {
+      return attr_list;
+    }
+
+  padded_list = parser_copy_tree_list (parser, attr_list);
+  version = declared_cnt;
+  for (i = declared_cnt; i < actual_cnt; i++)
+    {
+      const char *generated_name;
+
+      /* keep clear of any user-declared name so the list printed can't collide with it once this text is
+       * re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
+      do
+	{
+	  generated_name = mq_generate_name (parser, "hidden_col", &version);
+	}
+      while (pt_name_list_has_name (attr_list, generated_name));
+
+      extra = parser_append_node (pt_name (parser, generated_name), extra);
+    }
+
+  return parser_append_node (extra, padded_list);
+}
+
+/*
  * pt_print_with_cte ()
  * return :
  * parser (in) :
@@ -18358,43 +18479,10 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   PT_NODE *as_attr_list = p->info.cte.as_attr_list;
 
-  /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
-   * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
-   * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
-   * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
-   * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
-   * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
-   * reject as mismatched. */
   if (parser->flag.is_parsing_static_sql)
     {
-      PT_NODE *select_list = pt_get_select_list (parser, p->info.cte.non_recursive_part);
-      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      int declared_cnt = pt_length_of_list (as_attr_list);
-
-      if (actual_cnt > declared_cnt)
-	{
-	  PT_NODE *extra = NULL;
-	  int version = declared_cnt;
-	  int i;
-
-	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
-	  for (i = declared_cnt; i < actual_cnt; i++)
-	    {
-	      const char *generated_name;
-
-	      /* keep clear of any user-declared name so the header printed below can't collide with it once
-	       * this text is re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
-	      do
-		{
-		  generated_name = mq_generate_name (parser, "hidden_col", &version);
-		}
-	      while (pt_name_list_has_name (p->info.cte.as_attr_list, generated_name));
-
-	      extra = parser_append_node (pt_name (parser, generated_name), extra);
-	    }
-
-	  as_attr_list = parser_append_node (extra, as_attr_list);
-	}
+      as_attr_list = pt_pad_attr_list_for_static_sql (parser, as_attr_list,
+						      pt_get_select_list (parser, p->info.cte.non_recursive_part));
     }
 
   /* name of cte */
@@ -19397,7 +19485,7 @@ pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_p
 	{
 	  return true;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_TYPE_BIGINT:
       return (PT_IS_DISCRETE_NUMBER_TYPE (to_type) || to_type == PT_TYPE_NUMERIC || PT_IS_CHAR_STRING_TYPE (to_type));
 

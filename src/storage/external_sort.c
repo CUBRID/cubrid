@@ -2274,11 +2274,21 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
 	  if (sort_read_area (thread_p, &sort_param->temp[0], &sort_param->temp_cursor[0], 0, 1, output_buffer) !=
 	      NO_ERROR || sort_spage_get_record (output_buffer, 0, &temp_recdes, PEEK) != S_SUCCESS
-	      || sort_retrieve_longrec (thread_p, &temp_recdes, &long_recdes) == NULL
-	      || (*sort_param->put_fn) (thread_p, &long_recdes, sort_param->put_arg) != NO_ERROR)
+	      || sort_retrieve_longrec (thread_p, &temp_recdes, &long_recdes) == NULL)
 	    {
 	      ASSERT_ERROR ();
 	      error = er_errid ();
+	      goto exit_on_error;
+	    }
+
+	  error = (*sort_param->put_fn) (thread_p, &long_recdes, sort_param->put_arg);
+	  if (error == SORT_PUT_STOP)
+	    {
+	      error = NO_ERROR;
+	    }
+	  else if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
 	      goto exit_on_error;
 	    }
 	}
