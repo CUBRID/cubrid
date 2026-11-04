@@ -29335,6 +29335,12 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->is_cur_key_compressed == false);
   assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
 
+  /* A start locates its key from the root, which is what a restart from the root asks for: the request is met here,
+   * as btree_range_scan_resume meets it. Left set, every later start would see it after a successful positioning and
+   * give up again (btree_range_scan_advance_over_filtered_keys), restarting forever. A restart this start needs is
+   * raised again below and returned with, for the caller to start over. */
+  bts->force_restart_from_root = false;
+
   /* Find starting key. */
   /* Starting key must be checked and pass filters first. */
   bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
