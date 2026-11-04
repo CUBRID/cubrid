@@ -183,6 +183,7 @@ static DB_DOMAIN *column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_r
 				 T_BROKER_VERSION client_version);
 static bool column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version);
 static void note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count);
+static INT64 internal_lob_upload_token (DB_VALUE * value);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
 static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size,
@@ -2942,6 +2943,7 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 {
   int col_idx;
   int err_code;
+  INT64 upload_token;
   DB_VALUE *attr_val = NULL;
   DB_VALUE oid_val;
   T_QUERY_RESULT *q_result = NULL;
@@ -3005,6 +3007,17 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 	    {
 	      cas_log_write (0, false, "cursor_update %s%d", "error:", err_info.err_number);
 	    }
+	  goto cursor_update_error;
+	}
+
+      upload_token = internal_lob_upload_token (attr_val);
+      if (upload_token > 0)
+	{
+	  /* as on develop: db_put writes through the object, which takes no internal LOB; drop the upload */
+	  hm_internal_lob_upload_release (upload_token);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		  "an internal LOB cannot be written through an updatable result set; use UPDATE");
+	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
 	  goto cursor_update_error;
 	}
 
@@ -3394,16 +3407,41 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale, char *db_t
   return (ux_db_type_to_cas_type (set_type));
 }
 
-/* Remember the uploads a statement binds, so closing the statement releases their staged payloads. */
-static void
-note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count)
+/* The token an internal LOB upload marker names; 0 for any other value. */
+static INT64
+internal_lob_upload_token (DB_VALUE * value)
 {
   int prefix_len = (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX);
   char text[160];
   char type_char;
   long long token;
+  int size;
+
+  if (db_value_get_internal_lob_marker (value) != DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD)
+    {
+      return 0;
+    }
+  size = db_get_string_size (value);
+  if (size <= prefix_len || size >= (int) sizeof (text))
+    {
+      return 0;
+    }
+  memcpy (text, db_get_string (value), size);
+  text[size] = '\0';
+  if (sscanf (text + prefix_len, "%c:%lld", &type_char, &token) != 2 || token <= 0)
+    {
+      return 0;
+    }
+  return (INT64) token;
+}
+
+/* Remember the uploads a statement binds, so closing the statement releases their staged payloads. */
+static void
+note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count)
+{
   INT64 *tokens = NULL;
-  int i, size, n_tokens = 0;
+  INT64 token;
+  int i, n_tokens = 0;
 
   if (count > 0)
     {
@@ -3415,20 +3453,10 @@ note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, i
     }
   for (i = 0; i < count; i++)
     {
-      if (db_value_get_internal_lob_marker (&values[i]) != DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD)
+      token = internal_lob_upload_token (&values[i]);
+      if (token > 0)
 	{
-	  continue;
-	}
-      size = db_get_string_size (&values[i]);
-      if (size <= prefix_len || size >= (int) sizeof (text))
-	{
-	  continue;
-	}
-      memcpy (text, db_get_string (&values[i]), size);
-      text[size] = '\0';
-      if (sscanf (text + prefix_len, "%c:%lld", &type_char, &token) == 2 && token > 0)
-	{
-	  tokens[n_tokens++] = (INT64) token;
+	  tokens[n_tokens++] = token;
 	}
     }
   /* a re-bind releases what this statement bound before; the uploads it still binds stay for re-execution */
