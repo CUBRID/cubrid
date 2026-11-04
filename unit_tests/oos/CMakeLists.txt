@@ -305,6 +305,17 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 840
 )
 
+# The server reads CUBRID_<PARAMETER> at every parameter load, so this run has a short page latch timeout and a
+# vacuum wait for the heap header can fail.
+add_test(NAME test_oos_real_vacuum_latch_timeout
+  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.*
+)
+set_tests_properties(
+  test_oos_real_vacuum_latch_timeout
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 300
+    ENVIRONMENT "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000"
+)
+
 # Note: add_test vs. gtest_discover_tests
 # - Prefer add_test if you want to share global setup/teardown, which speeds up test
 # - Prefer gtest_discover_tests for isolation between tests, at the cost of test speed

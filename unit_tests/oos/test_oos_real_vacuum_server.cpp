@@ -49,6 +49,7 @@
  */
 
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <thread>
 
@@ -87,7 +88,7 @@ static const int MVCC_HEADER_SPARE = 2 * OR_MVCCID_SIZE;
 static int
 build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
 			    const std::vector<INT64> &oos_lengths,
-			    RECDES &rec_out)
+			    RECDES &rec_out, int filler_size = 0)
 {
   const int n_oos = (int) oos_oids.size ();
   assert (n_oos > 0);
@@ -108,14 +109,14 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   const int n_var = repr->n_variable;
   const int repr_id = repr->id;
   heap_classrepr_free_and_init (repr, &cache_index);
-  if (n_var < n_oos)
+  if (n_var < n_oos + (filler_size > 0 ? 1 : 0))
     {
       return ER_FAILED;
     }
 
   const int vot_bytes = (n_var + 1) * VOT_ENTRY_SZ;	/* one entry per attribute plus the terminator */
   const int data_bytes = n_oos * OOS_INLINE_SZ;
-  const int total = HEAP_HDR_SIZE + vot_bytes + data_bytes;
+  const int total = HEAP_HDR_SIZE + vot_bytes + data_bytes + filler_size;
 
   int err = recdes_allocate_data_area (&rec_out, total + MVCC_HEADER_SPARE);
   if (err != NO_ERROR)
@@ -145,7 +146,8 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
     }
   for (int i = n_oos; i <= n_var; ++i)
     {
-      const int offset = vot_bytes + n_oos * OOS_INLINE_SZ;
+      /* an optional inline attribute of filler_size bytes follows the stubs, to control the record size */
+      const int offset = vot_bytes + n_oos * OOS_INLINE_SZ + (i > n_oos ? filler_size : 0);
       OR_PUT_INT (vot + i * VOT_ENTRY_SZ, i == n_var ? OR_SET_VAR_LAST_ELEMENT (offset) : offset);
     }
 
@@ -976,6 +978,303 @@ TEST_F (OosRealVacuum, VacuumWaitsForHeapHeaderWithoutHoldingLastPage)
   EXPECT_TRUE (wait_for_vacuum ([&heap_oid] { return insert_id_vacuumed (heap_oid); }, 60))
       << "vacuum did not finish the row after the header was released";
   EXPECT_FALSE (oos_unreadable (oos_oid)) << "vacuum of a live row lost its OOS value";
+}
+
+/* Record type in the row's slot. REC_UNKNOWN means the slot is gone, and -1 means the page cannot be fixed. */
+static int
+slot_record_type (const OID &oid)
+{
+  VPID vpid;
+  VPID_GET_FROM_OID (&vpid, &oid);
+  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      er_clear ();
+      return -1;
+    }
+  SPAGE_SLOT *slot = spage_get_slot (page, oid.slotid);
+  int type = slot != NULL ? (int) slot->record_type : (int) REC_UNKNOWN;
+  pgbuf_unfix_and_init (thread_p, page);
+  return type;
+}
+
+/* Page of the forward record a REC_RELOCATION slot points to, or NULL_PAGEID. */
+static PAGEID
+forward_page_of (const OID &oid)
+{
+  VPID vpid;
+  VPID_GET_FROM_OID (&vpid, &oid);
+  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      er_clear ();
+      return NULL_PAGEID;
+    }
+  OID forward_oid = OID_INITIALIZER;
+  RECDES forward_recdes;
+  forward_recdes.data = (char *) &forward_oid;
+  forward_recdes.area_size = sizeof (forward_oid);
+  const bool copied = spage_get_record (thread_p, page, oid.slotid, &forward_recdes, COPY) == S_SUCCESS;
+  pgbuf_unfix_and_init (thread_p, page);
+  return copied ? forward_oid.pageid : NULL_PAGEID;
+}
+
+static bool
+row_removed (int record_type)
+{
+  return record_type == REC_UNKNOWN || record_type == REC_MARKDELETED || record_type == REC_DELETED_WILL_REUSE;
+}
+
+/* What vacuum did with a deleted row while the test held the row's heap header past the page latch timeout. */
+struct header_hold_observation
+{
+  bool log_advanced = false;
+  bool vacuum_queued = false;
+  bool vacuum_still_waits = false;
+  int type_while_held = -1;
+  bool oos_readable_while_held = false;
+  int type_after = -1;
+  bool oos_reclaimed = false;
+};
+
+// ============================================================================
+// TC-R12: A failed heap header lookup must not leak the OOS value of a deleted row (CBRD-27933)
+//
+// Runs with a short page latch timeout (CTest test_oos_real_vacuum_latch_timeout). The test thread holds the
+// heap header past that timeout, so the vacuum worker's wait for the header fails while it prepares the
+// deleted row. Vacuum must not remove the row's heap slot while it keeps the OOS value. Once the header is free
+// again, both must be gone. Debug builds abort at that timeout instead, because pgbuf_timed_sleep asserts when a
+// thread with an infinite lock wait times out, so these cases reach the lookup failure only in release builds.
+// ============================================================================
+class OosRealVacuumHeaderHeld : public OosRealVacuum
+{
+  protected:
+    int latch_timeout_msecs = 0;
+
+    void SetUp () override
+    {
+      OosRealVacuum::SetUp ();
+      latch_timeout_msecs = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS);
+      if (latch_timeout_msecs > 10 * 1000)
+	{
+	  GTEST_SKIP () << "page latch timeout " << latch_timeout_msecs << " ms; set CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS";
+	}
+    }
+
+    /* Inserts a row with a new OOS value on a new heap page. The header page also stores rows, and holding the
+     * header would then block vacuum on the home page itself. A live row without OOS shares the page, so vacuum
+     * never empties the page and removes it. With fill_page that row takes all but 256 bytes, so the first row
+     * cannot grow in place. */
+    void insert_row_on_new_page (bool fill_page, OID &heap_oid_out, OID &oos_oid_out)
+    {
+      RECDES oos_rec {};
+      ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096),
+		 oos_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+      ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid_out), NO_ERROR);
+
+      RECDES heap_rec {};
+      ASSERT_EQ (build_heap_recdes_with_oos ({oos_oid_out}, { (INT64) oos_rec.length}, heap_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+      VPID home_vpid = VPID_INITIALIZER;
+      PGBUF_WATCHER home_watcher;
+      ASSERT_EQ (heap_alloc_new_pages (thread_p, &hfid, 1, &home_vpid, &home_watcher), NO_ERROR);
+      HEAP_OPERATION_CONTEXT insert_ctx;
+      heap_create_insert_context (&insert_ctx, &hfid, &class_oid, &heap_rec, &scan_cache);
+      ASSERT_EQ (heap_insert_logical (thread_p, &insert_ctx, &home_watcher), NO_ERROR);
+      heap_oid_out = insert_ctx.res_oid;
+      ASSERT_EQ (heap_oid_out.pageid, home_vpid.pageid);
+      ASSERT_EQ (heap_oid_out.volid, home_vpid.volid);
+
+      PGBUF_WATCHER anchor_watcher;
+      PGBUF_INIT_WATCHER (&anchor_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+      ASSERT_EQ (pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &anchor_watcher), NO_ERROR);
+      const int anchor_size = fill_page ? DB_ALIGN (spage_get_free_space (thread_p, anchor_watcher.pgptr) - 256,
+			      INT_ALIGNMENT) : 64;
+      RECDES anchor_rec {};
+      ASSERT_EQ (build_plain_heap_recdes (anchor_size, anchor_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_anchor (&anchor_rec, recdes_free_data_area);
+      HEAP_OPERATION_CONTEXT anchor_ctx;
+      heap_create_insert_context (&anchor_ctx, &hfid, &class_oid, &anchor_rec, &scan_cache);
+      ASSERT_EQ (heap_insert_logical (thread_p, &anchor_ctx, &anchor_watcher), NO_ERROR);
+      ASSERT_EQ (anchor_ctx.res_oid.pageid, home_vpid.pageid);
+      commit_current_tran ();
+    }
+
+    /* Takes the free space of the header page, which also stores rows, so that a relocated row moves elsewhere. */
+    void fill_header_page ()
+    {
+      VPID header_vpid = { hfid.hpgid, hfid.vfid.volid };
+      PGBUF_WATCHER header_watcher;
+      PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, &hfid);
+      ASSERT_EQ (pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher), NO_ERROR);
+      RECDES filler_rec {};
+      ASSERT_EQ (build_plain_heap_recdes (DB_ALIGN (spage_get_free_space (thread_p, header_watcher.pgptr) - 256,
+					  INT_ALIGNMENT), filler_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler_rec, recdes_free_data_area);
+      HEAP_OPERATION_CONTEXT ctx;
+      heap_create_insert_context (&ctx, &hfid, &class_oid, &filler_rec, &scan_cache);
+      ASSERT_EQ (heap_insert_logical (thread_p, &ctx, &header_watcher), NO_ERROR);
+      ASSERT_EQ (ctx.res_oid.pageid, hfid.hpgid);
+      commit_current_tran ();
+    }
+
+    /* MVCC-deletes the row and holds its heap header while the delete's log block reaches vacuum. Once vacuum
+     * queues on the header, keeps holding it for OOS_TEST_HEADER_HOLD_MSECS (default three latch timeouts), or with
+     * stop_vacuum until the vacuum workers stop as at server shutdown. Then releases the header and, unless the
+     * workers are stopped, waits for vacuum. */
+    header_hold_observation observe_delete_with_header_held (const char *label, OID &heap_oid, const OID &oos_oid,
+	bool stop_vacuum = false)
+    {
+      const char *hold_env = std::getenv ("OOS_TEST_HEADER_HOLD_MSECS");
+      const int hold_msecs = hold_env != NULL ? std::atoi (hold_env) : 3 * latch_timeout_msecs;
+      header_hold_observation obs;
+
+      RECDES filler_rec {};
+      if (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), filler_rec)
+	  != NO_ERROR)
+	{
+	  return obs;
+	}
+      test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler_rec, recdes_free_data_area);
+
+      if (heap_delete_mvcc (hfid, class_oid, scan_cache, heap_oid) != NO_ERROR)
+	{
+	  return obs;
+	}
+      const VACUUM_LOG_BLOCKID delete_block = current_log_blockid ();
+      commit_current_tran ();
+
+      VPID header_vpid;
+      header_vpid.volid = hfid.vfid.volid;
+      header_vpid.pageid = hfid.hpgid;
+      PGBUF_WATCHER header_watcher;
+      PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, &hfid);
+      if (pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher) != NO_ERROR)
+	{
+	  return obs;
+	}
+
+      /* A transaction must hold no pages when it ends, so OOS inserts and a log flush close the block. */
+      obs.log_advanced = true;
+      for (int guard = 0; obs.log_advanced && current_log_blockid () <= delete_block + 1; guard++)
+	{
+	  OID filler_oid = OID_INITIALIZER;
+	  obs.log_advanced = guard < 20000
+			     && test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, filler_rec, filler_oid) == NO_ERROR;
+	}
+      if (obs.log_advanced)
+	{
+	  LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
+	  logpb_flush_pages (thread_p, &flush_lsa);
+	}
+
+      obs.vacuum_queued = obs.log_advanced
+			  && wait_for_vacuum ([&header_watcher] { return pgbuf_has_any_waiters (header_watcher.pgptr); }, 60);
+      printf ("[CBRD-27933] %s: page latch timeout %d ms; delete log block %lld; vacuum queued on heap header %d|%d: %d\n",
+	      label, latch_timeout_msecs, (long long) delete_block, VPID_AS_ARGS (&header_vpid), (int) obs.vacuum_queued);
+      fflush (stdout);
+      const auto hold_start = std::chrono::steady_clock::now ();
+      if (obs.vacuum_queued && stop_vacuum)
+	{
+	  /* Stopping the workers does not wake a worker that waits for a page latch. The call returns after that wait
+	   * ends. */
+	  vacuum_stop_workers (thread_p);
+	}
+      else if (obs.vacuum_queued)
+	{
+	  std::this_thread::sleep_for (std::chrono::milliseconds (hold_msecs));
+	}
+      const long long held_ms = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now ()
+				- hold_start).count ();
+      obs.vacuum_still_waits = pgbuf_has_any_waiters (header_watcher.pgptr);
+      obs.type_while_held = slot_record_type (heap_oid);
+      obs.oos_readable_while_held = !oos_unreadable (oos_oid);
+      printf ("[CBRD-27933] %s: header held for %lld ms%s: vacuum waits=%d, slot type=%d, oos readable=%d\n", label,
+	      held_ms, stop_vacuum ? " until vacuum workers stopped" : "", (int) obs.vacuum_still_waits,
+	      obs.type_while_held, (int) obs.oos_readable_while_held);
+      fflush (stdout);
+      er_clear ();
+      pgbuf_ordered_unfix (thread_p, &header_watcher);
+      commit_current_tran ();
+
+      obs.oos_reclaimed = stop_vacuum ? oos_unreadable (oos_oid)
+			  : wait_for_vacuum ([this, &oos_oid] { return oos_unreadable (oos_oid); }, 30);
+      obs.type_after = slot_record_type (heap_oid);
+      printf ("[CBRD-27933] %s: header released: slot type=%d, oos reclaimed=%d\n", label, obs.type_after,
+	      (int) obs.oos_reclaimed);
+      fflush (stdout);
+      return obs;
+    }
+
+    static void expect_no_leak (const header_hold_observation &obs)
+    {
+      ASSERT_TRUE (obs.log_advanced) << "OOS filler failed to close the delete's log block";
+      ASSERT_TRUE (obs.vacuum_queued) << "vacuum never queued on the heap header";
+      EXPECT_FALSE (row_removed (obs.type_while_held) && obs.oos_readable_while_held)
+	  << "vacuum removed the deleted row's heap slot while its OOS value stayed stored";
+      EXPECT_TRUE (row_removed (obs.type_after)) << "vacuum never removed the deleted row";
+      EXPECT_TRUE (obs.oos_reclaimed) << "vacuum never reclaimed the deleted row's OOS value";
+    }
+};
+
+TEST_F (OosRealVacuumHeaderHeld, HomeRowOosReclaimedAfterHeaderLookupFailure)
+{
+  OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
+  insert_row_on_new_page (false, heap_oid, oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+  ASSERT_EQ (slot_record_type (heap_oid), (int) REC_HOME);
+
+  expect_no_leak (observe_delete_with_header_held ("REC_HOME", heap_oid, oos_oid));
+}
+
+// A header lookup that fails while the server shuts down must leave the deleted row for vacuum after restart.
+TEST_F (OosRealVacuumHeaderHeld, ShutdownDuringHeaderLookupFailureLeavesHomeRowToVacuum)
+{
+  OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
+  insert_row_on_new_page (false, heap_oid, oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  const header_hold_observation obs = observe_delete_with_header_held ("REC_HOME shutdown", heap_oid, oos_oid, true);
+  ASSERT_TRUE (obs.log_advanced) << "OOS filler failed to close the delete's log block";
+  ASSERT_TRUE (obs.vacuum_queued) << "vacuum never queued on the heap header";
+  EXPECT_FALSE (row_removed (obs.type_after) && !obs.oos_reclaimed)
+      << "vacuum stopped with the deleted row's heap slot removed and its OOS value still stored";
+}
+
+TEST_F (OosRealVacuumHeaderHeld, RelocatedRowOosReclaimedAfterHeaderLookupFailure)
+{
+  /* A forward record on the header page would make vacuum wait for the header to latch the forward page,
+   * before it reaches the OOS lookup. */
+  fill_header_page ();
+  ASSERT_FALSE (HasFatalFailure ());
+  OID heap_oid = OID_INITIALIZER, old_oos_oid = OID_INITIALIZER;
+  insert_row_on_new_page (true, heap_oid, old_oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  /* The heap relocates a row that grows past the free space of its page. */
+  RECDES oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), oos_rec),
+	     NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+  OID oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid), NO_ERROR);
+  RECDES grown_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oos_oid}, { (INT64) oos_rec.length}, grown_rec, 2048), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_grown (&grown_rec, recdes_free_data_area);
+  ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, grown_rec), NO_ERROR);
+  const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+  commit_current_tran ();
+  ASSERT_EQ (slot_record_type (heap_oid), (int) REC_RELOCATION);
+  ASSERT_NE (forward_page_of (heap_oid), hfid.hpgid) << "the forward record must not live on the header page";
+
+  /* Let vacuum finish the update first, so the only header lookup left is the one for the delete. */
+  close_log_block_containing (hfid, class_oid, scan_cache, update_block);
+  ASSERT_TRUE (wait_for_vacuum ([this, &old_oos_oid] { return oos_unreadable (old_oos_oid); }, 60))
+      << "vacuum did not reclaim the superseded version's OOS value";
+
+  expect_no_leak (observe_delete_with_header_held ("REC_RELOCATION", heap_oid, oos_oid));
 }
 
 int
