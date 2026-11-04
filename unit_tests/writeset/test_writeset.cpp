@@ -1029,6 +1029,124 @@ TEST_CASE ("trailing spaces split a string key only where the index compares the
   }
 }
 
+TEST_CASE ("a string key under an expansion collation hashes like its compare", "[writeset]")
+{
+  /* utf8_de_exp_ai_ci compares by its full UCA weights, level by level, skipping zero weights, so 'ae' and 'æ'
+   * (one expansion) are one key and must have one hash, while its pseudo key would split them. The collation comes
+   * from the de_DE locale library of the installation CUBRID points to; without it the case only warns. */
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 207, 1);
+  LANG_COLLATION *coll = lang_get_collation_by_name ("utf8_de_exp_ai_ci");
+  LANG_COLLATION *plain = lang_get_collation_by_name ("utf8_en_ci");
+
+  if (coll == NULL)
+    {
+      WARN ("utf8_de_exp_ai_ci is not loaded (no de_DE locale library under CUBRID): expansion collation not checked");
+      return;
+    }
+  REQUIRE (plain != NULL);
+
+  auto hash_of = [&] (const char *text)
+  {
+    DB_VALUE value;
+    UINT64 hash;
+
+    REQUIRE (db_make_varchar (&value, 20, text, (int) strlen (text), INTL_CODESET_UTF8, coll->coll.coll_id) == NO_ERROR);
+    hash = write_key_hash (&class_oid, &value);
+    pr_clear_value (&value);
+
+    return hash;
+  };
+  auto compare = [&] (const char *a, const char *b, bool ignore_trailing_space = false)
+  {
+    return lang_strmatch_utf8_uca_w_coll_data (&coll->coll, false, (const unsigned char *) a, (int) strlen (a),
+	   (const unsigned char *) b, (int) strlen (b), NULL, false, NULL, ignore_trailing_space);
+  };
+  auto weight_key = [] (LANG_COLLATION * lc, const char *text, unsigned char **key, int *size,
+			bool ignore_trailing_space = false)
+  {
+    REQUIRE (lang_uca_weight_key (lc, (const unsigned char *) text, (int) strlen (text), ignore_trailing_space, key,
+				  size) == NO_ERROR);
+  };
+
+  SECTION ("an expansion and a case difference are one key; an accent this collation weights is not")
+  {
+    REQUIRE (compare ("ae", "æ") == 0);
+    REQUIRE (hash_of ("ae") == hash_of ("æ"));
+    REQUIRE (compare ("AE", "ae") == 0);
+    REQUIRE (hash_of ("AE") == hash_of ("ae"));
+    REQUIRE (compare ("cafe", "café") != 0);
+    REQUIRE (hash_of ("cafe") != hash_of ("café"));
+    REQUIRE (compare ("cafex", "caféx") == 0);
+    REQUIRE (hash_of ("cafex") == hash_of ("caféx"));
+    REQUIRE (hash_of ("ae") != hash_of ("ab"));
+  }
+
+  SECTION ("the weight key is equal exactly when the compare says equal")
+  {
+    /* an accent is a zero weight here: inside a string the compare skips it, at the end it counts unless
+     * trailing spaces are ignored */
+    const char *texts[] = { "ae", "æ", "AE", "Æ", "cafe", "café", "CAFE", "cafex", "caféx", "strasse", "straße",
+			    "a", "aa", "ab", "a b", "ab ", ""
+			  };
+    const int count = (int) (sizeof texts / sizeof texts[0]);
+
+    for (int ignore = 0; ignore < 2; ignore++)
+      {
+	for (int i = 0; i < count; i++)
+	  {
+	    for (int j = 0; j < count; j++)
+	      {
+		unsigned char *key_i = NULL;
+		unsigned char *key_j = NULL;
+		int size_i = 0;
+		int size_j = 0;
+		bool same_key;
+		bool same_compare;
+
+		weight_key (coll, texts[i], &key_i, &size_i, ignore == 1);
+		weight_key (coll, texts[j], &key_j, &size_j, ignore == 1);
+		same_key = (size_i == size_j && memcmp (key_i, key_j, (size_t) size_i) == 0);
+		same_compare = (compare (texts[i], texts[j], ignore == 1) == 0);
+		INFO ("'" << texts[i] << "' vs '" << texts[j] << "' ignore_trailing_space=" << ignore);
+		REQUIRE (same_key == same_compare);
+		free_and_init (key_i);
+		free_and_init (key_j);
+	      }
+	  }
+      }
+  }
+
+  SECTION ("a collation without expansions gives no weight key")
+  {
+    unsigned char *key = NULL;
+    int size = -1;
+
+    weight_key (plain, "ae", &key, &size);
+    REQUIRE (key == NULL);
+    REQUIRE (size == 0);
+  }
+
+  SECTION ("composite key: an expansion element gives one hash")
+  {
+    TP_DOMAIN *domain;
+    DB_VALUE key_ae;
+    DB_VALUE key_ligature;
+    DB_VALUE key_other;
+
+    make_string_int_key (&key_ae, &domain, coll->coll.coll_id, 20, "ae", 1);
+    make_string_int_key (&key_ligature, &domain, coll->coll.coll_id, 20, "æ", 1);
+    make_string_int_key (&key_other, &domain, coll->coll.coll_id, 20, "ab", 1);
+
+    REQUIRE (write_key_hash (&class_oid, &key_ae) == write_key_hash (&class_oid, &key_ligature));
+    REQUIRE (write_key_hash (&class_oid, &key_ae) != write_key_hash (&class_oid, &key_other));
+
+    pr_clear_value (&key_ae);
+    pr_clear_value (&key_ligature);
+    pr_clear_value (&key_other);
+  }
+}
+
 TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
 {
   ws_history_guard history;
