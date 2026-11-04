@@ -1963,7 +1963,7 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
  *    and when a running action changed the owner of its own trigger.
  *    Nothing is done while the procedure under the cached name exists.
  *    An error raised inside the block is then not taken for a moved procedure.
- *    The error of the failed call is kept here. The caller clears it when the procedure has moved.
+ *    The error of the failed call or compiling is kept here. The caller clears it when the procedure has moved.
  *    An error in reading the trigger again replaces it and is returned.
  *    Reading the trigger again frees the cached action, so the action is run again from the trigger read again
  *    even when its procedure keeps the name, for example when the lookup itself failed.
@@ -4725,29 +4725,37 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  error = free_stale_statement (act);
 	  if (error == NO_ERROR && act->parser == NULL)
 	    {
-	      /* compiling a call to a procedure that has moved would fail before it runs */
-	      if (!reloaded)
+	      error = compile_trigger_activity (trigger, act, 0);
+	      used_cached_statement = false;
+
+	      /*
+	       * A call to a procedure that has moved compiles and fails when it runs, which is handled below.
+	       * The trigger is read again here as well in case the compiling fails.
+	       */
+	      if (error != NO_ERROR && !reloaded)
 		{
 		  bool moved = false;
+		  int reload_error;
 
-		  error = reload_moved_block_trigger (trigger, &moved);
-		  if (error != NO_ERROR)
+		  reload_error = reload_moved_block_trigger (trigger, &moved);
+		  if (reload_error != NO_ERROR)
 		    {
-		      break;
+		      error = reload_error;
 		    }
-		  if (moved)
+		  else if (moved)
 		    {
 		      reloaded = true;
+		      er_clear ();
+
 		      error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
 		      if (error != NO_ERROR || skip_reloaded)
 			{
 			  break;
 			}
+
+		      error = compile_trigger_activity (trigger, act, 0);
 		    }
 		}
-
-	      error = compile_trigger_activity (trigger, act, 0);
-	      used_cached_statement = false;
 	    }
 
 	  if (error != NO_ERROR)
