@@ -115,14 +115,37 @@ def run(repo):
             return 2
         print(f'{target}: {replay.stdout.strip()}')
         if result.returncode == 0 and 'Model checking completed. No error has been found' in result.stdout:
+            if replay.returncode != 0:
+                print(f'{target}: MODEL/REPLAY DISAGREEMENT')
+                return 2
             print(f'{target}: PASS')
         elif result.returncode == 12 and 'Invariant UndoFindsEmptySlot is violated' in result.stdout:
+            if replay.returncode != 1:
+                print(f'{target}: MODEL/REPLAY DISAGREEMENT')
+                return 2
             print(f'{target}: MODEL FINDING (see {out / (target + ".out")})')
             errors = 1
         else:
             print(f'{target}: MODEL OR TOOL ERROR (see {out / (target + ".out")})')
             return 2
     return errors
+
+
+def release_variant(text, home_early, forward_early):
+    shape(text)
+    start = text.index('vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)\n{')
+    end = text.index('\n/*\n * vacuum_heap_get_hfid', start)
+    body = text[start:end]
+    body = re.sub(r'pgbuf_set_dirty \(thread_p, helper->home_page, (DONT_FREE|FREE)\);',
+                  HOME.replace('DONT_FREE', 'FREE') if home_early else HOME, body)
+    lo, hi = body.index('case REC_RELOCATION:'), body.index('case REC_BIGONE:')
+    rel = body[lo:hi]
+    fwd, commit = rel.index(FORWARD), rel.index(COMMIT)
+    left = min(fwd, commit)
+    right = max(fwd + len(FORWARD), commit + len(COMMIT))
+    order = (FORWARD, COMMIT) if forward_early else (COMMIT, FORWARD)
+    rel = rel[:left] + '\n      '.join(order) + rel[right:]
+    return text[:start] + body[:lo] + rel + body[hi:] + text[end:]
 
 
 def self_test(repo):
@@ -134,49 +157,32 @@ def self_test(repo):
             shutil.copy(repo / path, dest)
         vacuum = mirror / COVER[0]
         original = vacuum.read_text()
-        start = original.index('vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)\n{')
-        end = original.index('\n/*\n * vacuum_heap_get_hfid', start)
-        before, body, after = original[:start], original[start:end], original[end:]
-        if body.count(HOME) != 1:
-            raise ValueError('cannot uniquely mutate the real source')
-        vacuum.write_text(before + body.replace(HOME, HOME.replace('DONT_FREE', 'FREE'), 1) + after)
-        print('MUTATED scratch source:', vacuum, flush=True)
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
-            result = run(mirror)
-        mutated_output = captured.getvalue()
-        print(mutated_output, end='')
-        vacuum.write_text(original)
-        print('RESTORED scratch source', flush=True)
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
-            restored = run(mirror)
-        restored_output = captured.getvalue()
-        print(restored_output, end='')
-        if (result != 1 or restored != 1 or
-                'home: MOCK REPLAY' not in mutated_output or
-                'home: MODEL FINDING' not in mutated_output or
-                'forward: MODEL FINDING' not in mutated_output or
-                'home: PASS' not in restored_output or
-                'forward: MODEL FINDING' not in restored_output):
-            print('SELF-TEST ERROR: expected findings on mutation and baseline')
-            return 2
-        begin = original.index('vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)\n{')
-        rel = original.index('case REC_RELOCATION:', begin)
-        fwd = original.index(FORWARD, rel)
-        commit = original.index(COMMIT, fwd)
-        safe = original[:fwd] + original[fwd + len(FORWARD):commit] + COMMIT + '\n      ' + FORWARD + original[commit + len(COMMIT):]
-        vacuum.write_text(safe)
-        print('SAFE ORDER in scratch source', flush=True)
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
-            safe_result = run(mirror)
-        safe_output = captured.getvalue()
-        print(safe_output, end='')
-        if safe_result != 0 or 'home: PASS' not in safe_output or 'forward: PASS' not in safe_output:
-            print('SELF-TEST ERROR: safe release order did not pass')
-            return 2
-        vacuum.write_text(original)
+        home, forward, _ = shape(original)
+        scenarios = (
+            ('HOME MUTATION', release_variant(original, True, forward), True, forward),
+            ('RESTORED', original, home, forward),
+            ('SAFE ORDER', release_variant(original, False, False), False, False),
+            ('UNSAFE FORWARD CONTROL', release_variant(original, False, True), False, True),
+            ('RESTORED AGAIN', original, home, forward),
+        )
+        for label, text, home_fails, forward_fails in scenarios:
+            vacuum.write_text(text)
+            print(label + ' scratch source: ' + str(vacuum), flush=True)
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                result = run(mirror)
+            output = captured.getvalue()
+            print(output, end='')
+            expected_exit = int(home_fails or forward_fails)
+            expected = [('home', home_fails), ('forward', forward_fails)]
+            if result != expected_exit or any(
+                    f'{target}: MODEL FINDING' not in output if fails else f'{target}: PASS' not in output
+                    for target, fails in expected):
+                print('SELF-TEST ERROR: unexpected model result for ' + label)
+                return 2
+            if any(f'{target}: MOCK REPLAY' not in output for target, fails in expected if fails):
+                print('SELF-TEST ERROR: expected mock injection for ' + label)
+                return 2
         return 0
 
 
