@@ -203,9 +203,6 @@ enum
 static int csql_Is_histo_on = HISTO_OFF;
 static bool csql_Is_time_on = true;
 
-/* input line number of the first line in the editor buffer (non-interactive mode only) */
-static int csql_Edit_start_line_no = 0;
-
 static jmp_buf csql_Jmp_buf;
 
 static CSQL_COLUMN_WIDTH_INFO *csql_column_width_info_list = NULL;
@@ -954,13 +951,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
 
-	  if (!csql_Is_interactive && csql_Edit_start_line_no > 0 && csql_edit_contents_get ()[0] != '\0')
+	  if (!csql_Is_interactive)
 	    {
-	      /* a session command line is not put into the buffer, but the lexer has to count it */
-	      if (csql_edit_contents_append ("", true) != CSQL_SUCCESS)
-		{
-		  goto error_continue;
-		}
+	      /* a session command line is not put into the buffer, but it is counted in the line numbers */
+	      csql_edit_contents_skip_input_line ();
 	    }
 
 	  if (ret == DO_CMD_EXIT || ret == DO_CMD_CONNECT)
@@ -995,7 +989,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (!csql_Is_interactive && csql_edit_contents_get ()[0] == '\0')
 	    {
 	      /* the lexer counts lines from the start of the buffer, including leading blank and comment lines */
-	      csql_Edit_start_line_no = line_no;
+	      csql_edit_contents_set_start_line (line_no);
 	    }
 
 	  if (csql_edit_contents_append (line_read, read_whole_line) != CSQL_SUCCESS)
@@ -1185,17 +1179,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       /* File stuffs */
 
     case S_CMD_READ:		/* read a file */
-      {
-	/* the file is appended to the buffer; the buffer is unchanged if it cannot be read */
-	int old_len = strlen (csql_edit_contents_get ());
-
-	csql_read_file (argument);
-	if (strlen (csql_edit_contents_get ()) != old_len)
-	  {
-	    /* the buffer lines no longer match the input lines */
-	    csql_Edit_start_line_no = 0;
-	  }
-      }
+      csql_read_file (argument);
       break;
 
     case S_CMD_WRITE:		/* write to a file */
@@ -1226,27 +1210,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_EDIT:		/* invoke system editor */
-      {
-	/* the editor may fail before or after it replaces the buffer */
-	char *old_contents = strdup (csql_edit_contents_get ());
-	int error = csql_invoke_system_editor ((argument[0] == '\0') ? NULL : argument);
-
-	if (old_contents == NULL || strcmp (old_contents, csql_edit_contents_get ()) != 0)
-	  {
-	    /* the buffer lines no longer match the input lines */
-	    csql_Edit_start_line_no = 0;
-	  }
-
-	if (old_contents != NULL)
-	  {
-	    free_and_init (old_contents);
-	  }
-
-	if (error != CSQL_SUCCESS)
-	  {
-	    return DO_CMD_FAILURE;
-	  }
-      }
+      if (csql_invoke_system_editor ((argument[0] == '\0') ? NULL : argument) != CSQL_SUCCESS)
+	{
+	  return DO_CMD_FAILURE;
+	}
       break;
 
     case S_CMD_LIST:		/* display buffer */
@@ -2240,7 +2207,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     {
       /* includes the ;run and ;xrun session commands, which pass -1 as line_no.
        * a buffer loaded by ;read or ;edit is counted from its own first line. */
-      csql_yyset_lineno (csql_Edit_start_line_no > 0 ? csql_Edit_start_line_no : 1);
+      int buffer_start_line_no = csql_edit_contents_get_start_line ();
+
+      csql_yyset_lineno (buffer_start_line_no > 0 ? buffer_start_line_no : 1);
     }
 
   if (type == FILE_INPUT)
@@ -2392,7 +2361,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       parsed_line_no = db_get_start_line (session, stmt_id);
       if (parsed_line_no > 0)
 	{
-	  stmt_start_line_no = parsed_line_no;
+	  /* add the session command lines that are not in the buffer */
+	  stmt_start_line_no = (type == EDITOR_INPUT) ? csql_edit_contents_get_input_line (parsed_line_no) : parsed_line_no;
 	}
 
       attr_spec = db_get_query_type_list (session, stmt_id);
