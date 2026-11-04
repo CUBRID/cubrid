@@ -31,7 +31,6 @@ set (TEST_LOG_APPLIER_SRC
   test_log_applier_gate.cpp
   test_log_applier_pending.cpp
   test_log_applier_queues.cpp
-  test_log_applier_worker.cpp
   test_log_applier_wset_label.cpp
   ${APPLIER_DIR}/log_applier_coordinator.cpp
   ${APPLIER_DIR}/log_applier_inflight.cpp
@@ -43,6 +42,12 @@ set (TEST_LOG_APPLIER_SRC
   ${APPLIER_DIR}/log_applier_worker_context.cpp
   ${APPLIER_DIR}/log_applier_wset_label.cpp
   )
+
+# The worker test drives the sub-client session of each worker (db_restart_sub, db_shutdown_sub), which only
+# the multi-connection client has; the single-connection build runs every task alone and is not tested here.
+if(MULTI_CONN_TO_A_SERVER)
+  list(APPEND TEST_LOG_APPLIER_SRC test_log_applier_worker.cpp)
+endif(MULTI_CONN_TO_A_SERVER)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_LOG_APPLIER_SRC}
