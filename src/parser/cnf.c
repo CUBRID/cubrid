@@ -35,6 +35,10 @@ enum cnf_mode
   TRANSFORM_CNF_OR_PRUNE = 1,	/* -- not used */
   TRANSFORM_CNF_AND_OR = 2
 };
+
+/* a factor kept whole as a PT_OR tree by pt_transform_cnf_post () */
+#define PT_IS_OR_TREE(n) ((n) != NULL && (n)->node_type == PT_EXPR && (n)->info.expr.op == PT_OR)
+
 typedef enum cnf_mode CNF_MODE;
 
 typedef struct find_id_info FIND_ID_INFO;
@@ -66,6 +70,7 @@ static PT_NODE *pt_flatten_and_or (PARSER_CONTEXT * parser, PT_NODE * node);
 static int count_and_or (PARSER_CONTEXT * parser, const PT_NODE * node);
 static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_find_name_id_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_name_id_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_tag_term_with_id (PARSER_CONTEXT * parser, PT_NODE * term, UINTPTR id, UINTPTR join_spec,
@@ -573,6 +578,42 @@ pt_calculate_similarity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
+ * pt_cnf_or_list_to_tree () - turn a CNF disjunction chained through or_next into a PT_OR tree
+ *   return: the tree, or node itself when it has no or_next
+ *   parser(in):
+ *   node(in): a CNF element about to become an operand of an AND/OR tree
+ *
+ * Note: or_next is how a top-level CNF element lists its disjuncts.  Inside a factor kept whole,
+ *	 a disjunction has to be an operand of its own: qo_extract_or_restrictions () collects
+ *	 disjuncts through arg1/arg2 and links the pieces it derives through or_next.
+ */
+static PT_NODE *
+pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *rest, *or_node;
+
+  if (node == NULL || node->or_next == NULL)
+    {
+      return node;
+    }
+
+  rest = pt_cnf_or_list_to_tree (parser, node->or_next);
+  node->or_next = NULL;
+
+  or_node = pt_and (parser, node, rest);
+  if (or_node == NULL)
+    {
+      return node;
+    }
+  or_node->info.expr.op = PT_OR;
+  or_node->info.expr.location = node->info.expr.location;
+  or_node->info.expr.paren_type = 1;
+  or_node->type_enum = PT_TYPE_LOGICAL;
+
+  return or_node;
+}
+
+/*
  * pt_transform_cnf_post () -
  *   return: CNF/DNF list
  *   parser(in):
@@ -769,8 +810,13 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  break;
 	}
 
-      /* OR-tree compact mode */
-      if (*mode == TRANSFORM_CNF_OR_COMPACT)
+      /* OR-tree compact mode, and a disjunction of conjunctions in any mode: distributing
+       * (A and B) or (C and D) into (A or C) and (A or D) and (B or C) and (B or D) multiplies the
+       * factor out, evaluates every literal once per product it lands in, and leaves the optimizer
+       * multiplying correlated products as if independent.  The factor stays whole instead, and
+       * qo_extract_or_restrictions () derives from it the restrictions a scan or an index can use */
+      if (*mode == TRANSFORM_CNF_OR_COMPACT || lhs->next != NULL || rhs->next != NULL || PT_IS_OR_TREE (lhs)
+	  || PT_IS_OR_TREE (rhs))
 	{
 	  arg1 = arg2 = NULL;	/* init */
 
@@ -780,14 +826,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      lhs_next = lhs->next;
 	      lhs->next = NULL;
 
-	      arg1 = lhs;
+	      arg1 = pt_cnf_or_list_to_tree (parser, lhs);
 
 	      for (lhs = lhs_next; lhs; lhs = lhs_next)
 		{
 		  lhs_next = lhs->next;
 		  lhs->next = NULL;
 
-		  arg1 = pt_and (parser, arg1, lhs);
+		  arg1 = pt_and (parser, arg1, pt_cnf_or_list_to_tree (parser, lhs));
 		}
 	      if (arg1 && arg1->info.expr.op == PT_AND)
 		{
@@ -800,14 +846,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      rhs_next = rhs->next;
 	      rhs->next = NULL;
 
-	      arg2 = rhs;
+	      arg2 = pt_cnf_or_list_to_tree (parser, rhs);
 
 	      for (rhs = rhs_next; rhs; rhs = rhs_next)
 		{
 		  rhs_next = rhs->next;
 		  rhs->next = NULL;
 
-		  arg2 = pt_and (parser, arg2, rhs);
+		  arg2 = pt_and (parser, arg2, pt_cnf_or_list_to_tree (parser, rhs));
 		}
 	      if (arg2 && arg2->info.expr.op == PT_AND)
 		{
